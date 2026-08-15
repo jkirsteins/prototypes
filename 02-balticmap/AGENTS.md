@@ -203,10 +203,15 @@ upkeep - it is how a vassal is held under the independence gate - and
 a decision, so `tests/playability.test.ts` pins the downward case as a test of
 its own next to the sideways ones.
 
-The predicate is asked by everything that aims - the targeting pass, the
-two-step march aim, the plague and foul-winds resolutions, and the arrows
-already in flight when somebody's subjugation reshapes the pyramid under them.
-A rule enforced at one of those is a rule with four ways around it. The block
+The predicate is asked by everything that aims: thirteen call sites over five
+surfaces - the targeting pass, the two-step march aim, the Plague resolution,
+the Foul winds resolution, and the arrows already in flight when somebody's
+subjugation reshapes the pyramid under them. A rule enforced at one of those is
+a rule with four ways around it. The two disease surfaces are the ones that
+look least like aiming, and they are the ones a scoped-down version of this
+rule would have left as back doors: they walk every polygon holding the actor's
+stacks, so a card refused at the border reaches the same land through a stack
+laid there last week. The block
 reason it raises keeps the code `liege`, which was always shorthand for the
 fealty structure rather than for one link; the explanation the player reads
 states both shapes.

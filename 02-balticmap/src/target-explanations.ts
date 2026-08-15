@@ -77,8 +77,10 @@ function explainReason(reason: TargetBlockReason): string[] {
     case "liege":
       // Both halves, because the refusal has two shapes and the player needs
       // to know which one they are looking at: a lord above them, or a peer
-      // beside them under the same one.
-      return ["Your own realm: you owe them fealty, or you both answer to the same lord."];
+      // beside them. "The same crown" and not "the same lord" - a cousin two
+      // branches over shares the ROOT and not the immediate lord, and so does
+      // a sibling's annexed land.
+      return ["Your own realm: you owe them fealty, or you both answer to the same crown."];
     case "incorporated":
       return ["Already incorporated."];
     case "self":

@@ -342,10 +342,15 @@ export function attackReach(view: RulesView, actor: string): Set<string> {
  *  actor's own land is not refused here and stays whatever legality already
  *  said about it.
  *
- *  The one spelling, asked by everything that aims: the targeting pass, the
- *  two-step march aim, the plague resolution, and the arrows already in flight
- *  when somebody's subjugation makes a rival into your lord. A rule enforced
- *  at one of those is a rule with three ways around it. */
+ *  The one spelling, asked by everything that aims. Thirteen call sites over
+ *  five surfaces: the targeting pass, the two-step march aim, the Plague
+ *  resolution, the Foul winds resolution, and the arrows already in flight
+ *  when somebody's subjugation reshapes the pyramid under them. A rule
+ *  enforced at one of those is a rule with four ways around it, and the two
+ *  disease surfaces are the ones that look least like aiming: they walk every
+ *  polygon holding the actor's stacks rather than a list of targets, so a card
+ *  refused at the border would otherwise reach the same land through a stack
+ *  laid there last week. */
 export function aimsWithinOwnRealm(
   view: RulesView, actor: string, cardId: string, polygon: string,
 ): boolean {

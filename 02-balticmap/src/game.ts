@@ -1291,14 +1291,16 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     }
   };
 
-  /** A land just taken cannot send its armies at its new lord, nor at anyone
-   *  that lord answers to: those raids are called off, while anything it aimed
-   *  elsewhere flies on. Wars have not stopped, only this one. Every route into
-   *  `takeLand` owes this, which is why it is a function rather than a step of
-   *  the claim path.
+  /** A land just taken cannot send its armies anywhere inside the realm it has
+   *  joined - its new lord, anyone that lord answers to, or the peers it
+   *  acquired in the same moment: those raids are called off, while anything it
+   *  aimed elsewhere flies on, its own new vassals included. Wars have not
+   *  stopped, only the ones against its own side. Every route into `takeLand`
+   *  owes this, which is why it is a function rather than a step of the claim
+   *  path.
    *
-   *  The chain, not just the direct lord: this is the hostile keyword's rule
-   *  applied at the instant the pyramid changes shape, and `resolveMarches`
+   *  The whole realm, not just the direct lord: this is the hostile keyword's
+   *  rule applied at the instant the pyramid changes shape, and `resolveMarches`
    *  applies the identical test to whatever is still in flight afterwards.
    *  Two spellings of one rule would be two rules within a week - which is
    *  precisely how this function came to hold the whole of it and the rest of
@@ -1683,8 +1685,10 @@ function resolveMarches(
   // The third is the hostile keyword catching up with an arrow drawn before
   // the pyramid changed shape. `callOffMarchesAgainstLord` answers the same
   // question at the instant of a capture, for the one land being taken; this
-  // answers it for everybody else, every turn, which is what makes "never up
-  // your own chain" a rule rather than a check performed once.
+  // answers it for everybody else, every turn, which is what makes "never at a
+  // peer of your own realm" a rule rather than a check performed once. A land
+  // that became your sibling while your arrow was in the air is as much your
+  // own bloc as one that became your lord.
   const alive: typeof lapsed = [];
   for (const entry of lapsed) {
     const realm = fullRealmOf(entry.march.actor, state.overlords, state.incorporated);
@@ -2341,10 +2345,13 @@ export function playCard(
       ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // A land just taken cannot send its armies at its new lord, nor at anyone
-    // that lord answers to. The claim path in `beginTurn` says the same thing
-    // through the same predicate; both routes into a capture owe it, or which
-    // route took the land decides whether its raids fly on.
+    // A land just taken cannot send its armies anywhere inside the realm it
+    // has joined: not at its new lord, not at anyone that lord answers to, and
+    // not at the peers it acquired in the same moment. Its arrows further down
+    // its own new branch fly on, because holding a vassal down is upkeep
+    // whoever the vassal now belongs to. The claim path in `beginTurn` says the
+    // same thing through the same predicate; both routes into a capture owe it,
+    // or which route took the land decides whether its raids fly on.
     const chainView = { ...view, overlords, incorporated };
     for (const [key, march] of Object.entries(marches)) {
       if (
@@ -2474,10 +2481,12 @@ export function playCard(
       const stacks = disease[polygon]?.[p.factionId] ?? 0;
       if (stacks === 0) continue;
       // Hostile, and a Plague has no aim of its own - it lands wherever the
-      // actor's stacks already sit, which may include a land seeded before the
-      // actor knelt to anybody. The stacks stay where they are and burn
-      // nothing: a card whose keyword says it cannot strike upward must not
-      // find a back door through a stack laid last week.
+      // actor's stacks already sit, which may include a land that was a rival
+      // when the stack was laid and is a lord or a sibling now. The stacks stay
+      // where they are and burn nothing: a card whose keyword says it cannot
+      // strike a peer of its own realm must not find a back door through a
+      // stack laid last week. A stack on the actor's OWN vassal still burns -
+      // downward is upkeep, and this is the one place a plague is aimed.
       if (aimsWithinOwnRealm(view, p.factionId, cardId, polygon)) continue;
       const damage = damageAfterTerrain(
         view, polygon, stacks * PLAGUE_DAMAGE_PER_STACK * mult,
@@ -2508,8 +2517,8 @@ export function playCard(
       const owners = disease[polygon];
       if (owners === undefined) continue;
       // The same clause as the Plague above, for the same reason: claiming the
-      // stacks standing on a lord's land is how the NEXT plague would strike
-      // it, so a hostile card stops at the pyramid here too.
+      // stacks standing on a peer's land is how the NEXT plague would strike
+      // it, so a hostile card stops at the realm here too.
       if (aimsWithinOwnRealm(view, p.factionId, cardId, polygon)) continue;
       const losses = Object.fromEntries(
         Object.entries(owners).filter(([owner]) => owner !== p.factionId),
