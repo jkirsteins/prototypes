@@ -75,9 +75,27 @@ before diffing and fails loudly rather than silently previewing nothing.
   push-triggered preview that rebuilt seven prototypes including a Godot export
   on every commit would make the playtest loop unusable. On a cache miss the
   run builds all of main and saves it.
-- **`concurrency: group: pages` is unchanged.** One artifact is one site, so
-  serialising runs is correct. Per-branch concurrency keys would let two runs
-  race for the same deployment.
+- **The concurrency group is split in two**, `pages-main` and `pages-preview`.
+  This was written down as "`group: pages` is unchanged", on the reasoning that
+  one artifact is one site so serialising every run is correct. That reasoning
+  missed how the group actually behaves: GitHub cancels a PENDING run when a
+  newer one queues on the same group, even under `cancel-in-progress: false`.
+  With every branch push sharing one group, a push to main could be cancelled
+  while queued behind somebody's branch build, leaving the live site stale on a
+  green-looking history - and this repo has several sessions pushing at once.
+  Split, main serialises only against main. The accepted consequence is that a
+  main run and a preview run can now deploy at the same time and the last to
+  land wins, which is safe in both orders: a preview run publishes main's tree
+  PLUS the preview, and a main run publishes main alone, which drops the
+  preview the way any push to main already does.
+- **A branch cannot deploy at all without a repo SETTING**, which is invisible
+  from the tree: the `github-pages` environment's deployment branch policies.
+  Measured rather than assumed - Pages patterns do not treat `*` or `**` as
+  crossing a `/`, so `main`, `*` and `*/*` are what this repo carries, and a
+  branch named `a/b/c` would need `*/*/*`. Without a match the run fails at the
+  deploy job reading `Branch "X" is not allowed to deploy to github-pages due
+  to environment protection rules`, which looks exactly like a workflow bug.
+  The repo `CLAUDE.md` carries the operational version of this.
 - **`.github/pages-index.html` stays main's hand-maintained index.** No preview
   index is generated. The URL shape is documented instead.
 
