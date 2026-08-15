@@ -271,7 +271,7 @@ svg.map.dragging {
    white-space: pre-line and collapses the runs of spaces a padded column
    needs. These two classes live only inside the dark .tooltip and inherit its
    color (or the row's tone-*), so per the dark-box rule they must never be
-   reused on the light .card-tip. */
+   reused on the light .card-panel. */
 .tooltip-line.has-amount {
   display: flex;
   gap: 6px;
@@ -2085,14 +2085,22 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   color: #7a5c2e;
 }
 
-.card .card-tip {
-  display: none;
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(260px, 70vw);
-  max-height: min(360px, 55vh);
+/* A hand card's rules text, parked in the left column instead of standing over
+   the middle of the map above the fan. The card being aimed keeps its text up
+   for the whole aim, so it cannot sit on the lands the player is choosing
+   between.
+
+   Declares its own `color` - it is a light box in a column of light boxes, but
+   the dark-box rule cuts both ways: a box that states its background states
+   its ink. */
+.card-panel {
+  width: 260px;
+  max-height: 62vh;
+  /* Shrinks before it overflows the column: the pinned land sits under it and
+     a panel that refused to give ground would push that off the screen. Both
+     halves are needed - `min-height: 0` is what lets a flex item shrink below
+     its content, and the scroll is where the rest of the card then goes. */
+  min-height: 0;
   overflow-y: auto;
   background: #fdf9f1;
   border: 1px solid #c9b896;
@@ -2102,11 +2110,24 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
   font-size: 12px;
   line-height: 1.35;
   color: #3f3428;
-  z-index: 20;
-  pointer-events: auto;
+  text-align: left;
 }
 
-/* Three bands, three answers, and the light card tip has to keep them apart by
+.card-panel.hidden {
+  display: none;
+}
+
+/* Above the fan the tip sat on the card face that named it. In the corner it
+   would otherwise be anonymous, so it says which card it is about. */
+.card-panel-name {
+  margin-bottom: 5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #d8c9ad;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Three bands, three answers, and the light card panel has to keep them apart by
    eye: red means you cannot play this at all, muted gold means something is
    helping you, warm amber means you can play it and it may do nothing.
 
@@ -2189,11 +2210,6 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 
 .card-tip-candidate-line:first-child {
   font-weight: 700;
-}
-
-.card:hover .card-tip,
-.card:focus-visible .card-tip {
-  display: block;
 }
 
 /* While a land is pinned the map answers one question and only one: this land.

@@ -115,6 +115,16 @@ function setup(opts?: {
 
 const q = (c: HTMLElement, sel: string) => c.querySelector(sel) as HTMLElement;
 
+/** Points at a hand card and returns the panel its rules text goes into.
+ *  The panel is one element in the left column for the whole hand, so nothing
+ *  is on screen about a card nobody is pointing at or aiming - see
+ *  `renderCardPanel` in src/hud.ts. */
+function hoverCard(c: HTMLElement, index = 0): HTMLElement {
+  const card = [...c.querySelectorAll(".card")][index] as HTMLElement;
+  card.dispatchEvent(new Event("pointerenter"));
+  return q(c, ".card-panel");
+}
+
 /** The commit and the stage-4 raise together, which is how a round summary
  *  reaches the screen: an update FOLDS its batch into the round's news and
  *  shows nothing, and the transition that hands the map back to a person is
@@ -1596,15 +1606,19 @@ describe("targeted plays in the log and the hand tips", () => {
     const card = q(container, ".card") as HTMLButtonElement;
     expect(card.disabled).toBe(false);
     expect(card.getAttribute("aria-disabled")).toBe("true");
-    expect(q(container, ".card-tip").textContent).toContain("Potential targets");
-    expect(q(container, ".card-tip").textContent)
-      .toContain("subjugation opens at 150 or less");
+    const panel = hoverCard(container);
+    expect(panel.textContent).toContain("Potential targets");
+    expect(panel.textContent).toContain("subjugation opens at 150 or less");
 
     card.click();
     expect(cb.onPlayCard).not.toHaveBeenCalled();
   });
 
-  it("does not play a card when its target popup is clicked", () => {
+  // The panel used to be a child of the card button, where a click on it was
+  // a click on the card. In the left column it is over the MAP instead, so
+  // the click it must not become is a click on the land underneath - which is
+  // what the stopPropagation on it is for. Neither may play the card.
+  it("does not play a card or reach the map when the panel is clicked", () => {
     const { container, cb, hud } = setup({
       targetExplanations: () => [{
         factionId: "gamma",
@@ -1615,9 +1629,13 @@ describe("targeted plays in the log and the hand tips", () => {
     });
     hud.update(withHand(playing(), 0, ["subjugate"]));
 
-    q(container, ".card-tip").click();
+    const beneath = vi.fn();
+    container.addEventListener("click", beneath);
+    const panel = hoverCard(container);
+    panel.dispatchEvent(new Event("click", { bubbles: true }));
 
     expect(cb.onPlayCard).not.toHaveBeenCalled();
+    expect(beneath).not.toHaveBeenCalled();
   });
 
   it("setArmed highlights the card and prompts for a target", () => {
@@ -1659,7 +1677,7 @@ describe("hud v2", () => {
     expect(cb.onPlayCard).toHaveBeenCalledWith(1);
   });
 
-  it("shows why a card is greyed out, on the card itself", () => {
+  it("shows why a card is greyed out, in the panel for that card", () => {
     const { container, hud } = setup({
       canPlayCard: (id) => id !== "raid",
       cardBlocked: (id) =>
@@ -1668,10 +1686,11 @@ describe("hud v2", () => {
     hud.update(withHand(playing(), 0, ["raid", "grow-crops"]));
     const cards = [...container.querySelectorAll(".card")];
     expect(cards[0].classList.contains("unplayable")).toBe(true);
-    expect(cards[0].querySelector(".card-tip-blocked")?.textContent).toBe(
-      "A forced card must be played first.",
-    );
-    expect(cards[1].querySelector(".card-tip-blocked")).toBeNull();
+    expect(hoverCard(container, 0).querySelector(".card-tip-blocked")
+      ?.textContent).toBe("A forced card must be played first.");
+    // The panel is one element, so the second card's reading of it must
+    // replace the first's rather than accumulate beside it.
+    expect(hoverCard(container, 1).querySelector(".card-tip-blocked")).toBeNull();
   });
 
   it("defeat shows the post-mortem with cause, build-up and log", () => {
@@ -3092,16 +3111,60 @@ describe("surrender", () => {
 describe("hand tips", () => {
   const playing = () => newPlaying();
 
-  it("hand cards carry a name span and a rules tip", () => {
+  it("a hand card carries its name, and the panel carries its rules", () => {
     const { container, hud } = setup();
     const g = withHand(playing(), 0, ["great-raid"]);
     hud.update(g);
     const card = q(container, ".hand .card");
     expect(card.querySelector(".card-name")!.textContent).toBe("Great raid");
+    // Nothing is on screen about a card nobody is pointing at.
+    expect(q(container, ".card-panel").classList.contains("hidden")).toBe(true);
     // The rules text, then the keyword block the card carries: the rule is
     // learned from the card that has it rather than from somewhere else.
-    expect(card.querySelector(".card-tip")!.textContent)
-      .toContain(CARDS["great-raid"].text);
+    const panel = hoverCard(container);
+    expect(panel.textContent).toContain(CARDS["great-raid"].text);
+    // Named, because in the column it no longer sits on the card face.
+    expect(panel.querySelector(".card-panel-name")!.textContent)
+      .toBe("Great raid");
+  });
+
+  it("closes the panel when the pointer leaves the card", () => {
+    const { container, hud } = setup();
+    hud.update(withHand(playing(), 0, ["raid"]));
+    const panel = hoverCard(container);
+    expect(panel.classList.contains("hidden")).toBe(false);
+    q(container, ".hand .card").dispatchEvent(new Event("pointerleave"));
+    expect(q(container, ".card-panel").classList.contains("hidden")).toBe(true);
+  });
+
+  // The whole point of the column: the card being aimed keeps its rules and
+  // its target list up while the pointer is out on the map, and no longer
+  // stands over the lands being chosen between.
+  it("an armed card holds the panel open with the pointer off the hand", () => {
+    const { container, hud } = setup({
+      targetExplanations: () => [{
+        factionId: "gamma",
+        available: true,
+        risk: [],
+        lines: ["Gamma", "Available."],
+      }],
+    });
+    hud.update(withHand(playing(), 0, ["subjugate", "raid"]));
+    hud.setArmed(0, "Subjugate");
+    const panel = q(container, ".card-panel");
+    expect(panel.classList.contains("hidden")).toBe(false);
+    expect(panel.textContent).toContain("Potential targets");
+    // Hover outranks armed - a player may still read another card in the fan -
+    // and letting go of it returns the panel to the card the map is asking
+    // about.
+    expect(hoverCard(container, 1).querySelector(".card-panel-name")!.textContent)
+      .toBe("Raid");
+    q(container, ".hand .card")!.parentElement!.children[1]
+      .dispatchEvent(new Event("pointerleave"));
+    expect(panel.querySelector(".card-panel-name")!.textContent)
+      .toBe("Subjugate");
+    hud.setArmed(null);
+    expect(panel.classList.contains("hidden")).toBe(true);
   });
 
   it("shows an active modifier above the card description", () => {
@@ -3109,8 +3172,9 @@ describe("hand tips", () => {
       cardModifiers: () => ["Favourable omens: this attack counts double."],
     });
     hud.update(withHand(playing(), 0, ["raid"]));
-    const tip = q(container, ".card-tip");
-    expect(tip.firstElementChild!.className).toBe("card-tip-modifier");
+    const tip = hoverCard(container);
+    // Under the card's name, which is the panel's own first line.
+    expect(tip.children[1].className).toBe("card-tip-modifier");
     expect(tip.textContent).toContain("Favourable omens: this attack counts double.");
     // description still there
     expect(tip.textContent).toContain(CARDS.raid.text);

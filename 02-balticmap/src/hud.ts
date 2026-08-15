@@ -1186,6 +1186,35 @@ export function createHud(
   const hand = document.createElement("div");
   hand.className = "hand hidden";
 
+  /** A hand card's rules text, read in the left column rather than over the
+   *  map. One panel for the whole hand: the card it is about is whichever one
+   *  the player is pointing at, or the armed one when they are pointing at
+   *  nothing - see `shownCardIndex`. */
+  const cardPanel = document.createElement("div");
+  cardPanel.className = "card-panel hidden";
+  /** The hand index the pointer or the keyboard is on, or null. Cleared by
+   *  every `renderHand`: a replaced element under the pointer gets a fresh
+   *  `pointerenter`, but a detached one never gets its `pointerleave`, so an
+   *  index held across a re-render is how the panel ends up describing a card
+   *  that has been played. */
+  let hoveredCard: number | null = null;
+  /** True while the pointer is on the PANEL. The tip used to be a child of the
+   *  card button, so reaching for its scrollbar kept `.card:hover` true; in the
+   *  column it has to keep itself open, or a panel long enough to need
+   *  scrolling closes the moment somebody reaches for it. */
+  let panelHovered = false;
+  cardPanel.addEventListener("pointerenter", () => {
+    panelHovered = true;
+  });
+  cardPanel.addEventListener("pointerleave", () => {
+    panelHovered = false;
+    renderCardPanel();
+  });
+  // The panel sits over the map and is not inside the card any more, so a
+  // click on it is a click on neither - it must not fall through to the land
+  // underneath.
+  cardPanel.addEventListener("click", (event) => event.stopPropagation());
+
   let logPrefs = loadLogPrefs(logStorage);
 
   const logPanel = document.createElement("div");
@@ -1754,7 +1783,8 @@ export function createHud(
   const leftColumn = document.createElement("div");
   leftColumn.className = "hud-left";
   leftColumn.append(
-    surrenderBtn, milestonesBtn, milestonesDrawer, pinnedPanel, pinnedTip,
+    surrenderBtn, milestonesBtn, milestonesDrawer, cardPanel, pinnedPanel,
+    pinnedTip,
   );
 
   container.append(
@@ -2096,18 +2126,147 @@ export function createHud(
     return el;
   }
 
+  /** Whether the hand is taking plays at all. The turn is the player's and
+   *  still open, which a spent turn can be (`turnOpen`), and nothing is
+   *  resolving. Which of the cards it then accepts is `canPlayCard`'s answer
+   *  per card, so a re-opened turn greys everything but the repeat and one
+   *  holding no legal repeat greys the lot.
+   *
+   *  The card panel asks the same question the fan does: "you cannot play this"
+   *  is a red band about THIS turn, and a hand nobody is being offered has no
+   *  such answer to give - every card would wear the band while the AI plays. */
+  function handLive(state: GameState): boolean {
+    return isLocalTurn(state) && turnOpen(state) &&
+      !(cb.isResolving?.() ?? false);
+  }
+
+  /** Which hand card the panel is about: the one being pointed at, else the
+   *  armed one, else none.
+   *
+   *  Hover outranks armed deliberately. A player with a Raid armed may still
+   *  want to read another card in the fan, and moving off it brings the panel
+   *  back to the card the map is still asking about. `panelHovered` counts as
+   *  hovering whatever the panel is already showing - see its declaration. */
+  function shownCardIndex(): number | null {
+    if (hoveredCard !== null) return hoveredCard;
+    if (panelHovered) return shownCard;
+    return armedIndex;
+  }
+
+  /** The hand index the panel is currently rendered for, so a repaint of the
+   *  same card keeps its scroll position and a different card starts at the
+   *  top. */
+  let shownCard: number | null = null;
+
+  /** Fills the left column's card panel from the hand as it stands now.
+   *
+   *  Called by `renderHand`, by the hover and focus changes, and by
+   *  `setArmed`. Everything in it - the block reason, the modifiers, the
+   *  odds, the target list - is an answer about the board as it stands, so a
+   *  panel left open across a repaint is rebuilt rather than left quoting the
+   *  board before the play. */
+  function renderCardPanel(): void {
+    const index = shownCardIndex();
+    const human = lastState === null ? undefined : humanPlayer(lastState);
+    const cardId = index === null ? undefined : human?.hand[index];
+    if (index === null || cardId === undefined) {
+      cardPanel.classList.add("hidden");
+      cardPanel.replaceChildren();
+      shownCard = null;
+      return;
+    }
+    const scroll = shownCard === index ? cardPanel.scrollTop : 0;
+    shownCard = index;
+    cardPanel.classList.remove("hidden");
+    cardPanel.replaceChildren(
+      ...cardTipParts(cardId, lastState !== null && handLive(lastState)),
+    );
+    cardPanel.scrollTop = scroll;
+  }
+
+  /** A card's whole popup, in reading order. Docked in the column it opens
+   *  with the card's NAME: above the fan it sat on the card face that named
+   *  it, and in the corner it would otherwise be anonymous. */
+  function cardTipParts(cardId: string, live: boolean): Node[] {
+    const parts: Node[] = [];
+    const title = document.createElement("div");
+    title.className = "card-panel-name";
+    title.textContent = CARDS[cardId]?.name ?? cardId;
+    parts.push(title);
+    const blocked = live ? cb.cardBlocked?.(cardId) ?? null : null;
+    if (blocked !== null) {
+      const line = document.createElement("div");
+      line.className = "card-tip-blocked";
+      line.textContent = blocked;
+      parts.push(line);
+    }
+    for (const text of cb.cardModifiers?.(cardId) ?? []) {
+      const modifier = document.createElement("div");
+      modifier.className = "card-tip-modifier";
+      modifier.textContent = text;
+      parts.push(modifier);
+    }
+    const description = document.createElement("div");
+    description.className = "card-tip-description";
+    description.textContent = CARDS[cardId]?.text ?? "";
+    parts.push(description);
+    // The keyword the card carries, explained on the card that carries it.
+    // A rule shared by three cards is a rule the player meets on whichever
+    // of them they draw first, so it cannot live only in a rules screen.
+    const keyword = keywordBlock(cardId);
+    if (keyword !== null) parts.push(keyword);
+    // Under the description, above the targets: the card's own failure mode
+    // is a fact about the card, so it reads with the card's text, and it has
+    // to be there before the player starts comparing candidates.
+    const risk = cb.cardRisk?.(cardId) ?? null;
+    if (risk !== null) parts.push(riskBand(risk));
+    const explanations = CARDS[cardId]?.targeted
+      ? cb.targetExplanations?.(cardId) ?? []
+      : [];
+    if (explanations.length > 0) {
+      const targets = document.createElement("section");
+      targets.className = "card-tip-targets";
+      const heading = document.createElement("div");
+      heading.className = "card-tip-targets-heading";
+      heading.textContent = "Potential targets";
+      targets.appendChild(heading);
+      for (const explanation of explanations) {
+        const candidate = document.createElement("div");
+        candidate.className = explanation.available
+          ? "card-tip-candidate available"
+          : "card-tip-candidate blocked";
+        for (const lineText of explanation.lines) {
+          const line = document.createElement("div");
+          line.className = "card-tip-candidate-line";
+          line.textContent = lineText;
+          candidate.appendChild(line);
+        }
+        // The same band as the card-level one, so "this can come back with
+        // nothing" is one shape wherever it appears rather than a warning at
+        // the top and an ordinary sentence down here.
+        for (const lineText of explanation.risk) {
+          candidate.appendChild(riskBand(lineText));
+        }
+        targets.appendChild(candidate);
+      }
+      parts.push(targets);
+    }
+    return parts;
+  }
+
   function renderHand(state: GameState): void {
     hand.replaceChildren();
+    // See `hoveredCard`: the elements the pointer and the focus were on are
+    // about to be detached, and a detached element never reports that they
+    // left it.
+    hoveredCard = null;
     const human = humanPlayer(state);
-    if (!human) return;
+    if (!human) {
+      renderCardPanel();
+      return;
+    }
     const n = human.hand.length;
-    // The hand is live while the TURN is open, which a spent turn can still be
-    // (`turnOpen`). Which of the cards it then accepts is `canPlayCard`'s
-    // answer per card, so a re-opened turn greys everything but the repeat and
-    // one holding no legal repeat greys the lot.
-    const canPlay =
-      isLocalTurn(state) && turnOpen(state) &&
-      !(cb.isResolving?.() ?? false);
+    const canPlay = handLive(state);
     const canPlayCardCb = cb.canPlayCard ?? (() => true);
     human.hand.forEach((cardId, i) => {
       const card = document.createElement("button");
@@ -2115,68 +2274,26 @@ export function createHud(
       const name = document.createElement("span");
       name.className = "card-name";
       name.textContent = CARDS[cardId]?.name ?? cardId;
-      const tip = document.createElement("div");
-      tip.className = "card-tip";
-      tip.addEventListener("click", (event) => event.stopPropagation());
-      const blocked = canPlay ? cb.cardBlocked?.(cardId) ?? null : null;
-      if (blocked !== null) {
-        const line = document.createElement("div");
-        line.className = "card-tip-blocked";
-        line.textContent = blocked;
-        tip.appendChild(line);
-      }
-      for (const text of cb.cardModifiers?.(cardId) ?? []) {
-        const modifier = document.createElement("div");
-        modifier.className = "card-tip-modifier";
-        modifier.textContent = text;
-        tip.appendChild(modifier);
-      }
-      const description = document.createElement("div");
-      description.className = "card-tip-description";
-      description.textContent = CARDS[cardId]?.text ?? "";
-      tip.appendChild(description);
-      // The keyword the card carries, explained on the card that carries it.
-      // A rule shared by three cards is a rule the player meets on whichever
-      // of them they draw first, so it cannot live only in a rules screen.
-      const keyword = keywordBlock(cardId);
-      if (keyword !== null) tip.appendChild(keyword);
-      // Under the description, above the targets: the card's own failure mode
-      // is a fact about the card, so it reads with the card's text, and it has
-      // to be there before the player starts comparing candidates.
-      const risk = cb.cardRisk?.(cardId) ?? null;
-      if (risk !== null) tip.appendChild(riskBand(risk));
-      const explanations = CARDS[cardId]?.targeted
-        ? cb.targetExplanations?.(cardId) ?? []
-        : [];
-      if (explanations.length > 0) {
-        const targets = document.createElement("section");
-        targets.className = "card-tip-targets";
-        const heading = document.createElement("div");
-        heading.className = "card-tip-targets-heading";
-        heading.textContent = "Potential targets";
-        targets.appendChild(heading);
-        for (const explanation of explanations) {
-          const candidate = document.createElement("div");
-          candidate.className = explanation.available
-            ? "card-tip-candidate available"
-            : "card-tip-candidate blocked";
-          for (const lineText of explanation.lines) {
-            const line = document.createElement("div");
-            line.className = "card-tip-candidate-line";
-            line.textContent = lineText;
-            candidate.appendChild(line);
-          }
-          // The same band as the card-level one, so "this can come back with
-          // nothing" is one shape wherever it appears rather than a warning at
-          // the top and an ordinary sentence down here.
-          for (const lineText of explanation.risk) {
-            candidate.appendChild(riskBand(lineText));
-          }
-          targets.appendChild(candidate);
-        }
-        tip.appendChild(targets);
-      }
-      card.append(name, tip);
+      card.append(name);
+      // The rules text is read in the left column, not over the map. Pointing
+      // at a card is what asks for it, and the panel is one element for the
+      // whole hand - see `renderCardPanel`.
+      card.addEventListener("pointerenter", () => {
+        hoveredCard = i;
+        renderCardPanel();
+      });
+      card.addEventListener("pointerleave", () => {
+        if (hoveredCard === i) hoveredCard = null;
+        renderCardPanel();
+      });
+      card.addEventListener("focus", () => {
+        hoveredCard = i;
+        renderCardPanel();
+      });
+      card.addEventListener("blur", () => {
+        if (hoveredCard === i) hoveredCard = null;
+        renderCardPanel();
+      });
       const offset = i - (n - 1) / 2;
       card.style.transform =
         `rotate(${offset * FAN_ANGLE_DEG}deg) ` +
@@ -2211,6 +2328,10 @@ export function createHud(
         });
       hand.appendChild(card);
     });
+    // Last, with the hand it describes rebuilt: the panel's block reason, its
+    // modifiers and its target list are all answers about the board as it
+    // stands now, not the board the panel was opened over.
+    renderCardPanel();
   }
 
   const center = (r: DOMRect): { x: number; y: number } => ({
@@ -2945,6 +3066,10 @@ export function createHud(
       [...hand.children].forEach((el, i) => {
         el.classList.toggle("card-armed", i === index);
       });
+      // The armed card keeps its own rules text up while the map is being
+      // aimed at, with the pointer nowhere near the fan - which is the whole
+      // reason the panel is in the column rather than over the map.
+      renderCardPanel();
       if (index !== null && prompt !== undefined) {
         statusText.textContent = prompt;
       } else if (index !== null && cardNameText !== undefined) {

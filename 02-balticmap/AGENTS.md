@@ -731,6 +731,40 @@ against the map, it is `fullRealmOf`. Getting this wrong is not a rounding
 error: it silently moved the win condition, and it put a land inside a player's
 own outline that their score would not count.
 
+## A card's rules are read in the column, never over the map
+
+There is ONE `.card-panel`, in `hud-left`, for the whole hand. Which card it is
+about is one rule in `shownCardIndex`: the card under the pointer or the
+keyboard, else the armed card, else none - so the card being aimed keeps its
+rules text and its target list up while the pointer is out on the map, and no
+card's text ever stands on the lands being chosen between. Hover outranks
+armed deliberately: a player may still want to read another card in the fan,
+and letting go of it returns the panel to the card the map is asking about.
+
+Three things about it are load-bearing:
+
+- **It rebuilds, it does not linger.** The block reason, the modifiers, the
+  odds and the target list are all answers about the board AS IT STANDS, so
+  `renderHand` and `setArmed` both end in `renderCardPanel`. `scrollTop`
+  survives a rebuild of the same card and resets on a different one.
+- **`renderHand` clears the hovered index.** A replacement under the pointer
+  gets a fresh `pointerenter`, but a detached element never gets its
+  `pointerleave` - an index held across a re-render is how the panel ends up
+  describing a card that has been played.
+- **The panel counts its own hover.** It was a child of the card button, so
+  reaching for its scrollbar kept `.card:hover` true. In the column it has to
+  hold itself open, or a panel long enough to need scrolling closes the moment
+  somebody reaches for it. It also stops its own clicks: it is over the map
+  now, and a click that fell through would pin the land underneath.
+
+An untargeted card needs no case: the click plays it, the hand re-renders
+without it, the hover clears, the panel closes. The `disabled` attribute the
+fan puts on a dead hand does not suppress `pointerenter` in Chrome, which is
+what lets a player still read their cards while the AI round resolves.
+
+The 2026-08-15 docked-card-panel spec in docs/superpowers/specs has the
+reasoning, including why the right edge was not available.
+
 ## A dark box states its own text colour
 
 `.deck-screen` and the notice overlays are dark; the build tiles and the
