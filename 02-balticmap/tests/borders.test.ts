@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ringsOf, sharedVertices, crossingBetween, pointInRings, reach, ARROW_DEPTHS,
 } from "../src/borders";
+import { layoutLanes, unitWidthFor } from "../src/arrow-scene";
 import { REGIONS } from "../src/regions";
 
 describe("ringsOf", () => {
@@ -328,6 +329,53 @@ describe("stations on every adjacency of every map", () => {
           }
         }
       }
+    });
+  }
+});
+
+describe("no arrow ends on a land it is not about", () => {
+  for (const region of Object.values(REGIONS)) {
+    const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
+
+    it(`${region.id}: every lane of a 1, 2 and 3 arrow block`, () => {
+      const stray: string[] = [];
+      for (const r of region.map.regions) {
+        for (const adjId of r.adjacent) {
+          const a = rings.get(r.id);
+          const b = rings.get(adjId);
+          if (a === undefined || b === undefined) continue;
+          const cross = crossingBetween(a, b);
+          if (cross.sea) continue;
+          for (const count of [1, 2, 3]) {
+            const items = Array.from({ length: count }, () => ({
+              strength: 1, forward: true,
+            }));
+            const unit = unitWidthFor([{ span: cross.span, strengths: items.map(() => 1) }]);
+            for (const lane of layoutLanes(cross, items, unit)) {
+              const tip = { x: lane.bx, y: lane.by };
+              const base = { x: lane.ax, y: lane.ay };
+              const where = `${r.id}|${adjId} n=${count} lane=${lane.index}`;
+              // Both halves of the invariant. The first is what the player
+              // reported; the second is what makes the first true rather than
+              // lucky.
+              if (!pointInRings(tip, b)) stray.push(`${where}: tip off ${adjId}`);
+              if (!pointInRings(base, a)) stray.push(`${where}: base off ${r.id}`);
+              for (const other of region.map.regions) {
+                if (other.id === r.id || other.id === adjId) continue;
+                const o = rings.get(other.id);
+                if (o === undefined) continue;
+                if (pointInRings(tip, o)) stray.push(`${where}: tip on ${other.id}`);
+                if (pointInRings(base, o)) stray.push(`${where}: base on ${other.id}`);
+              }
+            }
+          }
+        }
+      }
+      // Zero, with no allow-list. Three earlier versions of this design left a
+      // residual and each one turned out to be a defect in the design rather
+      // than a place the map cannot be drawn, so a list here is where the
+      // fourth would go to be forgotten.
+      expect(stray, stray.join("\n")).toEqual([]);
     });
   }
 });
