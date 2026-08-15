@@ -43,6 +43,12 @@ form derives it from `git diff --name-only origin/main...HEAD`, so a change to
 one prototype never rebuilds the others and a docs-only push builds nothing at
 all.
 
+**The checkout must be `fetch-depth: 0`.** `actions/checkout@v4` fetches depth
+1 by default, and a triple-dot diff needs the merge base, which a shallow
+checkout does not have. A branch several commits behind main would otherwise
+fail detection before anything was built. The run verifies a merge base exists
+before diffing and fails loudly rather than silently previewing nothing.
+
 ### What follows from the single artifact, stated so nobody is surprised
 
 - **One preview slot.** The most recent preview push across all branches is the
@@ -105,12 +111,39 @@ Stages, in the refactor spec's order:
 3. The gauntlet loop: target picker with visible rewards, duel scoping, the
    regional-leader status.
 
+### Why the world tick is not a stage of its own
+
+The refactor spec bundles acting vassals and the world tick as one experiment,
+on the grounds that the tick is what makes many autonomous actors readable. The
+tick is split here, and the reason has to be written down or the next reader
+will think it was dropped by accident.
+
+The world tick is two things, and only one of them is unbuilt. **Batched and
+readable** is shipped: `stepAiChain` walks the AI seats a seat at a time and
+`raiseRoundSummary` folds the whole batch into one modal, which is exactly "the
+world takes one turn and the player is shown what happened". **Per-gauntlet
+cadence** is the unbuilt half, and it cannot ship before the thing that defines
+a gauntlet. Assigning the tick to stage 1 would mean building the gauntlet loop
+in stage 1 and leaving stages 2 and 3 with nothing to do.
+
+**The residual risk is real and is accepted.** Stage 1 judges acting vassals at
+the CURRENT cadence, where the world acts between every player turn rather than
+once per duel, so a bloc of fifteen seats is shown to the player far more often
+than the run structure intends. If stage 1 reads as too noisy, the first
+question is whether the noise is the vassals or the cadence, and the answer
+must not be assumed. That is what the beats-per-round measurement in section C
+is for: a count taken at the old cadence is the thing the new cadence can be
+compared against once stage 3 exists.
+
 **The refactor spec's step 2, re-measuring the balance baseline against the
 raid-spend commit, is deliberately skipped.** Stage 1 is judged by playing it.
 The consequence is accepted explicitly: no claim of "this widened the skill
 gap" can be made until somebody runs `npm run balance`, and the project's own
 standard says prose did not work. If a later stage needs the number, that run
-is its first task rather than a retrospective one.
+is its first task rather than a retrospective one. What is NOT lost is the
+measurement itself: main is a fixed commit, so the pre-refactor baseline can be
+produced at any point by running the suite at that SHA. The cost of skipping is
+convenience, not the ability to separate the raid-spend change from this work.
 
 **Open questions 1 to 4 in the refactor spec stay open.** Each blocks its own
 stage, not the branch: what losing a duel costs and run-enders block stage 3,
@@ -124,13 +157,41 @@ refactor spec adds no cards in this pass and the repo's card gate agrees.
 
 ### What changes
 
-- **`takeLand` seats a ruler on the captured faction.** `pickFaction` runs
-  `vacateRulers` so only the acting seats hold a chair; a conquest fills the
-  captured seat's chair. Symmetric, so a rival's conquest wakes their new
-  vassal on the same terms as yours. This is the whole of "acting vassals":
+- **`takeLand` seats a ruler on the captured faction**, through a new
+  `seatRuler` in `src/rulers.ts`. Symmetric, so a rival's conquest wakes their
+  new vassal on the same terms as yours. The turn loop needs nothing else:
   `takesNoTurn` already returns false the moment `hasRuler` is true, and
-  `keeps-to-itself` is already stripped on capture, so no second gate is
-  involved.
+  `keeps-to-itself` is already stripped on capture.
+
+  **`replaceRuler` cannot be reused, and seating is not a one-liner.**
+  `rulerOf` (`src/rulers.ts:131`) throws on a vacant seat, so the documented
+  "only writer" is a SUCCESSION operation and this is a different one. Its
+  doc comment and the `GameState.rulers` invariant both have to say so.
+  `seatRuler` states all four fields itself: a name unique against every name
+  in play (`rulerNameFor`, the same uniqueness set `replaceRuler` builds),
+  `since` set to the turn of the conquest, leadership 0, and abilities from the
+  faction's own `strategy` through `BUILD_ABILITIES`.
+
+  **Abilities are the part that is a design decision rather than a detail.**
+  `pickFaction` grants `BUILD_ABILITIES` AFTER `vacateRulers`
+  (`src/game.ts:901-905`), so no quiet faction holds its build ability today
+  and there is nothing to carry over. Granting it at seating means a woken
+  warpath vassal raids with `war-leader`; withholding it means a vassal is
+  strictly weaker than a seat that started the run acting. **The decision is to
+  grant it**, because the alternative is a second class of ruler and this
+  design's whole method is that a status is the only difference between a land
+  that plays and one that does not.
+
+  **And the grey middle is uniformly warpath.** `pestilent` is drawn only from
+  the ACTING rivals (`src/game.ts:874-876`), so all 21 quiet factions were
+  handed a `warpath` Player at deal time and never used it. Conquest therefore
+  wakes warpath decks and nothing else, which makes the bloc more aggressive
+  and more one-note than the refactor spec's aggro/value/combo triangle
+  assumes. Left alone in stage 1, deliberately: it is a seeding change, it is
+  measurable by playing, and fixing it before it is seen to be a problem would
+  confound the read the same way waking the grey middle at seeding would.
+  Capture tests cover both a warpath and a pestilence source faction so the
+  behaviour is pinned either way.
 - **`aimsUpOwnChain` widens to the whole realm and is renamed for it.** A
   hostile card may not aim at any land under the actor's own root, in any
   direction: not up the chain, not sideways at a sibling vassal, not down at
