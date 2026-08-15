@@ -115,6 +115,23 @@ export interface Lane {
  *  on the wrong land. Two arrows too close together is a picture that reads
  *  badly; one arrow ending on a land it is not about is a picture that lies.
  *
+ *  **This is a greedy pass and not an optimal packing**, and the difference is
+ *  measurable. 128 of the 1,648 lane pairs still overlap. Most of them are
+ *  ground the border does not have - its crossable stations span less than the
+ *  lanes need between them, which is the overrun `blockMin` already trades
+ *  for - but about 10 are the anchoring: the first lane takes the station
+ *  nearest its OWN offset without regard for where that leaves the lanes after
+ *  it, and a block shifted a station along would have fitted. `jarvamaa`
+ *  against `laanemaa` is one, its lanes 12.75 apart where they want 15, on
+ *  stations spanning 20.4.
+ *
+ *  And every measurement of this rule so far has been made with equal
+ *  strengths. A block whose lanes are different widths leaks more - 62 pairs
+ *  across both maps overlap on borders that had the room - because the width
+ *  a station was chosen against is the width of the lane that chose it, and
+ *  the block is dealt out along the border afterwards. That is where to look
+ *  first if this ever has to be tightened.
+ *
  *  The chosen stations are then dealt out along the border, which costs
  *  nothing: it is the same SET, so the same arrows stand in the same places
  *  and only which arrow stands where changes. */

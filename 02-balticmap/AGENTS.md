@@ -293,10 +293,17 @@ a geometry search. Five things about it are load-bearing:
   offers no station that far off, the lane takes the nearest crossable one
   anyway and the two overlap: correctness outranks packing, and a search made
   to come after its neighbour unconditionally left 2 of 1,236 lanes with an
-  end on the wrong land. The stations a block ends up on are then dealt out
-  along the border in DECLARATION order, so the search decides WHICH stations
-  a block occupies and the second pass decides which arrow stands on which of
-  them, without disturbing the order the arrows were declared in.
+  end on the wrong land. It is a greedy pass and not an optimal packing, so
+  128 pairs still overlap: most are ground the border does not have - the
+  overrun `blockMin` already trades for - and about 10 are the anchoring, one
+  lane taking the station nearest its OWN offset with no regard for where that
+  leaves the lanes after it. Every measurement of it so far used equal
+  strengths; a block of unequal widths leaks more, and the doc comment on
+  `stationsForBlock` says where to look. The stations a block ends up on are
+  then dealt out along the border in DECLARATION order, so the search decides
+  WHICH stations a block occupies and the second pass decides which arrow
+  stands on which of them, without disturbing the order the arrows were
+  declared in.
 - **An arrow's depth is the room its own station has**, floored at
   `ARROW_DEPTHS.min` so a cramped station still reads as an arrow instead of
   overrunning the ground it stands on. The depths live in `src/borders.ts` as
@@ -486,9 +493,10 @@ that arm is what covers a call site that arms nothing, the way an arrow's own
 counter click plays a raid straight through `decide` with no card ever set as
 `armed`. Together they are the cross-cutting rule the section above leans on:
 `emphasisFor` never has to arbitrate a pin against a live aim, because a pin
-cannot still be standing once an aim exists. The two used to be sorted out after the fact instead, and
-they could not both be right - a card armed while a land was pinned left the
-pin's dim and the aim's own back-step disagreeing about the same arrow. A new
+cannot still be standing once an aim exists. The two used to be sorted out
+after the fact instead, and they could not both be right - a card armed while
+a land was pinned left the pin's dim and the aim's own back-step disagreeing
+about the same arrow. A new
 decision handler that reintroduces a stale pin is exactly the failure this
 closes.
 
