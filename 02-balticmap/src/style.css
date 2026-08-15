@@ -1396,8 +1396,11 @@ svg.map.arrow-focused .river {
 
    No layer of its own: it is drawn among the live arrows so the border's lanes
    pack around it, which means `.march-arrows` already holds it and already
-   makes it inert. It is deliberately left out of the `.aiming` fade below -
-   the arrows step back while the preview is the thing being decided. */
+   makes it inert. Nothing here declares an opacity, and that is deliberate:
+   how loud any arrow is drawn is `emphasisFor`'s one answer written as an
+   `.arrow-*` class, and the preview answers `live` first, so it stays
+   `.arrow-full` while every other arrow on the map steps back to
+   `.arrow-back`. */
 .aim-arrow polygon {
   fill: none;
   stroke: #8a7f6f;

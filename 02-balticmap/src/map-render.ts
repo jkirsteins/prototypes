@@ -116,7 +116,14 @@ export function contrastRatio(a: string, b: string): number {
  *  already-dark colour barely moves.
  *
  *  Steps of one percent so the answer is the same every time it is asked -
- *  this is read on every repaint and an unstable ink would be a flicker. */
+ *  this is read on every repaint and an unstable ink would be a flicker.
+ *
+ *  The precondition, since the name says nothing about it: it only ever
+ *  DARKENS, so `against` has to be a light colour. Asked for a mark on a dark
+ *  ground it walks the whole way down and hands back black, which contrasts
+ *  with that ground less at every step. The map's palette is pale by design,
+ *  which is what makes one direction enough here; a dark surface wants a
+ *  lightening pass beside this one rather than this function. */
 export function inkFor(hex: string, against: string, target: number): string {
   for (let percent = 100; percent > 2; percent--) {
     const ink = darkenColor(hex, percent / 100);
