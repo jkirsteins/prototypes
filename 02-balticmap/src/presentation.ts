@@ -182,6 +182,18 @@ function screenFactions(ctx: PresentView): Set<string> {
   return out;
 }
 
+/** The faction behind the seat that caused an event - who a label names as the
+ *  one acting, when the event does not name a better subject of its own.
+ *
+ *  The same lookup `actorId` in src/notices.ts reads the round summary's actor
+ *  lines from, so the sentence on the map and the line in the log name the
+ *  same people. Undefined where the seat plays no faction, which is every
+ *  event swept at the round wrap on a leaderless land's behalf - and those
+ *  events genuinely have no actor to name, which is what `onItsOwn` is for. */
+function actorOf(e: GameEvent, ctx: PresentCtx): string | undefined {
+  return ctx.notice.factionOf(e.playerId);
+}
+
 /** This screen owes an answer about the land: one of its own seats took it by
  *  conquest or by a demand coming due, which is the one route that queues a
  *  transfer question (`takeLand`). A land handed over by a status asks
@@ -300,12 +312,53 @@ function badgeWalks(e: GameEvent, ctx: PresentCtx): BadgeWalk[] {
     }));
 }
 
+/** The land a beat is about, as a segment. `framedBeats` refuses a beat whose
+ *  event names no land, so by the time a label is built there is always one -
+ *  and it is the same land the camera flies to and the glow marks, which is
+ *  what lets the sentence name it instead of pointing at it.
+ *
+ *  It is the PEOPLE's name and not the ground's ("Selonians", never "Sēlija"),
+ *  as on every other prose surface: the two id spaces are one land, and the
+ *  faction segment is the one the player can point at to light it up. */
+const landOf = (e: GameEvent): Segment => faction(e.targetFactionId ?? "");
+
+/** The land the event names is the actor's own - a realm mending, building on
+ *  or breaking out of its own ground. The label then has ONE faction to name
+ *  rather than two, and naming both would print the same people twice in a
+ *  row. Also the answer when nobody acted at all (a status firing, a sweep at
+ *  the round wrap), where the land is the only party there is to name. */
+const onItsOwn = (e: GameEvent, actor: string | undefined): boolean =>
+  actor === undefined || actor === e.targetFactionId;
+
 /** The shape shared by every rule that frames a land: what the label says and
  *  what it sounds like. The land itself is the one the event names, for every
  *  rule there is - a beat about a land the event does not name would be a
- *  label the log could not be checked against. */
+ *  label the log could not be checked against.
+ *
+ *  **A label names both ends, and points at neither.** The label is a banner
+ *  centred over the whole map, not a tag pinned to the polygon, so "here" and
+ *  "this land" named nothing the player could resolve - the only thing tying
+ *  the sentence to a place was a glow the camera does not always move for. So
+ *  every label states who was acted on and who did it: the land is `landOf`,
+ *  the instigator is named beside it, and the actor goes first.
+ *
+ *  This surface is the one exception to the "write lines so a faction name
+ *  never opens a sentence" rule in AGENTS.md. A beat is one sentence about one
+ *  move, read in a second and gone, with no line above it to say whose move it
+ *  was - the active voice is what makes it readable at that length, and the
+ *  article form the rule protects ("the Selonians") is never wanted at the
+ *  front of one. The rest of the rule holds here exactly as everywhere else:
+ *  every name is a segment, and `tests/presentation.test.ts` fails a label
+ *  that bakes one into text. */
 interface MapFrame {
-  label(e: GameEvent, cause: PresentCause | null): Segment[];
+  /** `actor` is the faction of the seat whose move this was, which is not
+   *  always the right subject: a land changing hands names its new lord
+   *  (`overlordFactionId`), an army names the land it set out from
+   *  (`sourceFactionId`). A rule picks whichever of the three is the
+   *  instigator of the thing being shown. */
+  label(
+    e: GameEvent, cause: PresentCause | null, actor: string | undefined,
+  ): Segment[];
   /** Absent means `EVENT_SOUNDS[e.type]`. */
   sound?(e: GameEvent, cause: PresentCause | null): SoundName | null;
 }
@@ -323,7 +376,7 @@ function framedBeats(e: GameEvent, ctx: PresentCtx, frame: MapFrame): Beat[] {
   return [{
     kind: "map",
     polygon,
-    ...beatLabels(e, ctx, frame.label(e, cause)),
+    ...beatLabels(e, ctx, frame.label(e, cause, actorOf(e, ctx))),
     sound: frame.sound === undefined
       ? EVENT_SOUNDS[e.type]
       : frame.sound(e, cause),
@@ -431,18 +484,25 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
     kind: "presented",
     beats(e, ctx) {
       const beats = framedBeats(e, ctx, {
-        label: (ev) => {
+        label: (ev, cause) => {
           if (ev.overlordFactionId === undefined) {
-            return [t("The land changes hands")];
+            return [landOf(ev), t(" changes hands")];
           }
           const lord = faction(ev.overlordFactionId);
           switch (ev.via) {
             case "claim":
-              return [t("The demand is met - this land now answers to "), lord];
+              return [lord, t(" claims "), landOf(ev), t(" - the demand is met")];
             case "conquest":
-              return [t("Taken - this land now answers to "), lord];
+              return [lord, t(" takes "), landOf(ev)];
             default:
-              return [t("The land falls to "), lord];
+              // A status handed the land over: nobody marched and nobody
+              // demanded, so the new lord is not the one who acted and the
+              // sentence is the land's. The status IS the actor, and it is
+              // the cause line above - named here because that line is never
+              // presented and this beat carries its whole moment.
+              return cause?.kind === "passive"
+                ? [passive(cause.id), t(" - "), landOf(ev), t(" falls to "), lord]
+                : [landOf(ev), t(" falls to "), lord];
           }
         },
       });
@@ -456,13 +516,35 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
     },
   },
   released: framed({
-    label: () => [t("Freed - this land answers to nobody now")],
+    // The lord is the one who let go - a vassal freed because somebody
+    // annexed the lord it answered to, or the lord itself being digested.
+    // The seat whose play it was is a third party in both cases, so the
+    // former lord is the subject and not `actor`.
+    label: (e) =>
+      e.overlordFactionId === undefined
+        ? [landOf(e), t(" answers to nobody now")]
+        : [
+            faction(e.overlordFactionId), t(" releases "), landOf(e),
+            t(" - it answers to nobody now"),
+          ],
   }),
   incorporated: framed({
-    label: () => [t("Annexed - its people fold into their lord's realm")],
+    label: (e) =>
+      e.overlordFactionId === undefined
+        ? [landOf(e), t(" is annexed into its lord's realm")]
+        : [
+            faction(e.overlordFactionId), t(" annexes "), landOf(e),
+            t(" - its people fold into that realm"),
+          ],
   }),
   independence: framed({
-    label: () => [t("The lord's grip slips - independent again")],
+    // The land IS the actor here: a vassal whose lord's grip slipped at its
+    // own turn start, which is the one event whose subject and object are the
+    // same faction by construction.
+    label: (e) =>
+      e.overlordFactionId === undefined
+        ? [landOf(e), t(" is independent again")]
+        : [landOf(e), t(" breaks free of "), faction(e.overlordFactionId)],
   }),
   tribute: {
     kind: "never",
@@ -470,45 +552,73 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
       "own tribute cues its sound beside the hand",
   },
   settled: framed({
-    label: () => [t("A new settlement founded")],
+    label: (e, _cause, actor) =>
+      onItsOwn(e, actor)
+        ? [landOf(e), t(" founds a new settlement")]
+        : [
+            faction(actor ?? ""), t(" founds a new settlement in "), landOf(e),
+          ],
   }),
   healed: framed({
-    label: (_e, cause) => {
+    label: (e, cause, actor) => {
+      // The regrowth nobody ordered. The status is the actor, and the seat
+      // whose turn start swept it is not - a wild land mends itself under
+      // whoever happens to be playing.
       if (cause?.kind === "passive") {
-        return [passive(cause.id), t(" - the land grows its defenses back")];
+        return [passive(cause.id), t(" - "), landOf(e), t(" grows its defenses back")];
       }
-      if (cause?.kind === "card") {
-        return [card(cause.id), t(" - defenses restored")];
-      }
-      return [t("Defenses restored")];
+      const tail = cause?.kind === "card" ? [t(" with "), card(cause.id)] : [];
+      return onItsOwn(e, actor)
+        ? [landOf(e), t(" restores its defenses"), ...tail]
+        : [
+            faction(actor ?? ""), t(" restores the defenses of "), landOf(e),
+            ...tail,
+          ];
     },
     // The regrowth nobody ordered sounds like ground, not like repair work.
     sound: (_e, cause) =>
       cause?.kind === "passive" && cause.id === "wild-lands" ? "rustle" : "hammer",
   }),
   transferred: framed({
+    // Defenders move between two lands of one realm, so the land they left is
+    // the subject rather than the realm that ordered it - which is both ends
+    // and would name the same people twice.
     label: (e) =>
       e.sourceFactionId === undefined
-        ? [t("Defenders arrive")]
-        : [t("Defenders arrive from "), faction(e.sourceFactionId)],
+        ? [landOf(e), t(" receives defenders")]
+        : [faction(e.sourceFactionId), t(" sends defenders to "), landOf(e)],
   }),
   "disease-spread": framed({
-    label: (_e, cause) =>
-      cause?.kind === "card"
-        ? [card(cause.id), t(" - sickness seeded here")]
-        : [t("Sickness seeded here")],
+    label: (e, cause, actor) => {
+      const tail = cause?.kind === "card" ? [t(" with "), card(cause.id)] : [];
+      return onItsOwn(e, actor)
+        ? [t("Sickness takes hold in "), landOf(e), ...tail]
+        : [faction(actor ?? ""), t(" seeds sickness in "), landOf(e), ...tail];
+    },
   }),
   plagued: framed({
-    label: (_e, cause) =>
-      cause?.kind === "card"
-        ? [card(cause.id), t(" - the sickness takes its toll")]
-        : [t("The sickness takes its toll")],
+    // The stacks that burn are the ACTOR's, which is why the sickness has
+    // somebody to belong to here at all - the land is where it goes off.
+    label: (e, cause, actor) => {
+      const tail = cause?.kind === "card" ? [t(" with "), card(cause.id)] : [];
+      return onItsOwn(e, actor)
+        ? [t("The sickness takes its toll in "), landOf(e), ...tail]
+        : [
+            faction(actor ?? ""), t(" turns the sickness loose on "), landOf(e),
+            ...tail,
+          ];
+    },
   }),
   "winds-shifted": framed({
-    label: (_e, cause) =>
-      cause?.kind === "card"
-        ? [card(cause.id), t(" - the sickness changes hands")]
-        : [t("The sickness changes hands")],
+    label: (e, cause, actor) => {
+      const tail = cause?.kind === "card" ? [t(" with "), card(cause.id)] : [];
+      return onItsOwn(e, actor)
+        ? [t("The sickness in "), landOf(e), t(" changes hands"), ...tail]
+        : [
+            faction(actor ?? ""), t(" claims the sickness in "), landOf(e),
+            ...tail,
+          ];
+    },
   }),
   "passive-fired": {
     kind: "never",
@@ -516,10 +626,15 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
       "the sound, and two beats for one moment would say two things happened",
   },
   "march-declared": framed({
-    label: (e) =>
-      e.cardId === undefined
-        ? [t("An army marches on this land")]
-        : [card(e.cardId), t(" - an army marches on this land")],
+    // The land the army set out from, not the realm that played the card: the
+    // arrow this sentence is about stands between exactly those two lands,
+    // and a raid out of a vassal is named by the vassal it left.
+    label: (e) => {
+      const tail = e.cardId === undefined ? [] : [t(" with "), card(e.cardId)];
+      return e.sourceFactionId === undefined
+        ? [t("An army marches on "), landOf(e), ...tail]
+        : [faction(e.sourceFactionId), t(" marches on "), landOf(e), ...tail];
+    },
     // `EVENT_SOUNDS` is silent here because the seat that declared the march
     // watched its own card fly and heard that. This beat is only ever built
     // for a screen that did NOT declare it - a declaration of this screen's
@@ -541,14 +656,31 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
       // the camera would visit the same polygon twice in a row to do it. The
       // arrow it spent still leaves the board, at the commit behind this.
       if (metNothing(e)) return [];
-      const name = e.cardId === undefined ? [t("The army")] : [card(e.cardId)];
+      const from = e.sourceFactionId;
+      const tail = e.cardId === undefined ? [] : [t(" with "), card(e.cardId)];
       // A standoff is the one landing with a `counter` and no `amount`: both
       // sides spent and nothing got through. Asked as "no amount" alone this
       // also caught the arrival that met nothing, and called an army walking
       // into an empty land a raid that had been answered.
+      //
+      // It is also the one landing with NO instigator to name: nobody won, and
+      // the event's two ends are the axis's own SORTED ends, so calling either
+      // of them the attacker is an alphabetic accident - the same trap
+      // `resolutionsOf` draws two arrows to avoid. So the sentence names both
+      // and gives neither the verb, and it carries no card: the card on the
+      // event is one side's, and putting it beside two names says the wrong
+      // side threw it as often as the right one.
       const label = e.amount === undefined
-        ? [...name, t(" was answered in the field")]
-        : [...name, t(" lands here")];
+        ? from === undefined
+          ? [landOf(e), t(" answers the attack in the field")]
+          : [faction(from), t(" and "), landOf(e), t(" answer each other in the field")]
+        // The engine names the land that gave ground as the target, so the
+        // source is the side that got through - a counter that won points
+        // back down the border the attack came along, and the sentence turns
+        // round with it.
+        : from === undefined
+          ? [t("An army reaches "), landOf(e), ...tail]
+          : [faction(from), t(" hits "), landOf(e), ...tail];
       // Built by hand rather than through `framedBeats`, so the caused-and
       // -no-badges drop it applies is not applied here: `retires` and
       // `resolutions` still have to leave the board and land on it however

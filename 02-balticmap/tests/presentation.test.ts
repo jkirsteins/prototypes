@@ -140,6 +140,45 @@ describe("PRESENTATION_RULES", () => {
     expect(read).toBeGreaterThanOrEqual(36);
   });
 
+  it("every label names the land it is about, and points at none", () => {
+    // The label is a banner centred over the whole map, not a tag on the
+    // polygon: the only thing attaching it to a place is a glow the camera
+    // does not always move for. So a sentence that says "here" or "this land"
+    // is a sentence about nowhere, and every one of them names its land as a
+    // segment instead - which is also the node that lights the land up when
+    // the player points at it.
+    const deixis = ["this land", "the land", " here", "Here"];
+    let read = 0;
+    for (const [type, rule] of Object.entries(PRESENTATION_RULES)) {
+      if (rule.kind !== "presented") continue;
+      const e = sample(type as GameEventType);
+      for (const cause of [
+        null,
+        { kind: "card" as const, id: "fortify", playerId: 2 },
+        { kind: "passive" as const, id: "wild-lands", playerId: 2 },
+      ]) {
+        const base = ctxFor([e]);
+        const beats = rule.beats(e, { ...base, causeOf: () => cause });
+        for (const beat of mapBeats(beats)) {
+          const label = beat.label ?? beat.causedLabel;
+          if (label === null || label === undefined) continue;
+          read += 1;
+          expect(label, `${type} names no land`).toContainEqual({
+            kind: "faction", factionId: beat.polygon,
+          });
+          for (const seg of label) {
+            if (seg.kind !== "text") continue;
+            for (const word of deixis) {
+              expect(seg.text, `${type} points instead of naming`)
+                .not.toContain(word);
+            }
+          }
+        }
+      }
+    }
+    expect(read).toBeGreaterThanOrEqual(36);
+  });
+
   it("walks a badge for every score its rules can move", () => {
     // The float subsystem is gone, so a beat carrying no walk is a number
     // that changes on the map with nothing saying it moved.
@@ -198,20 +237,33 @@ describe("presentEvents", () => {
     ];
     const beats = mapBeats(presentEvents(fresh, ctxFor(fresh)));
     expect(beats).toHaveLength(1);
-    expect(beats[0].label).toContainEqual({
-      kind: "text", text: "Taken - this land now answers to ",
-    });
+    // Taker first, taken second: both ends named, and the sentence says which
+    // is which.
+    expect(beats[0].label).toEqual([
+      { kind: "faction", factionId: "alpha" },
+      { kind: "text", text: " takes " },
+      { kind: "faction", factionId: "beta" },
+    ]);
   });
 
-  it("still calls a standoff answered in the field", () => {
+  it("still calls a standoff answered in the field, and names neither as the attacker", () => {
     // A standoff keeps its counter - that is what separates it from an
     // arrival that met nothing, and the two must not read alike.
+    //
+    // It is also the one landing whose two ends are the axis's own SORTED
+    // ends, so the sentence must not hand either of them the verb: "X answers
+    // Y" off these fields is right half the time by accident. Both are named
+    // and neither is the subject, the same reason `resolutionsOf` draws two
+    // arrows rather than one.
     const e = march({ amount: undefined, incoming: 2, counter: 2 });
     const beats = mapBeats(presentEvents([e], ctxFor([e])));
     expect(beats).toHaveLength(1);
-    expect(beats[0].label).toContainEqual({
-      kind: "text", text: " was answered in the field",
-    });
+    expect(beats[0].label).toEqual([
+      { kind: "faction", factionId: "alpha" },
+      { kind: "text", text: " and " },
+      { kind: "faction", factionId: "beta" },
+      { kind: "text", text: " answer each other in the field" },
+    ]);
   });
 
   it("draws a standoff as both armies spent, one arrow each way", () => {
@@ -353,9 +405,11 @@ describe("presentEvents", () => {
       seats: new Set([2]), realm: new Set(["alpha", "beta"]),
     })));
     expect(theirs).toHaveLength(1);
-    expect(theirs[0].label).toContainEqual({
-      kind: "text", text: "A new settlement founded",
-    });
+    // A realm building on its own ground names itself once, not twice.
+    expect(theirs[0].label).toEqual([
+      { kind: "faction", factionId: "beta" },
+      { kind: "text", text: " founds a new settlement" },
+    ]);
   });
 
   it("walks the badge for a score this screen's own play moved, and says nothing", () => {

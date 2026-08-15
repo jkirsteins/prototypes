@@ -599,6 +599,15 @@ Two consequences worth stating outright:
   played against you by Selonians" reads better than "Selonians played Shrewd
   marriage against you" *and* removes the article/capitalization problem, since
   the article form ("the Selonians") is only ever needed mid-sentence.
+
+  **The beat labels are the one surface exempt from this**, and deliberately:
+  a `PRESENTATION_RULES` label is one sentence about one move, read in a second
+  and gone, with no line above it to say whose move it was. So it goes actor
+  first, active voice - "Jersikans takes Selonians", never "Taken by
+  Jersikans" - and the article form is not wanted at the front of one. Nothing
+  else about the rule is relaxed there: every name is still a segment, and
+  `tests/presentation.test.ts` fails a label that bakes one into text or that
+  points at its land ("here", "this land") instead of naming it.
 - **Lowercase the common noun.** If you need the word "alliance" as an ordinary
   English word, write it lowercase. The capitalized "Alliance" is the card and
   must be a `card("alliance")` segment. The convention test enforces exactly this.
@@ -858,7 +867,20 @@ exhaustive over `GameEventType` in the `NOTICE_RULES` shape: a type is either
 `presented` (returning the beats one of its events earns) or `never` with a
 sentence saying why and where its sound plays instead. Labels are segments,
 never template literals - the rich-text rule applies to this surface too, and
-`tests/presentation.test.ts` checks it. The score suffix beside a label is
+`tests/presentation.test.ts` checks it.
+
+**A label names both ends and points at neither.** It is a banner centred over
+the whole map, not a tag pinned to the polygon, so "here" and "this land" named
+nothing the player could resolve - the only thing tying the sentence to a place
+was a glow the camera does not always move for. Every label therefore states
+who was acted on (`landOf`, the land the beat is about, which every one of them
+names) and who did it, actor first. The instigator is not always the seat that
+moved: a land changing hands names its new lord, an army names the land it set
+out from, and a status firing names the status, because those are what the
+player watched happen. Two labels name one party on purpose - a realm building
+or mending on its own ground (`onItsOwn`), and a standoff, whose two ends are
+the axis's own SORTED ends and where naming either one the attacker would be
+right by alphabetic accident. The score suffix beside a label is
 `changeImpact` over the beat's own badge walks, which are one event's slice of
 the same walk the log renders its suffixes from, so the two cannot quote
 different numbers. Who earns a beat is ONE audience gate,
