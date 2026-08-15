@@ -156,10 +156,11 @@ The consequence that bites is on the AI, not the engine. Every acting seat must
 be able to FINISH its turn, and a picker that proposes a target the rules refuse
 hangs the run - `playCard` hands the state back unchanged, `endTurn` refuses a
 standard turn that played nothing, and `advance` will not move past an open
-turn. Vassals take turns now, a lord borders its vassal, and `aimsUpOwnChain`
-forbids aiming up your own pyramid, so every AI target list has to come from
-`validTargetsFor`. `greatRaidPick` was scoring the bare border instead, and hung
-about one seeded run in ten the moment woken vassals started acting.
+turn. Vassals take turns now, a lord borders its vassal, and
+`aimsWithinOwnRealm` forbids aiming at a peer of your own realm, so every AI
+target list has to come from `validTargetsFor`. `greatRaidPick` was scoring the
+bare border instead, and hung about one seeded run in ten the moment woken
+vassals started acting.
 
 Routing a picker through `validTargetsFor` is not only a narrowing. `attackReach`
 is `borderPolygonsOf` PLUS the actor's own vassals and grand-vassals, because a
@@ -180,6 +181,35 @@ and it sets the flag locally because neither engine door is available:
 `endTurn` would let a PERSON skip a turn they could have played. A hung seat is
 the worst failure this app has - nothing is persisted, so the only way out is
 losing the run.
+
+## A bloc does not fight itself, and a lord still disciplines its own
+
+`aimsWithinOwnRealm` in `src/playability.ts` refuses a hostile card aimed at a
+PEER of the actor's realm: the set is the ROOT's full realm minus the ACTOR's
+own. Two shapes, one question, because both are the bloc fighting itself and a
+bloc whose members raid each other reads as the game behaving at random rather
+than as anybody's plan.
+
+- **Up** - a lord, its lord to the root, or a land one of them annexed. This
+  half is what keeps `overlords` acyclic: a Subjugate aimed at a liege would
+  close a loop, and Subjugate is hostile.
+- **Sideways** - a sibling under the same lord, its vassals, a cousin. Only
+  reachable since vassals started taking turns; before that no seat could
+  produce a sibling raid at all.
+
+**DOWNWARD is deliberately not in it.** A lord raiding its own vassal is
+upkeep - it is how a vassal is held under the independence gate - and
+`attackReach` exists to allow exactly that. Closing it would end vassalage as
+a decision, so `tests/playability.test.ts` pins the downward case as a test of
+its own next to the sideways ones.
+
+The predicate is asked by everything that aims - the targeting pass, the
+two-step march aim, the plague and foul-winds resolutions, and the arrows
+already in flight when somebody's subjugation reshapes the pyramid under them.
+A rule enforced at one of those is a rule with four ways around it. The block
+reason it raises keeps the code `liege`, which was always shorthand for the
+fealty structure rather than for one link; the explanation the player reads
+states both shapes.
 
 Because a leaderless actor never gets a `beginTurn` of its own, anything that
 resolves at the actor's turn start is swept at the round wrap instead, or its

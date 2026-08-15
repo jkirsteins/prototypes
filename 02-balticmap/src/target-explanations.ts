@@ -75,7 +75,10 @@ function explainReason(reason: TargetBlockReason): string[] {
     case "no-ruler":
       return ["Nobody leads this land."];
     case "liege":
-      return ["You owe them fealty, directly or through your lords."];
+      // Both halves, because the refusal has two shapes and the player needs
+      // to know which one they are looking at: a lord above them, or a peer
+      // beside them under the same one.
+      return ["Your own realm: you owe them fealty, or you both answer to the same lord."];
     case "incorporated":
       return ["Already incorporated."];
     case "self":

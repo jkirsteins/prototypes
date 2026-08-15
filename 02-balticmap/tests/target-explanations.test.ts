@@ -101,7 +101,7 @@ describe("explainTargetEligibility", () => {
       "Beta",
       "Defenses already stand at full strength.",
       "Already your vassal.",
-      "You owe them fealty, directly or through your lords.",
+      "Your own realm: you owe them fealty, or you both answer to the same lord.",
       "Already incorporated.",
       "You cannot target yourself.",
       "Not your vassal.",

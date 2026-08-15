@@ -397,7 +397,7 @@ export function clearDiseaseOf(
  *
  *  `skip` is the polygons the claim does not reach, left exactly as they were.
  *  It takes a predicate rather than a set because the caller's reason is a
- *  rule, not a list - see `aimsUpOwnChain` - and because the store and the
+ *  rule, not a list - see `aimsWithinOwnRealm` - and because the store and the
  *  `winds-shifted` events must skip the SAME polygons or the walk that feeds
  *  the log and the round summary drifts from the store for the rest of the
  *  run. One argument, one answer, both callers reading it. */

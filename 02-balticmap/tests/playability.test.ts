@@ -935,13 +935,27 @@ describe("targetEligibilityFor on untargeted cards", () => {
   });
 });
 
-describe("a hostile card may never be aimed up your own chain", () => {
+describe("a hostile card may never be aimed at your own realm's peers", () => {
   /** alpha - beta - gamma - delta on a line, with alpha lord of beta, beta
    *  lord of gamma. So gamma answers to beta AND, through beta, to alpha. */
   const pyramid = (extra: Partial<RulesView> = {}) =>
     view({
       adjacency: FULL_ADJ,
       overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      ...extra,
+    });
+
+  /** The same pyramid with delta ALSO directly under alpha, so beta and delta
+   *  are siblings: one root, neither under the other. delta is reused rather
+   *  than a fifth id invented, because `ORDER` is what `FULL_ADJ` and
+   *  `factionIds` are built from and every other fixture here keeps its own
+   *  `overlords`. */
+  const siblings = (extra: Partial<RulesView> = {}) =>
+    view({
+      adjacency: FULL_ADJ,
+      overlords: new Map([
+        ["beta", "alpha"], ["gamma", "beta"], ["delta", "alpha"],
+      ]),
       ...extra,
     });
 
@@ -965,16 +979,33 @@ describe("a hostile card may never be aimed up your own chain", () => {
     }
   });
 
-  it("leaves sideways and downward alone - the pyramid is not a truce", () => {
-    // delta is nobody's vassal and borders everything on FULL_ADJ, so it
-    // stands in for a fellow vassal: gamma may still fight it. And a lord
-    // keeps its own vassals in reach, which is what holds them under the
-    // independence gate.
+  it("blocks a vassal aimed at its sibling under the same lord", () => {
+    const v = siblings();
+    for (const cardId of HOSTILE) {
+      expect(validTargetsFor(v, "beta", cardId)).not.toContain("delta");
+      expect(validTargetsFor(v, "delta", cardId)).not.toContain("beta");
+    }
+  });
+
+  it("blocks a grand-vassal aimed at its lord's sibling", () => {
+    // gamma is under beta is under alpha; delta is under alpha. Same pyramid,
+    // no line of fealty between them, and an arrow between them is still the
+    // bloc fighting itself.
+    expect(validTargetsFor(siblings(), "gamma", "raid")).not.toContain("delta");
+  });
+
+  it("leaves DOWNWARD alone - holding your own vassals down is upkeep", () => {
+    // A lord keeps its own vassals in reach, which is what holds them under
+    // the independence gate. Closing this would end vassalage as a decision.
     const v = pyramid();
-    expect(validTargetsFor(v, "gamma", "raid")).toContain("delta");
     expect(validTargetsFor(v, "alpha", "raid")).toContain("beta");
     expect(validTargetsFor(v, "alpha", "raid")).toContain("gamma");
     expect(validTargetsFor(v, "beta", "raid")).toContain("gamma");
+  });
+
+  it("leaves a stranger alone - the rule is the realm, not a truce", () => {
+    // delta is nobody's vassal here, so it is not in gamma's pyramid at all.
+    expect(validTargetsFor(pyramid(), "gamma", "raid")).toContain("delta");
   });
 
   it("blocks a lord's ANNEXED land too - an annexation is its annexer", () => {

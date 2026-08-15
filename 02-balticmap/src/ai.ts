@@ -819,7 +819,7 @@ function warpathBuild(
  *    `advance` will not move past an open turn. Reachable the moment a VASSAL
  *    started taking turns, because a lord borders its vassal and the fattest
  *    fan on the board is often aimed straight up the actor's own chain, which
- *    `aimsUpOwnChain` forbids.
+ *    `aimsWithinOwnRealm` forbids.
  *  - It also OFFERS the actor's own vassals and grand-vassals, which the bare
  *    border never did: `attackReach` is `borderPolygonsOf` plus the full realm
  *    less what the actor holds outright. That is not a side effect to be

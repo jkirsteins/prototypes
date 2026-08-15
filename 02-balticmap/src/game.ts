@@ -19,7 +19,7 @@ import {
   type Defense, type Disease,
 } from "./defense";
 import {
-  aimsUpOwnChain, attackDamageFor, omensMultiplier, attackReach,
+  aimsWithinOwnRealm, attackDamageFor, omensMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
   claimWouldLand, greatRaidPool, greatRaidSpends,
   handLimitFor, marchTargetsFrom, outbreakPolygons,
@@ -1311,7 +1311,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       for (const march of [...axis.fromA, ...axis.fromB]) {
         if (
           march.actor !== land ||
-          !aimsUpOwnChain(view, march.actor, march.cardId, march.to)
+          !aimsWithinOwnRealm(view, march.actor, march.cardId, march.to)
         ) {
           continue;
         }
@@ -1693,7 +1693,7 @@ function resolveMarches(
     if (
       realm.has(entry.march.from) && realm.has(holder) &&
       reach.has(entry.march.to) &&
-      !aimsUpOwnChain(view, entry.march.actor, entry.march.cardId, entry.march.to)
+      !aimsWithinOwnRealm(view, entry.march.actor, entry.march.cardId, entry.march.to)
     ) {
       alive.push(entry);
       continue;
@@ -2349,7 +2349,7 @@ export function playCard(
     for (const [key, march] of Object.entries(marches)) {
       if (
         march.actor !== target ||
-        !aimsUpOwnChain(chainView, march.actor, march.cardId, march.to)
+        !aimsWithinOwnRealm(chainView, march.actor, march.cardId, march.to)
       ) {
         continue;
       }
@@ -2478,7 +2478,7 @@ export function playCard(
       // actor knelt to anybody. The stacks stay where they are and burn
       // nothing: a card whose keyword says it cannot strike upward must not
       // find a back door through a stack laid last week.
-      if (aimsUpOwnChain(view, p.factionId, cardId, polygon)) continue;
+      if (aimsWithinOwnRealm(view, p.factionId, cardId, polygon)) continue;
       const damage = damageAfterTerrain(
         view, polygon, stacks * PLAGUE_DAMAGE_PER_STACK * mult,
       );
@@ -2498,7 +2498,7 @@ export function playCard(
     // disease for nothing.
     disease = clearDiseaseOf(
       disease, p.factionId,
-      (polygon) => aimsUpOwnChain(view, p.factionId, cardId, polygon),
+      (polygon) => aimsWithinOwnRealm(view, p.factionId, cardId, polygon),
     );
   } else if (cardId === "foul-winds") {
     // One event per polygon whose ownership moved: the stacks the actor
@@ -2510,7 +2510,7 @@ export function playCard(
       // The same clause as the Plague above, for the same reason: claiming the
       // stacks standing on a lord's land is how the NEXT plague would strike
       // it, so a hostile card stops at the pyramid here too.
-      if (aimsUpOwnChain(view, p.factionId, cardId, polygon)) continue;
+      if (aimsWithinOwnRealm(view, p.factionId, cardId, polygon)) continue;
       const losses = Object.fromEntries(
         Object.entries(owners).filter(([owner]) => owner !== p.factionId),
       );
@@ -2525,7 +2525,7 @@ export function playCard(
     // log cannot disagree about which polygons the winds reached.
     disease = transferAllDiseaseTo(
       disease, p.factionId,
-      (polygon) => aimsUpOwnChain(view, p.factionId, cardId, polygon),
+      (polygon) => aimsWithinOwnRealm(view, p.factionId, cardId, polygon),
     );
   } else if (isSingleLandHeal(cardId) && targetId !== undefined) {
     // One branch for the whole class: which card it is decides only how much,
