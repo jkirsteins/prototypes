@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import {
-  hasRuler, initialRulers, replaceRuler, rulerNameFor, rulerOf, vacateRulers,
+  hasRuler, initialRulers, replaceRuler, rulerNameFor, rulerOf, seatRuler, vacateRulers,
 } from "../src/rulers";
+import { RAID_LEADERSHIP } from "../src/abilities";
 import raw from "../src/data/baltic.json";
 import pools from "../src/data/ruler-names.json";
 import iberiaPools from "../src/data/ruler-names-iberia.json";
@@ -262,6 +263,35 @@ describe("the leader gate", () => {
     expect(after.log.some(
       (e) => e.type === "march-resolved" && e.targetFactionId === "alpha",
     )).toBe(true);
+  });
+});
+
+describe("seatRuler", () => {
+  const ethnicities = { selonians: "selonian", jersikans: "latgalian" };
+
+  it("seats a ruler on a vacant chair at turn 0 leadership", () => {
+    const seated = seatRuler({}, ethnicities, "selonians", 7, []);
+    expect(hasRuler(seated, "selonians")).toBe(true);
+    expect(rulerOf(seated, "selonians").since).toBe(7);
+    expect(rulerOf(seated, "selonians").leadership).toBe(0);
+    expect(rulerOf(seated, "selonians").abilities).toBeUndefined();
+  });
+
+  it("gives the new ruler the abilities it is handed", () => {
+    const seated = seatRuler({}, ethnicities, "selonians", 3, [RAID_LEADERSHIP]);
+    expect(rulerOf(seated, "selonians").abilities).toEqual([RAID_LEADERSHIP]);
+  });
+
+  it("does not take a name a living ruler already holds", () => {
+    const first = seatRuler({}, ethnicities, "selonians", 1, []);
+    const both = seatRuler(first, ethnicities, "jersikans", 1, []);
+    expect(rulerOf(both, "jersikans").name).not.toBe(rulerOf(both, "selonians").name);
+  });
+
+  it("leaves an occupied chair exactly as it found it", () => {
+    const first = seatRuler({}, ethnicities, "selonians", 1, []);
+    const again = seatRuler(first, ethnicities, "selonians", 9, [RAID_LEADERSHIP]);
+    expect(again).toBe(first);
   });
 });
 
