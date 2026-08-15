@@ -15,6 +15,9 @@ import {
   newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
+import {
+  actionBlock as gateBlock, shouldReask, type PlayerAction, type ScreenFacts,
+} from "./gates";
 import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
@@ -438,7 +441,13 @@ const stages: Stages = {
     hud.dropRoundNews();
     hud.hideHarvestUi();
     pendingHarvest = null;
-    transferAsked = null;
+    // The modal about the discarded world goes with it, and so does every
+    // stage waiting on it - they belong to transitions this exchange has
+    // dropped. `abandonedTransfers` is deliberately NOT cleared: it is keyed
+    // by land pair and a new world may reuse one, but a screen that gave up on
+    // a question should not quietly start asking it again.
+    transferOnScreen = null;
+    transferWaiters = [];
     // An armed card and a held map selection are handles into the old world
     // too - `armed`/`armedSource` index into the hand this exchange is about
     // to replace, and `interceptClick` reads `localHuman().hand[idx]` out of
@@ -546,36 +555,39 @@ let pinnedRegion: Region | null = null;
  *  waiting for. */
 let awaitingWire = false;
 
-/** Whether the local player may act right now.
+/** The screen is mid-move: a transition is showing something, an animation of
+ *  this screen's own is running, the wire owes an answer, or the other human
+ *  holds the turn. None of them is a flag somebody has to remember to clear.
  *
- *  One question with six sources, and none of them is a flag somebody has to
- *  remember to clear: the transition queue is showing a move (so the board is
- *  mid-explanation, or about to be), an animation of this screen's own is
- *  still running (the played card is in the air), the other human holds the
- *  turn, the wire owes this screen an answer, or this screen owes an answer
- *  itself - a harvest boon or a conquest's defenders. The hand is already
- *  inert whenever it is not the human's turn - `renderHand` sees to that - so
- *  this is what the map, the arrows and the menu buttons ask.
- *
- *  The last two used to be spelled at the CALL SITES instead, on `onPlayCard`,
- *  `onEndTurn` and the keydown handler, and that is the whole of how a locked
- *  seat came to look like a live one. `isResolving` hands the HUD this
- *  predicate and nothing else, so the hand was drawn from four terms while the
- *  click was refused on six: every card rendered playable, hovered, lifted,
- *  and did nothing when pressed, with no modal and no line in the log. A
- *  question the player cannot answer has to be a question the player can SEE,
- *  and the cheapest way to guarantee that is to leave the renderer no term it
- *  cannot read. Anything new that refuses a click belongs here, not beside it.
- *
- *  Every paint made while this is true draws a locked screen, so every path
- *  that leaves the locked window repaints on its way out: `finishChain` and
- *  `afterHumanPlay` wait for the animation queue and then refresh, and
- *  `openHarvestModal` repaints on the way IN for the same reason. */
-function inputLocked(): boolean {
+ *  HALF of "may the player act" - `actionBlock` is the whole of it, and every
+ *  surface asks that rather than this. Every paint made while this is true
+ *  draws a locked screen, and nothing repaints when it goes false on its own,
+ *  so every path out of the locked window repaints on its way out:
+ *  `finishChain` and `afterHumanPlay` wait for the animation queue and then
+ *  refresh, and `openHarvestModal` repaints on the way IN for the same
+ *  reason. */
+function screenBusy(): boolean {
   return (
-    transitions.busy() || animations.busy() || awaitingWire ||
-    remoteHoldsTurn() || pendingHarvest !== null || localTransferPending()
+    transitions.busy() || animations.busy() || awaitingWire || remoteHoldsTurn()
   );
+}
+
+/** The screen's own state, as `actionBlock` asks for it. The one place these
+ *  three leave this module, which is what makes the gate checkable from a
+ *  test and impossible for a surface to consult privately. */
+function screenFacts(): ScreenFacts {
+  return {
+    busy: screenBusy(),
+    harvestOpen: pendingHarvest !== null,
+    transferOwed: liveTransferPending(),
+    localTurn: isLocalTurn(),
+  };
+}
+
+/** Why `action` cannot be started right now, or null. One call for the handler
+ *  that performs it and for the control that offers it - see `src/gates.ts`. */
+function actionBlock(action: PlayerAction): string | null {
+  return gateBlock(action, game(), screenFacts());
 }
 
 /** True while the OTHER human's seat is on turn. A different fact from the
@@ -612,19 +624,21 @@ function refreshWhenSettled(): void {
  *  by the boot tail, and neither runs again on its own. So any way of losing
  *  an answer - a refusal, a hook that threw and was released by `runStage`, an
  *  overlay torn down by something that did not know what was on it - left the
- *  question owed and unaskable, and `inputLocked` then refused every play and
- *  every end of turn, which is what stopped a further transition ever running
- *  to notice. A state nobody can act on has to be able to fix itself.
+ *  question owed and unaskable, and the gate then refused every play and every
+ *  end of turn, which is what stopped a further transition ever running to
+ *  notice. A state nobody can act on has to be able to fix itself.
  *
- *  Guarded on the two states where the question is legitimately unanswered:
- *  an overlay is already up (this one, or a harvest, or a spend slider - they
- *  share it), and a guest's answer is out on the wire with the replica still
- *  carrying the question. `awaitingWire` names that second one properly, which
- *  is what `transferAsked` was reaching for. */
+ *  The rule itself is `shouldReask` in src/gates.ts, where it can be tested;
+ *  this is the wiring that reads the screen for it. */
 function reaskOwedQuestions(): void {
-  if (game().phase !== "playing") return;
-  if (pendingHarvest !== null || hud.harvestUiOpen() || awaitingWire) return;
-  if (!localTransferPending()) return;
+  const owed = shouldReask(game(), {
+    // `pendingHarvest` folds in here: a harvest offer is the overlay too, and
+    // one that is mid-flight has not put its own element up yet.
+    overlayOpen: hud.overlayOpen() || pendingHarvest !== null,
+    awaitingWire,
+    transferOwed: liveTransferPending(),
+  });
+  if (!owed) return;
   // No stage is holding this one, so it owes nobody a release - the same
   // shape, and the same reason, as the boot tail's call.
   askTransfer(() => {});
@@ -770,13 +784,6 @@ function humanBlockReason(cardId: string) {
   );
 }
 
-/** Whether the LOCAL player owes an answer about a conquest. Asked wherever
- *  input has to wait on the modal, so the wait is the same question the modal
- *  is raised on rather than a second reading of the same store. */
-function localTransferPending(): boolean {
-  return (localPendingTransfers()?.length ?? 0) > 0;
-}
-
 /** The local player's unanswered conquests, oldest first. A queue because a
  *  turn can take more than one land - see GameState.pendingTransfers. */
 function localPendingTransfers(): { from: string; to: string }[] | undefined {
@@ -784,18 +791,59 @@ function localPendingTransfers(): { from: string; to: string }[] | undefined {
   return me === undefined ? undefined : game().pendingTransfers[me];
 }
 
-/** The conquest already asked about, `from>to`, or null when the local seat
- *  owes nothing. Cleared the moment the queue's front is a different pair or
- *  the queue is empty, so a land taken twice in one run is asked about twice.
+const transferKey = (t: { from: string; to: string }): string =>
+  `${t.from}>${t.to}`;
+
+/** The conquest at the front of the local seat's queue that this screen is
+ *  still willing to ask about, or null. */
+function owedTransfer(): { from: string; to: string } | null {
+  const front = localPendingTransfers()?.[0];
+  if (front === undefined) return null;
+  return abandonedTransfers.has(transferKey(front)) ? null : front;
+}
+
+/** Whether the LOCAL player owes an answer this screen will actually put to
+ *  them. Asked wherever input has to wait on the modal, so the wait is the
+ *  same question the modal is raised on. */
+function liveTransferPending(): boolean {
+  return owedTransfer() !== null;
+}
+
+/** Conquests this screen has given up asking about.
  *
- *  The guard is for the GUEST, where "a stage runs once per transition" is not
- *  enough. A guest's answer crosses the wire while its own replica still
- *  carries the question, and the host pushes on every decision - so an update
- *  built before that answer was processed still says a conquest is pending,
- *  and its stage 3 would raise the same modal a second time. The host has by
- *  then popped its queue, so the second answer would move defenders into the
- *  NEXT conquest, whose numbers the player was never shown. */
-let transferAsked: string | null = null;
+ *  The safety valve, and the property it buys is the only one that really
+ *  matters here: **a question nobody can answer must never make the game
+ *  un-playable.** A conquest owed with no way to settle it used to take the
+ *  hand, the End turn button and the map with it, permanently and silently,
+ *  and the run is not persisted - so that is the whole run gone. Three refused
+ *  answers and the screen stops counting it, logs loudly, and hands the board
+ *  back. The defenders never move, which is a worse outcome than answering and
+ *  a far better one than a dead run.
+ *
+ *  This should now be unreachable: an answer names the conquest it is
+ *  answering, so a refusal means the front is a DIFFERENT conquest, and the
+ *  next raise reads the new front - progress, not a loop. It is here anyway
+ *  because "unreachable by construction" is exactly what was believed about
+ *  the arrangement that produced the dead seat. */
+const abandonedTransfers = new Set<string>();
+const MAX_TRANSFER_ATTEMPTS = 3;
+const transferAttempts = new Map<string, number>();
+
+/** The conquest whose modal is on screen right now, `from>to`, or null.
+ *
+ *  Two things ride on it. A guest's answer crosses the wire while its own
+ *  replica still carries the question, so an update built before that answer
+ *  landed must not raise the same modal twice. And an `ask` stage that finds
+ *  the modal already up must WAIT for it rather than release: the stage's
+ *  whole job is to keep the round from resolving behind an unanswered
+ *  question, and releasing early gave that up.
+ *
+ *  Cleared when the modal is answered, never by an `ask` stage that merely
+ *  noticed it. Holding it past the answer is what turned one lost answer into
+ *  a permanently unaskable question. */
+let transferOnScreen: string | null = null;
+/** Stage `done`s waiting on the modal that is currently up. */
+let transferWaiters: (() => void)[] = [];
 
 /** Stage 3: the conquest question, if this move left the local seat owing
  *  one. `done` fires on the answer, so nothing resolves - and no summary
@@ -864,24 +912,28 @@ function askSpend(
   );
 }
 
+/** Puts the local seat's oldest unanswered conquest to the player, and holds
+ *  `done` until it is answered.
+ *
+ *  Three states, and the middle one is the one that used to be wrong. Nothing
+ *  owed: release. Already on screen: WAIT on it - the caller is a second `ask`
+ *  stage that arrived while the player is still deciding, and the round must
+ *  not resolve behind the question. Owed and nothing asking: raise it. */
 function askTransfer(done: () => void): void {
-  // The front of the queue: one pair of lands per modal, in the order the
-  // lands fell. Answering pops it and the next conquest raises its own.
-  const pending = localPendingTransfers()?.[0];
-  if (pending === undefined) {
-    transferAsked = null;
+  const pending = owedTransfer();
+  if (pending === null) {
     done();
     return;
   }
-  const key = `${pending.from}>${pending.to}`;
-  if (transferAsked === key) {
-    // Already asked, and answered as far as this screen knows - see the key's
-    // own comment. Releasing rather than holding: the stage owes its `done`
-    // whether or not it had anything to put on screen.
-    done();
+  const key = transferKey(pending);
+  if (transferOnScreen === key) {
+    // The modal is up. Releasing here is what let a round resolve behind an
+    // unanswered conquest; queue behind the answer instead.
+    transferWaiters.push(done);
     return;
   }
-  transferAsked = key;
+  transferOnScreen = key;
+  transferWaiters = [done];
   const v = viewOf(game());
   hud.showTransferOffer(
     {
@@ -895,20 +947,30 @@ function askTransfer(done: () => void): void {
     {
       onConfirm(amount) {
         hud.hideHarvestUi();
-        const result = decide({ kind: "transfer", amount });
-        // An answer that did not land leaves the conquest OWED, and the key
-        // must not outlive it: held, it suppresses the very question at every
-        // later `ask`, and since a seat owing one can neither play a card nor
-        // end its turn, no later `ask` ever runs either. That is a dead seat
-        // with nothing on screen to say why, and it is what this arm exists to
-        // make impossible. `refreshWhenSettled` raises the question again once
-        // the queue is idle.
+        transferOnScreen = null;
+        const waiting = transferWaiters;
+        transferWaiters = [];
+        // The conquest is NAMED, so a refusal means the board moved under the
+        // modal rather than that the answer was bad - and it comes back with a
+        // reason instead of as a state that quietly did not change.
+        const result = decide({
+          kind: "transfer", from: pending.from, to: pending.to, amount,
+        });
         if (result.outcome === "refused") {
-          transferAsked = null;
-          console.error("conquest transfer refused:", result.reason);
+          const tries = (transferAttempts.get(key) ?? 0) + 1;
+          transferAttempts.set(key, tries);
+          console.error(
+            `conquest transfer refused (${tries}): ${result.reason}`,
+          );
+          // See `abandonedTransfers`: the run must stay playable even if this
+          // question never can be settled.
+          if (tries >= MAX_TRANSFER_ATTEMPTS) abandonedTransfers.add(key);
+        } else {
+          transferAttempts.delete(key);
         }
-        // The stage owes its release whichever way that went.
-        done();
+        // Every stage that was waiting is released, in the order it arrived.
+        // They owe their release whichever way the answer went.
+        for (const fn of waiting) fn();
       },
     },
   );
@@ -2050,7 +2112,8 @@ function paintArrows(): void {
  *  and would not meet this one at all. */
 function counterFor(m: March): number | null {
   const human = localHuman();
-  if (!human || !isLocalTurn() || !turnOpen(game()) || inputLocked()) return null;
+  if (!human || actionBlock("map") !== null) return null;
+  if (!isLocalTurn() || !turnOpen(game())) return null;
   if (discardMode()) return null;
   const realm = fullRealmOf(human.factionId, game().overlords, game().incorporated);
   if (!realm.has(m.to) || realm.has(m.from)) return null;
@@ -3460,7 +3523,7 @@ const hudCallbacks: HudCallbacks = {
       // Host-only for the reason DECISION_ROUTES writes down, gated here as
       // well as in CSS - the same pair Surrender uses.
       if (!decidedHere("keep-playing", net.role)) return;
-      if (game().phase !== "victory" || inputLocked()) return;
+      if (actionBlock("keep-playing") !== null) return;
       disarm();
       // A conquest that WON the run leaves its defender transfer unanswered -
       // the ask stage stands down on an ended run, since there is no board to
@@ -3473,7 +3536,7 @@ const hudCallbacks: HudCallbacks = {
       // The button is hidden from a guest as well (`.net-guest` in
       // style.css); this is the gate that does not depend on CSS.
       if (!decidedHere("surrender", net.role)) return;
-      if (game().phase !== "playing" || inputLocked()) return;
+      if (actionBlock("surrender") !== null) return;
       disarm();
       // The run is over for both of them, and the push `decide` makes is the
       // only one that will ever carry that - nothing advances behind it.
@@ -3484,7 +3547,7 @@ const hudCallbacks: HudCallbacks = {
       // `turnOpen`, not `playedThisTurn`: a play that re-opened the turn leaves
       // a live hand behind it, and which card that hand still accepts is
       // `humanPlayableSet`'s answer rather than this gate's.
-      if (!isLocalTurn() || !turnOpen(game()) || inputLocked()) return;
+      if (actionBlock("play") !== null) return;
       const human = localHuman();
       const cardId = human.hand[index];
       if (discardMode()) {
@@ -3535,7 +3598,7 @@ const hudCallbacks: HudCallbacks = {
       // a turn handed over with it open is a question nothing can answer.
       // Both ride `inputLocked` rather than being restated here, so the button
       // the player is looking at is disabled by the same fact that refuses it.
-      if (!isLocalTurn() || inputLocked()) return;
+      if (actionBlock("end-turn") !== null) return;
       disarm();
       // A turn with nothing left to close - a spent standard one - just HANDS
       // OVER: the round resolves on this click rather than the moment the card
@@ -3549,8 +3612,8 @@ const hudCallbacks: HudCallbacks = {
       }
       decide({ kind: "end-turn" });
     },
-    isResolving() {
-      return inputLocked();
+    actionBlocked(action) {
+      return actionBlock(action) !== null;
     },
     canPlayCard(cardId) {
       return humanBlockReason(cardId) === null;
@@ -4321,7 +4384,9 @@ const interaction = attachInteraction(svg, regionPaths, data, {
     applyHighlight(region, region?.faction ?? null);
   },
   interceptClick(regionId) {
-    if (inputLocked()) return true; // swallow: no selection while the round resolves
+    // Swallow: no selection while the round resolves, and none while a
+    // question of the player's own is waiting for them.
+    if (actionBlock("map") !== null) return true;
     if (game().phase === "pick-faction") {
       if (regionId === null) return true;
       const picked = regionById.get(regionId)!.faction;

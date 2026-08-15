@@ -9,7 +9,8 @@ import type { Rng } from "../src/cards";
 import { seededRng } from "../src/rng";
 import {
   applyNetAction, applyUpdate, buildUpdate, cardRulesHash, guestPhaseView,
-  NET_ACTION_RULES, PROTOCOL_VERSION, seatOfFaction, validateAction, wirePair,
+  NET_ACTION_RULES, PROTOCOL_VERSION, seatOfFaction, validateAction,
+  validateRules, wirePair,
   type NetAction, type NetMessage,
 } from "../src/net-protocol";
 import { createHostSession, type HostDeps } from "../src/net-host";
@@ -62,14 +63,16 @@ function smallHost(rng: Rng) {
 }
 
 describe("handshake", () => {
-  it("speaks protocol version 6 - the two-humans wire", () => {
+  it("speaks protocol version 7 - the two-humans wire", () => {
     // Bumped when the message set changes shape; v2 put `build` on
     // lobby-guest and `harvest` on the play action, v3 put `sourceId` there
     // too, v4 adds the `transfer` action and renames the state's
     // `humanSeat` to a set of them, v5 adds `region` to hello, and v6 adds
-    // the `march-declared` event type to the log. Two deploys on different
-    // versions must refuse, not desync.
-    expect(PROTOCOL_VERSION).toBe(6);
+    // the `march-declared` event type to the log, and v7 names the conquest
+    // on the transfer action so a stale answer is refused rather than landing
+    // on whatever is in front. Two deploys on different versions must refuse,
+    // not desync.
+    expect(PROTOCOL_VERSION).toBe(7);
   });
 
   it("refuses a hello from a different protocol version at the lobby", () => {
@@ -294,22 +297,22 @@ describe("action validation", () => {
     // and answer it. Refusing it here makes that unrepresentable on the wire
     // rather than merely avoided by a UI check.
     const g = freshGame(seededRng(3));
-    expect(validateAction(g, 0, g.turn, { type: "transfer", amount: 3 }))
+    expect(validateAction(g, 0, g.turn, { type: "transfer", from: "alpha", to: "beta", amount: 3 }))
       .toMatch(/conquest/);
     const asked: GameState = {
       ...g, pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
-    expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: 3 }))
+    expect(validateAction(asked, 0, asked.turn, { type: "transfer", from: "alpha", to: "beta", amount: 3 }))
       .toBeNull();
     // 0 is a real answer. The UPPER bound is deliberately not checked here -
     // transferDefense clamps at the moment it applies, and a second limit
     // computed now would disagree the first time the board moved underneath.
-    expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: 0 }))
+    expect(validateAction(asked, 0, asked.turn, { type: "transfer", from: "alpha", to: "beta", amount: 0 }))
       .toBeNull();
-    expect(validateAction(asked, 0, asked.turn, { type: "transfer", amount: -1 }))
+    expect(validateAction(asked, 0, asked.turn, { type: "transfer", from: "alpha", to: "beta", amount: -1 }))
       .toMatch(/number/);
     expect(
-      validateAction(asked, 0, asked.turn, { type: "transfer", amount: 1.5 }),
+      validateAction(asked, 0, asked.turn, { type: "transfer", from: "alpha", to: "beta", amount: 1.5 }),
     ).toMatch(/number/);
   });
 });
@@ -325,7 +328,9 @@ describe("every action kind", () => {
     discard: (g) => ({
       type: "discard", cardIndex: 0, cardId: g.players[0].hand[0],
     }),
-    transfer: () => ({ type: "transfer", amount: 1 }),
+    transfer: (g) => ({
+      type: "transfer", from: g.players[0].factionId, to: "beta", amount: 1,
+    }),
     "end-turn": () => ({ type: "end-turn" }),
   };
 
@@ -343,9 +348,25 @@ describe("every action kind", () => {
   });
 
   it("is refused out of turn", () => {
-    const g = { ...freshGame(seededRng(7)), current: 1 };
+    const g = {
+      ...freshGame(seededRng(7)),
+      current: 1,
+      // So the transfer sample has a real question behind it: its refusal, if
+      // any, must come from the turn rule rather than from having nothing to
+      // answer.
+      pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
+    };
     for (const kind of kinds) {
-      expect(validateAction(g, 0, g.turn, SAMPLES[kind](g))).toMatch(/seat's turn/);
+      const err = validateAction(g, 0, g.turn, SAMPLES[kind](g));
+      // Driven off the table rather than off a list written here, so a new
+      // kind is covered the moment it declares `onTurn`. A conquest answer is
+      // the one kind that is NOT a move made on a turn: it answers a modal,
+      // and a modal outlives the board it was raised over.
+      if (NET_ACTION_RULES[kind].onTurn) {
+        expect(err).toMatch(/seat's turn/);
+      } else {
+        expect(err).toBeNull();
+      }
     }
   });
 
@@ -404,7 +425,7 @@ describe("applyNetAction", () => {
       defense: { alpha: 40, beta: 0 },
       pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
-    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 }, 0);
+    const after = applyNetAction(g, rng, { type: "transfer", from: "alpha", to: "beta", amount: 10 }, 0);
     expect(after.defense.alpha).toBe(30);
     expect(after.defense.beta).toBe(10);
     expect(after.pendingTransfers).toEqual({});
@@ -428,7 +449,7 @@ describe("applyNetAction", () => {
       defense: { alpha: 40, beta: 0 },
       pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
-    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 }, 0);
+    const after = applyNetAction(g, rng, { type: "transfer", from: "alpha", to: "beta", amount: 10 }, 0);
     expect(after).not.toBe(g);
     expect(after.pendingTransfers).toEqual({});
     expect(after.defense.alpha).toBe(30);
@@ -450,9 +471,61 @@ describe("applyNetAction", () => {
         alpha: [{ from: "alpha", to: "beta" }, { from: "gamma", to: "delta" }],
       },
     };
-    const after = applyNetAction(g, rng, { type: "transfer", amount: 10 }, 0);
+    const after = applyNetAction(g, rng, { type: "transfer", from: "alpha", to: "beta", amount: 10 }, 0);
     expect(after.pendingTransfers.alpha)
       .toEqual([{ from: "gamma", to: "delta" }]);
+  });
+
+  it("refuses an answer that names a conquest which is not the one waiting", () => {
+    // Identity is what makes a lost answer LOUD. Without it a `transfer` means
+    // "the front of somebody's queue", so an answer applied to a board that
+    // moved underneath it lands on a different conquest, or on none - and
+    // landing on none returns the state unchanged, which the router reads as
+    // an ordinary refusal. Naming the pair turns that into a refusal with a
+    // reason, and a caller can act on a reason.
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      defenseMax: { alpha: 40, beta: 40, gamma: 40, delta: 40 },
+      defense: { alpha: 40, beta: 0, gamma: 40, delta: 0 },
+      pendingTransfers: {
+        alpha: [{ from: "alpha", to: "beta" }, { from: "gamma", to: "delta" }],
+      },
+    };
+    // The SECOND conquest, answered while the first is still owed: out of
+    // order is not an ordering the queue offers.
+    expect(validateRules(g, 0, {
+      type: "transfer", from: "gamma", to: "delta", amount: 5,
+    })).toMatch(/not the conquest/);
+    // A pair that was never queued at all.
+    expect(validateRules(g, 0, {
+      type: "transfer", from: "beta", to: "alpha", amount: 5,
+    })).toMatch(/not the conquest/);
+    // The one actually waiting is fine.
+    expect(validateRules(g, 0, {
+      type: "transfer", from: "alpha", to: "beta", amount: 5,
+    })).toBeNull();
+  });
+
+  it("lets a conquest be answered when the turn has already moved on", () => {
+    // A conquest question is answered from a modal, and a modal outlives the
+    // board it was raised over. The turn guard belongs to moves made ON a
+    // turn - a play, a discard, handing the turn over - and refusing an answer
+    // because the board moved is refusing the player their own decision.
+    const rng = seededRng(5);
+    const base = freshGame(rng);
+    const g: GameState = {
+      ...base,
+      current: 1,
+      pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
+    };
+    expect(validateAction(g, 0, g.turn, {
+      type: "transfer", from: "alpha", to: "beta", amount: 1,
+    })).toBeNull();
+    // The turn-taking kinds keep the guard.
+    expect(validateAction(g, 0, g.turn, { type: "end-turn" }))
+      .toMatch(/seat's turn/);
   });
 
   it("routes end-turn to endTurn only under unlimited rules (standard refuses)", () => {

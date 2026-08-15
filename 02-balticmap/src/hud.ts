@@ -21,6 +21,7 @@ import {
 import { abilitiesOf, LEADER_ABILITIES } from "./abilities";
 import { milestonePoints, milestoneStandings } from "./milestones";
 import { count } from "./plural";
+import type { PlayerAction } from "./gates";
 import { TERMS } from "./glossary";
 import {
   multipliedWord, type TargetExplanation,
@@ -38,6 +39,11 @@ import {
 import type { BuildOption } from "./harvest";
 import { EVENT_SOUNDS, type SoundName } from "./audio-manifest";
 import { PRESENTATION_RULES, type Beat } from "./presentation";
+
+/** The actions the HUD draws a control for: every `PlayerAction` except the
+ *  map, which is not a HUD surface. Derived from that union rather than
+ *  re-listed, so the two cannot drift into disagreeing about what exists. */
+export type HudAction = Exclude<PlayerAction, "map">;
 
 export interface HudCallbacks {
   onNewGame(): void;
@@ -71,10 +77,19 @@ export interface HudCallbacks {
   /** Close an unlimited-rules turn. Absent where no such turn exists
    *  (standard rules, tests): the button then never renders. */
   onEndTurn?(): void;
-  /** True while a committed action is still resolving - a card in flight or
-   *  the AI chain behind it. The unlimited hand stays open between plays, so
-   *  `playedThisTurn` alone no longer covers the flight window. */
-  isResolving?(): boolean;
+  /** Whether an action the HUD offers a control for cannot be started right
+   *  now. One callback for all four, because the answer comes from ONE table
+   *  in src/main.ts (`actionBlock`) that the handlers read as well - a control
+   *  cannot be live while the handler behind it refuses.
+   *
+   *  It carries everything the HUD cannot derive from `GameState`: a move
+   *  still resolving, a card in flight, the other human on turn, the wire owed
+   *  an answer, and any question this screen itself has put to the player. The
+   *  terms the HUD CAN derive - whose turn it is, whether the turn is open -
+   *  stay here, computed from the same state, so the two cannot disagree about
+   *  anything unseen. Spelling the unseen ones at the handlers instead is how
+   *  a fully live hand came to swallow every click in silence. */
+  actionBlocked?(action: HudAction): boolean;
   /** Renders the main-menu Reset progress control when provided. */
   onResetProgress?(): void;
   /** Renders the main-menu Regions button when provided; the click opens
@@ -261,13 +276,14 @@ export interface Hud {
   /** Closes the harvest overlay. Safe when none is up. */
   hideHarvestUi(): void;
   /** Whether the shared overlay - a harvest offer, a spend slider, a conquest
-   *  transfer - is on screen right now.
+   *  transfer - is on screen right now. Named for the overlay and not for the
+   *  harvest, because three different questions share it.
    *
    *  Asked by the one caller that has to tell "this question is being put to
    *  the player" apart from "this question is owed and nothing is asking it".
    *  The second is a bug state, and it used to be unrecoverable precisely
    *  because nothing could name it. */
-  harvestUiOpen(): boolean;
+  overlayOpen(): boolean;
   /** Shows each card a harvest just put in the deck, one at a time: it fades
    *  in over the board with a line saying what it is, holds, then flies into
    *  the deck pile. `onDone` fires once, after the last one lands - callers
@@ -1400,7 +1416,7 @@ export function createHud(
     cb.onHighlightFaction?.(null);
   }
 
-  function harvestUiOpen(): boolean {
+  function overlayOpen(): boolean {
     return !harvestOverlay.classList.contains("hidden");
   }
 
@@ -2267,7 +2283,7 @@ export function createHud(
    *  such answer to give - every card would wear the band while the AI plays. */
   function handLive(state: GameState): boolean {
     return isLocalTurn(state) && turnOpen(state) &&
-      !(cb.isResolving?.() ?? false);
+      !(cb.actionBlocked?.("play") ?? false);
   }
 
   /** Which hand card the panel is about: the one being pointed at, else the
@@ -3102,6 +3118,9 @@ export function createHud(
         "hidden",
         state.phase !== "playing" || cb.onSurrender === undefined,
       );
+      // Every control the handler can refuse says so on its own face - see
+      // `actionBlocked`. These two were the ones that said nothing at all.
+      surrenderBtn.disabled = cb.actionBlocked?.("surrender") ?? false;
       if (state.phase !== "playing") disarmSurrender();
       // The gate is the PHASE and not the title: the concede branch prints
       // "You won" over a `defeat` phase, and that run has nothing to resume.
@@ -3112,6 +3131,7 @@ export function createHud(
         state.phase !== "victory" || state.playingOn ||
           cb.onKeepPlaying === undefined,
       );
+      pmKeepPlaying.disabled = cb.actionBlocked?.("keep-playing") ?? false;
       // Shown under EVERY rule set now: a turn never ends itself, so this is
       // the only way a round is handed over and it cannot be a control that
       // appears only for one turn structure.
@@ -3126,7 +3146,7 @@ export function createHud(
       // rather than left live and inert.
       endTurnBtn.disabled =
         !isLocalTurn(state) ||
-        (cb.isResolving?.() ?? false) ||
+        (cb.actionBlocked?.("end-turn") ?? false) ||
         (state.rules.turn !== "unlimited" && !state.playedThisTurn);
       // A run ending or a new game must not leave a harvest choice hanging
       // over the wrong screen - the hideSummary reasoning, same shape.
@@ -3278,6 +3298,6 @@ export function createHud(
     showSpendOffer,
     showTransferOffer,
     hideHarvestUi,
-    harvestUiOpen,
+    overlayOpen,
   };
 }

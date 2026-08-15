@@ -57,7 +57,7 @@ describe("commitDecision - the conquest transfer", () => {
       pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
     const { deps, applied } = soloDeps(state);
-    const result = commitDecision(deps, { kind: "transfer", amount: 10 });
+    const result = commitDecision(deps, { kind: "transfer", from: "alpha", to: "beta", amount: 10 });
     expect(result).toEqual({ outcome: "applied", settle: "repaint" });
     expect(applied).toHaveLength(1);
     expect(applied[0].pendingTransfers).toEqual({});
@@ -72,7 +72,7 @@ describe("commitDecision - the conquest transfer", () => {
     // failure was a refusal nobody could tell apart from success.
     const state = freshGame();
     const { deps, applied } = soloDeps(state);
-    const result = commitDecision(deps, { kind: "transfer", amount: 3 });
+    const result = commitDecision(deps, { kind: "transfer", from: "alpha", to: "beta", amount: 3 });
     expect(result.outcome).toBe("refused");
     expect(result).toMatchObject({ reason: expect.stringMatching(/conquest/) });
     expect(applied).toHaveLength(0);
@@ -86,7 +86,7 @@ describe("commitDecision - the conquest transfer", () => {
       pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     };
     const { deps, applied } = soloDeps(state);
-    const result = commitDecision(deps, { kind: "transfer", amount: -1 });
+    const result = commitDecision(deps, { kind: "transfer", from: "alpha", to: "beta", amount: -1 });
     expect(result.outcome).toBe("refused");
     expect(result).toMatchObject({ reason: expect.stringMatching(/number/) });
     expect(applied).toHaveLength(0);

@@ -660,14 +660,31 @@ export function autoTransfer(
  *  Named by faction and not by seat, because the question outlives neither -
  *  it is raised at a conquest and answered whenever the person gets to it,
  *  and a faction is what both ends of the wire agree on. */
+/** Answers one conquest question: `amount` defenders march from `from` into
+ *  `to`, and that conquest leaves the seat's queue.
+ *
+ *  The pair is NAMED rather than implied, and that is the whole of what makes
+ *  a lost answer detectable. Spelled as "the front of whoever's queue", an
+ *  answer applied to a board that moved underneath it lands on a different
+ *  conquest, or on none - and landing on none returns `state`, which every
+ *  caller reads as an ordinary "the rules refused". The question then stays
+ *  owed with nobody able to tell that it does. Named, the mismatch is a
+ *  refusal with a reason (`NET_ACTION_RULES.transfer`), and a caller can act
+ *  on a reason.
+ *
+ *  Still the FRONT only, not any matching entry: three conquests are answered
+ *  in the order the lands fell, and identity is here to detect a stale answer
+ *  rather than to offer answering out of order. */
 export function transferDefense(
-  state: GameState, factionId: string, amount: number,
+  state: GameState, factionId: string, from: string, to: string,
+  amount: number,
 ): GameState {
   const queue = state.pendingTransfers[factionId];
   const pending = queue?.[0];
   if (pending === undefined) return state;
-  // The front of the queue only. A turn that took three lands owes three
-  // answers, and the next one is raised as soon as this one is applied.
+  if (pending.from !== from || pending.to !== to) return state;
+  // A turn that took three lands owes three answers, and the next one is
+  // raised as soon as this one is applied.
   const left = queue.slice(1);
   const { [factionId]: _answered, ...rest } = state.pendingTransfers;
   return {

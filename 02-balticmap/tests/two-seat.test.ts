@@ -396,7 +396,9 @@ describe("the conquest question", () => {
     });
     expect(t.replica().pendingTransfers[me]).toEqual([{ from: me, to: "beta" }]);
 
-    const r = t.guest.decide({ kind: "transfer", amount: 10 });
+    const r = t.guest.decide({
+      kind: "transfer", from: me, to: "beta", amount: 10,
+    });
     expect(r.outcome).toBe("sent");
     expect(t.rejects).toEqual([]);
     expect(t.state().pendingTransfers).toEqual({});
@@ -412,7 +414,9 @@ describe("the conquest question", () => {
       ...t.state(),
       pendingTransfers: { alpha: [{ from: "alpha", to: "beta" }] },
     });
-    const r = t.guest.decide({ kind: "transfer", amount: 10 });
+    const r = t.guest.decide({
+      kind: "transfer", from: "alpha", to: "beta", amount: 10,
+    });
     expect(r).toMatchObject({ outcome: "refused" });
     expect(t.guest.sent).toEqual([]);
   });

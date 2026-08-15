@@ -100,7 +100,12 @@ export type Decision =
   | { kind: "harvest"; cardIndex: number; cardId: string; choice: HarvestChoice }
   | { kind: "discard"; cardIndex: number; cardId: string }
   | { kind: "end-turn" }
-  | { kind: "transfer"; amount: number }
+  /** The conquest question's answer. It NAMES the conquest (`from`/`to`) as
+   *  well as the amount, because it is the one decision whose modal outlives
+   *  the board it was raised over - see the note on `decide` in src/main.ts.
+   *  Unnamed it meant "the front of my queue", and an answer that arrived
+   *  against a moved board landed on the wrong conquest or on none. */
+  | { kind: "transfer"; from: string; to: string; amount: number }
   | { kind: "surrender" }
   /** Its own kind and not a variant of anything: it is the one decision taken
    *  after an ending rather than in play, and the only one that puts a phase
@@ -154,7 +159,9 @@ export const DECISION_ROUTES: {
   "end-turn": { settle: "action", wire: () => ({ type: "end-turn" }) },
   transfer: {
     settle: "repaint",
-    wire: (d) => ({ type: "transfer", amount: d.amount }),
+    wire: (d) => ({
+      type: "transfer", from: d.from, to: d.to, amount: d.amount,
+    }),
   },
   surrender: {
     settle: "repaint",

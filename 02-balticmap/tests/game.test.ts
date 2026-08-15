@@ -2979,7 +2979,7 @@ describe("the defense transfer", () => {
 
   it("moves the points the player names and clears the question", () => {
     const g = captured();
-    const after = transferDefense(g, "beta", 10);
+    const after = transferDefense(g, "beta", "beta", "alpha", 10);
     expect(after.defense.beta).toBe(30);
     expect(after.defense.alpha).toBe(10);
     expect(after.pendingTransfers).toEqual({});
@@ -2992,7 +2992,7 @@ describe("the defense transfer", () => {
   it("clamps to what the origin holds", () => {
     const g = captured();
     expect(transferLimit(g, "beta", "alpha")).toBe(40);
-    const after = transferDefense(g, "beta", 9999);
+    const after = transferDefense(g, "beta", "beta", "alpha", 9999);
     expect(after.defense.beta).toBe(0);
     expect(after.defense.alpha).toBe(40);
     expect(after.log.at(-1)).toMatchObject({ type: "transferred", amount: 40 });
@@ -3001,7 +3001,7 @@ describe("the defense transfer", () => {
   it("clamps to the room the destination has - points past a ceiling would vanish", () => {
     const g = { ...captured(), defense: { alpha: FIXTURE_MAX - 5, beta: 40 } };
     expect(transferLimit(g, "beta", "alpha")).toBe(5);
-    const after = transferDefense(g, "beta", 40);
+    const after = transferDefense(g, "beta", "beta", "alpha", 40);
     expect(after.defense.beta).toBe(35);
     // A land back at its ceiling drops its key, the pristine convention.
     expect(after.defense.alpha).toBeUndefined();
@@ -3010,7 +3010,7 @@ describe("the defense transfer", () => {
   it("0 is a real answer: the question closes and nothing moves", () => {
     const g = captured();
     const before = g.log.length;
-    const after = transferDefense(g, "beta", 0);
+    const after = transferDefense(g, "beta", "beta", "alpha", 0);
     expect(after.pendingTransfers).toEqual({});
     expect(after.defense.beta).toBe(40);
     expect(fresh(after, before)).toEqual([]);
@@ -3018,7 +3018,7 @@ describe("the defense transfer", () => {
 
   it("does nothing at all when no capture is waiting on an answer", () => {
     const g = playingSix();
-    expect(transferDefense(g, "beta", 10)).toBe(g);
+    expect(transferDefense(g, "beta", "beta", "alpha", 10)).toBe(g);
   });
 
   it("a seat nobody can ask moves half of what the origin holds", () => {
@@ -3103,7 +3103,7 @@ describe("the defense transfer", () => {
       },
       defense: { alpha: 0, beta: 40, [other]: 40 },
     };
-    const after = transferDefense(g, "beta", 10);
+    const after = transferDefense(g, "beta", "beta", "alpha", 10);
     expect(after.pendingTransfers).toEqual({
       [other]: [{ from: other, to: "alpha" }],
     });
@@ -3127,17 +3127,17 @@ describe("the defense transfer", () => {
       defense: { alpha: 0, gamma: 0, delta: 0, beta: 40 },
     };
     // Each answer pops the front and leaves the rest standing.
-    const first = transferDefense(g, "beta", 4);
+    const first = transferDefense(g, "beta", "beta", "alpha", 4);
     expect(first.pendingTransfers.beta).toEqual([
       { from: "beta", to: "gamma" }, { from: "beta", to: "delta" },
     ]);
     expect(first.defense.alpha).toBe(4);
-    const second = transferDefense(first, "beta", 3);
+    const second = transferDefense(first, "beta", "beta", "gamma", 3);
     expect(second.pendingTransfers.beta).toEqual([{ from: "beta", to: "delta" }]);
     expect(second.defense.gamma).toBe(3);
     // The last answer clears the key rather than leaving an empty queue - an
     // empty one reads as "a question is waiting" to anything asking by key.
-    const third = transferDefense(second, "beta", 2);
+    const third = transferDefense(second, "beta", "beta", "delta", 2);
     expect(third.pendingTransfers).toEqual({});
     expect(third.defense.delta).toBe(2);
   });

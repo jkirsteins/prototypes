@@ -10,7 +10,7 @@ import {
   deserializeGame, serializeGame, type SerializedGameState,
 } from "./net-codec";
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /** Fingerprint of everything two deploys must agree about a card. The hello
  *  handshake compares this and refuses politely on a mismatch.
@@ -44,9 +44,17 @@ export type NetAction =
   /** The conquest question's answer: how many defenders march over with the
    *  land. It rides the wire rather than resolving locally because a guest's
    *  state is a replica - a `transferDefense` applied to it moves points on
-   *  one screen and nowhere else. No `from`/`to`: the host holds the
-   *  question, and naming it again is only a second chance to disagree. */
-  | { type: "transfer"; amount: number }
+   *  one screen and nowhere else.
+   *
+   *  `from`/`to` name the conquest being answered. This used to say that
+   *  naming it was "only a second chance to disagree", and the reverse is
+   *  true: unnamed, an answer means "the front of somebody's queue", so one
+   *  applied to a board that has moved lands on a different conquest or on
+   *  none, and landing on none is indistinguishable from a rule refusing the
+   *  move. The chance to disagree is the point - a disagreement that can be
+   *  seen is one the screen can recover from, and the alternative is a
+   *  question that stays owed with nothing able to notice. */
+  | { type: "transfer"; from: string; to: string; amount: number }
   | { type: "end-turn" };
 
 export type NetMessage =
@@ -124,8 +132,10 @@ export function dealNetGame(
  *  if-chain that returned `null` for anything it did not recognise, so a new
  *  kind was checked by nobody and found that out on somebody's board.
  *
- *  The SHARED checks - in play, a real seat, this seat's turn, a live turn
- *  stamp - stay in `validateAction`. This is the per-kind half.
+ *  The WIRE checks - in play, a real seat, a live turn stamp - stay in
+ *  `validateAction`; "whose turn is it" is a rule rather than a wire guard and
+ *  lives in `validateRules`, applied per `onTurn` below. This is the per-kind
+ *  half.
  *
  *  Both halves take the ACTING SEAT, and neither may re-derive it from
  *  `state.current`. The two agree on every ordinary path, which is exactly why
@@ -135,6 +145,21 @@ export function dealNetGame(
  *  about - see `transfer` below, and the note on `decide` in src/main.ts. */
 export const NET_ACTION_RULES: {
   [K in NetAction["type"]]: {
+    /** Whether this is a move made ON one's turn.
+     *
+     *  Three of the four are, and their `apply` reaches the engine through
+     *  `playCard`/`discardCard`/`endTurn`, which act on `state.current` and
+     *  take no seat. `onTurn` is what makes that safe rather than assumed:
+     *  `validateRules` refuses those kinds unless the acting seat IS
+     *  `state.current`, so by the time the engine reads the board the two
+     *  cannot differ.
+     *
+     *  The conquest transfer is the one that is not. It answers a modal, and
+     *  a modal outlives the board it was raised over - refusing the answer
+     *  because the turn moved is refusing the player their own decision. It
+     *  is applied for the seat that was ASKED, which is why its rule takes
+     *  the seat and the other four do not need to. */
+    onTurn: boolean;
     validate(
       state: GameState, seat: number, action: Extract<NetAction, { type: K }>,
     ): string | null;
@@ -145,6 +170,7 @@ export const NET_ACTION_RULES: {
   };
 } = {
   play: {
+    onTurn: true,
     validate(state, seat, action) {
       const held = state.players[seat].hand[action.cardIndex];
       if (held !== action.cardId) {
@@ -189,6 +215,7 @@ export const NET_ACTION_RULES: {
       }),
   },
   discard: {
+    onTurn: true,
     validate: (state, seat, action) =>
       state.players[seat].hand[action.cardIndex] === action.cardId
         ? null
@@ -196,6 +223,7 @@ export const NET_ACTION_RULES: {
     apply: (state, _rng, action) => discardCard(state, action.cardIndex),
   },
   transfer: {
+    onTurn: false,
     validate(state, seat, action) {
       // The sender's OWN conquest, recomputed here: a seat answering a
       // question it did not raise is exactly the bug this action exists to
@@ -206,31 +234,36 @@ export const NET_ACTION_RULES: {
       // An empty queue is the same answer as no queue: the sender has no
       // conquest waiting, whichever way the record got that way.
       const waiting = state.pendingTransfers[state.players[seat].factionId];
-      if (waiting === undefined || waiting.length === 0) {
+      const front = waiting?.[0];
+      if (front === undefined) {
         return "no conquest of yours is waiting for defenders";
+      }
+      // The pair the sender was SHOWN. A mismatch means the board moved under
+      // the modal - somebody answered this conquest already, or a different
+      // one is in front of it now - and that has to come back as a reason
+      // rather than as an engine call that quietly changes nothing. It is the
+      // whole point of naming the conquest: `transferDefense` returning its
+      // input is indistinguishable from a rule refusing the move, and a
+      // screen that cannot tell those apart cannot re-raise the question.
+      if (front.from !== action.from || front.to !== action.to) {
+        return "that is not the conquest waiting for an answer";
       }
       if (!Number.isInteger(action.amount) || action.amount < 0) {
         return "that is not a number of defenders";
       }
       return null;
     },
-    // The SENDER's faction, and never `state.players[state.current]`. The
+    // The SENDER's faction, and never `state.players[state.current]`: the
     // question was raised for one seat and has to be answered for that same
-    // seat, or the pop names a faction with no queue, `transferDefense` hands
-    // the state straight back, and the caller reads that identity return as
-    // "the rules refused" - for an answer the player gave correctly. The
-    // conquest then stays owed with no modal on screen and no way to raise
-    // one, which is a seat that can neither play a card nor end its turn.
-    //
-    // This used to lean on "the shared checks have already pinned the sender
-    // to the seat on turn". They do, on the wire. `commitDecision` runs them
-    // for a GUEST only, so on the two paths that matter here - solo and the
-    // host's own play - nothing pinned anything.
+    // seat. `onTurn: false` above is why the two can legitimately differ here
+    // and nowhere else.
     apply: (state, _rng, action, seat) => transferDefense(
-      state, state.players[seat].factionId, action.amount,
+      state, state.players[seat].factionId, action.from, action.to,
+      action.amount,
     ),
   },
   "end-turn": {
+    onTurn: true,
     validate: () => null,
     apply: (state) => endTurn(state),
   },
@@ -245,7 +278,6 @@ export function validateAction(
 ): string | null {
   if (state.phase !== "playing") return "the game is not in play";
   if (seat < 0 || seat >= state.players.length) return "no such seat";
-  if (state.current !== seat) return "not this seat's turn";
   if (turn !== state.turn) return "stale turn stamp";
   return validateRules(state, seat, action);
 }
@@ -268,8 +300,16 @@ export function validateRules(
 ): string | null {
   if (seat < 0 || seat >= state.players.length) return "no such seat";
   const rule = NET_ACTION_RULES[action.type] as {
+    onTurn: boolean;
     validate(s: GameState, seat: number, a: NetAction): string | null;
   };
+  // "Whose turn is it" is a RULE for the three kinds made on a turn, not a
+  // wire guard, and it lives here rather than in `validateAction` for two
+  // reasons. It is what lets those kinds' `apply` keep reading `state.current`
+  // safely - see `onTurn`. And applying it to all four refused the conquest
+  // answer whenever the board moved under its modal, which is the one kind for
+  // which that is normal.
+  if (rule.onTurn && state.current !== seat) return "not this seat's turn";
   return rule.validate(state, seat, action);
 }
 

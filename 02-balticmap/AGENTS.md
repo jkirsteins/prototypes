@@ -651,31 +651,60 @@ does:
   fell; one slot per faction asked about the first and dropped the other two,
   which then sent no defenders and said nothing about it.
 
-  **The answer is applied for the seat that was ASKED, never for
-  `state.current`.** `NET_ACTION_RULES.transfer` takes the acting seat, and
-  `applyNetAction` requires it rather than deriving it. The two agree on every
-  ordinary path - a conquest is queued at its taker's own turn start - which is
-  exactly why reading it off the board survived for months. They come apart the
-  moment an answer outlives the board it was asked about, and then the pop
-  names a faction with no queue, `transferDefense` hands its input straight
-  back, and `commitDecision` reads that identity return as `RULES_REFUSED` for
-  an answer the player gave correctly. `commitDecision` now runs `validateRules`
-  locally too - the per-kind half alone, no turn or stamp guard, since a modal
-  is legitimately answered after the board has moved - so a mismatch is a NAMED
-  refusal instead of a silent one. The guest had that check and the local seat
-  had none.
+  **The answer NAMES the conquest it answers, and is applied for the seat that
+  was ASKED.** Both halves are the same lesson. `transferDefense` takes
+  `from`/`to` and refuses a front that does not match; the `transfer` action
+  and the `transfer` decision carry the pair; `applyNetAction` requires the
+  acting seat rather than deriving it from `state.current`.
 
-  **And a question that is owed with nothing asking it raises itself.**
-  `reaskOwedQuestions`, off `refreshWhenSettled`, is the one reconciliation in
-  the app. Every other route to the modal is a one-shot - the `ask` stage and
-  the boot tail - so any way of losing an answer left the conquest owed and
-  unaskable, and `inputLocked` then refused every play and every end of turn,
-  which is what stopped a later transition ever running to notice. That is a
-  seat with no way out and nothing on screen: a real run reached it at turn 62
-  by taking two lands in one turn, answering the first question, and never
-  being shown the second. `askTransfer` also clears `transferAsked` on a
-  refusal now, because that latch is what turned one lost answer into a
-  permanent one.
+  Unnamed, an answer meant "the front of somebody's queue", so one applied to a
+  board that moved underneath it landed on a different conquest or on none -
+  and landing on none returns the input state, which `commitDecision` reads as
+  `RULES_REFUSED`. A refusal that cannot be told from success is a question
+  that stays owed with nothing able to notice. The old comment on the action
+  said naming the pair was "only a second chance to disagree"; the reverse is
+  true, and a disagreement that can be SEEN is one the screen recovers from.
+
+  **`onTurn` on each `NET_ACTION_RULES` entry is what keeps the seat honest.**
+  Play, discard and end-turn reach the engine through calls that act on
+  `state.current` and take no seat, so `validateRules` refuses those kinds
+  unless the acting seat IS `state.current` - by the time the engine reads the
+  board the two cannot differ. The conquest answer is the one kind that is not
+  a move made on a turn, which is why it alone takes the seat, and why the
+  blanket turn guard moved out of `validateAction`: applied to all four it
+  refused a guest's answer whenever the board moved under its modal.
+
+  `commitDecision` runs `validateRules` on the solo and host paths too. The
+  guest had that check and the local seat had none, so the only answer a local
+  caller could get out of a move the rules would not take was the generic
+  `RULES_REFUSED` - and only where the engine happened to refuse by returning
+  its input.
+
+  **And a question owed with nothing asking it raises itself.** `shouldReask`
+  in `src/gates.ts`, wired through `refreshWhenSettled`, is the one
+  reconciliation in the app. Every other route to the modal is a one-shot - the
+  `ask` stage and the boot tail - so any way of losing an answer left the
+  conquest owed and unaskable, and the gate then refused every play and every
+  end of turn, which is what stopped a later transition ever running to notice.
+  That is a seat with no way out and nothing on screen: a real run reached it
+  at turn 62 by taking two lands in one turn, answering the first question, and
+  never being shown the second.
+
+  **An `ask` stage that finds the modal already up WAITS on it.**
+  `transferOnScreen` names the question being put to the player and
+  `transferWaiters` holds the stages queued behind it. The old latch released
+  those stages immediately, which gave up the rule two paragraphs down - that
+  nothing resolves behind an unanswered conquest - and, because it was never
+  cleared on a lost answer, suppressed the question for the rest of the run.
+
+  **`abandonedTransfers` is the floor under all of it.** Three refused answers
+  and the screen stops counting that conquest, logs loudly, and hands the board
+  back. The defenders never move, which is worse than answering and far better
+  than a dead run - and the run is not persisted, so a dead run is the whole
+  run. It should now be unreachable, since a named answer can only be refused
+  when the front is a DIFFERENT conquest and the next raise reads that new
+  front. It is there anyway, because "unreachable by construction" is exactly
+  what was believed about the arrangement that produced the dead seat.
 
   **The turn-62 trigger itself was never reproduced**, and that is worth
   saying rather than leaving a future reader to assume the wrong-faction pop
@@ -987,39 +1016,52 @@ clicks. `Hud.afterPlayAnimation` owns the timing and always fires - once - even
 when nothing flew (a forced discard animates nothing) and even if the flight
 somehow never reports itself finished.
 
-**"May the player act" is one predicate and not a flag.** `inputLocked` in
-`src/main.ts` is the whole of it: the transition queue is showing a move, an
-animation of this screen's own is still running, the other human holds the
-turn, the wire owes this screen an answer (`awaitingWire`, which the network
-callbacks set and the answer clears - the one arm nothing else can see), or
-this screen owes an answer itself - a harvest boon (`pendingHarvest`) or a
-conquest's defenders (`localTransferPending`). Every surface that gates on it
-asks the same call, so the map, the arrows, the menu buttons and the End turn
-button cannot disagree about whether the round is still resolving.
+**"May the player act" is a TABLE, and it lives outside this app.**
+`actionBlock` in `src/gates.ts` answers it for every `PlayerAction` - play,
+end-turn, surrender, keep-playing, map - as an exhaustive switch with no
+`default`, and it is read by the handler that performs each action AND by the
+control that offers it. `src/main.ts` supplies the screen's own state as
+`ScreenFacts`; `src/hud.ts` asks through one `actionBlocked(action)` callback
+and derives `HudAction` from `PlayerAction`, so the two cannot drift into
+disagreeing about what exists.
 
-**The last two arms were spelled at the call sites**, on `onPlayCard`,
-`onEndTurn` and the keydown handler, and that alone is how a locked seat came
-to look like a live one. `isResolving` hands the HUD this predicate and nothing
-else, so `renderHand` drew from four terms while the click was refused on six:
-at turn 62 of a real run every card rendered playable, hovered, lifted, and did
-nothing when pressed - no modal, no message, no line in the log, and no way
-back, because nothing is persisted. A question the player cannot answer has to
-be one the player can SEE, and the only way to guarantee that is to leave the
-renderer no term it cannot read. Anything new that refuses a click belongs in
-`inputLocked`, never beside it. `tests/hud.test.ts` pins the visible half: with
-`isResolving` true, every card is `disabled` AND `.unplayable`, and End turn is
-disabled - `:disabled` alone is a filter subtle enough to read as a live card.
+**Its own pure module, and that is the point.** Nothing loads `src/main.ts` in
+a test, so a rule living there is a rule nobody can check - and "the handlers
+and the controls read the same thing" is exactly the claim that had rotted.
+`tests/gates.test.ts` now checks it, and `tests/hud.test.ts` checks that each
+control's `disabled` tracks the callback.
+
+**The rule that makes it hold: anything the HUD cannot derive from `GameState`
+must be behind the table.** `screenBusy` (a transition showing a move, an
+animation running, the wire owed an answer, the other human on turn) and the
+questions this screen has raised itself (`pendingHarvest`, an owed conquest)
+are all module state in `src/main.ts`. Spelled at the call sites - which is
+where the last two were, on `onPlayCard`, `onEndTurn` and the keydown handler -
+the renderer draws from four terms while the click is refused on six. At turn
+62 of a real run every card rendered playable, hovered, lifted, and did nothing
+when pressed: no modal, no message, no line in the log, and no way back, since
+nothing is persisted. Terms the HUD CAN derive - whose turn it is, whether the
+turn is open - are computed on both sides from the same state and cannot
+disagree about anything unseen.
+
+**A table and not one boolean, because two actions must NOT be blocked by an
+owed conquest.** Folding every reason into a single predicate was tried and it
+made Keep playing dead in precisely the case it exists for - a victory read at
+a turn start is usually a victory won BY a conquest, so the defender question
+is owed exactly when that button matters - and it took Surrender with it. A
+gate that removes the controls for escaping a stuck run is not a gate, it is a
+trap.
 
 The one thing a derived answer costs, and it is a real cost: a paint made
-while it is true draws a locked screen, and nothing repaints when it goes
-false on its own. So every path out of the locked window repaints on its way
-out - `finishChain` and `afterHumanPlay` both wait for the animation queue to
-drain and then `refresh`. A stage of the lifecycle that leaves the screen
-locked with no repaint behind it is a hand that stays greyed until the player
-hovers something. The two arms above are not owned by a queue, so they owe
-their paints by hand: `openHarvestModal` repaints on the way IN and its
-`onCancel` on the way out, and the conquest question is raised inside the `ask`
-stage, which has already painted twice behind it.
+while it is blocked draws a locked screen, and nothing repaints when it clears
+on its own. So every path out of the locked window repaints on its way out -
+`finishChain` and `afterHumanPlay` both wait for the animation queue to drain
+and then `refresh`. A stage of the lifecycle that leaves the screen locked with
+no repaint behind it is a hand that stays greyed until the player hovers
+something. The two question terms are not owned by a queue, so they owe their
+paints by hand: `openHarvestModal` repaints on the way IN and its `onCancel` on
+the way out, and the conquest question is raised inside the `ask` stage, which
+has already painted twice behind it.
 
 ## Every visible sequence goes through one queue
 

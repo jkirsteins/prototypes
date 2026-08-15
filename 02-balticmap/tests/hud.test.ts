@@ -61,7 +61,7 @@ function setup(opts?: {
   cardBlocked?: (cardId: string) => string | null;
   isDiscardMode?: () => boolean;
   onEndTurn?: () => void;
-  isResolving?: () => boolean;
+  actionBlocked?: () => boolean;
   onResetProgress?: () => void;
   onOpenRegions?: () => void;
   regionSubtitle?: () => string;
@@ -91,7 +91,7 @@ function setup(opts?: {
     ...(opts?.cardBlocked ? { cardBlocked: opts.cardBlocked } : {}),
     ...(opts?.isDiscardMode ? { isDiscardMode: opts.isDiscardMode } : {}),
     ...(opts?.onEndTurn ? { onEndTurn: opts.onEndTurn } : {}),
-    ...(opts?.isResolving ? { isResolving: opts.isResolving } : {}),
+    ...(opts?.actionBlocked ? { actionBlocked: opts.actionBlocked } : {}),
     ...(opts?.onResetProgress ? { onResetProgress: opts.onResetProgress } : {}),
     ...(opts?.onOpenRegions ? { onOpenRegions: opts.onOpenRegions } : {}),
     ...(opts?.regionSubtitle ? { regionSubtitle: opts.regionSubtitle } : {}),
@@ -1953,7 +1953,7 @@ describe("End turn button", () => {
 
   it("is disabled while a play is resolving and once the turn is closed", () => {
     const { container, hud } = setup({
-      onEndTurn: vi.fn(), isResolving: () => true,
+      onEndTurn: vi.fn(), actionBlocked: () => true,
     });
     hud.update(unlimitedHudPlaying(), { animate: false });
     const btn = container.querySelector(".end-turn-btn") as HTMLButtonElement;
@@ -1961,7 +1961,7 @@ describe("End turn button", () => {
   });
 
   it("keeps the hand inert while a play is resolving", () => {
-    const { container, hud } = setup({ isResolving: () => true });
+    const { container, hud } = setup({ actionBlocked: () => true });
     hud.update(unlimitedHudPlaying(), { animate: false });
     const card = container.querySelector(".card") as HTMLButtonElement;
     expect(card.disabled).toBe(true);
@@ -1969,7 +1969,7 @@ describe("End turn button", () => {
 
   it("draws a hand it will not take as a hand it will not take - every card", () => {
     // The invariant behind a whole class of bug: a seat that cannot act must
-    // LOOK like a seat that cannot act. `isResolving` is the one predicate the
+    // LOOK like a seat that cannot act. `actionBlocked` is the one hook the
     // HUD is given, so anything that refuses a click has to be inside it -
     // when two of them (a harvest offer and an unanswered conquest) were
     // spelled at the click handler instead, the hand rendered live, hovered,
@@ -1978,7 +1978,7 @@ describe("End turn button", () => {
     // So: no card is merely enabled-but-inert, and none is left looking live.
     // Whichever way the predicate is fed, the fan and the button agree with it.
     const { container, hud } = setup({
-      onEndTurn: vi.fn(), isResolving: () => true,
+      onEndTurn: vi.fn(), actionBlocked: () => true,
     });
     hud.update(unlimitedHudPlaying(), { animate: false });
     const cards = [...container.querySelectorAll(".card")] as HTMLButtonElement[];
@@ -1993,13 +1993,41 @@ describe("End turn button", () => {
     expect(btn.disabled).toBe(true);
   });
 
+  it("disables EVERY control whose action is blocked, not just the hand", () => {
+    // The rule this pins: a control the handler will refuse must say so on its
+    // own face. Surrender and Keep playing had no disabled state at all, so
+    // when the gate behind them grew a term they became buttons that did
+    // nothing and explained nothing - the same failure as the hand, on a
+    // surface nobody had thought to check.
+    const blocked = new Set<string>();
+    const { container, hud } = setup({
+      onEndTurn: vi.fn(),
+      actionBlocked: ((a: string) => blocked.has(a)) as never,
+    });
+    const btn = (sel: string) => container.querySelector(sel) as HTMLButtonElement;
+
+    hud.update(unlimitedHudPlaying(), { animate: false });
+    expect(btn(".surrender-btn").disabled).toBe(false);
+    expect(btn(".end-turn-btn").disabled).toBe(false);
+
+    // Blocking ONE action must move ONE control - the table is per action, not
+    // one boolean, precisely so an owed conquest cannot take the buttons that
+    // exist to get out of one.
+    blocked.add("surrender");
+    hud.update(unlimitedHudPlaying(), { animate: false });
+    expect(btn(".surrender-btn").disabled).toBe(true);
+    expect(btn(".end-turn-btn").disabled).toBe(false);
+    expect((container.querySelector(".card") as HTMLButtonElement).disabled)
+      .toBe(false);
+  });
+
   it("takes the hand back the moment it stops resolving", () => {
     // The other half, and the reason `inputLocked` is derived rather than
     // stored: nothing repaints when it goes false, so a caller owes a paint on
     // the way out. This pins that a repaint is all it takes.
     let resolving = true;
     const { container, hud } = setup({
-      onEndTurn: vi.fn(), isResolving: () => resolving,
+      onEndTurn: vi.fn(), actionBlocked: () => resolving,
     });
     const g = unlimitedHudPlaying();
     hud.update(g, { animate: false });
