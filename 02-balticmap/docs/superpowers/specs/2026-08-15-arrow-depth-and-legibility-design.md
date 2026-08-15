@@ -149,8 +149,14 @@ station in both directions.
 station, in two passes:
 
 1. **Which stations.** Each lane in turn takes the free station nearest its
-   offset, among those with at least `LAYOUT.depthMin` of room BOTH ways. A
-   station is taken at most once, so no two arrows stack.
+   offset, among those with at least `LAYOUT.depthMin` of room BOTH ways and
+   at least the two lanes' half-widths along the border from every station
+   this block has already taken. A station is taken at most once, so no two
+   arrows stack, and the separation is what keeps them from being drawn on top
+   of each other where the stations are a fraction of a unit apart. Where the
+   border offers nothing that far off, the lane takes the nearest crossable
+   station anyway and the block overruns: it is the trade `LAYOUT.blockMin`
+   already makes for the ground.
 2. **Which lane gets which.** The chosen stations are sorted along the tangent
    and handed out in declaration order.
 
@@ -177,9 +183,14 @@ On a straight border every station lies on the tangent line anyway and nothing
 moves. On a bent one the block follows the frontier, which is what an arrow
 crossing that frontier should have been doing.
 
-A strait keeps its single station at the midpoint of the narrowest crossing,
-with `into` and `out` of `gap / 2 + seaClearance`, so nothing about sea
-crossings changes.
+A strait gets a station table too, spread along the tangent through the
+midpoint of the narrowest crossing, every station carrying `into` and `out` of
+`gap / 2 + seaClearance`. Open water is equally good everywhere, so the table
+says nothing new about the ground - it is there so that a block of arrows has
+a place each, and `layoutLanes` stays one rule with no sea arm in it. A single
+station is one lane wide: the second arrow of a block finds none, falls
+through to the land depths, and is drawn spanning nothing, out in the middle
+of the water.
 
 ## 4. When no station qualifies
 

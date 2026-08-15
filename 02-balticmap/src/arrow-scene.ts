@@ -1,4 +1,6 @@
-import { ARROW_DEPTHS, type Crossing, type Pt, type Station } from "./borders";
+import {
+  ARROW_DEPTHS, stationRoom, type Crossing, type Pt, type Station,
+} from "./borders";
 import { pointAlong, spearFor, spearPolygon } from "./arrows";
 import { runAnimation } from "./animate";
 
@@ -8,9 +10,9 @@ import { runAnimation } from "./animate";
  *  the scene only fits its width into whatever the ground allows.
  *
  *  Opening values tuned by eye against the map's own scale, not derived. The
- *  map is 1000x1400 user units and a land is roughly 200 across, so a 64-unit
- *  arrow is a short step over the frontier rather than a march across a
- *  country. */
+ *  map is 1000x1400 user units and a land is roughly 200 across, so a block
+ *  of this width is a band standing on the frontier rather than a shape the
+ *  size of the land behind it. */
 export const LAYOUT = {
   /** Share of the border's extent the whole block of arrows may occupy. */
   blockShare: 0.55,
@@ -96,59 +98,82 @@ export interface Lane {
  *  declared. Shorter than the lane list where the border cannot offer one per
  *  lane; the caller falls back to the tangent for the rest.
  *
- *  Two passes, and the second is the ordering rule. Each lane takes the FREE
- *  station nearest its own offset, so no arrow is pushed onto a worse place
- *  because its neighbour got there first - a search constrained to come after
- *  the previous lane's station left 2 of 1,236 lanes with an end on the wrong
- *  land. Then the chosen stations are dealt out along the border, which costs
+ *  Three preferences in a fixed order, and the order is the whole rule.
+ *
+ *  A lane wants a station it can cross AND one far enough along the border
+ *  from every station this block has already taken to fit both arrows beside
+ *  each other - half of its own width plus half of its neighbour's. Stations
+ *  on this map are routinely a fraction of a unit apart, so nearest-to-my-own-
+ *  offset alone put two lanes closer together than their own widths on 364 of
+ *  848 lane pairs, the worst pair 24 units into each other: arrows drawn one
+ *  on top of the other on a border the block was supposed to be packed along.
+ *
+ *  Failing that it takes the crossable station nearest its offset anyway, and
+ *  failing THAT the roomiest free one, because correctness outranks packing: a
+ *  lane must land somewhere it can actually cross from, and a search made to
+ *  come after its neighbour unconditionally left 2 of 1,236 lanes with an end
+ *  on the wrong land. Two arrows too close together is a picture that reads
+ *  badly; one arrow ending on a land it is not about is a picture that lies.
+ *
+ *  The chosen stations are then dealt out along the border, which costs
  *  nothing: it is the same SET, so the same arrows stand in the same places
  *  and only which arrow stands where changes. */
 function stationsForBlock(
-  cross: Crossing, offsets: readonly number[],
+  cross: Crossing, offsets: readonly number[], widths: readonly number[],
 ): Station[] {
   const base = cross.at.x * cross.tangent.x + cross.at.y * cross.tangent.y;
   const taken = new Set<number>();
-  const chosen: Station[] = [];
-  for (const offset of offsets) {
-    let best: Station | null = null;
-    let bestIndex = -1;
-    let bestGap = Number.POSITIVE_INFINITY;
-    for (let i = 0; i < cross.stations.length; i++) {
-      if (taken.has(i)) continue;
-      const station = cross.stations[i];
-      // Both ways, because an arrow has two ends and the short one is not
-      // always the end aimed at the target.
-      if (station.into < ARROW_DEPTHS.min || station.out < ARROW_DEPTHS.min) continue;
-      const gap = Math.abs(station.s - (base + offset));
-      if (gap < bestGap) {
-        bestGap = gap;
-        best = station;
-        bestIndex = i;
+  const chosen: { station: Station; width: number }[] = [];
+  // Both ways, because an arrow has two ends and the short one is not always
+  // the end aimed at the target.
+  const crossable = (st: Station): boolean =>
+    st.into >= ARROW_DEPTHS.min && st.out >= ARROW_DEPTHS.min;
+  for (let lane = 0; lane < offsets.length; lane++) {
+    const want = base + offsets[lane];
+    const width = widths[lane];
+    const clear = (st: Station): boolean => chosen.every(
+      (other) => Math.abs(st.s - other.station.s) >= (width + other.width) / 2,
+    );
+    const nearest = (ok: (st: Station) => boolean): number => {
+      let found = -1;
+      let bestGap = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < cross.stations.length; i++) {
+        if (taken.has(i) || !ok(cross.stations[i])) continue;
+        const gap = Math.abs(cross.stations[i].s - want);
+        if (gap < bestGap) {
+          bestGap = gap;
+          found = i;
+        }
       }
-    }
-    if (best === null) {
-      // Nothing on this border can take an arrow of the minimum depth. The
-      // roomiest free station is still the best place to stand, and the floor
-      // in `layoutLanes` decides what gets overrun. Measured, neither map
-      // reaches this arm; it is here for one that has not been drawn.
+      return found;
+    };
+    let index = nearest((st) => crossable(st) && clear(st));
+    if (index < 0) index = nearest(crossable);
+    if (index < 0) {
+      // Nothing free on this border can take an arrow of the minimum depth.
+      // The roomiest free station is still the best place to stand, and the
+      // floor in `layoutLanes` decides what gets overrun. Measured, no station
+      // table on either map is cramped enough to reach this on a land border,
+      // and a sea crossing cannot reach it at all - every one of its stations
+      // is `gap / 2 + seaClearance`, which clears the floor by construction.
+      // What DOES reach it is a block with more lanes than the border has
+      // stations: everything free has been taken, this stays -1, and the block
+      // comes back short.
+      let bestRoom = -1;
       for (let i = 0; i < cross.stations.length; i++) {
         if (taken.has(i)) continue;
-        const station = cross.stations[i];
-        const room = Math.min(Math.max(station.into, 0), Math.max(station.out, 0));
-        const bestRoom = best === null
-          ? -1
-          : Math.min(Math.max(best.into, 0), Math.max(best.out, 0));
+        const room = stationRoom(cross.stations[i]);
         if (room > bestRoom) {
-          best = station;
-          bestIndex = i;
+          bestRoom = room;
+          index = i;
         }
       }
     }
-    if (best === null) break;
-    taken.add(bestIndex);
-    chosen.push(best);
+    if (index < 0) break;
+    taken.add(index);
+    chosen.push({ station: cross.stations[index], width });
   }
-  return chosen.sort((p, q) => p.s - q.s);
+  return chosen.map((c) => c.station).sort((p, q) => p.s - q.s);
 }
 
 /** Every arrow crossing one border, side by side along it, at the render's
@@ -182,7 +207,7 @@ export function layoutLanes(
     offsets.push(cursor + width / 2);
     cursor += width;
   }
-  const stations = stationsForBlock(cross, offsets);
+  const stations = stationsForBlock(cross, offsets, widths);
   const out: Lane[] = [];
   for (let i = 0; i < items.length; i++) {
     const width = widths[i];

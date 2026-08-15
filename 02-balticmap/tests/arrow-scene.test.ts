@@ -5,7 +5,9 @@ import {
   borderKeyOf, emphasisFor, laneWidthFor, layoutLanes, renderArrowScene,
   unitWidthFor, type ArrowCues, type ArrowSpec, type SceneCtx,
 } from "../src/arrow-scene";
-import { ARROW_DEPTHS, type Crossing, type Station } from "../src/borders";
+import {
+  ARROW_DEPTHS, crossingBetween, type Crossing, type Station,
+} from "../src/borders";
 
 /** A station table for a straight border, one station every `gap` units of
  *  tangent, all with the same room. */
@@ -231,6 +233,61 @@ describe("layoutLanes", () => {
       strait, [{ strength: 1, forward: true }], aloneOn(strait, [1]),
     );
     expect(lane.bx - lane.ax).toBeCloseTo(100 + ARROW_DEPTHS.seaClearance * 2, 6);
+  });
+
+  it("spans the water on every lane of a sea block", () => {
+    // Through the REAL crossing, because the station table a strait is given
+    // is half of what makes this work and a hand-built one here would be
+    // checking the test's own copy of it. An attack and the counter answering
+    // it is the commonest block on the map: with a single station the counter
+    // found none, fell back to the land depths, and was drawn as a full-length
+    // arrow in the middle of the sea with neither end on a coast.
+    const west = [[
+      { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 60 }, { x: 0, y: 60 },
+    ]];
+    const east = [[
+      { x: 40, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 60 }, { x: 40, y: 60 },
+    ]];
+    const strait = crossingBetween(west, east);
+    expect(strait.sea).toBe(true);
+    const want = strait.gap + ARROW_DEPTHS.seaClearance * 2;
+    for (const shape of [[true, false], [true, false, true]]) {
+      const items = shape.map((forward) => ({ strength: 1, forward }));
+      const lanes = layoutLanes(strait, items, aloneOn(strait, items.map(() => 1)));
+      expect(lanes).toHaveLength(shape.length);
+      for (const lane of lanes) {
+        expect(Math.hypot(lane.bx - lane.ax, lane.by - lane.ay)).toBeCloseTo(want, 6);
+      }
+      // And each on its own place along the water, not stacked at the middle.
+      expect(new Set(lanes.map((l) => l.ay)).size).toBe(shape.length);
+    }
+  });
+
+  it("keeps two lanes at least their own widths apart along the border", () => {
+    // Stations half a unit apart, which is what this map's borders really look
+    // like where the outline is finely cut. Taking the free station nearest
+    // each lane's own offset and nothing else put two arrows closer together
+    // than their own widths on 364 of 848 lane pairs, the worst 24 units into
+    // each other - two arrows drawn on top of one another on a border the
+    // block is supposed to be packed along.
+    const crowded: Crossing = {
+      ...FLAT,
+      stations: Array.from({ length: 241 }, (_, i) => {
+        const s = (i - 120) * 0.5;
+        return { at: { x: 0, y: s }, s, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail };
+      }),
+    };
+    const lanes = layoutLanes(crowded, [
+      { strength: 1, forward: true }, { strength: 1, forward: false },
+      { strength: 1, forward: true },
+    ], aloneOn(crowded, [1, 1, 1]));
+    const centre = (lane: typeof lanes[number]): number => (lane.ay + lane.by) / 2;
+    for (let i = 1; i < lanes.length; i++) {
+      const apart = Math.abs(centre(lanes[i]) - centre(lanes[i - 1]));
+      expect(apart).toBeGreaterThanOrEqual(
+        (lanes[i].width + lanes[i - 1].width) / 2 - 1e-9,
+      );
+    }
   });
 
   it("keeps the caller's order", () => {

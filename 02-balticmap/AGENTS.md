@@ -283,9 +283,17 @@ a geometry search. Five things about it are load-bearing:
   on the wrong land; standing lanes on stations instead cut that to 8, and it
   is 0 today - `tests/borders.test.ts` asserts it across every adjacency on
   both maps rather than allow-listing what is left.
-- **Each lane takes the nearest FREE station**, among those where both `into`
-  and `out` clear `ARROW_DEPTHS.min` - never one an earlier lane in the same
-  block has already taken. The stations a block ends up on are then dealt out
+- **Each lane takes the nearest FREE station its neighbours leave it room
+  on**, among those where both `into` and `out` clear `ARROW_DEPTHS.min` -
+  never one an earlier lane in the same block has already taken, and never one
+  closer along the border to a station this block has taken than the two
+  lanes' half-widths. Stations here are routinely a fraction of a unit apart,
+  so nearest-to-my-own-offset alone drew 364 of 848 lane pairs closer together
+  than their own widths, the worst 24 units into each other. Where the border
+  offers no station that far off, the lane takes the nearest crossable one
+  anyway and the two overlap: correctness outranks packing, and a search made
+  to come after its neighbour unconditionally left 2 of 1,236 lanes with an
+  end on the wrong land. The stations a block ends up on are then dealt out
   along the border in DECLARATION order, so the search decides WHICH stations
   a block occupies and the second pass decides which arrow stands on which of
   them, without disturbing the order the arrows were declared in.
@@ -303,15 +311,25 @@ a geometry search. Five things about it are load-bearing:
 - **A strait is not a border.** Two lands that share no vertex face each
   other across water - Saaremaa and the Balearics, four ordered pairs per
   map - and their arrows SPAN the water instead of standing in the middle of
-  it.
+  it. It gets a station table like any other crossing, laid along the water
+  rather than measured off a border it does not have, every station carrying
+  `gap / 2 + seaClearance` both ways: open water is equally good everywhere,
+  and one station per crossing is what let the second arrow of a block find
+  none and be drawn at the LAND depths, a 64-unit arrow standing in the sea
+  with neither end on a coast. The table is what keeps `layoutLanes` one rule
+  rather than a sea arm beside a land one.
 
 **Width is strength MAP-WIDE, and the scale is one number per render.**
 `width = unit * sqrt(strength)`, where `unitWidthFor` picks the `unit` once
 for the whole scene: the most generous one every border can afford, the
 smallest of `blockWidthFor(span) / sum of sqrt(strength) on that border`.
-Position is still declaration order, packed edge to edge, and direction does
-not sort them - an answering raid stands beside the attack it answers, in the
-order the two were declared.
+Position is still declaration order along the border, and direction does not
+sort them - an answering raid stands beside the attack it answers, in the
+order the two were declared. Packed edge to edge as far as the ground allows:
+a lane stands on a station rather than at an exact offset, so the packing is
+the separation rule in the station bullet above, and where a block is wider
+than the crossable ground it stands on the border overruns rather than
+thinning the arrows past reading.
 
 Three things follow, and each is the reason for a part of the rule:
 
@@ -456,13 +474,19 @@ is never pushed back by a question about something else. An arrow landing
 where the player is aiming answers `atAimTarget` and stays `full` too, ahead
 of the plain `back` a live aim gives every other arrow on the map.
 
-**A pin does not survive an interaction.** `decide()` in `src/main.ts` - the
-one place this screen turns a `Decision` into a state change - clears the pin
-for every decision kind except `end-turn`, which keeps it deliberately so the
-round about to run can still be read through the log filter afterward. This
-is the cross-cutting rule the section above leans on: `emphasisFor` never has
-to arbitrate a pin against a live aim, because a pin cannot still be standing
-once an aim exists. The two used to be sorted out after the fact instead, and
+**A pin does not survive an interaction**, and it takes two calls to say so,
+because the two moments are not the same moment. `onPlayCard` deselects the
+instant a card is ARMED, which is the one that closes the aim case: arming
+commits nothing, so `decide` is not reached until a target has been chosen,
+and the whole window in between is exactly when an aim is live. `decide()` -
+the one place this screen turns a `Decision` into a state change - clears the
+pin for every decision kind except `end-turn`, which keeps it deliberately so
+the round about to run can still be read through the log filter afterward;
+that arm is what covers a call site that arms nothing, the way an arrow's own
+counter click plays a raid straight through `decide` with no card ever set as
+`armed`. Together they are the cross-cutting rule the section above leans on:
+`emphasisFor` never has to arbitrate a pin against a live aim, because a pin
+cannot still be standing once an aim exists. The two used to be sorted out after the fact instead, and
 they could not both be right - a card armed while a land was pinned left the
 pin's dim and the aim's own back-step disagreeing about the same arrow. A new
 decision handler that reintroduces a stale pin is exactly the failure this

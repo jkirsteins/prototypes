@@ -222,14 +222,22 @@ describe("crossingBetween", () => {
     expect([...ss].sort((a, b) => a - b)).toEqual(ss);
   });
 
-  it("gives a strait one station spanning the water", () => {
+  it("gives a strait a table of stations, every one spanning the water", () => {
     const far = [[
       { x: 40, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 20 }, { x: 40, y: 20 },
     ]];
     const c = crossingBetween(LEFT, far);
-    expect(c.stations).toHaveLength(1);
-    expect(c.stations[0].into).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
-    expect(c.stations[0].out).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+    // More than one, so a block of arrows gets a place each: with a single
+    // station every lane after the first found none and was drawn at the land
+    // depths, standing in open water.
+    expect(c.stations.length).toBeGreaterThan(1);
+    for (const st of c.stations) {
+      expect(st.into).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+      expect(st.out).toBeCloseTo(30 / 2 + ARROW_DEPTHS.seaClearance, 6);
+    }
+    const ss = c.stations.map((st) => st.s);
+    expect(new Set(ss).size).toBe(ss.length);
+    expect([...ss].sort((p, q) => p - q)).toEqual(ss);
   });
 });
 
