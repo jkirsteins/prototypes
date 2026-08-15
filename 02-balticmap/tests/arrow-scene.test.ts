@@ -5,17 +5,27 @@ import {
   laneWidthFor, layoutLanes, renderArrowScene, unitWidthFor,
   type ArrowSpec, type SceneCtx,
 } from "../src/arrow-scene";
-import type { Crossing } from "../src/borders";
+import { ARROW_DEPTHS, type Crossing, type Station } from "../src/borders";
+
+/** A station table for a straight border, one station every `gap` units of
+ *  tangent, all with the same room. */
+const stationsFor = (
+  into: number, out: number, count = 9, gap = 12,
+): Station[] =>
+  Array.from({ length: count }, (_, i) => {
+    const s = (i - (count - 1) / 2) * gap;
+    return { at: { x: 0, y: s }, s, into, out };
+  });
 
 /** A border running up the y axis at x=0, with "across" pointing at +x. */
 const FLAT: Crossing = {
   at: { x: 0, y: 0 },
-  stations: [],
   tangent: { x: 0, y: 1 },
   normal: { x: 1, y: 0 },
   span: 200,
   sea: false,
   gap: 0,
+  stations: stationsFor(ARROW_DEPTHS.head, ARROW_DEPTHS.tail),
 };
 
 describe("blockWidthFor", () => {
@@ -126,16 +136,101 @@ describe("layoutLanes", () => {
     const [lane] = layoutLanes(
       FLAT, [{ strength: 1, forward: true }], aloneOn(FLAT, [1]),
     );
-    expect(lane.ax).toBeCloseTo(-LAYOUT.tailDepth, 6);
-    expect(lane.bx).toBeCloseTo(LAYOUT.headDepth, 6);
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.tail, 6);
+    expect(lane.bx).toBeCloseTo(ARROW_DEPTHS.head, 6);
+  });
+
+  it("reaches only as far as its station has room", () => {
+    const shallow: Crossing = { ...FLAT, stations: stationsFor(20, ARROW_DEPTHS.tail) };
+    const [lane] = layoutLanes(
+      shallow, [{ strength: 1, forward: true }], aloneOn(shallow, [1]),
+    );
+    expect(lane.bx).toBeCloseTo(20, 6);
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.tail, 6);
+  });
+
+  it("reads a backward lane's room the other way round", () => {
+    // `into` is room in the second land, so a lane running back into the FIRST
+    // land is bounded by `out` at its head.
+    const lopsided: Crossing = { ...FLAT, stations: stationsFor(30, 15) };
+    const [lane] = layoutLanes(
+      lopsided, [{ strength: 1, forward: false }], aloneOn(lopsided, [1]),
+    );
+    expect(lane.ax - lane.bx).toBeCloseTo(15 + 30, 6);
+    expect(lane.bx).toBeCloseTo(-15, 6);
+  });
+
+  it("floors a station too shallow to draw on", () => {
+    const pinch: Crossing = { ...FLAT, stations: stationsFor(3, 4) };
+    const [lane] = layoutLanes(
+      pinch, [{ strength: 1, forward: true }], aloneOn(pinch, [1]),
+    );
+    expect(lane.bx).toBeCloseTo(ARROW_DEPTHS.min, 6);
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.min, 6);
+  });
+
+  it("gives each lane of a block its own station", () => {
+    const lanes = layoutLanes(FLAT, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+      { strength: 1, forward: true },
+    ], aloneOn(FLAT, [1, 1, 1]));
+    const seen = lanes.map((l) => l.ay);
+    expect(new Set(seen).size).toBe(3);
+    // In order along the border, which is declaration order.
+    expect([...seen].sort((a, b) => a - b)).toEqual(seen);
+  });
+
+  it("deals the stations out along the border, in declaration order", () => {
+    // Lane 0 is offset furthest from the only two roomy stations, so a search
+    // that made each lane come after its neighbour would strand it. Both are
+    // used, and they are handed out in border order.
+    const two: Crossing = {
+      ...FLAT,
+      stations: [
+        { at: { x: 0, y: -6 }, s: -6, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+        { at: { x: 0, y: 6 }, s: 6, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+      ],
+    };
+    const lanes = layoutLanes(two, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+    ], aloneOn(two, [1, 1]));
+    expect(lanes.map((l) => l.ay)).toEqual([-6, 6]);
+  });
+
+  it("skips a station that cannot be crossed", () => {
+    const holed: Crossing = {
+      ...FLAT,
+      stations: [
+        { at: { x: 0, y: -12 }, s: -12, into: -1, out: -1 },
+        { at: { x: 0, y: 0 }, s: 0, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+        { at: { x: 0, y: 12 }, s: 12, into: ARROW_DEPTHS.head, out: ARROW_DEPTHS.tail },
+      ],
+    };
+    const lanes = layoutLanes(holed, [
+      { strength: 1, forward: true }, { strength: 1, forward: true },
+    ], aloneOn(holed, [1, 1]));
+    expect(lanes.map((l) => l.ay)).toEqual([0, 12]);
+  });
+
+  it("falls back to the tangent where a crossing has no stations", () => {
+    const bare: Crossing = { ...FLAT, stations: [] };
+    const [lane] = layoutLanes(
+      bare, [{ strength: 1, forward: true }], aloneOn(bare, [1]),
+    );
+    expect(lane.ax).toBeCloseTo(-ARROW_DEPTHS.tail, 6);
+    expect(lane.bx).toBeCloseTo(ARROW_DEPTHS.head, 6);
   });
 
   it("spans the water on a sea crossing instead of standing in it", () => {
-    const strait: Crossing = { ...FLAT, sea: true, gap: 100 };
+    const across = 100 / 2 + ARROW_DEPTHS.seaClearance;
+    const strait: Crossing = {
+      ...FLAT, sea: true, gap: 100,
+      stations: [{ at: { x: 0, y: 0 }, s: 0, into: across, out: across }],
+    };
     const [lane] = layoutLanes(
       strait, [{ strength: 1, forward: true }], aloneOn(strait, [1]),
     );
-    expect(lane.bx - lane.ax).toBeCloseTo(100 + LAYOUT.seaClearance * 2, 6);
+    expect(lane.bx - lane.ax).toBeCloseTo(100 + ARROW_DEPTHS.seaClearance * 2, 6);
   });
 
   it("keeps the caller's order", () => {
@@ -166,7 +261,10 @@ const NS = "http://www.w3.org/2000/svg";
 const ctx: SceneCtx = {
   crossingFor: (from, to) => ({
     at: { x: 0, y: 0 },
-    stations: [],
+    // A station every 12 units of tangent, roomy on both sides, so the render
+    // tests exercise the real station path - several lanes sharing a border
+    // still find their own place - rather than the tangent fallback.
+    stations: stationsFor(ARROW_DEPTHS.head, ARROW_DEPTHS.tail),
     tangent: { x: 0, y: 1 },
     // Every pair in these tests crosses west to east, and back the other way
     // when the caller names them the other way round.

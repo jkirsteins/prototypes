@@ -1,8 +1,11 @@
-import type { Crossing, Pt } from "./borders";
+import { ARROW_DEPTHS, type Crossing, type Pt, type Station } from "./borders";
 import { pointAlong, spearFor, spearPolygon } from "./arrows";
 import { runAnimation } from "./animate";
 
-/** How an arrow is sized and placed on the border it crosses.
+/** How an arrow is sized on the border it crosses. Depth lives in
+ *  `ARROW_DEPTHS` (`src/borders.ts`) instead, alongside the stations it is
+ *  measured against - the ground decides how deep an arrow may stand, and
+ *  the scene only fits its width into whatever the ground allows.
  *
  *  Opening values tuned by eye against the map's own scale, not derived. The
  *  map is 1000x1400 user units and a land is roughly 200 across, so a 64-unit
@@ -19,12 +22,6 @@ export const LAYOUT = {
   blockMax: 96,
   /** Narrowest a single arrow may be drawn. */
   laneMin: 14,
-  /** How far the arrow starts inside the land it leaves. */
-  tailDepth: 30,
-  /** How far the head reaches inside the land it is aimed at. */
-  headDepth: 34,
-  /** How far past each coast an arrow across water reaches. */
-  seaClearance: 16,
 };
 
 /** What one border has room for: the whole block of arrows crossing it. This
@@ -95,6 +92,65 @@ export interface Lane {
   bx: number; by: number;
 }
 
+/** Which stations a block of lanes stands on, in the order the lanes were
+ *  declared. Shorter than the lane list where the border cannot offer one per
+ *  lane; the caller falls back to the tangent for the rest.
+ *
+ *  Two passes, and the second is the ordering rule. Each lane takes the FREE
+ *  station nearest its own offset, so no arrow is pushed onto a worse place
+ *  because its neighbour got there first - searching under a "must come after
+ *  the last one" rule costs 2 lanes of 1,236 an end on the wrong land. Then the
+ *  chosen stations are dealt out along the border, which costs nothing: it is
+ *  the same SET, so the same arrows stand in the same places and only which
+ *  arrow stands where changes. */
+function stationsForBlock(
+  cross: Crossing, offsets: readonly number[],
+): Station[] {
+  const base = cross.at.x * cross.tangent.x + cross.at.y * cross.tangent.y;
+  const taken = new Set<number>();
+  const chosen: Station[] = [];
+  for (const offset of offsets) {
+    let best: Station | null = null;
+    let bestIndex = -1;
+    let bestGap = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < cross.stations.length; i++) {
+      if (taken.has(i)) continue;
+      const station = cross.stations[i];
+      // Both ways, because an arrow has two ends and the short one is not
+      // always the end aimed at the target.
+      if (station.into < ARROW_DEPTHS.min || station.out < ARROW_DEPTHS.min) continue;
+      const gap = Math.abs(station.s - (base + offset));
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = station;
+        bestIndex = i;
+      }
+    }
+    if (best === null) {
+      // Nothing on this border can take an arrow of the minimum depth. The
+      // roomiest free station is still the best place to stand, and the floor
+      // in `layoutLanes` decides what gets overrun. Measured, neither map
+      // reaches this arm; it is here for one that has not been drawn.
+      for (let i = 0; i < cross.stations.length; i++) {
+        if (taken.has(i)) continue;
+        const station = cross.stations[i];
+        const room = Math.min(Math.max(station.into, 0), Math.max(station.out, 0));
+        const bestRoom = best === null
+          ? -1
+          : Math.min(Math.max(best.into, 0), Math.max(best.out, 0));
+        if (room > bestRoom) {
+          best = station;
+          bestIndex = i;
+        }
+      }
+    }
+    if (best === null) break;
+    taken.add(bestIndex);
+    chosen.push(best);
+  }
+  return chosen.sort((p, q) => p.s - q.s);
+}
+
 /** Every arrow crossing one border, side by side along it, at the render's
  *  own scale (`unitWidthFor`).
  *
@@ -104,7 +160,15 @@ export interface Lane {
  *  is its strength and is the same on every border of the map.
  *
  *  Direction does not sort them: an answering raid stands beside the attack it
- *  answers, in the order the two were declared. */
+ *  answers, in the order the two were declared.
+ *
+ *  **A lane stands on a station rather than on a straight line.** The tangent
+ *  is a global fit and the border bends under it, so a lane offset along that
+ *  line is routinely not on the border at all - it is inside one of the two
+ *  lands, and no length of arrow drawn from there crosses anything. On a
+ *  straight border every station lies on the tangent anyway and nothing moves;
+ *  on a bent one the block follows the frontier, which is what an arrow
+ *  crossing that frontier should be doing. */
 export function layoutLanes(
   cross: Crossing,
   items: readonly { strength: number; forward: boolean }[],
@@ -112,25 +176,40 @@ export function layoutLanes(
 ): Lane[] {
   const widths = items.map((i) => laneWidthFor(i.strength, unit));
   const total = widths.reduce((s, w) => s + w, 0);
-  // A strait is not a border: there is no line to cross, so the arrow spans
-  // the water rather than standing in the middle of it.
-  const tail = cross.sea ? cross.gap / 2 + LAYOUT.seaClearance : LAYOUT.tailDepth;
-  const head = cross.sea ? cross.gap / 2 + LAYOUT.seaClearance : LAYOUT.headDepth;
-  const out: Lane[] = [];
+  const offsets: number[] = [];
   let cursor = -total / 2;
+  for (const width of widths) {
+    offsets.push(cursor + width / 2);
+    cursor += width;
+  }
+  const stations = stationsForBlock(cross, offsets);
+  const out: Lane[] = [];
   for (let i = 0; i < items.length; i++) {
     const width = widths[i];
-    const centre = cursor + width / 2;
-    cursor += width;
-    const cx = cross.at.x + cross.tangent.x * centre;
-    const cy = cross.at.y + cross.tangent.y * centre;
-    const dir = items[i].forward ? 1 : -1;
+    const offset = offsets[i];
+    const found = stations[i] ?? null;
+    const centre = found?.at ?? {
+      x: cross.at.x + cross.tangent.x * offset,
+      y: cross.at.y + cross.tangent.y * offset,
+    };
+    const forward = items[i].forward;
+    // A station's `into` is room in the SECOND land whichever way the arrow
+    // runs, so a backward lane reads the two the other way round.
+    const ahead = found === null
+      ? ARROW_DEPTHS.head
+      : forward ? found.into : found.out;
+    const behind = found === null
+      ? ARROW_DEPTHS.tail
+      : forward ? found.out : found.into;
+    const head = Math.max(ahead, ARROW_DEPTHS.min);
+    const tail = Math.max(behind, ARROW_DEPTHS.min);
+    const dir = forward ? 1 : -1;
     const nx = cross.normal.x * dir;
     const ny = cross.normal.y * dir;
     out.push({
       index: i, width,
-      ax: cx - nx * tail, ay: cy - ny * tail,
-      bx: cx + nx * head, by: cy + ny * head,
+      ax: centre.x - nx * tail, ay: centre.y - ny * tail,
+      bx: centre.x + nx * head, by: centre.y + ny * head,
     });
   }
   return out;
