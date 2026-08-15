@@ -192,19 +192,33 @@ refactor spec adds no cards in this pass and the repo's card gate agrees.
   confound the read the same way waking the grey middle at seeding would.
   Capture tests cover both a warpath and a pestilence source faction so the
   behaviour is pinned either way.
-- **`aimsUpOwnChain` widens to the whole realm and is renamed for it.** A
-  hostile card may not aim at any land under the actor's own root, in any
-  direction: not up the chain, not sideways at a sibling vassal, not down at
-  its own. The refactor spec names sibling raids as the likeliest source of "my
-  ally did something insane", and reading as randomness is the complaint the
-  whole exercise started from, so this ships WITH acting vassals rather than
-  after them.
-- **`MAX_AI_TURNS` (`src/main.ts:3344`) is derived rather than raised.** It is a
-  stall guard sized for five acting seats. A legitimate round of fifteen would
-  trip it, log `AI chain stalled - breaking`, and silently truncate the world's
-  turn. It has to be a function of the seats that can act on the board as it
-  stands, with headroom, or it becomes a hidden cap on how large a bloc the
-  game will simulate.
+- **`aimsUpOwnChain` widens SIDEWAYS only, and is renamed for it.** A hostile
+  card may not aim at a land that is under the actor's own root realm but not
+  under the actor: up the chain as today, and now at a sibling vassal. The
+  refactor spec names sibling raids as the likeliest source of "my ally did
+  something insane", and reading as randomness is the complaint the whole
+  exercise started from, so this ships WITH acting vassals rather than after
+  them.
+
+  **Downward stays legal, deliberately.** A lord raiding its own vassal is
+  vassal upkeep: it is how a vassal's defenses are held under the independence
+  gate, and `tests/playability.test.ts` already pins it with that reason
+  written down. Closing it would delete the mechanism this whole stage exists
+  to put pressure on, which is the opposite of the intent. The predicate is
+  therefore "inside my root's realm AND not inside mine", not "inside my
+  root's realm".
+- **`MAX_AI_TURNS` needs nothing.** Checked rather than assumed: it is 1000
+  (`src/decisions.ts:39`), a stall guard deliberately set far above any real
+  turn order, and a round of every faction on the map is 26. It is recorded
+  here because "the seat cap will bite" is the obvious worry and the answer is
+  that it does not.
+
+- **Both doors that change allegiance seat the ruler**, not just the arriving
+  one. `takeLand` (`src/game.ts:1186`, an army arriving) and `landSubjugation`
+  (`src/game.ts:2268`, a card resolving on the table) already both call
+  `stripOnCapture`, and the seating belongs beside it in each. `beginTurn`
+  currently reads `state.rulers` without threading a local copy, so it gains
+  one and returns it, the way the play path already does.
 
 ### What deliberately does not change
 
