@@ -373,7 +373,7 @@ as every live arrow, so it takes a lane in the same block. It states its own
 fill (`src/main.ts`: gold, red or a neutral brown, by `tone`) rather than
 leaving it to `.march-arrow`'s CSS - which a ghost, drawn as `.clash-flash`,
 does not even claim - because a ghost is the one arrow on the map its beat is
-actually about, not because it would otherwise inherit a rival's 0.45.
+actually about.
 
 **A faction colour used as a MARK goes through `inkFor`.** A rival's arrow
 (tone `other`) is filled with `arrowInkFor` in `src/main.ts`, which darkens

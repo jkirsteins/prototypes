@@ -628,10 +628,9 @@ function place(
  *  over.
  *
  *  A filled animation outranks every rule in the stylesheet for as long as it
- *  is alive, and an arrow's opacity is the stylesheet's business - a rival's
- *  quarrel rests at 0.45, the focus dim at 0.12, the arrows behind a live aim
- *  at 0.75. An enter fade left filling would pin all three at whatever it
- *  ended on. */
+ *  is alive, and an arrow's opacity is the stylesheet's business - full,
+ *  dimmed, faded or back, whatever its `emphasis` class declares. An enter
+ *  fade left filling would pin it at whatever it ended on. */
 function transition(
   el: Element, frames: Keyframe[], ms: number, onDone?: () => void,
 ): { cancel(): void } {
@@ -650,11 +649,11 @@ function transition(
  *  own fade before asking and gets the resting value, and `retire` asks before
  *  cancelling and gets the value on screen.
  *
- *  Read off the element rather than assumed to be 1 either way: fading a
- *  rival's 0.45 arrow up to full and dropping it back is a flash on every
- *  arrow that is not the player's own, and an arrow retired while it is still
- *  arriving - a counter declared and the turn ended behind it - would be
- *  snapped up to full before being faded out. */
+ *  Read off the element rather than assumed to be 1 either way: fading an
+ *  already-dimmed arrow up to full and dropping it back down is a flash on
+ *  every arrow whose resting opacity is not full, and an arrow retired while
+ *  it is still arriving - a counter declared and the turn ended behind it -
+ *  would be snapped up to full before being faded out. */
 function currentOpacity(el: Element): number {
   const raw = getComputedStyle(el).opacity;
   const value = Number(raw);
