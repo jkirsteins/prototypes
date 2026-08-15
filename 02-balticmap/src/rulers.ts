@@ -103,8 +103,10 @@ export function initialRulers(
 }
 
 /** Empties every seat except the ones named. What makes a land unplayable:
- *  no leader, so no turn, so no cards - even after somebody takes it, which
- *  is why a conquest is property rather than a new player at the table. */
+ *  no leader, so no turn, so no cards - until somebody takes it, and then
+ *  `seatRuler` gives its people a chief and the quiet land joins the table as
+ *  its new lord's vassal. The vacancy is where a land STARTS, not a mark that
+ *  it can never play. */
 export function vacateRulers(rulers: Rulers, seated: readonly string[]): Rulers {
   const out: Rulers = {};
   for (const [factionId, ruler] of Object.entries(rulers)) {

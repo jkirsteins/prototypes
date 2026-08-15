@@ -135,10 +135,31 @@ cheating.
 ## A land with no leader takes no turn
 
 `pickFaction` seats a ruler on the acting factions alone (`vacateRulers`), and
-a vacant chair nobody sits in is what `advance` passes over. The gate is on
-ACTING, not on holding: a land somebody has taken still has no leader, and a
-leaderless faction takes no land - a restless raid out of the grey middle is a
-raid, not a conquest.
+a vacant chair nobody sits in is what `advance` passes over. A leaderless
+faction also takes no land - a restless raid out of the grey middle is a raid,
+not a conquest.
+
+**A conquest fills the chair.** `takeLand` calls `seatRuler` beside the
+`stripOnCapture` it already runs, so a land that changes hands wakes up: its
+people get a chief, and a chief is the whole of what makes a seat take turns.
+The new ruler holds whatever its OWN people's build brings (`seatingAbilities`
+in `src/game.ts`, off `BUILD_ABILITIES`), never the taker's, because the land
+keeps the deck it was dealt. An occupied chair is handed straight back, so a
+land taken from a lord who was already leading it keeps its leader - a conquest
+is not an assassination.
+
+The grey middle is therefore a starting condition and not a permanent class,
+and `beginTurn` keeps a LOCAL `rulers` and returns it: a turn that takes a land
+does not end with the rulers it began with.
+
+The consequence that bites is on the AI, not the engine. Every acting seat must
+be able to FINISH its turn, and a picker that proposes a target the rules refuse
+hangs the run - `playCard` hands the state back unchanged, `endTurn` refuses a
+standard turn that played nothing, and `advance` will not move past an open
+turn. Vassals take turns now, a lord borders its vassal, and `aimsUpOwnChain`
+forbids aiming up your own pyramid, so every AI target list has to come from
+`validTargetsFor`. `greatRaidPick` was scoring the bare border instead, and hung
+about one seeded run in ten the moment woken vassals started acting.
 
 Because a leaderless actor never gets a `beginTurn` of its own, anything that
 resolves at the actor's turn start is swept at the round wrap instead, or its

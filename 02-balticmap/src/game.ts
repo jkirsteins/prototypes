@@ -45,8 +45,8 @@ import {
 } from "./passives";
 import {
   abilitiesByFaction, grantAbility, hasRuler, initialRulers, leadersByFaction,
-  leadershipByFaction, replaceRuler, rulerNameOf, rulerOf, vacateRulers,
-  type Rulers,
+  leadershipByFaction, replaceRuler, rulerNameOf, rulerOf, seatRuler,
+  vacateRulers, type Rulers,
 } from "./rulers";
 import { BUILD_ABILITIES } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
@@ -842,6 +842,27 @@ function actingFactions(
   return out;
 }
 
+/** What a newly seated ruler holds: whatever its own people's build brings,
+ *  from the one table the build screen and `pickFaction` also read. A woken
+ *  vassal is a seat like any other - a warpath people raid with `war-leader`
+ *  behind them - because the alternative is a second class of ruler, and the
+ *  whole design is that a status is the only difference between a land that
+ *  plays and one that does not.
+ *
+ *  Its own people's build, never the taker's: the land keeps the deck it was
+ *  dealt when it changes hands, and the abilities have to describe that deck.
+ *
+ *  A helper rather than a line inside `takeLand` because both doors an
+ *  allegiance change comes through owe the same answer - an army walking in
+ *  and a Subjugate claim answering - and two spellings would be two rules
+ *  within a week. */
+function seatingAbilities(
+  players: readonly PlayerState[], factionId: string,
+): readonly string[] {
+  const pl = players.find((p) => p.factionId === factionId);
+  return pl === undefined ? [] : BUILD_ABILITIES[pl.strategy] ?? [];
+}
+
 /** Every faction gets a seat and the same starting deck; only `MAX_ACTIVE` of
  *  them take turns, and the rest carry `keeps-to-itself`. Each AI seat rolls
  *  its build, seeded - one rng draw per AI seat, in seat order, BEFORE its
@@ -891,9 +912,10 @@ export function pickFaction(
     state.passives, state.factionIds, acting,
     (land) => !isUnheld(land, state.overlords, state.incorporated),
   );
-  // Only the factions that act keep a leader. Everything else about a quiet
-  // land follows from the vacancy: no ruler, no turn, and no turn even after
-  // somebody takes it.
+  // Only the factions that act keep a leader at the DEAL. Everything else
+  // about a quiet land follows from the vacancy: no ruler, so no turn, so no
+  // cards - until somebody takes it, and `takeLand` seats a chief on the land
+  // it took.
   // What each build's chief brings, from the one table the build screen also
   // reads. Seeded off the build rather than written into the raid cards: the
   // Pestilence seats hold Raid too, and theirs deal what the card says. The
@@ -1108,6 +1130,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const overlords = new Map(state.overlords);
   let respites = state.respites;
   let players = state.players;
+  // A conquest below seats a leader on the land it takes, so the turn's rulers
+  // are not the ones it started with.
+  let rulers = state.rulers;
   const lord = overlords.get(p.factionId);
   if (
     lord !== undefined &&
@@ -1189,6 +1214,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     const formerLord = overlords.get(land);
     overlords.set(land, by);
     passives = stripOnCapture(passives, land);
+    // The people wake up under their new lord: a land that has changed hands
+    // has a chief, and a chief is the whole of what makes a seat take turns.
+    // An occupied chair is handed straight back, so a land taken from a lord
+    // who was already leading it keeps the leader it had.
+    rulers = seatRuler(
+      rulers, state.ethnicities, land, state.turn,
+      seatingAbilities(players, land),
+    );
     players = updateFaction(players, land, (pl) => {
       const clean = stripTribute(pl);
       return { ...clean, deck: shuffle([...clean.deck, ...TRIBUTE_CARDS], rng) };
@@ -1573,7 +1606,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   ) ?? state.phase;
   return {
     ...state, phase, players, overlords, wealth, marches, nextMarchId, claims,
-    defense, passives, pendingTransfers,
+    defense, passives, pendingTransfers, rulers,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -1958,11 +1991,12 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
  *  run, and exempting them here would leave everybody else waiting on a turn
  *  that can never be taken.
  *
- *  Otherwise nobody leads it. A conquest does not wake a land up - taking a
- *  land wins the land, not its people's allegiance to a chief who does not
- *  exist - UNLESS a person is sitting there, because a player skipped forever
- *  is not a rule, it is a hung game. A leaderless person still takes no LAND;
- *  that gate is `hasRuler` at the capture sites and is untouched.
+ *  Otherwise nobody leads it - and a land nobody has taken is the only kind
+ *  that stays that way, because `takeLand` seats a chief on the land it takes
+ *  and a woken vassal comes to the table. The vacancy is still the whole of
+ *  the gate, UNLESS a person is sitting there, because a player skipped
+ *  forever is not a rule, it is a hung game. A leaderless person still takes
+ *  no LAND; that gate is `hasRuler` at the capture sites and is untouched.
  *
  *  ONE spelling, because two readers depend on the answer matching. `advance`
  *  passes over such a seat, and `beginTurn`'s round wrap lands the arrows it

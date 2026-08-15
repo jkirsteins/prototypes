@@ -807,12 +807,21 @@ function warpathBuild(
  *  nearest falling. Null when no target musters an arrow at all.
  *
  *  One list, `greatRaidMarches`, which is also what legality and the card tip
- *  read - the AI must not score a fan the rules would not send. */
+ *  read - the AI must not score a fan the rules would not send.
+ *
+ *  The CANDIDATES come from `validTargetsFor`, the same way every other picker
+ *  in this module gets its list, and never from the bare border. A seat that
+ *  proposes a target the rules refuse hangs: `playCard` hands the state back
+ *  unchanged, `aiTakeTurn` breaks on that and `endTurn` refuses a standard turn
+ *  that played nothing, so `advance` will not move past the seat and the run
+ *  stops. This was reachable the moment a VASSAL started taking turns, because
+ *  a lord borders its vassal and the fattest fan on the board is often aimed
+ *  straight up the actor's own chain, which `aimsUpOwnChain` forbids. */
 function greatRaidPick(
   v: RulesView, actor: string,
 ): { target: string; arrows: number; damage: number } | null {
   let best: { target: string; arrows: number; damage: number } | null = null;
-  for (const target of borderPolygonsOf(v, actor)) {
+  for (const target of validTargetsFor(v, actor, "great-raid")) {
     if (target in v.incorporated) continue;
     const arrows = greatRaidMarches(v, actor, target).length;
     if (arrows === 0) continue;

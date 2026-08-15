@@ -9,9 +9,12 @@ import iberiaPools from "../src/data/ruler-names-iberia.json";
 import genericNames from "../src/data/ruler-names-generic.json";
 import type { MapData } from "../src/types";
 import {
-  newGame, startGame, chooseBuild, pickFaction, advance, beginTurn, MAX_ACTIVE,
-  type GameState,
+  newGame, startGame, chooseBuild, pickFaction, advance, beginTurn, takesNoTurn,
+  MAX_ACTIVE, type GameState,
 } from "../src/game";
+import {
+  applyBootParams, parseBootParams, type BootParams,
+} from "../src/boot-params";
 import { playsTurns } from "../src/passives";
 import { aiTakeTurn } from "../src/ai";
 import { SIM_FACTION_IDS, SIM_ADJACENCY, seededRng } from "../src/sim";
@@ -299,6 +302,89 @@ describe("seatRuler", () => {
   });
 });
 
+describe("a conquest wakes the land", () => {
+  const params = (search: string): BootParams => {
+    const p = parseBootParams(search);
+    if (p === null) throw new Error(`expected boot params from ${search}`);
+    return p;
+  };
+
+  /** A pair the MAP says share a border, read out of the same adjacency the
+   *  game is dealt from rather than named here. `applyBootParams` silently
+   *  drops a `march=` clause whose source does not border its target, so two
+   *  hardcoded ids that drifted apart would boot an ordinary game and leave the
+   *  helper below spinning until it gave up on a conquest nobody declared. */
+  const ATTACKER = SIM_FACTION_IDS.find(
+    (id) => (SIM_ADJACENCY[id] ?? []).length > 0,
+  )!;
+  const VICTIM = SIM_ADJACENCY[ATTACKER][0];
+  const SEARCH =
+    `?seed=4&faction=${ATTACKER}&defense=${VICTIM}:0&march=${ATTACKER}>${VICTIM}`;
+
+  /** Plays until `VICTIM` has changed hands, and returns the state. The arrow
+   *  is declared by the boot params through the real rules - `defense=...:0`
+   *  makes it a land one army walks into - and lands at its actor's next turn.
+   *  So what is under test is `takeLand` calling the new writer, rather than a
+   *  fixture asserting itself.
+   *
+   *  `playedThisTurn` is forced because `advance` refuses an OPEN turn
+   *  (`turnOpen`) and would otherwise hand the same seat straight back: this
+   *  walk wants the seats to rotate, not the cards to be played. */
+  const conquest = (): { booted: GameState; state: GameState } => {
+    const booted = applyBootParams(
+      newGame(SIM_FACTION_IDS, SIM_ADJACENCY), params(SEARCH), seededRng(4),
+    );
+    let g = booted;
+    for (let i = 0; i < 40 && g.overlords.get(VICTIM) === undefined; i++) {
+      g = advance({ ...g, playedThisTurn: true }, seededRng(i + 1));
+    }
+    if (g.overlords.get(VICTIM) === undefined) {
+      throw new Error(`${VICTIM} never fell`);
+    }
+    return { booted, state: g };
+  };
+
+  it("seats a ruler on a taken land, so it stops being skipped", () => {
+    const { booted, state } = conquest();
+    expect(hasRuler(booted.rulers, VICTIM)).toBe(false);
+    expect(hasRuler(state.rulers, VICTIM)).toBe(true);
+    expect(takesNoTurn(state, VICTIM)).toBe(false);
+  });
+
+  it("gives the woken people their own build's ability", () => {
+    const { state } = conquest();
+    const pl = state.players.find((p) => p.factionId === VICTIM);
+    const expected = pl?.strategy === "warpath" ? [RAID_LEADERSHIP] : undefined;
+    expect(rulerOf(state.rulers, VICTIM).abilities).toEqual(expected);
+  });
+
+  it("is warpath, because the quiet lands were never dealt pestilence", () => {
+    // Which is why the pestilence arm of the seating is not reachable through a
+    // conquest on this map: `pestilence` is dealt to the ACTING rivals alone,
+    // and the deal spaces those out so none of them ever borders the human's
+    // own land. The arm itself is pinned by the `seatRuler` unit tests above.
+    expect(conquest().state.players.find((p) => p.factionId === VICTIM)?.strategy)
+      .toBe("warpath");
+  });
+
+  it("leaves every chair that was already occupied exactly as it found it", () => {
+    const { booted, state } = conquest();
+    // Object identity, not equality: a conquest is not a coup, and `seatRuler`
+    // hands an occupied chair straight back. A `takeLand` that re-seated would
+    // build a fresh literal here and reset the ruler's war-council stack.
+    for (const [factionId, ruler] of Object.entries(booted.rulers)) {
+      expect(state.rulers[factionId], factionId).toBe(ruler);
+    }
+    // And a pestilence build brings no ability, so no `abilities` key appears
+    // out of nowhere on one of those seats.
+    for (const pl of booted.players) {
+      if (pl.strategy !== "pestilence") continue;
+      if (!hasRuler(state.rulers, pl.factionId)) continue;
+      expect(rulerOf(state.rulers, pl.factionId).abilities).toBeUndefined();
+    }
+  });
+});
+
 describe("ruler invariant over a full game", () => {
   // runGame (src/sim.ts) returns a GameSummary, not the state, so drive a
   // game by hand: deal a map and step turns with aiTakeTurn/advance directly.
@@ -321,16 +407,30 @@ describe("ruler invariant over a full game", () => {
     // Sanity: the game actually progressed, so the invariant below is
     // exercised against successions, not just the untouched setup rulers.
     expect(state.turn).toBeGreaterThan(1);
-    // A run seats nobody new and vacates nobody: assassination replaces a
-    // ruler, and a conquest wins the land rather than its people's allegiance.
-    expect(Object.keys(state.rulers).sort()).toEqual(seatedAtDeal);
-    for (const id of seatedAtDeal) {
+    // A run vacates nobody, and the ONLY seats it fills are the lands that
+    // changed hands: taking a land wakes its people up under their new lord.
+    // Read off the log rather than off `overlords`, because a land that won
+    // its independence back keeps the chief it was given.
+    const woken = new Set(
+      state.log
+        .filter((e) => e.type === "subjugated")
+        .map((e) => e.targetFactionId!),
+    );
+    expect(woken.size, "lands changed hands").toBeGreaterThan(0);
+    for (const id of seatedAtDeal) expect(hasRuler(state.rulers, id), id).toBe(true);
+    for (const id of Object.keys(state.rulers)) {
+      if (seatedAtDeal.includes(id)) continue;
+      expect(woken.has(id), `${id} was seated without being taken`).toBe(true);
+    }
+    // Every seat, dealt or woken, still answers the interface.
+    for (const id of Object.keys(state.rulers)) {
       const ruler = rulerOf(state.rulers, id);
       expect(ruler.name.length, `ruler name for ${id}`).toBeGreaterThan(0);
       expect(ruler.since, `since for ${id}`).toBeLessThanOrEqual(state.turn);
     }
+    // And a land nobody dealt a chief to and nobody took still has none.
     for (const id of state.factionIds) {
-      if (seatedAtDeal.includes(id)) continue;
+      if (seatedAtDeal.includes(id) || woken.has(id)) continue;
       expect(() => rulerOf(state.rulers, id), id).toThrow(id);
     }
   });
