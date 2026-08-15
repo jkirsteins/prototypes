@@ -334,10 +334,23 @@ describe("stations on every adjacency of every map", () => {
 });
 
 describe("no arrow ends on a land it is not about", () => {
+  // Every `forward` flag in play, not just the all-attack case: a real border
+  // carries an answering raid beside the arrow it answers just as often as it
+  // carries a lone attack, and `layoutLanes` reads `into`/`out` the other way
+  // round for a backward lane. A block of all-forward lanes never touches
+  // that arm.
+  const SHAPES: readonly boolean[][] = [
+    [true],
+    [true, true],
+    [true, true, true],
+    [true, false],
+    [true, false, true],
+  ];
+
   for (const region of Object.values(REGIONS)) {
     const rings = new Map(region.map.regions.map((r) => [r.id, ringsOf(r.path)]));
 
-    it(`${region.id}: every lane of a 1, 2 and 3 arrow block`, () => {
+    it(`${region.id}: every lane of every block shape`, () => {
       const stray: string[] = [];
       for (const r of region.map.regions) {
         for (const adjId of r.adjacent) {
@@ -346,20 +359,28 @@ describe("no arrow ends on a land it is not about", () => {
           if (a === undefined || b === undefined) continue;
           const cross = crossingBetween(a, b);
           if (cross.sea) continue;
-          for (const count of [1, 2, 3]) {
-            const items = Array.from({ length: count }, () => ({
-              strength: 1, forward: true,
-            }));
+          for (const shape of SHAPES) {
+            const items = shape.map((forward) => ({ strength: 1, forward }));
             const unit = unitWidthFor([{ span: cross.span, strengths: items.map(() => 1) }]);
             for (const lane of layoutLanes(cross, items, unit)) {
+              const forward = shape[lane.index];
+              // A backward lane runs the border the other way: `ax/ay` is
+              // its base, inside the SECOND land, and `bx/by` its tip,
+              // inside the FIRST - the swap a sign or ternary bug confined
+              // to the backward arm would miss if every check here still
+              // pointed at forward's lands.
+              const baseRing = forward ? a : b;
+              const baseId = forward ? r.id : adjId;
+              const tipRing = forward ? b : a;
+              const tipId = forward ? adjId : r.id;
               const tip = { x: lane.bx, y: lane.by };
               const base = { x: lane.ax, y: lane.ay };
-              const where = `${r.id}|${adjId} n=${count} lane=${lane.index}`;
+              const where = `${r.id}|${adjId} shape=${shape.join(",")} lane=${lane.index} forward=${forward}`;
               // Both halves of the invariant. The first is what the player
               // reported; the second is what makes the first true rather than
               // lucky.
-              if (!pointInRings(tip, b)) stray.push(`${where}: tip off ${adjId}`);
-              if (!pointInRings(base, a)) stray.push(`${where}: base off ${r.id}`);
+              if (!pointInRings(tip, tipRing)) stray.push(`${where}: tip off ${tipId}`);
+              if (!pointInRings(base, baseRing)) stray.push(`${where}: base off ${baseId}`);
               for (const other of region.map.regions) {
                 if (other.id === r.id || other.id === adjId) continue;
                 const o = rings.get(other.id);
