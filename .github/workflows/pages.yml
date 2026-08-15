@@ -5,7 +5,12 @@ on:
   # changed prototypes under preview/<slug>/ beside main's site. A push that
   # touches no prototype publishes nothing at all, so a docs commit does not
   # replace a preview somebody is playing.
+  #
+  # '**' is every branch and no tag. A bare `push:` also fires on a tag, whose
+  # ref_name would be treated as a branch: it would take the single preview
+  # slot and publish under a tag slug.
   push:
+    branches: ['**']
   workflow_dispatch:
     inputs:
       prototypes:
@@ -52,6 +57,12 @@ jobs:
           INPUT_PROTOTYPES: ${{ inputs.prototypes }}
         run: |
           set -euo pipefail
+          publish_nothing() {
+            echo "::notice::$1"
+            echo "preview=false" >> "$GITHUB_OUTPUT"
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
           # Assigned first rather than echoed through a command substitution:
           # `echo "sha=$(git rev-parse ...)"` succeeds with an empty sha when
           # the rev-parse fails, and an empty sha is a cache key every run
@@ -69,10 +80,29 @@ jobs:
             dirs=$(.github/scripts/changed-prototypes.sh | tr '\n' ' ')
           fi
           if [ -z "${dirs// /}" ]; then
-            echo "::notice::no prototype changed on $REF_NAME, so nothing is published"
-            echo "preview=false" >> "$GITHUB_OUTPUT"
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            publish_nothing "no prototype changed on $REF_NAME, so nothing is published"
+          fi
+          # build-prototypes.sh declines a Godot prototype for any prefix but
+          # /prototypes/, so a preview of one is a directory with nothing in it
+          # and a summary link to a 404. The two have to agree, and this is the
+          # end that can still decide the run publishes nothing at all. It runs
+          # on the dispatch input too: naming a Godot directory by hand gets
+          # the same honest answer as changing one.
+          kept=""
+          dropped=""
+          for dir in $dirs; do
+            if [ -f "${dir%/}/project.godot" ]; then
+              dropped="$dropped ${dir%/}"
+            else
+              kept="$kept ${dir%/}"
+            fi
+          done
+          if [ -n "$dropped" ]; then
+            echo "::notice::a Godot prototype bakes its export path into project.godot and has no per-run base override, so it cannot be previewed:$dropped"
+          fi
+          dirs="${kept# }"
+          if [ -z "$dirs" ]; then
+            publish_nothing "no previewable prototype is left on $REF_NAME, so nothing is published"
           fi
           echo "preview=true" >> "$GITHUB_OUTPUT"
           echo "deploy=true" >> "$GITHUB_OUTPUT"
