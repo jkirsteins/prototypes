@@ -854,8 +854,9 @@ function actingFactions(
  *
  *  A helper rather than a line inside `takeLand` because both doors an
  *  allegiance change comes through owe the same answer - an army walking in
- *  and a Subjugate claim answering - and two spellings would be two rules
- *  within a week. */
+ *  or a Subjugate claim landing (both `takeLand`), and a no-successor
+ *  assassination handing the land to its killer (`landSubjugation`) - and
+ *  two spellings would be two rules within a week. */
 function seatingAbilities(
   players: readonly PlayerState[], factionId: string,
 ): readonly string[] {
@@ -2306,12 +2307,23 @@ export function playCard(
     overlords.set(target, p.factionId);
     // A land that has changed hands is no longer a land nobody holds, so the
     // statuses that said so go. What describes the ground - and the fact that
-    // this land has no ambitions of its own - stays.
+    // this land has no ambitions of its own - stays. Live at today's one
+    // caller: `no-successor` is `strippedOnCapture`, so this line does
+    // something every time landSubjugation runs.
     passives = stripOnCapture(passives, target);
     // The same rule as an army arriving: a land that has changed hands has a
     // chief. Spelled at both doors rather than inside `stripOnCapture`,
     // because stripping a status and seating a leader are two facts and one
-    // of them is about to be a whole seat's behaviour.
+    // of them is about to be a whole seat's behaviour - and the DOOR owns the
+    // invariant rather than whichever caller happens to run first.
+    //
+    // Inert at today's one caller: the no-successor assassination branch
+    // runs `replaceRuler` on this same target immediately above, which
+    // always seats a successor, so the chair is already occupied by the time
+    // this runs and `seatRuler` returns `rulers` unchanged. It stays anyway -
+    // a comment saying this door need not seat would be true only as long as
+    // `replaceRuler` keeps running first, and this codebase does not let a
+    // rule live in caller ordering.
     rulers = seatRuler(
       rulers, state.ethnicities, target, state.turn,
       seatingAbilities(players, target),

@@ -3361,6 +3361,13 @@ describe("a status that does something says so", () => {
   });
 
   it("a land subjugated on the table wakes up too", () => {
+    // This still passes with landSubjugation's seatRuler call deleted: the
+    // no-successor branch runs replaceRuler on "alpha" immediately above,
+    // which always seats a successor, so the chair this asserts against is
+    // already occupied before landSubjugation ever runs. What this pins is
+    // the door's end state, not the new call - the only caller that could
+    // prove the call live would be one that reaches landSubjugation with a
+    // vacant chair, and none exists today.
     const g: GameState = {
       ...playingState(),
       passives: { alpha: ["no-successor"] },
