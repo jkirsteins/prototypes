@@ -1,5 +1,5 @@
 import type { Region } from "./types";
-import { renderMap, darkenColor, brightenColor } from "./map-render";
+import { renderMap, darkenColor, brightenColor, inkFor } from "./map-render";
 import {
   createTooltip, settlementTooltipText,
   type TooltipLine,
@@ -1047,6 +1047,27 @@ function fillFactionFor(factionId: string): string {
  *  grey, so the coast still reads as the edge of the world. */
 const UNOWNED_FILL = "#c3bfb6";
 
+/** How far a rival's arrow must stand out from the land it crosses. 3 is the
+ *  ordinary floor for a mark this size, and every faction colour on both maps
+ *  reaches it. */
+const ARROW_INK_CONTRAST = 3;
+
+/** Read on every repaint, and the search inside `inkFor` walks up to a hundred
+ *  steps, so the answer is kept. */
+const arrowInk = new Map<string, string>();
+
+function arrowInkFor(factionId: string): string {
+  const held = arrowInk.get(factionId);
+  if (held !== undefined) return held;
+  const ink = inkFor(
+    factionById.get(factionId)?.color ?? "#7a6a55",
+    UNOWNED_FILL,
+    ARROW_INK_CONTRAST,
+  );
+  arrowInk.set(factionId, ink);
+  return ink;
+}
+
 function applyOwnership(): void {
   const human = localHuman();
   const humanOverlord = human ? game().overlords.get(human.factionId) : undefined;
@@ -1968,10 +1989,11 @@ function paintArrows(): void {
       // raid on its own vassal reads - and that is an attack on your realm.
       tone: against ? "hostile" : ours ? "ours" : "other",
       // A quarrel between two rivals is drawn in the attacker's own colour, so
-      // whose army it is can be read off the map without hovering it.
-      fill: against || ours
-        ? undefined
-        : factionById.get(m.actor)?.color ?? "#7a6a55",
+      // whose army it is can be read off the map without hovering it - as INK
+      // rather than as the colour their land is painted. The palette a map's
+      // lands are drawn from is pale by design, and a mark in it reads against
+      // the map at about 1.05 to 1, which is not a mark.
+      fill: against || ours ? undefined : arrowInkFor(m.actor),
       label: `${m.damage} STR`,
       chip: order.get(key),
       dataset: {

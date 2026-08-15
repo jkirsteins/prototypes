@@ -1263,7 +1263,17 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
 
 .march-arrow polygon {
   stroke: #fdfaf4;
-  stroke-width: 1.2;
+  stroke-width: 1.6px;
+  /* Screen pixels, not map units. The default view is a 2508-unit viewBox on a
+     1440px element, so a 1.2-unit casing is a 0.69px line: it delineates the
+     arrow when the player has zoomed in and disappears at the zoom the game is
+     played at. The ink handles pale ground and the casing handles dark ground,
+     so one of the two contrasts with anything an arrow can stand on.
+
+     This does not reopen the argument in src/arrows.ts for a filled polygon
+     over a stroked line with a marker-end: the SHAPE is still a polygon at
+     every zoom, and only its outline stops being drawn in map units. */
+  vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
 }
 
@@ -1281,11 +1291,11 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
    darker outline read as "selected", which is a different sentence. */
 .march-arrow.march-counterable polygon {
   stroke: #fdfaf4;
-  stroke-width: 2.4;
+  stroke-width: 2.4px;
 }
 
 .march-arrow.march-counterable:hover polygon {
-  stroke-width: 3.4;
+  stroke-width: 3.4px;
   filter: brightness(1.12);
 }
 
@@ -1531,7 +1541,10 @@ svg.map.arrow-focused .claim-arrow:not(.arrow-faded) {
    it. */
 .clash-flash polygon {
   stroke: #fdfaf4;
-  stroke-width: 1.2;
+  stroke-width: 1.6px;
+  /* Same reasoning as `.march-arrow polygon`: a ghost is read at whatever zoom
+     the player was already at, so its casing is screen pixels too. */
+  vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
 }
 
