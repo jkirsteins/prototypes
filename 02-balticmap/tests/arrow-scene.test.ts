@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from "vitest";
 import {
-  ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor, borderKeyOf, laneWidths,
-  layoutLanes, renderArrowScene,
+  ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor, borderKeyOf,
+  laneWidthFor, layoutLanes, renderArrowScene, unitWidthFor,
   type ArrowSpec, type SceneCtx,
 } from "../src/arrow-scene";
 import type { Crossing } from "../src/borders";
@@ -28,50 +28,85 @@ describe("blockWidthFor", () => {
   });
 });
 
-describe("laneWidths", () => {
-  it("gives one arrow the whole block whatever its strength", () => {
-    expect(laneWidths([1], 90)).toEqual([90]);
-    expect(laneWidths([7], 90)).toEqual([90]);
+describe("unitWidthFor", () => {
+  it("gives a solitary arrow its border's whole block", () => {
+    // The point of the scale being map-wide: an arrow sharing the map with
+    // nothing is relative only to itself, so it is drawn exactly as wide as
+    // it was when a lone arrow simply took the block.
+    const wide = unitWidthFor([{ span: 200, strengths: [1] }]);
+    expect(laneWidthFor(1, wide)).toBeCloseTo(blockWidthFor(200), 6);
+    const narrow = unitWidthFor([{ span: 40, strengths: [1] }]);
+    expect(laneWidthFor(1, narrow)).toBeCloseTo(blockWidthFor(40), 6);
   });
 
-  it("splits by strength share", () => {
-    const [a, b] = laneWidths([2, 1], 90);
-    expect(a).toBeCloseTo(60, 6);
-    expect(b).toBeCloseTo(30, 6);
+  it("sizes a lone strong arrow by its block, not by its strength", () => {
+    // Nothing on screen to be compared against, so the whole block is its own
+    // whatever it carries - the same answer the share rule gave.
+    const unit = unitWidthFor([{ span: 200, strengths: [9] }]);
+    expect(laneWidthFor(9, unit)).toBeCloseTo(blockWidthFor(200), 6);
   });
 
-  it("raises a lane to the floor and shrinks the others to pay for it", () => {
-    const widths = laneWidths([9, 1], 60);
-    expect(widths[1]).toBeCloseTo(LAYOUT.laneMin, 6);
-    expect(widths[0] + widths[1]).toBeCloseTo(60, 6);
-    expect(widths[0]).toBeGreaterThan(widths[1]);
+  it("draws equal strengths equally however wide their borders are", () => {
+    // The bug this rule exists for: two 1 STR arrows, one alone on a broad
+    // frontier and one on a cramped border, read as different strengths
+    // because each took its own block.
+    const unit = unitWidthFor([
+      { span: 300, strengths: [1] },
+      { span: 40, strengths: [1] },
+    ]);
+    expect(laneWidthFor(1, unit)).toBeCloseTo(laneWidthFor(1, unit), 6);
+    // And the pair is sized by the tighter of the two, so neither overruns.
+    expect(laneWidthFor(1, unit)).toBeCloseTo(blockWidthFor(40), 6);
   });
 
-  it("shares evenly when the block is narrow", () => {
-    const widths = laneWidths([1, 1, 1, 1, 1, 1], 30);
-    expect(widths.every((w) => Math.abs(w - 5) < 1e-6)).toBe(true);
+  it("keeps the strength ratio across different borders", () => {
+    // 4 STR is twice a Raid - the square root, so width reads as area and a
+    // 16 STR arrow is four Raids rather than sixteen.
+    const unit = unitWidthFor([
+      { span: 300, strengths: [1] },
+      { span: 300, strengths: [4] },
+    ]);
+    expect(laneWidthFor(4, unit) / laneWidthFor(1, unit)).toBeCloseTo(2, 6);
+    expect(laneWidthFor(16, unit) / laneWidthFor(1, unit)).toBeCloseTo(4, 6);
   });
 
-  it("never returns a negative width", () => {
-    for (const w of laneWidths([50, 1, 1, 1], 30)) expect(w).toBeGreaterThan(0);
+  it("fits the block of the busiest border it is given", () => {
+    const unit = unitWidthFor([{ span: 300, strengths: [1, 1, 1] }]);
+    const block = [1, 1, 1].reduce((s, v) => s + laneWidthFor(v, unit), 0);
+    expect(block).toBeCloseTo(blockWidthFor(300), 6);
   });
 
-  it("returns an empty array for no lanes", () => {
-    expect(laneWidths([], 90)).toEqual([]);
+  it("overruns rather than shrinking every arrow past reading", () => {
+    // The trade `blockMin` already makes for the ground, applied to the
+    // scale: an arrow nobody can see is worse than a block wider than the
+    // border it crosses.
+    const unit = unitWidthFor([{ span: 10, strengths: [1, 1, 1, 1, 1, 1] }]);
+    expect(unit).toBe(LAYOUT.laneMin);
+    expect(laneWidthFor(1, unit)).toBe(LAYOUT.laneMin);
   });
 
-  it("splits evenly when all strengths are zero", () => {
-    const [a, b] = laneWidths([0, 0], 90);
-    expect(a).toBeCloseTo(45, 6);
-    expect(b).toBeCloseTo(45, 6);
+  it("ignores a border carrying nothing, and an empty map", () => {
+    expect(unitWidthFor([])).toBe(LAYOUT.blockMax);
+    expect(unitWidthFor([{ span: 10, strengths: [] }])).toBe(LAYOUT.blockMax);
+  });
+
+  it("never returns a negative width for a strength that is not one", () => {
+    const unit = unitWidthFor([{ span: 200, strengths: [0, -3] }]);
+    expect(laneWidthFor(0, unit)).toBeGreaterThan(0);
+    expect(laneWidthFor(-3, unit)).toBeGreaterThan(0);
   });
 });
 
 describe("layoutLanes", () => {
+  /** The scale a border gets when it is the only one on the map. */
+  const aloneOn = (cross: Crossing, strengths: number[]): number =>
+    unitWidthFor([{ span: cross.span, strengths }]);
+
   it("packs lanes edge to edge, centred on the crossing", () => {
+    const unit = aloneOn(FLAT, [1, 1]);
     const lanes = layoutLanes(FLAT, [
       { strength: 1, forward: true }, { strength: 1, forward: true },
-    ]);
+    ], unit);
     const total = blockWidthFor(FLAT.span);
     expect(lanes[0].width + lanes[1].width).toBeCloseTo(total, 6);
     // Centres are symmetric about the crossing point on the tangent axis.
@@ -81,20 +116,24 @@ describe("layoutLanes", () => {
   it("runs a forward lane along the normal and a backward one against it", () => {
     const [fwd, back] = layoutLanes(FLAT, [
       { strength: 1, forward: true }, { strength: 1, forward: false },
-    ]);
+    ], aloneOn(FLAT, [1, 1]));
     expect(fwd.bx).toBeGreaterThan(fwd.ax);
     expect(back.bx).toBeLessThan(back.ax);
   });
 
   it("starts inside the origin and ends inside the target", () => {
-    const [lane] = layoutLanes(FLAT, [{ strength: 1, forward: true }]);
+    const [lane] = layoutLanes(
+      FLAT, [{ strength: 1, forward: true }], aloneOn(FLAT, [1]),
+    );
     expect(lane.ax).toBeCloseTo(-LAYOUT.tailDepth, 6);
     expect(lane.bx).toBeCloseTo(LAYOUT.headDepth, 6);
   });
 
   it("spans the water on a sea crossing instead of standing in it", () => {
     const strait: Crossing = { ...FLAT, sea: true, gap: 100 };
-    const [lane] = layoutLanes(strait, [{ strength: 1, forward: true }]);
+    const [lane] = layoutLanes(
+      strait, [{ strength: 1, forward: true }], aloneOn(strait, [1]),
+    );
     expect(lane.bx - lane.ax).toBeCloseTo(100 + LAYOUT.seaClearance * 2, 6);
   });
 
@@ -102,9 +141,22 @@ describe("layoutLanes", () => {
     const lanes = layoutLanes(FLAT, [
       { strength: 3, forward: true }, { strength: 1, forward: false },
       { strength: 2, forward: true },
-    ]);
+    ], aloneOn(FLAT, [3, 1, 2]));
     expect(lanes.map((l) => l.index)).toEqual([0, 1, 2]);
     expect(lanes[0].width).toBeGreaterThan(lanes[2].width);
+  });
+
+  it("takes its width from the scale, not from its own border", () => {
+    // A wide border laid out at a scale some cramped border elsewhere set:
+    // the block shrinks with the map rather than filling the ground it has.
+    const tight = unitWidthFor([
+      { span: FLAT.span, strengths: [1] }, { span: 30, strengths: [1, 1] },
+    ]);
+    const [lane] = layoutLanes(
+      FLAT, [{ strength: 1, forward: true }], tight,
+    );
+    expect(lane.width).toBeLessThan(blockWidthFor(FLAT.span));
+    expect(lane.width).toBeCloseTo(laneWidthFor(1, tight), 6);
   });
 });
 

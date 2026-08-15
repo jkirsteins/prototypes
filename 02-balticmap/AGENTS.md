@@ -274,14 +274,42 @@ a geometry search. Three things about it are load-bearing:
   map - and their arrows SPAN the water instead of standing in the middle of
   it.
 
-Width is strength and position is declaration order. Every arrow crossing one
-border splits `clamp(span * 0.55, 30, 96)` between them by strength share,
-with a floor at whichever is smaller of 14 and an even share of the block -
-three arrows on a minimum 30-unit block floor at 10, four at 7.5 - so the
-floor never outruns what the lanes above it have to pay it with, packed edge
-to edge. One arrow takes the whole block whatever its strength; two out and
-one back is 66% and 33%. Direction does not sort them - an answering raid
-stands beside the attack it answers, in the order the two were declared.
+**Width is strength MAP-WIDE, and the scale is one number per render.**
+`width = unit * sqrt(strength)`, where `unitWidthFor` picks the `unit` once
+for the whole scene: the most generous one every border can afford, the
+smallest of `blockWidthFor(span) / sum of sqrt(strength) on that border`.
+Position is still declaration order, packed edge to edge, and direction does
+not sort them - an answering raid stands beside the attack it answers, in the
+order the two were declared.
+
+Three things follow, and each is the reason for a part of the rule:
+
+- **A solitary arrow takes its whole block, exactly as it always did.** It
+  shares the map with nothing, so it is relative only to itself and the min is
+  its own border's capacity. This is why the scale is a min over borders
+  rather than a constant width per point of strength: a fixed `26 * sqrt`
+  would have shrunk every quiet board's lone raid to a quarter of what the
+  player is used to for no gain, since there was nothing to compare it with.
+- **The square root, so width reads as AREA.** 4 STR is twice a Raid, 16 STR
+  is four. Strength is not bounded at 2 - `attackDamageFor` is
+  `(base + leadership) * omens` - so anything linear draws a war leader's raid
+  wider than the land it crosses.
+- **Comparability is owed within a frame and not across turns.** The unit
+  moves as the board does: the same Raid is narrower on a turn when some
+  cramped border is carrying three arrows. Widths are read against each other
+  on one screen, never against a remembered arrow from last turn, and the
+  alternative buys that memory at the price of the bullet above.
+
+The block is the SUM of its lanes rather than a size the border hands down, so
+the ground decides where a block is centred and - at one remove, through the
+scale - how wide it may grow. Past `laneMin` the scale stops shrinking and the
+block overruns its border instead, the same trade `blockMin` already makes:
+an arrow nobody can see is worse than one wider than the ground it crosses.
+
+It was per-border share first, `clamp(span * 0.55, 30, 96)` split by strength,
+and the failure is what a share rule always does: a lone 1 STR raid on a broad
+frontier was drawn at 96 while a 1 STR raid sharing a cramped border was drawn
+at 15, and the map said one of them was six times the army.
 
 The strength is "1 STR" wherever the lane has room for it, and the bare
 number below `BARE_NUMBER_WIDTH`. The bare number is safe only because the
@@ -310,22 +338,43 @@ is visible around both.
 
 **The ghost is laid out with the living, and that is what a beat needs.**
 What a landing left on the border is a `kind: "ghost"` spec in the same scene
-as every live arrow, so it takes a lane in the same block. A beat drives two
-separate things and they are not the same thing: `Beat.retires` names the
-marches whose arrows this beat takes off the board, and they exit PLAIN - a
-fade, no label, nothing claiming to be the outcome - while `Beat.resolutions`
-are what say what got through. A clash retires two arrows and leaves a force
-that is neither of theirs, so no arrow's own exit could have told that story.
-`beatRetired` in `src/main.ts` is why the two agree with every repaint in
-between: the beat runs before the commit that empties `game().marches`, so a
-retired march is subtracted from the arrows the state still holds.
+as every live arrow, so it takes a lane in the same block.
+
+**An arrow arrives and leaves on the beat that explains it, never at the
+repaint behind it.** The displayed state lags the whole transition, so on its
+own it is wrong at BOTH ends of a beat, and a beat therefore names every arrow
+it moves. `Beat.declares` is the march this beat's declaration created,
+standing on its border as the sentence announcing it is read; `Beat.retires`
+names the marches whose arrows this beat takes off the board, and they exit
+PLAIN - a fade, no label, nothing claiming to be the outcome - while
+`Beat.resolutions` are what say what got through. A clash retires two arrows
+and leaves a force that is neither of theirs, so no arrow's own exit could
+have told that story.
+
+`drawnMarches` in `src/main.ts` is the one answer to "what is on the board",
+and it is why every repaint in between agrees with the beat: the state's
+marches, plus what `beatDeclared` is holding ahead of the commit, minus what
+`beatRetired` has taken off. The declarations and the retirements outlive the
+beat and the resolutions do not, because the commit's state owns the first two
+and never the third. All of it is ids, so the arrow a beat stands on a border
+and the arrow the commit paints from the state are the SAME `march:<id>`
+element and the scene keeps it - the arrow does not fade in twice.
+
+Left to the state alone a declared arrow waits for the commit, which waits
+behind every beat of the move: a round of raids read as one label at a time
+and then a burst of arrows, none of them attached to the sentence that
+announced it. What still arrives in a burst is exactly what the player was
+told nothing about - the round-wrap restless raids between quiet lands, which
+`involvesLocalSeats` gives no beat because they are none of the player's
+business. An arrow with no notification belongs to the board repaint; an
+arrow with one belongs to its beat.
 
 Nothing is hidden while a beat runs. The rule that hid every live arrow for
 the length of one, a separate ghost layer, and a hand-built ghost scene all
 existed because a live rebuild used to wipe a mid-fade ghost - and with
-identity a rebuild wipes nothing. The state under the map lags the whole
-transition, so a march declared by the move being shown is not drawn yet and
-cannot stand over the landing of the one before it.
+identity a rebuild wipes nothing. A march this move declared cannot stand over
+the landing of the one before it, because it is on screen only from its own
+beat onward.
 
 **Everything that decides how an arrow LOOKS is on its spec.** `dressArrow`
 states an arrow's whole class attribute, which is what stops a stale cue

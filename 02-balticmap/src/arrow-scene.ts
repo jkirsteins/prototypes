@@ -27,37 +27,64 @@ export const LAYOUT = {
   seaClearance: 16,
 };
 
+/** What one border has room for: the whole block of arrows crossing it. This
+ *  is the GROUND's capacity and nothing to do with what is crossing - it is
+ *  what the scale below is fitted into. */
 export function blockWidthFor(span: number): number {
   return Math.max(
     LAYOUT.blockMin, Math.min(LAYOUT.blockMax, span * LAYOUT.blockShare),
   );
 }
 
-/** Each arrow's width, as its share of the block by strength.
+/** How much width one arrow ASKS for, before the scale is applied.
  *
- *  A lane below the floor is raised to it and the surplus taken proportionally
- *  from the lanes above the floor. The floor never exceeds the even share
- *  (floor = Math.min(laneMin, even)), so there is always a pool above the floor
- *  to draw the surplus from and the block stays inside `total`. */
-export function laneWidths(strengths: readonly number[], total: number): number[] {
-  if (strengths.length === 0) return [];
-  const even = total / strengths.length;
-  const floor = Math.min(LAYOUT.laneMin, even);
-  const sum = strengths.reduce((s, v) => s + Math.abs(v), 0);
-  if (sum <= 0) return strengths.map(() => even);
-  let widths = strengths.map((v) => (Math.abs(v) / sum) * total);
-  // Bounded: each pass either fixes every short lane or finds nothing to take
-  // from, and the number of lanes on one border is small.
-  for (let pass = 0; pass < strengths.length; pass++) {
-    const short = widths.map((w) => w < floor - 1e-9);
-    if (!short.some(Boolean)) break;
-    const owed = widths.reduce((s, w, i) => s + (short[i] ? floor - w : 0), 0);
-    const pool = widths.reduce((s, w, i) => s + (short[i] ? 0 : w - floor), 0);
-    widths = widths.map((w, i) =>
-      short[i] ? floor : w - ((w - floor) / pool) * owed,
-    );
+ *  The square root, so width reads as area: 4 STR is twice a Raid rather than
+ *  four times it. Strength is not bounded at 2 - `attackDamageFor` is
+ *  `(base + leadership) * omens`, so a war leader holding a few War councils
+ *  can send 16 - and anything linear draws that arrow wider than the land it
+ *  crosses. Negative and zero are clamped away: this is a width, and a spec
+ *  that carries no strength (a claim is `1` by convention) still takes a lane. */
+function demandOf(strength: number): number {
+  return Math.sqrt(Math.max(strength, 0));
+}
+
+/** The width of a 1 STR arrow THIS RENDER, and thereby of every arrow: one
+ *  number for the whole map, so `width = unit * sqrt(strength)` everywhere.
+ *
+ *  **Comparability is a map-wide property and it is only owed to the arrows on
+ *  screen together.** Two arrows the player can see at once must be the width
+ *  their strengths say, wherever on the map they stand; an arrow that shares
+ *  the map with nothing is relative only to itself and may be as large as its
+ *  own border allows. So the unit is the most generous one EVERY border can
+ *  afford - the smallest of `capacity / demand` over all of them - and a single
+ *  arrow on the map is therefore drawn at exactly its own block, the width it
+ *  had when the block was split by share alone.
+ *
+ *  It moves as the board does, which is the deliberate half of the trade: the
+ *  same 1 STR raid is narrower on a turn when a cramped border is carrying
+ *  three arrows than on a turn when it is not. Widths are read against each
+ *  other on one screen, never against a remembered arrow from last turn, and
+ *  buying the second would mean a lone raid the size of a Raid on a busy
+ *  border - which is the shrunken map this replaced.
+ *
+ *  Floored at `laneMin`: past that the block overruns its border rather than
+ *  every arrow on the map becoming unreadable, the trade `blockMin` already
+ *  makes for the ground. No ceiling is needed - `blockWidthFor` has one. */
+export function unitWidthFor(
+  borders: readonly { span: number; strengths: readonly number[] }[],
+): number {
+  let unit = LAYOUT.blockMax;
+  for (const border of borders) {
+    const demand = border.strengths.reduce((s, v) => s + demandOf(v), 0);
+    if (demand <= 0) continue;
+    unit = Math.min(unit, blockWidthFor(border.span) / demand);
   }
-  return widths;
+  return Math.max(LAYOUT.laneMin, unit);
+}
+
+/** One arrow's width at the render's scale. */
+export function laneWidthFor(strength: number, unit: number): number {
+  return Math.max(LAYOUT.laneMin, unit * demandOf(strength));
 }
 
 export interface Lane {
@@ -68,15 +95,23 @@ export interface Lane {
   bx: number; by: number;
 }
 
-/** Every arrow crossing one border, side by side along it.
+/** Every arrow crossing one border, side by side along it, at the render's
+ *  own scale (`unitWidthFor`).
+ *
+ *  The block is the SUM of what its arrows are owed rather than a size the
+ *  border hands down: the ground decides where the block is centred and, at
+ *  one remove through the scale, how wide it may grow - but an arrow's width
+ *  is its strength and is the same on every border of the map.
  *
  *  Direction does not sort them: an answering raid stands beside the attack it
  *  answers, in the order the two were declared. */
 export function layoutLanes(
-  cross: Crossing, items: readonly { strength: number; forward: boolean }[],
+  cross: Crossing,
+  items: readonly { strength: number; forward: boolean }[],
+  unit: number,
 ): Lane[] {
-  const total = blockWidthFor(cross.span);
-  const widths = laneWidths(items.map((i) => i.strength), total);
+  const widths = items.map((i) => laneWidthFor(i.strength, unit));
+  const total = widths.reduce((s, w) => s + w, 0);
   // A strait is not a border: there is no line to cross, so the arrow spans
   // the water rather than standing in the middle of it.
   const tail = cross.sea ? cross.gap / 2 + LAYOUT.seaClearance : LAYOUT.tailDepth;
@@ -149,8 +184,10 @@ export interface ArrowSpec {
   to: string;
   /** A point to aim at instead of a land, for a drag over open map. */
   at?: Pt;
-  /** What the lane split divides. A claim carries 1: it has no strength of
-   *  its own and is one declared thing. */
+  /** What the width says, through `laneWidthFor`. A claim carries 1: it has no
+   *  strength of its own and is one declared thing, so it is drawn at the
+   *  width of a single army - which nothing can misread, because its label is
+   *  the word SUBJUGATE and never a number. */
   strength: number;
   tone: "hostile" | "ours" | "other";
   /** A rival's own colour, for tone "other". */
@@ -322,6 +359,11 @@ export function renderArrowScene(
     const key = borderKeyOf(spec.from, spec.to);
     byBorder.set(key, [...(byBorder.get(key) ?? []), spec]);
   }
+  // Every border resolved BEFORE anything is laid out, because the scale is a
+  // fact about the whole map: an arrow's width is decided by what else is on
+  // screen with it, so no lane can be placed until every border has said what
+  // it is carrying. This is the only reason the render is two passes.
+  const crossings: { group: ArrowSpec[]; cross: Crossing; a: string }[] = [];
   for (const group of byBorder.values()) {
     const first = group[0];
     // The crossing is fetched in the border key's own canonical order, not in
@@ -332,9 +374,19 @@ export function renderArrowScene(
     const [a, b] = borderKeyOf(first.from, first.to).split("|");
     const cross = ctx.crossingFor(a, b);
     if (cross === null) continue;
+    crossings.push({ group, cross, a });
+  }
+  // The free arrows are left out of this deliberately: they cross no border,
+  // so there is no ground for them to overrun and nothing they could make the
+  // rest of the map narrower for.
+  const unit = unitWidthFor(crossings.map(({ group, cross }) => ({
+    span: cross.span, strengths: group.map((s) => s.strength),
+  })));
+  for (const { group, cross, a } of crossings) {
     const lanes = layoutLanes(
       cross,
       group.map((s) => ({ strength: s.strength, forward: s.from === a })),
+      unit,
     );
     for (const lane of lanes) draw(group[lane.index], lane);
   }
@@ -345,8 +397,11 @@ export function renderArrowScene(
     const start = ctx.freeAnchor(spec.from);
     const end = spec.at;
     if (start === null || end === undefined) continue;
+    // At the render's own scale, like every arrow that DID find a border: a
+    // drag over open map is the same play at the same strength, and a fixed
+    // width here would have the preview change size the moment it found one.
     draw(spec, {
-      index: 0, width: blockWidthFor(0),
+      index: 0, width: laneWidthFor(spec.strength, unit),
       ax: start.x, ay: start.y, bx: end.x, by: end.y,
     });
   }
