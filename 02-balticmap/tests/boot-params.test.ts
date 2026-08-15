@@ -3,10 +3,10 @@ import {
   applyBootParams, parseBootParams, type BootParams,
 } from "../src/boot-params";
 import {
-  newGame, isHumanTurn, OPENING_HAND, TURNIP_HARVEST_THRESHOLD,
+  newGame, isHumanTurn, OPENING_HAND, TURNIP_HARVEST_THRESHOLD, viewOf,
   type GameState,
 } from "../src/game";
-import { defenseOf, RAID_DAMAGE } from "../src/defense";
+import { defenseOf, MIN_RAID_SPEND } from "../src/defense";
 import { rulerOf } from "../src/rulers";
 import { fullRealmOf as walkRealm } from "../src/relations";
 import { seededRng } from "../src/rng";
@@ -190,7 +190,13 @@ describe("parseBootParams", () => {
 
   it("parses marches as from>to, dropping a clause missing either end", () => {
     expect(params("?march=alpha>beta;gamma>delta").marches)
-      .toEqual([{ from: "alpha", to: "beta" }, { from: "gamma", to: "delta" }]);
+      .toEqual([
+        { from: "alpha", to: "beta", spend: null },
+        { from: "gamma", to: "delta", spend: null },
+      ]);
+    // The amount is optional and parses beside the pair.
+    expect(params("?march=alpha>beta:3").marches)
+      .toEqual([{ from: "alpha", to: "beta", spend: 3 }]);
     expect(params("?march=alpha").marches).toEqual([]);
     expect(params("?march=>beta").marches).toEqual([]);
     expect(params("?march=alpha>").marches).toEqual([]);
@@ -263,8 +269,33 @@ describe("applyBootParams", () => {
     expect(g.armies.beta).toBe(2);
     expect(Object.values(g.marches).map((m) => [m.from, m.to]))
       .toEqual([["beta", "alpha"], ["beta", "gamma"]]);
-    // Damage is not settable: a booted arrow promises what a played one would.
-    expect(Object.values(g.marches)[0].damage).toBe(RAID_DAMAGE);
+    // The amount defaults to the minimum, so a URL written before a raid's
+    // strength was a choice still means what it always meant.
+    expect(Object.values(g.marches)[0].damage).toBe(MIN_RAID_SPEND);
+    expect(defenseOf(viewOf(g), "beta"))
+      .toBe(FIXTURE_MAX - 2 * MIN_RAID_SPEND);
+  });
+
+  it("takes a spend per march clause, clamped to the source's ceiling", () => {
+    const g = boot("?faction=beta&armies=beta:2&march=beta>alpha:2");
+    expect(Object.values(g.marches)[0].damage).toBe(2);
+    // And the land paid for it, the moment the arrow appeared.
+    expect(defenseOf(viewOf(g), "beta")).toBe(FIXTURE_MAX - 2);
+  });
+
+  it("clamps a march spend past what a Raid may take out of the land", () => {
+    // A Raid reaches half the land's current defense, rounded up, and the
+    // clause naming more is clamped rather than dropped - a URL is the same
+    // attack surface as a hand-edited record.
+    const g = boot("?faction=beta&march=beta>alpha:999");
+    const ceiling = Math.ceil(FIXTURE_MAX / 2);
+    expect(Object.values(g.marches)[0].damage).toBe(ceiling);
+    expect(defenseOf(viewOf(g), "beta")).toBe(FIXTURE_MAX - ceiling);
+  });
+
+  it("composes with defense=, which names the land before its army set out", () => {
+    const g = boot("?faction=beta&defense=beta:5&march=beta>alpha:2");
+    expect(defenseOf(viewOf(g), "beta")).toBe(3);
   });
 
   it("founds settlements, clamped to the dots the map authors", () => {

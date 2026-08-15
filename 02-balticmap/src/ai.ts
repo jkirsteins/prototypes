@@ -3,12 +3,13 @@ import { fullRealmOf, incorporatedRealmOf, realmOf } from "./relations";
 import {
   capturesOnArrival, defenseMaxOf, defenseOf, HILLFORT_HEAL,
   independenceGateOpen,
-  INDEPENDENCE_GATE, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
+  INDEPENDENCE_GATE, MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, borderPolygonsOf, greatRaidMarches, holdsGuard,
-  marchSourcesAgainst, plagueMultiplier, playableSet,
+  attackDamageFor, attackImpactOn, borderPolygonsOf, greatRaidMarches,
+  holdsGuard,
+  marchSourcesAgainst, plagueMultiplier, playableSet, spendCeilingOn,
   validTargetsFor, type RulesView,
 } from "./playability";
 import { axesOf } from "./marches";
@@ -21,8 +22,15 @@ import {
 export type AiAction =
   /** `sourceId` is Raid's tail - the land the army marches out of. Omitted by
    *  every other card, and by a Raid whose branch has no opinion, in which
-   *  case `playCard` takes the first legal source in faction order. */
-  | { type: "play"; cardIndex: number; targetId?: string; sourceId?: string }
+   *  case `playCard` takes the first legal source in faction order.
+   *
+   *  `spend` is how much of that land's defense the raid tears out, which is
+   *  the arrow's whole strength. Omitted the same way and clamped the same
+   *  way - `playCard` reads a missing one as the minimum. */
+  | {
+      type: "play"; cardIndex: number; targetId?: string; sourceId?: string;
+      spend?: number;
+    }
   | { type: "discard"; cardIndex: number };
 
 /** Which branch of `chooseAction` decides each card. Keyed on every id in
@@ -202,13 +210,74 @@ function marchSourceFor(
  *  `playCard`'s first-legal default. */
 function raidAt(
   state: GameState, v: RulesView, actor: string,
-  cardIndex: number, target: string,
+  cardIndex: number, cardId: string, target: string,
 ): AiAction {
   const sourceId = marchSourceFor(state, v, actor, target);
   return {
     type: "play", cardIndex, targetId: target,
     ...(sourceId !== undefined ? { sourceId } : {}),
+    ...(sourceId === undefined
+      ? {}
+      : { spend: raidSpendFor(v, actor, cardId, sourceId, target) }),
   };
+}
+
+/** Whether this land of ours faces anybody but the land we are aiming at. The
+ *  question the spend policy turns on: a land with a second rival on its
+ *  border is holding a frontier, and a frontier emptied to hit somewhere else
+ *  is an invitation. */
+function isFrontier(
+  v: RulesView, actor: string, land: string, exceptTarget: string,
+): boolean {
+  const realm = fullRealmOf(actor, v.overlords, v.incorporated);
+  return (v.adjacency[land] ?? []).some(
+    (adj) => adj !== exceptTarget && !realm.has(adj),
+  );
+}
+
+/** How much defense the AI tears out of `from` to send this raid.
+ *
+ *  A raid card spends its source land's defense 1:1 and the arrow lands for
+ *  what was spent, so "which card, at what" stopped being the whole of the
+ *  decision and this is the rest of it:
+ *
+ *  - A CONQUEST is paid for wherever the source stands: `defense + 1`, since
+ *    `capturesOnArrival` wants the blow to EXCEED what is standing, and not a
+ *    point more. A land taken is worth being left open for.
+ *  - Otherwise, out of a FRONTIER land, the minimum. It will not gut the land
+ *    facing one rival to soften another it cannot take this turn.
+ *  - Otherwise the source is INTERIOR, and it spends its ceiling: the blow
+ *    that cannot capture is still the blow that softens, and nothing is
+ *    standing over that land to punish it for being emptied.
+ *
+ *  The conquest arm above the frontier arm is load-bearing. Read the other way
+ *  round, a branch that had already PICKED a target it could overwhelm would
+ *  then send an arrow too small to take it - the AI choosing a conquest and
+ *  declining to pay for it in the same turn.
+ *
+ *  The `POLICY_COVERAGE` entries for all three raid cards name this rule; it
+ *  is one function over the class rather than three copies keyed by card id. */
+function raidSpendFor(
+  v: RulesView, actor: string, cardId: string, from: string, to: string,
+): number {
+  const ceiling = spendCeilingOn(v, cardId, from);
+  const takes = defenseOf(v, to) + 1;
+  if (takes <= ceiling) return Math.max(MIN_RAID_SPEND, takes);
+  if (isFrontier(v, actor, from, to)) return MIN_RAID_SPEND;
+  return Math.max(MIN_RAID_SPEND, ceiling);
+}
+
+/** The hardest single arrow this card could throw at `target` right now -
+ *  every legal source's ceiling considered, readings and the leader included.
+ *
+ *  What the scoring branches below reason with, and deliberately the CEILING
+ *  rather than what `raidSpendFor` would actually send: a branch asking "can
+ *  this card finish that land" is asking whether the play is available at all,
+ *  and the answer is yes whenever some land of the realm could pay for it. */
+function bestAttackOn(
+  v: RulesView, actor: string, cardId: string, target: string,
+): number {
+  return attackImpactOn(v, actor, cardId, target).damage;
 }
 
 /** Which land of the realm to settle: a land held outright is yours for
@@ -278,10 +347,14 @@ export function chooseAction(state: GameState): AiAction {
   const walkIn = marchPick(idxOf);
   if (walkIn !== undefined) {
     const realm = fullRealmOf(p.factionId, state.overlords, state.incorporated);
-    const { damage } = attackDamageFor(v, p.factionId, walkIn.id);
+    // Per target, because a raid's damage is now the ceiling of whichever of
+    // OUR lands borders that one - two neighbours are two different numbers.
     const takeable = validTargetsFor(v, p.factionId, walkIn.id)
       .filter((t) => !realm.has(t)
-        && capturesOnArrival(damageAfterTerrain(v, t, damage), defenseOf(v, t)))
+        && capturesOnArrival(
+          damageAfterTerrain(v, t, bestAttackOn(v, p.factionId, walkIn.id, t)),
+          defenseOf(v, t),
+        ))
       // The biggest pyramid first: taking a lord takes everything under it.
       .sort(
         (a, b) =>
@@ -290,7 +363,7 @@ export function chooseAction(state: GameState): AiAction {
           order(a) - order(b),
       );
     if (takeable.length > 0) {
-      return raidAt(state, v, p.factionId, walkIn.index, takeable[0]);
+      return raidAt(state, v, p.factionId, walkIn.index, walkIn.id, takeable[0]);
     }
   }
 
@@ -555,7 +628,6 @@ function counterRaid(
   const pick = marchPick(idxOf);
   if (pick === undefined) return null;
   const raid = pick.index;
-  const { damage } = attackDamageFor(v, actor, pick.id);
   const realm = fullRealmOf(actor, v.overlords, v.incorporated);
   const targets = new Set(validTargetsFor(v, actor, pick.id));
 
@@ -582,10 +654,17 @@ function counterRaid(
       const net = x.incoming
         .slice(x.ours.length)
         .reduce((s, m) => s + m.damage, 0);
-      return { ...x, answers, net };
+      // What OUR land could throw back is its own ceiling, not a card-wide
+      // number: the land under threat is the only land a counter may leave
+      // from, and a land already softened answers more feebly. Which is the
+      // whole point of the counter being worth timing.
+      const ours = attackDamageFor(
+        v, actor, pick.id, spendCeilingOn(v, pick.id, x.under),
+      ).damage;
+      return { ...x, answers, net, ours };
     })
     .filter(
-      (x) => x.answers > 0 && (damage >= x.answers || gateGap(v, x.under) <= x.net),
+      (x) => x.answers > 0 && (x.ours >= x.answers || gateGap(v, x.under) <= x.net),
     );
   if (answerable.length === 0) return null;
 
@@ -598,6 +677,14 @@ function counterRaid(
   )[0];
   return {
     type: "play", cardIndex: raid, targetId: worst.from, sourceId: worst.under,
+    // A counter answers the arrow in front of it: enough to beat what is
+    // coming, capped by what the threatened land can still pay. Not
+    // `raidSpendFor` - that one asks about capturing, and a counter is asked
+    // about surviving.
+    spend: Math.max(
+      MIN_RAID_SPEND,
+      Math.min(spendCeilingOn(v, pick.id, worst.under), worst.answers),
+    ),
   };
 }
 
@@ -619,10 +706,14 @@ function warpathDecisive(
   // 6W-1: vassal suppression - raid the vassal one heal from its gate.
   const restive = vassalNearingEscape(state, v, actor);
   if (raid !== undefined && restive !== undefined && raidTargets.includes(restive)) {
-    return raidAt(state, v, actor, raid, restive);
+    return raidAt(state, v, actor, raid, pick!.id, restive);
   }
 
-  const { damage } = attackDamageFor(v, actor, "raid");
+  // Per target, and a ceiling: what the hardest arrow the realm could throw
+  // at that land would land. A branch asking "can this card finish it" is
+  // asking whether the play is available at all.
+  const hardest = (t: string): number =>
+    pick === undefined ? 0 : bestAttackOn(v, actor, pick.id, t);
   const candidates = gateCandidates(state, v, actor, raidTargets);
 
   // 6W-2: the finishing hit - a polygon whose gate this one raid opens.
@@ -638,9 +729,11 @@ function warpathDecisive(
   // gap-not-excess test.
   if (raid !== undefined) {
     const finish = candidates.find(
-      (t) => gateGap(v, t) - incomingAt(v, t) <= damage,
+      (t) => gateGap(v, t) - incomingAt(v, t) <= hardest(t),
     );
-    if (finish !== undefined) return raidAt(state, v, actor, raid, finish);
+    if (finish !== undefined) {
+      return raidAt(state, v, actor, raid, pick!.id, finish);
+    }
   }
 
   // 6W-3: great raid where the arrows it musters flatten the land outright.
@@ -656,11 +749,11 @@ function warpathDecisive(
   // 6W-4: read the omens when the doubled attack would open a gate this
   // plain raid cannot, or one-shot a small polygon outright.
   if (omens !== undefined && (raid !== undefined || greatRaid !== undefined)) {
-    const doubled = candidates.some(
-      (t) =>
-        (gateGap(v, t) > damage && gateGap(v, t) <= damage * 2) ||
-        defenseOf(v, t) <= damage * 2,
-    );
+    const doubled = candidates.some((t) => {
+      const d = hardest(t);
+      return (gateGap(v, t) > d && gateGap(v, t) <= d * 2) ||
+        defenseOf(v, t) <= d * 2;
+    });
     if (doubled) return { type: "play", cardIndex: omens };
   }
   return null;
@@ -680,19 +773,20 @@ function warpathBuild(
   const council = idxOf("war-council");
   const raidTargets =
     pick === undefined ? [] : validTargetsFor(v, actor, pick.id);
-  const { damage } = attackDamageFor(v, actor, pick?.id ?? "raid");
+  const hardest = (t: string): number =>
+    bestAttackOn(v, actor, pick?.id ?? "raid", t);
   const candidates = gateCandidates(state, v, actor, raidTargets);
 
   // 11W-1: war council while no target's gate is within 2 attacks - build
   // first, strike once the striking is worth it.
   if (council !== undefined) {
-    const near = candidates.some((t) => gateGap(v, t) <= 2 * damage);
+    const near = candidates.some((t) => gateGap(v, t) <= 2 * hardest(t));
     if (!near) return { type: "play", cardIndex: council };
   }
 
   // 11W-2: raid the polygon nearest its subjugation gate.
   if (raid !== undefined && candidates.length > 0) {
-    return raidAt(state, v, actor, raid, candidates[0]);
+    return raidAt(state, v, actor, raid, pick!.id, candidates[0]);
   }
 
   // 11W-3: great raid as pressure, where two or more lands can ride at once.
@@ -717,13 +811,15 @@ function warpathBuild(
 function greatRaidPick(
   v: RulesView, actor: string,
 ): { target: string; arrows: number; damage: number } | null {
-  const each = attackDamageFor(v, actor, "great-raid").damage;
   let best: { target: string; arrows: number; damage: number } | null = null;
   for (const target of borderPolygonsOf(v, actor)) {
     if (target in v.incorporated) continue;
     const arrows = greatRaidMarches(v, actor, target).length;
     if (arrows === 0) continue;
-    const damage = arrows * each;
+    // The whole pool, not one arrow times the fan: the lands share a purse
+    // now, so a wide fan of poor lands and a narrow one of rich lands are
+    // different plays and the score has to be able to tell them apart.
+    const damage = attackImpactOn(v, actor, "great-raid", target).damage;
     if (
       best === null ||
       damage > best.damage ||
@@ -781,7 +877,11 @@ function pestilenceDecisive(
       0,
     );
     const opens = state.factionIds.some((polygon) => opensGate(polygon, mult));
-    if (opens || total > attackDamageFor(v, actor, "raid").damage) {
+    // "Beats a raid's worth" - the best raid actually available, since a
+    // raid's worth is no longer one number for the board.
+    const raidWorth = [...borderPolygonsOf(v, actor)]
+      .reduce((most, t) => Math.max(most, bestAttackOn(v, actor, "raid", t)), 0);
+    if (opens || total > raidWorth) {
       return { type: "play", cardIndex: plague };
     }
   }

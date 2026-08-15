@@ -343,6 +343,14 @@ svg.map.dragging {
   font-variant-numeric: tabular-nums;
 }
 
+/* A land of a Great raid's fan that the pool left nothing for. Dimmed rather
+   than removed: the fan narrowing as the slider falls is the allocation rule
+   teaching itself, and a row vanishing from under the pointer teaches
+   nothing. Colour is stated rather than inherited - this box is dark. */
+.transfer-end-idle {
+  color: #8b7f6d;
+}
+
 .transfer-row {
   display: flex;
   align-items: center;

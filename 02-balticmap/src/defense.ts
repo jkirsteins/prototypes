@@ -75,7 +75,17 @@ export function turnipThresholdFor(defenseMax: number): number {
  *  army, and that is the pace. */
 export const LAND_GROWTH = 1;
 
-export const RAID_DAMAGE = 1;
+/** The least a raid may spend, and so the least an arrow may carry.
+ *
+ *  A raid card spends defense out of its source land 1:1 (`RAID_SPEND_FRACTION`
+ *  below), and this is the floor on that. It is stated as legality rather than
+ *  as a zero-strength arrow: an arrow on the map is a promise of damage, and a
+ *  0 STR arrow existing only to soak a counter would be a second thing arrows
+ *  mean. So a land with nothing left to spend is simply not a legal source.
+ *
+ *  It is also what the two callers who choose no amount spend - the restless
+ *  raid out of a quiet land, and a `march=` boot clause naming no number. */
+export const MIN_RAID_SPEND = 1;
 export const WAR_COUNCIL_LEADERSHIP = 1;
 export const PLAGUE_DAMAGE_PER_STACK = 1;
 export const HILLFORT_HEAL = 3;
@@ -105,20 +115,88 @@ export const FORTIFY_HEAL = 2;
  *  card the seat already holds four of - not something different in kind. */
 export const STRONG_BONUS = 1;
 
-/** What each attack card deals to one polygon before the leader and the
- *  readings have their say, by card id. The sibling of `SINGLE_LAND_HEAL`
- *  below, and a table for the same reason: `attackDamageFor` used a ternary on
- *  the card id, so a new attack card silently inherited a Raid's damage from
- *  the else branch rather than failing to compile.
+/** How deep into its source land's CURRENT defense each attack card may dig,
+ *  as a fraction, by card id. An attack has no damage of its own any more: it
+ *  spends the defense of the land its army marches out of, 1:1, and the arrow
+ *  lands for what was spent. Raiding hard leaves that border land soft, and
+ *  the softness is on the map for every rival to read.
  *
- *  Great raid is absent no longer having a number of its own - it is several
- *  Raids, so an arrow of one is worth what a Raid is worth, and the table says
- *  so rather than a comment somewhere else. */
-export const ATTACK_DAMAGE: Readonly<Record<string, number>> = {
-  "raid": RAID_DAMAGE,
-  "strong-raid": RAID_DAMAGE + STRONG_BONUS,
-  "great-raid": RAID_DAMAGE,
+ *  The sibling of `SINGLE_LAND_HEAL` below, and a table for the same reason:
+ *  the damage this replaced was reached by a ternary on the card id once, so a
+ *  new attack card silently inherited a Raid's number from the else branch
+ *  rather than failing to compile. A card absent here gets 0, which is no
+ *  legal spend and so no legal source.
+ *
+ *  A fraction and not a function, because `CARD_RULES` has to fingerprint it
+ *  for the wire and a function does not stringify. `spendCeilingFor` is the
+ *  one reader.
+ *
+ *  Strong raid's whole identity is this row. It used to be
+ *  `RAID_DAMAGE + STRONG_BONUS` - one more damage - and it is now "may spend
+ *  twice as deep", which is the same card one better in the sense the strong
+ *  pair has always meant: a seat that traded up did not get a different card,
+ *  it got more of the one it had. `STRONG_BONUS` no longer reaches raids and
+ *  stays for the fortify pair, which is untouched.
+ *
+ *  Great raid spends as deep as a Strong raid does, out of every bordering
+ *  land at once - but out of ONE pool the player divides between them, which
+ *  is `allocateSpend` below. It is the top of the raid family and it costs
+ *  four Raids to build, so being the deepest as well as the widest is the
+ *  price being paid for. */
+export const RAID_SPEND_FRACTION: Readonly<Record<string, number>> = {
+  "raid": 0.5,
+  "strong-raid": 1,
+  "great-raid": 1,
 };
+
+/** The most this card may spend out of a land holding `current` defense.
+ *
+ *  Reads CURRENT and never maximum, deliberately: a land already wounded
+ *  raids more feebly, which is what makes a successful counter-raid worth
+ *  more than the point it took off the score. Rounded UP, so a land at 1 can
+ *  always spend its last point rather than being left holding a card it can
+ *  never play. */
+export function spendCeilingFor(cardId: string, current: number): number {
+  const fraction = RAID_SPEND_FRACTION[cardId] ?? 0;
+  return Math.max(0, Math.ceil(Math.max(0, current) * fraction));
+}
+
+/** Spread `total` across lands with these `caps`, as evenly as the caps allow.
+ *
+ *  Great raid asks for one number and sends one arrow per bordering land, so
+ *  something has to decide who spends what. Water-filling: everyone climbs
+ *  together, a land that hits its cap stops taking points while the others
+ *  keep climbing, and the remainder goes in the order the caps arrived - which
+ *  is the fan's own map order, so a seeded run splits the same way every time
+ *  and the tally the player watched is the tally that gets declared.
+ *
+ *  Pure arithmetic, knowing nothing of marches or realms, because the slider
+ *  in the HUD has to run it on every drag and the engine has to run it again
+ *  when the play commits. Two spellings of this would be two answers.
+ *
+ *  A land allocated 0 sends no arrow - the caller's business, not this
+ *  function's, which simply reports the 0. */
+export function allocateSpend(
+  caps: readonly number[], total: number,
+): number[] {
+  const clean = caps.map((cap) => Math.max(0, Math.floor(cap)));
+  const out = clean.map(() => 0);
+  let left = Math.max(0, Math.floor(total));
+  // A point at a time, round-robin in fan order, skipping whoever is full.
+  // Written as the loop it describes rather than as a division and a
+  // remainder because the slider drags one point at a time: raising the total
+  // by 1 must add 1 to exactly one land's row and leave every other row where
+  // it stands, never re-shuffle the tally underneath a player reading it.
+  while (left > 0 && clean.some((cap, i) => cap > out[i])) {
+    for (let i = 0; i < out.length && left > 0; i += 1) {
+      if (clean[i] > out[i]) {
+        out[i] += 1;
+        left -= 1;
+      }
+    }
+  }
+  return out;
+}
 
 /** How much each single-land heal restores, by card id. One table, because
  *  three things read it: the play resolves through it, the hover quotes it

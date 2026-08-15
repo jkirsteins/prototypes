@@ -87,6 +87,12 @@ export type Decision =
   | {
       kind: "play"; cardIndex: number; cardId: string;
       targetId?: string; sourceId?: string;
+      /** How much defense a raid tears out of its source - the arrow's whole
+       *  strength. A field on `play` and not a kind of its own, unlike the
+       *  harvest boon below: the amount is settled at the same moment the
+       *  target is, before anything is committed, so it is part of playing
+       *  the card rather than a question raised about a play that happened. */
+      spend?: number;
     }
   /** Its own kind and not a field on `play`, because the boon is settled
    *  BEFORE the card is committed - and because a question that is not a row
@@ -129,6 +135,7 @@ export const DECISION_ROUTES: {
       type: "play", cardIndex: d.cardIndex, cardId: d.cardId,
       ...(d.targetId !== undefined ? { targetId: d.targetId } : {}),
       ...(d.sourceId !== undefined ? { sourceId: d.sourceId } : {}),
+      ...(d.spend !== undefined ? { spend: d.spend } : {}),
     }),
   },
   harvest: {

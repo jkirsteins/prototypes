@@ -69,6 +69,12 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   "disease-spread": "disease",
   plagued: "plague",
   "winds-shifted": "winds",
+  // The same cue the arrow it paid for gets, because it is the same event
+  // twice from two ends - a land emptying itself is an army being raised.
+  // The player's OWN levy earns no camera and no label (the `causedHere` arm
+  // of `framedBeats`), so this is heard only when the beat is a rival
+  // stripping a border land that the screen has a line to.
+  levied: "march",
   // The consequence line under it carries the sound; two sounds for one
   // moment would stack.
   "passive-fired": null,

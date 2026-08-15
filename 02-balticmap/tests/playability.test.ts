@@ -7,7 +7,9 @@ import {
   greatRaidMarches,
   handBlockReason, handLimitFor, holdsGuard, incorporateRealmGate,
   isCardPlayable, MAX_HAND, MIN_HAND,
+  greatRaidPool, greatRaidSpends,
   marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
+  spendCeilingOn,
   outbreakPolygons, plagueDamageOn, plagueMultiplier, playableSet, reachOf,
   respiteExpiry, settlementAllowance, settlementsIn, subjugationGateOn,
   targetEligibilityFor, validTargetsFor, wealthIncomeFor, wealthOf,
@@ -16,7 +18,7 @@ import {
 import { OPENING_HAND } from "../src/game";
 import { TRIBUTE_CARDS } from "../src/cards";
 import { RAID_LEADERSHIP } from "../src/abilities";
-import { ATTACK_DAMAGE, RAID_DAMAGE, SUBJUGATION_GATE } from "../src/defense";
+import { SUBJUGATION_GATE } from "../src/defense";
 
 const ORDER = ["alpha", "beta", "gamma", "delta"];
 const LINE_ADJ = {
@@ -146,6 +148,56 @@ describe("marching: sources, targets and armies", () => {
     // A second army on the same land puts it back.
     expect(marchSourcesFor(view({ ...v, armies: { beta: 2 } }), "beta"))
       .toEqual(["beta"]);
+  });
+
+  it("drops a land with no defense left to pay for the arrow", () => {
+    // A raid card spends its source 1:1, so a land holding nothing has no
+    // raid in it - stated as legality rather than as a 0 STR arrow.
+    expect(marchSourcesFor(view({ defense: { beta: 0 } }), "beta")).toEqual([]);
+    // One point is enough: the ceiling rounds up, so the last point is
+    // always spendable and a card is never dead in the hand.
+    expect(marchSourcesFor(view({ defense: { beta: 1 } }), "beta"))
+      .toEqual(["beta"]);
+  });
+
+  it("names each raid card's own ceiling out of a land", () => {
+    const v = view({ defense: { beta: 5 } });
+    expect(spendCeilingOn(v, "raid", "beta")).toBe(3); // half, rounded up
+    expect(spendCeilingOn(v, "strong-raid", "beta")).toBe(5); // all of it
+    expect(spendCeilingOn(v, "great-raid", "beta")).toBe(5);
+  });
+
+  it("pools a great raid's fan and divides the pool between it", () => {
+    // beta holds gamma, and both border delta on the line.
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      adjacency: {
+        alpha: ["beta"], beta: ["alpha", "gamma", "delta"],
+        gamma: ["beta", "delta"], delta: ["beta", "gamma"],
+      },
+      defense: { beta: 6, gamma: 3 },
+    });
+    expect(greatRaidPool(v, "beta", "delta")).toBe(9);
+    expect(greatRaidSpends(v, "beta", "delta", 6).map((m) => [m.from, m.spend]))
+      .toEqual([["beta", 3], ["gamma", 3]]);
+    // gamma stops at its own 3 and beta keeps climbing.
+    expect(greatRaidSpends(v, "beta", "delta", 9).map((m) => [m.from, m.spend]))
+      .toEqual([["beta", 6], ["gamma", 3]]);
+  });
+
+  it("keeps a land that can pay nothing out of the great raid fan", () => {
+    const v = view({
+      overlords: new Map([["gamma", "beta"]]),
+      adjacency: {
+        alpha: ["beta"], beta: ["alpha", "gamma", "delta"],
+        gamma: ["beta", "delta"], delta: ["beta", "gamma"],
+      },
+      defense: { beta: 6, gamma: 0 },
+    });
+    expect(greatRaidMarches(v, "beta", "delta").map((m) => m.from))
+      .toEqual(["beta"]);
+    // Which is what keeps the pool at least one point per arrow.
+    expect(greatRaidPool(v, "beta", "delta")).toBe(6);
   });
 
   it("aims an army only at what its own land borders", () => {
@@ -721,27 +773,34 @@ describe("attackDamageFor", () => {
   // fight behind a chief get nothing from one, however hardened the chief is.
   const warLeader = { alpha: [RAID_LEADERSHIP] };
 
-  it("is base plus a war leader's leadership, doubled per held omens reading", () => {
-    expect(attackDamageFor(view(), "alpha", "raid"))
-      .toEqual({ damage: RAID_DAMAGE, multiplier: 1 });
+  it("is the spend plus a war leader's leadership, doubled per held reading", () => {
+    expect(attackDamageFor(view(), "alpha", "raid", 3))
+      .toEqual({ damage: 3, multiplier: 1 });
     // Leadership with no ability behind it moves nothing.
     const unled = view({ leadership: { alpha: 50 } });
-    expect(attackDamageFor(unled, "alpha", "raid").damage).toBe(RAID_DAMAGE);
+    expect(attackDamageFor(unled, "alpha", "raid", 3).damage).toBe(3);
     const led = view({ leadership: { alpha: 50 }, leaderAbilities: warLeader });
-    expect(attackDamageFor(led, "alpha", "raid").damage).toBe(RAID_DAMAGE + 50);
+    expect(attackDamageFor(led, "alpha", "raid", 3).damage).toBe(3 + 50);
     const read = view({
       leadership: { alpha: 50 }, leaderAbilities: warLeader, omens: { alpha: 2 },
     });
-    expect(attackDamageFor(read, "alpha", "raid"))
-      .toEqual({ damage: (RAID_DAMAGE + 50) * 4, multiplier: 4 });
+    expect(attackDamageFor(read, "alpha", "raid", 3))
+      .toEqual({ damage: (3 + 50) * 4, multiplier: 4 });
   });
 
-  it("great raid uses its own base under the same formula", () => {
+  it("doubles the arrow and not the price", () => {
+    // A reading is free force: the land pays what it spends whatever the
+    // multiplier, so what a reading is worth is the arrow it doubles.
+    const read = view({ omens: { alpha: 1 } });
+    expect(attackDamageFor(read, "alpha", "raid", 3).damage).toBe(6);
+  });
+
+  it("great raid reads the same formula, per arrow", () => {
     const v = view({
       leadership: { alpha: 50 }, leaderAbilities: warLeader, omens: { alpha: 1 },
     });
-    expect(attackDamageFor(v, "alpha", "great-raid"))
-      .toEqual({ damage: (ATTACK_DAMAGE["great-raid"] + 50) * 2, multiplier: 2 });
+    expect(attackDamageFor(v, "alpha", "great-raid", 1))
+      .toEqual({ damage: (1 + 50) * 2, multiplier: 2 });
   });
 
   it("omens multiply only attack cards", () => {

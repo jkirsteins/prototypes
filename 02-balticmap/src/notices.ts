@@ -507,6 +507,12 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
     },
   },
   discard: { kind: "silent", reason: "routine; visible in log" },
+  levied: {
+    kind: "silent",
+    reason: "the actor chose it - a modal telling you what you just decided " +
+      "teaches nothing. The `march-declared` beside it is the news, and the " +
+      "log carries the number as the line's own suffix",
+  },
   reshuffle: { kind: "silent", reason: "routine; deck pulse animation" },
   plagued: {
     kind: "modal",

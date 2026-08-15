@@ -10,7 +10,7 @@ import {
   type NoticeCtx, type RoundSummary,
 } from "./notices";
 import {
-  defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
+  allocateSpend, defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
 } from "./defense";
 import { walkStandings, type StandingChange } from "./standings";
 import {
@@ -278,6 +278,28 @@ export interface Hud {
       fromHas: number; toHas: number; toMax: number; fromMax: number;
     },
     hooks: { onConfirm(amount: number): void },
+  ): void;
+  /** Asks how hard to raid: how much defense comes out of the land or lands
+   *  the arrows set out from. One slider whatever the card, because Great raid
+   *  spends ONE pool divided between its fan - `lands` is that fan in
+   *  declaration order and the tally under the slider says who pays what.
+   *
+   *  Unlike the transfer offer this one CANCELS. Nothing has happened yet: the
+   *  card is still in hand and no army has left, so backing out has somewhere
+   *  to go back to. */
+  showSpendOffer(
+    offer: {
+      cardId: string; to: string; min: number; max: number;
+      /** One row per land that could pay, in the order the arrows are
+       *  declared. `cap` is that land's own ceiling; `allocateSpend` divides
+       *  the slider's total between them, which is the same call the engine
+       *  makes when the play commits. */
+      lands: { id: string; has: number; max: number; cap: number }[];
+      /** What one arrow lands for a given spend - the leader and the readings
+       *  are rules, so the HUD asks rather than computes. */
+      strengthOf(spend: number): number;
+    },
+    hooks: { onConfirm(total: number): void; onCancel(): void },
   ): void;
 }
 
@@ -555,6 +577,18 @@ export function eventSegments(
       return [
         t("The disease on "), faction(e.targetFactionId ?? ""),
         t(" changes hands"),
+      ];
+    case "levied":
+      // What the raid above it cost the land it set out from. The card is
+      // named because a Great raid levies three lands at once and each line
+      // has to say which play emptied it; the number rides the `(Defense -3
+      // -> 2)` suffix `impactText` prints, so it is deliberately absent here.
+      //
+      // Worded so the land does not open the sentence, per the naming rule in
+      // CLAUDE.md - the article form is only ever needed mid-sentence.
+      return [
+        t("Defenses stripped out of "), faction(e.targetFactionId ?? ""),
+        t(" to arm the "), card(e.cardId ?? ""),
       ];
     case "march-declared":
       // Same "out of X" shape the play line above prints for its own arrow,
@@ -1493,6 +1527,90 @@ export function createHud(
     confirm.textContent = "Send them";
     confirm.addEventListener("click", () => hooks.onConfirm(Number(slider.value)));
 
+    harvestOptions.replaceChildren(line, ends, row, confirm);
+    harvestOverlay.classList.remove("hidden");
+  }
+
+  function showSpendOffer(
+    offer: {
+      cardId: string; to: string; min: number; max: number;
+      lands: { id: string; has: number; max: number; cap: number }[];
+      strengthOf(spend: number): number;
+    },
+    hooks: { onConfirm(total: number): void; onCancel(): void },
+  ): void {
+    harvestTitle.textContent = "How hard?";
+    harvestOnCancel = hooks.onCancel;
+    armHarvestEscape(hooks.onCancel);
+
+    const line = document.createElement("div");
+    line.className = "transfer-line";
+    line.append(
+      renderSegments([card(offer.cardId)], richTextHooks),
+      document.createTextNode(" -> "),
+      renderSegments([faction(offer.to)], richTextHooks),
+    );
+
+    // One row per land that pays, each naming the land and where it finishes.
+    // The names are nodes, so pointing at one lights it on the map while the
+    // player decides how much of it to spend.
+    const ends = document.createElement("div");
+    ends.className = "transfer-ends";
+    const rows = offer.lands.map((land) => {
+      const el = document.createElement("div");
+      el.className = "transfer-end";
+      const who = document.createElement("span");
+      who.appendChild(renderSegments([faction(land.id)], richTextHooks));
+      const score = document.createElement("span");
+      score.className = "transfer-score";
+      el.append(who, score);
+      ends.appendChild(el);
+      return { land, el, score };
+    });
+
+    const row = document.createElement("div");
+    row.className = "transfer-row";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = String(offer.min);
+    slider.max = String(offer.max);
+    slider.value = String(offer.min);
+    slider.className = "transfer-slider";
+    const figure = document.createElement("span");
+    figure.className = "transfer-figure";
+    const say = (): void => {
+      const total = Number(slider.value);
+      // The same call the engine makes when the play commits, so the tally
+      // the player watched is the tally that gets declared.
+      const spends = allocateSpend(rows.map((r) => r.land.cap), total);
+      const arrows = spends.filter((n) => n > 0).length;
+      figure.textContent = rows.length > 1
+        ? `${total} of ${offer.max}, ${arrows} ${arrows === 1 ? "arrow" : "arrows"}`
+        : `${total} of ${offer.max}, ${offer.strengthOf(total)} STR`;
+      rows.forEach((r, i) => {
+        const spent = spends[i];
+        // Every arrow costs at least one point and the slider's floor is the
+        // fan's size, so nothing here should ever read 0. Stated anyway
+        // rather than assumed: this row is the only place a player would find
+        // out if it did.
+        r.el.classList.toggle("transfer-end-idle", spent === 0);
+        r.score.textContent = spent === 0
+          ? "sends nothing"
+          : `spends ${spent}, keeps ${r.land.has - spent} / ${r.land.max}` +
+            (rows.length > 1 ? ` (${offer.strengthOf(spent)} STR)` : "");
+      });
+    };
+    say();
+    slider.addEventListener("input", say);
+    row.append(slider, figure);
+
+    const confirm = document.createElement("button");
+    confirm.className = "harvest-option harvest-skip";
+    confirm.textContent = "Send them";
+    confirm.addEventListener("click", () => hooks.onConfirm(Number(slider.value)));
+
+    // No Cancel of its own: the overlay already carries one, wired to
+    // `harvestOnCancel` above. Building a second put two of them on screen.
     harvestOptions.replaceChildren(line, ends, row, confirm);
     harvestOverlay.classList.remove("hidden");
   }
@@ -3145,6 +3263,7 @@ export function createHud(
     },
     showHarvestOffer,
     revealGainedCards,
+    showSpendOffer,
     showTransferOffer,
     hideHarvestUi,
   };

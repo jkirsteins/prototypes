@@ -642,6 +642,29 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
           ];
     },
   }),
+  // What a raid tore out of the land it set out from. `framed` is the whole
+  // of it, and the `causedHere` arm inside `framedBeats` is why: this is
+  // almost always a consequence of the local seat's own play, so it earns the
+  // badge walk on the source and no camera and no label - the player is
+  // looking at the land they aimed out of, and the number simply walks down
+  // to what it now holds. On a land whose badge is not drawn at all the
+  // sentence is raised instead, through `causedLabel`.
+  //
+  // Not `never`, because a rival's levy is real news when the screen has a
+  // line to that land: an arrow is coming, and how soft its source was left
+  // is what says whether answering it is worth a card. `involvesLocalSeats`
+  // is the gate, unchanged.
+  levied: framed({
+    label: (e, cause, actor) => {
+      const tail = cause?.kind === "card" ? [t(" for "), card(cause.id)] : [];
+      return onItsOwn(e, actor)
+        ? [t("Defenses stripped out of "), landOf(e), ...tail]
+        : [
+            faction(actor ?? ""), t(" strips the defenses of "), landOf(e),
+            ...tail,
+          ];
+    },
+  }),
   "passive-fired": {
     kind: "never",
     reason: "it explains the line under it; that line carries the camera and " +

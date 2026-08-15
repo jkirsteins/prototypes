@@ -13,6 +13,7 @@ import {
   addDisease, applyDamage, applyHeal, capturesOnArrival, clearDiseaseOf,
   DEFAULT_DEFENSE_MAX,
   defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateOpen,
+  MIN_RAID_SPEND,
   PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
   type Defense, type Disease,
@@ -20,9 +21,10 @@ import {
 import {
   aimsUpOwnChain, attackDamageFor, omensMultiplier, attackReach,
   ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
-  claimWouldLand, handLimitFor, marchTargetsFrom, outbreakPolygons,
+  claimWouldLand, greatRaidPool, greatRaidSpends,
+  handLimitFor, marchTargetsFrom, outbreakPolygons,
   MIN_HAND, plagueMultiplier,
-  playableSet,
+  playableSet, spendCeilingOn,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
 } from "./playability";
@@ -55,10 +57,28 @@ export type GameEventType =
   | "subjugated" | "released" | "incorporated" | "independence" | "tribute"
   | "settled"
   | "healed" | "transferred" | "disease-spread" | "plagued" | "winds-shifted"
+  | "levied"
   | "passive-fired"
   | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
+
+/** How much defense a raid may tear out of `source`, given what the caller
+ *  asked for. Clamped rather than refused - see `playCard`'s `spend` doc.
+ *
+ *  A land that cannot afford the minimum never reaches here: `marchSourcesFor`
+ *  already refuses it, so `playCard`'s source check has turned the play away
+ *  above. The `Math.min` with the ceiling is what a wire and a URL are held
+ *  to. */
+function clampSpend(
+  view: RulesView, cardId: string, source: string, want: number | undefined,
+): number {
+  const ceiling = spendCeilingOn(view, cardId, source);
+  return Math.max(
+    MIN_RAID_SPEND,
+    Math.min(ceiling, Math.floor(want ?? MIN_RAID_SPEND)),
+  );
+}
 
 /** How a land changed hands.
  *
@@ -936,6 +956,11 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     // `passive-fired` beside it, so it never meets either rule and stands
     // unindented next to it.
     case "march-declared":
+    // What the arrow cost the land it set out from. Nests for exactly the
+    // reason the declaration above it does, and stands beside it: the play
+    // spent the defense, so the line saying so belongs under the play and not
+    // in the flow of the round.
+    case "levied":
     // The bar crossing follows the turnip play that crossed it; the pick
     // follows the harvest play it was made on.
     case "harvest-earned":
@@ -1415,6 +1440,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       if (seat === undefined) continue;
       const view = { ...viewOf({ ...state, players }), marches, defense };
       if (freeArmiesFor(view, land) === 0) continue;
+      // A quiet land raids with the LEAST a raid may spend, not with its
+      // ceiling. It raids every fourth round and never heals on purpose, so a
+      // land spending deep would sink toward 0 while nobody watched - the grey
+      // middle softening into a slow gift for whoever reaches it first. One
+      // point is what this always cost, and the change belongs to the cards
+      // the player holds.
+      if (spendCeilingOn(view, "raid", land) < MIN_RAID_SPEND) continue;
       // Never at a land already flattened. An army walking into an empty land
       // TAKES it, and a land nobody leads is picking a fight, not building an
       // empire - grey conquering grey turned the middle of the map into a
@@ -1426,7 +1458,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
       const id = nextMarchId++;
-      const damage = attackDamageFor(view, land, "raid").damage;
+      const damage = attackDamageFor(view, land, "raid", MIN_RAID_SPEND).damage;
+      defense = applyDamage({ defense, defenseMax: state.defenseMax }, land, MIN_RAID_SPEND);
       marches = addMarch(marches, {
         id,
         actor: land, from: land, to, cardId: "raid", damage,
@@ -1445,6 +1478,12 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       });
       // Pushed after the play above, so the declaration reads as something
       // that play did rather than as a line standing before its own cause.
+      // The levy first, in the order a played raid pushes them: the land pays
+      // before the arrow it paid for appears.
+      events.push({
+        turn: state.turn, playerId: seat.id, type: "levied",
+        cardId: "raid", targetFactionId: land, amount: MIN_RAID_SPEND,
+      });
       events.push({
         turn: state.turn, playerId: seat.id, type: "march-declared",
         cardId: "raid", targetFactionId: to, sourceFactionId: land,
@@ -2000,8 +2039,18 @@ export function playCard(
    *  arrow. Only Raid reads it; Great raid assigns its own sources through
    *  `greatRaidMarches`, and every other card ignores it. A Raid that names
    *  no legal source is refused, the same way a targeted card naming no legal
-   *  target is: an arrow with no tail is not a play. */
-  opts?: { harvest?: HarvestChoice; sourceId?: string },
+   *  target is: an arrow with no tail is not a play.
+   *
+   *  `spend` is how much defense the raid tears out of that source - the
+   *  arrow's whole strength. CLAMPED into `[MIN_RAID_SPEND, ceiling]` rather
+   *  than refused when it is missing or out of range, because the callers who
+   *  name none all mean the same thing by it: an AI seat on an older build, a
+   *  replayed URL, the sim. "As little as the card allows" is the safe
+   *  reading, and a wire is the same attack surface as a hand-edited record.
+   *
+   *  For Great raid it is the POOL, divided between the fan by
+   *  `greatRaidSpends`. */
+  opts?: { harvest?: HarvestChoice; sourceId?: string; spend?: number },
 ): GameState {
   if (state.phase !== "playing") return state;
   const p = state.players[state.current];
@@ -2140,8 +2189,18 @@ export function playCard(
    *  convention, one turn out, which is this seat's next `beginTurn` whichever
    *  seat it is. */
   const declareMarch = (
-    from: string, to: string, damage: number, holdsArmy = true,
+    from: string, to: string, spend: number, holdsArmy = true,
   ): void => {
+    // The spend comes off the source THE MOMENT the arrow appears, not when it
+    // lands. That is the whole shape of the card: what it cost is on the map
+    // for a rival to read for the turn the arrow is in flight, and the number
+    // printed on the arrow is a promise precisely because it was already paid.
+    defense = applyDamage({ defense, defenseMax }, from, spend);
+    events.push({
+      turn: state.turn, playerId: p.id, type: "levied",
+      cardId, targetFactionId: from, amount: spend,
+    });
+    const damage = attackDamageFor(view, p.factionId, cardId, spend).damage;
     const id = nextMarchId++;
     marches = addMarch(marches, {
       id,
@@ -2266,18 +2325,36 @@ export function playCard(
       events[0] = { ...events[0], targetRuler: rulerOf(rulers, targetId).name };
     }
   } else if (isMarchCard(cardId) && targetId !== undefined && sourceId !== undefined) {
-    // Declared, not landed. Through `attackDamageFor` rather than a local
-    // formula: the card tip quotes the same call, so what the arrow promises
-    // and what lands next turn cannot drift.
-    declareMarch(sourceId, targetId, attackDamageFor(view, p.factionId, cardId).damage);
+    // Declared, not landed. `declareMarch` runs the spend through
+    // `attackDamageFor`, the same call the card tip quotes, so what the arrow
+    // promises and what lands next turn cannot drift.
+    declareMarch(sourceId, targetId, clampSpend(view, cardId, sourceId, opts?.spend));
   } else if (cardId === "great-raid" && targetId !== undefined) {
-    const { damage } = attackDamageFor(view, p.factionId, cardId);
-    // `greatRaidMarches` is the one list: legality asked it, the card tip
-    // quotes it, and it is in faction order, so a seeded run declares the same
-    // arrows every time. Each one holds its own land's army and lands on its
-    // own axis - the card is several Raids, not one big one.
-    for (const { from, to, holdsArmy } of greatRaidMarches(view, p.factionId, targetId)) {
-      declareMarch(from, to, damage, holdsArmy);
+    // `greatRaidSpends` is the one list: legality asked its fan, the slider
+    // tallied with it, and it is in faction order, so a seeded run declares
+    // the same arrows every time. Each one holds its own land's army and lands
+    // on its own axis - the card is several Raids, not one big one, and now
+    // they share one purse.
+    //
+    // The no-opinion default is ONE POINT PER ARROW and not one point, which
+    // is the difference between "as little as the card allows" and "not the
+    // card at all": a pool of 1 across a fan of three sends a single arrow,
+    // which is a Raid played at a Great raid's price. A caller with nothing to
+    // say - the sim, a fast-forward, an older build - means the card it named.
+    const fanSize = greatRaidMarches(view, p.factionId, targetId).length;
+    const pool = Math.max(
+      MIN_RAID_SPEND * fanSize,
+      Math.min(
+        greatRaidPool(view, p.factionId, targetId),
+        Math.floor(opts?.spend ?? 0),
+      ),
+    );
+    for (const m of greatRaidSpends(view, p.factionId, targetId, pool)) {
+      // A land the pool left nothing for sends no arrow. The minimum is 1
+      // everywhere, so a 0 STR arrow cannot exist here either - and dropping
+      // the land drops its army commitment with it.
+      if (m.spend < MIN_RAID_SPEND) continue;
+      declareMarch(m.from, m.to, m.spend, m.holdsArmy);
     }
   } else if (cardId === "prosperous-proliferation" && targetId !== undefined) {
     // The ceiling and the score move together. Raising one alone would be a

@@ -47,11 +47,16 @@ navigation and the same URL gives the same run every time:
   the map: every land already stands on one, so `selonians:1` is a land
   holding two - and two is what a land needs to take two fortifies in a turn.
   Nothing is spent by booting; `settlementsSpent` starts empty.
-- `march=jersikans>selonians;semigallian-confederacy>selonians` - declare an
-  attack already in flight, `from>to` per arrow. Declared through the real
-  rules, so a source with no free army or a target it does not border is
-  dropped rather than conjured, and the damage is whatever a Raid out of that
-  land would actually deal.
+- `march=jersikans>selonians;semigallian-confederacy>selonians:3` - declare an
+  attack already in flight, `from>to` per arrow, with an optional `:N` for how
+  much defense the raid tears out of its source. Declared through the real
+  rules, so a source with no free army, no defense to spend, or a target it
+  does not border is dropped rather than conjured. The amount is clamped into
+  `[1, the source's ceiling]` and DEFAULTS to 1, so a URL written before a
+  raid's strength was a choice still means what it always meant. Marches are
+  declared last, after `defense=`, and the spend lands on top of it:
+  `defense=selonians:5&march=selonians>jersikans:3` boots Selonians at 2 with
+  a 3 STR arrow in flight.
 
 **Every polygon id above is the land's own FACTION id**, not the region id -
 `selonians`, not `selija`. The two id spaces are different words for the same
@@ -414,6 +419,92 @@ in the game is a counter back down a border that already carries the arrow it
 answers, and a preview laid out as if it stood alone took the whole block and
 was drawn on top of that arrow, with only its barbs showing.
 
+## A raid is as strong as the land behind it is willing to bleed
+
+An attack card has no damage of its own. It spends the defense of the land its
+army marches out of, 1:1, and the arrow lands for what was spent - so raiding
+hard leaves that border land soft, and the softness is on the map for every
+rival to read. `RAID_SPEND_FRACTION` in `src/defense.ts` is how deep each card
+may dig into its source's CURRENT defense: a Raid reaches half of it rounded
+up, a Strong raid and a Great raid all of it. `spendCeilingFor` is the one
+reader, and `spendCeilingOn` in `src/playability.ts` is the one place the
+question "how much could this land pay" is answered - legality, the aim
+preview, the slider's bound, the engine's clamp and the host's re-clamp of a
+guest's action all call it.
+
+Four things are load-bearing:
+
+- **The minimum is 1, stated as legality.** A land with nothing left to spend
+  is not a legal source (`marchSourcesFor`), rather than a source that sends a
+  0 STR arrow. An arrow on the map is a promise of damage, and one existing
+  only to soak a counter would be a second thing arrows mean.
+- **The ceiling reads CURRENT and never maximum.** A land already wounded
+  raids more feebly, which is what makes a successful counter-raid worth more
+  than the point it took off the score.
+- **The spend is gone, and it is spent at DECLARATION.** `declareMarch` takes
+  it off the source the moment the arrow appears, which is why the number
+  printed on the arrow is a promise: it was already paid. Fortify, Hillfort
+  and the harvest heal are the way back. `STRONG_BONUS` no longer reaches
+  raids - Strong raid's identity is its row in the fraction table.
+- **Favourable omens doubles the arrow and not the price.** `attackDamageFor`
+  takes the spend where a flat per-card number used to sit and is otherwise
+  unchanged, so a reading is free force worth holding rather than a discount
+  worth spending, and a leader's raid prowess still adds flat.
+
+**Great raid draws on ONE pool.** The player names a total and `allocateSpend`
+divides it between the fan, water-filling in fan order: everyone climbs
+together, a land that hits its own cap stops taking points while the others
+keep climbing. It is written as the round-robin loop it describes rather than
+as a division and a remainder, because the slider drags one point at a time -
+raising the total by 1 must add 1 to exactly one row and leave the others
+where they stand, or the tally re-shuffles under a player reading it. The
+pool's floor is the fan's size, one point per arrow: a Great raid sent for
+less than that would be a Raid played at a Great raid's price, which is what a
+caller with no opinion would otherwise get.
+
+**The amount is asked after the target click, and it rides the `play`
+decision.** `askSpend` in `src/main.ts` raises the slider and `spend` is a
+field on the decision rather than a `DecisionKind` of its own - the amount is
+settled before anything is committed, so it is part of playing the card and
+the router does not learn a fifth thing. A guest raises its own slider and
+sends its number, exactly as it does with the source. Unlike the transfer
+offer this overlay CANCELS: nothing has happened yet.
+
+A missing or out-of-range `spend` is CLAMPED into `[MIN_RAID_SPEND, ceiling]`
+rather than refused, at `playCard` and again at the wire. Every caller that
+names none means the same thing by it - the sim, a fast-forward, an older
+build, a replayed URL - and "as little as the card allows" is the safe reading.
+
+**The preview quotes the ceiling and says "up to".** `attackImpactOn` answers
+what the card COULD take off a land if it spent everything, because the amount
+is not chosen until after the click; a preview quoting the least the card can
+do would be describing a play nobody is making. The aim arrow's width is the
+same ceiling, for the same reason - the preview goes into the real lane
+packing, so it shows the widest block the play could make.
+
+**`levied` is the log line for it**, a `GameEventType` of its own. Nothing
+existing describes a land losing defense to its own side's play: `plagued` and
+`march-resolved` both mean "somebody did this to you", and borrowing either
+would tell the player their own land was attacked by the raid they chose to
+send. One event per land, so a Great raid across three lands levies three
+times and each badge walks its own number. It is silent in `NOTICE_RULES` (a
+modal telling you what you just decided teaches nothing) and `framed` in
+`PRESENTATION_RULES`, which gives the player's own levy a badge walk and no
+camera through the `causedHere` arm.
+
+The AI's rule is `raidSpendFor` in `src/ai.ts`, and the ORDER of its three
+arms is load-bearing: a conquest is paid for wherever the source stands
+(`defense + 1`, and not a point more); failing that, a frontier land spends
+the minimum rather than being gutted to soften a land it cannot take; failing
+that, an interior land spends its ceiling. Read the other way round, a branch
+that had already picked a target it could overwhelm would send an arrow too
+small to take it. The restless raid out of a quiet land spends the minimum,
+deliberately: it raids every fourth round and never heals on purpose, so a
+ceiling spend would sink the grey middle toward 0 while nobody watched.
+
+The 2026-08-15 raid-spend doc in docs/superpowers/specs has the full
+reasoning.
+
 ## The hand is the realm's, and it is a floor rather than a ceiling
 
 `handLimitFor` in `src/playability.ts` is how many cards a turn refills to: one
@@ -516,7 +607,10 @@ does:
 
   **What stops the run is ordinary legality, and a repeating class must
   therefore have something to run out of.** A raid runs out of armies
-  (`freeArmiesFor` - a march holds one of its source's until it lands). A
+  (`freeArmiesFor` - a march holds one of its source's until it lands) AND of
+  defense, per the raid-spend rule below: two raids out of one land in a turn
+  compete for the same purse as well as the same armies, and whichever runs
+  dry first closes the run. A
   fortify runs out of settlements: `KeywordDef.spendsSettlement` calls on one
   settlement of the land it heals, counted by `freeSettlementsIn` against
   `GameState.settlementsSpent` and handed back wholesale by `beginTurn`. The

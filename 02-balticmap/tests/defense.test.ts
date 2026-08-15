@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDisease, applyDamage, applyHeal, clearDiseaseOf, DEFAULT_DEFENSE_MAX,
+  addDisease, allocateSpend, applyDamage, applyHeal, clearDiseaseOf,
+  DEFAULT_DEFENSE_MAX,
   DEFENSE_PER_POPULATION, defenseMaxFromPopulations, defenseMaxOf, defenseOf,
-  diseaseOn, gateBandOf, independenceGateOpen, subjugationGateOpen,
+  diseaseOn, gateBandOf, independenceGateOpen, MIN_RAID_SPEND,
+  spendCeilingFor, subjugationGateOpen,
   transferAllDiseaseTo, type Defense, type Disease,
 } from "../src/defense";
 
@@ -117,5 +119,80 @@ describe("defense store", () => {
     expect(
       defenseMaxFromPopulations({ "eastern-aukstaitija": 90000, pilsotas: 10000 }),
     ).toEqual({ "eastern-aukstaitija": 18, pilsotas: 2 });
+  });
+});
+
+describe("spendCeilingFor", () => {
+  it("gives a Raid half the land's CURRENT defense, rounded up", () => {
+    expect(spendCeilingFor("raid", 6)).toBe(3);
+    expect(spendCeilingFor("raid", 5)).toBe(3); // rounded up
+    expect(spendCeilingFor("raid", 1)).toBe(1); // the last point is spendable
+    expect(spendCeilingFor("raid", 0)).toBe(0); // and then there is no raid
+  });
+
+  it("gives the two deep cards all of it", () => {
+    expect(spendCeilingFor("strong-raid", 5)).toBe(5);
+    expect(spendCeilingFor("great-raid", 5)).toBe(5);
+  });
+
+  it("reads current and never maximum - a wounded land raids feebly", () => {
+    // Which is what makes a successful counter-raid worth more than the point
+    // it took off the score.
+    expect(spendCeilingFor("raid", 2)).toBe(1);
+  });
+
+  it("gives a card that is not an attack nothing, rather than a Raid's share", () => {
+    expect(spendCeilingFor("fortify", 6)).toBe(0);
+    expect(spendCeilingFor("not-a-card", 6)).toBe(0);
+  });
+
+  it("floors a nonsense score rather than returning one", () => {
+    expect(spendCeilingFor("raid", -4)).toBe(0);
+  });
+});
+
+describe("allocateSpend", () => {
+  it("spreads a total as evenly as the caps allow, remainder in fan order", () => {
+    expect(allocateSpend([6, 4, 3], 6)).toEqual([2, 2, 2]);
+    expect(allocateSpend([6, 4, 3], 8)).toEqual([3, 3, 2]);
+    expect(allocateSpend([6, 4, 3], 11)).toEqual([4, 4, 3]);
+  });
+
+  it("stops a land at its own cap and keeps climbing the others", () => {
+    // The slider's whole behaviour: a row that has hit its ceiling stays put
+    // while the rows around it rise.
+    expect(allocateSpend([6, 4, 3], 13)).toEqual([6, 4, 3]);
+    expect(allocateSpend([6, 4, 3], 12)).toEqual([5, 4, 3]);
+  });
+
+  it("adds exactly one point per point of total, so a drag never re-shuffles", () => {
+    let last = allocateSpend([6, 4, 3], 0);
+    for (let total = 1; total <= 13; total += 1) {
+      const next = allocateSpend([6, 4, 3], total);
+      const moved = next.filter((n, i) => n !== last[i]);
+      expect(moved).toHaveLength(1);
+      expect(next.reduce((a, b) => a + b, 0)).toBe(total);
+      last = next;
+    }
+  });
+
+  it("ignores a total the caps cannot hold, and one below zero", () => {
+    expect(allocateSpend([6, 4, 3], 99)).toEqual([6, 4, 3]);
+    expect(allocateSpend([6, 4, 3], -1)).toEqual([0, 0, 0]);
+  });
+
+  it("handles one land, no lands, and a fan of empty purses", () => {
+    expect(allocateSpend([5], 3)).toEqual([3]);
+    expect(allocateSpend([], 3)).toEqual([]);
+    expect(allocateSpend([0, 0], 3)).toEqual([0, 0]);
+  });
+
+  it("gives every land at least the minimum once the total reaches the fan", () => {
+    // Which is the floor `playCard` and the slider both put on a Great raid:
+    // a pool smaller than the fan would send fewer arrows than the card says.
+    const caps = [6, 4, 3];
+    for (const n of allocateSpend(caps, MIN_RAID_SPEND * caps.length)) {
+      expect(n).toBeGreaterThanOrEqual(MIN_RAID_SPEND);
+    }
   });
 });

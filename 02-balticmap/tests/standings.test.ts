@@ -44,6 +44,16 @@ describe("scoreMovesOf", () => {
     ]);
   });
 
+  it("levied moves the SOURCE's defense down - the land that paid, not the aim", () => {
+    // The one defense loss an actor does to its own land: what a raid tore
+    // out of the land it set out from. `targetFactionId` is that source, and
+    // the land the arrow is aimed at is `march-declared`'s business.
+    const e = event({ type: "levied", cardId: "raid", targetFactionId: X, amount: 3 });
+    expect(scoreMovesOf(e, ctx())).toEqual([
+      { track: "defense", polygon: X, delta: -3 },
+    ]);
+  });
+
   it("a zero-amount damaged or plagued moves nothing", () => {
     // Plague logs amount 0 where the stacks burned on a broken polygon - the
     // line still renders, but there is no before -> after to reconstruct.

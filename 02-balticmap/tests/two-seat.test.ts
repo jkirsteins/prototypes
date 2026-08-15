@@ -12,7 +12,10 @@ import {
   newGame, startGame, chooseBuild, advance, viewOf,
   type GameState,
 } from "../src/game";
-import { validTargetsFor } from "../src/playability";
+import {
+  marchSourcesAgainst, spendCeilingOn, validTargetsFor,
+} from "../src/playability";
+import { defenseOf, MIN_RAID_SPEND } from "../src/defense";
 import { aiTakeTurn } from "../src/ai";
 import type { Rng } from "../src/cards";
 import { autoHarvestChoice, buildOffer } from "../src/harvest";
@@ -230,6 +233,65 @@ describe("a card with one legal target", () => {
     expect(r.outcome).toBe("sent");
     expect(t.rejects).toEqual([]);
     expect(t.state().playedThisTurn).toBe(true);
+  });
+});
+
+describe("a raid's spend", () => {
+  it("crosses the wire with the guest's play and lands on the host's board", () => {
+    // The amount is a field on the `play` decision rather than a decision of
+    // its own, so this is the test that would notice it failing to cross:
+    // a guest raiding for 3 and a host declaring an arrow of 1.
+    const t = twoSeats(11);
+    until(t, t.guestSeat);
+    const g = t.replica();
+    const me = g.players[t.guestSeat].factionId;
+    const v = viewOf(g);
+    const target = validTargetsFor(v, me, "raid")
+      .find((to) => marchSourcesAgainst(v, me, to).length > 0);
+    expect(target).toBeDefined();
+    const from = marchSourcesAgainst(v, me, target!)[0];
+    const ceiling = spendCeilingOn(v, "raid", from);
+    expect(ceiling).toBeGreaterThan(MIN_RAID_SPEND);
+    const had = defenseOf(v, from);
+
+    t.setState(withHand(t.state(), t.guestSeat, ["raid"]));
+    const r = t.guest.decide({
+      kind: "play", cardIndex: 0, cardId: "raid",
+      targetId: target!, sourceId: from, spend: ceiling,
+    });
+    expect(r.outcome).toBe("sent");
+    expect(t.rejects).toEqual([]);
+    const after = t.state();
+    // The newest arrow: rival seats have their own out on the board already.
+    const mine = Object.values(after.marches).sort((a, b) => b.id - a.id)[0];
+    expect(mine).toMatchObject({ from, to: target, damage: ceiling });
+    // And the guest's own land paid for it on the HOST's board, which is the
+    // only board there is.
+    expect(defenseOf(viewOf(after), from)).toBe(had - ceiling);
+  });
+
+  it("is clamped by the host rather than taken on the sender's word", () => {
+    // A wire is the same attack surface as a hand-edited record, so a number
+    // past the ceiling is cut down to it rather than refused - "as much as
+    // the card allows" is the safe reading of a build that disagrees.
+    const t = twoSeats(11);
+    until(t, t.guestSeat);
+    const g = t.replica();
+    const me = g.players[t.guestSeat].factionId;
+    const v = viewOf(g);
+    const target = validTargetsFor(v, me, "raid")
+      .find((to) => marchSourcesAgainst(v, me, to).length > 0)!;
+    const from = marchSourcesAgainst(v, me, target)[0];
+    const ceiling = spendCeilingOn(v, "raid", from);
+
+    t.setState(withHand(t.state(), t.guestSeat, ["raid"]));
+    t.guest.decide({
+      kind: "play", cardIndex: 0, cardId: "raid",
+      targetId: target, sourceId: from, spend: 9999,
+    });
+    expect(t.rejects).toEqual([]);
+    const mine = Object.values(t.state().marches).sort((a, b) => b.id - a.id)[0];
+    expect(mine).toMatchObject({ from, to: target, damage: ceiling });
   });
 });
 

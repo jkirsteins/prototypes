@@ -215,13 +215,18 @@ function defenseMove(
   polygon: string,
   delta: number,
   multiplier: number,
+  /** Whether the number is a CEILING rather than a promise. An attack's is:
+   *  how hard a raid hits is chosen after the target is clicked, so this row
+   *  is read while the amount is still open and every word of it has to say
+   *  so. A heal's is not - the card's number is the card's number. */
+  upTo = false,
 ): Impact {
   const before = defenseOf(view, polygon);
   const max = defenseMaxOf(view, polygon);
   const after = Math.max(0, Math.min(max, before + delta));
   const signed = delta > 0 ? `+${delta}` : `${delta}`;
   return {
-    amount: signed,
+    amount: upTo ? `up to ${signed}` : signed,
     spans: [
       { text: `Defense (${before} -> ${after}` },
       { text: multiplier > 1 ? `, ${multipliedWord(multiplier)})` : ")" },
@@ -258,13 +263,19 @@ function availableImpacts(
     // later, so a fortify in between is a real escape and this row must not
     // promise past it.
     //
+    // The number is a CEILING as well - the most the deepest-pocketed land of
+    // the realm could tear out of itself to pay for this - because the amount
+    // is chosen after the click. So the capture row asks whether the play is
+    // AVAILABLE, which is the honest question at aiming time, and the row
+    // above it says "up to".
+    //
     // Asked of `ATTACK_CARDS`, the class - every one of them sends an army,
     // Great raid through its own fan - so a new attack card is covered by
     // joining the set rather than by finding this line.
     const standing = defenseOf(view, targetFactionId);
     const dealt = damageAfterTerrain(view, targetFactionId, damage);
     return [
-      defenseMove(view, targetFactionId, -damage, multiplier),
+      defenseMove(view, targetFactionId, -damage, multiplier, true),
       ...(capturesOnArrival(dealt, standing)
         ? [prose(standing === 0
             ? "Takes the land, if it is still undefended when this lands"

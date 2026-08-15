@@ -14,8 +14,8 @@ import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
-  ATTACK_DAMAGE, FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL, STRONG_BONUS,
-  PLAGUE_DAMAGE_PER_STACK, RAID_DAMAGE, turnipThresholdFor,
+  FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL, STRONG_BONUS,
+  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, turnipThresholdFor,
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import {
@@ -470,20 +470,26 @@ describe("raid", () => {
     const before = g.log.length;
     const after = playCard(g, 0, rng(), "alpha");
     expect(after.defense.alpha).toBeUndefined(); // untouched, still at max
+    // The SOURCE pays, the moment the arrow appears.
+    expect(after.defense.beta).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
     const events = fresh(after, before);
-    expect(events).toHaveLength(2);
+    expect(events).toHaveLength(3);
     expect(events[0]).toMatchObject({
       type: "play", cardId: "raid", targetFactionId: "alpha",
       sourceFactionId: "beta",
     });
     expect(events[1]).toMatchObject({
+      type: "levied", cardId: "raid", targetFactionId: "beta",
+      amount: MIN_RAID_SPEND,
+    });
+    expect(events[2]).toMatchObject({
       type: "march-declared", cardId: "raid", targetFactionId: "alpha",
-      sourceFactionId: "beta", marchId: g.nextMarchId, amount: RAID_DAMAGE,
+      sourceFactionId: "beta", marchId: g.nextMarchId, amount: MIN_RAID_SPEND,
     });
     expect(Object.values(after.marches)).toEqual([{
       id: g.nextMarchId,
       actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: RAID_DAMAGE, holdsArmy: true, expiry: g.turn + 1,
+      damage: MIN_RAID_SPEND, holdsArmy: true, expiry: g.turn + 1,
     }]);
   });
 
@@ -497,7 +503,7 @@ describe("raid", () => {
     expect(declared[0].sourceFactionId).toBe("beta");
     expect(declared[0].targetFactionId).toBe("alpha");
     // The strength the arrow will print, frozen at declaration.
-    expect(declared[0].amount).toBe(RAID_DAMAGE);
+    expect(declared[0].amount).toBe(MIN_RAID_SPEND);
   });
 
   it("a declaration is indented under the play that made it", () => {
@@ -511,12 +517,12 @@ describe("raid", () => {
     const g = playCard(withHand(playingState(), 0, ["raid"]), 0, rng(), "alpha");
     const before = g.log.length;
     const after = landMarches(g);
-    expect(after.defense.alpha).toBe(FIXTURE_MAX - RAID_DAMAGE);
+    expect(after.defense.alpha).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
     expect(after.marches).toEqual({}); // the army is home
     expect(fresh(after, before).find((e) => e.type === "march-resolved"))
       .toMatchObject({
         type: "march-resolved", cardId: "raid", targetFactionId: "alpha",
-        sourceFactionId: "beta", amount: RAID_DAMAGE,
+        sourceFactionId: "beta", amount: MIN_RAID_SPEND,
       });
   });
 
@@ -549,7 +555,7 @@ describe("raid", () => {
       rulers: { ...after.rulers, beta: { ...after.rulers.beta, leadership: 0 } },
     };
     expect(landMarches(after).defense.alpha)
-      .toBe(FIXTURE_MAX - (RAID_DAMAGE + 50));
+      .toBe(FIXTURE_MAX - (MIN_RAID_SPEND + 50));
   });
 
   it("cashes the whole omens stack at declaration: x2 for one reading, x4 for two", () => {
@@ -559,22 +565,25 @@ describe("raid", () => {
     expect(one.log.find((e) => e.type === "play")?.readings).toBe(1);
     expect(one.omens.beta).toBeUndefined(); // spent whole, at declaration
     expect(landMarches(one).defense.alpha)
-      .toBe(FIXTURE_MAX - RAID_DAMAGE * 2);
+      .toBe(FIXTURE_MAX - MIN_RAID_SPEND * 2);
 
     const two = landMarches(
       playCard({ ...base, omens: { beta: 2 } }, 0, rng(), "alpha"),
     );
-    expect(two.defense.alpha).toBe(FIXTURE_MAX - RAID_DAMAGE * 4);
+    expect(two.defense.alpha).toBe(FIXTURE_MAX - MIN_RAID_SPEND * 4);
     expect(two.log.find((e) => e.type === "march-resolved")).toMatchObject({
-      type: "march-resolved", amount: RAID_DAMAGE * 4,
+      type: "march-resolved", amount: MIN_RAID_SPEND * 4,
     });
+    // The reading doubled the ARROW and not the price: beta paid the one
+    // point it spent, whatever the multiplier over it.
+    expect(one.defense.beta).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
   });
 
   it("records the actual movement on a nearly-broken polygon, and nothing at 0", () => {
     const g = withHand(playingState(), 0, ["raid"]);
     // A polygon standing at less than one raid's damage: the event records
     // the actual movement, not the card's number.
-    const standing = Math.max(1, RAID_DAMAGE - 1);
+    const standing = Math.max(1, MIN_RAID_SPEND - 1);
     const low = landMarches(
       playCard({ ...g, defense: { alpha: standing } }, 0, rng(), "alpha"),
     );
@@ -600,7 +609,7 @@ describe("raid", () => {
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
     const after = landMarches(playCard(g, 0, rng(), "gamma"));
-    expect(after.defense.gamma).toBe(FIXTURE_MAX - RAID_DAMAGE);
+    expect(after.defense.gamma).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
     expect(after.overlords.get("gamma")).toBe("beta"); // fealty untouched
   });
 
@@ -638,9 +647,13 @@ describe("the counter-raid clash", () => {
     let g = withHand(playingState(LINE_ADJ), 0, ["raid"]);
     g = playCard(g, 0, rng(), "alpha");
     // Hand-place alpha's counter rather than walking its turn: the clash is
-    // about the two marches, not about how the second one got declared.
+    // about the two marches, not about how the second one got declared. The
+    // defense store goes back to pristine for the same reason: the play above
+    // levied beta a point to pay for its arrow, and these cases are about
+    // what the two arrows do to each other, at strengths written here.
     return {
       ...g,
+      defense: {},
       marches: {
         ...Object.fromEntries(
           Object.entries(g.marches).map(([k, m]) => [k, { ...m, damage: betaDamage }]),
@@ -850,8 +863,12 @@ describe("great-raid", () => {
     const after = playCard(pyramid(), 0, rng(), "delta");
     expect(Object.values(after.marches).map((m) => [m.from, m.to, m.holdsArmy]))
       .toEqual([["beta", "delta", true], ["gamma", "delta", true]]);
-    // Each sallying land spends its OWN army, and nothing lands yet.
-    expect(after.defense).toEqual({});
+    // Each sallying land spends its OWN army and its own point of defense -
+    // the pool's floor, one per arrow, with no amount named. Nothing has
+    // landed on delta yet.
+    expect(after.defense).toEqual({
+      beta: FIXTURE_MAX - MIN_RAID_SPEND, gamma: FIXTURE_MAX - MIN_RAID_SPEND,
+    });
   });
 
   it("cannot sally at all once the frontier's armies are already out", () => {
@@ -873,9 +890,12 @@ describe("great-raid", () => {
       .filter((e) => e.type === "march-resolved");
     // Two arrows, answered one at a time - a Raid's worth each, not a card's.
     expect(landed.map((e) => e.targetFactionId)).toEqual(["delta", "delta"]);
-    expect(landed.every((e) => e.amount === ATTACK_DAMAGE["great-raid"])).toBe(true);
-    expect(after.defense.delta).toBe(FIXTURE_MAX - 2 * ATTACK_DAMAGE["great-raid"]);
-    expect(after.defense.beta).toBeUndefined(); // never hits itself
+    // No pool named, so the card's own floor: one point per arrow.
+    expect(landed.every((e) => e.amount === MIN_RAID_SPEND)).toBe(true);
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 2 * MIN_RAID_SPEND);
+    // beta is down only what it paid to send its own arrow - the card never
+    // aims one at a land of the realm that sent it.
+    expect(after.defense.beta).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
   });
 
   it("spares the realm's own members - a vassal is not a target", () => {
@@ -884,7 +904,9 @@ describe("great-raid", () => {
     const after = landMarches(playCard(pyramid(), 0, rng(), "alpha"));
     const landed = after.log.filter((e) => e.type === "march-resolved");
     expect(landed.map((e) => e.targetFactionId)).toEqual(["alpha", "alpha"]);
-    expect(after.defense.gamma).toBeUndefined();
+    // gamma paid for the arrow it sent and took none: a vassal is not a
+    // target, whatever the map says about who it borders.
+    expect(after.defense.gamma).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
   });
 
   it("stacks leadership and omens like a raid, one multiplier over every arrow", () => {
@@ -899,7 +921,7 @@ describe("great-raid", () => {
     expect(declared.omens.beta).toBeUndefined();
     const after = landMarches(declared);
     // The reading is spent once and doubles every arrow the play sent.
-    const each = (ATTACK_DAMAGE["great-raid"] + 5) * 2;
+    const each = (MIN_RAID_SPEND + 5) * 2;
     expect(after.defense.delta).toBe(FIXTURE_MAX - 2 * each);
   });
 });

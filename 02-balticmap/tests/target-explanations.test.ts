@@ -342,9 +342,12 @@ describe("targetImpactLines", () => {
     expect(targetImpactLines(v(), "alpha", "war-council", "beta")).toEqual([]);
   });
 
-  it("heads the block with the card, then the defense move it would deal", () => {
+  it("heads the block with the card, then the most it could deal", () => {
+    // A CEILING, worded "up to": how hard a raid hits is chosen after this
+    // land is clicked, so the row is read while the amount is still open. A
+    // Raid reaches half its source, and alpha stands at 60.
     expect(shown(targetImpactLines(v(), "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
+      .toEqual(["If Raid played here:", "up to -30 Defense (60 -> 30)"]);
     expect(targetImpactLines(v(), "alpha", "raid", "beta")[0].blockStart).toBe(true);
   });
 
@@ -357,7 +360,7 @@ describe("targetImpactLines", () => {
   it("floors the landing point at zero, the same clamp the resolution applies", () => {
     const view = v({ defense: { beta: 0 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-1 Defense (0 -> 0)");
+      .toBe("up to -30 Defense (0 -> 0)");
   });
 
   it("says a flattened land is taken, not that the raid does nothing", () => {
@@ -368,7 +371,7 @@ describe("targetImpactLines", () => {
     const view = v({ defense: { beta: 0 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))).toEqual([
       "If Raid played here:",
-      "-1 Defense (0 -> 0)",
+      "up to -30 Defense (0 -> 0)",
       "-- Takes the land, if it is still undefended when this lands",
     ]);
     // The class, not the two ids: Great raid sends armies through its own fan
@@ -379,24 +382,26 @@ describe("targetImpactLines", () => {
 
   it("keeps the capture row off a land this card cannot overwhelm", () => {
     expect(shown(targetImpactLines(v(), "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
+      .toEqual(["If Raid played here:", "up to -30 Defense (60 -> 30)"]);
     // Exactly equal is a flattening, not a conquest: one damage against one
     // point standing takes it to 0 and the land stays its own. Nothing walks in
-    // until the NEXT army arrives.
-    const nearly = v({ defense: { beta: 1 } });
+    // until the NEXT army arrives. alpha is down to 2, so the deepest a Raid
+    // out of it can dig is 1 - the case only reachable now by a source too
+    // poor to pay for more.
+    const nearly = v({ defense: { alpha: 2, beta: 1 } });
     expect(shown(targetImpactLines(nearly, "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-1 Defense (1 -> 0)"]);
+      .toEqual(["If Raid played here:", "up to -1 Defense (1 -> 0)"]);
   });
 
   it("says a land the card overwhelms is taken outright", () => {
     // One point more than it holds is the whole rule, and the row must say so
     // before the card is spent - a `-2 Defense (1 -> 0)` on its own describes
     // a conquest as a scratch.
-    const view = v({ defense: { beta: 1 } });
+    const view = v({ defense: { alpha: 2, beta: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "strong-raid", "beta")))
       .toEqual([
         "If Strong raid played here:",
-        "-2 Defense (1 -> 0)",
+        "up to -2 Defense (1 -> 0)",
         "-- Takes the land, if it is no better defended when this lands",
       ]);
   });
@@ -407,11 +412,12 @@ describe("targetImpactLines", () => {
     // what the card will not do. A doubled Strong raid, so the blow is big
     // enough for the ground to have something to take off it.
     const TAKES = "-- Takes the land, if it is no better defended when this lands";
-    const open = v({ defense: { beta: 3 }, omens: { alpha: 1 } });
+    // alpha at 2, so a Strong raid out of it reaches 2, doubled to 4.
+    const open = v({ defense: { alpha: 2, beta: 3 }, omens: { alpha: 1 } });
     expect(shown(targetImpactLines(open, "alpha", "strong-raid", "beta")))
       .toContain(TAKES);
     const hills = v({
-      defense: { beta: 3 }, omens: { alpha: 1 },
+      defense: { alpha: 2, beta: 3 }, omens: { alpha: 1 },
       passives: { beta: ["hill-country"] },
     });
     expect(shown(targetImpactLines(hills, "alpha", "strong-raid", "beta")))
@@ -424,22 +430,22 @@ describe("targetImpactLines", () => {
       leadership: { alpha: 5 }, leaderAbilities: { alpha: [RAID_LEADERSHIP] },
     });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-6 Defense (60 -> 54)");
+      .toBe("up to -35 Defense (60 -> 25)");
     // Without the ability the same leadership adds nothing.
     expect(shown(targetImpactLines(v({ leadership: { alpha: 5 } }), "alpha", "raid", "beta"))[1])
-      .toBe("-1 Defense (60 -> 59)");
+      .toBe("up to -30 Defense (60 -> 30)");
   });
 
   it("doubles a held reading, and says which word is the reading's", () => {
     const view = v({ omens: { alpha: 1 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-2 Defense (60 -> 58, doubled)");
+      .toBe("up to -60 Defense (60 -> 0, doubled)");
   });
 
   it("quotes a stack at its real multiple before it is aimed", () => {
     const view = v({ omens: { alpha: 2 } });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta"))[1])
-      .toBe("-4 Defense (60 -> 56, quadrupled)");
+      .toBe("up to -120 Defense (60 -> 0, quadrupled)");
   });
 
   it("previews a Hillfort as the heal it is, capped at what the land once held", () => {
@@ -576,7 +582,7 @@ describe("targetImpactLines", () => {
   it("a lord may raid its own vassal - the aim previews rather than refusing", () => {
     const view = v({ overlords: new Map([["beta", "alpha"]]) });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "-1 Defense (60 -> 59)"]);
+      .toEqual(["If Raid played here:", "up to -30 Defense (60 -> 30)"]);
   });
 });
 

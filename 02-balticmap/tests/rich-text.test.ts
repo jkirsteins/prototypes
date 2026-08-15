@@ -105,7 +105,7 @@ describe("renderSegments", () => {
     expect(showTip).toHaveBeenCalledWith(
       [
         { text: "Raid" },
-        { text: expect.stringContaining("1 damage") },
+        { text: expect.stringContaining("what you spent") },
         { text: "Keyword: Raid", blockStart: true },
         { text: expect.stringContaining("leaves your turn open") },
         { text: "Keyword: Hostile", blockStart: true },

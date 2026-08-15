@@ -8,7 +8,8 @@ import {
   type Incorporated, type Overlords,
 } from "./relations";
 import {
-  armyCapFor, ATTACK_DAMAGE, defenseMaxOf, defenseOf,
+  allocateSpend, armyCapFor, defenseMaxOf, defenseOf, MIN_RAID_SPEND,
+  spendCeilingFor,
   PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE, subjugationGateOpen,
   turnipThresholdFor, type Defense, type Disease,
 } from "./defense";
@@ -356,10 +357,50 @@ export function marchSourcesFor(
     (land) =>
       realm.has(land) &&
       freeArmiesFor(view, land) > 0 &&
+      spendCeilingOn(view, cardId, land) >= MIN_RAID_SPEND &&
       (view.adjacency[land] ?? []).some(
         (adj) => reach.has(adj) && !aimsUpOwnChain(view, actor, cardId, adj),
       ),
   );
+}
+
+/** The most this card could spend out of this land right now - its ceiling
+ *  against the land's CURRENT defense.
+ *
+ *  The one spelling, because five surfaces ask it: legality above, the aim
+ *  preview, the slider's own bound, the engine's clamp when the play commits,
+ *  and the host's re-clamp on a guest's action. A wire and a URL are the same
+ *  attack surface as a hand-edited record, so none of them may compute their
+ *  own answer. */
+export function spendCeilingOn(
+  view: RulesView, cardId: string, land: string,
+): number {
+  return spendCeilingFor(cardId, defenseOf(view, land));
+}
+
+/** What each land of a Great raid's fan would spend of a pool of `total`, in
+ *  fan order - `allocateSpend` over the fan's own ceilings.
+ *
+ *  Composed here rather than in src/defense.ts because this is where the fan
+ *  lives. Both ends of the play read it: the slider tallies with it while the
+ *  player drags, and `playCard` divides the committed total with it, so what
+ *  was watched is what gets declared. */
+export function greatRaidSpends(
+  view: RulesView, actor: string, target: string, total: number,
+): { from: string; to: string; holdsArmy: boolean; spend: number }[] {
+  const fan = greatRaidMarches(view, actor, target);
+  const caps = fan.map((m) => spendCeilingOn(view, "great-raid", m.from));
+  const spends = allocateSpend(caps, total);
+  return fan.map((m, i) => ({ ...m, spend: spends[i] }));
+}
+
+/** The whole pool a Great raid at this target could draw on: every arrow's
+ *  ceiling summed. The slider's maximum. */
+export function greatRaidPool(
+  view: RulesView, actor: string, target: string,
+): number {
+  return greatRaidMarches(view, actor, target)
+    .reduce((sum, m) => sum + spendCeilingOn(view, "great-raid", m.from), 0);
 }
 
 /** What an army standing in `source` can be aimed at: everything in the
@@ -401,7 +442,12 @@ export function greatRaidMarches(
     .filter(
       (land) =>
         land !== target && neighbours.has(land) && realm.has(land) &&
-        freeArmiesFor(view, land) > 0,
+        freeArmiesFor(view, land) > 0 &&
+        // And able to pay the minimum. A land with nothing left to spend is
+        // not a source for a Raid either, and keeping the two answers the
+        // same is what makes `greatRaidPool` at least one point per arrow -
+        // which is the floor the card's own no-opinion default rests on.
+        spendCeilingOn(view, "great-raid", land) >= MIN_RAID_SPEND,
     )
     .map((from) => ({ from, to: target, holdsArmy: true }));
 }
@@ -455,40 +501,71 @@ export function miasmaHeld(
   return view.miasma[factionId] ?? 0;
 }
 
-/** The damage one attack card deals per polygon, readings included:
- *  `(base + leadership) * multiplier`. `playCard` resolves with this and the
- *  card tip quotes it, so the promise and the resolution cannot drift. */
+/** The damage one arrow lands, for a raid that spent `spend` out of the land
+ *  it marches from: `(spend + leadership) * multiplier`.
+ *
+ *  `spend` takes the place a flat per-card number held. Two things follow from
+ *  leaving the rest of the shape alone, and both are the point:
+ *
+ *  - **Favourable omens doubles the arrow and not the price.** Spend 3 holding
+ *    a reading and the land pays 3 while the arrow lands 6. That is what makes
+ *    a reading force worth holding rather than a discount worth spending.
+ *  - **A leader's raid prowess still adds flat.** A hardened chief makes every
+ *    raid one better whatever it cost, which keeps the ability worth having on
+ *    a seat whose lands are too poor to spend deep.
+ *
+ *  `playCard` resolves with this and the card tip quotes it, so the promise
+ *  and the resolution cannot drift. */
 export function attackDamageFor(
   view: RulesView,
   actorFactionId: string,
   cardId: string,
+  spend: number,
 ): { damage: number; multiplier: number } {
-  // From the table, never a ternary on the id: a card that is not an attack
-  // gets 0 here rather than quietly inheriting a Raid's damage.
-  const base = ATTACK_DAMAGE[cardId] ?? 0;
   const multiplier = omensMultiplier(view, actorFactionId, cardId);
+  const base = Math.max(0, Math.floor(spend));
   return {
     damage: (base + leadershipBonus(view, actorFactionId, cardId)) * multiplier,
     multiplier,
   };
 }
 
-/** What this card would take off ONE named land, arrows and readings included.
+/** What this card COULD take off one named land if it spent everything it is
+ *  allowed to, arrows and readings included - the figure read while aiming,
+ *  before any amount has been chosen.
+ *
+ *  A ceiling and not a promise, deliberately. The amount is settled after the
+ *  target click, so a preview quoting the least the card can do would be
+ *  describing a play nobody is making. Every caller words it "up to".
  *
  *  `attackDamageFor` answers per ARROW, which is what a march carries and what
- *  an arrow label prints. A Great raid sends one arrow per bordering land of
- *  the realm, so the figure a player reads before aiming is a different
- *  question, and it has to be asked here rather than at each surface: the card
- *  tip and the land hover both quote it, and they were quoting one arrow's
- *  worth for a play that lands three. */
+ *  an arrow label prints. A Great raid draws on ONE pool spread across every
+ *  bordering land of the realm, so the figure a player reads before aiming is
+ *  a different question, and it has to be asked here rather than at each
+ *  surface: the card tip and the land hover both quote it, and they were
+ *  quoting one arrow's worth for a play that lands three.
+ *
+ *  The leader's bonus rides each arrow while the pool is divided between them,
+ *  which is why this is not `attackDamageFor` times `arrows`. */
 export function attackImpactOn(
   view: RulesView, actorFactionId: string, cardId: string, target: string,
 ): { damage: number; multiplier: number; arrows: number } {
-  const { damage, multiplier } = attackDamageFor(view, actorFactionId, cardId);
-  const arrows = cardId === "great-raid"
-    ? greatRaidMarches(view, actorFactionId, target).length
-    : 1;
-  return { damage: damage * arrows, multiplier, arrows };
+  if (cardId === "great-raid") {
+    const arrows = greatRaidMarches(view, actorFactionId, target).length;
+    const pool = greatRaidPool(view, actorFactionId, target);
+    const multiplier = omensMultiplier(view, actorFactionId, cardId);
+    const perArrow = leadershipBonus(view, actorFactionId, cardId) * arrows;
+    return { damage: (pool + perArrow) * multiplier, multiplier, arrows };
+  }
+  // A single arrow's ceiling out of the best land that could send it. The
+  // source is picked before the target on a Raid, but this is also asked from
+  // the card tip with no source picked at all, so it answers for the deepest
+  // pocket the realm has pointed at that land.
+  const ceiling = marchSourcesAgainst(view, actorFactionId, target)
+    .reduce((best, land) => Math.max(best, spendCeilingOn(view, cardId, land)), 0);
+  const { damage, multiplier } =
+    attackDamageFor(view, actorFactionId, cardId, ceiling);
+  return { damage, multiplier, arrows: 1 };
 }
 
 /** What the actor's LEADER adds to this card. Zero unless the leader holds an

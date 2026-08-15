@@ -94,6 +94,7 @@ describe("the spine, steps 1..5", () => {
     g = withHand(g, ["raid", "subjugate"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
@@ -106,12 +107,15 @@ describe("the spine, steps 1..5", () => {
     g = {
       ...g,
       overlords: new Map([["delta", "gamma"]]),
-      defense: { beta: SUBJUGATE_LINE + 1, gamma: SUBJUGATE_LINE + 1 },
+      // alpha at 2: a Raid out of it reaches 1 and a Strong raid 2, which is
+      // what the two cards used to be flat constants for.
+      defense: { alpha: 2, beta: SUBJUGATE_LINE + 1, gamma: SUBJUGATE_LINE + 1 },
     };
     // Strong raid deals 2 into 1 standing: both are conquests, so the bigger
     // realm wins the pick.
     expect(chooseAction(withHand(g, ["strong-raid"]))).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma", sourceId: "alpha",
+      spend: expect.any(Number),
     });
     // Raid deals exactly what is standing - a flattening, not a conquest - so
     // 2A passes and the finisher takes the nearest gate instead.
@@ -155,6 +159,7 @@ describe("the spine, steps 1..5", () => {
     const armed = withHand(g, ["subjugate", "raid"]);
     expect(chooseAction(armed)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
@@ -285,6 +290,7 @@ describe("5A: answering a march", () => {
     // arrow is pointed at - anywhere else is a fresh attack on another axis.
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
@@ -299,16 +305,23 @@ describe("5A: answering a march", () => {
     g = withHand(g, ["raid", "grow-crops"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
   it("5A: lets a march it neither survives nor loses to go by", () => {
     let g = asStrategy(base(), "warpath");
-    // 6 incoming against a land 40 above its gate, and our raid deals 1:
-    // trading the army buys nothing the turn cannot buy elsewhere.
+    // 40 incoming against a pristine land 45 above its gate, whose Raid
+    // reaches half of what it holds - 30, which loses the clash outright.
+    // Trading the army buys nothing the turn cannot buy elsewhere.
+    //
+    // The numbers had to grow with the card. A raid that dealt 1 could fail
+    // to out-muscle almost anything; one that reaches half its source can
+    // only lose a clash it would also survive when the blow is bigger than
+    // half the land and smaller than the land's whole gap.
     g = {
-      ...g, defense: { alpha: 55 },
-      marches: incoming("beta", "alpha", 6), turn: 2,
+      ...g,
+      marches: incoming("beta", "alpha", 40), turn: 2,
     };
     g = withHand(g, ["raid", "grow-crops"]);
     expect(chooseAction(g)).not.toMatchObject({ targetId: "beta" });
@@ -382,6 +395,7 @@ describe("6W: warpath decisive moves", () => {
     // holding a vassal down always takes an army from next door.
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
@@ -391,15 +405,17 @@ describe("6W: warpath decisive moves", () => {
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
   it("6W-3: aims a great raid where its arrows flatten the land outright", () => {
     // One target, several arrows: the question is the finisher's question with
     // a bigger number. alpha is the realm's only land, so it musters one arrow
-    // of a Raid's worth, and beta is exactly that far from falling.
+    // out of one purse, and beta is exactly that far from falling. alpha at 1
+    // is what makes that purse a single point.
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } };
+    g = { ...g, defense: { alpha: 1, beta: SUBJUGATE_LINE + 1 } };
     g = withHand(g, ["great-raid", "grow-crops"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "beta",
@@ -407,7 +423,7 @@ describe("6W: warpath decisive moves", () => {
     // A land the arrows cannot flatten is not worth the card: the turn feeds
     // the harvest loop instead.
     const standing = withHand(
-      { ...g, defense: { beta: SUBJUGATE_LINE + 2 } },
+      { ...g, defense: { alpha: 1, beta: SUBJUGATE_LINE + 2 } },
       ["great-raid", "grow-crops"],
     );
     expect(chooseAction(standing)).toEqual({ type: "play", cardIndex: 1 });
@@ -415,7 +431,8 @@ describe("6W: warpath decisive moves", () => {
 
   it("6W-4: reads the omens when only the doubled raid opens a gate", () => {
     let g = asStrategy(base(), "warpath");
-    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1.5 } }; // gap 1.5: >1, <=2
+    // alpha at 2, so its Raid reaches 1 and the doubled one reaches 2.
+    g = { ...g, defense: { alpha: 2, beta: SUBJUGATE_LINE + 1.5 } }; // gap 1.5: >1, <=2
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
@@ -426,6 +443,7 @@ describe("6W: warpath decisive moves", () => {
     g = withHand(g, ["favourable-omens", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 });
@@ -440,6 +458,7 @@ describe("the strong pair: same branch, better card", () => {
     g = withHand(g, ["raid", "strong-raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "beta", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
@@ -518,6 +537,10 @@ describe("6P: pestilence decisive moves", () => {
     // it while three beat it. No gate is near, so this is the total arm alone.
     let g = asStrategy(base(), "pestilence");
     g = withLeadership(g, { alpha: 1 });
+    // alpha at 2, so the raid it could send reaches 1 and its ruler adds the
+    // second point. "A raid's worth" is the best one actually available now,
+    // and a 60-point land could pay for far more than two.
+    g = { ...g, defense: { alpha: 2 } };
     const fat = { ...g, disease: { beta: { alpha: 3 } } };
     expect(chooseAction(withHand(fat, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 0 });
@@ -665,6 +688,8 @@ describe("steps 7..10: guard, settle, harvest, turnips", () => {
 describe("step 11: build moves", () => {
   it("11W-1: councils while no gate is within two attacks", () => {
     let g = asStrategy(base(), "warpath");
+    // alpha at 2, so one attack is worth 1 and two are worth 2.
+    g = { ...g, defense: { alpha: 2 } };
     g = withHand(g, ["war-council", "raid"]); // every gap is 45 > 2 attacks
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
   });
@@ -675,6 +700,7 @@ describe("step 11: build moves", () => {
     g = withHand(g, ["war-council", "raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 1, targetId: "gamma", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 
@@ -687,6 +713,7 @@ describe("step 11: build moves", () => {
     g = withHand(g, ["raid"]);
     expect(chooseAction(g)).toEqual({
       type: "play", cardIndex: 0, targetId: "gamma", sourceId: "alpha",
+      spend: expect.any(Number),
     });
   });
 

@@ -202,6 +202,10 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 2, type: "winds-shifted", cardId: "foul-winds", targetFactionId: H, amount: 2 },
     { turn: 1, playerId: 1, type: "winds-shifted", cardId: "foul-winds", targetFactionId: RIVAL, amount: 1 },
   ],
+  levied: [
+    { turn: 1, playerId: 2, type: "levied", cardId: "raid", targetFactionId: RIVAL, amount: 2 },
+    { turn: 1, playerId: 1, type: "levied", cardId: "great-raid", targetFactionId: H, amount: 3 },
+  ],
   // The harvest events fire per seat now, so each line gets both sides and
   // the sentences never lean on who earned it.
   "harvest-earned": [

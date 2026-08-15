@@ -58,6 +58,14 @@ export function scoreMovesOf(e: GameEvent, ctx: WalkCtx): ScoreMove[] {
       return e.amount === undefined || e.amount === 0
         ? []
         : [{ track: "defense", polygon, delta: -e.amount }];
+    // The other defense loss, and the only one an actor does to its own land:
+    // what a raid tore out of the land it set out from. `targetFactionId` is
+    // that source - the levy names the land that PAID, not the land the arrow
+    // is aimed at, which is `march-declared`'s business one line below.
+    case "levied":
+      return e.amount === undefined || e.amount === 0
+        ? []
+        : [{ track: "defense", polygon, delta: -e.amount }];
     case "plagued": {
       const moves: ScoreMove[] = [];
       if (e.amount !== undefined && e.amount !== 0) {

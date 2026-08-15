@@ -1,5 +1,5 @@
 import {
-  ATTACK_DAMAGE, COMBAT_RULES, SINGLE_LAND_HEAL, type CombatRules,
+  COMBAT_RULES, RAID_SPEND_FRACTION, SINGLE_LAND_HEAL, type CombatRules,
 } from "./defense";
 import { card, keyword, t, type Segment } from "./segments";
 
@@ -104,13 +104,13 @@ export const CARDS: Record<string, CardDef> = {
   "grow-crops": { id: "grow-crops", name: "Grow turnips", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Nothing happens. Enough of these earn a Turnip harvest.",
     textSegments: [t("Nothing happens. Enough of these earn a "), card("turnip-harvest"), t(".")] },
   // Build A - Warpath.
-  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land. It lands next turn for 1 damage, less any counter-raid." },
-  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Every land of yours bordering one land raids it, one army each. Each lands next turn like a Raid, answered separately.",
-    textSegments: [t("Every land of yours bordering one land raids it, one army each. Each lands next turn like a "), card("raid"), t(", answered separately.")] },
+  "raid": { id: "raid", name: "Raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land, spending up to HALF that land's defense. It lands next turn for what you spent, less any counter-raid." },
+  "great-raid": { id: "great-raid", name: "Great raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Every land of yours bordering one land raids it, one army each, spending defense you divide between them. Each lands next turn like a Raid, answered separately.",
+    textSegments: [t("Every land of yours bordering one land raids it, one army each, spending defense you divide between them. Each lands next turn like a "), card("raid"), t(", answered separately.")] },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
   "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
-  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land. It lands next turn for 2 damage, less any counter-raid." },
+  "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a bordering land, spending as much of that land's defense as you like. It lands next turn for what you spent, less any counter-raid." },
   "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 3 defense to one of your lands." },
   "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
   // Build B - Pestilence. Stacks are owned: each rival's disease on a land is
@@ -241,12 +241,12 @@ export const NEUTRAL_POOL: readonly string[] = Object.values(CARDS)
   )
   .map((c) => c.id);
 
-/** The cards that deal damage to one polygon. Derived from the damage table
+/** The cards that deal damage to one polygon. Derived from the spend table
  *  rather than written out again, the `SINGLE_LAND_HEALS` rule: a card cannot
- *  be in the set and missing an amount, or carry an amount nothing treats as
+ *  be in the set and missing a ceiling, or carry a ceiling nothing treats as
  *  an attack. */
 export const ATTACK_CARDS: ReadonlySet<string> = new Set(
-  Object.keys(ATTACK_DAMAGE),
+  Object.keys(RAID_SPEND_FRACTION),
 );
 
 /** The cards that send ONE army at ONE land - the two-step aim (a source, then
@@ -342,7 +342,7 @@ export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
     id: "raid",
     name: "Raid",
     noun: "raid",
-    text: "Playing a raid card leaves your turn open for another one - you may keep going while you hold one and a land can spare an army. Favourable omens doubles its damage.",
+    text: "Playing a raid card leaves your turn open for another one - you may keep going while you hold one and a land can spare an army and the defense to send it. Favourable omens doubles what the arrow lands, not what it cost.",
     repeats: true,
     doubledByOmens: true,
   },
@@ -525,7 +525,7 @@ export const CARD_FIELD_KIND: Record<keyof Required<CardDef>, "behaviour" | "pro
  *  including them would be fingerprinting the same fact twice. */
 export interface CardRules {
   cards: Record<string, CardDef>;
-  attackDamage: Readonly<Record<string, number>>;
+  raidSpendFraction: Readonly<Record<string, number>>;
   singleLandHeal: Readonly<Record<string, number>>;
   keywords: Readonly<Record<string, KeywordDef>>;
   builds: Record<Strategy, readonly string[]>;
@@ -542,7 +542,7 @@ export interface CardRules {
 
 export const CARD_RULES: CardRules = {
   cards: CARDS,
-  attackDamage: ATTACK_DAMAGE,
+  raidSpendFraction: RAID_SPEND_FRACTION,
   singleLandHeal: SINGLE_LAND_HEAL,
   keywords: KEYWORDS,
   builds: BUILDS,
@@ -574,7 +574,7 @@ export function cardRulesHash(rules: CardRules = CARD_RULES): string {
   });
   return [
     `cards:${cards.join("|")}`,
-    `damage:${stable(rules.attackDamage)}`,
+    `spend:${stable(rules.raidSpendFraction)}`,
     `heal:${stable(rules.singleLandHeal)}`,
     `keywords:${stable(rules.keywords)}`,
     `builds:${stable(rules.builds)}`,

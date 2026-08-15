@@ -10,7 +10,7 @@ import {
   type CardDef, type CardRules,
 } from "../src/cards";
 import {
-  ATTACK_DAMAGE, COMBAT_RULES, capturesOnArrival, SINGLE_LAND_HEAL,
+  COMBAT_RULES, capturesOnArrival, RAID_SPEND_FRACTION, SINGLE_LAND_HEAL,
 } from "../src/defense";
 import { cardTextSegments, plainText, t, type NameLookup } from "../src/rich-text";
 import { seededRng } from "../src/rng";
@@ -44,12 +44,14 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Send an army at a bordering land. It lands next turn for 1 damage, " +
+      "Send an army at a bordering land, spending up to HALF that land's " +
+      "defense. It lands next turn for what you spent, " +
         "less any counter-raid.",
     );
     expectProps(
       "great-raid", "Great raid", true, false, null, true, false,
-      "Every land of yours bordering one land raids it, one army each. Each " +
+      "Every land of yours bordering one land raids it, one army each, " +
+      "spending defense you divide between them. Each " +
         "lands next turn like a Raid, answered separately.",
     );
     expectProps(
@@ -63,7 +65,8 @@ describe("cards", () => {
     );
     expectProps(
       "strong-raid", "Strong raid", true, false, null, true, false,
-      "Send an army at a bordering land. It lands next turn for 2 damage, " +
+      "Send an army at a bordering land, spending as much of that land's " +
+      "defense as you like. It lands next turn for what you spent, " +
         "less any counter-raid.",
     );
     expectProps(
@@ -664,12 +667,12 @@ describe("the wire's card fingerprint", () => {
     }
   });
 
-  it("moves when a damage number, a heal amount or a keyword flag moves", () => {
-    // The three commits that got through the old handshake unchanged: a
-    // damage table, an upgrade price, and a keyword's legality.
+  it("moves when a spend ceiling, a heal amount or a keyword flag moves", () => {
+    // The three commits that got through the old handshake unchanged: an
+    // attack's numbers, an upgrade price, and a keyword's legality.
     const base = cardRulesHash();
     expect(cardRulesHash(tweaked({
-      attackDamage: { ...ATTACK_DAMAGE, raid: 99 },
+      raidSpendFraction: { ...RAID_SPEND_FRACTION, raid: 99 },
     }))).not.toBe(base);
     expect(cardRulesHash(tweaked({
       singleLandHeal: { ...SINGLE_LAND_HEAL, fortify: 99 },

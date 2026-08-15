@@ -26,10 +26,9 @@ successful counter-raid worth more than the point it took off the score.
 | ----------- | -------------------------------- | -------- | -------- | --------------- |
 | Raid        | half, rounded up                 | 1..3     | 1        | no legal source |
 | Strong raid | all of it                        | 1..5     | 1        | no legal source |
-| Great raid  | all of it, per land, pooled      | 0..5     | 0..1     | out of the fan  |
+| Great raid  | all of it, per land, pooled      | 1..5     | 1        | out of the fan  |
 
-Great raid's per-land figures start at 0 because the pool may leave a land
-nothing - see below. Its total never does.
+Great raid's figures are per land out of one shared pool - see below.
 
 The minimum is 1. A land with nothing left to spend has no raid in it, and
 that is stated as legality rather than as a zero-strength arrow: an arrow on
@@ -65,7 +64,7 @@ export function spendCeilingFor(cardId: string, current: number): number {
 
 A fraction table rather than a table of functions, because `CARD_RULES` in
 `src/cards.ts` has to fingerprint it and a function does not stringify. It
-takes `ATTACK_DAMAGE`'s slot in `CardRules.attackDamage`, renamed
+takes `ATTACK_DAMAGE`'s slot in `CardRules`, renamed to
 `raidSpendFraction`, so `cardRulesHash` still refuses a handshake between two
 deploys whose raid ceilings differ. That is the point of the hash: two builds
 that disagree about how hard a Raid can hit disagree about what the player's
@@ -88,7 +87,6 @@ the caps.
 ```
 Selonians 6 / 6, Semigallians 4 / 4, Latgallians 3 / 9   ->  N up to 13
 
-N = 2    ->  1, 1, 0        two arrows
 N = 6    ->  2, 2, 2
 N = 11   ->  4, 4, 3
 N = 13   ->  6, 4, 3
@@ -98,12 +96,17 @@ The remainder goes in FAN ORDER - the order `greatRaidMarches` returns, which
 is map order - so a seeded run splits the same way every time and the tally
 the player watched is the tally that gets declared.
 
-**A land allocated 0 sends no arrow.** At a low total the fan is narrower than
-the border, and that has to be true rather than fudged: the minimum is 1
-everywhere, so a 0 STR arrow cannot exist here either. Dropping the land drops
-its army commitment with it, since `greatRaidMarches` is what decides who
-holds an army. A Great raid at N = 1 is therefore one Raid out of the realm's
-strongest bordering land, which is a legal and deliberately poor play.
+**The pool's floor is the fan's size**, one point per arrow. A Great raid sent
+for less would be a Raid played at a Great raid's price - a pool of 1 across a
+fan of three would send a single arrow - and that is exactly what a caller
+with no opinion would otherwise get. So the slider starts at the fan's size,
+`playCard` floors the pool the same way, and a land that could pay nothing is
+kept out of the fan by `greatRaidMarches` rather than allocated 0.
+
+The zero case is therefore unreachable in practice and is still handled: the
+engine skips an arrow allocated nothing and the tally row greys itself,
+because that row is the only place a player would find out if it ever
+happened.
 
 The allocation is a pure arithmetic helper in `src/defense.ts`, knowing
 nothing of marches or realms:
@@ -271,9 +274,13 @@ each answer is written here so the implementation is not inventing them:
   badge simply walks down to the number it now holds. On a land whose badge is
   not drawn at all, `causedLabel` raises the sentence instead, which is the
   existing gap-filler and needs no new machinery.
-- **`EVENT_SOUNDS`** (`src/audio-manifest.ts`): null, with the reason on the
-  `PRESENTATION_RULES` entry - the play's own card sound already fired, and a
-  second cue on the same gesture reads as two things happening.
+- **`EVENT_SOUNDS`** (`src/audio-manifest.ts`): `march`, the same cue the
+  arrow it paid for gets - a land emptying itself and an army being raised are
+  one event from two ends. A null was tried and refused by
+  `tests/presentation.test.ts`, which holds that a presented type with no
+  sound is an event the player watches happen in silence. The rule bites only
+  on a RIVAL's levy: the player's own earns no camera and no label through the
+  `causedHere` arm, so nothing is watched there to be silent about.
 
 ## Legality
 
@@ -305,13 +312,23 @@ function raidSpendFor(
 ): number
 ```
 
-- A source is a FRONTIER if any land bordering it is held outside the actor's
-  full realm, the target excepted. Out of a frontier land the AI spends 1: it
-  will not gut the land facing a rival to hit a different one.
-- Otherwise the source is INTERIOR, and the AI spends
-  `min(ceiling, defenseOf(view, to) + 1)` - enough to take the land, and not a
-  point more. If that number exceeds the ceiling the AI still spends the
-  ceiling: the blow that cannot capture is still the blow that softens.
+Three arms, and their ORDER is load-bearing:
+
+- A CONQUEST is paid for wherever the source stands: `defenseOf(v, to) + 1`,
+  since `capturesOnArrival` wants the blow to EXCEED what is standing, and not
+  a point more. A land taken is worth being left open for.
+- Otherwise a source is a FRONTIER if any land bordering it is held outside
+  the actor's full realm, the target excepted, and out of one the AI spends
+  the minimum: it will not gut the land facing one rival to soften another it
+  cannot take this turn.
+- Otherwise the source is INTERIOR and spends its ceiling. The blow that
+  cannot capture is still the blow that softens, and nothing is standing over
+  that land to punish it for being emptied.
+
+Read with the frontier arm first, a branch that had already PICKED a target it
+could overwhelm would then send an arrow too small to take it - the AI
+choosing a conquest and declining to pay for it in the same turn. On a
+complete-graph fixture every land is a frontier, which is how that came out.
 
 For Great raid the same question is asked of the fan: the total is the sum of
 what each land in the fan would have spent on its own, capped at the pool.

@@ -30,6 +30,7 @@ import {
   claimWouldLand, playableSet, respiteExpiry, validTargetsFor,
   targetEligibilityFor,
   armyCapOn, attackDamageFor, attackImpactOn, freeArmiesFor,
+  greatRaidMarches, greatRaidPool, spendCeilingOn,
   miasmaHeld, omensHeld, freeSettlementsIn, settlementsIn,
 } from "./playability";
 import { armiesOn, axesOf, type March, type Marches } from "./marches";
@@ -37,7 +38,7 @@ import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
 import { renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
-  defenseMaxOf, defenseOf, gateBandOf, type GateBand,
+  defenseMaxOf, defenseOf, gateBandOf, MIN_RAID_SPEND, type GateBand,
 } from "./defense";
 import {
   cardBlockLine, cardModifierLines, cardRiskLine, defenseBreakdown,
@@ -763,6 +764,65 @@ let transferAsked: string | null = null;
  *  store replicates whole, so a screen reading it without asking whose
  *  question it is raised the other human's conquest modal and answered it
  *  into a copy the next update threw away. */
+/** Raise the "how hard?" slider for a raid whose target has just been clicked,
+ *  then commit the play with the answer.
+ *
+ *  The last step of aiming and not a `Decision` of its own: the amount is part
+ *  of playing the card, so it rides the `play` decision and the router does
+ *  not learn a fifth thing. Which also means the guest raises this locally and
+ *  sends its number with the play, exactly as it does with the source.
+ *
+ *  The fan is `greatRaidSpends`' own list for a Great raid and the one picked
+ *  source for a Raid - the same lists legality and the engine read, so the
+ *  tally the player watches is the tally that gets declared. */
+function askSpend(
+  cardId: string, sourceId: string | null, targetId: string,
+  onPicked: (spend: number) => void, onCancel: () => void,
+): void {
+  const human = localHuman();
+  if (!human) return;
+  const v = viewOf(game());
+  const fan = cardId === "great-raid"
+    ? greatRaidMarches(v, human.factionId, targetId).map((m) => m.from)
+    : sourceId === null ? [] : [sourceId];
+  const lands = fan.map((id) => ({
+    id,
+    has: defenseOf(v, id),
+    max: defenseMaxOf(v, id),
+    cap: spendCeilingOn(v, cardId, id),
+  }));
+  const max = cardId === "great-raid"
+    ? greatRaidPool(v, human.factionId, targetId)
+    : (lands[0]?.cap ?? 0);
+  // Every arrow costs at least the minimum, so a fan of three cannot be sent
+  // for less than three - the engine floors the pool the same way.
+  const min = MIN_RAID_SPEND * lands.length;
+  // Nothing to ask about: a fan that can only pay its floor, or a card that
+  // is not a raid at all. The play goes straight through rather than raising
+  // a slider with one stop on it.
+  if (lands.length === 0 || max <= min) {
+    onPicked(min);
+    return;
+  }
+  hud.showSpendOffer(
+    {
+      cardId, to: targetId, min, max, lands,
+      strengthOf: (spend) =>
+        attackDamageFor(v, human.factionId, cardId, spend).damage,
+    },
+    {
+      onConfirm(total) {
+        hud.hideHarvestUi();
+        onPicked(total);
+      },
+      onCancel() {
+        hud.hideHarvestUi();
+        onCancel();
+      },
+    },
+  );
+}
+
 function askTransfer(done: () => void): void {
   // The front of the queue: one pair of lands per modal, in the order the
   // lands fell. Answering pops it and the next conquest raises its own.
@@ -1574,16 +1634,23 @@ function updateAimPreview(clientX: number, clientY: number): void {
 
 /** The arrow an armed card would declare, or null while nothing is aimed.
  *
- *  Its strength is the card's own, because the preview's WIDTH is a promise:
- *  it goes into the same lane packing as the arrows already on that border, so
- *  what the player sees is the block the play is about to make. */
+ *  Its strength is the CEILING out of the land being aimed from, because the
+ *  preview's WIDTH is a promise: it goes into the same lane packing as the
+ *  arrows already on that border, so what the player sees is the widest block
+ *  the play could make. The amount is settled after the target click, and a
+ *  preview drawn at the minimum would be describing a play nobody is making -
+ *  every surface that quotes this number words it "up to". */
 function aimSpec(): ArrowSpec | null {
   if (aiming === null) return null;
   const human = localHuman();
   const armedCard = armed === null || !human ? undefined : human.hand[armed];
+  const v = viewOf(game());
   const strength = armedCard === undefined
     ? 1
-    : attackDamageFor(viewOf(game()), human.factionId, armedCard).damage;
+    : attackDamageFor(
+        v, human.factionId, armedCard,
+        spendCeilingOn(v, armedCard, aiming.from),
+      ).damage;
   return {
     id: "aim",
     kind: "aim",
@@ -1909,9 +1976,15 @@ function counterFor(m: March): number | null {
   if (counters.length === 0) return null;
   // The heaviest one held. A counter is subtracted from the raid coming the
   // other way, so offering the weaker of two is never what the click meant.
-  return counters.sort((a, b) =>
-    attackDamageFor(v, human.factionId, human.hand[b]).damage -
-    attackDamageFor(v, human.factionId, human.hand[a]).damage
+  // Measured out of the land the counter must leave from - `m.to`, the land
+  // under threat - because a card's worth is now its ceiling there and not a
+  // number of its own. A softened land answers more feebly with either card.
+  const backAt = (cardId: string): number =>
+    attackDamageFor(
+      v, human.factionId, cardId, spendCeilingOn(v, cardId, m.to),
+    ).damage;
+  return counters.sort(
+    (a, b) => backAt(human.hand[b]) - backAt(human.hand[a]),
   )[0];
 }
 
@@ -1956,9 +2029,16 @@ function armArrowAsCounter(g: SVGGElement, m: March, cardIndex: number): void {
     // and a hand holding Strong raid was being announced as a Raid.
     const cardId = localHuman()?.hand[cardIndex];
     if (cardId === undefined) return;
-    decide({
-      kind: "play", cardIndex, cardId, targetId: m.from, sourceId: m.to,
-    });
+    // A counter is a raid, so it is asked how hard the same way a raid aimed
+    // from the map is. The arrow answering this one is the commonest raid in
+    // the game and the one most worth sizing deliberately: spend to beat what
+    // is coming, or spend nothing much and let it through.
+    askSpend(cardId, m.to, m.from, (spend) => {
+      decide({
+        kind: "play", cardIndex, cardId, targetId: m.from, sourceId: m.to,
+        spend,
+      });
+    }, () => refresh());
   }, { signal });
 }
 
@@ -3411,9 +3491,13 @@ const hudCallbacks: HudCallbacks = {
           const suffix = multiplier > 1
             ? ` (${multipliedWord(multiplier)})`
             : "";
+          // "Up to", because `attackImpactOn` answers with the CEILING: how
+          // hard a raid hits is chosen after this land is clicked, and a line
+          // quoting the least the card can do would describe a play nobody is
+          // making. Same wording as the land hover, which asks the same call.
           return [arrows > 1
-            ? `-${damage} defense, ${count(arrows, "arrow")}${suffix}`
-            : `-${damage} defense${suffix}`];
+            ? `up to -${damage} defense, ${count(arrows, "arrow")}${suffix}`
+            : `up to -${damage} defense${suffix}`];
         },
       );
     },
@@ -4215,10 +4299,17 @@ const interaction = attachInteraction(svg, regionPaths, data, {
       const sourceId = armedSource;
       disarm();
       if (valid) {
-        decide({
-          kind: "play", cardIndex: idx, cardId, targetId: faction,
-          ...(sourceId !== null ? { sourceId } : {}),
-        });
+        // The last step of aiming a raid: how much of the source comes with
+        // it. `askSpend` passes straight through for every other card and for
+        // a land that can only pay the minimum, so there is one path here and
+        // no branch on what kind of card this is.
+        askSpend(cardId, sourceId, faction, (spend) => {
+          decide({
+            kind: "play", cardIndex: idx, cardId, targetId: faction,
+            ...(sourceId !== null ? { sourceId } : {}),
+            ...(ATTACK_CARDS.has(cardId) ? { spend } : {}),
+          });
+        }, () => refresh());
       }
       return true;
     }

@@ -6,9 +6,11 @@ import {
   type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
-import { defenseMaxOf } from "./defense";
+import { applyDamage, defenseMaxOf, MIN_RAID_SPEND } from "./defense";
 import { addMarch } from "./marches";
-import { attackDamageFor, marchSourcesAgainst } from "./playability";
+import {
+  attackDamageFor, marchSourcesAgainst, spendCeilingOn,
+} from "./playability";
 import { realmRootOf } from "./relations";
 import { rulerOf } from "./rulers";
 import { mergeRules, type RuleSelections } from "./rules";
@@ -51,7 +53,7 @@ export interface BootParams {
   /** Marches to declare, source before target. Damage is not settable: it is
    *  whatever a Raid out of that land would actually deal, so a booted arrow
    *  promises the same number a played one would. */
-  marches: { from: string; to: string }[];
+  marches: { from: string; to: string; spend: number | null }[];
   /** How many lands the human's realm holds, or null to leave the deal
    *  alone. The one boot param that names no ids: the states it exists to
    *  reach are "half the map" and "all of it", and a twenty-five-id URL is
@@ -131,16 +133,27 @@ function parseSettlements(raw: string): Record<string, number> {
   return parseDefense(raw); // same shape, same clamp
 }
 
-/** `march=talava>selija;zemgale>selija` - one `from>to` clause per arrow, so
- *  a browser check can boot straight into an incoming attack or a live clash
- *  rather than playing four turns to reach one. */
-function parseMarches(raw: string): { from: string; to: string }[] {
-  const out: { from: string; to: string }[] = [];
+/** `march=talava>selija;zemgale>selija:3` - one `from>to` clause per arrow,
+ *  with an optional `:N` for how much defense the raid tears out of its
+ *  source, so a browser check can boot straight into an incoming attack or a
+ *  live clash rather than playing four turns to reach one.
+ *
+ *  The amount DEFAULTS to `MIN_RAID_SPEND`, so every URL written before a
+ *  raid's strength was a choice still means what it always meant: one point
+ *  spent, one point on the arrow. */
+function parseMarches(
+  raw: string,
+): { from: string; to: string; spend: number | null }[] {
+  const out: { from: string; to: string; spend: number | null }[] = [];
   for (const clause of raw.split(";")) {
-    const [from, to] = clause.split(">");
-    if (from === undefined || to === undefined) continue;
+    const [from, rest] = clause.split(">");
+    if (from === undefined || rest === undefined) continue;
+    const [to, amount] = rest.split(":");
+    if (to === undefined) continue;
     if (from.trim().length === 0 || to.trim().length === 0) continue;
-    out.push({ from: from.trim(), to: to.trim() });
+    out.push({
+      from: from.trim(), to: to.trim(), spend: intOr(amount ?? null, null),
+    });
   }
   return out;
 }
@@ -399,17 +412,32 @@ export function applyBootParams(
   // be something that actor may attack, or the clause is dropped. A URL that
   // could conjure an impossible arrow would be checking a state the game
   // cannot reach.
-  for (const { from, to } of params.marches) {
+  for (const { from, to, spend } of params.marches) {
     if (!g.factionIds.includes(from) || !g.factionIds.includes(to)) continue;
     const actor = realmRootOf(from, g.overlords, g.incorporated);
     const v = viewOf(g);
     if (!marchSourcesAgainst(v, actor, to).includes(from)) continue;
+    // Clamped into [minimum, ceiling] like every other numeric override, and
+    // against the source AS IT STANDS - which is after the defense override,
+    // since marches are declared last. The two compose the way the sentence
+    // reads: `defense=` names the land before its army set out.
+    const paid = Math.max(
+      MIN_RAID_SPEND,
+      Math.min(
+        spendCeilingOn(v, "raid", from),
+        spend ?? MIN_RAID_SPEND,
+      ),
+    );
     g = {
       ...g,
+      // The defense goes with it. A booted arrow that cost its land nothing
+      // would be an arrow the game cannot reach, which is the one thing this
+      // whole surface exists not to be.
+      defense: applyDamage(v, from, paid),
       marches: addMarch(g.marches, {
         id: g.nextMarchId,
         actor, from, to, cardId: "raid",
-        damage: attackDamageFor(v, actor, "raid").damage,
+        damage: attackDamageFor(v, actor, "raid", paid).damage,
         holdsArmy: true,
         expiry: g.turn + 1,
       }),

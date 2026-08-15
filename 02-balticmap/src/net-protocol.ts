@@ -27,14 +27,18 @@ export { cardRulesHash } from "./cards";
  *  hold a Turnip harvest now, so a guest's pick must cross the wire.
  *
  *  `sourceId` is Raid's tail, riding the play for the same reason the
- *  target does: the guest chose it and the host cannot infer it. Note
+ *  target does: the guest chose it and the host cannot infer it. `spend`
+ *  is how much of that land's defense the guest chose to tear out, riding
+ *  the same way and for the same reason - and CLAMPED rather than refused
+ *  on arrival, since "as little as the card allows" is the safe reading of
+ *  a number a build sends that this one does not expect. Note
  *  what is NOT here - a counter-raid is an ordinary Raid played on the
  *  defender's own turn, so telegraphed attacks need no out-of-turn
  *  action and the "not this seat's turn" refusal stands untouched. */
 export type NetAction =
   | {
       type: "play"; cardIndex: number; cardId: string; targetId?: string;
-      sourceId?: string; harvest?: HarvestChoice;
+      sourceId?: string; spend?: number; harvest?: HarvestChoice;
     }
   | { type: "discard"; cardIndex: number; cardId: string }
   /** The conquest question's answer: how many defenders march over with the
@@ -173,6 +177,7 @@ export const NET_ACTION_RULES: {
       playCard(state, action.cardIndex, rng, action.targetId, {
         ...(action.harvest !== undefined ? { harvest: action.harvest } : {}),
         ...(action.sourceId !== undefined ? { sourceId: action.sourceId } : {}),
+        ...(action.spend !== undefined ? { spend: action.spend } : {}),
       }),
   },
   discard: {
