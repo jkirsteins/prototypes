@@ -85,6 +85,10 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   // Nothing landed and no score moved - an arrow evaporating is the log's
   // news, not the ear's.
   "march-lapsed": null,
+  // The same cue the turnip bar's payoff gets, and for the same reason: this
+  // is the other moment in the run where a reward simply arrives, earned by
+  // something the player did several turns ago.
+  "duel-won": "harvest",
   "harvest-earned": "harvest",
   "harvest-picked": "confirm",
   "harvest-burned": "burn",

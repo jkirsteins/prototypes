@@ -85,6 +85,7 @@ const VERBS = {
   submit: { third: "submits", past: "submitted" },
   trade: { third: "trades", past: "traded" },
   unify: { third: "unifies", past: "unified" },
+  win: { third: "wins", past: "won" },
 } as const;
 
 export type Verb = keyof typeof VERBS;

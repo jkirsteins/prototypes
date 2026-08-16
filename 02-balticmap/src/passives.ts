@@ -68,6 +68,17 @@ export const QUIET_PASSIVES: readonly string[] = [
   "keeps-to-itself", "wild-lands", "no-successor",
 ];
 
+/** The statuses that make a land HARD TO TAKE - ground that fights for
+ *  whoever stands on it.
+ *
+ *  Named as a set rather than asked for by id at the one place that wants it,
+ *  the same rule the card classes keep: a surface that names `hill-country`
+ *  by literal answers for one status and not the class, and the second
+ *  defensive terrain a region grows would silently not count. Its one reader
+ *  is `rewardFor` in src/gauntlet.ts - beating such a land teaches the winner
+ *  how it was held. */
+export const DEFENSIVE_TERRAIN: readonly string[] = ["hill-country"];
+
 /** How often a land that keeps to itself sends a raid of its own at a
  *  neighbour.
  *

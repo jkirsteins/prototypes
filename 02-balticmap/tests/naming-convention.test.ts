@@ -220,6 +220,19 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "harvest-burned", cardId: "hillfort" },
     { turn: 1, playerId: 2, type: "harvest-burned", cardId: "subjugate" },
   ],
+  // Both rewards, because the wealth arm writes a suffix of its own and the
+  // defense arm takes the walked one - two sentences, two chances to bake a
+  // name into text.
+  "duel-won": [
+    {
+      turn: 1, playerId: 1, type: "duel-won",
+      targetFactionId: H, sourceFactionId: RIVAL, amount: 1,
+    },
+    {
+      turn: 1, playerId: 1, type: "duel-won",
+      targetFactionId: H, sourceFactionId: RIVAL, wealth: 3,
+    },
+  ],
   // Both bars, because the whole-map wording is a second line and the naming
   // rules apply to it exactly as they do to the first.
   victory: [

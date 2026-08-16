@@ -685,6 +685,15 @@ export function eventSegments(
         : clause(actor, "keep", [
             t(" "), card(e.cardId ?? ""), t(" from the harvest"),
           ], "past");
+    case "duel-won":
+      // The coins ride the event, the way tribute's do, because a treasury is
+      // not a score `walkStandings` walks. The other two rewards move defense
+      // and take the ordinary `(Defense +1 -> 5)` suffix off the walk, so
+      // nothing is said about them here.
+      return clause(actor, "win", [
+        t(" the duel with "), faction(e.sourceFactionId ?? ""),
+        ...(e.wealth === undefined ? [] : [t(` - ${e.wealth} wealth`)]),
+      ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":

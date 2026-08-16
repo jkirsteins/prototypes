@@ -51,7 +51,7 @@ import {
   vacateRulers, type Rulers,
 } from "./rulers";
 import {
-  duelDecidedBy, gauntletAtRoundWrap, outsideTheDuel,
+  duelDecidedBy, duelWon, gauntletAtRoundWrap, outsideTheDuel, rewardFor,
   DUEL_TURNS, type Gauntlet,
 } from "./gauntlet";
 import { BUILD_ABILITIES } from "./abilities";
@@ -67,6 +67,7 @@ export type GameEventType =
   | "passive-fired"
   | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
+  | "duel-won"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
 /** How much defense a raid may tear out of `source`, given what the caller
@@ -213,7 +214,9 @@ export interface GameEvent {
    *  loser in the same batch would walk back through a store the claim had
    *  already emptied. Absent when nobody else held a stack there. */
   losses?: Readonly<Record<string, number>>;
-  /** tribute: the coins this payment moved from the vassal to its lord. */
+  /** tribute: the coins this payment moved from the vassal to its lord.
+   *  duel-won: the coins a won duel paid into the winner's treasury, on the
+   *  one reward of the three that moves no walked score. */
   wealth?: number;
   /** harvest-picked: this card came WITH the harvest rather than being the
    *  one chosen from the offer. Two identical "kept X" lines read as the
@@ -1047,6 +1050,11 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "harvest-picked":
     case "harvest-burned":
       return true;
+    // The spoils of a duel are paid at a round wrap, out of a batch that opens
+    // with no play at all - the card that took the land was played a turn or
+    // twenty ago. There is nothing above it to indent under.
+    case "duel-won":
+      return false;
   }
 }
 
@@ -1203,6 +1211,15 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   let nextMarchId = state.nextMarchId;
   let claims = state.claims;
   let defense = state.defense;
+  // The ceiling moves in `beginTurn` for exactly one reason - a duel won on a
+  // big land grows the winner's home, ceiling and score together, the way
+  // Prosperous proliferation does. Raising one alone is the trap that rule
+  // already names: both gates are shares OF the ceiling.
+  let defenseMax = state.defenseMax;
+  // Income adds to this near the end of the turn; the duel spoils add to it at
+  // the round wrap, which is above that. A `let` from the top so the two
+  // cannot each start from `state.wealth` and throw the other away.
+  let wealth = state.wealth;
   let passives = state.passives;
   // The gauntlet moves in two places in this function and they are different
   // kinds of move. A conquest below may DECIDE a running duel the moment the
@@ -1297,12 +1314,12 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       return;
     }
     const moved = autoTransfer(
-      { ...state, defense, defenseMax: state.defenseMax }, from, land,
+      { ...state, defense, defenseMax }, from, land,
     );
     if (moved > 0) {
-      const v = { defense, defenseMax: state.defenseMax };
+      const v = { defense, defenseMax };
       defense = applyHeal(
-        { defense: applyDamage(v, from, moved), defenseMax: state.defenseMax },
+        { defense: applyDamage(v, from, moved), defenseMax },
         land, moved,
       );
       events.push({
@@ -1391,6 +1408,57 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     return { defense, taken: true };
   };
 
+  /** What a won duel is worth, paid into the winner's realm at the wrap that
+   *  retires the duel. Losing or timing out pays nothing, so this is called
+   *  only where `duelWon` says a land came off the enemy.
+   *
+   *  The spoils COME HOME - to the human's own land, whichever of the enemy's
+   *  lands actually changed hands. Two reasons, and the second is the one that
+   *  matters: the reward is promised in the picker against the ENEMY, before a
+   *  single arrow is sent, so the land it derives from has to be the one the
+   *  offer named; and the land that fell may be a vassal of a vassal the
+   *  winner never aimed at. `rewardFor` is the whole of what the two surfaces
+   *  share, which is what stops the offer promising what this does not pay.
+   *
+   *  One event, whatever the reward, carrying the defense it moved so the
+   *  before -> after suffix comes off the same walk every other score does. */
+  const cashDuelSpoils = (enemy: string, seen: GameEvent[]): void => {
+    const home = humanFactionOf(state);
+    if (home === null) return;
+    if (!duelWon(gauntlet, home, seen, overlords, state.incorporated)) return;
+    const winner = players.find((pl) => pl.factionId === home);
+    // Derived from the ENEMY, which is the land the offer named. Both inputs
+    // are stable across a duel - `siteCaps` is map data and the defensive
+    // terrains survive a capture (`strippedOnCapture: false`) - so what the
+    // picker promised twenty rounds ago is what this pays.
+    const reward = rewardFor({ siteCaps: state.siteCaps, passives }, enemy);
+    if (reward.kind === "wealth") {
+      events.push({
+        turn: state.turn, playerId: winner?.id ?? p.id, type: "duel-won",
+        targetFactionId: home, sourceFactionId: enemy, wealth: reward.amount,
+      });
+      wealth = { ...wealth, [home]: (wealth[home] ?? 0) + reward.amount };
+      return;
+    }
+    if (reward.kind === "growth") {
+      defenseMax = {
+        ...defenseMax,
+        [home]: defenseMaxOf({ defense, defenseMax }, home) + reward.amount,
+      };
+    }
+    // What actually moved, never the constant - the rule every heal site
+    // keeps. A home already at its ceiling takes nothing, and an event
+    // claiming the whole amount would drift the walk for the rest of the run.
+    const before = defenseOf({ defense, defenseMax }, home);
+    defense = applyHeal({ defense, defenseMax }, home, reward.amount);
+    const moved = defenseOf({ defense, defenseMax }, home) - before;
+    events.push({
+      turn: state.turn, playerId: winner?.id ?? p.id, type: "duel-won",
+      targetFactionId: home, sourceFactionId: enemy,
+      ...(moved > 0 ? { amount: moved } : {}),
+    });
+  };
+
   // Marches land here - see the comment above the stores this fills. Arrivals
   // resolve ONE AT A TIME through `applyArrival`, so the second arrow down a
   // second axis meets the land as the first one left it: its defenses, and
@@ -1425,9 +1493,22 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // `overlords` and not the snapshot: the escape at the top of this turn
     // and the arrivals below it have already moved the realms, and the offer
     // this reads out is the board as it now stands.
-    gauntlet = gauntletAtRoundWrap(
+    const wrapped = gauntletAtRoundWrap(
       gauntlet, { ...viewOf(state), overlords }, humanFactionOf(state),
     );
+    // The spoils, cashed at the moment the duel retires and nowhere else.
+    // Asked of the gauntlet as it stood BEFORE the wrap, because the wrap is
+    // what throws the duel away - one line later there is no enemy left to
+    // ask about. `duelWon` says why the log rather than `until` is what
+    // answers "was it won".
+    //
+    // The batch being written is handed in alongside `state.log`: a conquest
+    // at the human's own turn start is decided and swept in this same
+    // `beginTurn`, so the line that decided it is still in `events`.
+    if (gauntlet.kind === "duel" && wrapped.kind !== "duel") {
+      cashDuelSpoils(gauntlet.enemy, [...state.log, ...events]);
+    }
+    gauntlet = wrapped;
     // A land that was hit THIS round does not also grow back in it. The heal
     // ran after the marches landed, so a raid arriving on a wild land could be
     // undone in the same batch: the log said the raid landed for 1 and the
@@ -1443,7 +1524,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     for (const polygon of state.factionIds) {
       if (!hasPassive(passives, polygon, "wild-lands")) continue;
       if (struckThisRound.has(polygon)) continue;
-      const v = { defense, defenseMax: state.defenseMax };
+      const v = { defense, defenseMax };
       if (defenseOf(v, polygon) >= defenseMaxOf(v, polygon)) continue;
       if (rng() >= WILD_LANDS_HEAL_CHANCE) continue;
       const before = defenseOf(v, polygon);
@@ -1454,7 +1535,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       // the log and the round summary drift from the store for the rest of the
       // run. `landHeal` in `playCard` keeps the same rule.
       const moved =
-        defenseOf({ defense, defenseMax: state.defenseMax }, polygon) - before;
+        defenseOf({ defense, defenseMax }, polygon) - before;
       if (moved <= 0) continue;
       // The land's OWN seat owns the line, never the seat whose turn happens to
       // be starting. The log tags an entry `.log-mine` off `playerId` and lets
@@ -1534,7 +1615,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       // land-grab nobody chose. With nothing standing left to hit, it sits
       // this round out.
       const targets = marchTargetsFrom(view, land, land).filter(
-        (to) => defenseOf({ defense, defenseMax: state.defenseMax }, to) > 0,
+        (to) => defenseOf({ defense, defenseMax }, to) > 0,
       );
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
@@ -1546,7 +1627,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       if (hops === null) continue;
       const id = nextMarchId++;
       const damage = attackDamageFor(view, land, "raid", MIN_RAID_SPEND).damage;
-      defense = applyDamage({ defense, defenseMax: state.defenseMax }, land, MIN_RAID_SPEND);
+      defense = applyDamage({ defense, defenseMax }, land, MIN_RAID_SPEND);
       marches = addMarch(marches, {
         id,
         actor: land, from: land, to, cardId: "raid", damage,
@@ -1628,12 +1709,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // Settlement income: a start-of-turn fact of holding land, not a play.
   // Silent - see the doc on `GameState.wealth` for why no event is logged.
   const income = wealthIncomeFor(viewOf(state), p.factionId);
-  const wealth = income > 0
-    ? {
-        ...state.wealth,
-        [p.factionId]: (state.wealth[p.factionId] ?? 0) + income,
-      }
-    : state.wealth;
+  if (income > 0) {
+    wealth = { ...wealth, [p.factionId]: (wealth[p.factionId] ?? 0) + income };
+  }
   // A land can change hands here - a claim answering, an army walking into a
   // flattened land, a dormant land's raid - so the run can END here, and this
   // is the one place `beginTurn` may set the phase. Last, after every store
@@ -1643,7 +1721,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   ) ?? state.phase;
   return {
     ...state, phase, players, overlords, wealth, marches, nextMarchId, claims,
-    defense, passives, pendingTransfers, rulers, gauntlet,
+    defense, defenseMax, passives, pendingTransfers, rulers, gauntlet,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,

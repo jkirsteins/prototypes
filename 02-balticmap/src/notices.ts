@@ -721,6 +721,31 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
         tone: "good" as const,
       })),
   },
+  "duel-won": {
+    kind: "modal",
+    // The local seat's own spoils and nobody else's. Not gated on
+    // `e.playerId !== localPlayerId` the way the damage rules are, for the
+    // reason `independence` is not: the player pressed nothing at this moment
+    // - the duel retired itself at a round wrap - so this is news to them even
+    // though the event carries their own id.
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes, _ctx) =>
+      events.map((e, i) => ({
+        text: [
+          t("The duel with "), faction(e.sourceFactionId ?? ""),
+          t(" is won"),
+          ...(e.wealth === undefined
+            ? [t(" - the spoils come home")]
+            : [t(` - ${e.wealth} wealth comes home`)]),
+        ],
+        changes: changesFor(i, changes),
+        tone: "good" as const,
+      })),
+    footnotes: () => [[
+      t("The whole map takes one turn now, and then a fresh offer comes "),
+      t("round."),
+    ]],
+  },
   "harvest-picked": {
     kind: "silent",
     // The pick is public - the log names the card for every seat, the same

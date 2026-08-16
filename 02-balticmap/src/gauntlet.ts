@@ -7,6 +7,9 @@
  *  what a candidate is worth, and the modal that offers it, are the screen's.
  */
 
+import { LAND_GROWTH } from "./defense";
+import type { GameEvent } from "./game";
+import { DEFENSIVE_TERRAIN, hasPassive } from "./passives";
 import {
   aimsWithinOwnRealm, attackReach, type RulesView,
 } from "./playability";
@@ -186,4 +189,119 @@ export function gauntletAtRoundWrap(
  *  `picking` every round is a replica diff every round, saying nothing. */
 function sameList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((id, i) => id === b[i]);
+}
+
+/** How many further settlement sites a land has to author before beating it
+ *  is worth GROWTH rather than anything else.
+ *
+ *  Four picks out four lands of twenty-six on the Baltic map and five of
+ *  twenty-four on the Iberian, so the biggest prize is rare on both maps
+ *  without either needing a threshold of its own. */
+export const BIG_LAND_SITES = 4;
+
+/** Defense carried home from beating a land whose ground did the defending.
+ *  Two, so it is worth a little more than a Fortify and a great deal less
+ *  than a duel spent healing. */
+export const DUEL_DEFENSE_REWARD = 2;
+
+/** Coins carried home from beating anybody else. Three buys three settlements
+ *  at Found a settlement's price, which is the plainest thing a treasury is
+ *  for. */
+export const DUEL_WEALTH_REWARD = 3;
+
+/** What beating a land pays. Derived from what the land IS, never rolled, so
+ *  the map teaches its own logic: a big land is worth growing into, hill
+ *  country teaches how hill country is held, and everywhere else pays coin.
+ *
+ *  `amount` rides on the reward rather than being looked up again by whoever
+ *  cashes it - see `rewardFor`. */
+export type DuelReward =
+  | { kind: "growth"; amount: number }
+  | { kind: "defense"; amount: number }
+  | { kind: "wealth"; amount: number };
+
+/** What beating `land` is worth - the ONE answer, read by the picker that
+ *  promises it and by the wrap that pays it.
+ *
+ *  Two readers and one function, the `SINGLE_LAND_HEAL` rule: a preview that
+ *  promises what the play will not do is the bug, and the only way two
+ *  surfaces cannot promise different things is for there to be nothing for
+ *  them to disagree about.
+ *
+ *  The order of the three arms is what makes them exclusive. Size first, so a
+ *  big land in hill country is worth growing into rather than fortifying -
+ *  the rarer prize wins the tie, and there is exactly one tie to lose. */
+export function rewardFor(
+  view: Pick<RulesView, "siteCaps" | "passives">, land: string,
+): DuelReward {
+  if ((view.siteCaps[land] ?? 0) >= BIG_LAND_SITES) {
+    return { kind: "growth", amount: LAND_GROWTH };
+  }
+  if (DEFENSIVE_TERRAIN.some((id) => hasPassive(view.passives, land, id))) {
+    return { kind: "defense", amount: DUEL_DEFENSE_REWARD };
+  }
+  return { kind: "wealth", amount: DUEL_WEALTH_REWARD };
+}
+
+/** One line saying what a reward does, in the picker and nowhere else.
+ *
+ *  Plain text and not `Segment[]`, which is not a hole in the naming rule: it
+ *  names no card and no faction. Where the spoils LAND is "your home" rather
+ *  than the land's name on purpose - the offer is read before the fight, and
+ *  a realm can lose or gain its home while the duel runs. */
+export function rewardLine(reward: DuelReward): string {
+  switch (reward.kind) {
+    case "growth":
+      return `Your home land grows by ${reward.amount} - ceiling and defense alike.`;
+    case "defense":
+      return `Your home land is fortified by ${reward.amount} defense.`;
+    case "wealth":
+      return `${reward.amount} wealth for the treasury.`;
+  }
+}
+
+/** Whether the duel now ending was WON - the human's realm took a land off
+ *  the enemy's, rather than the clock running out or the enemy taking one.
+ *
+ *  Read off the LOG, because `until` cannot say: `duelDecidedBy` ends a duel
+ *  by pulling `until` in to the turn the land moved, so a duel decided by a
+ *  conquest and one decided by the clock arrive here in the same shape. That
+ *  is the trade the single field buys, and this is the reader that pays for
+ *  it.
+ *
+ *  It looks at ONE turn - `until` itself - and that is exact rather than
+ *  approximate. A land moving between the two realms pulls `until` in to its
+ *  own turn, so no cross-realm conquest can sit earlier in a duel that is
+ *  still running; and a duel that ran its clock out ends at the wrap onto
+ *  `until`, before any of that round is played. Either way the deciding line,
+ *  if there is one, carries that turn number.
+ *
+ *  The direction is read off the two realms AS THEY NOW STAND, which survives
+ *  the conquest that ended the duel. The taker is still in the realm it took
+ *  for; the land it took is no longer in the realm it came from, so the side
+ *  it LEFT is read off `formerOverlordFactionId` - or off the land itself,
+ *  since a land nobody held is its own root and `fullRealmOf` includes it.
+ *
+ *  `log` must include the events of the batch being written, not just
+ *  `state.log`: a conquest at the human's own turn start is decided and swept
+ *  in the same `beginTurn`, so the deciding line has not been appended yet. */
+export function duelWon(
+  g: Gauntlet,
+  human: string | null,
+  log: readonly GameEvent[],
+  overlords: Overlords,
+  incorporated: Incorporated,
+): boolean {
+  if (g.kind !== "duel" || human === null) return false;
+  const mine = fullRealmOf(human, overlords, incorporated);
+  const theirs = fullRealmOf(g.enemy, overlords, incorporated);
+  for (const e of log) {
+    if (e.type !== "subjugated" || e.turn !== g.until) continue;
+    const taker = e.overlordFactionId;
+    const land = e.targetFactionId;
+    if (taker === undefined || land === undefined) continue;
+    if (!mine.has(taker)) continue;
+    if (theirs.has(e.formerOverlordFactionId ?? land)) return true;
+  }
+  return false;
 }

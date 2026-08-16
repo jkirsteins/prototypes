@@ -4,8 +4,10 @@ import {
   playCard, startGame, takesNoTurn, viewOf, type GameState,
 } from "../src/game";
 import {
-  DUEL_TURNS, duelCandidates, outsideTheDuel, type Gauntlet,
+  BIG_LAND_SITES, DUEL_DEFENSE_REWARD, DUEL_TURNS, DUEL_WEALTH_REWARD,
+  duelCandidates, outsideTheDuel, rewardFor, type Gauntlet,
 } from "../src/gauntlet";
+import { LAND_GROWTH } from "../src/defense";
 import { hasRuler } from "../src/rulers";
 import type { Rng } from "../src/cards";
 
@@ -381,5 +383,167 @@ describe("a duel cannot hang the run", () => {
     expect(actedIn(g)).toEqual(["beta"]);
     const after = nextRound(g);
     expect(after.gauntlet).toEqual({ kind: "world-tick" });
+  });
+});
+
+describe("the reward is what the land IS", () => {
+  const view = (
+    siteCaps: Record<string, number>, passives: Record<string, string[]>,
+  ) => ({ siteCaps, passives });
+
+  it("pays growth for a big land", () => {
+    expect(rewardFor(view({ gamma: BIG_LAND_SITES }, {}), "gamma"))
+      .toEqual({ kind: "growth", amount: LAND_GROWTH });
+  });
+
+  it("pays defense for ground that does its own defending", () => {
+    expect(rewardFor(view({}, { gamma: ["hill-country"] }), "gamma"))
+      .toEqual({ kind: "defense", amount: DUEL_DEFENSE_REWARD });
+  });
+
+  it("pays coin everywhere else", () => {
+    expect(rewardFor(view({ gamma: BIG_LAND_SITES - 1 }, {}), "gamma"))
+      .toEqual({ kind: "wealth", amount: DUEL_WEALTH_REWARD });
+  });
+
+  it("lets size win the one tie there is", () => {
+    // A big land in hill country is worth growing into. The arms have to be
+    // exclusive somewhere, and the rarer prize is the one worth keeping.
+    expect(
+      rewardFor(
+        view({ gamma: BIG_LAND_SITES }, { gamma: ["hill-country"] }), "gamma",
+      ).kind,
+    ).toBe("growth");
+  });
+});
+
+/** What beta's own settlements pay it at a turn start. The spoils land on top
+ *  of the ordinary income, so the coin assertions below have to name it. */
+const BETA_INCOME = 2;
+
+describe("a won duel cashes its reward, and a lost one pays nothing", () => {
+  /** The human takes the enemy's own land at the wrap that retires the duel.
+   *  The arrow lands at seat 0's turn start, which IS the round wrap, so the
+   *  line that decided the duel is still in the batch being written when the
+   *  spoils are read off it - the case `duelWon`'s doc calls out. */
+  function win(
+    over: (enemy: string) => Partial<GameState> = () => ({}),
+  ): { after: GameState; enemy: string } {
+    const g0 = playing();
+    const [enemy] = ruledRivals(g0);
+    const g = withGauntlet(
+      {
+        // A quiet board: no statuses, so nothing raids or mends itself at the
+        // wrap, and no arrow in flight but the one this fixture sends. What
+        // is being measured is a single reward landing on a single land.
+        ...g0, defense: { [enemy]: 0, beta: 10 }, marches: {}, passives: {},
+        ...over(enemy),
+      },
+      { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
+    );
+    const declared = playCard(
+      withHand(g, 0, ["raid"]), 0, rng(), enemy, { sourceId: "beta" },
+    );
+    return {
+      after: beginTurn({ ...declared, turn: declared.turn + 1 }, rng()),
+      enemy,
+    };
+  }
+
+  const spoils = (g: GameState) => g.log.filter((e) => e.type === "duel-won");
+
+  it("pays the reward the OFFER named, not one read off the winner", () => {
+    // The one property that matters: the picker quotes `rewardFor(enemy)` and
+    // so does the cashing, so the two cannot promise different things.
+    const { after, enemy } = win((e) => ({ siteCaps: { [e]: BIG_LAND_SITES } }));
+    expect(rewardFor(after, enemy)).toEqual({ kind: "growth", amount: LAND_GROWTH });
+    expect(after.defenseMax.beta).toBe(61);
+    expect(spoils(after)).toHaveLength(1);
+  });
+
+  it("grows the winner's home on a big land", () => {
+    const { after } = win((e) => ({ siteCaps: { [e]: BIG_LAND_SITES } }));
+    // beta went in at 10 and paid 1 for the raid; the ceiling rose by one and
+    // the score climbed with it.
+    expect(after.defense.beta).toBe(10);
+    expect(after.wealth.beta).toBe(BETA_INCOME);
+    expect(after.defenseMax.beta).toBe(61);
+    expect(spoils(after)[0]).toMatchObject({
+      targetFactionId: "beta", amount: LAND_GROWTH,
+    });
+  });
+
+  it("fortifies the winner's home on hill country", () => {
+    const { after } = win((e) => ({ passives: { [e]: ["hill-country"] } }));
+    expect(after.defense.beta).toBe(9 + DUEL_DEFENSE_REWARD);
+    expect(after.defenseMax.beta).toBe(60);
+    expect(spoils(after)[0]).toMatchObject({ amount: DUEL_DEFENSE_REWARD });
+  });
+
+  it("pays coin everywhere else, and moves no defense doing it", () => {
+    const { after, enemy } = win();
+    expect(after.wealth.beta).toBe(BETA_INCOME + DUEL_WEALTH_REWARD);
+    expect(after.defense.beta).toBe(9);
+    expect(spoils(after)[0]).toMatchObject({
+      targetFactionId: "beta", sourceFactionId: enemy,
+      wealth: DUEL_WEALTH_REWARD,
+    });
+    expect(spoils(after)[0].amount).toBeUndefined();
+  });
+
+  it("pays nothing when the clock runs out", () => {
+    const g = withGauntlet(playing(), {
+      kind: "duel", enemy: "gamma", until: 1,
+    });
+    const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
+    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(spoils(after)).toHaveLength(0);
+    // Its own settlement income and not one coin more.
+    expect(after.wealth.beta).toBe(BETA_INCOME);
+  });
+
+  it("pays nothing when the ENEMY is the one who took a land", () => {
+    // The duel ends either way - a losing player is not trapped in the scope
+    // beating them - but only taking a land off the enemy is winning it.
+    const g0 = playing();
+    const [enemy, third] = ruledRivals(g0);
+    const overlords = new Map(g0.overlords);
+    overlords.set(third, "beta");
+    const g = withGauntlet(
+      {
+        ...g0, overlords, defense: { [third]: 0 },
+        marches: {
+          "1": {
+            id: 1, actor: enemy, from: enemy, to: third, cardId: "raid",
+            damage: 1, holdsArmy: true, declared: g0.turn - 1,
+            expiry: g0.turn,
+          },
+        },
+      },
+      { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
+    );
+    const taken = beginTurn({ ...g, current: seatOf(g, enemy) }, rng());
+    const after = beginTurn({ ...taken, current: 0, turn: taken.turn + 1 }, rng());
+    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(spoils(after)).toHaveLength(0);
+  });
+
+  it("pays nothing for a land taken off a third party", () => {
+    const g0 = playing();
+    const [enemy, third] = ruledRivals(g0);
+    const g = withGauntlet(
+      { ...g0, defense: { [third]: 0, beta: 10 } },
+      // The clock is one round out, so the duel retires at the wrap whatever
+      // happens - which is what makes this a test of the reward rather than
+      // of the ending.
+      { kind: "duel", enemy, until: g0.turn + 1 },
+    );
+    const declared = playCard(
+      withHand(g, 0, ["raid"]), 0, rng(), third, { sourceId: "beta" },
+    );
+    const after = beginTurn({ ...declared, turn: declared.turn + 1 }, rng());
+    expect(after.overlords.get(third)).toBe("beta");
+    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(spoils(after)).toHaveLength(0);
   });
 });

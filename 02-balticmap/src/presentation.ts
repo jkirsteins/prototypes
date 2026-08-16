@@ -767,6 +767,24 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
     reason: "the turnip bar is its surface; cued beside the hand when it is " +
       "your own",
   },
+  // The spoils landing on the winner's own home. `framed`, so it takes the
+  // camera, the label and the badge walk every other map event takes - and the
+  // `causedHere` drop inside `framedBeats` cannot reach it, because a round
+  // wrap opens no batch with a play. A wealth reward moves no walked score and
+  // still earns its sentence: this is the beat that says the arc is over.
+  //
+  // The land is the winner's, and the enemy it beat is the other end - which
+  // is the one thing a duel's own label must name, since the fight has been
+  // running for up to twenty rounds and its subject is not on screen.
+  "duel-won": framed({
+    label: (e) =>
+      e.sourceFactionId === undefined
+        ? [landOf(e), t(" takes the spoils of the duel")]
+        : [
+            landOf(e), t(" takes the spoils of the duel with "),
+            faction(e.sourceFactionId),
+          ],
+  }),
   "harvest-picked": handMotion("reveal"),
   "harvest-burned": {
     kind: "never",
