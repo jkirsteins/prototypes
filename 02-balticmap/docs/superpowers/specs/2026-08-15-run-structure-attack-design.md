@@ -388,3 +388,80 @@ browser pass on the branch preview. The specific things to watch: whether an
 arrow's arrival reads clearly, whether a three-hop arrow is legible as a march
 rather than a strait, and whether rear lands are worth anything at all or
 whether the defender simply out-heals every long arrow.
+
+---
+
+## E. Stage 3: the gauntlet loop
+
+The refactor spec's section 3.1 and 3.2. Pick a bordering target whose reward
+is visible, duel it, cash the reward, the whole world takes one turn, repeat.
+
+Its three open questions are ruled below rather than left open, because the
+stage cannot be built around them.
+
+### Open question 1: what losing a duel costs
+
+**Ruled: nothing new is written.** The existing ladder is the forfeit. Capture
+is `dealt > standing`, so a land is lost exactly when it is let go soft; losing
+your home makes you somebody's vassal; being incorporated is defeat; and the
+independence gate is the escape valve that stops a death spiral. All four
+already exist, are already telegraphed, and are already the rules the player has
+been learning for the whole run. A forfeit rule invented for the gauntlet would
+be a fifth thing to learn that fires exactly when a player is already losing.
+
+### Open question 2: run-enders
+
+**Ruled: not built in this pass.** A marked neighbour that can take the whole
+realm must be unmissable, avoidable and eventually worth fighting - which means
+act boundaries, a boss-strength notion and a way to see one coming, none of
+which exist. Half-built, it punishes exploration, and the refactor spec names
+exploration as the one thing a map roguelike most needs to reward. The run still
+ends the two ways it already does: half the map, or being incorporated.
+
+### Open question 3: marches in flight when a gauntlet ends
+
+**Ruled: they keep flying, and the gauntlet boundary means nothing to them.**
+Section D made a march a timer, and a timer that stopped at a boundary it cannot
+see would be a second rule about what an arrow means. An arrow declared in one
+gauntlet lands in the next, on whoever holds the land when it arrives, judged by
+the same arrival check as any other - which may lapse it. That also gives the
+player a real decision at the end of a duel: an arrow declared late is an arrow
+that arrives while somebody else is the enemy.
+
+### The duel, and what a gauntlet actually changes
+
+A gauntlet is a scope over the turn loop, not a new loop:
+
+- **The player picks one bordering faction to duel.** The picker shows each
+  candidate's reward, derived from what the land IS rather than rolled - a
+  river-trade land pays wealth, hill country yields defense, a big land yields
+  growth. The map then teaches its own logic.
+- **While a duel runs, only the two sides act.** The player's realm and the
+  enemy's realm take turns; everybody else is still. This is one more arm on
+  `takesNoTurn`, which is already the single question the turn loop asks.
+- **A duel ends when a land changes hands between the two sides, or after
+  `DUEL_TURNS`,** whichever comes first. A duel nobody can win still ends, so
+  the run cannot stall on a stalemate - which the pre-refactor game did, at a
+  median of 110 turns.
+- **Then the world takes one turn**, every seat at once, through the existing
+  `stepAiChain` and the round summary. This is the difficulty curve: the fifth
+  neighbour you fight has had five ticks to grow.
+- **Some neighbours are neutral and ignorable.** The border is not a to-do list,
+  so the picker offers rather than requires, and declining is a real choice that
+  costs a world tick.
+
+### Deliberately not in this pass
+
+The regional-leader status, which the refactor spec wants for pulling a bloc
+into a fight. It is a `PASSIVES` row plus a hook, but per the project rule it
+does not ship until the land hover names it, and the stage is large enough
+already. Rewards start as the smallest set that proves the idea rather than one
+per terrain.
+
+### Gate
+
+`npm test` and `npm run build` green, the stuck-seat sweep still zero, and a
+browser pass. What to watch: whether a duel actually feels like an arc, whether
+the world tick is readable at the beat counts stage 1 measured (up to 16 beats
+and 29.5s per round at a five-land realm - a world tick is that with every seat
+acting), and whether declining a neighbour is ever the right move.
