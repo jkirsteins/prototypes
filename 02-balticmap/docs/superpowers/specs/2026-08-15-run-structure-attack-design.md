@@ -274,3 +274,117 @@ Stated in advance so the playtest can falsify them:
 
 `npm test` and `npm run build` green, and a browser pass on the branch preview
 from section A.
+
+---
+
+## D. Stage 2: march travel time
+
+A march moves one land per turn, so a raid launched from the rear lands later
+than one launched from the border. The refactor spec's section 3.4 states the
+intent: travel is purely a ticking timer for arrival, there is no interception
+in transit, defense is still spent at declaration with no recall, and
+reinforcement stays deferred.
+
+Reading the code turned up two interactions the refactor spec does not mention
+and one open question it leaves for here. All three are decided below.
+
+### The open question: maximum march distance
+
+**Ruled: three hops, stated as a rule.**
+
+The refactor spec prefers no stated cap, arguing that with 10-20 turn duels and
+one hop per turn "lands more than three or four deep cannot reach the fight" and
+that this is "a natural cap requiring no tuning". That argument depends on the
+duel clock, and the duel clock is stage 3. Until it exists there is no clock at
+all, so "whatever the clock allows" means the whole map: `marchTargetsFrom`
+would offer every land, the aim preview would light up all 26, and the AI would
+score every faction from every source.
+
+A stated three also costs nothing the emergent cap was not already taking, and
+it buys two things the emergent version cannot. The target list stays a list a
+player can read. And the rule becomes something the game can SAY - the hover and
+the block reason can name it - rather than something a player has to infer from
+arrows that never arrive in time.
+
+Revisit this in stage 3 once a duel has a length. If the clock turns out to bind
+tighter than three, the constant is one number.
+
+### A march carries the turn it was declared
+
+`Axis.opening` in `src/marches.ts` decides which side of a clash is drawn full
+size and which is drawn as the answer, and it is currently "read off the expiry,
+which IS the declaration turn plus one". Travel time breaks that identity: a
+three-hop attack declared on turn 4 and a one-hop attack declared on turn 6 both
+expire on turn 7, and the later one would be drawn as the opening move.
+
+So `March` gains the turn it was declared, and `opening` reads that instead.
+This is the first change of stage 2 because everything else depends on it, and
+it is a new field on a replicated type - `SerializedGameState` is checked at
+compile time and will say so.
+
+### Distance does not break the clash system, and that is worth stating
+
+A clash is per AXIS, and an axis is a pair of lands. Both directions of a pair
+are the same distance apart, so two seats attacking each other across three hops
+both arrive on the same turn exactly as they do today across one. Travel time
+therefore changes when a clash resolves, never whether the two sides meet. The
+refactor spec's "no interception in transit" survives for the same reason: there
+is no such thing as being caught between two lands, because a march has no
+position - it has a timer.
+
+### What the player must be able to see
+
+**An arrow in flight has to say when it lands.** Today every arrow lands next
+turn, so the question never arises; a three-hop arrow standing on the map for
+three turns with nothing to distinguish it from one landing tomorrow is the map
+lying about the board. The arrival goes on the chip BEHIND the tail, never on
+the shaft - the shaft carries exactly one number, and `02-balticmap/CLAUDE.md`
+records that the bare "1 STR" form is safe only because of that.
+
+**A multi-hop arrow spans, and that is already built.** `crossingBetween`
+returns nothing for two lands that share no vertex, and `renderArrowScene`
+already spans such a pair rather than standing an arrow in the middle of
+nothing - the strait treatment. A three-hop arrow is that same case, so nothing
+new is drawn. Whether it READS as a long march or as a strait crossing is a
+question for the playtest, not an assumption to make now.
+
+### A march is judged when declared and when it lands, never in between
+
+`resolveMarches` re-asks the targeting rules every turn. With one-turn flights
+that was indistinguishable from asking at arrival; with three-turn flights it is
+not, and the difference matters because stage 1 made allegiance change roughly
+every four turns. An arrow would be cancelled mid-flight routinely, by a
+relation that did not exist when it was declared.
+
+**Ruled: validity is decided at declaration and re-decided at arrival.** In
+between the march is a timer and nothing can touch it, which is exactly what
+"no interception in transit" means. If the target has become a peer of the
+actor's own realm by the time the arrow lands, the march LAPSES - no damage, no
+capture - and says so in the log, because an arrow that vanishes with no line is
+the map lying again.
+
+### The long march is a bet, and the bet is the point
+
+Defense is spent at declaration, so a three-hop march leaves its source soft for
+three turns rather than one - and, since stage 1, a source below its own
+independence gate for three turns is a source that may free itself. That is not
+a defect to be fixed. The refactor spec names it as the most interesting
+decision the structure creates and also the most likely to feel punishing if the
+numbers are wrong, which is precisely what the playtest is for.
+
+### The AI must not treat a distant target as a near one
+
+`chooseAction` scores targets with no notion of when a blow lands. Widening its
+reach without teaching it that a three-hop raid arrives in three turns would
+make it trade near targets for far ones at no discount, which reads as the AI
+throwing armies into the distance. The scoring gains a distance term; how steep
+it is, is a number the playtest and the balance suite argue about, not something
+to settle here.
+
+### Gate
+
+`npm test` and `npm run build` green, a stuck-seat sweep still at zero, and a
+browser pass on the branch preview. The specific things to watch: whether an
+arrow's arrival reads clearly, whether a three-hop arrow is legible as a march
+rather than a strait, and whether rear lands are worth anything at all or
+whether the defender simply out-heals every long arrow.
