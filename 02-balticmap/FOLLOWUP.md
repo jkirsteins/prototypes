@@ -565,3 +565,31 @@ justified it. What is not verified:
   pass was made on that map - which is the one that opens with lands already
   sworn, i.e. with vassals from turn 1 who now take no turn until their lord
   duels.
+
+## The scoreboard is gone, and a victory now arrives unannounced, 2026-08-16
+
+The top-right standings panel - every acting faction's realm size against its
+own win bar, with the player's row flagged - is removed. The run is a sequence
+of duels rather than a race everybody is visibly running, so a standing table
+of the whole roster is not what the screen is being read for.
+
+The win condition is untouched: half the map still ends the run, `winSizeFor`
+is still the only bar, and the postmortem still prints the realm size against
+it. What that leaves is a real gap, and it is a gap and not a saving:
+
+- **A victory now has no visible build-up.** Nothing on screen counts the
+  player toward the bar while the run is in play. A player two lands short
+  cannot tell, and the run ends on a modal for a number they were never shown
+  climbing. The same is true in the other direction: a rival can be one
+  conquest from unifying the map and end the run in defeat with no warning
+  anywhere but the log.
+- **A duel-shaped replacement may be wanted**, and would be the honest fix
+  rather than putting the table back. What the player is actually playing is
+  one opponent at a time, so the thing worth showing is that opponent's
+  standing against theirs - two rows, not twenty-six - plus, somewhere, how
+  far the whole run has left to go. The `status-duel` chip is where the first
+  half would naturally live; the second half has no home yet. Nobody has
+  designed either.
+- **The milestones drawer is what is left**, and it does not cover this. "Hold
+  5 lands" is a standing race every faction runs, not the win bar, and it
+  answers for whichever faction is highlighted rather than for the run.
