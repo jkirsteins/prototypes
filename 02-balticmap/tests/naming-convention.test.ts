@@ -233,6 +233,20 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       targetFactionId: H, sourceFactionId: RIVAL, wealth: 3,
     },
   ],
+  // The endings that pay nothing. Both name the enemy and nothing else, which
+  // is exactly the segment a flat string would have swallowed.
+  "duel-lost": [
+    {
+      turn: 1, playerId: 1, type: "duel-lost",
+      targetFactionId: H, sourceFactionId: RIVAL,
+    },
+  ],
+  "duel-lapsed": [
+    {
+      turn: 1, playerId: 1, type: "duel-lapsed",
+      targetFactionId: H, sourceFactionId: RIVAL,
+    },
+  ],
   // Both bars, because the whole-map wording is a second line and the naming
   // rules apply to it exactly as they do to the first.
   victory: [

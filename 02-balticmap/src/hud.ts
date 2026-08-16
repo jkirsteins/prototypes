@@ -19,6 +19,7 @@ import {
   type RulesView,
 } from "./playability";
 import { abilitiesOf, LEADER_ABILITIES } from "./abilities";
+import { DUEL_TURNS } from "./gauntlet";
 import { milestonePoints, milestoneStandings } from "./milestones";
 import { count } from "./plural";
 import type { PlayerAction } from "./gates";
@@ -706,6 +707,17 @@ export function eventSegments(
         t(" the duel with "), faction(e.sourceFactionId ?? ""),
         ...(e.wealth === undefined ? [] : [t(` - ${e.wealth} wealth`)]),
       ], "past");
+    // The two un-won endings. Separate verbs rather than one line with a
+    // reason appended: a land lost and a clock run out are different news,
+    // and the log is where a player goes to find out which it was.
+    case "duel-lost":
+      return clause(actor, "lose", [
+        t(" the duel with "), faction(e.sourceFactionId ?? ""),
+      ], "past");
+    case "duel-lapsed":
+      return clause(actor, "run", [
+        t(" out of time in the duel with "), faction(e.sourceFactionId ?? ""),
+      ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":
@@ -1218,6 +1230,41 @@ export function createHud(
   // toward the next Turnip harvest. Count and fill both read the same stored
   // counter, so they cannot disagree; hidden entirely for a run that holds
   // no turnips, where the mechanic does not exist.
+  // The fight the run is in, and how long it has left to run. A duel is up to
+  // twenty rounds long and used to have no surface at all: the word "duel"
+  // appeared nowhere on screen between the offer and the ending, so a player
+  // could not see the clock they were running out of and an expiry was
+  // unforeseeable as well as unannounced. The enemy is a `faction()` segment
+  // like every other name in the game, so pointing at it lights up their
+  // realm - which is the whole answer to "who am I fighting" on a map of
+  // twenty-six lands.
+  const duelChip = document.createElement("span");
+  duelChip.className = "status-duel hidden";
+  duelChip.addEventListener("mousemove", (e) => {
+    cb.onShowTip?.(
+      [
+        { text: "Duel" },
+        {
+          text:
+            "The realm you picked a fight with. While it runs, only your " +
+            "realm and theirs take turns - the rest of the map stands still.",
+        },
+        {
+          text:
+            "It ends the moment a land changes hands between the two realms, " +
+            `or after ${DUEL_TURNS} rounds, whichever comes first. Taking a ` +
+            "land off them pays the reward the offer named; losing one, or " +
+            "running out of turns, pays nothing.",
+        },
+        {
+          text:
+            "Then the whole map takes one turn, and a fresh offer comes round.",
+        },
+      ],
+      e.clientX, e.clientY,
+    );
+  });
+  duelChip.addEventListener("mouseleave", () => cb.onHideTip?.());
   const turnipChip = document.createElement("span");
   turnipChip.className = "status-turnips hidden";
   const turnipCount = document.createElement("span");
@@ -1243,7 +1290,9 @@ export function createHud(
     );
   });
   turnipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
-  status.append(statusText, wealthChip, handChip, rulerChip, turnipChip);
+  status.append(
+    statusText, wealthChip, handChip, rulerChip, duelChip, turnipChip,
+  );
 
   function makePile(kind: string, label: string) {
     const root = document.createElement("div");
@@ -2774,6 +2823,20 @@ export function createHud(
       } else {
         rulerTip = [];
       }
+      // The duel and its clock. `until` is the turn the duel is over BY, so
+      // the turns left is the distance to it - the same subtraction the wrap
+      // makes, rather than a second count of rounds kept beside it.
+      const duel = state.gauntlet;
+      duelChip.classList.toggle("hidden", duel.kind !== "duel");
+      if (duel.kind === "duel") {
+        duelChip.replaceChildren(renderSegments(
+          [
+            t("Duel "), faction(duel.enemy),
+            t(` - ${count(Math.max(0, duel.until - state.turn), "turn")} left`),
+          ],
+          richTextHooks,
+        ));
+      }
       // Lowercase "turnips": the common noun, per the naming rule - the card
       // is named in the hover explanation, where it can be read in full.
       // The LOCAL seat's own counter - every seat counts now.
@@ -2798,6 +2861,7 @@ export function createHud(
       handChip.classList.add("hidden");
       rulerChip.classList.add("hidden");
       rulerTip = [];
+      duelChip.classList.add("hidden");
       turnipChip.classList.add("hidden");
     }
     if (state.phase === "pick-faction") {

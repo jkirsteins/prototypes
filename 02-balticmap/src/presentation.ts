@@ -785,6 +785,30 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
             faction(e.sourceFactionId),
           ],
   }),
+  // The other two ways a duel settles, framed exactly as the win is. Neither
+  // moves a score, and both still earn the camera and a sentence: what they
+  // report is a twenty-round arc closing, and the land the beat holds on is
+  // the player's own home, which is where the spoils would have landed. A
+  // beat with nothing to walk is the whole point here - the alternative is
+  // the silence this pair exists to end.
+  //
+  // Actor first, and the enemy named: the fight's other end is not on screen
+  // and cannot be pointed at, so the label has to say who it was with.
+  "duel-lost": framed({
+    label: (e) =>
+      e.sourceFactionId === undefined
+        ? [landOf(e), t(" loses the duel")]
+        : [landOf(e), t(" loses the duel with "), faction(e.sourceFactionId)],
+  }),
+  "duel-lapsed": framed({
+    label: (e) =>
+      e.sourceFactionId === undefined
+        ? [landOf(e), t(" runs out the duel")]
+        : [
+            landOf(e), t(" runs out the duel with "),
+            faction(e.sourceFactionId),
+          ],
+  }),
   "harvest-picked": handMotion("reveal"),
   "harvest-burned": {
     kind: "never",

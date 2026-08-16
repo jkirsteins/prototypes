@@ -746,6 +746,49 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       t("round."),
     ]],
   },
+  // The two un-won endings, in the same shape and the same footer as the win.
+  // A duel is a promise the run settles, so every way it settles is news: the
+  // player who is told nothing is left to infer that the last fight lapsed
+  // from the next offer appearing, which is not a settlement at all.
+  "duel-lost": {
+    kind: "modal",
+    // The local seat's own fight. Not gated on somebody else having acted,
+    // for the reason the win is not: the duel retired itself at a round wrap,
+    // so this is news even on the player's own id.
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes) =>
+      events.map((e, i) => ({
+        text: [
+          t("The duel with "), faction(e.sourceFactionId ?? ""),
+          t(" is lost - a land of yours changed hands, and there are no "),
+          t("spoils"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "bad" as const,
+      })),
+    footnotes: () => [[
+      t("The whole map takes one turn now, and then a fresh offer comes "),
+      t("round."),
+    ]],
+  },
+  "duel-lapsed": {
+    kind: "modal",
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes) =>
+      events.map((e, i) => ({
+        text: [
+          t("The duel with "), faction(e.sourceFactionId ?? ""),
+          t(" runs out of time - no land changed hands, and there are no "),
+          t("spoils"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "neutral" as const,
+      })),
+    footnotes: () => [[
+      t("The whole map takes one turn now, and then a fresh offer comes "),
+      t("round."),
+    ]],
+  },
   "harvest-picked": {
     kind: "silent",
     // The pick is public - the log names the card for every seat, the same

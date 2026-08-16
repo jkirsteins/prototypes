@@ -528,6 +528,56 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     expect(spoils(after)).toHaveLength(0);
   });
 
+  /** Every line a retiring duel writes about itself, whichever way it went. */
+  const endings = (g: GameState) =>
+    g.log.filter((e) => e.type.startsWith("duel-"));
+
+  it("says so when the clock runs out, and names the enemy", () => {
+    // The silence this exists to end: a duel that timed out produced no
+    // event, no line and no sound, and the only signal it was over was the
+    // next offer appearing a turn later.
+    const g = withGauntlet(playing(), {
+      kind: "duel", enemy: "gamma", until: 1,
+    });
+    const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
+    expect(endings(after).map((e) => e.type)).toEqual(["duel-lapsed"]);
+    expect(endings(after)[0]).toMatchObject({
+      playerId: 1, targetFactionId: "beta", sourceFactionId: "gamma",
+    });
+  });
+
+  it("says so when the ENEMY is the one who took a land", () => {
+    const g0 = playing();
+    const [enemy, third] = ruledRivals(g0);
+    const overlords = new Map(g0.overlords);
+    overlords.set(third, "beta");
+    const g = withGauntlet(
+      {
+        ...g0, overlords, defense: { [third]: 0 },
+        marches: {
+          "1": {
+            id: 1, actor: enemy, from: enemy, to: third, cardId: "raid",
+            damage: 1, holdsArmy: true, declared: g0.turn - 1,
+            expiry: g0.turn,
+          },
+        },
+      },
+      { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
+    );
+    const taken = beginTurn({ ...g, current: seatOf(g, enemy) }, rng());
+    const after = beginTurn({ ...taken, current: 0, turn: taken.turn + 1 }, rng());
+    // A land going the other way is not the same news as a clock running out,
+    // and the player is owed the difference.
+    expect(endings(after).map((e) => e.type)).toEqual(["duel-lost"]);
+    expect(endings(after)[0]).toMatchObject({ sourceFactionId: enemy });
+  });
+
+  it("says it once when the duel is won", () => {
+    const { after, enemy } = win();
+    expect(endings(after).map((e) => e.type)).toEqual(["duel-won"]);
+    expect(endings(after)[0]).toMatchObject({ sourceFactionId: enemy });
+  });
+
   it("pays nothing for a land taken off a third party", () => {
     const g0 = playing();
     const [enemy, third] = ruledRivals(g0);

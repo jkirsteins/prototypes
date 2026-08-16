@@ -2796,6 +2796,47 @@ describe("localPlayerId", () => {
   });
 });
 
+describe("the duel chip", () => {
+  it("names the enemy and the turns left while a duel runs", () => {
+    // A duel is up to twenty rounds long and used to have no surface at all:
+    // the word appeared nowhere on screen between the offer and the ending,
+    // so the clock the player was running out of was invisible - which made
+    // an expiry unforeseeable as well as unannounced.
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({
+      ...g, turn: 4, gauntlet: { kind: "duel", enemy: "gamma", until: 9 },
+    });
+    const chip = q(container, ".status-duel");
+    expect(chip.classList.contains("hidden")).toBe(false);
+    expect(chip.textContent).toBe("Duel Gamma - 5 turns left");
+    // The enemy is a segment and not text, so pointing at it lights up their
+    // realm the way every other name in the game does.
+    expect(chip.querySelector(".rt-faction")?.textContent).toBe("Gamma");
+  });
+
+  it("counts down to one turn, singular", () => {
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({
+      ...g, turn: 8, gauntlet: { kind: "duel", enemy: "gamma", until: 9 },
+    });
+    expect(q(container, ".status-duel").textContent)
+      .toBe("Duel Gamma - 1 turn left");
+  });
+
+  it("hides itself when the run is between duels", () => {
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({ ...g, gauntlet: { kind: "world-tick" } });
+    expect(q(container, ".status-duel").classList.contains("hidden"))
+      .toBe(true);
+    hud.update({ ...g, gauntlet: { kind: "picking", candidates: ["gamma"] } });
+    expect(q(container, ".status-duel").classList.contains("hidden"))
+      .toBe(true);
+  });
+});
+
 describe("the turnip bar chip and the harvest offer", () => {
   const playing = () => newPlaying();
 

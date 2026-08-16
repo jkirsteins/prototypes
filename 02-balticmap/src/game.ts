@@ -51,7 +51,7 @@ import {
   vacateRulers, type Rulers,
 } from "./rulers";
 import {
-  duelDecidedBy, duelWon, gauntletAtRoundWrap, outsideTheDuel, rewardFor,
+  duelDecidedBy, duelOutcome, gauntletAtRoundWrap, outsideTheDuel, rewardFor,
   DUEL_TURNS, type Gauntlet,
 } from "./gauntlet";
 import { BUILD_ABILITIES } from "./abilities";
@@ -67,7 +67,7 @@ export type GameEventType =
   | "passive-fired"
   | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
-  | "duel-won"
+  | "duel-won" | "duel-lost" | "duel-lapsed"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
 /** How much defense a raid may tear out of `source`, given what the caller
@@ -1050,10 +1050,13 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "harvest-picked":
     case "harvest-burned":
       return true;
-    // The spoils of a duel are paid at a round wrap, out of a batch that opens
-    // with no play at all - the card that took the land was played a turn or
-    // twenty ago. There is nothing above it to indent under.
+    // A duel settles at a round wrap, out of a batch that opens with no play
+    // at all - the card that took the land was played a turn or twenty ago,
+    // and a lapsed one was decided by nothing being played. There is nothing
+    // above any of the three to indent under.
     case "duel-won":
+    case "duel-lost":
+    case "duel-lapsed":
       return false;
   }
 }
@@ -1408,9 +1411,18 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     return { defense, taken: true };
   };
 
-  /** What a won duel is worth, paid into the winner's realm at the wrap that
-   *  retires the duel. Losing or timing out pays nothing, so this is called
-   *  only where `duelWon` says a land came off the enemy.
+  /** The duel's settlement, written at the wrap that retires it: ONE event
+   *  whichever way the fight went, and the spoils on the one arm that earns
+   *  them.
+   *
+   *  Every ending is announced and not only the win. A duel is a promise the
+   *  run makes and then settles, and three of the four ways it settles used to
+   *  produce nothing at all - no event, no line, no sound - so a player whose
+   *  clock ran out learned it from the next offer appearing. `duelOutcome`
+   *  says which of the three it was, because the difference is the sentence.
+   *
+   *  What a won duel is worth is paid into the winner's realm here, and
+   *  losing or timing out pays nothing.
    *
    *  The spoils COME HOME - to the human's own land, whichever of the enemy's
    *  lands actually changed hands. Two reasons, and the second is the one that
@@ -1422,11 +1434,25 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *
    *  One event, whatever the reward, carrying the defense it moved so the
    *  before -> after suffix comes off the same walk every other score does. */
-  const cashDuelSpoils = (enemy: string, seen: GameEvent[]): void => {
+  const settleDuel = (enemy: string, seen: GameEvent[]): void => {
     const home = humanFactionOf(state);
     if (home === null) return;
-    if (!duelWon(gauntlet, home, seen, overlords, state.incorporated)) return;
     const winner = players.find((pl) => pl.factionId === home);
+    const outcome = duelOutcome(
+      gauntlet, home, seen, overlords, state.incorporated,
+    );
+    if (outcome !== "won") {
+      // The two un-won endings are separate types rather than one line with a
+      // reason on it, because they are separate news: a land went the other
+      // way, or twenty rounds passed and neither realm gave anything up. Both
+      // move no score, so both carry only the two ends of the fight.
+      events.push({
+        turn: state.turn, playerId: winner?.id ?? p.id,
+        type: outcome === "lost" ? "duel-lost" : "duel-lapsed",
+        targetFactionId: home, sourceFactionId: enemy,
+      });
+      return;
+    }
     // Derived from the ENEMY, which is the land the offer named. Both inputs
     // are stable across a duel - `siteCaps` is map data and the defensive
     // terrains survive a capture (`strippedOnCapture: false`) - so what the
@@ -1496,17 +1522,18 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     const wrapped = gauntletAtRoundWrap(
       gauntlet, { ...viewOf(state), overlords }, humanFactionOf(state),
     );
-    // The spoils, cashed at the moment the duel retires and nowhere else.
+    // The duel settled - announced, and paid where it is owed - at the moment
+    // it retires and nowhere else.
     // Asked of the gauntlet as it stood BEFORE the wrap, because the wrap is
     // what throws the duel away - one line later there is no enemy left to
-    // ask about. `duelWon` says why the log rather than `until` is what
-    // answers "was it won".
+    // ask about. `duelOutcome` says why the log rather than `until` is what
+    // answers how it ended.
     //
     // The batch being written is handed in alongside `state.log`: a conquest
     // at the human's own turn start is decided and swept in this same
     // `beginTurn`, so the line that decided it is still in `events`.
     if (gauntlet.kind === "duel" && wrapped.kind !== "duel") {
-      cashDuelSpoils(gauntlet.enemy, [...state.log, ...events]);
+      settleDuel(gauntlet.enemy, [...state.log, ...events]);
     }
     gauntlet = wrapped;
     // A land that was hit THIS round does not also grow back in it. The heal

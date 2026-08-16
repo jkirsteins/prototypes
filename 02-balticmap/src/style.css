@@ -541,6 +541,14 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
+  /* Sized by its contents and centred by the transform, which the layout does
+     not see: at `left: 50%` the room an absolutely positioned box is offered
+     is only the half of the window to the RIGHT of that line, so the bar hit
+     that ceiling as chips were added and squeezed the turn prompt into four
+     wrapped words instead of growing. Capped at the window so a long prompt
+     still wraps rather than running off the screen. */
+  width: max-content;
+  max-width: calc(100vw - 32px);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -580,6 +588,18 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   border-left: 1px solid #d0d0d0;
   padding-left: 12px;
   color: #4a4f57;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The fight the run is in, and its clock - same chip shape as the treasury;
+   the deep red marks it as the one chip about a quarrel rather than about the
+   realm's books. The enemy inside it is a `faction()` segment, so it carries
+   the same hover every other name in the game does. */
+.status-duel {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #8a3324;
   font-weight: 600;
   white-space: nowrap;
 }

@@ -260,8 +260,17 @@ export function rewardLine(reward: DuelReward): string {
   }
 }
 
-/** Whether the duel now ending was WON - the human's realm took a land off
- *  the enemy's, rather than the clock running out or the enemy taking one.
+/** How a duel that is retiring at this wrap ended.
+ *
+ *  Three answers and not two, because the difference between them is the whole
+ *  of what the player is owed at the end of a fight: a land came off the enemy
+ *  (`won`), a land went the other way (`lost`), or twenty rounds passed and
+ *  neither happened (`lapsed`). A single "it is over" would be the silence
+ *  this exists to end, one sentence later. */
+export type DuelOutcome = "won" | "lost" | "lapsed";
+
+/** How the duel now ending turned out - a land off the enemy's realm, a land
+ *  lost to it, or the clock simply running out.
  *
  *  Read off the LOG, because `until` cannot say: `duelDecidedBy` ends a duel
  *  by pulling `until` in to the turn the land moved, so a duel decided by a
@@ -282,26 +291,38 @@ export function rewardLine(reward: DuelReward): string {
  *  it LEFT is read off `formerOverlordFactionId` - or off the land itself,
  *  since a land nobody held is its own root and `fullRealmOf` includes it.
  *
+ *  A win outranks a loss in the one turn that could carry both lines, because
+ *  the reward is owed for a land taken and nothing is owed for one lost. The
+ *  scope is small - both would have to land on the same turn - and the arm
+ *  that pays is the one the offer promised.
+ *
  *  `log` must include the events of the batch being written, not just
  *  `state.log`: a conquest at the human's own turn start is decided and swept
  *  in the same `beginTurn`, so the deciding line has not been appended yet. */
-export function duelWon(
+export function duelOutcome(
   g: Gauntlet,
   human: string | null,
   log: readonly GameEvent[],
   overlords: Overlords,
   incorporated: Incorporated,
-): boolean {
-  if (g.kind !== "duel" || human === null) return false;
+): DuelOutcome {
+  if (g.kind !== "duel" || human === null) return "lapsed";
   const mine = fullRealmOf(human, overlords, incorporated);
   const theirs = fullRealmOf(g.enemy, overlords, incorporated);
+  let lost = false;
   for (const e of log) {
     if (e.type !== "subjugated" || e.turn !== g.until) continue;
     const taker = e.overlordFactionId;
     const land = e.targetFactionId;
     if (taker === undefined || land === undefined) continue;
-    if (!mine.has(taker)) continue;
-    if (theirs.has(e.formerOverlordFactionId ?? land)) return true;
+    // The side the land LEFT, which is what makes this a cross-realm move
+    // rather than housekeeping inside one realm.
+    const from = e.formerOverlordFactionId ?? land;
+    if (mine.has(taker) && theirs.has(from)) return "won";
+    // Mirrored, and the sets are read the same way round: a home land taken
+    // off the human leaves the human a vassal of the enemy, so `theirs` holds
+    // the taker while `mine` still holds the human's own root.
+    if (theirs.has(taker) && mine.has(from)) lost = true;
   }
-  return false;
+  return lost ? "lost" : "lapsed";
 }
