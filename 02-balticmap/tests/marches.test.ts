@@ -117,22 +117,35 @@ describe("axesOf", () => {
 
   it("names the side that declared first as the one that opened", () => {
     let marches: Marches = {};
-    marches = addMarch(marches, march({ from: "talava", to: "selija", declared: 1 }));
-    marches = addMarch(marches, march({ from: "selija", to: "talava", declared: 2 }));
-    // The axis sorts selija before talava, so the opener is side b.
-    expect(axesOf(marches)[0].opening).toBe("b");
+    // Inserted in reverse of declaration order, and tied on expiry (left at
+    // the factory default), so a reader still keyed on expiry falls through
+    // to the insertion-order tie-break and picks the WRONG side (b, inserted
+    // first) - only a reader of `declared` picks a (declared first, but
+    // inserted second).
+    marches = addMarch(marches, march({ from: "talava", to: "selija", declared: 5 }));
+    marches = addMarch(marches, march({ from: "selija", to: "talava", declared: 1 }));
+    expect(axesOf(marches)[0].opening).toBe("a");
   });
 
   it("reads the opening side off the declaration, not the arrival", () => {
     // A far attack declared first and a near answer declared later can land on
     // the SAME turn once travel time exists. The opening side is the one that
     // started the quarrel, which only `declared` knows.
+    //
+    // Both marches expire on the same turn, so a reader still keyed on
+    // `expiry` falls through to the insertion-order tie-break - and a
+    // `Marches` record's integer-like keys enumerate in ASCENDING id order
+    // regardless of call order (see the `Marches` doc comment), so the
+    // smaller id is what that tie-break actually favours. Giving the smaller
+    // id to the LATER-declared march (side b) means the two readings
+    // disagree: an expiry-tie-then-insertion-order reader picks b, and a
+    // declared-order reader picks a.
     let marches: Marches = {};
     marches = addMarch(marches, march({
-      id: 1, from: "selija", to: "talava", declared: 1, expiry: 4,
+      id: 1, from: "talava", to: "selija", declared: 3, expiry: 4,
     }));
     marches = addMarch(marches, march({
-      id: 2, from: "talava", to: "selija", declared: 3, expiry: 4,
+      id: 2, from: "selija", to: "talava", declared: 1, expiry: 4,
     }));
     const [axis] = axesOf(marches);
     expect(axis.opening).toBe(axis.a === "selija" ? "a" : "b");
