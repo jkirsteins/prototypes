@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addMarch, armiesOn, axisKeyOf, axesOf,
-  clearMarches, freeArmiesOn, marchesAgainst, marchesFrom, resolveAxis,
+  clearMarches, freeArmiesOn, marchesFrom, resolveAxis,
   type March, type Marches,
 } from "../src/marches";
 
@@ -82,17 +82,16 @@ describe("addMarch", () => {
   });
 });
 
-describe("marchesFrom / marchesAgainst", () => {
+describe("marchesFrom", () => {
   const marches = [
     march({ from: "selija", to: "talava" }),
     march({ from: "latgale", to: "talava" }),
     march({ from: "talava", to: "selija", actor: "latgalians" }),
   ].reduce<Marches>((m, x) => addMarch(m, x), {});
 
-  it("splits by which end of the march the polygon sits on", () => {
+  it("picks out the arrows this polygon sent, and no arrow aimed at it", () => {
     expect(marchesFrom(marches, "selija").map((m) => m.to)).toEqual(["talava"]);
-    expect(marchesAgainst(marches, "talava").map((m) => m.from))
-      .toEqual(["selija", "latgale"]);
+    expect(marchesFrom(marches, "talava").map((m) => m.to)).toEqual(["selija"]);
   });
 });
 

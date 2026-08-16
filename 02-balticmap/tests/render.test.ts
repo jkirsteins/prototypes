@@ -86,7 +86,7 @@ describe("renderMap", () => {
     expect(svg.querySelectorAll("path.neighbor").length).toBe(
       data.neighbors.length,
     );
-    for (const kind of ["people", "people-minor", "neighbor", "river"]) {
+    for (const kind of ["people", "neighbor", "river"]) {
       const expected = data.labels.filter((l) => l.kind === kind);
       const rendered = svg.querySelectorAll(`text.label-${kind}`);
       expect(rendered.length).toBe(expected.length);
@@ -328,9 +328,7 @@ describe("renderMap", () => {
   it("tags people labels with data-people and collects them in peopleLabels", () => {
     const container = document.createElement("div");
     const { svg, peopleLabels } = renderMap(data, container);
-    const peopleLabelKinds = data.labels.filter(
-      (l) => l.kind === "people" || l.kind === "people-minor",
-    );
+    const peopleLabelKinds = data.labels.filter((l) => l.kind === "people");
     for (const l of peopleLabelKinds) {
       const people = data.peoples.find((p) => p.name.toUpperCase() === l.text);
       expect(people).toBeDefined();

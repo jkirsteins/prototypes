@@ -3,7 +3,7 @@
  *  again.
  *
  *  This module owns the CYCLE and nothing else. Who acts is still one
- *  question, `takesNoTurn` in src/game.ts, which asks `outsideTheDuel` here;
+ *  question, `takesNoTurn` in src/game.ts, which asks `duelStanding` here;
  *  what a candidate is worth, and the modal that offers it, are the screen's.
  */
 
@@ -130,6 +130,10 @@ export function duelCandidates(view: RulesView, human: string): string[] {
  *  is running and when nobody is playing this board at all (`human === null`,
  *  a world simulation).
  *
+ *  The `null` on a board nobody plays is load-bearing rather than tidy: a
+ *  scope with no side to be on would put every seat "outside" and freeze the
+ *  lot, and `advance` throws when it runs out of seats rather than spinning.
+ *
  *  One walk of the two realms and three answers, because the turn loop asks
  *  two questions about a duel and they are the same question read twice: a
  *  faction on NEITHER side is stilled for the duel's length, and a faction on
@@ -157,25 +161,6 @@ export function duelStanding(
     return "theirs";
   }
   return "outside";
-}
-
-/** Whether the duel scope leaves this faction out - it stands in neither
- *  realm, so it takes no turn until the duel ends.
- *
- *  False whenever no duel is running, and false when nobody is playing this
- *  board at all (`human === null`, a world simulation): a scope with no side
- *  to be on would freeze every seat, and `advance` throws when it runs out of
- *  seats rather than spinning. `duelStanding` above answers both of those
- *  with `null`, which is why this is one comparison. */
-export function outsideTheDuel(
-  g: Gauntlet,
-  human: string | null,
-  factionId: string,
-  overlords: Overlords,
-  incorporated: Incorporated,
-): boolean {
-  return duelStanding(g, human, factionId, overlords, incorporated) ===
-    "outside";
 }
 
 /** Whether beating this land ABSORBS it - annexed outright - rather than

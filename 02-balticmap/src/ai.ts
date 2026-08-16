@@ -147,8 +147,9 @@ function travelFactor(hops: number): number {
  *  The chosen tail and not the nearest one, unlike `bestAttackOn` one field
  *  over. That function answers "is this play available at all", where the best
  *  case is the honest reading; this one answers "and when does it land", which
- *  is a fact about the arrow that gets drawn. Every land in `attackReach`
- *  borders the realm somewhere, so a nearest-source reading would be 1 almost
+ *  is a fact about the arrow that gets drawn. Every land in
+ *  `borderPolygonsOf` borders the realm somewhere, so a nearest-source reading
+ *  would be 1 almost
  *  everywhere and the discount would be decoration.
  *
  *  Infinity where no land can send the army - it sorts last either way round,

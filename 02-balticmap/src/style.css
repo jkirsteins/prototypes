@@ -227,8 +227,7 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   stroke-width: 3px;
 }
 
-.label-people,
-.label-people-minor {
+.label-people {
   font-weight: 600;
   letter-spacing: 0.35em;
   fill: #6f6250;
@@ -236,15 +235,7 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   pointer-events: none;
   text-transform: uppercase;
   opacity: 0.75;
-}
-
-.label-people {
   font-size: 30px;
-}
-
-.label-people-minor {
-  font-size: 18px;
-  opacity: 0.65;
 }
 
 .label-neighbor {
@@ -1247,7 +1238,6 @@ svg.map.arrow-focused .threat-badge.focus-faded {
    People labels fade whatever the arrow is about: an ethnonym spans several
    lands and is the name of neither end. */
 svg.map.arrow-focused .label-people,
-svg.map.arrow-focused .label-people-minor,
 svg.map.arrow-focused .settlement.focus-faded,
 svg.map.arrow-focused .settlement-label.focus-faded {
   opacity: 0.25;

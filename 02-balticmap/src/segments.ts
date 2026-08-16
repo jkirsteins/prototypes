@@ -39,6 +39,12 @@ export const keyword = (keywordId: string): Segment =>
   ({ kind: "keyword", keywordId });
 
 export const term = (termId: string): Segment => ({ kind: "term", termId });
+/** A faction built from a missing id renders as the EMPTY STRING, so a line
+ *  that appends one unconditionally ends on its own preposition - "You fail to
+ *  prise Dainavians from" is how that shipped, from an optional
+ *  `sourceFactionId` appended in three places of which two did not guard. A
+ *  caller with an id that may be absent must therefore drop the whole phrase,
+ *  the lead preposition with it, rather than the name alone. */
 export const faction = (factionId: string): Segment => ({ kind: "faction", factionId });
 /** "the Selonians", but "Lietuva" for the one faction named for a land.
  *  Mid-sentence only - write lines so a faction never opens a sentence. */

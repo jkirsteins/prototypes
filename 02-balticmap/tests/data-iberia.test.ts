@@ -231,7 +231,6 @@ describe("iberia.json (anno 895)", () => {
       "ARABS", "ASTURLEONESE", "BASQUES", "BERBERS", "CASTILIANS",
       "CATALANS", "GALICIANS", "MUWALLADS",
     ]);
-    expect(byKind("people-minor")).toEqual([]);
     expect(byKind("neighbor").sort()).toEqual(["FRANCIA", "MAGHREB"]);
     // Labels take the painted rect, not the canvas: a `group` label naming
     // Francia or the Maghreb sits out in the surrounding geography by

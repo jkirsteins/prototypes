@@ -165,8 +165,9 @@ export interface PresentView {
    *  A line, not a reach. A wild land mending itself matters while an arrow
    *  of yours is in the air toward it, because it changes what that arrow
    *  will do; the same land mending itself with nothing between you is a log
-   *  line. Realm-plus-`attackReach` was the version that walked the camera
-   *  around a wide ring of business that was none of the player's. */
+   *  line. Realm-plus-attack-reach - the realm plus every land it borders -
+   *  was the version that walked the camera around a wide ring of business
+   *  that was none of the player's. */
   linked: ReadonlySet<string>;
   notice: NoticeCtx;
 }

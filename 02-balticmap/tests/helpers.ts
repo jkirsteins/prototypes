@@ -11,10 +11,6 @@ export const siteCaps = (
 ): Record<string, number> =>
   Object.fromEntries(factionIds.map((id) => [id, each]));
 
-/** `settlements` for a list of lands each founded in once. */
-export const settledOnce = (factionIds: string[]): Record<string, number> =>
-  Object.fromEntries(factionIds.map((id) => [id, 1]));
-
 /** `defenseMax` for a list of polygons at one shared ceiling. */
 export const defenseMaxAll = (
   factionIds: string[],

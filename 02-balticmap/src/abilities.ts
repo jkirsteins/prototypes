@@ -56,12 +56,6 @@ export function abilitiesOf(
   return a[factionId] ?? [];
 }
 
-export function hasAbility(
-  a: LeaderAbilities, factionId: string, id: string,
-): boolean {
-  return abilitiesOf(a, factionId).includes(id);
-}
-
 /** Whether this leader holds any ability that adds their leadership to cards
  *  of `keywordId`. The one reader of `boostsKeyword`, so the rule is a lookup
  *  rather than a branch per ability. */

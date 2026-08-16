@@ -4,7 +4,7 @@ import {
 import { PASSIVES } from "./passives";
 import { LEADER_ABILITIES } from "./abilities";
 import { TERMS, termName } from "./glossary";
-import { t, card, faction } from "./segments";
+import { t, card } from "./segments";
 import { withArticle } from "./view";
 import type { Segment } from "./segments";
 import type { TooltipLine } from "./panel";
@@ -105,25 +105,6 @@ export function verb(person: Person, lemma: Verb, tense: "present" | "past" = "p
  *  class of mistake as "You fails". */
 export const possessive = (person: Person): Segment =>
   t(person === "second" ? "your" : "their");
-
-/** A phrase that names a faction, or nothing at all when there is no faction to
- *  name. `lead` is the words that only make sense with the name attached - a
- *  preposition, or a whole clause.
- *
- *  A `faction` segment built from a missing id renders as the empty string, so
- *  a line that appends one unconditionally ends on its own preposition. That
- *  shipped as "You fail to prise Dainavians from", and the same optional field
- *  was being appended in three places - the activity log, the round summary's
- *  actor line and its self line - each deciding for itself whether to guard.
- *  Two of the three did not.
- *
- *  So the decision lives here instead: an absent faction takes its whole phrase
- *  with it, and no caller can forget. */
-export const optionalPhrase = (
-  lead: string,
-  factionId: string | undefined,
-): Segment[] =>
-  factionId === undefined || factionId === "" ? [] : [t(lead), faction(factionId)];
 
 /** How a keyword titles itself, wherever it is shown. The word "Keyword" is
  *  part of the title and not decoration: a block headed just "Raid" under a

@@ -202,7 +202,6 @@ describe("baltic.json (anno 1100)", () => {
       "AUKŠTAITIANS", "CURONIANS", "ESTONIANS", "LATGALIANS", "LIVS",
       "PRUSSIANS", "SAMOGITIANS", "SELONIANS", "SEMIGALLIANS", "YOTVINGIANS",
     ]);
-    expect(byKind("people-minor")).toEqual([]);
     expect(byKind("title")).toEqual([]);
     expect(byKind("subtitle")).toEqual([]);
     expect(byKind("neighbor").length).toBeGreaterThanOrEqual(2);

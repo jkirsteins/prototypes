@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  clashFraction, pointAlong, spearPolygon, spearFor,
+  pointAlong, spearPolygon, spearFor,
 } from "../src/arrows";
 
 /** "x,y x,y ..." back into numbers, so a test can talk about the shape rather
@@ -54,23 +54,6 @@ describe("spearPolygon", () => {
 
   it("draws nothing for a zero-length axis", () => {
     expect(spearPolygon(40, 40, 40, 40)).toBe("");
-  });
-});
-
-describe("clashFraction", () => {
-  it("meets in the middle when the two sides are even", () => {
-    expect(clashFraction(5, 5)).toBeCloseTo(0.5, 6);
-    expect(clashFraction(0, 0)).toBeCloseTo(0.5, 6);
-  });
-
-  it("pushes the meeting point toward the weaker side", () => {
-    expect(clashFraction(9, 1)).toBeGreaterThan(0.5);
-    expect(clashFraction(1, 9)).toBeLessThan(0.5);
-  });
-
-  it("stops short of either end so a label always has room", () => {
-    expect(clashFraction(100, 0)).toBeLessThan(1);
-    expect(clashFraction(0, 100)).toBeGreaterThan(0);
   });
 });
 

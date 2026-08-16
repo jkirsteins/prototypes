@@ -2105,7 +2105,7 @@ function paintArrows(): void {
       id: `march:${key}`, kind: "march", from: m.from, to: m.to,
       strength: m.damage,
       // Against you first: an arrow between your own two lands cannot happen
-      // (attackReach excludes what you hold outright, and a raid on your own
+      // (`aimsWithinOwnRealm` excludes what you hold outright, and a raid on your own
       // vassal IS aimed at your realm), so the order only decides how a lord's
       // raid on its own vassal reads - and that is an attack on your realm.
       tone: against ? "hostile" : ours ? "ours" : "other",
@@ -2191,13 +2191,14 @@ function paintArrows(): void {
       // the same layer. A corpse answers to a key of its own, so naming them
       // is what tells the two apart.
       dataset: { res: res.key },
-      // Pinned at the head, not weighed by `clashFraction`: a `ResolutionArrow`
-      // carries only its own side's strength, never the other's, so calling
-      // that function here with a fake 0 opposite always clamps to its 0.85
-      // ceiling - a fixed number dressed as a computed one. What a counter took
-      // off the top is in the label's own denominator, so the shaft has no
-      // second place to say it from, and the head is where a spear's own
-      // number already sits.
+      // Pinned at the head, and NOT weighed by the two sides' strengths the
+      // way a meeting point would be: a `ResolutionArrow` carries only its own
+      // side's strength, never the other's, so any such split here would be
+      // fed a fake 0 opposite and pin itself to the same ceiling anyway - a
+      // fixed number dressed as a computed one. What a counter took off the
+      // top is in the label's own denominator, so the shaft has no second
+      // place to say it from, and the head is where a spear's own number
+      // already sits.
       labelAt: 0.85,
     });
   }

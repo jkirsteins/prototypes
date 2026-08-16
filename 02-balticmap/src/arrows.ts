@@ -96,19 +96,6 @@ export function spearPolygon(
   ].join(" ");
 }
 
-/** Where along the axis two clashing forces meet, as a fraction from the first
- *  end to the second: the stronger side pushes the meeting point toward the
- *  weaker one, which is where the leftover-damage label goes. Even sides, and
- *  two sides of nothing, meet in the middle.
- *
- *  Clamped away from both ends so a total rout still leaves the label inside
- *  the map rather than on top of the land it is about. */
-export function clashFraction(strengthA: number, strengthB: number): number {
-  const total = strengthA + strengthB;
-  const raw = total <= 0 ? 0.5 : strengthA / total;
-  return Math.max(0.15, Math.min(0.85, raw));
-}
-
 /** SVG coordinates carry three decimals: enough that a rounded shape is
  *  invisible against the unrounded one at any zoom the map allows, short
  *  enough that a `points` string of seven of them stays readable in the DOM

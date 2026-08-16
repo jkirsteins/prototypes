@@ -405,7 +405,7 @@ export function renderMap(data: MapData, container: HTMLElement): RenderResult {
     t.setAttribute("x", String(l.x));
     t.setAttribute("y", String(l.y));
     t.textContent = l.text;
-    if (l.kind === "people" || l.kind === "people-minor") {
+    if (l.kind === "people") {
       const people = data.peoples.find((p) => p.name.toUpperCase() === l.text);
       if (people) {
         t.setAttribute("data-people", people.id);

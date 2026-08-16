@@ -12,7 +12,7 @@
  *
  *  Pure helpers over two sparse stores; GameState owns them. This module knows
  *  nothing about realms or reach - who may march where is a reach question and
- *  lives in src/playability.ts, which already owns `attackReach`. Keeping this
+ *  lives in src/playability.ts, which already owns `borderPolygonsOf`. Keeping this
  *  a leaf is what lets the reducer, the rules and the DOM layer all reach it.
  *
  *  A "polygon" is a land's own faction id, the same 1:1 identity src/defense.ts
@@ -34,7 +34,7 @@ export interface March {
   /** Source polygon. In the actor's full realm when declared, and holding one
    *  of that polygon's armies until this march resolves. */
   from: string;
-  /** Target polygon. In the actor's `attackReach` when declared. */
+  /** Target polygon. In the actor's `borderPolygonsOf` when declared. */
   to: string;
   /** "raid" or "great-raid" - carried so the log and the arrow can name the
    *  card that sent it without a second lookup. */
@@ -121,10 +121,6 @@ export function armiesOn(
 
 export function marchesFrom(marches: Marches, polygon: string): March[] {
   return Object.values(marches).filter((m) => m.from === polygon);
-}
-
-export function marchesAgainst(marches: Marches, polygon: string): March[] {
-  return Object.values(marches).filter((m) => m.to === polygon);
 }
 
 /** Armies on a polygon that are not already out on a march - what a new

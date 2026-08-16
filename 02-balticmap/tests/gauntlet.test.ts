@@ -6,7 +6,7 @@ import {
 } from "../src/game";
 import {
   BIG_LAND_SITES, DUEL_DEFENSE_REWARD, DUEL_TURNS, DUEL_WEALTH_REWARD,
-  duelCandidates, outsideTheDuel, rewardFor, type Gauntlet,
+  duelCandidates, duelStanding, rewardFor, type Gauntlet,
 } from "../src/gauntlet";
 import { LAND_GROWTH } from "../src/defense";
 import { naiveHumanTurn, runGame, SIM_FACTION_IDS } from "../src/sim";
@@ -284,11 +284,11 @@ describe("a duel scopes the turn loop", () => {
     const g = playing();
     const [enemy, third] = ruledRivals(g);
     expect(
-      outsideTheDuel(
+      duelStanding(
         { kind: "duel", enemy, until: 99 }, null, third,
         g.overlords, g.incorporated,
       ),
-    ).toBe(false);
+    ).toBe(null);
   });
 });
 

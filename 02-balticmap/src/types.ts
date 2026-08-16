@@ -69,7 +69,6 @@ export interface Settlement {
 
 export type LabelKind =
   | "people"
-  | "people-minor"
   | "neighbor"
   | "river"
   | "group";

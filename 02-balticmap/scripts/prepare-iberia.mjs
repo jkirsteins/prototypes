@@ -520,7 +520,7 @@ const LANDS = [
 ];
 
 // Label positions are hand-tuned lon/lat, projected below.
-// kinds: people | people-minor | neighbor | river | group
+// kinds: people | neighbor | river | group
 const LABELS = [
   // Group labels take over from the people labels at the zoom floor (the
   // inverse-visibility swap in map-detail.ts), so they name the same ground
