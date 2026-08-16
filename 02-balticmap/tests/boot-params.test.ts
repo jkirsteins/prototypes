@@ -606,8 +606,10 @@ describe("applyBootParams", () => {
     });
 
     it("takes `none` as declining the whole offer", () => {
-      expect(boot("?faction=beta&duel=none").gauntlet)
-        .toEqual({ kind: "world-tick" });
+      const g = boot("?faction=beta&duel=none");
+      // The world round a decline costs, priced from the turn it was answered
+      // on - see `declineDuel`.
+      expect(g.gauntlet).toEqual({ kind: "world-tick", until: g.turn + 2 });
     });
 
     it("drops a clause naming a land the offer does not hold", () => {

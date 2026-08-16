@@ -229,7 +229,9 @@ describe("a duel scopes the turn loop", () => {
     expect(actedIn(duel)).not.toContain(third);
     // And nothing outside a duel reads the escape early: the world tick still
     // hands that seat its turn, and the turn is where it wins its freedom.
-    const tick = withGauntlet({ ...g, overlords }, { kind: "world-tick" });
+    const tick = withGauntlet(
+      { ...g, overlords }, { kind: "world-tick", until: g.turn + 1 },
+    );
     expect(takesNoTurn(tick, third)).toBe(false);
   });
 
@@ -305,9 +307,29 @@ describe("answering the pick", () => {
   it("takes declining as an answer, and spends the round on the world", () => {
     const g = playing();
     const once = declineDuel(g);
-    expect(once.gauntlet).toEqual({ kind: "world-tick" });
+    // `turn + 2` and not `turn + 1`. A decline is answered MID-ROUND, on the
+    // player's own turn, which is the turn just after the wrap - so a tick
+    // ending at the next wrap would be over before a single unscoped round
+    // had run.
+    expect(once.gauntlet).toEqual({ kind: "world-tick", until: g.turn + 2 });
     // And there is nothing left to decline: the answer was given.
     expect(declineDuel(once)).toBe(once);
+  });
+
+  it("does not put the offer back on the very next turn", () => {
+    // The bug this exists to keep out: eleven straight turns of the same four
+    // tiles, because the tick was over at the wrap that immediately follows a
+    // mid-round decline and the world round a decline costs was never spent.
+    const g = declineDuel(playing());
+    const next = nextRound(g);
+    expect(next.turn).toBe(g.turn + 1);
+    expect(next.gauntlet.kind).toBe("world-tick");
+    // The round that just started is the price: everybody with a chair takes
+    // a turn in it, and only THEN does the offer come back.
+    expect(actedIn(next).length).toBeGreaterThan(2);
+    const after = nextRound(next);
+    expect(after.turn).toBe(g.turn + 2);
+    expect(after.gauntlet.kind).toBe("picking");
   });
 });
 
@@ -330,7 +352,11 @@ describe("the cycle turns at the round wrap", () => {
     const duel = withGauntlet(g, {
       kind: "duel", enemy: "gamma", until: g.turn + 1,
     });
-    expect(wrap(duel).gauntlet).toEqual({ kind: "world-tick" });
+    // The wrap is one turn on, and the tick it opens is over by the wrap
+    // after that: one whole unscoped round, which is what a retiring duel has
+    // always spent.
+    expect(wrap(duel).gauntlet)
+      .toEqual({ kind: "world-tick", until: g.turn + 2 });
   });
 
   it("ends a duel the moment a land is taken from the enemy", () => {
@@ -346,7 +372,8 @@ describe("the cycle turns at the round wrap", () => {
     expect(declared.gauntlet.kind).toBe("duel"); // the arrow is not the taking
     const landed = beginTurn({ ...declared, turn: declared.turn + 1 }, rng());
     expect(landed.overlords.get(enemy)).toBe("beta");
-    expect(landed.gauntlet).toEqual({ kind: "world-tick" });
+    expect(landed.gauntlet)
+      .toEqual({ kind: "world-tick", until: g0.turn + 2 });
   });
 
   it("ends a duel the enemy is winning, too", () => {
@@ -376,7 +403,8 @@ describe("the cycle turns at the round wrap", () => {
     expect(taken.gauntlet).toEqual({
       kind: "duel", enemy, until: g0.turn,
     });
-    expect(wrap(taken).gauntlet).toEqual({ kind: "world-tick" });
+    expect(wrap(taken).gauntlet)
+      .toEqual({ kind: "world-tick", until: g0.turn + 2 });
   });
 
   it("does not end on a land taken from somebody else", () => {
@@ -400,7 +428,8 @@ describe("the cycle turns at the round wrap", () => {
   });
 
   it("spends exactly one round on the world, then asks again", () => {
-    const g = withGauntlet(playing(), { kind: "world-tick" });
+    const base = playing();
+    const g = withGauntlet(base, { kind: "world-tick", until: base.turn + 1 });
     const acted = actedIn(g);
     // Everybody with a chair, which is what a world tick is for.
     expect(acted.length).toBeGreaterThan(2);
@@ -439,7 +468,8 @@ describe("a duel cannot hang the run", () => {
     );
     expect(actedIn(g)).toEqual(["beta"]);
     const after = nextRound(g);
-    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(after.gauntlet)
+      .toEqual({ kind: "world-tick", until: g0.turn + 2 });
   });
 });
 
@@ -553,7 +583,8 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
       kind: "duel", enemy: "gamma", until: 1,
     });
     const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
-    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(after.gauntlet)
+      .toEqual({ kind: "world-tick", until: g.turn + 2 });
     expect(spoils(after)).toHaveLength(0);
     // Its own settlement income and not one coin more.
     expect(after.wealth.beta).toBe(BETA_INCOME);
@@ -581,7 +612,8 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     );
     const taken = beginTurn({ ...g, current: seatOf(g, enemy) }, rng());
     const after = beginTurn({ ...taken, current: 0, turn: taken.turn + 1 }, rng());
-    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(after.gauntlet)
+      .toEqual({ kind: "world-tick", until: g0.turn + 2 });
     expect(spoils(after)).toHaveLength(0);
   });
 
@@ -650,7 +682,8 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     );
     const after = beginTurn({ ...declared, turn: declared.turn + 1 }, rng());
     expect(after.overlords.get(third)).toBe("beta");
-    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(after.gauntlet)
+      .toEqual({ kind: "world-tick", until: g0.turn + 2 });
     expect(spoils(after)).toHaveLength(0);
   });
 });
@@ -723,7 +756,8 @@ describe("a duel enemy fights, chief or no chief", () => {
       g0, enemy,
       { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
     );
-    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(after.gauntlet)
+      .toEqual({ kind: "world-tick", until: g0.turn + 2 });
     expect(after.log.filter((e) => e.type === "duel-won")).toHaveLength(1);
     expect(after.log.filter((e) => e.type === "duel-lapsed")).toHaveLength(0);
   });
@@ -734,7 +768,7 @@ describe("a duel enemy fights, chief or no chief", () => {
     // anybody and the acting map would never grow.
     const g0 = playing();
     const enemy = chiefless(g0);
-    const after = beat(g0, enemy, { kind: "world-tick" });
+    const after = beat(g0, enemy, { kind: "world-tick", until: g0.turn + 1 });
     expect(after.overlords.get(enemy)).toBe("beta");
     expect(after.incorporated[enemy]).toBeUndefined();
     expect(hasRuler(after.rulers, enemy)).toBe(true);

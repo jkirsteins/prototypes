@@ -2193,7 +2193,15 @@ export function pickDuel(state: GameState, enemyId: string): GameState {
 export function declineDuel(state: GameState): GameState {
   if (state.phase !== "playing") return state;
   if (state.gauntlet.kind !== "picking") return state;
-  return { ...state, gauntlet: { kind: "world-tick" } };
+  // `turn + 2`, and the 2 is the whole of the fix. A decline is answered
+  // MID-ROUND, on the player's own turn, which is the turn just after the
+  // wrap - so a tick ending at `turn + 1` is ended by the very next wrap and
+  // buys nothing: the same four tiles came back on the player's next turn,
+  // eleven turns running, and the world round a decline is supposed to cost
+  // was never spent. At `turn + 2` the round that follows this one runs
+  // unscoped in full and the offer returns at the wrap after it, which is the
+  // same one round a retiring duel spends.
+  return { ...state, gauntlet: { kind: "world-tick", until: state.turn + 2 } };
 }
 
 /** The injected tribute cards leave on every exit from vassalage, so a freed

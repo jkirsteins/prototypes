@@ -119,7 +119,10 @@ describe("commitDecision - the duel pick", () => {
     const { deps, applied } = soloDeps(freshGame());
     const result = commitDecision(deps, { kind: "pick-duel", enemyId: null });
     expect(result).toEqual({ outcome: "applied", settle: "action" });
-    expect(applied[0].gauntlet).toEqual({ kind: "world-tick" });
+    // `turn + 2`: a decline is answered mid-round, so a tick ending at the
+    // next wrap would be over before an unscoped round had run.
+    expect(applied[0].gauntlet)
+      .toEqual({ kind: "world-tick", until: applied[0].turn + 2 });
   });
 
   it("refuses a land the offer does not hold", () => {

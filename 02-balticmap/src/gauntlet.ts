@@ -43,10 +43,21 @@ export type Gauntlet =
    *  a land taken from the enemy, and only the log says whether one was. */
   | { kind: "duel"; enemy: string; until: number }
   /** Exactly one unscoped round: every seat that would ever take a turn takes
-   *  one. Carries no turn number because it does not need one - it is entered
-   *  at a round wrap and left at the next, so "one round" is the distance
-   *  between two visits to the same line. */
-  | { kind: "world-tick" }
+   *  one.
+   *
+   *  `until` is the turn the tick is over BY, the same shape a duel's is, and
+   *  it is what makes "one round" mean one round from wherever the tick was
+   *  entered. It was left out on the reasoning that a tick is entered at a
+   *  round wrap and left at the next, so the distance between two visits to
+   *  the same line IS one round. That is true of a duel retiring - the wrap
+   *  is where it happens - and false of a DECLINE, which is answered
+   *  mid-round, on the player's own turn, just after the wrap that would end
+   *  the tick. The offer therefore came back at the player's very next turn:
+   *  eleven straight turns of the same four tiles were watched, the price a
+   *  decline is supposed to cost was never paid, and the modal read as a nag.
+   *
+   *  A plain number, so nothing in `src/net-codec.ts` changes. */
+  | { kind: "world-tick"; until: number }
   /** A pick is owed. `candidates` is an OFFER: the border is not a to-do
    *  list, and some neighbours are meant to be ignorable.
    *
@@ -241,9 +252,13 @@ export function duelDecidedBy(
  *
  *  - `duel` -> `world-tick` once `until` has come, which is both endings:
  *    the clock, and a land having moved between the two realms (see
- *    `duelDecidedBy`).
- *  - `world-tick` -> `picking`, after the one unscoped round that ran between
- *    this visit and the last.
+ *    `duelDecidedBy`). The tick is over by the NEXT wrap - `view.turn + 1` -
+ *    which is one whole unscoped round, this one, and is the behaviour this
+ *    arm always had, now written down rather than implied.
+ *  - `world-tick` -> `picking`, once the tick's own `until` has come. Asked
+ *    the same way a duel's is, because a tick entered from `declineDuel`
+ *    starts mid-round and one entered here starts at a wrap, and "one round"
+ *    has to mean the same thing to both.
  *  - `picking` -> `picking`, with the candidates re-read off the board. It
  *    does NOT wait: the answer arrives through `pickDuel`, mid-round, from
  *    the screen. Re-reading matters because the offer is stale otherwise - a
@@ -256,8 +271,11 @@ export function gauntletAtRoundWrap(
   g: Gauntlet, view: RulesView, human: string | null,
 ): Gauntlet {
   if (g.kind === "duel") {
-    return view.turn >= g.until ? { kind: "world-tick" } : g;
+    return view.turn >= g.until
+      ? { kind: "world-tick", until: view.turn + 1 }
+      : g;
   }
+  if (g.kind === "world-tick" && view.turn < g.until) return g;
   const candidates = human === null ? [] : duelCandidates(view, human);
   if (g.kind === "picking" && sameList(g.candidates, candidates)) return g;
   return { kind: "picking", candidates };

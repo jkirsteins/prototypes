@@ -2828,7 +2828,7 @@ describe("the duel chip", () => {
   it("hides itself when the run is between duels", () => {
     const { container, hud } = setup();
     const g = newPlaying();
-    hud.update({ ...g, gauntlet: { kind: "world-tick" } });
+    hud.update({ ...g, gauntlet: { kind: "world-tick", until: g.turn + 1 } });
     expect(q(container, ".status-duel").classList.contains("hidden"))
       .toBe(true);
     hud.update({ ...g, gauntlet: { kind: "picking", candidates: ["gamma"] } });
