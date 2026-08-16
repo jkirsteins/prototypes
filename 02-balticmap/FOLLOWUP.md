@@ -593,3 +593,75 @@ it. What that leaves is a real gap, and it is a gap and not a saving:
 - **The milestones drawer is what is left**, and it does not cover this. "Hold
   5 lands" is a standing race every faction runs, not the win bar, and it
   answers for whichever faction is highlighted rather than for the run.
+
+## 2026-08-16 - the dead-code pass, and what it deliberately did not touch
+
+Three commits on `feature/run-structure` (`100bc40`, `768a43a`, `9dd2ff1`), net
+-132 lines. Full account in
+`.superpowers/sdd/2026-08-16-gauntlet-loop/cleanup-report.md`. What that pass
+saw but did not settle:
+
+- **`duel-lapsed` has still never been watched on screen.** The browser session
+  reached a duel WON (with its reward paid and the world tick announced) and a
+  duel LOST (with its notice and its `You lost the duel with Jersikans` log
+  line), both reading well. The clock running out was not reached: every duel
+  driven either fell to a conquest or was declined. `tests/gauntlet.test.ts`
+  pins the event, and `hud.ts`, `notices.ts`, `presentation.ts` and
+  `audio-manifest.ts` all carry its row, so it is not silently dead - but
+  nobody has seen the sentence "ran out of time in the duel with X" on a
+  screen, or heard the rustle it is meant to play.
+
+- **The settlements hover promises more than the rules give.** `settlementBlock`
+  prints `standing / (standing + freeSitesIn)`, so hovering Eastern Aukštaitija
+  reads **"Settlements 1/9 on this land"** while `settlementAllowance()` caps
+  every land at 2. Galinda, a 2-dot land, reads 1/3. The map's authored dots
+  and the founding allowance are two different numbers and the hover quotes the
+  wrong one. Not a cleanup call - either the hover should quote
+  `min(allowance, ...)` or the allowance should read the dots, and that is a
+  design decision about whether a big land should be able to hold more.
+
+  The related suspicion that the `no-free-site` refusal is unreachable was
+  CHECKED AND IS FALSE: 7 of 26 Baltic lands and 7 of 24 Iberian lands have a
+  single authored dot, and on those one founding takes `freeSitesIn` to 0 with
+  `no-free-site` checked ahead of `needs-population`. What is inert is
+  `siteCaps` above 2 - for the founding rule only; `rewardFor` still reads
+  `>= BIG_LAND_SITES` to decide which duel pays growth.
+
+- **Milestones are 14 points that buy nothing.** Six rows, progress read off
+  the board and the log, and every reader is the drawer: `milestonePoints` has
+  one caller, rendering "Selonians - 0 points" in the drawer header. Nothing
+  gates on them and nothing spends them. The drawer is also the only surface
+  in the game that shows what a RIVAL is close to, which is why the pass did
+  not cut it - but "Overlord: Subjugate 5 different lands" names a WITHDRAWN
+  card, and points that buy nothing is the same unkept promise as a duel that
+  ends in silence, one surface further out. Undecided.
+
+- **`MapData.attribution` is never rendered.** It carries the EuroGeographics,
+  geoBoundaries/OpenStreetMap (ODbL) and Natural Earth credits. Nothing in
+  `src/` reads it. The ODbL credit in particular is a requirement, and the fix
+  is to put it somewhere on screen, not to delete the field.
+
+- **Eleven baked map-data fields have no reader in `src/`**: `People.color`,
+  `Faction.type`, `Region.peoples`, `Region.cohesion`, `Region.flavor`,
+  `Region.places`, `Region.maxSettlements`, `Neighbor.id`, `River.id`,
+  `River.name`, `MapData.attribution`, `MapData.year`. `maxSettlements` is the
+  superseded ancestor of `siteCaps` and is the only one that is dead outright,
+  but it is dead inside 822KB of committed generated JSON, so removing it is a
+  prepare-script change and a regeneration of both maps rather than a line
+  deletion. `flavor`, `places` and `cohesion` are authoring content: deleting
+  them deletes writing.
+
+- **The recaptured rng baseline is a fresh number nobody has diffed against.**
+  `tests/fixtures/seeded-games-baseline.json` had gone stale enough to be
+  actively misleading (seed 1 recorded a defeat at turn 44 with a realm of one;
+  the current run defeats at turn 70 with six) and still carried
+  `independenceCount`. It is recaptured against the current rules. Nothing
+  imports it - `npm run capture:baseline` writes it and a git diff is the
+  check - so its only proof of correctness is the sweep below, and the first
+  real use is the next refactor.
+
+- **Balance was not run**, per the brief: no `npm run balance`, no
+  `npm run test:all`. The deletions do not move a game rule - the stuck-seat
+  sweep at `92cd26d` and at the tip give byte-identical counts across 156
+  seeded runs - but that is an argument that nothing changed, not a measurement
+  of the game.

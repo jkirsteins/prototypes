@@ -1344,7 +1344,7 @@ and a play and its consequences show or hide as one unit - any line of the
 batch naming a member keeps the whole batch, the indented-under-nothing rule
 again.
 
-## A consequence is indented under the play that caused it
+## A consequence is indented under the thing that caused it
 
 `playCard` builds one batch per play, the `play` event first and everything that
 play caused pushed onto it, and no other caller opens a batch with a `play`. So
@@ -1354,10 +1354,17 @@ choke point that stamps `actorRuler`. Do not set it in a card branch. Fourteen
 branches restating the same fact is the drift the `amount` rule above already
 warns about.
 
-`nestsUnderItsPlay` decides which event types nest, as an exhaustive switch with
-no `default`, so a new `GameEventType` stops compiling until somebody classifies
-it. Endings (`victory`, `defeat`, `unified`) are excluded on purpose: a play can
-win the run, but the run's last line is a headline, not a sub-item.
+The cause is not always a play, which is why the predicate is
+`nestsUnderItsCause` and not `nestsUnderItsPlay`: a quiet land's restless raid
+is its STATUS acting, so the raid's `play` nests under the `passive-fired` that
+announced it. `play` is the one type qualified at `appendEvents` rather than in
+the switch - it never nests under another play, and it does nest under a
+status.
+
+`nestsUnderItsCause` decides which event types nest, as an exhaustive switch
+with no `default`, so a new `GameEventType` stops compiling until somebody
+classifies it. Endings (`victory`, `defeat`, `unified`) are excluded on purpose:
+a play can win the run, but the run's last line is a headline, not a sub-item.
 
 The "Targeting me" filter must never show a consequence indented under nothing.
 A rival's Great raid is not aimed at you, so its `play` is neither notice-worthy
