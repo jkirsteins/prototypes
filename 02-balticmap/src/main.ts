@@ -2013,6 +2013,12 @@ function paintArrows(): void {
       // `March.expiry` is stated in - so the reading is the one the store
       // holds rather than a second derivation of it.
       arrivesIn: m.expiry - game().turn,
+      // Two lands with no border between them are a strait to
+      // `crossingBetween`, which knows only the map's vertices - so a march
+      // walking past two lands is drawn spanning open water. The game graph is
+      // what tells them apart: a strait pair is ADJACENT and shares no vertex,
+      // an overland march is not adjacent at all.
+      overland: !(game().adjacency[m.from] ?? []).includes(m.to),
       dataset: {
         actor: m.actor, target: m.to,
         // The two ENDS, which is what the hover lights. Not the same question

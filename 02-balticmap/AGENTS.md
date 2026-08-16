@@ -405,6 +405,26 @@ a geometry search. Five things about it are load-bearing:
   none and be drawn at the LAND depths, a 64-unit arrow standing in the sea
   with neither end on a coast. The table is what keeps `layoutLanes` one rule
   rather than a sea arm beside a land one.
+- **And a strait is not a long march either.** An army may be sent up to
+  `MAX_MARCH_HOPS` lands away, so most pairs with no shared vertex are now two
+  or three hops of ground rather than water, and `crossingBetween` calls every
+  one of them a strait because vertices are all it knows. The GAME graph tells
+  them apart - a strait pair is ADJACENT and shares no vertex, an overland
+  march is not adjacent at all - and `ArrowSpec.overland` carries the answer to
+  the scene, which dashes the casing (`.march-overland`). Same spear, same
+  colour, same width: whose army it is and how strong stay exactly as legible,
+  and only the solidity of the outline says the front line is not here yet.
+  Like `march-counterable` it declares no opacity, and it may not.
+
+**An arrow says WHEN it lands, on the chip behind the tail.** `arrivesIn` on
+the spec, printed as `lands in N` beside the landing ordinal on the one chip,
+and left off below `MIN_SHOWN_ARRIVAL` (2) - every arrow used to land next
+turn, so "lands in 1" everywhere would bury the arrow that is genuinely days
+away. It is on the CHIP and not on the shaft because the shaft carries exactly
+one number, which is the whole reason the bare "1 STR" form is readable; and
+it shares the chip rather than taking a second badge for the same reason the
+ordinal is not on the shaft, since two badges behind one tail collide on any
+border carrying three arrows.
 
 **Width is strength MAP-WIDE, and the scale is one number per render.**
 `width = unit * sqrt(strength)`, where `unitWidthFor` picks the `unit` once
@@ -862,6 +882,20 @@ does:
   else's army may break the claim, and the demand lapses. The same rule as a
   march arrow, for the same reason - an allegiance that changed the instant a
   card hit the table gave nobody a chance to see it coming.
+- A **march in flight is judged twice and no more**: when it is declared, and
+  again on the turn it lands. The arrival half is the pass at the top of
+  `resolveMarches`, and it is the ONLY place a standing arrow is taken off the
+  board for being illegal - a target that has become a peer of the actor's own
+  realm lapses there, with the `march-lapsed` line it always had, because an
+  arrow that vanishes with nothing said is the map lying about the board. Two
+  capture sites used to call the same rule off the moment a pyramid changed
+  shape under an arrow, which was indistinguishable from asking at arrival
+  while every flight lasted one turn. It is not indistinguishable now: an army
+  takes a turn per land it crosses, allegiance moves several times on the way,
+  and a mid-flight test cancels arrows the player is still watching fly - often
+  on a relation that has changed back before the army would have arrived. The
+  board's promise is that an arrow stands until it lands; what it may not
+  promise is that landing is legal.
 - A **capture** is an army arriving with more force than the land has left
   standing: `capturesOnArrival` in `src/defense.ts`, and it is one predicate
   read by the resolution and by the hover preview. Strictly more - a blow that

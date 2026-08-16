@@ -481,6 +481,22 @@ describe("renderArrowScene", () => {
     expect(g.querySelector(".march-strength")?.textContent).toBe("1 STR");
   });
 
+  it("marks an army walking overland, and leaves a strait crossing alone", () => {
+    // Two lands three hops apart share no vertex, so the crossing they get is
+    // the one built for a strait. The arrow must not read as a sea crossing:
+    // the dashed casing is the only difference, so the shape, the colour and
+    // the width still say whose army it is and how strong.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("far", "a", "b", 1), overland: true },
+      march("near", "b", "a", 1),
+    ], ctx);
+    expect(drawn.get("far")?.classList.contains("march-overland")).toBe(true);
+    expect(drawn.get("near")?.classList.contains("march-overland")).toBe(false);
+    // Same spear either way - the cue is the casing and nothing else.
+    expect(drawn.get("far")?.querySelector("polygon")).not.toBeNull();
+  });
+
   it("dresses a brand new arrow with the emphasis that decides how loud it is", () => {
     // The class has to be on the element the render that CREATES it, because
     // the enter fade rises to the opacity that element has once it is in the

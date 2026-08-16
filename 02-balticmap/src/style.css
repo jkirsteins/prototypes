@@ -1256,6 +1256,26 @@ svg.map.arrow-focused .river {
   stroke-linejoin: round;
 }
 
+/* An army walking past the lands in between, rather than one standing on a
+   shared frontier or facing its target across water. `crossingBetween` cannot
+   tell the last two apart - it knows vertices, and two lands three hops away
+   share none - so without this a march across Latgale is drawn exactly like
+   the Saaremaa strait and the map says the army is at sea.
+
+   The CASING goes dashed and nothing else moves: same spear, same colour, same
+   width, so whose army it is and how strong it is read exactly as before, and
+   only the solidity of the outline says the front line is not here yet. It is
+   also all this rule may declare - an opacity here would be a cue the enter
+   fade was never told about, the same reason `.march-counterable` sets none.
+
+   Before the counterable rule below on purpose: a counter's heavier casing
+   still wins on width, and the dashes survive under it, so an overland arrow
+   the player can answer says both things at once. */
+.march-arrow.march-overland polygon {
+  stroke-dasharray: 7 5;
+  stroke-width: 2.2px;
+}
+
 /* An arrow you hold a Raid for is a button: click it and the counter is
    declared back down the same axis, no source or target to pick. The only
    thing in the arrow layer that takes pointer events - the group stays

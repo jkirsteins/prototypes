@@ -395,6 +395,21 @@ export interface ArrowSpec {
   arrivesIn?: number;
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
+  /** This army is walking OVERLAND past lands in between, rather than standing
+   *  on a shared border or facing its target across water.
+   *
+   *  `crossingBetween` has one answer for "these two share no vertex" and it
+   *  is a strait, because until an army could march more than one land that
+   *  was the only way two lands with no border between them could be at war.
+   *  A two- or three-hop march is the other way, and drawn as a strait the
+   *  picture says the army is crossing water when it is crossing Latgale.
+   *
+   *  A dashed casing, `.march-overland` in src/style.css: same shape, same
+   *  colour, same width, so whose army it is and how strong stay exactly as
+   *  legible - it is the SOLIDITY of the line that says whether the army is on
+   *  a frontier or still on the road. It declares no opacity, for the reason
+   *  `march-counterable` may not. */
+  overland?: boolean;
   /** How loud this arrow is drawn, decided by `emphasisFor` from what the
    *  hover, the pin and a live aim have to say about it.
    *
@@ -909,6 +924,7 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   // fade can be aimed past.
   const classes = [def.className, `march-${spec.tone}`];
   if (spec.doomed === true) classes.push("claim-doomed");
+  if (spec.overland === true) classes.push("march-overland");
   classes.push(ARROW_EMPHASIS[spec.emphasis ?? "full"].className);
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
