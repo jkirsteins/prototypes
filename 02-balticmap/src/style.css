@@ -2756,7 +2756,18 @@ svg.map.pinning .realm-hover-halo {
 }
 
 /* Bottom-right, clear of the hand fan and the discard pile - re-check the
-   corner in a browser whenever either moves. */
+   corner in a browser whenever either moves.
+
+   ABOVE the activity log, which shares this gutter and is vertically centred
+   in it. At z-index 6 the log won on DOM order and swallowed the button:
+   measured with elementFromPoint, all three probes across the button hit the
+   log at 720x403 and two of three did at 1440x805, so ending a turn by
+   clicking was simply not available on a cramped window. The log's lower
+   entries are covered by 34px in exchange, and that is the right way round -
+   the log scrolls and nothing in it is lost, while a primary action nobody
+   can press has no way out at all. The real fix is a layout that does not
+   stack the two in one column; this is the one line that stops the game being
+   unplayable meanwhile. */
 .end-turn-btn {
   position: absolute;
   right: 16px;
@@ -2768,7 +2779,7 @@ svg.map.pinning .realm-hover-halo {
   background: #fff;
   color: #6b6152;
   cursor: pointer;
-  z-index: 6;
+  z-index: 7;
 }
 
 .end-turn-btn.hidden {
