@@ -427,3 +427,53 @@ which is why it is still the only thing in the scene that moves.
   is 34px of the log's lower entries drawn over. The log scrolls, so nothing
   is lost - but the two controls still share one column, and the layout fix
   was not attempted.
+
+## The engine and protocol fixes from the three adversarial reviews
+
+Driven by review findings against the engine and the protocol. What they did
+NOT verify:
+
+- **No `npm run balance` was run against any of it.** One was already running
+  on the machine. The numbers quoted in the sim commit message - 2 victories /
+  5 defeats and a median end around turn 45 with the offer answered, against
+  0 / 5 and a median around 68 without - are the REVIEWER's, taken before the
+  duel-enemy and escape fixes landed. Both of those change who takes a turn, so
+  the numbers will have moved. The suite is now measuring the real loop, which
+  is the point; what it says is unmeasured.
+- **A duel enemy that acts has never been watched in a browser.** The whole
+  point of the fix is that a chiefless enemy now raids back, and nobody has
+  seen one do it. What to look for: the enemy's arrows appearing in the round
+  summary, the beats naming a land with no chief, and whether a fight against a
+  quiet land reads any differently from one against a seated rival.
+- **Absorbing a beaten chiefless enemy has never been watched either.** The
+  land goes annexed rather than vassal, so it draws with the annexer's fill and
+  no vassal stripe, and the log line is `incorporated` rather than
+  `subjugated`. Whether that reads as "I took them" on the map, and whether the
+  duel-won modal and the incorporation line together read as one event or two,
+  is unseen.
+- **"A chiefless enemy is RARE" is not what the map delivers.** Measured over
+  156 runs (seeds 1-6 x all 26 seats, 200 turns): 881 duels started, 361 of
+  them against a land with no chief - 41%. The filter itself is working
+  exactly as specified; those 361 are picks where NO candidate on the border
+  had a chief, so the hemmed-in fallback fired. The map is simply that quiet at
+  the borders a realm can reach. If "rare" is wanted in earnest, the lever is
+  seeding (waking more of the grey middle), not the picker.
+- **A vassal cannot win its independence while a duel runs.** This is a real
+  gameplay consequence of closing the scope leak, written down in
+  `overlordsAfterEscape` and not merely a side effect: a seat that never sees a
+  `beginTurn` never reaches the line that frees it, so the escape waits for the
+  duel to retire - up to `DUEL_TURNS` rounds. Nobody has played a run to see
+  whether that reads as "a realm holds together while it fights" or as the
+  independence gate being broken.
+- **The guest's seat in `humanSeats` was not verified in two real tabs.** It is
+  driven through the real deal, the real sessions and the real router in
+  `tests/two-seat.test.ts`, which is the suite that exists because hand-written
+  copies rotted - but a two-tab pass would show the guest actually being asked
+  for a conquest's defenders, which is the arm most likely to surprise.
+- **`cardRulesHash` still covers TABLES and not legality CODE.**
+  `MAX_MARCH_HOPS` is in it now, and War council's ruler requirement was moved
+  onto `CardDef.needsRuler` so it rides in too. But any legality rule written
+  as a branch rather than as data is still outside the handshake -
+  `spendCeilingOn`, `aimsWithinOwnRealm` and `cardBlockReason`'s own structure
+  among them. Two deploys differing there would still shake hands. No sweep was
+  done for other such dials.
