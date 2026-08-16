@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   ARROW_EMPHASIS, ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor,
   borderKeyOf, emphasisFor, laneWidthFor, layoutLanes, renderArrowScene,
-  unitWidthFor, type ArrowCues, type ArrowSpec, type SceneCtx,
+  unitWidthFor, type ArrowCues, type ArrowSpec, type Rect, type SceneCtx,
 } from "../src/arrow-scene";
 import {
   ARROW_DEPTHS, crossingBetween, type Crossing, type Station,
@@ -331,6 +331,14 @@ const ctx: SceneCtx = {
   freeAnchor: () => ({ x: -100, y: 0 }),
 };
 
+/** How much of two boxes lies in both, which is the whole question a chip
+ *  standing clear of a badge is asking. */
+function overlap(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
 const march = (id: string, from: string, to: string, strength: number): ArrowSpec => ({
   id, kind: "march", from, to, strength, tone: "hostile", label: `${strength} STR`,
 });
@@ -479,6 +487,55 @@ describe("renderArrowScene", () => {
     expect(g.querySelector(".march-order-text")?.textContent)
       .toBe("2nd - lands in 3");
     expect(g.querySelector(".march-strength")?.textContent).toBe("1 STR");
+  });
+
+  it("steps the chip out from under what the map has already drawn", () => {
+    // The station behind the tail points into the land the army marched out
+    // of, which is where that land's defense badge sits: on the deployed
+    // build `lands in 2` lost 15 of its 27 text pixels to a `1/3` badge. The
+    // obstacle here IS the box the chip takes when nothing is in its way, so
+    // a chip that did not move would be wholly covered by it.
+    const spec: ArrowSpec = { ...march("m1", "a", "b", 1), arrivesIn: 3 };
+    const chipBoxOf = (host: SVGGElement): Rect => {
+      const bg = host.querySelector(".march-order-bg")!;
+      const num = (name: string) => Number(bg.getAttribute(name));
+      return {
+        x: num("x"), y: num("y"), w: num("width"), h: num("height"),
+      };
+    };
+    const open = document.createElementNS(NS, "g") as SVGGElement;
+    renderArrowScene(open, [spec], ctx);
+    const under = chipBoxOf(open);
+
+    const blocked = document.createElementNS(NS, "g") as SVGGElement;
+    renderArrowScene(blocked, [spec], { ...ctx, keepOut: () => [under] });
+    const moved = chipBoxOf(blocked);
+    expect(overlap(moved, under)).toBe(0);
+    // Moved, not shrunk or dropped: the sentence the stage exists to deliver
+    // is still there and still says the same thing.
+    expect(blocked.querySelector(".march-order-text")?.textContent)
+      .toBe("lands in 3");
+    expect(moved.w).toBe(under.w);
+  });
+
+  it("takes the least-covered station when nothing is clear", () => {
+    // A keep-out the size of the county cannot be dodged. The chip must still
+    // land somewhere fixed - a chip that jittered between renders would be
+    // worse than one under a badge - and somewhere no worse than the base.
+    const spec: ArrowSpec = { ...march("m1", "a", "b", 1), arrivesIn: 3 };
+    const everywhere: Rect = { x: -1000, y: -1000, w: 2000, h: 2000 };
+    const boxes: Rect[] = [];
+    for (let i = 0; i < 2; i++) {
+      const host = document.createElementNS(NS, "g") as SVGGElement;
+      renderArrowScene(host, [spec], { ...ctx, keepOut: () => [everywhere] });
+      const bg = host.querySelector(".march-order-bg")!;
+      boxes.push({
+        x: Number(bg.getAttribute("x")), y: Number(bg.getAttribute("y")),
+        w: Number(bg.getAttribute("width")),
+        h: Number(bg.getAttribute("height")),
+      });
+    }
+    expect(boxes[0]).toEqual(boxes[1]);
   });
 
   it("marks an army walking overland, and leaves a strait crossing alone", () => {

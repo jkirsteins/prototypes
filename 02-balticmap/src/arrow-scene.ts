@@ -424,11 +424,29 @@ export interface ArrowSpec {
   dataset?: Record<string, string>;
 }
 
+/** A box in map coordinates. */
+export interface Rect { x: number; y: number; w: number; h: number }
+
 export interface SceneCtx {
   /** The border between two lands, or null where there is none to draw on. */
   crossingFor(from: string, to: string): Crossing | null;
   /** Where an arrow with no target starts. */
   freeAnchor(from: string): Pt | null;
+  /** Boxes the map has already put ink in, which the landing chip steps
+   *  aside for - the threat badges, in practice.
+   *
+   *  It is the CHIP and not the arrow that dodges, because the chip is the
+   *  only part of an arrow whose position carries no information: the shaft
+   *  stands on the border it crosses and the head bites the land it is aimed
+   *  at, while the chip is a note pinned behind the tail and reads the same
+   *  wherever it is pinned. Nothing else in the scene may be moved to avoid
+   *  anything.
+   *
+   *  Asked of the CALLER rather than measured here: the badge layer is the
+   *  map's, drawn from the game state, and the scene knows nothing about
+   *  either. Absent in callers that draw no badges (the tests, and any
+   *  surface that is only arrows). */
+  keepOut?(): readonly Rect[];
 }
 
 /** One border, whichever way it is crossed. */
@@ -548,13 +566,16 @@ export function renderArrowScene(
   const drawn = new Map<string, SVGGElement>();
   const ordered: SVGGElement[] = [];
   const entered: HeldArrow[] = [];
+  // Read once for the whole render, like the width scale above it: every
+  // chip in one scene dodges the same board.
+  const keepOut = ctx.keepOut?.() ?? [];
   const draw = (spec: ArrowSpec, lane: Lane): void => {
     // One arrow per key, and the FIRST spec wins. A key names an element, so a
     // second spec claiming one already drawn this render would hand back an
     // element in neither the retained map nor the leaving set - stranded in the
     // host with nothing left that could ever take it out again.
     if (drawn.has(spec.id)) return;
-    const held = place(scene, host, spec, lane);
+    const held = place(scene, host, spec, lane, keepOut);
     if (held === null) return;
     drawn.set(spec.id, held.el);
     ordered.push(held.el);
@@ -636,6 +657,7 @@ export function renderArrowScene(
  *  the stylesheet gives it once it is in the tree. */
 function place(
   scene: Scene, host: SVGGElement, spec: ArrowSpec, lane: Lane,
+  keepOut: readonly Rect[],
 ): HeldArrow | null {
   const held = scene.held.get(spec.id);
   let kept: HeldArrow | null = null;
@@ -658,7 +680,7 @@ function place(
     }
   }
   const el = kept?.el ?? svgEl("g");
-  if (!dressArrow(el, spec, lane)) {
+  if (!dressArrow(el, spec, lane, keepOut)) {
     // Nothing to draw at this width. An arrow already standing goes the way
     // any departing arrow goes rather than blinking out.
     if (kept !== null) {
@@ -843,7 +865,9 @@ function applyDataset(g: SVGGElement, data: Record<string, string>): void {
 /** Draws the spec into the group, whether the group is new or has been
  *  standing there for twenty renders. False where the geometry is degenerate,
  *  and then nothing has been touched. */
-function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
+function dressArrow(
+  g: SVGGElement, spec: ArrowSpec, lane: Lane, keepOut: readonly Rect[],
+): boolean {
   const def = ARROW_KINDS[spec.kind];
   let used = 0;
   if (def.shape === "spear") {
@@ -892,20 +916,17 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
 
   const chipLabel = chipTextFor(spec);
   if (chipLabel !== null) {
-    // Behind the tail, outside the block. On the shaft the chips collide as
-    // soon as a border carries three arrows, and a chip over the head reads
-    // as part of the arrowhead.
-    const at = pointAlong(
-      lane.ax, lane.ay, lane.bx, lane.by,
-      -0.18 - (lane.index % LABEL_STATIONS.length) * 0.14,
-    );
     const label = chipLabel;
-    const width = 12 + label.length * 5.6;
+    const width = CHIP_PAD + label.length * CHIP_CHAR;
+    // Behind the tail, outside the block, and out from under whatever the map
+    // has already drawn there - see `chipStation`.
+    const at = chipStation(lane, width, keepOut);
     const chip = ensure(g, used++, "g");
     setAttr(chip, "class", "march-order");
     const bg = ensure(chip, 0, "rect");
+    const box = chipBox(at, width);
     setAttrs(bg, {
-      x: at.x - width / 2, y: at.y - 9, width, height: 15, rx: 7.5,
+      x: box.x, y: box.y, width: box.w, height: box.h, rx: CHIP_H / 2,
     });
     setAttr(bg, "class", "march-order-bg");
     const text = ensure(chip, 1, "text");
@@ -929,6 +950,87 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
   return true;
+}
+
+/** The chip's own geometry: how tall it is, how much of its width is padding
+ *  and how much each character adds. One set of numbers, because the box that
+ *  is DRAWN and the box that is tested against the map's badges have to be the
+ *  same box - a dodge computed against a different rectangle than the one the
+ *  player sees is a dodge that lands the chip half under the badge. */
+const CHIP_H = 15;
+const CHIP_PAD = 12;
+const CHIP_CHAR = 5.6;
+
+/** How far the chip steps sideways per try, and how many tries it gets. Two
+ *  and a half steps clears the widest defense badge on either map from a chip
+ *  centred on it; four is the room to also miss the pip rows above and below
+ *  one. */
+const CHIP_DODGE = 15;
+const CHIP_DODGE_TRIES = 4;
+
+/** The box the chip occupies, centred on `at`. */
+function chipBox(at: Pt, width: number): Rect {
+  return { x: at.x - width / 2, y: at.y - 9, w: width, h: CHIP_H };
+}
+
+/** Where the chip stands: behind the tail on the lane's own axis, stepped
+ *  SIDEWAYS when the map has already drawn something there.
+ *
+ *  The station behind the tail points into the land the army marched out of,
+ *  and that land's defense badge sits near the middle of it - so the two
+ *  collide on an ordinary board rather than in some exotic arrangement, and
+ *  the badge is drawn over the chip. Measured on the deployed build, `lands in
+ *  2` lost 15 of its 27 text pixels to a `1/3` badge: the one thing the chip
+ *  exists to say was the thing that could not be read.
+ *
+ *  Sideways rather than further back, because back is deeper into the same
+ *  land and toward the same badge. Sideways is along the border the arrow
+ *  crosses, where there is nothing but the arrow's own block - which the chip
+ *  is behind, not in.
+ *
+ *  Deterministic: candidates are tried in a fixed order, the first that clears
+ *  everything wins, and where nothing clears (a chip wider than the gap it is
+ *  looking for) the least-covered candidate wins rather than the base one. A
+ *  chip that jittered between renders would be worse than one under a badge. */
+function chipStation(
+  lane: Lane, width: number, keepOut: readonly Rect[],
+): Pt {
+  const base = pointAlong(
+    lane.ax, lane.ay, lane.bx, lane.by,
+    -0.18 - (lane.index % LABEL_STATIONS.length) * 0.14,
+  );
+  const len = Math.hypot(lane.bx - lane.ax, lane.by - lane.ay);
+  if (keepOut.length === 0 || len === 0) return base;
+  const px = -(lane.by - lane.ay) / len;
+  const py = (lane.bx - lane.ax) / len;
+  let best = base;
+  let bestCover = Number.POSITIVE_INFINITY;
+  for (let step = 0; step <= CHIP_DODGE_TRIES; step++) {
+    for (const side of step === 0 ? [0] : [1, -1]) {
+      const off = side * step * CHIP_DODGE;
+      const at = { x: base.x + px * off, y: base.y + py * off };
+      const cover = coveredArea(chipBox(at, width), keepOut);
+      if (cover === 0) return at;
+      if (cover < bestCover) {
+        bestCover = cover;
+        best = at;
+      }
+    }
+  }
+  return best;
+}
+
+/** How much of `box` the keep-out boxes cover, summed. Overlapping keep-outs
+ *  are double counted, which is fine: this only ever ranks candidates against
+ *  each other, and a spot two badges sit on is worse than one. */
+function coveredArea(box: Rect, keepOut: readonly Rect[]): number {
+  let total = 0;
+  for (const r of keepOut) {
+    const w = Math.min(box.x + box.w, r.x + r.w) - Math.max(box.x, r.x);
+    const h = Math.min(box.y + box.h, r.y + r.h) - Math.max(box.y, r.y);
+    if (w > 0 && h > 0) total += w * h;
+  }
+  return total;
 }
 
 /** Everything the chip behind the tail says, or null where it would say

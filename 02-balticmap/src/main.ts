@@ -40,7 +40,9 @@ import {
 } from "./playability";
 import { armiesOn, axesOf, type March, type Marches } from "./marches";
 import { crossingBetween, ringsOf, type Crossing, type Pt } from "./borders";
-import { emphasisFor, renderArrowScene, type ArrowSpec, type SceneCtx } from "./arrow-scene";
+import {
+  emphasisFor, renderArrowScene, type ArrowSpec, type Rect, type SceneCtx,
+} from "./arrow-scene";
 import { animations, runAnimation } from "./animate";
 import {
   defenseMaxOf, defenseOf, gateBandOf, MIN_RAID_SPEND, type GateBand,
@@ -1541,8 +1543,29 @@ function regionCenter(factionId: string): { x: number; y: number } | undefined {
   return { x: best.x, y: best.y };
 }
 
+/** Where the threat badges are standing, in map coordinates - what an arrow's
+ *  landing chip steps aside for (`SceneCtx.keepOut`).
+ *
+ *  Written here rather than measured from the badge layer, because here is
+ *  where the geometry is already known: the box the badge draws is the text
+ *  box the code below computes, and reading it back would mean a second
+ *  `getBBox` pass over every badge on every paint.
+ *
+ *  Refreshed whenever the badges are, which is every paint that could move
+ *  one - and emptied first, so a stale box can never outlive the badge it was
+ *  about. The arrows are painted from the same refresh, immediately after
+ *  (`applyTargetCues`, `refresh`). */
+let badgeBoxes: Rect[] = [];
+
+/** How far past its own box a badge's pips reach, above and below the centre
+ *  the badge is translated to: the settlement row is the highest thing on one
+ *  and the disease pips the lowest. Written as the envelope rather than
+ *  measured, because the pips are drawn at fixed offsets a few lines below. */
+const BADGE_PIPS = { top: -30, bottom: 19 };
+
 function renderThreatBadges(): void {
   badgeGroup.replaceChildren();
+  badgeBoxes = [];
   const human = localHuman();
   if (!inPlay() || !human) return;
   const v = viewOf(game());
@@ -1667,6 +1690,16 @@ function renderThreatBadges(): void {
     rect.setAttribute("y", String(textBox.y - pad));
     rect.setAttribute("width", String(textBox.width + pad * 2));
     rect.setAttribute("height", String(textBox.height + pad * 2));
+    // The whole badge, box and pips, in map coordinates - the group is
+    // translated to the centre, so everything inside it is relative to that.
+    const x = cx + textBox.x - pad;
+    const top = Math.min(cy + textBox.y - pad, cy + BADGE_PIPS.top);
+    badgeBoxes.push({
+      x, y: top,
+      w: textBox.width + pad * 2,
+      h: Math.max(cy + textBox.y + textBox.height + pad, cy + BADGE_PIPS.bottom)
+        - top,
+    });
   }
   // The group was rebuilt from nothing, so whatever an arrow hover had taken
   // away is back. Re-asked here rather than at every caller: a refresh landing
@@ -1753,6 +1786,7 @@ const sceneCtx: SceneCtx = {
   crossingFor,
   freeAnchor: (from) =>
     townsByFaction.get(from)?.[0] ?? regionCenter(from) ?? null,
+  keepOut: () => badgeBoxes,
 };
 
 /** How many turns until this faction acts again, from where the round stands.
