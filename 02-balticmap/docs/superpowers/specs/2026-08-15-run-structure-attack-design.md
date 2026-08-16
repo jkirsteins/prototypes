@@ -465,3 +465,37 @@ browser pass. What to watch: whether a duel actually feels like an arc, whether
 the world tick is readable at the beat counts stage 1 measured (up to 16 beats
 and 29.5s per round at a five-land realm - a world tick is that with every seat
 acting), and whether declining a neighbour is ever the right move.
+
+### A duel enemy fights, chief or no chief
+
+An adversarial review measured what the first version of the offer actually
+produced: **110 of 110 turn-1 candidates across all 26 seats were leaderless**,
+and 26 of 78 duels over full runs. A leaderless enemy takes no turn and cannot
+take a land, so the map stood still for up to twenty rounds while the player
+fought something that never answered, and `duel-lost` was unreachable.
+
+Three things fix it, and the scope is deliberately narrow.
+
+- **A leaderless enemy is RARE.** `duelCandidates` prefers factions that have a
+  chief. It does not refuse a leaderless one outright, because the border is
+  what it is and a realm hemmed in by quiet lands must still be offered a fight.
+- **A duel enemy acts whether or not it has a chief.** Inside a duel, the
+  enemy's side is exempt from the leaderless arm of `takesNoTurn`. It plays its
+  deck, raids, and answers. This is the ONLY place that arm is bypassed:
+  outside a duel a land with no leader still takes no turn, and the grey middle
+  is still the grey middle.
+- **Beating a chiefless enemy INCORPORATES it.** That is the whole remaining
+  difference between an enemy with a chief and one without: a people who follow
+  somebody become your vassal and may one day leave, and a people who follow
+  nobody are simply absorbed. It also means the reward for fighting a quiet
+  land is a permanent one, which is what stops "rare" from reading as "worse".
+
+**The asymmetry this leaves, stated so nobody thinks it is an accident.** A
+leaderless land taken OUTSIDE a duel still gets a chief seated on it and
+becomes a vassal, per section C. Only the duel enemy is absorbed. The narrower
+rule was chosen over making absorption universal because universal absorption
+would undo section C - every quiet land is leaderless, so a conquest would stop
+waking anybody and the acting map would never grow. If a later playtest says
+the split reads as two rules rather than one, the fix is to make absorption
+universal and give section C a different way to wake the map, not to widen this
+one quietly.
