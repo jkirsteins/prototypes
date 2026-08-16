@@ -483,3 +483,44 @@ NOT verify:
   `spendCeilingOn`, `aimsWithinOwnRealm` and `cardBlockReason`'s own structure
   among them. Two deploys differing there would still shake hands. No sweep was
   done for other such dials.
+
+## Wide ruler seeding, 2026-08-16
+
+`QUIET_LANDS` (6) replaced `MAX_ACTIVE` (5) as the seeding: all but a handful
+of lands now hold a chief and take turns. What is not verified:
+
+- **A whole run has not been played out at this width.** The browser pass drove
+  a duel to a loss, another to a win with its reward paid, and eight consecutive
+  unscoped rounds - not a run to a victory, a defeat or turn 60. The failure
+  this would catch is one that only shows up with a big realm and twenty acting
+  seats at once, which is exactly the state the wall-clock numbers below are
+  worst at.
+- **The world-tick round got about eight times longer, and nobody has decided
+  whether that is too long.** Measured on the dev server at seed 11, eight
+  consecutive unscoped rounds under `rules=turn:unlimited`: 5.6, 7.3, 9.0, 12.4,
+  14.2, 15.9, 19.3, 24.4 seconds - median about 13.5s. The same eight rounds
+  with `QUIET_LANDS` temporarily at 21 (the old five-seat table) ran 0.1 to 5.3
+  seconds, median about 1.7s. In an ordinary run this is one round per gauntlet
+  rather than every round, which is the whole reason the width is affordable -
+  but a 24-second round is a long stare and the numbers were taken at turn 1
+  to 8, with a one-land realm. They will not get smaller as a realm grows.
+  The dial if it is ever wanted is `QUIET_LANDS`: 12 was measured at 0.6%
+  chiefless duels, so there is room to trade the width back for a shorter round
+  without returning to the old regime.
+- **Iberia was not played.** The seeding is region-agnostic and
+  `tests/regions.test.ts` checks the counts on the Iberian deal - free lands
+  less the quiet draw, with no seat inside a starting realm - but no browser
+  pass was made on that map, and Iberia is the one with lands already sworn at
+  turn 1.
+- **A chiefless duel enemy is now essentially unreachable in practice, and the
+  three-part rule that covers it is therefore exercised only by tests.** 0 of
+  3252 duels over 156 sweep runs; 2 of 9195 over 468. `tests/gauntlet.test.ts`
+  pins the enemy acting, the absorption and the reward being paid off the
+  `incorporated` line, so the rule is not silently dead - but nobody has watched
+  one happen.
+- **The world tick has no HUD chip.** `status-duel` is hidden whenever the
+  gauntlet is not a duel, so the round where the whole map moves says nothing
+  about itself in the status bar. That is pre-existing and was not changed here,
+  but it reads differently now that the round is thirteen seconds rather than
+  two: the player is watching the longest round of the gauntlet with nothing on
+  screen naming it.
