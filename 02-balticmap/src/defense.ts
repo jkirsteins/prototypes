@@ -1,8 +1,8 @@
 /** The defense-score core: every polygon carries a static `defenseMax` sized
  *  from its 1184 population and a current `defense`, floored at 0 and capped
  *  at max. Hostile cards damage the score, heals restore it, and subjugation
- *  and independence are thresholds on it - see the 2026-08-08 defense-score
- *  design doc. Pure helpers; GameState owns the stores.
+ *  is a threshold on it - see the 2026-08-08 defense-score design doc. Pure
+ *  helpers; GameState owns the stores.
  *
  *  A "polygon" is a land's own faction id - regions and factions are 1:1, and
  *  the id is stable through vassalage and incorporation. The home polygon of
@@ -33,9 +33,16 @@ export const DEFAULT_DEFENSE_MAX = 6;
  *  rule moves by changing this line. */
 export const SUBJUGATION_GATE = 0;
 
-/** A vassal whose home polygon has climbed back to this share of its max
- *  regains independence at the start of its own turn. */
-export const INDEPENDENCE_GATE = 0.75;
+/** The share of its ceiling at or above which a land's badge reads as healthy
+ *  rather than wounded.
+ *
+ *  A DRAWING threshold and nothing else. No rule in the game is decided at
+ *  this line, no surface prints the number, and it is deliberately not in
+ *  `COMBAT_RULES` - two builds that disagree about where amber turns green
+ *  still play the same game. It is here rather than in the stylesheet because
+ *  `gateBandOf` is the one place a defense score becomes a band, and the
+ *  subjugation line it is read beside is a real rule. */
+const HEALTHY_BAND = 0.75;
 
 /** Defense ceiling per army a land may field, and per turnip its people owe
  *  before a harvest comes in.
@@ -311,7 +318,6 @@ export function capturesOnArrival(dealt: number, standing: number): boolean {
  *  move apart without a red test. */
 export interface CombatRules {
   subjugationGate: number;
-  independenceGate: number;
   /** The rule by which an arriving army takes a land, as `capturesOnArrival`
    *  spells it. "excess": strictly more than what stands. */
   capture: string;
@@ -326,36 +332,24 @@ export interface CombatRules {
 
 export const COMBAT_RULES: CombatRules = {
   subjugationGate: SUBJUGATION_GATE,
-  independenceGate: INDEPENDENCE_GATE,
   capture: "excess",
   spentArrival: "spent",
 };
 
-/** The defense a land needs to stand at before it wins its freedom, ceiled so
- *  the line is a whole number the badge can print. Its own function because
- *  two different questions ask it: whether the gate stands open right now, and
- *  how much a garrison may safely be - and a second spelling of the
- *  arithmetic is how those two come to disagree. */
-export function independenceGateLine(
-  view: DefenseView, factionId: string,
-): number {
-  return Math.ceil(INDEPENDENCE_GATE * defenseMaxOf(view, factionId));
-}
-
-export function independenceGateOpen(
-  view: DefenseView, factionId: string,
-): boolean {
-  return defenseOf(view, factionId) >= independenceGateLine(view, factionId);
-}
-
-/** The three bands the map badge colours: at or above the independence line,
- *  between the gates, at or under the subjugation line - the open state is
- *  the one that must pop. */
+/** The three bands the map badge colours: healthy, wounded, and at or under
+ *  the subjugation line - the open state is the one that must pop.
+ *
+ *  Only the last of the three is a rule. The other two are how wounded a land
+ *  looks at a glance, which is why `HEALTHY_BAND` is a private number nothing
+ *  else may read. */
 export type GateBand = "high" | "middle" | "open";
 
 export function gateBandOf(view: DefenseView, polygon: string): GateBand {
   if (subjugationGateOpen(view, polygon)) return "open";
-  return independenceGateOpen(view, polygon) ? "high" : "middle";
+  return defenseOf(view, polygon) >=
+    Math.ceil(HEALTHY_BAND * defenseMaxOf(view, polygon))
+    ? "high"
+    : "middle";
 }
 
 export function diseaseOn(

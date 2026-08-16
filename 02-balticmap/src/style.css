@@ -1078,7 +1078,8 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
 
 /* The three defense bands. The open gate is the state that must pop: red
    text and a heavy red box mean "this polygon can be subjugated NOW". High
-   is the independence side of the ledger, middle the space between. */
+   is a land standing healthy, middle a land that has been hurt - neither is a
+   threshold any rule is decided at. */
 .threat-badge.band-high .badge-defense {
   fill: #2e7d32;
 }
@@ -1611,7 +1612,7 @@ svg.map.arrow-focused .river {
   fill: #6b5d49;
 }
 
-/* The respite countdown: this faction escaped vassalage and cannot be
+/* The respite countdown: this faction was released from vassalage and cannot be
    subjugated again until the count runs out. The same temporary-and-running-
    out amber as the boosted value above, scoped for the same reason. */
 .threat-badge .lead-respite {

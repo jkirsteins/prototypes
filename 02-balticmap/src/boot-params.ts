@@ -386,12 +386,10 @@ export function applyBootParams(
   // The realm, before the marches for the same reason the armies are: an
   // arrow declared below may set out from a land this just took.
   //
-  // ANNEXED and not sworn. Vassals would read the same on the scoreboard and
-  // then come apart while you watched - a booted vassal can win its
-  // independence at its own turn start, and the count the param exists to
-  // reach would be gone by the second round. Incorporation is permanent, and
-  // it also takes those seats out of the turn order (`takesNoTurn`), so
-  // `realm=25` is a check that runs rather than twenty-four AI turns a round.
+  // ANNEXED and not sworn, because the two differ on the scoreboard's other
+  // side: an annexed people is out of the run, while a vassal is a seat that
+  // wakes up whenever its lord duels. `realm=25` is meant to be a check that
+  // runs, not twenty-four AI turns a round the moment a duel opens.
   //
   // Each land is taken OUT of wherever it answered before. `seedRealms` deals
   // pre-existing realms from region data, so a land left under its old lord as

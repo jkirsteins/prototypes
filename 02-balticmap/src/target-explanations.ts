@@ -13,7 +13,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import {
-  capturesOnArrival, defenseMaxOf, defenseOf, independenceGateLine,
+  capturesOnArrival, defenseMaxOf, defenseOf,
   SINGLE_LAND_HEAL,
 } from "./defense";
 import {
@@ -66,7 +66,7 @@ function explainReason(reason: TargetBlockReason): string[] {
       ];
     case "respite":
       return [
-        `Escaped vassalage recently; cannot be subjugated ${untilTurn(reason.expiresTurn)}.`,
+        `Released from vassalage recently; cannot be subjugated ${untilTurn(reason.expiresTurn)}.`,
       ];
     case "at-full-defense":
       return ["Defenses already stand at full strength."];
@@ -374,11 +374,6 @@ export function targetImpactLines(
   ];
 }
 
-/** Where the numbers on a polygon's map badge come from: the defense over its
- *  max, and the two gate lines the bands are drawn at. On the human's own
- *  home the subjugation line is the one that bites; on a vassal's home the
- *  independence line is. Takes no faction-name lookup, so it structurally
- *  cannot violate the naming rule - the land is named on the lines above. */
 /** Every passive status on a land, one line each: what it is and what it does.
  *  Public whoever holds the land - a status the player cannot see is a rule
  *  they cannot play around, which is why no status ships without this. */
@@ -397,12 +392,17 @@ export function passiveLines(
   ];
 }
 
+/** Where the numbers on a polygon's map badge come from: the defense over its
+ *  max, and the one line that is a rule - the subjugation gate.
+ *
+ *  ONE line and not two. The badge is coloured in three bands, but only the
+ *  red one is a threshold anything in the game is decided at, so only the red
+ *  one is a number worth printing. Takes no faction-name lookup, so it
+ *  structurally cannot violate the naming rule - the land is named on the
+ *  lines above. */
 export function defenseBreakdown(
   view: RulesView,
   polygon: string,
-  /** Whether the hovered land answers to an overlord, which decides whether
-   *  the independence line is worth printing. */
-  isVassalHome: boolean,
 ): TooltipLine[] {
   const gate = subjugationGateOn(view, polygon);
   const max = defenseMaxOf(view, polygon);
@@ -421,12 +421,6 @@ export function defenseBreakdown(
       text: "or less opens subjugation",
     },
   ];
-  if (isVassalHome) {
-    rows.push({
-      amount: `${independenceGateLine(view, polygon)}`,
-      text: "or more regains independence at their turn",
-    });
-  }
   return rows;
 }
 
@@ -444,14 +438,9 @@ export function landFactsLines(
 ): TooltipLine[] {
   const cap = armyCapOn(view, polygon);
   return [
-    // Never the independence line, even where a region opens with realms
-    // already standing and the hovered land is somebody's vassal. That line
-    // reads "regains independence at their turn", and the only vassals on this
-    // screen are the seeded ones - which have no ruler, so no turn, so no
-    // moment at which the gate is asked. Printing it would promise a land its
-    // freedom on a screen where the player cannot even pick it. Who holds the
-    // land is said once, by the allegiance line above this block.
-    ...defenseBreakdown(view, polygon, false),
+    // Who holds the land is said once, by the allegiance line above this
+    // block; every figure here is a property of the ground itself.
+    ...defenseBreakdown(view, polygon),
     // Inside the defense block rather than under a heading of its own, because
     // the cap is that ceiling divided: it belongs beside the number it is read
     // off, not in a second place the player has to relate back to it.

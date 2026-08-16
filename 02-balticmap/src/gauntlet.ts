@@ -11,7 +11,7 @@ import { LAND_GROWTH } from "./defense";
 import type { GameEvent } from "./game";
 import { DEFENSIVE_TERRAIN, hasPassive } from "./passives";
 import {
-  aimsWithinOwnRealm, attackReach, type RulesView,
+  aimsWithinOwnRealm, borderPolygonsOf, type RulesView,
 } from "./playability";
 import { fullRealmOf, type Incorporated, type Overlords } from "./relations";
 
@@ -73,20 +73,20 @@ export type Gauntlet =
 /** The factions the human may open a duel against: a bordering realm it may
  *  legally attack.
  *
- *  `attackReach` and `aimsWithinOwnRealm` are the game's spelling of "who may
- *  I attack" and this is not a fourth one - the targeting pass, the march
- *  aim, the disease surfaces and this all ask the same two questions, so a
- *  candidate the picker offers is a land the player's cards can actually be
- *  aimed at.
+ *  `borderPolygonsOf` and `aimsWithinOwnRealm` are the game's spelling of
+ *  "who may I attack" and this is not a fourth one - the targeting pass, the
+ *  march aim, the disease surfaces and this all ask the same two questions,
+ *  so a candidate the picker offers is a land the player's cards can actually
+ *  be aimed at.
  *
  *  Two things it does on top, and both are about the duel rather than about
  *  legality. A polygon is resolved to the faction that POLITICALLY holds it
  *  (`incorporated[p] ?? p`), the same resolution `reachOf` and card targeting
  *  make, because an annexed land never acts and a duel with one would be a
- *  duel with nobody. And the actor's own realm is dropped: `attackReach`
- *  deliberately includes a lord's own vassals so vassalage can be kept, but a
- *  duel against a land already inside your own outline would scope the turn
- *  loop to one realm and freeze the map.
+ *  duel with nobody. And the actor's own realm is dropped: a border polygon
+ *  can be a land the realm annexed at one remove, and a duel against a land
+ *  already inside your own outline would scope the turn loop to one realm and
+ *  freeze the map.
  *
  *  Returned in map order (`factionIds`) rather than in reach order, so the
  *  offer reads the same way twice and a replay of the same seed lists the
@@ -112,7 +112,7 @@ export type Gauntlet =
 export function duelCandidates(view: RulesView, human: string): string[] {
   const realm = fullRealmOf(human, view.overlords, view.incorporated);
   const offered = new Set<string>();
-  for (const polygon of attackReach(view, human)) {
+  for (const polygon of borderPolygonsOf(view, human)) {
     // "raid" and not a card the player is holding: this asks whether the land
     // is somebody the realm may fight at all, which is a fact about the
     // hostile keyword and the map, not about a hand.

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { defenseMaxAll, siteCaps } from "./helpers";
 import {
   ESCAPE_RESPITE_TURNS, INCORPORATE_REALM_GATE, SETTLEMENT_BASE_CAP,
-  attackDamageFor, omensMultiplier, attackReach, borderPolygonsOf,
+  attackDamageFor, omensMultiplier, borderPolygonsOf,
   cardBlockReason, failureRiskOf, freeSettlementsIn, freeSitesIn,
   greatRaidMarches,
   handBlockReason, handLimitFor, holdsGuard, incorporateRealmGate,
@@ -69,38 +69,30 @@ function view(partial: Partial<RulesView> = {}): RulesView {
  *  rather than written out, so moving the dial moves the tests with it. */
 const GATE = Math.floor(SUBJUGATION_GATE * 600);
 
-describe("attackReach", () => {
+describe("the attack reach", () => {
   it("is the polygons bordering the realm for a lone faction", () => {
-    expect(attackReach(view(), "alpha")).toEqual(new Set(["beta"]));
-    expect(attackReach(view(), "beta")).toEqual(new Set(["alpha", "gamma"]));
+    expect(borderPolygonsOf(view(), "alpha")).toEqual(new Set(["beta"]));
+    expect(borderPolygonsOf(view(), "beta"))
+      .toEqual(new Set(["alpha", "gamma"]));
   });
 
-  it("includes the actor's own vassal - a lord may raid to hold the gate", () => {
+  it("never the actor's own vassal - downward went with the gate", () => {
     const v = view({ overlords: new Map([["beta", "alpha"]]) });
-    expect(attackReach(v, "alpha")).toEqual(new Set(["beta", "gamma"]));
-    expect(validTargetsFor(v, "alpha", "raid")).toContain("beta");
+    expect(borderPolygonsOf(v, "alpha")).toEqual(new Set(["gamma"]));
+    expect(validTargetsFor(v, "alpha", "raid")).not.toContain("beta");
   });
 
-  it("includes a grand-vassal - the pyramid's members ride along", () => {
+  it("never a grand-vassal, nor a vassal's own annexed land", () => {
     const v = view({
       overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
-    });
-    expect(attackReach(v, "alpha")).toEqual(new Set(["beta", "gamma", "delta"]));
-  });
-
-  it("includes a vassal's own annexed land", () => {
-    // beta answers to alpha and has annexed delta: delta is under alpha's
-    // realm but not held outright, so the lord may still batter it.
-    const v = view({
-      overlords: new Map([["beta", "alpha"]]),
       incorporated: { delta: "beta" },
     });
-    expect(attackReach(v, "alpha")).toEqual(new Set(["beta", "gamma", "delta"]));
+    expect(validTargetsFor(v, "alpha", "raid")).toEqual([]);
   });
 
   it("excludes what the actor holds outright - its own annexations", () => {
     const v = view({ incorporated: { beta: "alpha" } });
-    expect(attackReach(v, "alpha")).toEqual(new Set(["gamma"]));
+    expect(borderPolygonsOf(v, "alpha")).toEqual(new Set(["gamma"]));
     expect(validTargetsFor(v, "alpha", "raid")).not.toContain("beta");
   });
 });
@@ -203,15 +195,17 @@ describe("marching: sources, targets and armies", () => {
 
   it("aims an army at everything in reach it can walk to", () => {
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    // beta borders alpha and its own vassal gamma, and may batter either -
-    // and delta, two lands down the line, is a march of two turns rather than
-    // somewhere out of the question.
-    expect(marchTargetsFrom(v, "beta", "beta"))
-      .toEqual(["alpha", "gamma", "delta"]);
-    // The vassal's own army reaches delta next door and alpha the long way,
-    // but not gamma itself: no land marches at itself.
+    // beta borders alpha, and delta two lands down the line is a march of two
+    // turns rather than somewhere out of the question. Its own vassal gamma
+    // is not on the list at all - a hostile card may not go down the chain.
+    expect(marchTargetsFrom(v, "beta", "beta")).toEqual(["alpha", "delta"]);
+    // The vassal's own army marches for its lord: delta next door and alpha
+    // the long way.
     expect(marchTargetsFrom(v, "beta", "gamma")).toEqual(["alpha", "delta"]);
     expect(marchSourcesAgainst(v, "beta", "delta")).toEqual(["beta", "gamma"]);
+    // `marchSourcesAgainst` is asked AFTER a target has been chosen off the
+    // list above, so it answers distance alone and still names beta for a
+    // land that list never offered.
     expect(marchSourcesAgainst(v, "beta", "gamma")).toEqual(["beta"]);
   });
 
@@ -252,18 +246,20 @@ describe("marching: sources, targets and armies", () => {
 });
 
 describe("a march reaches past the border", () => {
-  // one - two - three - four - five in a line, with one holding two, three
-  // and four as vassals. The vassals are there to put the far end of the
-  // chain in REACH - a lord may batter its own vassals, and the land past
-  // them borders the realm - so that distance is the only thing left deciding
-  // what an army standing in `one` may be aimed at.
-  const CHAIN = ["one", "two", "three", "four", "five"];
+  // A comb. `one` holds the spine - mid1, mid2, mid3 in a line off it, ANNEXED
+  // so they are the realm's own ground rather than lands it may aim at - and a
+  // free land hangs off each spine link: far2 two hops from `one`, far3 three,
+  // far4 four. The realm's border is exactly {far2, far3, far4}, so distance
+  // is the only thing left deciding what an army standing in `one` may hit.
+  const CHAIN = ["one", "mid1", "mid2", "mid3", "far2", "far3", "far4"];
   const CHAIN_ADJ = {
-    one: ["two"],
-    two: ["one", "three"],
-    three: ["two", "four"],
-    four: ["three", "five"],
-    five: ["four"],
+    one: ["mid1"],
+    mid1: ["one", "mid2", "far2"],
+    mid2: ["mid1", "mid3", "far3"],
+    mid3: ["mid2", "far4"],
+    far2: ["mid1"],
+    far3: ["mid2"],
+    far4: ["mid3"],
   };
   const chain = (extra: Partial<RulesView> = {}) =>
     view({
@@ -272,45 +268,45 @@ describe("a march reaches past the border", () => {
       defenseMax: defenseMaxAll(CHAIN),
       siteCaps: siteCaps(CHAIN),
       leaders: Object.fromEntries(CHAIN.map((id) => [id, true])),
-      overlords: new Map([["two", "one"], ["three", "one"], ["four", "one"]]),
+      incorporated: { mid1: "one", mid2: "one", mid3: "one" },
       ...extra,
     });
 
   it("offers a land two hops away", () => {
-    expect(marchTargetsFrom(chain(), "one", "one")).toContain("three");
+    expect(marchTargetsFrom(chain(), "one", "one")).toContain("far2");
   });
 
   it("counts the bound inclusively - three hops is a march, four is not", () => {
-    expect(marchTargetsFrom(chain(), "one", "one")).toContain("four");
-    expect(marchTargetsFrom(chain(), "one", "one")).not.toContain("five");
-    // And `five` is refused for the distance alone: it is in reach, and an
+    expect(marchTargetsFrom(chain(), "one", "one")).toContain("far3");
+    expect(marchTargetsFrom(chain(), "one", "one")).not.toContain("far4");
+    // And `far4` is refused for the distance alone: it is in reach, and an
     // army standing next door may still be aimed at it.
-    expect(attackReach(chain(), "one")).toContain("five");
-    expect(marchTargetsFrom(chain(), "one", "four")).toContain("five");
+    expect(borderPolygonsOf(chain(), "one")).toContain("far4");
+    expect(marchTargetsFrom(chain(), "one", "mid3")).toContain("far4");
   });
 
   it("is one question, so the source list and the target list agree", () => {
     // `marchSourcesAgainst` is the other door into the same decision - the
     // target-first flow - and a land it refuses is a land the aim would offer
     // and the play then reject.
-    expect(marchSourcesAgainst(chain(), "one", "four")).toContain("one");
-    expect(marchSourcesAgainst(chain(), "one", "five")).not.toContain("one");
-    expect(marchHopsTo(chain(), "one", "four")).toBe(3);
-    expect(marchHopsTo(chain(), "one", "five")).toBeNull();
+    expect(marchSourcesAgainst(chain(), "one", "far3")).toContain("one");
+    expect(marchSourcesAgainst(chain(), "one", "far4")).not.toContain("one");
+    expect(marchHopsTo(chain(), "one", "far3")).toBe(3);
+    expect(marchHopsTo(chain(), "one", "far4")).toBeNull();
     // No land marches at itself, whatever the graph says about the distance.
     expect(marchHopsTo(chain(), "one", "one")).toBeNull();
   });
 
   it("does not call a distant target armyless when a source can reach it", () => {
-    // Every vassal's army is already out, so `one` is the realm's only source
-    // and the far end of the chain is three hops from it. The per-target block
-    // reason is the third door into the same decision, and a land the aim
-    // offers must not be a land the hover calls armyless.
-    const v = chain({ armies: { two: 0, three: 0, four: 0 } });
+    // Every spine land's army is already out, so `one` is the realm's only
+    // source and far3 is three hops from it. The per-target block reason is
+    // the third door into the same decision, and a land the aim offers must
+    // not be a land the hover calls armyless.
+    const v = chain({ armies: { mid1: 0, mid2: 0, mid3: 0 } });
     expect(marchSourcesFor(v, "one")).toEqual(["one"]);
-    const four = targetEligibilityFor(v, "one", "raid")
-      .find((e) => e.factionId === "four")!;
-    expect(four).toEqual({ state: "available", factionId: "four" });
+    const far3 = targetEligibilityFor(v, "one", "raid")
+      .find((e) => e.factionId === "far3")!;
+    expect(far3).toEqual({ state: "available", factionId: "far3" });
   });
 
   it("still refuses a peer of the actor's own realm, however close", () => {
@@ -323,11 +319,11 @@ describe("a march reaches past the border", () => {
         ["beta", "alpha"], ["gamma", "beta"], ["delta", "alpha"],
       ]),
     });
-    expect(attackReach(v, "beta")).toContain("delta");
+    expect(borderPolygonsOf(v, "beta")).toContain("delta");
     expect(marchHopsTo(v, "beta", "delta")).toBe(2);
     expect(marchTargetsFrom(v, "beta", "beta")).not.toContain("delta");
-    // Its own vassal, one hop off, is still fair game - downward is upkeep.
-    expect(marchTargetsFrom(v, "beta", "beta")).toContain("gamma");
+    // And its own vassal one hop off is refused by the same rule.
+    expect(marchTargetsFrom(v, "beta", "beta")).not.toContain("gamma");
   });
 });
 
@@ -427,13 +423,18 @@ describe("subjugate eligibility", () => {
   });
 
   it("refuses the actor's own vassal as already held", () => {
+    // Subjugate is not hostile, so it still SEES its lord's own vassal and
+    // says why it will not take it twice - unlike a raid, which no longer
+    // reaches down the chain at all.
     const v = view({
       overlords: new Map([["beta", "alpha"]]),
       defense: { beta: 0 },
     });
-    expect(targetEligibilityFor(v, "alpha", "subjugate")).toContainEqual({
-      state: "blocked", factionId: "beta", reasons: [{ code: "already-vassal" }],
-    });
+    const beta = targetEligibilityFor(v, "alpha", "subjugate")
+      .find((e) => e.factionId === "beta")!;
+    expect(beta.state).toBe("blocked");
+    expect(beta.state === "blocked" && beta.reasons)
+      .toContainEqual({ code: "already-vassal" });
   });
 
   it("allows poaching another lord's vassal through an open gate", () => {
@@ -769,12 +770,14 @@ describe("cardBlockReason", () => {
     });
     expect(cardBlockReason(vassal, "beta", "plague"))
       .toEqual({ code: "no-disease" });
-    // Downward is upkeep, and a plague on your own vassal burns.
+    // Its own vassal reads the same way: downward is refused by the same rule
+    // that refuses upward, so a stack laid there is a stack the play skips.
     const lord = view({
       overlords: new Map([["gamma", "beta"]]),
       disease: { gamma: { beta: 2 } },
     });
-    expect(cardBlockReason(lord, "beta", "plague")).toBeNull();
+    expect(cardBlockReason(lord, "beta", "plague"))
+      .toEqual({ code: "no-disease" });
   });
 
   it("foul winds counts only the stacks the winds may actually reach", () => {
@@ -791,19 +794,18 @@ describe("cardBlockReason", () => {
       .toEqual({ code: "no-disease" });
   });
 
-  it("great raid stays legal when the only target left is the actor's vassal", () => {
+  it("great raid is no-target when the only land left is the actor's vassal", () => {
     // The whole map under alpha, with beta held as a vassal rather than
-    // annexed: nothing borders the realm, and the one thing alpha may still
-    // strike is its own vassal - which is how the gate is held shut.
+    // annexed: nothing borders the realm, and a lord may not aim down its own
+    // chain - so there is nothing to fan at.
     const v = view({
       overlords: new Map([["beta", "alpha"]]),
       incorporated: { gamma: "alpha", delta: "alpha" },
     });
-    expect(attackReach(v, "alpha")).toEqual(new Set(["beta"]));
-    expect(greatRaidMarches(v, "alpha", "beta").length).toBeGreaterThan(0);
-    expect(cardBlockReason(v, "alpha", "great-raid")).toBeNull();
+    expect(cardBlockReason(v, "alpha", "great-raid"))
+      .toEqual({ code: "no-target" });
     // The single raid already reads this reach; the two must agree.
-    expect(cardBlockReason(v, "alpha", "raid")).toBeNull();
+    expect(cardBlockReason(v, "alpha", "raid")).toEqual({ code: "no-target" });
   });
 
   it("subjugate is no-target while every gate in reach is shut", () => {
@@ -1143,13 +1145,14 @@ describe("a hostile card may never be aimed at your own realm's peers", () => {
     expect(validTargetsFor(siblings(), "gamma", "raid")).not.toContain("delta");
   });
 
-  it("leaves DOWNWARD alone - holding your own vassals down is upkeep", () => {
-    // A lord keeps its own vassals in reach, which is what holds them under
-    // the independence gate. Closing this would end vassalage as a decision.
+  it("refuses DOWNWARD too - a bloc does not fight itself in any direction", () => {
+    // Beating your own vassal down was upkeep only while a healed vassal
+    // could walk out. It cannot, so the rule that already refused up and
+    // sideways refuses down as well, and only your own ground is left.
     const v = pyramid();
-    expect(validTargetsFor(v, "alpha", "raid")).toContain("beta");
-    expect(validTargetsFor(v, "alpha", "raid")).toContain("gamma");
-    expect(validTargetsFor(v, "beta", "raid")).toContain("gamma");
+    expect(validTargetsFor(v, "alpha", "raid")).not.toContain("beta");
+    expect(validTargetsFor(v, "alpha", "raid")).not.toContain("gamma");
+    expect(validTargetsFor(v, "beta", "raid")).not.toContain("gamma");
   });
 
   it("leaves a stranger alone - the rule is the realm, not a truce", () => {

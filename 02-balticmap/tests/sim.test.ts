@@ -221,7 +221,6 @@ describe("summarize", () => {
           { turn: 4, playerId: 2, type: "subjugated", targetFactionId: HUMAN, overlordFactionId: "a" },
           { turn: 8, playerId: 3, type: "released", targetFactionId: HUMAN, overlordFactionId: "a" },
           { turn: 10, playerId: 2, type: "subjugated", targetFactionId: HUMAN, overlordFactionId: "b" },
-          { turn: 14, playerId: 1, type: "independence", targetFactionId: HUMAN, overlordFactionId: "b" },
         ],
         "playing",
       ),
@@ -229,7 +228,6 @@ describe("summarize", () => {
       HUMAN,
     );
     expect(s.releasedCount).toBe(1);
-    expect(s.independenceCount).toBe(1);
     expect(s.defeatTurn).toBeNull();
     expect(s.outcome).toBe("cap");
   });
@@ -261,7 +259,7 @@ describe("aggregation", () => {
   const game = (over: Partial<GameSummary>): GameSummary => ({
     seed: 1, humanFaction: HUMAN, outcome: "defeat", firstSubjugatedTurn: 10,
     firstOverlord: "a", subjugatedCount: 1, releasedCount: 0,
-    independenceCount: 0, defeatTurn: 20, conqueror: "a", turns: 20,
+    defeatTurn: 20, conqueror: "a", turns: 20,
     finalRealmSize: 10, ...over,
   });
 
@@ -285,13 +283,12 @@ describe("aggregation", () => {
     expect(stats.capShare).toBeCloseTo(1 / 3);
   });
 
-  it("means the escape counters, independence included", () => {
+  it("means the release counter", () => {
     const stats = aggregate("x", [
-      game({ releasedCount: 1, independenceCount: 2 }),
-      game({ releasedCount: 0, independenceCount: 0 }),
+      game({ releasedCount: 1 }),
+      game({ releasedCount: 0 }),
     ]);
     expect(stats.meanReleases).toBe(0.5);
-    expect(stats.meanIndependences).toBe(1);
   });
 
   it("pairs on seed and land, and flags one-sided subjugations", () => {
@@ -351,7 +348,6 @@ describe("runWorld", () => {
       expect(tenure).toBeGreaterThanOrEqual(0);
     }
     expect(w.defenseHealed).toBeGreaterThanOrEqual(0);
-    expect(w.independences).toBeGreaterThanOrEqual(0);
   });
 
   it("names the winner when the world resolves", () => {
@@ -373,7 +369,7 @@ describe("runWorld", () => {
 describe("aggregateWorld", () => {
   const world = (over: Partial<WorldSummary>): WorldSummary => ({
     seed: 1, outcome: "unified", endTurn: 10, winner: "a", subjugations: 3,
-    incorporations: 2, independences: 0, largestRealm: 15,
+    incorporations: 2, largestRealm: 15,
     turnsSinceLastIncorporation: 0, playsByCard: {}, harvestPicksByCard: {},
     harvestsSkipped: 0, targetedPlays: 0, firstLegalTargetPlays: 0,
     preventedAssassinations: 0, untestedGuards: 0, damageDealt: 0,
@@ -416,6 +412,5 @@ describe("aggregateWorld", () => {
     expect(stats.meanDefenseHealed).toBe(200);
     expect(stats.medianVassalTenure).toBe(4);
     expect(stats.meanVassalTenure).toBe(4);
-    expect(stats.meanIndependences).toBe(0);
   });
 });

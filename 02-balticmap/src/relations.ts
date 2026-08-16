@@ -70,7 +70,7 @@ export function realmRootOf(
 
 /** A land no realm holds: nobody's vassal and nobody's annexation. What the
  *  grey fill asks, together with the land being quiet - an unheld land that
- *  plays its own turns is simply a rival at full independence. */
+ *  plays its own turns is simply a rival. */
 export function isUnheld(
   factionId: string,
   overlords: Overlords,

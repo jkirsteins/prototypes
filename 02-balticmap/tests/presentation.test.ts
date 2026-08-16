@@ -637,10 +637,10 @@ describe("involvesLocalSeats", () => {
   });
 
   it("tells the lord that lost a vassal, whose land is no longer theirs", () => {
-    // After the escape the vassal is out of the realm, so the land it names
-    // is not the end that matters - the lord it left is.
+    // The freed land is out of the realm, so the land it names is not the end
+    // that matters - the lord it left is.
     const e: GameEvent = {
-      turn: 6, playerId: 4, type: "independence",
+      turn: 6, playerId: 4, type: "released",
       targetFactionId: "delta", overlordFactionId: "beta",
     };
     const beats = mapBeats(presentEvents([e], ctxFor([e])));

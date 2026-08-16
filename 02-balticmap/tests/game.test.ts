@@ -13,9 +13,9 @@ import { hasRuler, vacateRulers } from "../src/rulers";
 import { DEFAULT_RULES } from "../src/rules";
 import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
-  DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
+  DEFAULT_DEFENSE_MAX, LAND_GROWTH, SUBJUGATION_GATE,
   FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL, STRONG_BONUS,
-  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, independenceGateOpen, turnipThresholdFor,
+  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, turnipThresholdFor,
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import {
@@ -57,10 +57,8 @@ const FIXTURE_MAX = 60;
 const maxes = (ids: string[]): Record<string, number> =>
   Object.fromEntries(ids.map((id) => [id, FIXTURE_MAX]));
 
-/** The one gate arithmetic the fixtures lean on, spelled out once: a 60
- *  polygon opens to Subjugate at 15 and crosses back to freedom at 45. */
+/** The one gate arithmetic the fixtures lean on, spelled out once. */
 const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
-const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
 
 /** Grow turnips plays a FIXTURE_MAX land owes before a harvest - the same
  *  derivation `turnipThresholdOn` runs against the real ceiling, so a fixture
@@ -340,9 +338,9 @@ describe("beginTurn", () => {
   });
 });
 
-describe("the independence gate at turn start", () => {
+describe("a vassal at its own turn start", () => {
   /** Human beta a vassal of alpha, with tribute cards salted into the piles
-   *  so the strip has something real to remove. */
+   *  so a strip would have something real to remove. */
   function vassalState(defense: Record<string, number>): GameState {
     const g = playingState();
     return {
@@ -361,33 +359,25 @@ describe("the independence gate at turn start", () => {
     };
   }
 
-  it("frees a vassal whose home defense reached the 75% line, with respite and tribute strip", () => {
-    // An absent defense key means pristine, which is comfortably above the line.
+  it("stays a vassal however healthy it is, and keeps its tribute", () => {
+    // An absent defense key means pristine - the healthiest a land can be,
+    // and once the whole of a threshold it could have walked out through.
     const g = vassalState({});
     const before = g.log.length;
     const after = beginTurn(g, seededRng(2));
-    expect(after.overlords.has("beta")).toBe(false);
-    expect(after.respites.beta).toBe(g.turn + ESCAPE_RESPITE_TURNS);
-    expect(pilesOf(after, "beta").filter(isTributeCard)).toHaveLength(0);
-    expect(fresh(after, before)[0]).toMatchObject({
-      type: "independence", playerId: 1,
-      targetFactionId: "beta", overlordFactionId: "alpha",
-    });
+    expect(after.overlords.get("beta")).toBe("alpha");
+    expect(after.respites.beta).toBeUndefined();
+    expect(pilesOf(after, "beta").filter(isTributeCard).length)
+      .toBeGreaterThan(0);
+    // Nothing about allegiance happened at all: no line names beta leaving.
+    expect(fresh(after, before).some((e) => e.type === "released")).toBe(false);
   });
 
-  it("fires at exactly the line, and not one point below it", () => {
-    const at = beginTurn(
-      vassalState({ beta: INDEPENDENCE_LINE }), seededRng(2),
+  it("stays a vassal at full defense too", () => {
+    const after = beginTurn(
+      vassalState({ beta: FIXTURE_MAX }), seededRng(2),
     );
-    expect(at.overlords.has("beta")).toBe(false);
-
-    const below = beginTurn(
-      vassalState({ beta: INDEPENDENCE_LINE - 1 }), seededRng(2),
-    );
-    expect(below.overlords.get("beta")).toBe("alpha");
-    expect(below.log.some((e) => e.type === "independence")).toBe(false);
-    expect(pilesOf(below, "beta").filter(isTributeCard).length)
-      .toBeGreaterThan(0);
+    expect(after.overlords.get("beta")).toBe("alpha");
   });
 });
 
@@ -586,14 +576,11 @@ describe("raid", () => {
     expect(Object.values(far.marches)[0]).toMatchObject({
       from: "beta", to: "delta", expiry: g.turn + 2,
     });
-    // beta is held UNDER the independence gate, or its own turn start frees it
-    // and the fixture quietly tests a faction that answers to nobody.
     const sibling: GameState = {
       ...far,
       overlords: new Map([
         ["gamma", "beta"], ["beta", "alpha"], ["delta", "alpha"],
       ]),
-      defense: { ...far.defense, beta: INDEPENDENCE_LINE - 1 },
     };
     const walking = far.log.length;
     const midway = landMarches(sibling);
@@ -675,13 +662,12 @@ describe("raid", () => {
     expect(dead.marches).toEqual({});
   });
 
-  it("may target the actor's own vassal - vassalage is upkeep", () => {
+  it("may NOT target the actor's own vassal - a bloc does not fight itself", () => {
     let g = playingState();
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
-    const after = landMarches(playCard(g, 0, rng(), "gamma"));
-    expect(after.defense.gamma).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
-    expect(after.overlords.get("gamma")).toBe("beta"); // fealty untouched
+    const after = playCard(g, 0, rng(), "gamma");
+    expect(after).toBe(g); // refused outright, no arrow declared
   });
 
   it("holds the source's army until the march lands", () => {
@@ -3213,13 +3199,12 @@ describe("the defense transfer", () => {
     // Deterministic - no rng - so an AI seat's conquest replays identically.
     const g = { ...playingSix(), defense: { alpha: 0, beta: 41 } };
     expect(autoTransfer(g, "beta", "alpha")).toBe(20);
-    // And never past the destination's own independence line. That cap sits
-    // under the destination's ceiling at every gate share below 1, so it is
-    // the clamp that binds here and the room clamp never gets to speak.
-    const near = { ...g, defense: { alpha: INDEPENDENCE_LINE - 3, beta: 41 } };
-    expect(autoTransfer(near, "beta", "alpha")).toBe(2);
-    const already = { ...g, defense: { alpha: INDEPENDENCE_LINE, beta: 41 } };
-    expect(autoTransfer(already, "beta", "alpha")).toBe(0);
+    // A plain half, and the only thing that trims it is the room the
+    // destination has left. Nothing caps a garrison for the taker's own good
+    // any more: a vassal never leaves, so there is nothing to arm.
+    const full = g.defenseMax.alpha;
+    const nearlyFull = { ...g, defense: { alpha: full - 5, beta: 41 } };
+    expect(autoTransfer(nearlyFull, "beta", "alpha")).toBe(5);
   });
 
   it("moves it on the spot for an AI capture, with no question left over", () => {
@@ -3248,12 +3233,11 @@ describe("the defense transfer", () => {
     expect(after.defense[target]).toBe(20);
   });
 
-  it("leaves an AI's new vassal below its own independence gate", () => {
+  it("garrisons a small new vassal up to the room it has, and no further", () => {
     // A small polygon is where the automatic half bites: half of a healthy
-    // raider is more than a 2-defense land's whole gate, so the garrison the
-    // taker is forced to send would win the land its freedom at its very
-    // first turn start. Asserted against `independenceGateOpen` rather than
-    // against a number, so the threshold can move without rotting this.
+    // raider is more than a 2-defense land can hold. The room clamp is the
+    // only thing that speaks now, and it fills the land rather than leaving
+    // it deliberately soft.
     const base = playingSix();
     const raider = base.factionIds.find(
       (f) => f !== "beta" && hasRuler(base.rulers, f),
@@ -3273,11 +3257,9 @@ describe("the defense transfer", () => {
     };
     const after = beginTurn(g, rng());
     expect(after.overlords.get(target)).toBe(raider);
-    const view = { defense: after.defense, defenseMax: after.defenseMax };
-    expect(independenceGateOpen(view, target)).toBe(false);
-    // And it is a garrison rather than nothing: the cap trims the transfer,
-    // it does not refuse it.
-    expect(after.defense[target]).toBe(1);
+    // An absent key is a pristine land: the garrison filled it, so the store
+    // drops the entry rather than writing the ceiling back.
+    expect(after.defense[target]).toBeUndefined();
   });
 
   it("asks EVERY person, not only the seat the phase speaks for", () => {
@@ -3584,7 +3566,7 @@ describe("a status that does something says so", () => {
     });
   });
 
-  it("a land subjugated on the table wakes up too", () => {
+  it("a land subjugated on the table is seated, and fights when its lord does", () => {
     // This still passes with landSubjugation's seatRuler call deleted: the
     // no-successor branch runs replaceRuler on "alpha" immediately above,
     // which always seats a successor, so the chair this asserts against is
@@ -3600,7 +3582,14 @@ describe("a status that does something says so", () => {
       withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
     );
     expect(hasRuler(after.rulers, "alpha")).toBe(true);
-    expect(takesNoTurn(after, "alpha")).toBe(false);
+    // Seated, but a vassal fights its lord's fights and nothing else: it sits
+    // out an unscoped round and takes a turn once its new lord is duelling.
+    expect(takesNoTurn(after, "alpha")).toBe(true);
+    const duel: GameState = {
+      ...after,
+      gauntlet: { kind: "duel", enemy: "delta", until: after.turn + 5 },
+    };
+    expect(takesNoTurn(duel, "alpha")).toBe(false);
   });
 
   it("leaves a passive-taken land's arrow flying when it is aimed at its new lord", () => {
@@ -3631,13 +3620,10 @@ describe("a status that does something says so", () => {
 });
 
 describe("the hostile keyword, past the targeting pass", () => {
-  /** beta (the human) with alpha as its brand-new overlord - and held UNDER
-   *  its independence gate, or the turn-start clock frees it before any of
-   *  this is asked and the fixture quietly tests a free faction. */
+  /** beta (the human) with alpha as its brand-new overlord. */
   const underAlpha = (g: GameState): GameState => ({
     ...g,
     overlords: new Map([["beta", "alpha"]]),
-    defense: { ...g.defense, beta: INDEPENDENCE_LINE - 1 },
   });
 
   it("lapses an arrow already in flight when its target becomes your lord", () => {

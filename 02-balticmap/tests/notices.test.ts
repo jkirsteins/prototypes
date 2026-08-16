@@ -10,7 +10,7 @@ import type { GameEvent, GameEventType } from "../src/game";
 // here, so anything left off is exactly what goes unguarded.
 const ALL_TYPES: GameEventType[] = [
   "draw", "play", "reshuffle", "discard",
-  "subjugated", "released", "incorporated", "independence", "tribute",
+  "subjugated", "released", "incorporated", "tribute",
   "settled",
   "healed", "disease-spread", "plagued", "winds-shifted",
   "march-resolved", "march-lapsed",
@@ -105,7 +105,7 @@ describe("NOTICE_RULES registry", () => {
     // `march-resolved` and `plagued` fire only when the hit left the home gate
     // open. The order is ALL_TYPES' order, not the registry's.
     expect(critical).toEqual([
-      "play", "subjugated", "released", "independence", "plagued",
+      "play", "subjugated", "released", "plagued",
       "march-resolved",
       "harvest-earned",
     ]);
@@ -475,7 +475,7 @@ describe("the assassination modal", () => {
   });
 });
 
-describe("subjugation, release and independence roles", () => {
+describe("subjugation and release roles", () => {
   beforeEach(resetCtx);
 
   it("builds a fealty line when a rival subjugates the human", () => {
@@ -635,54 +635,6 @@ describe("subjugation, release and independence roles", () => {
     expect(s.footnotes).toEqual([]);
   });
 
-  describe("the independence gate", () => {
-    /** Fired from beginTurn at the freed seat's own turn start, so the event's
-     *  playerId is the freed seat ITSELF - the human's own freeing must not be
-     *  swallowed as "their own act": they played nothing. */
-    it("interrupts the human's own freeing despite carrying their playerId", () => {
-      const e = ev({
-        type: "independence", playerId: 1,
-        targetFactionId: "livs", overlordFactionId: "jersika",
-      });
-      const s = oneSummary(e)!;
-      expect(lineText(s)).toBe(
-        "Your home defenses recovered - you are free of Jersikans, " +
-          "and none may subjugate you until turn 5",
-      );
-      expect(s.lines[0].tone).toBe("good");
-      expect(footnoteTexts(s)).toEqual([
-        "Pay tribute was removed from your deck, hand and discard.",
-      ]);
-      const rule = NOTICE_RULES.independence;
-      if (rule.kind !== "modal") throw new Error("independence must be modal");
-      expect(rule.critical!(e, ctx)).toBe("You are free");
-    });
-
-    it("warns the lord whose vassal walked, with the upkeep footnote", () => {
-      const e = ev({
-        type: "independence", playerId: 4,
-        targetFactionId: "curonia", overlordFactionId: "livs",
-      });
-      const s = oneSummary(e)!;
-      expect(lineText(s)).toBe(
-        "The defenses of Curonians recovered - they leave your service, " +
-          "and none may subjugate them until turn 5",
-      );
-      expect(s.lines[0].tone).toBe("bad");
-      expect(footnoteTexts(s).join(" ")).toMatch(/three quarters/);
-      const rule = NOTICE_RULES.independence;
-      if (rule.kind !== "modal") throw new Error("independence must be modal");
-      expect(resolveTitle(rule.critical!(e, ctx)!, 1)).toBe("A vassal was lost");
-    });
-
-    it("says nothing about a rival's vassal freeing itself from a rival", () => {
-      expect(oneSummary(ev({
-        type: "independence", playerId: 4,
-        targetFactionId: "curonia", overlordFactionId: "latgale",
-      }))).toBeNull();
-    });
-  });
-
   describe("critical titles pierce a muted popup", () => {
     it("marks only the human's own subjugation 'You were subjugated'", () => {
       const rule = NOTICE_RULES.subjugated;
@@ -714,16 +666,16 @@ describe("subjugation, release and independence roles", () => {
 
     /** The bug the family mechanism exists for. `critical` sees one event at a
      *  time, so its heading cannot know how many of its kind the round holds -
-     *  and a poach and an independence are not even the same rule. Two vassals
-     *  left the realm; the heading must not say one. */
-    it("counts a poached vassal and a freed one as two losses in the heading", () => {
+     *  and a poach and a release are not even the same rule. Two vassals left
+     *  the realm; the heading must not say one. */
+    it("counts a poached vassal and a released one as two losses in the heading", () => {
       const events: GameEvent[] = [
         ev({
           type: "subjugated", playerId: 3, targetFactionId: "curonia",
           overlordFactionId: "latgale", formerOverlordFactionId: "livs",
         }),
         ev({
-          type: "independence", playerId: 2,
+          type: "released", playerId: 2,
           targetFactionId: "jersika", overlordFactionId: "livs",
         }),
       ];
@@ -734,7 +686,7 @@ describe("subjugation, release and independence roles", () => {
 
     it("keeps the singular heading when exactly one vassal is lost", () => {
       const one = ev({
-        type: "independence", playerId: 4,
+        type: "released", playerId: 4,
         targetFactionId: "curonia", overlordFactionId: "livs",
       });
       expect(buildRoundSummary([one], ctx, { criticalOnly: true })!.title)
@@ -750,7 +702,7 @@ describe("subjugation, release and independence roles", () => {
           overlordFactionId: "latgale", formerOverlordFactionId: "livs",
         }),
         ev({
-          type: "independence", playerId: 2,
+          type: "released", playerId: 2,
           targetFactionId: "jersika", overlordFactionId: "livs",
         }),
         ev({
@@ -766,7 +718,7 @@ describe("subjugation, release and independence roles", () => {
      *  heading is the standing the player wakes up in, so the LAST one wins. */
     it("titles a muted round after where the player ended, not where they passed through", () => {
       const freed = ev({
-        type: "independence", playerId: 1,
+        type: "released", playerId: 2,
         targetFactionId: "livs", overlordFactionId: "jersika",
       });
       const taken = ev({
@@ -775,7 +727,7 @@ describe("subjugation, release and independence roles", () => {
       expect(buildRoundSummary([freed, taken], ctx, { criticalOnly: true })!.title)
         .toBe("You were subjugated");
       expect(buildRoundSummary([taken, freed], ctx, { criticalOnly: true })!.title)
-        .toBe("You are free");
+        .toBe("Your overlord fell");
     });
 
     /** Being subjugated frees your whole realm in the same breath. This once

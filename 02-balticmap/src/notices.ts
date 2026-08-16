@@ -71,9 +71,9 @@ export type NoticeRule =
        *  play on without knowing. Three kinds qualify:
        *
        *  - What the player IS. Subjugation walls off their own plays and
-       *    forces tribute into their deck; independence and release take both
-       *    back. A muted player never told either way discovers it by
-       *    noticing their cards have stopped working.
+       *    forces tribute into their deck; a release takes both back. A muted
+       *    player never told either way discovers it by noticing their cards
+       *    have stopped working.
        *  - What the player STANDS ON. Their home gate falling open means any
        *    rival in reach can take them on its next turn - playing on without
        *    knowing that is playing a different game. A card entering their
@@ -101,8 +101,8 @@ export function resolveTitle(title: CriticalTitle, n: number): string {
   return typeof title === "string" ? title : plural(n, title.one, title.many(n));
 }
 
-/** The ways a vassal leaves you - the independence gate, poached, released
- *  when its lord fell - are one heading, because they are one loss to the
+/** The ways a vassal leaves you - poached, or released when the lord it
+ *  answered to fell - are one heading, because they are one loss to the
  *  player and the line underneath already says which it was. */
 const VASSAL_LOST: CriticalTitle = {
   family: "vassal-lost",
@@ -117,7 +117,7 @@ const VASSAL_LOST: CriticalTitle = {
 export type HumanRole = "self" | "lord";
 
 function humanRoleIn(e: GameEvent, ctx: NoticeCtx, localPlayerId = 1): HumanRole | null {
-  if (e.playerId === localPlayerId && e.type !== "independence") return null;
+  if (e.playerId === localPlayerId) return null;
   if (e.targetFactionId === ctx.humanFactionId) return "self";
   // `subjugated` names the incumbent lord in `formerOverlordFactionId`, so it
   // must be read there.
@@ -133,7 +133,7 @@ function humanRoleIn(e: GameEvent, ctx: NoticeCtx, localPlayerId = 1): HumanRole
 export type NoticeRole = HumanRole | "actor";
 
 function noticeRoleOf(e: GameEvent, ctx: NoticeCtx, localPlayerId = 1): NoticeRole {
-  return e.playerId === localPlayerId && e.type !== "independence"
+  return e.playerId === localPlayerId
     ? "actor"
     : humanRoleIn(e, ctx, localPlayerId) ?? "self";
 }
@@ -341,37 +341,6 @@ function subjugatedLines(
     ],
     changes: changesFor(i, changes),
     tone: "bad",
-  }));
-}
-
-function independenceLines(
-  events: GameEvent[],
-  _changes: StandingChange[][],
-  _ctx: NoticeCtx,
-  role: HumanRole,
-): SummaryLine[] {
-  if (role === "lord") {
-    return events.map((e) => ({
-      text: [
-        t("The defenses of "), faction(e.targetFactionId ?? ""),
-        t(" recovered - they leave your service, and none may subjugate "),
-        t("them "), t(untilTurn(e.turn + ESCAPE_RESPITE_TURNS)),
-      ],
-      changes: [],
-      tone: "bad" as const,
-    }));
-  }
-  return events.map((e) => ({
-    text: [
-      t("Your home defenses recovered - you are free of "),
-      ...(e.overlordFactionId !== undefined
-        ? [faction(e.overlordFactionId)]
-        : [t("your overlord")]),
-      t(", and none may subjugate you "),
-      t(untilTurn(e.turn + ESCAPE_RESPITE_TURNS)),
-    ],
-    changes: [],
-    tone: "good" as const,
   }));
 }
 
@@ -653,33 +622,6 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       return role === "self" ? [RELEASE_FOOTNOTE()] : [];
     },
   },
-  independence: {
-    kind: "modal",
-    // Fired from `beginTurn` at the freed vassal's own turn start - a clock
-    // tick, not a play, so the human's own freeing carries their playerId
-    // and must NOT be swallowed as "their own act": they played nothing.
-    // `humanRoleIn` special-cases this type for exactly that reason.
-    appliesToHuman: (e, ctx, localPlayerId = 1) =>
-      humanRoleIn(e, ctx, localPlayerId) !== null,
-    // Both directions of the subjugation critical, run backwards: what the
-    // player IS (free again - tribute cards leave the deck), or what they
-    // HELD (a vassal walked).
-    critical: (e, ctx, localPlayerId = 1) =>
-      humanRoleIn(e, ctx, localPlayerId) === "self" ? "You are free" : VASSAL_LOST,
-    lines: (events, changes, ctx, localPlayerId = 1) =>
-      independenceLines(
-        events, changes, ctx, humanRoleIn(events[0], ctx, localPlayerId) ?? "self",
-      ),
-    footnotes: (events, ctx, localPlayerId = 1) => {
-      const role = humanRoleIn(events[0], ctx, localPlayerId) ?? "self";
-      return role === "self"
-        ? [RELEASE_FOOTNOTE()]
-        : [[
-            t("A vassal whose home defenses climb back to three quarters "),
-            t("frees itself. Keep them beaten down, or let them go."),
-          ]];
-    },
-  },
   incorporated: {
     kind: "silent",
     reason: "human target always co-occurs with defeat; postmortem covers it",
@@ -724,10 +666,10 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   "duel-won": {
     kind: "modal",
     // The local seat's own spoils and nobody else's. Not gated on
-    // `e.playerId !== localPlayerId` the way the damage rules are, for the
-    // reason `independence` is not: the player pressed nothing at this moment
-    // - the duel retired itself at a round wrap - so this is news to them even
-    // though the event carries their own id.
+    // `e.playerId !== localPlayerId` the way the damage rules are: the player
+    // pressed nothing at this moment - the duel retired itself at a round
+    // wrap - so this is news to them even though the event carries their own
+    // id.
     appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
     lines: (events, changes, _ctx) =>
       events.map((e, i) => ({

@@ -81,7 +81,7 @@ describe("explainTargetEligibility", () => {
       reasons: [{ code: "respite", expiresTurn: 7 }],
     }], nameOf, noRisk)[0]?.lines).toEqual([
       "Beta",
-      "Escaped vassalage recently; cannot be subjugated until turn 7.",
+      "Released from vassalage recently; cannot be subjugated until turn 7.",
     ]);
   });
 
@@ -546,7 +546,7 @@ describe("targetImpactLines", () => {
       respites: { gamma: 7 }, turn: 5,
     });
     expect(targetImpactLines(view, "alpha", "subjugate", "gamma")).toEqual([
-      { text: "Escaped vassalage recently; cannot be subjugated until turn 7.", tone: "bad" },
+      { text: "Released from vassalage recently; cannot be subjugated until turn 7.", tone: "bad" },
     ]);
   });
 
@@ -579,17 +579,17 @@ describe("targetImpactLines", () => {
     }
   });
 
-  it("a lord may raid its own vassal - the aim previews rather than refusing", () => {
+  it("a lord may not raid its own vassal - the aim says out of reach", () => {
     const view = v({ overlords: new Map([["beta", "alpha"]]) });
     expect(shown(targetImpactLines(view, "alpha", "raid", "beta")))
-      .toEqual(["If Raid played here:", "up to -30 Defense (60 -> 30)"]);
+      .toEqual(["Out of reach."]);
   });
 });
 
 describe("defenseBreakdown", () => {
   it("quotes the standing defense over its max and the gate line", () => {
     const view = v({ defense: { beta: 48 } });
-    expect(defenseBreakdown(view, "beta", false)).toEqual([
+    expect(defenseBreakdown(view, "beta")).toEqual([
       { text: "Defenses", blockStart: true },
       { amount: "48/60", text: "standing" },
       { amount: "0", text: "or less opens subjugation" },
@@ -598,29 +598,27 @@ describe("defenseBreakdown", () => {
 
   it("shouts when the gate stands open", () => {
     const view = v({ defense: { beta: 0 } });
-    expect(defenseBreakdown(view, "beta", false)[1]).toEqual({
+    expect(defenseBreakdown(view, "beta")[1]).toEqual({
       amount: "0/60", text: "standing - the gate is OPEN", tone: "bad",
     });
   });
 
-  it("adds the independence line only on a vassal's home", () => {
-    const view = v({ defense: { beta: 300 } });
-    const asVassal = defenseBreakdown(view, "beta", true);
-    expect(asVassal[3]).toEqual({
-      amount: "45", text: "or more regains independence at their turn",
+  it("prints one gate line and no other, on a vassal's home like anywhere", () => {
+    // Only the subjugation line is a threshold a rule is decided at, so it is
+    // the only number here - the badge's other two bands are how hurt a land
+    // looks, not a promise about anything.
+    const view = v({
+      defense: { beta: 300 }, overlords: new Map([["beta", "alpha"]]),
     });
-    expect(defenseBreakdown(view, "beta", false)).toHaveLength(3);
+    expect(defenseBreakdown(view, "beta")).toHaveLength(3);
   });
 
   it("reads the polygon's own max, not the default", () => {
-    // The independence line is a share of the ceiling and moves with it; the
-    // subjugation line is a share of zero and does not.
     const view = v({ defenseMax: { beta: 200 }, defense: { beta: 50 } });
-    expect(defenseBreakdown(view, "beta", true)).toEqual([
+    expect(defenseBreakdown(view, "beta")).toEqual([
       { text: "Defenses", blockStart: true },
       { amount: "50/200", text: "standing" },
       { amount: "0", text: "or less opens subjugation" },
-      { amount: "150", text: "or more regains independence at their turn" },
     ]);
   });
 });
@@ -741,7 +739,7 @@ describe("respiteLines", () => {
     // The gate is open - beta could be taken - but the respite outranks it.
     const view = v({ defense: { beta: 100 }, respites: { beta: 6 }, turn: 4 });
     expect(targetImpactLines(view, "alpha", "subjugate", "beta")).toEqual([
-      { text: "Escaped vassalage recently; cannot be subjugated until turn 6.",
+      { text: "Released from vassalage recently; cannot be subjugated until turn 6.",
         tone: "bad" },
     ]);
   });

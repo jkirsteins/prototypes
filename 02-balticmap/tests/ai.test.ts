@@ -6,7 +6,7 @@ import {
 } from "../src/game";
 import { CARDS, type Strategy } from "../src/cards";
 import {
-  HILLFORT_HEAL, INDEPENDENCE_GATE, PLAGUE_DAMAGE_PER_STACK,
+  PLAGUE_DAMAGE_PER_STACK,
   SUBJUGATION_GATE, WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import { DEFAULT_RULES } from "../src/rules";
@@ -24,10 +24,12 @@ const FACTIONS = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
 const FIXTURE_MAX = 60;
 const MAXES = Object.fromEntries(FACTIONS.map((id) => [id, FIXTURE_MAX]));
 
-/** The two gate lines of a FIXTURE_MAX polygon, spelled once: it opens to
- *  Subjugate at 15 and crosses back to freedom at 45. */
+/** The gate line of a FIXTURE_MAX polygon, spelled once: it opens to
+ *  Subjugate at 0. */
 const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
-const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
+/** Comfortably under half of FIXTURE_MAX, which is the line step 5 repairs
+ *  a realm polygon below. */
+const HURT = Math.floor(0.4 * FIXTURE_MAX);
 
 function base(): GameState {
   // Every faction acts here. These tests are about the policy, not about who
@@ -320,10 +322,13 @@ describe("the spine, steps 1..5", () => {
     });
   });
 
-  it("5: a vassal heals its home toward the independence gate", () => {
+  it("5: a vassal repairs its own hurt home like any other realm land", () => {
+    // A vassal used to have a branch of its own here, healing toward the line
+    // that freed it. It has no such line now, so it takes the ordinary
+    // repair-the-realm walk - which its home is a member of.
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, defense: { alpha: INDEPENDENCE_LINE - HILLFORT_HEAL } };
+    g = { ...g, defense: { alpha: HURT } };
     expect(chooseAction(withHand(g, ["hillfort", "grow-crops"]))).toEqual({
       type: "play", cardIndex: 0, targetId: "alpha",
     });
@@ -332,10 +337,10 @@ describe("the spine, steps 1..5", () => {
     });
   });
 
-  it("5: stops healing once the home stands at the gate - beginTurn frees it", () => {
+  it("5: a vassal standing healthy heals nothing", () => {
     let g = base();
     g = { ...g, overlords: new Map([["alpha", "gamma"]]) };
-    g = { ...g, defense: { alpha: INDEPENDENCE_LINE } }; // gate open
+    g = { ...g, defense: { alpha: FIXTURE_MAX } };
     g = withHand(g, ["hillfort", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
@@ -468,19 +473,15 @@ describe("8R: raising a ceiling", () => {
 });
 
 describe("6W: warpath decisive moves", () => {
-  it("6W-1: raids its own vassal one heal from the independence gate", () => {
+  it("6W: never raids its own vassal, however weak it is", () => {
+    // Downward aggression went with the independence gate: beating a vassal
+    // down bought its lord something only while a healed vassal could leave.
     let g = asStrategy(base(), "warpath");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    // One Hillfort short of its own independence line, which is what "restive"
-    // means to `vassalNearingEscape`.
-    g = { ...g, defense: { beta: INDEPENDENCE_LINE - HILLFORT_HEAL } };
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } }; // one raid from falling
     g = withHand(g, ["raid", "grow-crops"]);
-    // Out of alpha, not out of the vassal itself: no land borders itself, so
-    // holding a vassal down always takes an army from next door.
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "beta", sourceId: "alpha",
-      spend: expect.any(Number),
-    });
+    const action = chooseAction(g);
+    expect(action.type === "play" && action.targetId).not.toBe("beta");
   });
 
   it("6W-2: finishes a gate one raid can open - above the council", () => {
@@ -580,26 +581,14 @@ describe("the strong pair: same branch, better card", () => {
 });
 
 describe("6P: pestilence decisive moves", () => {
-  it("6P-1: plagues its restive vassal's stacks before any outward play", () => {
+  it("6P: never sickens its own vassal", () => {
+    // The same rule as 6W's: a hostile card may not be aimed down the chain.
     let g = asStrategy(base(), "pestilence");
     g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = {
-      ...g,
-      defense: { beta: INDEPENDENCE_LINE - HILLFORT_HEAL },
-      disease: { beta: { alpha: 1 } },
-    };
-    g = withHand(g, ["plague", "spread-disease"]);
-    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 0 });
-  });
-
-  it("6P-1: sickens the restive vassal when no stacks sit there yet", () => {
-    let g = asStrategy(base(), "pestilence");
-    g = { ...g, overlords: new Map([["beta", "alpha"]]) };
-    g = { ...g, defense: { beta: INDEPENDENCE_LINE - HILLFORT_HEAL } };
+    g = { ...g, defense: { beta: SUBJUGATE_LINE + 1 } };
     g = withHand(g, ["spread-disease", "grow-crops"]);
-    expect(chooseAction(g)).toEqual({
-      type: "play", cardIndex: 0, targetId: "beta",
-    });
+    const action = chooseAction(g);
+    expect(action.type === "play" && action.targetId).not.toBe("beta");
   });
 
   it("6P-2: cashes the plague when it opens a gate", () => {

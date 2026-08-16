@@ -16,6 +16,7 @@ import {
   applyBootParams, parseBootParams, type BootParams,
 } from "../src/boot-params";
 import { playsTurns } from "../src/passives";
+import { realmRootOf } from "../src/relations";
 import { aiTakeTurn } from "../src/ai";
 import { SIM_FACTION_IDS, SIM_ADJACENCY, seededRng } from "../src/sim";
 import { DEFAULT_REGION, setActiveRegion } from "../src/regions";
@@ -368,11 +369,18 @@ describe("a conquest wakes the land", () => {
     return { booted, state: g };
   };
 
-  it("seats a ruler on a taken land, so it stops being skipped", () => {
+  it("seats a ruler on a taken land, so it fights its lord's fights", () => {
     const { booted, state } = conquest();
     expect(hasRuler(booted.rulers, VICTIM)).toBe(false);
     expect(hasRuler(state.rulers, VICTIM)).toBe(true);
-    expect(takesNoTurn(state, VICTIM)).toBe(false);
+    // A chief is not a seat of its own any more: a vassal takes a turn only
+    // while the realm it answers to is one of the two duelling sides.
+    const root = realmRootOf(VICTIM, state.overlords, state.incorporated);
+    const duel: GameState = {
+      ...state,
+      gauntlet: { kind: "duel", enemy: root, until: state.turn + 5 },
+    };
+    expect(takesNoTurn(duel, VICTIM)).toBe(false);
   });
 
   it("gives the woken people their own build's ability", () => {

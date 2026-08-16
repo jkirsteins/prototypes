@@ -797,7 +797,6 @@ describe("log lines for the new event types", () => {
       { turn: 1, playerId: 2, type: "healed", cardId: "hillfort", targetFactionId: "alpha", amount: 0 },
       { turn: 1, playerId: 2, type: "plagued", cardId: "plague", targetFactionId: "gamma", amount: 0 },
       { turn: 1, playerId: 2, type: "winds-shifted", cardId: "foul-winds", targetFactionId: "gamma", amount: 0 },
-      { turn: 1, playerId: 2, type: "independence", targetFactionId: "alpha", overlordFactionId: "gamma" },
       { turn: 1, playerId: 2, type: "settled", targetFactionId: "alpha" },
       { turn: 1, playerId: 2, type: "incorporated", targetFactionId: "alpha", overlordFactionId: "gamma" },
     ]);
@@ -807,7 +806,6 @@ describe("log lines for the new event types", () => {
     expect(starts("The defenses of Alpha are restored")).toBe(true);
     expect(starts("Plague ravages Gamma")).toBe(true);
     expect(starts("The disease on Gamma changes hands")).toBe(true);
-    expect(texts).toContain("Alpha reclaims independence from Gamma");
     expect(texts).toContain("Alpha founds a new settlement");
     expect(texts).toContain("Alpha is incorporated into Gamma");
   });
@@ -879,22 +877,6 @@ describe("activity log filters", () => {
     // keeping this on screen under the filter.
     expect(mine.classList.contains("notice-worthy")).toBe(false);
     expect(mine.classList.contains("log-mine")).toBe(true);
-  });
-
-  it("leaves the independence gate out of your own doing - the clock, not you", () => {
-    const { container, hud } = setup();
-    const g = playing();
-    hud.update({
-      ...g,
-      log: [...g.log, {
-        turn: 1, playerId: 1, type: "independence",
-        targetFactionId: "beta", overlordFactionId: "alpha",
-      }],
-    });
-    const entry = [...container.querySelectorAll(".log-entry")].find(
-      (el) => el.textContent?.includes("reclaims independence"),
-    )!;
-    expect(entry.classList.contains("log-mine")).toBe(false);
   });
 
   it("leaves the reshuffle out of your own doing", () => {
@@ -1073,28 +1055,6 @@ describe("activity log filters", () => {
     showRound(hud, g);
     expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
     expect(q(container, ".notice-title").textContent).toBe("Your overlord fell");
-  });
-
-  /** The independence gate fires from beginTurn with the freed seat's OWN
-   *  playerId - the human's freeing carries playerId 1 and must not be
-   *  swallowed as their own act: they played nothing. */
-  it("still interrupts for your own independence with popups muted", () => {
-    const { container, hud } = setup();
-    popupsCheckbox(container).click(); // off
-    let g = playing();
-    g = {
-      ...g,
-      log: [
-        ...g.log,
-        {
-          turn: 1, playerId: 1, type: "independence",
-          targetFactionId: "beta", overlordFactionId: "alpha",
-        },
-      ],
-    };
-    showRound(hud, g);
-    expect(q(container, ".notice-overlay").classList.contains("hidden")).toBe(false);
-    expect(q(container, ".notice-title").textContent).toBe("You are free");
   });
 
   it("still interrupts when a hit leaves your home gate open, with popups muted", () => {
@@ -1711,16 +1671,18 @@ describe("hud v2", () => {
       ),
       "beta", seededRng(1),
     );
+    g = { ...g, current: 2 };
+    g = withHand(g, 2, ["raid"]);
+    // While beta still answers to nobody: a lord may not raid down its own
+    // chain, so the raid has to land before the fealty does.
+    g = playCard(g, 0, seededRng(1), "beta"); // gamma raids you (seen)
     g = {
       ...g,
-      current: 2,
+      playedThisTurn: false,
       overlords: new Map([
         ["beta", "gamma"], ["alpha", "beta"], ["delta", "beta"],
       ]),
     };
-    g = withHand(g, 2, ["raid"]);
-    g = playCard(g, 0, seededRng(1), "beta"); // gamma raids you (seen)
-    g = { ...g, playedThisTurn: false };
     g = withHand(g, 2, ["incorporate"]);
     g = playCard(g, 0, seededRng(1), "beta");
     expect(g.phase).toBe("defeat");
@@ -2079,19 +2041,6 @@ describe("notice modal", () => {
     // A poach carries no footnote of its own - the tribute injection is the
     // vassal's problem now, not the old lord's.
     expect(q(container, ".notice-footnotes").classList.contains("hidden")).toBe(true);
-  });
-
-  it("shows a modal when a vassal of yours walks through the independence gate", () => {
-    const { container, hud } = setup();
-    showRound(hud, withEvents(playing(), [{
-      turn: 1, playerId: 3, type: "independence",
-      targetFactionId: "gamma", overlordFactionId: "beta",
-    }]));
-    expect(lineTexts(container)).toEqual([
-      "The defenses of Gamma recovered - they leave your service, and none " +
-        "may subjugate them until turn 3",
-    ]);
-    expect(footnoteTexts(container).join(" ")).toMatch(/three quarters/);
   });
 
   it("shows a mandatory modal when an AI subjugates you", () => {
@@ -2490,17 +2439,16 @@ describe("realm filter while pinned", () => {
     expect(inRealm(container)[1]).toContain("Gamma submits to Alpha");
   });
 
-  it("a foreign independence noticed by its own clock is not yours, and hides", () => {
+  it("a rival's own business is neither yours nor the pinned realm's", () => {
     const { container, hud } = setup();
     const g = playing();
     hud.update(withEvents(g, [
-      // The freed seat's own turn-start clock is what fired this.
-      { turn: 1, playerId: seatOf(g, "alpha"), type: "independence",
-        targetFactionId: "alpha", overlordFactionId: "delta" },
+      { turn: 1, playerId: seatOf(g, "alpha"), type: "healed",
+        cardId: "hillfort", targetFactionId: "alpha", amount: 0 },
     ]));
     hud.setPinned("gamma");
     const entry = entries(container).find((el) =>
-      (el.textContent ?? "").includes("reclaims independence"))!;
+      (el.textContent ?? "").includes("The defenses of Alpha are restored"))!;
     expect(entry.classList.contains("log-mine")).toBe(false);
     expect(entry.classList.contains("log-realm")).toBe(false);
     // Nor is it about your faction: pinning yourself must not surface it.

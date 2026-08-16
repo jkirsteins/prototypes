@@ -61,7 +61,6 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   subjugated: "bell",
   released: "door",
   incorporated: "bell-heavy",
-  independence: "door",
   tribute: "coins",
   settled: "build",
   healed: "hammer",

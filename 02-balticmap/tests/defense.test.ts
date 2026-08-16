@@ -3,7 +3,7 @@ import {
   addDisease, allocateSpend, applyDamage, applyHeal, clearDiseaseOf,
   DEFAULT_DEFENSE_MAX,
   DEFENSE_PER_POPULATION, defenseMaxFromPopulations, defenseMaxOf, defenseOf,
-  diseaseOn, gateBandOf, independenceGateOpen, MIN_RAID_SPEND,
+  diseaseOn, gateBandOf, MIN_RAID_SPEND,
   spendCeilingFor, subjugationGateOpen,
   transferAllDiseaseTo, type Defense, type Disease,
 } from "../src/defense";
@@ -61,17 +61,10 @@ describe("defense store", () => {
       .toBe(false);
   });
 
-  it("opens the independence gate at the ceiling of 75% of max", () => {
-    // The same 6: 75% is 4.5, and a vassal is freed at 5 rather than at 4.
-    // Ceiling and not floor, so the two gates never meet in the middle.
-    const max = { selija: 6 };
-    expect(independenceGateOpen(view({ selija: 5 }, max), "selija")).toBe(true);
-    expect(independenceGateOpen(view({ selija: 4 }, max), "selija")).toBe(false);
-    // Undamaged means at max, which is above the gate.
-    expect(independenceGateOpen(view({}, max), "selija")).toBe(true);
-  });
-
   it("bands a polygon for the map badge", () => {
+    // Only the open band is a rule. High and middle are how hurt a land
+    // LOOKS, at the ceiling of 75% of max - 4.5 on a 6, so 5 reads healthy
+    // and 4 reads wounded.
     const max = { selija: 6 };
     expect(gateBandOf(view({}, max), "selija")).toBe("high");
     expect(gateBandOf(view({ selija: 5 }, max), "selija")).toBe("high");

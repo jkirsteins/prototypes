@@ -575,13 +575,6 @@ export function eventSegments(
       ];
     case "discard":
       return clause(actor, "discard", [t(" a card")], "past");
-    case "independence":
-      // The gate, not a play: the vassal's home defenses recovered and the
-      // clock noticed at its own turn start. Third-person by name even for
-      // the player, like `subjugated` - it happened to them.
-      return clause(named(e.targetFactionId), "reclaim", [
-        t(" independence from "), faction(e.overlordFactionId ?? ""),
-      ]);
     case "tribute":
       return clause(named(e.targetFactionId), "pay", [
         t(" tribute to "), faction(e.overlordFactionId ?? ""),
@@ -979,13 +972,10 @@ export function createHud(
    *  hidden by the "Targeting me" filter: a filter that removes the line you
    *  just made is a filter that lies about your own turn.
    *
-   *  The deck reshuffle and the independence gate are excluded. You did not
-   *  choose either - independence is the clock noticing your defenses
-   *  recovered - and they are exactly the noise the filters exist to
-   *  remove. */
+   *  The deck reshuffle is excluded. You did not choose it, and it is exactly
+   *  the noise the filters exist to remove. */
   function isYourDoing(e: GameEvent): boolean {
-    return e.playerId === localPlayerId() &&
-      e.type !== "reshuffle" && e.type !== "independence";
+    return e.playerId === localPlayerId() && e.type !== "reshuffle";
   }
 
   function involvesHuman(e: GameEvent, humanFactionId: string | undefined): boolean {
@@ -2188,9 +2178,7 @@ export function createHud(
   /** Which factions a line is about, for the highlight. Read off the segments,
    *  so a line lights exactly when it visibly names the faction - plus the actor
    *  when that is you, because your own actions render as "You" and name no
-   *  faction at all. Not for an independence: its playerId is only the seat
-   *  whose clock tick noticed it, the line never says "You", and both sides
-   *  it IS about are already in the segments.
+   *  faction at all.
    *
    *  Shared by the first render and by a reveal's rewrite: revealing a secret
    *  play can add a faction to the line, so the two must agree on how the list
@@ -2202,7 +2190,7 @@ export function createHud(
   ): string[] {
     const named = factionIds(segs);
     if (
-      e.playerId === localPlayerId() && e.type !== "independence" &&
+      e.playerId === localPlayerId() &&
       humanFactionId !== undefined && !named.includes(humanFactionId)
     ) {
       named.push(humanFactionId);

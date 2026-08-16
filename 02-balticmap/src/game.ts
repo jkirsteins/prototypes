@@ -12,15 +12,14 @@ import { activeRegion } from "./regions";
 import {
   addDisease, applyDamage, applyHeal, capturesOnArrival, clearDiseaseOf,
   DEFAULT_DEFENSE_MAX,
-  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateLine,
-  independenceGateOpen,
+  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL,
   MIN_RAID_SPEND,
   PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
   type Defense, type Disease,
 } from "./defense";
 import {
-  aimsWithinOwnRealm, attackDamageFor, omensMultiplier, attackReach,
+  aimsWithinOwnRealm, attackDamageFor, omensMultiplier, borderPolygonsOf,
   ESCAPE_RESPITE_TURNS, foulWindsTargetsOf, freeArmiesFor, greatRaidMarches,
   marchSourcesAgainst,
   claimWouldLand, greatRaidPool, greatRaidSpends,
@@ -60,7 +59,7 @@ import { sweepLapsed } from "./timed";
 
 export type GameEventType =
   | "draw" | "play" | "reshuffle" | "discard"
-  | "subjugated" | "released" | "incorporated" | "independence" | "tribute"
+  | "subjugated" | "released" | "incorporated" | "tribute"
   | "settled"
   | "healed" | "transferred" | "disease-spread" | "plagued" | "winds-shifted"
   | "levied"
@@ -382,10 +381,10 @@ export interface GameState {
    *  exists to remove. Spent in `playCard` on costed cards and on tribute. */
   wealth: Record<string, number>;
   /** Faction id -> the turn its post-escape respite expires. Set the moment a
-   *  faction ESCAPES vassalage - the independence gate, or freed because its
-   *  lord fell - never when it is merely poached, and while it runs nobody
-   *  may Subjugate it (see `ESCAPE_RESPITE_TURNS`). Bare expiry on the
-   *  src/timed.ts clock; swept silently in `beginTurn`. */
+   *  faction is RELEASED from vassalage because the lord it answered to fell -
+   *  never when it is merely poached - and while it runs nobody may Subjugate
+   *  it (see `ESCAPE_RESPITE_TURNS`). Bare expiry on the src/timed.ts clock;
+   *  swept silently in `beginTurn`. */
   respites: Record<string, number>;
   /** One ruler per faction id, total. Read through `rulerOf`, written only
    *  by `replaceRuler`. */
@@ -663,35 +662,23 @@ export function transferLimit(
 
 /** What a seat nobody can ask moves into a land it has just taken: half of
  *  what the origin holds, which leaves the origin able to defend itself and
- *  gives the new holding something to stand on - but never enough to stand it
- *  back up ON its own independence line. Deterministic - no rng, so an AI
- *  seat's conquest replays identically.
+ *  gives the new holding something to stand on. Deterministic - no rng, so an
+ *  AI seat's conquest replays identically.
  *
- *  The cap is the whole reason this is not a plain half. A conquest heals the
- *  garrison into the taken land, and the land's first `beginTurn` reads
- *  `independenceGateOpen` before anything else: a garrison at or above the
- *  line hands the new vassal its freedom at the first opportunity it gets, so
- *  the taker would be arming the escape it just prevented. The polygons this
- *  bites are the small ones - on a land whose ceiling is 2 the line is 2, and
- *  half of any healthy raider clears it - which is why the cap is derived from
- *  the destination's own line (`independenceGateLine`) rather than written as
- *  a number.
+ *  A plain half, clamped by `transferLimit` and by nothing else. Nothing about
+ *  the size of a garrison can cost its owner the land any more - a vassal
+ *  never leaves - so there is no reason left to arm a conquest more timidly
+ *  than a person would.
  *
- *  A PERSON is never capped here, because a person is not forced: the modal
- *  raised by `pendingTransfers` is the same question asked out loud, 0 is
- *  already one of its answers, and choosing to over-garrison a vassal is a
- *  play a player may want to make. This removes the asymmetry rather than
- *  adding a rule. */
+ *  A PERSON is asked instead of answered for: the modal raised by
+ *  `pendingTransfers` is the same question out loud, and 0 is one of its
+ *  answers. */
 export function autoTransfer(
   state: GameState, from: string, to: string,
 ): number {
   const v = { defense: state.defense, defenseMax: state.defenseMax };
-  const held = defenseOf(v, from);
-  const underGate = Math.max(
-    0, independenceGateLine(v, to) - 1 - defenseOf(v, to),
-  );
   return Math.min(
-    Math.floor(held / 2), transferLimit(state, from, to), underGate,
+    Math.floor(defenseOf(v, from) / 2), transferLimit(state, from, to),
   );
 }
 
@@ -875,9 +862,9 @@ export const MIN_ACTING = 5;
  *  inside one cannot act. Two reasons, and both are the rules already written
  *  down rather than a preference about seats: `endingFor` reads a human
  *  faction's own `incorporated` entry as DEFEAT, so an annexed land would end
- *  the run on the click that picked it; and defense starts at its ceiling, so
- *  `independenceGateOpen` is true of every seeded vassal and one given a turn
- *  would walk out of its lord's realm at its first turn start.
+ *  the run on the click that picked it; and a vassal takes a turn only while
+ *  its lord is duelling (`takesNoTurn`), so a seat handed to one would sit
+ *  out the run it was seated for.
  *
  *  So a held land is a conquest target, never a seat - which is what it
  *  already is when a conquest makes one mid-game. */
@@ -1038,11 +1025,6 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     case "draw":
     case "reshuffle":
     case "discard":
-    // The independence gate is checked at the vassal's own turn start, in
-    // `beginTurn` - a clock tick, not something a card did. Logged from a
-    // batch that never opens with a play, so this is unreachable today, but
-    // it is the honest answer if a heal ever frees mid-play.
-    case "independence":
     // A march lands at the start of its actor's NEXT turn, a turn after the
     // Raid that declared it and from a batch that opens with no play. The
     // causing card is a turn in the past and is named on the line itself, so
@@ -1212,12 +1194,13 @@ function actorRulerName(state: GameState, playerId: number): string {
     : rulerNameOf(state.rulers, factionId) ?? "";
 }
 
-/** Current player draws 1 (reshuffle rule); resets the play flag. Checks the
- *  independence gate FIRST: a vassal whose home polygon has climbed back to
- *  75% of its max regains independence at the start of its own turn, with
- *  the same 2-turn respite every escape grants. The consequence is
- *  deliberate - an overlord must keep beating its vassals down or lose them;
- *  vassalage is upkeep now. */
+/** Current player draws 1 (reshuffle rule); resets the play flag.
+ *
+ *  Nothing about vassalage happens here any more. A vassal used to win its
+ *  freedom on this line, at its own turn start, by having healed past a
+ *  threshold - that rule is gone in both halves: a land that has been taken
+ *  stays taken, and a vassal only takes a turn at all while its lord's realm
+ *  is one of the two sides of a duel (`takesNoTurn`). */
 export function beginTurn(state: GameState, rng: Rng): GameState {
   if (state.players.length === 0) return state;
   const p = state.players[state.current];
@@ -1234,26 +1217,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // A conquest below seats a leader on the land it takes, so the turn's rulers
   // are not the ones it started with.
   let rulers = state.rulers;
-  const lord = overlords.get(p.factionId);
-  // `escapesVassalage` and not the gate directly: `takesNoTurn` asks the same
-  // question one line earlier, to judge the duel scope against the realm this
-  // seat is about to be in, and two spellings of it would disagree.
-  if (lord !== undefined && escapesVassalage(state, p.factionId)) {
-    overlords.delete(p.factionId);
-    respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
-    players = players.map((pl) =>
-      pl.factionId === p.factionId ? stripTribute(pl) : pl,
-    );
-    events.push({
-      turn: state.turn, playerId: p.id, type: "independence",
-      targetFactionId: p.factionId, overlordFactionId: lord,
-    });
-  }
-  // Marches land next, after the gate and before the draw. After the gate,
-  // because the gate answers for the defenses as they stood when the vassal's
-  // turn came round - letting its overlord's own pending raid land first would
-  // retroactively deny an escape that had already been earned. Before the
-  // draw, so the hand this seat decides with reflects the damage.
+  // Marches land first, before the draw, so the hand this seat decides with
+  // reflects the damage.
   //
   // Resolved BELOW rather than here, once `applyArrival` exists to be handed
   // to it: arrivals land one at a time, each against the board the one before
@@ -1600,8 +1565,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // once a ROUND - at the wrap onto the first seat - and not once a turn, so
   // five acting factions do not make it a five-times-faster recovery. It moves
   // a defense score, so it is logged and walked; the seat whose turn is
-  // beginning owns the line, the same turn-start-clock convention the
-  // independence gate above already keeps.
+  // beginning owns the line, the turn-start-clock convention every sweep in
+  // this function keeps.
   if (state.current === 0) {
     // The cycle turns HERE and nowhere else, so a round is never half scoped:
     // whoever the wrap decides may act is who acts for the whole of the round
@@ -1610,8 +1575,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // a seat that will see a `beginTurn` of its own this round, and its
     // arrows must be left for it rather than landed here.
     //
-    // `overlords` and not the snapshot: the escape at the top of this turn
-    // and the arrivals below it have already moved the realms, and the offer
+    // `overlords` and not the snapshot: the arrivals below have already moved
+    // the realms, and the offer
     // this reads out is the board as it now stands.
     const wrapped = gauntletAtRoundWrap(
       gauntlet, { ...viewOf(state), overlords, incorporated },
@@ -1943,7 +1908,7 @@ function resolveMarches(
   const alive: typeof lapsed = [];
   for (const entry of lapsed) {
     const realm = fullRealmOf(entry.march.actor, state.overlords, state.incorporated);
-    const reach = attackReach(view, entry.march.actor);
+    const reach = borderPolygonsOf(view, entry.march.actor);
     const holder = state.incorporated[entry.march.from] ?? entry.march.from;
     if (
       realm.has(entry.march.from) && realm.has(holder) &&
@@ -2052,11 +2017,13 @@ function resolveMarches(
       // moved defenders into, so this arrow is spent: it gets its arrival
       // line, and lands nothing.
       //
-      // Asked of what was taken HERE and not of the actor's realm, because a
-      // raid at a vassal you already held is a real play - keeping its
-      // defenses under the independence gate is what vassal upkeep IS. Only
-      // the land that changed hands between this arrow leaving and arriving
-      // is exempt.
+      // Asked of what was taken HERE and not of the actor's realm, and the
+      // two are different questions even though a hostile card may no longer
+      // be aimed within one's own pyramid at all. That legality is checked
+      // when the arrow is DECLARED and again when it lapses, both of them one
+      // pass above this one; `takenHere` is the land that changed hands
+      // between this arrow leaving and the one before it arriving, which no
+      // earlier pass could have seen.
       if (takenHere.get(loser) === eng.spear.actor) {
         // Never an `amount` on a spent arrow, so never a `counter` either:
         // `counter` rides only alongside `amount`, or this reads as the
@@ -2209,7 +2176,7 @@ export function keepPlaying(state: GameState): GameState {
  *  `commitDecision` reads as refused, so a pick naming a land the offer does
  *  not hold - a stale modal, a wire message, a hand-edited record - changes
  *  nothing rather than scoping the turn loop to a faction nobody may fight.
- *  The offer is the authority and not `attackReach`, because the offer is what
+ *  The offer is the authority and not the border, because the offer is what
  *  the player was shown; it is re-read at every round wrap, so it is never
  *  more than a round behind the board.
  *
@@ -2317,48 +2284,7 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
   );
 }
 
-/** Whether this faction wins its independence the moment its own turn starts.
- *
- *  ONE spelling, because two readers must agree about it. `beginTurn` APPLIES
- *  the escape as the very first thing a turn does; `takesNoTurn` is asked one
- *  line earlier, by `advance`, and has to judge the duel scope against the
- *  realm the seat will be in once the escape has run. */
-export function escapesVassalage(
-  state: GameState, factionId: string,
-): boolean {
-  return state.overlords.has(factionId) &&
-    independenceGateOpen(viewOf(state), factionId);
-}
-
-/** `state.overlords` with this faction's pending escape already applied, for
- *  the duel scope alone.
- *
- *  The escape moves a faction OUT of whichever realm was holding it, so a
- *  vassal about to win its freedom is about to leave the fight. Asked of the
- *  realm it is leaving, `advance` let it play a turn the scope forbids and
- *  then corrected itself at the next wrap - the two-readers-disagree shape,
- *  122 times over eight seeded 80-turn runs.
- *
- *  The consequence, stated rather than discovered: a vassal that has healed
- *  back to its gate does not escape WHILE a duel runs, because a seat that
- *  never sees a `beginTurn` never reaches the line that frees it. It escapes
- *  at its first turn after the duel retires. A realm does not come apart
- *  mid-fight, and the alternative - freeing it at the round wrap, the way a
- *  dormant seat's arrows are landed there - would also start freeing seeded
- *  leaderless vassals that have never escaped in this game's history.
- *
- *  Nothing outside a duel pays for this: the gate is a `viewOf` build and
- *  this is asked once per seat in `advance`'s loop, so the cheap questions
- *  come first. */
-function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
-  if (state.gauntlet.kind !== "duel") return state.overlords;
-  if (!escapesVassalage(state, factionId)) return state.overlords;
-  const out = new Map(state.overlords);
-  out.delete(factionId);
-  return out;
-}
-
-/** Whether this faction will never see a `beginTurn` of its own. Four
+/** Whether this faction will never see a `beginTurn` of its own. Five
  *  reasons, and they must be asked together, IN THIS ORDER:
  *
  *  An annexed people no longer has a seat to sit in, and that holds whoever
@@ -2376,7 +2302,7 @@ function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
  *  `hasRuler` at the capture sites and is untouched.
  *
  *  Then the duel scope, which answers in BOTH directions and is therefore two
- *  of the four. It is asked HERE, third: after the annexed arm, because an
+ *  of the five. It is asked HERE, third: after the annexed arm, because an
  *  annexed seat is out of the run whatever the gauntlet says; after the human
  *  arm, for the reason just above; and BEFORE the leaderless arm, because a
  *  duel has to be able to still a faction that has a perfectly good chief -
@@ -2395,9 +2321,26 @@ function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
  *  `hasRuler` at the capture sites and is untouched, which is why beating one
  *  ABSORBS it rather than swearing it (`absorbsDuelEnemy`).
  *
+ *  Fourth, a VASSAL whose side is not fighting. A vassal fights its lord's
+ *  fights and nothing else: it sits out the world tick along with the rest of
+ *  the map, and the only thing that wakes it is its own root's realm being
+ *  one of the two duelling sides. `duelStanding` has already answered that -
+ *  `"mine"` or `"theirs"` is a side, and it walks `fullRealmOf` on both, so a
+ *  vassal of a vassal is woken by the same root as its lord. This arm is the
+ *  `null` case alone: no duel is running, so no side is.
+ *
+ *  It is asked here, FOURTH, for one reason each way. After the duel arms,
+ *  because a duel is exactly what it exempts. Before the leaderless arm,
+ *  because a conquest seats a chief on the land it takes - so a vassal always
+ *  has one, and an arm asked after "nobody leads it" would never fire.
+ *
+ *  `human === null` is a board nobody is playing (a world simulation), and
+ *  the duel scope does not apply there at all - `duelStanding` returns `null`
+ *  for every seat. So this arm asks for a human too, or a headless world
+ *  would still every vassal on it and simulate a map of roots.
+ *
  *  Last, nobody leads it - and a land nobody has taken is the only kind that
- *  stays that way, because `takeLand` seats a chief on the land it takes and
- *  a woken vassal comes to the table.
+ *  stays that way, because `takeLand` seats a chief on the land it takes.
  *
  *  ONE spelling, because two readers depend on the answer matching. `advance`
  *  passes over such a seat, and `beginTurn`'s round wrap lands the arrows it
@@ -2417,12 +2360,15 @@ function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
 export function takesNoTurn(state: GameState, factionId: string): boolean {
   if (factionId in state.incorporated) return true;
   if (isHumanFaction(state, factionId)) return false;
+  const human = humanFactionOf(state);
   const standing = duelStanding(
-    state.gauntlet, humanFactionOf(state), factionId,
-    overlordsAfterEscape(state, factionId), state.incorporated,
+    state.gauntlet, human, factionId, state.overlords, state.incorporated,
   );
   if (standing === "outside") return true;
   if (standing === "theirs") return false;
+  if (standing === null && human !== null && state.overlords.has(factionId)) {
+    return true;
+  }
   return !hasRuler(state.rulers, factionId);
 }
 

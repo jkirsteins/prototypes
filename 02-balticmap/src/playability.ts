@@ -30,11 +30,11 @@ export const SETTLEMENT_BASE_CAP = 2;
  *  with the revolt loop. */
 export const INCORPORATE_REALM_GATE = 4;
 
-/** Turns a faction that ESCAPED vassalage - the independence gate, or freed
- *  because its lord fell - cannot be subjugated by anyone. Two, so an escape
- *  is a real window to act in rather than a state the next Subjugate undoes
- *  before the escaper moves. Being poached is not an escape and grants
- *  nothing. */
+/** Turns a faction RELEASED from vassalage - freed because the lord it
+ *  answered to fell - cannot be subjugated by anyone. Two, so a release is a
+ *  real window to act in rather than a state the next Subjugate undoes before
+ *  the freed land moves. Being poached is not a release and grants nothing,
+ *  and nothing else frees a vassal: a land that has been taken stays taken. */
 export const ESCAPE_RESPITE_TURNS = 2;
 
 /** Guard card id -> the faction ids holding that guard unspent. Absent key
@@ -76,7 +76,7 @@ export interface RulesView {
    *  `beginTurn`, spent on costed cards and on tribute. Read only through
    *  `wealthOf`. */
   wealth: Record<string, number>;
-  /** Faction id -> the turn its post-escape respite expires (see
+  /** Faction id -> the turn its post-release respite expires (see
    *  `ESCAPE_RESPITE_TURNS`). Bare expiry on the src/timed.ts clock; read
    *  only through `respiteExpiry`, so a stale unswept entry is inert. */
   respites: Record<string, number>;
@@ -284,9 +284,20 @@ export function reachOf(view: RulesView, factionId: string): Set<string> {
   return reach;
 }
 
-/** The polygons bordering the actor's FULL realm - the polygons themselves,
- *  NOT resolved to their annexer, because attacks hit polygons. What Great
- *  raid strikes, and half of `attackReach`. */
+/** Where a targeted attack or disease card may land: the polygons bordering
+ *  the actor's FULL realm - the polygons themselves, NOT resolved to their
+ *  annexer, because attacks hit polygons.
+ *
+ *  The BORDER is the whole of the reach. A second set added the actor's own
+ *  vassals to it, so that a lord could raid them - upkeep, back when a vassal
+ *  could win its freedom by healing. A vassal never leaves now, beating one
+ *  down buys its lord nothing, and `aimsWithinOwnRealm` refuses the whole
+ *  pyramid, so the two spellings of the reach are one.
+ *
+ *  REACH only. Whether the actor may aim at a particular land inside this set
+ *  is `aimsWithinOwnRealm`, asked separately by every surface that aims,
+ *  because it is a fact about the CARD (the hostile keyword) and not about
+ *  the map. */
 export function borderPolygonsOf(view: RulesView, actor: string): Set<string> {
   const realm = fullRealmOf(actor, view.overlords, view.incorporated);
   const out = new Set<string>();
@@ -298,50 +309,30 @@ export function borderPolygonsOf(view: RulesView, actor: string): Set<string> {
   return out;
 }
 
-/** Where a targeted attack or disease card may land: the polygons bordering
- *  the actor's full realm, PLUS the actor's own vassal polygons - a lord may
- *  raid or sicken its vassals to hold them under the independence gate, and
- *  without that exception vassalage could never be kept. The vassal half is
- *  the full realm less what the actor holds outright (its own home and
- *  annexations), so a grand-vassal and a vassal's annexed land ride along.
- *
- *  REACH only. What this set does not answer is whether the actor may aim at
- *  a peer of its own realm - a lord above it, or a land answering to the same
- *  root - which it may not: see `aimsWithinOwnRealm`, asked separately by
- *  every surface that aims, because it is a fact about the CARD (the hostile
- *  keyword) and not about the map. Downward survives both, which is the point
- *  of the vassal half above. */
-export function attackReach(view: RulesView, actor: string): Set<string> {
-  const out = borderPolygonsOf(view, actor);
-  const own = incorporatedRealmOf(actor, view.incorporated);
-  for (const member of fullRealmOf(actor, view.overlords, view.incorporated)) {
-    if (!own.has(member)) out.add(member);
-  }
-  return out;
-}
-
 /** Whether a HOSTILE card played by `actor` may not touch `polygon`, because
- *  the polygon is a PEER inside the actor's own realm: up the chain at a lord
- *  or at a land one of those lords annexed, or sideways at a land answering to
- *  the same root without answering to the actor. An annexed polygon is
- *  politically its annexer, which is why the question is asked of the annexer
- *  and not of the land's own id.
+ *  the polygon is somebody else inside the actor's own pyramid: up the chain
+ *  at a lord or at a land one of those lords annexed, sideways at a land
+ *  answering to the same root, or DOWN at the actor's own vassals. An annexed
+ *  polygon is politically its annexer, which is why the question is asked of
+ *  the annexer and not of the land's own id.
  *
- *  One question rather than two, because up and sideways are the same fact -
- *  the bloc fighting itself - and a bloc whose members raid each other reads
- *  as the game behaving at random rather than as anybody's plan. Sideways only
- *  became reachable when vassals started taking turns of their own; before
- *  that a sibling raid was a shape no seat could produce.
+ *  One question rather than three, because all three are the same fact - the
+ *  bloc fighting itself - and a bloc whose members raid each other reads as
+ *  the game behaving at random rather than as anybody's plan.
  *
- *  DOWNWARD is deliberately not here. A lord raiding its own vassal is upkeep:
- *  it is how a vassal is held under the independence gate, which `attackReach`
- *  exists to allow and without which vassalage could not be kept at all. So
- *  the set is the ROOT's realm minus the ACTOR's own - exactly "everyone in my
- *  pyramid who is not mine to discipline".
+ *  DOWNWARD used to be allowed, and its reason has evaporated rather than
+ *  been overruled. A lord raiding its own vassal was UPKEEP: a vassal healed
+ *  past a threshold won its freedom, so beating it down was how a realm was
+ *  held together, and the reach carried a second half purely to make it
+ *  possible. A vassal never leaves now. Beating one down buys its lord
+ *  nothing, costs the realm a wall it stands behind, and makes it easier for
+ *  a rival to poach - so every reason there ever was to do it now points the
+ *  other way, and a policy that still did it would read as a bug.
  *
- *  `fullRealmOf(actor, ...)` contains the actor itself, so a card aimed at the
- *  actor's own land is not refused here and stays whatever legality already
- *  said about it.
+ *  The set is therefore the ROOT's realm minus what the actor holds OUTRIGHT
+ *  (its own home and its own annexations). The carve-out is the actor's own
+ *  land and not its whole realm: a card aimed at your own ground is not
+ *  refused here and stays whatever legality already said about it.
  *
  *  The one spelling, asked by everything that aims. Thirteen call sites over
  *  five surfaces: the targeting pass, the two-step march aim, the Plague
@@ -362,7 +353,7 @@ export function aimsWithinOwnRealm(
   if (!fullRealmOf(root, view.overlords, view.incorporated).has(political)) {
     return false;
   }
-  return !fullRealmOf(actor, view.overlords, view.incorporated).has(political);
+  return !incorporatedRealmOf(actor, view.incorporated).has(political);
 }
 
 /** Lands the actor could march an army OUT of: full-realm members holding a
@@ -370,8 +361,8 @@ export function aimsWithinOwnRealm(
  *  tail of every arrow the actor can draw.
  *
  *  The realm half is `fullRealmOf`, not `incorporatedRealmOf` - a lord marches
- *  out of its vassals' lands too, the same pyramid rule `attackReach` follows
- *  on the other end.
+ *  out of its vassals' lands too. The far end of the arrow is the opposite
+ *  rule: `aimsWithinOwnRealm` refuses every land under the same root.
  *
  *  "Faces something worth attacking" is `marchHopsTo` and not adjacency, the
  *  same question `marchTargetsFrom` asks from the other end. A land whose only
@@ -380,7 +371,7 @@ export function aimsWithinOwnRealm(
 export function marchSourcesFor(
   view: RulesView, actor: string, cardId = "raid",
 ): string[] {
-  const reach = [...attackReach(view, actor)].filter(
+  const reach = [...borderPolygonsOf(view, actor)].filter(
     (target) => !aimsWithinOwnRealm(view, actor, cardId, target),
   );
   const realm = fullRealmOf(actor, view.overlords, view.incorporated);
@@ -458,7 +449,7 @@ export function marchHopsTo(
 export function marchTargetsFrom(
   view: RulesView, actor: string, source: string, cardId = "raid",
 ): string[] {
-  const reach = attackReach(view, actor);
+  const reach = borderPolygonsOf(view, actor);
   return view.factionIds.filter(
     (land) =>
       reach.has(land) && marchHopsTo(view, source, land) !== null &&
@@ -736,7 +727,7 @@ export function incorporateRealmGate(
   };
 }
 
-/** The turn a faction's post-escape respite runs out, while it is running. */
+/** The turn a faction's post-release respite runs out, while it is running. */
 export function respiteExpiry(
   view: { respites: Record<string, number>; turn: number },
   factionId: string,
@@ -749,7 +740,7 @@ export type TargetBlockReason =
    *  Carries both numbers because together they are the decision: how much
    *  more damage before the gate opens. */
   | { code: "gate-closed"; defense: number; required: number }
-  /** The candidate escaped vassalage within the last ESCAPE_RESPITE_TURNS
+  /** The candidate was released from vassalage within the last ESCAPE_RESPITE_TURNS
    *  turns, so Subjugate cannot touch it. */
   | { code: "respite"; expiresTurn: number }
   /** The polygon already stands at its full defense, so a heal would move
@@ -815,7 +806,7 @@ export function targetEligibilityFor(
   }
 
   const factionReach = reachOf(view, actorFactionId);
-  const polygonReach = attackReach(view, actorFactionId);
+  const polygonReach = borderPolygonsOf(view, actorFactionId);
   const fullRealm = fullRealmOf(actorFactionId, view.overlords, view.incorporated);
 
   // Which id space this card aims at. Attack and disease cards hit POLYGONS
@@ -1080,14 +1071,8 @@ export function cardBlockReason(
   // Both filter what a hostile card may not be aimed at before counting, or a
   // vassal whose only neighbour is its own lord would be told its raid was
   // playable and then offered nothing to aim it at.
-  // `attackReach` and not `borderPolygonsOf`, the same set the per-target pass
-  // scores: the reach includes the actor's own vassals, and a lord whose only
-  // fannable target is one of them is playing the card for exactly the reason
-  // the rule keeps legal - holding a vassal under the independence gate. Read
-  // off the border alone, the card was greyed while its map still offered the
-  // land.
   if (cardId === "great-raid") {
-    const reach = [...attackReach(view, factionId)].filter(
+    const reach = [...borderPolygonsOf(view, factionId)].filter(
       (t) => !aimsWithinOwnRealm(view, factionId, cardId, t),
     );
     if (reach.length === 0) return { code: "no-target" };
@@ -1096,7 +1081,7 @@ export function cardBlockReason(
       : { code: "no-army" };
   }
   if (isMarchCard(cardId)) {
-    const reach = [...attackReach(view, factionId)].filter(
+    const reach = [...borderPolygonsOf(view, factionId)].filter(
       (t) => !aimsWithinOwnRealm(view, factionId, cardId, t),
     );
     if (reach.length === 0) return { code: "no-target" };

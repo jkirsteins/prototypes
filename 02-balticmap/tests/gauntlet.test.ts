@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  advance, beginTurn, chooseBuild, declineDuel, escapesVassalage, newGame,
+  advance, beginTurn, chooseBuild, declineDuel, newGame,
   pickDuel, pickFaction, playCard, startGame, takesNoTurn, viewOf,
   type GameState,
 } from "../src/game";
@@ -147,9 +147,8 @@ describe("the candidates", () => {
   });
 
   it("drop the actor's own vassals - a duel needs two realms", () => {
-    // `attackReach` deliberately includes a lord's own vassals, because
-    // holding one under the independence gate is what vassalage costs. A
-    // duel against one would scope the turn loop to a single realm.
+    // A vassal can sit on the realm's own border, so the reach can offer one.
+    // A duel against it would scope the turn loop to a single realm.
     const g = playing();
     const overlords = new Map(g.overlords);
     overlords.set("gamma", "beta");
@@ -180,13 +179,8 @@ describe("a duel scopes the turn loop", () => {
   });
 
   it("keeps a vassal of either side in it", () => {
-    const g0 = playing();
-    const [enemy, third] = ruledRivals(g0);
-    // Held UNDER its independence gate, which is what a vassal looks like:
-    // an absent defense score means a land at its ceiling, and a vassal
-    // standing there is one turn from winning its freedom - which takes it
-    // out of both realms and out of the fight (see `overlordsAfterEscape`).
-    const g = { ...g0, defense: { [third]: 10 } };
+    const g = playing();
+    const [enemy, third] = ruledRivals(g);
     const overlords = new Map(g.overlords);
     overlords.set(third, enemy);
     const duel = withGauntlet(
@@ -209,30 +203,50 @@ describe("a duel scopes the turn loop", () => {
     ).toBe(false);
   });
 
-  it("does not leak for the one turn a vassal escapes on", () => {
-    // `advance` asks this question on the board as it stands, and the
-    // independence escape is the FIRST thing `beginTurn` does - so a vassal
-    // standing at its gate is a seat that leaves the duelling realm before it
-    // plays a card. Asked of the realm it is leaving, it played a turn the
-    // scope forbids and corrected itself only at the next wrap.
+  it("stills a vassal whose side is NOT fighting, duel or world tick", () => {
+    // A vassal fights its lord's fights and nothing else. Outside a duel its
+    // side is nobody's, so it sits the world tick out with the rest of the
+    // map - which is exactly what a chiefed vassal would otherwise not do,
+    // since a conquest seats a chief on the land it takes.
     const g = playing();
     const [enemy, third] = ruledRivals(g);
+    const fourth = g.factionIds.find(
+      (f) => f !== "beta" && f !== enemy && f !== third && hasRuler(g.rulers, f),
+    )!;
     const overlords = new Map(g.overlords);
-    overlords.set(third, "beta");
-    // At its ceiling, so the gate stands open.
+    overlords.set(fourth, third);
+    expect(hasRuler(g.rulers, fourth)).toBe(true);
+
+    const tick = withGauntlet(
+      { ...g, overlords }, { kind: "world-tick", until: g.turn + 1 },
+    );
+    expect(takesNoTurn(tick, fourth)).toBe(true);
+    expect(takesNoTurn(tick, third)).toBe(false); // its lord answers to nobody
+    expect(actedIn(tick)).not.toContain(fourth);
+
+    // And in a duel neither of its lords is in, for the plain scope reason.
     const duel = withGauntlet(
       { ...g, overlords },
       { kind: "duel", enemy, until: g.turn + DUEL_TURNS },
     );
-    expect(escapesVassalage(duel, third)).toBe(true);
-    expect(takesNoTurn(duel, third)).toBe(true);
-    expect(actedIn(duel)).not.toContain(third);
-    // And nothing outside a duel reads the escape early: the world tick still
-    // hands that seat its turn, and the turn is where it wins its freedom.
-    const tick = withGauntlet(
-      { ...g, overlords }, { kind: "world-tick", until: g.turn + 1 },
+    expect(takesNoTurn(duel, fourth)).toBe(true);
+  });
+
+  it("wakes a GRAND-vassal when the root it answers to duels", () => {
+    // The side is `fullRealmOf`, so a chain of any depth is one side.
+    const g = playing();
+    const [enemy, third] = ruledRivals(g);
+    const fourth = g.factionIds.find(
+      (f) => f !== "beta" && f !== enemy && f !== third && hasRuler(g.rulers, f),
+    )!;
+    const overlords = new Map(g.overlords);
+    overlords.set(third, "beta");
+    overlords.set(fourth, third);
+    const duel = withGauntlet(
+      { ...g, overlords },
+      { kind: "duel", enemy, until: g.turn + DUEL_TURNS },
     );
-    expect(takesNoTurn(tick, third)).toBe(false);
+    expect(takesNoTurn(duel, fourth)).toBe(false);
   });
 
   it("never stills a PERSON, whichever side they are on", () => {

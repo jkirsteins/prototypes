@@ -12,7 +12,7 @@ import { attachInteraction, DRAG_THRESHOLD_PX, landAtPoint } from "./interaction
 // appends events to a `GameState` goes through `./moves`, whose wrappers are
 // shaped for `apply` so there is no local path around either door.
 import {
-  newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
+  newGame, viewOf, repeatOnlyOf, turnOpen, transferLimit,
   type GameEvent, type GameState,
 } from "./game";
 import {
@@ -1473,8 +1473,8 @@ const BAND_CLASS: Record<GateBand, string> = {
 };
 
 /** One badge per living polygon: its `defense/max`, coloured by the band it
- *  sits in - at or above the independence line, between the gates, or at or
- *  under the subjugation gate, which is the state that must pop. Disease
+ *  sits in - healthy, wounded, or at or under the subjugation gate, which is
+ *  the state that must pop. Disease
  *  shows as one pip per stack in the owner's faction colour under the
  *  number.
  *
@@ -1611,8 +1611,8 @@ function renderThreatBadges(): void {
     score.classList.add("badge-defense");
     score.textContent = `${defenseOf(v, factionId)}/${defenseMaxOf(v, factionId)}`;
     text.appendChild(score);
-    // A faction under its post-escape respite cannot be subjugated even at an
-    // open gate: the countdown says for how long.
+    // A faction under its post-release respite cannot be subjugated even at
+    // an open gate: the countdown says for how long.
     const respite = respiteExpiry(game(), factionId);
     if (respite !== undefined) {
       appendCountdown(text, "R", respite - game().turn, "lead-respite");
@@ -2900,20 +2900,9 @@ function hoverLines(region: Region): TooltipLine[] {
       viewOf(game()), human.factionId, cardId, aim,
     ));
   }
-  // The badge's numbers itemised: the score over its max and the two gate
-  // lines. The polygon's own, like the settlements.
-  //
-  // The independence line reads "regains independence AT THEIR TURN", so it is
-  // owed a land that gets one. `takesNoTurn` is the predicate the turn loop
-  // itself asks, human arm and all - so an assassinated player still sees the
-  // line they can act on, and a leaderless vassal does not see a freedom that
-  // has no moment to arrive in. Without it the same tooltip promised a land
-  // its independence three lines above "Nobody leads this land", on every land
-  // a conquest had ever taken.
-  lines.push(...defenseBreakdown(
-    viewOf(game()), region.faction,
-    game().overlords.has(region.faction) && !takesNoTurn(game(), region.faction),
-  ));
+  // The badge's numbers itemised: the score over its max and the one gate
+  // line. The polygon's own, like the settlements.
+  lines.push(...defenseBreakdown(viewOf(game()), region.faction));
   lines.push(...diseaseBreakdown(
     viewOf(game()), region.faction, (id) => factionById.get(id)?.name ?? id,
   ));

@@ -71,10 +71,9 @@ dropped: `applyBootParams` skips a clause naming no known faction, so a wrong
 id boots a perfectly ordinary game and says nothing.
 - `realm=N` - how many lands the human's realm holds, clamped into
   `[1, the roster]`. The lands are ANNEXED, in map order, skipping your own:
-  vassals would read the same on the scoreboard and then come apart while you
-  watched, since a booted vassal wins its independence at its own turn start,
-  and an annexed land is also out of the turn order so `realm=25` is a check
-  that runs rather than twenty-four AI turns a round. Each land is taken out of
+  an annexed people is out of the run, while a vassal is a seat that wakes up
+  whenever its lord duels - so `realm=25` is a check that runs rather than
+  twenty-four AI turns the moment a duel opens. Each land is taken out of
   whatever realm it already answered to - a land counted under two roots lets a
   RIVAL cross the bar and end the booted run before the state under test is on
   screen. **The one boot param that names no ids**: the states it exists to
@@ -176,6 +175,31 @@ The grey middle is therefore a starting condition and not a permanent class,
 and `beginTurn` keeps a LOCAL `rulers` and returns it: a turn that takes a land
 does not end with the rulers it began with.
 
+**But a chief is not a seat of its own.** A VASSAL takes a turn only while the
+realm it answers to is one of the two duelling sides. Outside that it sits out
+the world tick with the rest of the map, chief and all. A vassal is part of a
+realm rather than a seat with a life of its own: it fights its lord's fights,
+and there is nothing else for it to be doing.
+
+Its "side" is `duelStanding`, which walks `fullRealmOf` on both realms, so the
+question is about the ROOT and a vassal of a vassal is woken by the same duel
+as its lord. Two arms of `takesNoTurn` already answer for a duel; this is a
+third, and it is the `null` case - no duel is running, so no side is. It sits
+FOURTH, after those two because a duel is what it exempts, and before the
+leaderless arm because a conquest seats a chief on the land it takes and an arm
+asked after "nobody leads it" would never fire. It also asks for a human,
+because a board nobody plays has no duel scope at all and a headless world
+simulation would otherwise be a map of roots.
+
+**A vassal never leaves.** There is no independence gate, no escape at a turn
+start, no threshold a healed vassal climbs back through: a land that has been
+taken stays taken. The one way out of a realm is the lord above falling, which
+is the `released` event and the respite that goes with it. Nothing measures a
+"vassal tenure" any more because nothing ends one. That rule was measured
+before it was cut: 34 independences against 65 submissions in 43 turns, no
+realm holding together, and the churn was loudest in the half of the game the
+player was not looking at.
+
 The consequence that bites is on the AI, not the engine. Every acting seat must
 be able to FINISH its turn, and a picker that proposes a target the rules refuse
 hangs the run - `playCard` hands the state back unchanged, `endTurn` refuses a
@@ -186,11 +210,10 @@ target list has to come from `validTargetsFor`. `greatRaidPick` was scoring the
 bare border instead, and hung about one seeded run in ten the moment woken
 vassals started acting.
 
-Routing a picker through `validTargetsFor` is not only a narrowing. `attackReach`
-is `borderPolygonsOf` PLUS the actor's own vassals and grand-vassals, because a
-lord raids its vassals to hold them under the independence gate - so a picker
-moved onto it gains those targets as well as losing the illegal ones, which is
-what `raidPick` could always do.
+Routing a picker through `validTargetsFor` narrows every list to the same
+answer the map gives the player, which is the point: a picker reading the bare
+border proposes lands `aimsWithinOwnRealm` refuses, and a proposal the rules
+refuse is a hung seat.
 
 **And the freeze is guarded as a CLASS, not one picker at a time.**
 `endOrGiveUp` in `src/ai.ts` wraps the `endTurn` at the end of `aiTakeTurn`: if
@@ -206,11 +229,12 @@ and it sets the flag locally because neither engine door is available:
 the worst failure this app has - nothing is persisted, so the only way out is
 losing the run.
 
-## A bloc does not fight itself, and a lord still disciplines its own
+## A bloc does not fight itself, in any direction
 
-`aimsWithinOwnRealm` in `src/playability.ts` refuses a hostile card aimed at a
-PEER of the actor's realm: the set is the ROOT's full realm minus the ACTOR's
-own. Two shapes, one question, because both are the bloc fighting itself and a
+`aimsWithinOwnRealm` in `src/playability.ts` refuses a hostile card aimed at
+anybody inside the actor's own pyramid: the set is the ROOT's full realm minus
+what the ACTOR holds OUTRIGHT - its own home and its own annexations. Three
+shapes, one question, because all three are the bloc fighting itself and a
 bloc whose members raid each other reads as the game behaving at random rather
 than as anybody's plan.
 
@@ -220,12 +244,19 @@ than as anybody's plan.
 - **Sideways** - a sibling under the same lord, its vassals, a cousin. Only
   reachable since vassals started taking turns; before that no seat could
   produce a sibling raid at all.
+- **Down** - the actor's own vassals, their vassals, and land any of them
+  annexed.
 
-**DOWNWARD is deliberately not in it.** A lord raiding its own vassal is
-upkeep - it is how a vassal is held under the independence gate - and
-`attackReach` exists to allow exactly that. Closing it would end vassalage as
-a decision, so `tests/playability.test.ts` pins the downward case as a test of
-its own next to the sideways ones.
+**Downward was open, and its reason evaporated rather than being overruled.**
+A lord raiding its own vassal was UPKEEP: a vassal that healed past a
+threshold won its freedom, so beating it down was how a realm was held
+together, and the attack reach carried a second half - the border PLUS the
+actor's own vassals - purely to make it possible. With no gate, every reason
+there ever was to do it now points the other way. Beating a vassal down buys
+its lord nothing, costs the realm a wall it stands behind, and makes the land
+easier for a rival to poach; an AI still doing it would read as a bug. So the
+rule refuses down with the other two, the second half of the reach went with
+it, and `borderPolygonsOf` is the whole of "who may I attack" now.
 
 The predicate is asked by everything that aims: thirteen call sites over five
 surfaces - the targeting pass, the two-step march aim, the Plague resolution,
@@ -764,7 +795,7 @@ through `marchReachFrom`), and the `expiry` the declaration writes -
 Three things follow, and each is load-bearing:
 
 - **Distance decides how long, never whether it is worth doing.** Reach is
-  still `attackReach` and the bloc rule is still `aimsWithinOwnRealm`: a land
+  still `borderPolygonsOf` and the bloc rule is still `aimsWithinOwnRealm`: a land
   three hops off that borders nothing of yours is not a target, and a sibling
   next door is not a target however close it stands. Widening the walk must
   not become a way around either, which is what
@@ -961,8 +992,8 @@ and the scope of each is deliberate:
   no leader still takes no turn, and the grey middle is still the grey middle.
 - **Beating a chiefless enemy INCORPORATES it** (`absorbsDuelEnemy`). That is
   the whole remaining difference between the two kinds of enemy: a people who
-  follow somebody become your vassal and may one day leave, and a people who
-  follow nobody are simply absorbed. It is also what stops "rare" from reading
+  follow somebody become your vassal and hold their own land under you, and a
+  people who follow nobody are simply absorbed. It is also what stops "rare" from reading
   as "worse". `beginTurn` therefore carries a local `incorporated`.
 
 **The asymmetry is stated so nobody reads it as an accident.** A leaderless
@@ -981,16 +1012,11 @@ card, so it rides in `cardRulesHash` with every other legality dial. The other
 seat that reaches it is a person whose ruler was assassinated with no
 successor.
 
-**The scope reads the realm a seat is ABOUT to be in.** `advance` asks
-`takesNoTurn` on the board as it stands, and the independence escape is the
-first thing `beginTurn` does - so a vassal standing at its gate leaves the
-duelling realm one line after the scope decided it could play. `escapesVassalage`
-is the one spelling of the gate, applied by `beginTurn` and predicted by
-`takesNoTurn` through `overlordsAfterEscape`, only while a duel runs. The
-consequence, which is a rule and not a side effect: a vassal does not win its
-freedom while a duel runs, because a seat that never sees a `beginTurn` never
-reaches the line that frees it. It escapes at its first turn after the duel
-retires.
+**And a vassal of either side fights, while a vassal of neither sits still.**
+The same `duelStanding` walk answers both: `fullRealmOf` on each realm, so a
+whole pyramid comes to the fight and a chain of any depth comes with it. Outside
+a duel a vassal takes no turn at all - see the fourth arm of `takesNoTurn` -
+which is what keeps the world tick to the seats a player has a reason to watch.
 
 ## Nothing ends itself
 
@@ -1061,14 +1087,10 @@ does:
 
   The taker is then asked how much defense to send with the conquest
   (`pendingTransfers` / `transferDefense`); 0 is a real answer. A seat nobody
-  is sitting at gets `autoTransfer`'s capped amount on the spot instead - as
-  much as it can spare, without arming the new vassal past its own
-  independence gate. An AI that moved a flat half in unconditionally was
-  paying for its own vassal's escape: the garrison alone often cleared the
-  gate line, so the vassal's first `beginTurn` read `independenceGateOpen`
-  true and won its freedom before the taker got a second turn - a playtest
-  measured the median vassalage at four turns. The cap leaves the new vassal
-  at exactly one point under its line instead. Keyed by FACTION, because every person
+  is sitting at moves `autoTransfer`'s half of what the origin holds on the
+  spot instead, trimmed only by the room the taken land has left. Nothing
+  about the size of a garrison can cost its owner the land, so there is no
+  reason to arm an AI's conquest more timidly than a person's. Keyed by FACTION, because every person
   is asked and one slot would have let one of them hold the only question on
   the board - and a QUEUE per faction, because a turn can take more than one
   land. Three conquests owe three questions, answered in the order the lands
@@ -1157,10 +1179,12 @@ does:
   deploys cannot disagree about it silently.
 
   Asked of `takenHere` - the lands THIS resolution changed hands - and never
-  of the actor's realm, because **a raid at a vassal you already held is a
-  real play**: keeping its defenses under the independence gate is what
-  vassal upkeep is. Only the land that changed hands between the arrow
-  leaving and arriving is exempt.
+  of the actor's realm, and the two are different questions even though a
+  hostile card may no longer be aimed inside one's own pyramid at all. That
+  legality is checked when the arrow is declared and again when it lapses,
+  both one pass above this one; `takenHere` is the land that changed hands
+  between this arrow leaving and the one before it arriving, which no earlier
+  pass could have seen.
 
   This one was tried the other way first - the surplus spending what it had
   left on the defenders the conquest moved in - and the reason it is not that
@@ -1301,10 +1325,9 @@ does not live in `eventSegments`: the postmortem log renders those segments over
 a whole finished game, with no batch to walk. And the "Targeting me" filter
 never hides an entry tagged `.log-mine` - what you played or discarded, and the
 events your play caused. A filter that removes the line you just made is a
-filter that lies about your own turn. The reshuffle and the independence gate
-are excluded from `.log-mine`: you did not choose them - an independence's
-`playerId` is only the seat whose turn-start clock noticed the recovered
-defenses - and they are the noise the filter exists to remove.
+filter that lies about your own turn. The reshuffle is excluded from
+`.log-mine`: you did not choose it, and it is the noise the filter exists to
+remove.
 
 Pinning a land filters the log to that realm: the pinned faction plus the
 lands incorporated into it (`incorporatedRealmOf`), never vassals - a vassal
@@ -1355,8 +1378,8 @@ interchangeable:
   member's own annexations. This is the answer to "how much of the map is
   theirs", so it is what the scoreboard, the win condition, the postmortem,
   the ownership shading and the hover halo count. It is also what every rule
-  that scales with "the realm" uses: `reachOf`, `attackReach`,
-  `borderPolygonsOf` and `handLimitFor` in `src/playability.ts` - taking a lord
+  that scales with "the realm" uses: `reachOf`, `borderPolygonsOf` and
+  `handLimitFor` in `src/playability.ts` - taking a lord
   takes its whole pyramid, and a grand-vassal's border is the pyramid's border.
 
 The flat version shipped and rotted exactly where you would expect. At turn 35
@@ -1551,7 +1574,7 @@ different numbers. Who earns a beat is ONE audience gate,
 of it, it lands on a land the screen has a LINE to - the realm, plus whatever
 stands at the far end of an arrow or a demand between them and it
 (`linkedLands`) - or the screen owes an answer about it. A line, not a reach:
-this was realm-plus-`attackReach` and it walked the camera around a wide ring
+this was realm-plus-the-attack-reach and it walked the camera around a wide ring
 of business that was none of the player's. A wild land mending itself matters
 while an arrow of yours is in the air toward it, because it changes what that
 arrow will do; the same land mending itself with nothing between you is a log

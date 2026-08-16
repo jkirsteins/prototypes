@@ -338,13 +338,13 @@ export interface KeywordDef {
    *  run out of nothing: `freeSettlementsIn` in src/playability.ts is the
    *  reader, and `beginTurn` hands the settlements back. */
   spendsSettlement?: true;
-  /** The card does somebody harm, and therefore cannot be aimed at a PEER of
-   *  the actor's own realm: not at its overlord, not at that overlord's
-   *  overlord, not at anything else answering to the same root, not at any land
-   *  one of them has annexed. Downward stays open - a lord may raid its own
-   *  vassals and their vassals, which is how a vassal is held under the
-   *  independence gate. `aimsWithinOwnRealm` in src/playability.ts is the rule;
-   *  this flag is what it asks about.
+  /** The card does somebody harm, and therefore cannot be aimed at anybody
+   *  else inside the actor's own pyramid: not at its overlord, not at that
+   *  overlord's overlord, not at anything else answering to the same root, not
+   *  at the actor's OWN vassals, and not at any land one of them has annexed.
+   *  Only the actor's own ground and its own annexations are left.
+   *  `aimsWithinOwnRealm` in src/playability.ts is the rule; this flag is what
+   *  it asks about.
    *
    *  A KEYWORD and not a list of ids, because the rule has to be asked by
    *  everything that aims: the targeting pass, the two-step march aim, the
@@ -369,7 +369,7 @@ export const KEYWORDS: Readonly<Record<string, KeywordDef>> = {
     id: "hostile",
     name: "Hostile",
     noun: "hostile card",
-    text: "Cannot be aimed at your own realm: not at your overlord, nor at anyone they answer to, nor at anyone else under the same crown, nor at land any of them have annexed. Your own vassals and their vassals are still fair game - holding them under the independence gate is a lord's own business.",
+    text: "Cannot be aimed at your own realm: not at your overlord, nor at anyone they answer to, nor at anyone else under the same crown, nor at your own vassals, nor at land any of them have annexed. Only your own land is left.",
     hostile: true,
   },
   unique: {

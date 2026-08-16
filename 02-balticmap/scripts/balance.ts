@@ -57,7 +57,6 @@ console.log(`  median end turn    ${n1(stats.medianEndTurn)}`);
 // The stalemate number: turns of silence before a capped world gave up.
 console.log(`  median stall turns ${n1(stats.medianStallTurns)}`);
 console.log(`  median vassalage   ${n1(stats.medianVassalTenure)} turns`);
-console.log(`  independences      ${n1(stats.meanIndependences)} per world`);
 
 console.log("\nplay share by card");
 const played = Object.entries(stats.playShareByCard).sort((a, b) => b[1] - a[1]);

@@ -233,8 +233,8 @@ function owesAnswer(e: GameEvent, ctx: PresentCtx): boolean {
  *  the player has never heard of while hiding the one they were watching.
  *
  *  "Either end" is read off every faction an event names, not only the land
- *  it happened to: a vassal winning its independence names the lord it left,
- *  and the lord losing it is exactly who has to be told.
+ *  it happened to: a land released when its lord fell names that lord, and
+ *  the lord losing it is exactly who has to be told.
  *
  *  **A LINE is asked about the land that will be framed, and nothing else.**
  *  `linked` holds the far end of every arrow standing between this screen and
@@ -558,15 +558,6 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
             faction(e.overlordFactionId), t(" annexes "), landOf(e),
             t(" - its people fold into that realm"),
           ],
-  }),
-  independence: framed({
-    // The land IS the actor here: a vassal whose lord's grip slipped at its
-    // own turn start, which is the one event whose subject and object are the
-    // same faction by construction.
-    label: (e) =>
-      e.overlordFactionId === undefined
-        ? [landOf(e), t(" is independent again")]
-        : [landOf(e), t(" breaks free of "), faction(e.overlordFactionId)],
   }),
   tribute: {
     kind: "never",

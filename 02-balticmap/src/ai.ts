@@ -1,8 +1,7 @@
 import { CARDS, isTributeCard, type Rng } from "./cards";
-import { fullRealmOf, incorporatedRealmOf, realmOf } from "./relations";
+import { fullRealmOf, realmOf } from "./relations";
 import {
-  capturesOnArrival, defenseMaxOf, defenseOf, HILLFORT_HEAL,
-  independenceGateLine, independenceGateOpen,
+  capturesOnArrival, defenseMaxOf, defenseOf,
   MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
@@ -53,10 +52,10 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "assassinate-ruler":
     "4: kill the ruler of a land carrying No successor in reach, which takes " +
     "it outright; else the highest leadership in reach, bodyguard risk unknown",
-  "hillfort": "5: heal toward a gate - escape as a vassal, repair while free",
-  "harvest-feast": "5: heal toward a gate, realm-wide arm",
+  "hillfort": "5: repair the realm's worst polygon while it sits under half",
+  "harvest-feast": "5: repair the realm, the realm-wide arm",
   "fortify":
-    "5: heal toward a gate - the weaker of the two single-land heals, taken " +
+    "5: repair the realm - the weaker of the two single-land heals, taken " +
     "when no Hillfort is in hand. Repeats: step 5 walks the damaged lands " +
     "worst-first, so once a land's settlements are called on the re-opened " +
     "turn aims the next fortify at the next land down",
@@ -64,7 +63,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "2A/5A/6W/11W: the same branches Raid uses - `marchPick` covers both, and " +
     "the AI reaches for whichever of the two is in hand",
   "strong-fortify":
-    "5: heal toward a gate - preferred over Fortify where both are held, " +
+    "5: repair the realm - preferred over Fortify where both are held, " +
     "since it is the same play for one settlement and one more point. " +
     "Repeats with Fortify: same keyword, so either may follow either",
   "raid":
@@ -72,7 +71,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "than it has standing, its defenses gone included - the biggest realm " +
     "first, discounted by how many turns the army walks (`travelFactor`); " +
     "5A: counter a march that would break one of our lands, or that we out-" +
-    "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
+    "muscle; 6W: finish an opening a single raid can open; " +
     "11W: build toward the nearest gate, near counted in TURNS as well as " +
     "points - `gateCandidates` divides the gap by the same discount. Source: " +
     "the land the counter must leave from, else the one whose own defenses " +
@@ -96,8 +95,7 @@ export const POLICY_COVERAGE: Record<string, string> = {
   "miasma": "6P: double the stacks when the doubled plague opens a gate",
   "localized-outbreak": "6P: seed the junction with the most non-own neighbours",
   "spread-disease":
-    "6P: suppress a vassal nearing its gate; 11P: stack the polygon nearest " +
-    "its gate",
+    "11P: stack the polygon nearest its gate",
   "bodyguard": "7: post the guard while own leadership is the board's highest",
   "found-settlement": "8: settle a spare turn (income)",
   "turnip-harvest": "9: cash the harvest whenever held (auto-picks by build)",
@@ -201,26 +199,6 @@ function gateCandidates(
         cost(a) - cost(b) ||
         state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
     );
-}
-
-/** The actor's own vassal (any depth) within one Hillfort of its independence
- *  gate - the seat to suppress before any outward play. Both strategy
- *  branches put this first: a rival's play is worth less than keeping a
- *  vassal. */
-function vassalNearingEscape(
-  state: GameState, v: RulesView, actor: string,
-): string | undefined {
-  const own = incorporatedRealmOf(actor, v.incorporated);
-  const members = [...fullRealmOf(actor, v.overlords, v.incorporated)]
-    .filter((m) => !own.has(m) && !(m in v.incorporated));
-  return members
-    .filter(
-      (m) =>
-        defenseOf(v, m) + HILLFORT_HEAL >= independenceGateLine(v, m),
-    )
-    .sort(
-      (a, b) => state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
-    )[0];
 }
 
 /** Damage already in the air at a polygon, net of what the polygon's own side
@@ -507,12 +485,15 @@ export function chooseAction(state: GameState): AiAction {
     }
   }
 
-  // 5: heal toward a gate. While a vassal, heal the HOME polygon toward the
-  // 75% independence line - escape outranks aggression, as Revolt used to.
-  // While free and the realm's worst polygon sits under 50%, repair it.
+  // 5: repair the realm. When its worst polygon sits under 50%, heal it.
   // The two single-land heals in strength order: spend the big one first while
   // a land is worth it. Fortify is the weaker, and the one every deck starts
   // holding four of.
+  //
+  // A vassal used to have an arm of its own above this one, healing its HOME
+  // toward the line that would have freed it. A vassal never leaves now, so
+  // its home is one of the realm's polygons like any other and the walk below
+  // covers it.
   const hillfort = idxOf("hillfort");
   const strongFortify = idxOf("strong-fortify");
   const fortify = idxOf("fortify");
@@ -531,44 +512,34 @@ export function chooseAction(state: GameState): AiAction {
     }
     return null;
   };
-  const home = p.factionId;
-  if (lord !== undefined && !independenceGateOpen(v, home)) {
-    const heal = healAt(home);
+  const realmPolys = [
+    ...fullRealmOf(p.factionId, state.overlords, state.incorporated),
+  ];
+  // Braced: a land reads as damaged by what has already landed PLUS what is
+  // in the air at it, netted against our own counter on the same axis. An
+  // arrow is visible a turn ahead, so a heal that ignores it repairs a land
+  // that is about to be knocked straight back down.
+  const braced = (m: string): number =>
+    Math.max(0, defenseOf(v, m) - incomingAt(v, m));
+  // Worst first, and DOWN THE LIST rather than the worst alone. A fortify
+  // calls on a settlement of the land it heals, so the worst land runs out
+  // while it is still the worst - and a repeat that could only ever re-aim
+  // at the same land would end the run on its second play. The same walk
+  // also covers the older case of a land braced under half that is already
+  // standing at its ceiling.
+  const worst = realmPolys
+    .filter((m) => braced(m) < 0.5 * defenseMaxOf(v, m))
+    .sort(
+      (a, b) =>
+        braced(a) / defenseMaxOf(v, a) - braced(b) / defenseMaxOf(v, b) ||
+        order(a) - order(b),
+    );
+  for (const land of worst) {
+    const heal = healAt(land);
     if (heal !== null) return heal;
-    if (feast !== undefined && defenseOf(v, home) < defenseMaxOf(v, home)) {
-      return { type: "play", cardIndex: feast };
-    }
   }
-  if (lord === undefined) {
-    const realmPolys = [
-      ...fullRealmOf(p.factionId, state.overlords, state.incorporated),
-    ];
-    // Braced: a land reads as damaged by what has already landed PLUS what is
-    // in the air at it, netted against our own counter on the same axis. An
-    // arrow is visible a turn ahead, so a heal that ignores it repairs a land
-    // that is about to be knocked straight back down.
-    const braced = (m: string): number =>
-      Math.max(0, defenseOf(v, m) - incomingAt(v, m));
-    // Worst first, and DOWN THE LIST rather than the worst alone. A fortify
-    // calls on a settlement of the land it heals, so the worst land runs out
-    // while it is still the worst - and a repeat that could only ever re-aim
-    // at the same land would end the run on its second play. The same walk
-    // also covers the older case of a land braced under half that is already
-    // standing at its ceiling.
-    const worst = realmPolys
-      .filter((m) => braced(m) < 0.5 * defenseMaxOf(v, m))
-      .sort(
-        (a, b) =>
-          braced(a) / defenseMaxOf(v, a) - braced(b) / defenseMaxOf(v, b) ||
-          order(a) - order(b),
-      );
-    for (const land of worst) {
-      const heal = healAt(land);
-      if (heal !== null) return heal;
-    }
-    if (worst.length > 0 && feast !== undefined) {
-      return { type: "play", cardIndex: feast };
-    }
+  if (worst.length > 0 && feast !== undefined) {
+    return { type: "play", cardIndex: feast };
   }
 
   // 5A: answer a march. An arrow is visible for exactly one turn, so this is
@@ -764,12 +735,6 @@ function warpathDecisive(
   const raidTargets =
     pick === undefined ? [] : validTargetsFor(v, actor, pick.id);
 
-  // 6W-1: vassal suppression - raid the vassal one heal from its gate.
-  const restive = vassalNearingEscape(state, v, actor);
-  if (raid !== undefined && restive !== undefined && raidTargets.includes(restive)) {
-    return raidAt(state, v, actor, raid, pick!.id, restive);
-  }
-
   // Per target, and a ceiling: what the hardest arrow the realm could throw
   // at that land would land. A branch asking "can this card finish it" is
   // asking whether the play is available at all.
@@ -881,14 +846,9 @@ function warpathBuild(
  *    started taking turns, because a lord borders its vassal and the fattest
  *    fan on the board is often aimed straight up the actor's own chain, which
  *    `aimsWithinOwnRealm` forbids.
- *  - It also OFFERS the actor's own vassals and grand-vassals, which the bare
- *    border never did: `attackReach` is `borderPolygonsOf` plus the full realm
- *    less what the actor holds outright. That is not a side effect to be
- *    trimmed back - `raidPick` has always been able to aim there, and a lord
- *    raiding its own vassal is the upkeep that holds it under the independence
- *    gate. A Great raid that could not do what a Raid can was the inconsistency.
- *
- *  The second half is a live balance change and has not been measured. */
+ *  It also narrows the set the same way every other picker is narrowed: a
+ *    lord may no longer aim a hostile card down its own chain, so its vassals
+ *    are not offered here any more than they are to `raidPick`. */
 function greatRaidPick(
   v: RulesView, actor: string,
 ): { target: string; arrows: number; damage: number } | null {
@@ -920,7 +880,6 @@ function pestilenceDecisive(
   actor: string,
   idxOf: (id: string) => number | undefined,
 ): AiAction | null {
-  const spread = idxOf("spread-disease");
   const outbreak = idxOf("localized-outbreak");
   const miasma = idxOf("miasma");
   const plague = idxOf("plague");
@@ -938,20 +897,6 @@ function pestilenceDecisive(
     !(polygon in v.incorporated) &&
     gateGap(v, polygon) > 0 &&
     gateGap(v, polygon) <= plagueDamageAt(polygon, m);
-
-  // 6P-1: vassal suppression - plague the restive vassal's stacks, else
-  // sicken it so the next plague can.
-  const restive = vassalNearingEscape(state, v, actor);
-  if (restive !== undefined) {
-    if (plague !== undefined && stacksOn(restive) > 0) {
-      return { type: "play", cardIndex: plague };
-    }
-    const spreadTargets =
-      spread === undefined ? [] : validTargetsFor(v, actor, "spread-disease");
-    if (spread !== undefined && spreadTargets.includes(restive)) {
-      return { type: "play", cardIndex: spread, targetId: restive };
-    }
-  }
 
   // 6P-2: plague when it opens at least one gate, or when the total damage
   // beats a raid's worth - the cash-out test. `plagueTargetsOf` is the same

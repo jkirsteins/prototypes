@@ -123,8 +123,6 @@ export interface GameSummary {
   subjugatedCount: number;
   /** How often the human was freed by their overlord being subjugated. */
   releasedCount: number;
-  /** How often the human freed itself through the independence gate. */
-  independenceCount: number;
   /** Turn the human was incorporated (game over); null if they survived. */
   defeatTurn: number | null;
   conqueror: string | null;
@@ -144,7 +142,6 @@ export function summarize(
   const mine = state.log.filter((e) => e.targetFactionId === humanFaction);
   const subjugations = mine.filter((e) => e.type === "subjugated");
   const releases = mine.filter((e) => e.type === "released");
-  const independences = mine.filter((e) => e.type === "independence");
   // A rival unifying the map logs "unified", not "defeat", because its target
   // is the map rather than the human's faction - but it still sets phase to
   // "defeat", and from the human's seat losing the map to someone else is a
@@ -166,7 +163,6 @@ export function summarize(
     firstOverlord: subjugations[0]?.overlordFactionId ?? null,
     subjugatedCount: subjugations.length,
     releasedCount: releases.length,
-    independenceCount: independences.length,
     defeatTurn: defeat?.turn ?? null,
     conqueror: defeat?.overlordFactionId ?? null,
     turns: state.turn,
@@ -300,7 +296,6 @@ export interface ArmStats {
   medianDefeatTurn: number | null;
   meanSubjugations: number | null;
   meanReleases: number | null;
-  meanIndependences: number | null;
   capShare: number;
   victoryShare: number;
 }
@@ -324,7 +319,6 @@ export function aggregate(arm: string, games: GameSummary[]): ArmStats {
     medianDefeatTurn: median(defeats),
     meanSubjugations: mean(games.map((g) => g.subjugatedCount)),
     meanReleases: mean(games.map((g) => g.releasedCount)),
-    meanIndependences: mean(games.map((g) => g.independenceCount)),
     capShare: share(games.filter((g) => g.outcome === "cap").length),
     victoryShare: share(games.filter((g) => g.outcome === "victory").length),
   };
@@ -418,7 +412,6 @@ export interface WorldSummary {
   winner: string | null;
   subjugations: number;
   incorporations: number;
-  independences: number;
   /** The biggest realm any faction reached at any point. */
   largestRealm: number;
   /** Turns between the last incorporation and the end of the run. */
@@ -546,10 +539,7 @@ export function runWorld(opts: WorldOptions): WorldSummary {
       const prior = openVassalage.get(land);
       if (prior !== undefined) vassalTenures.push(e.turn - prior);
       openVassalage.set(land, e.turn);
-    } else if (
-      e.type === "released" || e.type === "incorporated" ||
-      e.type === "independence"
-    ) {
+    } else if (e.type === "released" || e.type === "incorporated") {
       const start = openVassalage.get(land);
       if (start !== undefined) {
         vassalTenures.push(e.turn - start);
@@ -599,7 +589,6 @@ export function runWorld(opts: WorldOptions): WorldSummary {
     winner: unified?.overlordFactionId ?? null,
     subjugations: state.log.filter((e) => e.type === "subjugated").length,
     incorporations: state.log.filter((e) => e.type === "incorporated").length,
-    independences: state.log.filter((e) => e.type === "independence").length,
     largestRealm,
     turnsSinceLastIncorporation: state.turn - (lastIncorporation?.turn ?? 0),
     playsByCard,
@@ -648,7 +637,6 @@ export interface WorldStats {
   meanEndTurn: number | null;
   meanSubjugations: number | null;
   meanIncorporations: number | null;
-  meanIndependences: number | null;
   medianLargestRealm: number | null;
   /** Median turns of silence before a capped world gave up. Null when every
    *  world resolved. This is the stalemate number. */
@@ -705,7 +693,6 @@ export function aggregateWorld(arm: string, games: WorldSummary[]): WorldStats {
     meanEndTurn: mean(unified.map((g) => g.endTurn)),
     meanSubjugations: mean(games.map((g) => g.subjugations)),
     meanIncorporations: mean(games.map((g) => g.incorporations)),
-    meanIndependences: mean(games.map((g) => g.independences)),
     medianLargestRealm: median(games.map((g) => g.largestRealm)),
     medianStallTurns: median(capped.map((g) => g.turnsSinceLastIncorporation)),
     firstLegalTargetShare: targeted === 0 ? null : firstLegal / targeted,

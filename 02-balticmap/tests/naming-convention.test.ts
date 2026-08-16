@@ -111,11 +111,6 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 2, type: "incorporated", targetFactionId: H, overlordFactionId: RIVAL },
     { turn: 1, playerId: 1, type: "incorporated", targetFactionId: RIVAL, overlordFactionId: H },
   ],
-  independence: [
-    // Fired from beginTurn with the FREED seat's own playerId - both sides.
-    { turn: 1, playerId: 1, type: "independence", targetFactionId: H, overlordFactionId: RIVAL },
-    { turn: 1, playerId: 2, type: "independence", targetFactionId: RIVAL, overlordFactionId: H },
-  ],
   tribute: [
     {
       turn: 1, playerId: 1, type: "tribute",
