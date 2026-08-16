@@ -162,3 +162,46 @@ identity-return on refusal, which is what `commitDecision` reads as
 `RULES_REFUSED`. `DUEL_TURNS` and `duelCandidates` are in `src/gauntlet.ts`.
 There is no `NetAction` and no `Decision` for either yet, and no boot param -
 a `duel=` key would be the cheap way to boot straight into a scoped board.
+
+## Batch B: the pick, the reward and the screen (2026-08-16)
+
+`rewardFor`, the `pick-duel` decision, the offer modal and the lock ship
+together. `npm test` (59 files, 1607) and `npm run build` are green, the
+stuck-seat sweep is zero in both modes, and `npx biome lint` is clean. What
+is NOT verified:
+
+- **No browser pass.** Every claim below about how the loop READS is a claim
+  about code, not about a run somebody watched. In particular: whether the
+  offer modal arriving at every human turn start between duels is welcome or
+  a nag, and whether the world tick is legible at the beat counts stage 1
+  measured. That is Batch C's C3.
+- **Balance unmeasured**, per the standing rule. The three reward sizes -
+  1 growth, 2 defense, 3 wealth - are chosen for legibility rather than
+  measured, and `BIG_LAND_SITES = 4` was picked off the two maps' site
+  histograms (4 of 26 lands on the Baltic, 5 of 24 on Iberia) rather than off
+  play. `npm run balance` has not been run against any of it.
+- **The spoils always come HOME.** Growth and defense land on the human's own
+  faction polygon, whichever of the enemy's lands actually fell. That is
+  deliberate - the promise is made against the enemy before an arrow is sent,
+  and the land that falls may be a grand-vassal nobody aimed at - but it does
+  mean a wide realm always improves the same land. If that reads as a shrine
+  rather than a reward, the fix is to let the player choose the land, which is
+  another modal.
+- **Growth on a land already at its ceiling logs `amount` 0.** `defenseOf`
+  reports an absent key as "at max", so raising the ceiling raises the score
+  with it and the heal moves nothing. The land does grow; the event honestly
+  records no store movement. This is exactly what Prosperous proliferation
+  already does (`landHeal` in `playCard`), and the two are the same shape on
+  purpose - but it means the badge walk shows no step for a full-health
+  winner.
+- **The pick is raised from `refreshWhenSettled` rather than from a
+  transition stage.** It holds nothing open: `picking` is a state the engine
+  carries until answered, so there is no one-shot route to lose and no
+  reconciliation needed. The cost is that the modal appears after the round
+  summary has been dismissed rather than as part of the move - which is the
+  right order for reading, but nobody has watched it.
+- **A run that reaches an empty offer was never observed.** The empty-offer
+  arm is tested at the HUD level only; no game state was driven into it.
+- **`duel=` is answered before `march=` and after `realm=`.** No test covers
+  the interaction of `realm=25` with a `duel=` clause, since a realm holding
+  the map borders little.

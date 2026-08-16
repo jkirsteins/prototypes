@@ -91,6 +91,13 @@ id boots a perfectly ordinary game and says nothing.
   naming the retired `copies` axis still boots - the unknown-axis rule drops
   it, and `rel=`, `deck=`, `known=` and `xp=` are simply not boot keys any
   more.
+- `duel=jersikans` - answers the gauntlet's pick on the way in: a faction id
+  opens a duel against it, and the literal `duel=none` declines the whole
+  offer for a world tick. Omitted, the run boots standing on its question -
+  and that question LOCKS the screen, so a URL that means to reach the board
+  behind it has to say so. Answered through the real `pickDuel` /
+  `declineDuel`, so an id the offer does not hold is dropped like any other
+  unknown clause.
 - `popups=off` - sets the existing "Show popups" log pref.
 - `region=baltic|iberia` - which map the booted page plays on; it seeds the
   booted page's region preference the way `rules=` seeds the rules pick. An
@@ -842,6 +849,54 @@ the offer is not made twice.
   run - a guest's starts at the host's snapshot and a `?turns=` boot on the boot
   path - and summing stretches is also what makes a played-on run come out
   right: both halves counted, the postmortem read in between left out.
+
+## The run asks which fight, and the offer is the promise
+
+The gauntlet cycle - pick a bordering realm, duel it, cash the reward, let the
+whole world take one turn, pick again - lives in `src/gauntlet.ts` and one
+field on `GameState`. Four things about its player-facing half are
+load-bearing:
+
+- **`rewardFor` is the one answer to what a land is worth.** The picker quotes
+  it and the round wrap that pays a won duel reads the same function on the
+  same land - the enemy the offer named, never the land that happened to
+  change hands. `SINGLE_LAND_HEAL`'s rule: a preview that promises what the
+  play will not do is the bug, and the only way two surfaces cannot promise
+  different things is for there to be nothing for them to disagree about. Both
+  its inputs survive a duel - `siteCaps` is map data and the defensive
+  terrains are not `strippedOnCapture` - so a promise made twenty rounds ago is
+  the one that gets paid.
+- **A won duel is read off the LOG, never off `until`.** A land moving between
+  the two realms ends a duel by pulling `until` in to the turn it moved, so the
+  clock running out and a conquest arrive in exactly the same shape. `duelWon`
+  looks at one turn - `until` itself - which is exact rather than approximate:
+  no cross-realm conquest can sit earlier in a duel that is still running,
+  because one would have ended it. It is handed the batch being written as well
+  as `state.log`, since a conquest at the human's own turn start is decided and
+  swept in the same `beginTurn`.
+- **Declining is real and it is not free.** `declineDuel` spends the world
+  tick a finished duel spends: every realm takes a turn while yours stands
+  still, and a fresh offer comes round. The border is not a to-do list, so
+  ignoring a neighbour has to be available - but a decline that also skipped
+  the tick would be strictly better than fighting, and the loop would have
+  nothing in it. The modal says so in as many words.
+- **The pick is host-only, and the guest is never shown it.** There is ONE
+  gauntlet on the state and its two sides are `humanFactionOf` - seat 0, the
+  same seat `phase` and `winSizeFor` speak for. Two people cannot be in
+  different duels, so `pick-duel` names no `NetAction` and `decidedHere`
+  answers false for a guest. That is the gate, and it is the same table that
+  routes the answer: the question is never raised on a screen whose answer has
+  nowhere to go.
+
+`picking` LOCKS the local screen - `pickOwed` inside `actionBlock`, never
+beside it - and `askDuelPick` repaints on the way in for the reason every
+derived lock owes a paint. It queues behind an owed conquest, which shares the
+overlay and is about the board the player was just shown.
+
+**An empty offer is a state, not a bug.** A realm that borders nothing it may
+fight is shown the offer with no rows in it, a sentence saying so, and the
+same button as the way on. A modal listing nothing with no way forward is a
+dead run.
 
 ## Nothing ends itself
 
