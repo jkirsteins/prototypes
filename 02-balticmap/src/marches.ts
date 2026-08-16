@@ -2,8 +2,10 @@
  *
  *  A Raid played on turn T does not move a defense score. It commits an army
  *  out of one of the actor's lands, becomes a visible arrow on the map, and
- *  resolves at the start of that actor's next turn - which gives every other
- *  seat one turn to see it coming and answer. The answer is a Raid back down
+ *  resolves at the start of one of that actor's later turns - the next one for
+ *  a neighbour, and one further out for every land the army has to cross,
+ *  which gives every other seat that long to see it coming and answer. The
+ *  answer is a Raid back down
  *  the same axis: the two armies meet in the middle and only the difference
  *  lands, on whichever side pushed less hard. Armies pair off one for one, so
  *  a counter answers ONE arrow and not the bundle - see `resolveAxis`.
@@ -52,10 +54,22 @@ export interface March {
    *  the card would be dead until a realm grew a third land. */
   holdsArmy: boolean;
   /** The turn this lands on, the absolute-expiry convention of src/timed.ts:
-   *  declared on turn T stores T + 1. `state.turn` is a ROUND counter that
-   *  bumps on the wrap to seat 0, so T + 1 is the declaring seat's next turn
-   *  whichever seat it is, and resolution runs in that seat's `beginTurn`. */
+   *  declared on turn T stores T plus a turn for every land the army crosses
+   *  (`marchHopsTo`, at most `MAX_MARCH_HOPS`). `state.turn` is a ROUND
+   *  counter that bumps on the wrap to seat 0, so T + 1 is the declaring
+   *  seat's next turn whichever seat it is, and resolution runs in that seat's
+   *  `beginTurn`.
+   *
+   *  Nothing may infer the distance back out of it - `declared` carries the
+   *  turn it set out, because a neighbour's raid and one from three lands away
+   *  can now land on the same turn. */
   expiry: number;
+  /** The turn this was declared on. Carried rather than derived: `opening`
+   *  used to read it off the expiry, which was the declaration turn plus one
+   *  for every march there was. A march now takes a turn per land it crosses,
+   *  so two arrows landing together may have set out turns apart, and the one
+   *  that started the quarrel is the one drawn full size. */
+  declared: number;
   /** This march's identity, for as long as it exists and never again.
    *
    *  Allocated from `GameState.nextMarchId` at declaration and never reused,
@@ -177,8 +191,8 @@ export interface Axis {
    *  as one confused shape, so the opening side is drawn full size on the axis
    *  and the answer smaller and off to one side.
    *
-   *  Read off the expiry, which IS the declaration turn plus one, falling back
-   *  to insertion order for two declared in the same round. */
+   *  Read off `declared`, falling back to insertion order for two declared in
+   *  the same round. */
   opening: "a" | "b";
 }
 
@@ -213,7 +227,7 @@ export function axesOf(marches: Marches): Axis[] {
     const earliest = (side: March[]): number =>
       side.length === 0
         ? Number.POSITIVE_INFINITY
-        : Math.min(...side.map((m) => m.expiry));
+        : Math.min(...side.map((m) => m.declared));
     const ea = earliest(axis.fromA);
     const eb = earliest(axis.fromB);
     const seen = firstSeen.get(axisKey)!;
@@ -295,6 +309,13 @@ export interface Claim {
    *  Subjugate is the only declarer today, and writing that down here is what
    *  keeps a second one from inheriting its name. */
   cardId: string;
+  /** The turn this is answered on, and it is ALWAYS the next one - a demand
+   *  of fealty is a message, not an army, so it does not walk and takes no
+   *  turn per land crossed the way `March.expiry` now does. The asymmetry is
+   *  real and deliberate: a Subjugate is made out of the actor's own home at
+   *  anything its whole realm borders, which can be many lands from that
+   *  home, and charging it for the distance would price the card by where its
+   *  lord happens to live. */
   expiry: number;
 }
 

@@ -9,8 +9,8 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  newGame, startGame, chooseBuild, advance, viewOf,
-  type GameState,
+  newGame, startGame, chooseBuild, advance, viewOf, isHumanFaction,
+  takesNoTurn, type GameState,
 } from "../src/game";
 import {
   marchSourcesAgainst, spendCeilingOn, validTargetsFor,
@@ -372,7 +372,7 @@ describe("what only the host answers", () => {
     const named: Record<DecisionKind, true> = {
       play: true, harvest: true, discard: true,
       "end-turn": true, transfer: true, surrender: true,
-      "keep-playing": true,
+      "pick-duel": true, "pick-boon": true, "keep-playing": true,
     };
     expect(Object.keys(DECISION_ROUTES).sort()).toEqual(
       Object.keys(named).sort(),
@@ -432,14 +432,60 @@ describe("a person whose chief was killed", () => {
     until(t, t.guestSeat);
     const me = t.state().players[t.guestSeat].factionId;
     const { [me]: _gone, ...rulers } = t.state().rulers;
-    t.setState({
-      ...t.state(), humanSeats: [0, t.guestSeat], rulers,
-    });
+    // `humanSeats` is NOT set here: the real deal puts the guest's seat in it,
+    // and a test that hand-sets it is a test that passes while the app is
+    // broken - which is exactly how the missing seat survived.
+    t.setState({ ...t.state(), rulers });
     t.policyTurn();
     // Round the table and back: the seat is still dealt into the order.
     for (let i = 0; i < 8 && t.state().current !== t.guestSeat; i++) {
       t.policyTurn();
     }
     expect(t.state().current).toBe(t.guestSeat);
+  });
+});
+
+describe("the deal seats the guest as a person", () => {
+  // `humanSeats` is what `isHumanFaction` reads, and two rules ride on that
+  // one answer: a person is never skipped by the turn loop, and a person is
+  // ASKED how many defenders a conquest sends. Nothing in the app used to put
+  // the guest's seat in it, so both were quietly false for the second person
+  // at the table. Driven through the real deal on purpose - the suites that
+  // hand-set `humanSeats` could not see it.
+  it("puts the guest's seat in humanSeats, behind the host's", () => {
+    const t = twoSeats(4);
+    expect(t.guestSeat).toBeGreaterThan(0);
+    expect(t.state().humanSeats).toEqual([0, t.guestSeat]);
+    // Index 0 still answers "whose ending is on screen", and that is the host.
+    expect(t.state().humanSeats[0]).toBe(0);
+    const guestFaction = t.state().players[t.guestSeat].factionId;
+    expect(isHumanFaction(t.state(), guestFaction)).toBe(true);
+  });
+
+  it("leaves the guest playing through a duel it is not in", () => {
+    // The duel scope stills every faction on neither side. A second person is
+    // exempt - `takesNoTurn` asks `isHumanFaction` before it asks the scope,
+    // for exactly this - but the arm cannot fire on a seat nobody registered,
+    // and a guest frozen for twenty rounds is a hung game with nothing on
+    // screen to say why.
+    const t = twoSeats(4);
+    const state = t.state();
+    const guestFaction = state.players[t.guestSeat].factionId;
+    const enemy = state.factionIds.find(
+      (id) => id !== guestFaction && id !== state.players[0].factionId,
+    )!;
+    const duelling = {
+      ...state,
+      gauntlet: {
+        kind: "duel" as const, enemy, staked: "beta", decided: null, boss: false
+      },
+    };
+    expect(takesNoTurn(duelling, guestFaction)).toBe(false);
+    // The scope is still real for everybody else on neither side.
+    const bystander = state.factionIds.find(
+      (id) =>
+        id !== guestFaction && id !== enemy && id !== state.players[0].factionId,
+    )!;
+    expect(takesNoTurn(duelling, bystander)).toBe(true);
   });
 });

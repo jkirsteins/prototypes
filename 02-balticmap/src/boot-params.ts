@@ -1,15 +1,17 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import { REGIONS, type RegionId } from "./regions";
 import {
-  advance, chooseBuild, chooseRules, isHumanTurn, pickFaction, startGame,
-  TURNIP_HARVEST_THRESHOLD, viewOf,
+  advance, chooseBuild, chooseRules, declineDuel, humanFactionOf, isHumanTurn,
+  pickDuel, pickFaction, startGame, TURNIP_HARVEST_THRESHOLD, viewOf,
   type GameState,
 } from "./game";
+import { duelStakes } from "./gauntlet";
 import { aiTakeTurn } from "./ai";
 import { applyDamage, defenseMaxOf, MIN_RAID_SPEND } from "./defense";
 import { addMarch } from "./marches";
 import {
-  attackDamageFor, marchSourcesAgainst, spendCeilingOn,
+  attackDamageFor, marchHopsTo, marchSourcesAgainst, marchTargetsFrom,
+  spendCeilingOn,
 } from "./playability";
 import { realmRootOf } from "./relations";
 import { rulerOf } from "./rulers";
@@ -71,6 +73,26 @@ export interface BootParams {
    *  axes and options are dropped by `mergeRules`, so a URL from before an
    *  axis existed - or after one is removed - still boots. */
   rules: RuleSelections | null;
+  /** The gauntlet's pick, answered on the way in: a faction id opens a duel
+   *  against it, the literal `none` declines the offer, and null leaves the
+   *  run standing on its question the way a fresh deal does.
+   *
+   *  It exists because `picking` LOCKS the screen - `localPickPending` in
+   *  src/main.ts - so without it every browser check would open on the same
+   *  modal and no URL could reach the board behind it. Answered through the
+   *  real `pickDuel` / `declineDuel`, so an id the offer does not hold is
+   *  dropped rather than scoping the loop to a land nobody may fight. */
+  duel: string | null;
+  /** Which of the player's own lands `duel=` puts up, or null to take the
+   *  first `duelStakes` offers.
+   *
+   *  It DEFAULTS rather than being required, so every `duel=` URL written
+   *  before a duel had a stake still boots into a running duel instead of
+   *  silently bouncing off `pickDuel`'s refusal. Naming one is for the check
+   *  that is about the stake - losing it, or watching the chip name it - and
+   *  an id outside the legal set drops the same way every other unknown id in
+   *  this file does. */
+  stake: string | null;
   /** `region=iberia` - which map the booted page plays on; seeds the booted
    *  page's region preference the way `rules=` seeds the rules. An unknown
    *  value drops to null rather than a default, since main.ts must tell "no
@@ -203,7 +225,7 @@ function parseRules(raw: string): RuleSelections {
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
   "leadership", "armies", "settlements", "march", "realm", "turnips", "wealth",
-  "popups", "rules", "region",
+  "popups", "rules", "region", "duel", "stake",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -257,6 +279,8 @@ export function parseBootParams(search: string): BootParams | null {
       popups === null ? null : !["off", "false", "0"].includes(popups.trim()),
     rules: rules === null ? null : parseRules(rules),
     region: region !== null && region in REGIONS ? (region as RegionId) : null,
+    duel: q.get("duel"),
+    stake: q.get("stake"),
   };
 }
 
@@ -407,16 +431,53 @@ export function applyBootParams(
     }
     g = { ...g, overlords, incorporated };
   }
+  // The pick, answered before the marches for the ordinary reason overrides
+  // run in this order: `duel=` is about the run's shape and an arrow is about
+  // the board, and the shape does not read the board. Through the real
+  // decision's two engine calls, so a stale or fabricated id changes nothing.
+  if (params.duel !== null) {
+    if (params.duel === "none") {
+      g = declineDuel(g);
+    } else {
+      // The stake defaults to the first land `duelStakes` offers, in map
+      // order, so a URL written before duels had a stake still reaches a
+      // running duel. `null` on a one-land realm, which is the one board
+      // `pickDuel` requires it of.
+      const home = humanFactionOf(g);
+      const legal =
+        home === null ? [] : duelStakes(viewOf(g), home, params.duel);
+      const named =
+        params.stake !== null && legal.includes(params.stake)
+          ? params.stake
+          : legal[0];
+      // No legal stake is no duel, and the clause drops the way every other
+      // unreachable clause in this file does.
+      if (named !== undefined) g = pickDuel(g, params.duel, named);
+    }
+  }
   // A booted march is declared through the same rules a played one is: the
-  // source must be in the actor's realm with an army free and the target must
-  // be something that actor may attack, or the clause is dropped. A URL that
-  // could conjure an impossible arrow would be checking a state the game
-  // cannot reach.
+  // source must be in the actor's realm with an army free and within marching
+  // distance, and the target must be something that actor may attack, or the
+  // clause is dropped. A URL that could conjure an impossible arrow would be
+  // checking a state the game cannot reach.
+  //
+  // Both halves are asked, because neither answers the other's question:
+  // `marchSourcesAgainst` says the army can walk that far and has the legs,
+  // and `marchTargetsFrom` says the land is one this actor may attack at all.
+  // A played card gets the second from `validTargetsFor` at the top of
+  // `playCard`; a URL has no such gate above it.
   for (const { from, to, spend } of params.marches) {
     if (!g.factionIds.includes(from) || !g.factionIds.includes(to)) continue;
     const actor = realmRootOf(from, g.overlords, g.incorporated);
     const v = viewOf(g);
     if (!marchSourcesAgainst(v, actor, to).includes(from)) continue;
+    if (!marchTargetsFrom(v, actor, from).includes(to)) continue;
+    // Never null: the two lines above have both already asked the same
+    // question through `marchHopsTo`. Read rather than assumed, because the
+    // turns the arrow spends in the air are exactly the distance it was let
+    // through for.
+    const hops = marchHopsTo(v, from, to);
+    if (hops === null) continue;
     // Clamped into [minimum, ceiling] like every other numeric override, and
     // against the source AS IT STANDS - which is after the defense override,
     // since marches are declared last. The two compose the way the sentence
@@ -439,7 +500,7 @@ export function applyBootParams(
         actor, from, to, cardId: "raid",
         damage: attackDamageFor(v, actor, "raid", paid).damage,
         holdsArmy: true,
-        expiry: g.turn + 1,
+        declared: g.turn, expiry: g.turn + hops,
       }),
       nextMarchId: g.nextMarchId + 1,
     };

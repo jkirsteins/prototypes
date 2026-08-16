@@ -8,6 +8,7 @@ import {
   handBlockReason, handLimitFor, holdsGuard, incorporateRealmGate,
   isCardPlayable, MAX_HAND, MIN_HAND,
   greatRaidPool, greatRaidSpends,
+  marchHopsTo,
   marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
   spendCeilingOn,
   outbreakPolygons, plagueDamageOn, plagueMultiplier, playableSet, reachOf,
@@ -16,7 +17,7 @@ import {
   type RulesView,
 } from "../src/playability";
 import { OPENING_HAND } from "../src/game";
-import { TRIBUTE_CARDS } from "../src/cards";
+import { CARDS, TRIBUTE_CARDS } from "../src/cards";
 import { RAID_LEADERSHIP } from "../src/abilities";
 import { SUBJUGATION_GATE } from "../src/defense";
 
@@ -37,6 +38,8 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     incorporated: {},
     adjacency: LINE_ADJ,
     factionIds: ORDER,
+    // Nothing beyond the frame: these views are about the map's own rules.
+    foreign: [],
     passives: {},
     turn: 1,
     guards: {},
@@ -126,7 +129,7 @@ describe("marching: sources, targets and armies", () => {
   const outFrom = (from: string, to: string, over = {}) => ({
     "1": {
       id: 1, actor: from, from, to, cardId: "raid", damage: 4,
-      holdsArmy: true, expiry: 2, ...over,
+      holdsArmy: true, declared: 1, expiry: 2, ...over,
     },
   });
 
@@ -200,14 +203,17 @@ describe("marching: sources, targets and armies", () => {
     expect(greatRaidPool(v, "beta", "delta")).toBe(6);
   });
 
-  it("aims an army only at what its own land borders", () => {
+  it("aims an army at everything in reach it can walk to", () => {
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    // beta borders alpha and its own vassal gamma, and may batter either.
-    expect(marchTargetsFrom(v, "beta", "beta")).toEqual(["alpha", "gamma"]);
-    // The vassal's own army reaches delta - and not gamma itself: no land
-    // borders itself, so holding a vassal down takes an army from next door.
-    expect(marchTargetsFrom(v, "beta", "gamma")).toEqual(["delta"]);
-    expect(marchSourcesAgainst(v, "beta", "delta")).toEqual(["gamma"]);
+    // beta borders alpha and its own vassal gamma, and may batter either -
+    // and delta, two lands down the line, is a march of two turns rather than
+    // somewhere out of the question.
+    expect(marchTargetsFrom(v, "beta", "beta"))
+      .toEqual(["alpha", "gamma", "delta"]);
+    // The vassal's own army reaches delta next door and alpha the long way,
+    // but not gamma itself: no land marches at itself.
+    expect(marchTargetsFrom(v, "beta", "gamma")).toEqual(["alpha", "delta"]);
+    expect(marchSourcesAgainst(v, "beta", "delta")).toEqual(["beta", "gamma"]);
     expect(marchSourcesAgainst(v, "beta", "gamma")).toEqual(["beta"]);
   });
 
@@ -244,6 +250,86 @@ describe("marching: sources, targets and armies", () => {
       { from: "beta", to: "delta", holdsArmy: true },
       { from: "gamma", to: "delta", holdsArmy: true },
     ]);
+  });
+});
+
+describe("a march reaches past the border", () => {
+  // one - two - three - four - five in a line, with one holding two, three
+  // and four as vassals. The vassals are there to put the far end of the
+  // chain in REACH - a lord may batter its own vassals, and the land past
+  // them borders the realm - so that distance is the only thing left deciding
+  // what an army standing in `one` may be aimed at.
+  const CHAIN = ["one", "two", "three", "four", "five"];
+  const CHAIN_ADJ = {
+    one: ["two"],
+    two: ["one", "three"],
+    three: ["two", "four"],
+    four: ["three", "five"],
+    five: ["four"],
+  };
+  const chain = (extra: Partial<RulesView> = {}) =>
+    view({
+      factionIds: CHAIN,
+      adjacency: CHAIN_ADJ,
+      defenseMax: defenseMaxAll(CHAIN),
+      siteCaps: siteCaps(CHAIN),
+      leaders: Object.fromEntries(CHAIN.map((id) => [id, true])),
+      overlords: new Map([["two", "one"], ["three", "one"], ["four", "one"]]),
+      ...extra,
+    });
+
+  it("offers a land two hops away", () => {
+    expect(marchTargetsFrom(chain(), "one", "one")).toContain("three");
+  });
+
+  it("counts the bound inclusively - three hops is a march, four is not", () => {
+    expect(marchTargetsFrom(chain(), "one", "one")).toContain("four");
+    expect(marchTargetsFrom(chain(), "one", "one")).not.toContain("five");
+    // And `five` is refused for the distance alone: it is in reach, and an
+    // army standing next door may still be aimed at it.
+    expect(attackReach(chain(), "one")).toContain("five");
+    expect(marchTargetsFrom(chain(), "one", "four")).toContain("five");
+  });
+
+  it("is one question, so the source list and the target list agree", () => {
+    // `marchSourcesAgainst` is the other door into the same decision - the
+    // target-first flow - and a land it refuses is a land the aim would offer
+    // and the play then reject.
+    expect(marchSourcesAgainst(chain(), "one", "four")).toContain("one");
+    expect(marchSourcesAgainst(chain(), "one", "five")).not.toContain("one");
+    expect(marchHopsTo(chain(), "one", "four")).toBe(3);
+    expect(marchHopsTo(chain(), "one", "five")).toBeNull();
+    // No land marches at itself, whatever the graph says about the distance.
+    expect(marchHopsTo(chain(), "one", "one")).toBeNull();
+  });
+
+  it("does not call a distant target armyless when a source can reach it", () => {
+    // Every vassal's army is already out, so `one` is the realm's only source
+    // and the far end of the chain is three hops from it. The per-target block
+    // reason is the third door into the same decision, and a land the aim
+    // offers must not be a land the hover calls armyless.
+    const v = chain({ armies: { two: 0, three: 0, four: 0 } });
+    expect(marchSourcesFor(v, "one")).toEqual(["one"]);
+    const four = targetEligibilityFor(v, "one", "raid")
+      .find((e) => e.factionId === "four")!;
+    expect(four).toEqual({ state: "available", factionId: "four" });
+  });
+
+  it("still refuses a peer of the actor's own realm, however close", () => {
+    // The realm rule is not a distance rule and widening reach must not have
+    // quietly become a way around it. beta answers to alpha and holds gamma;
+    // delta answers to alpha as well, so it is beta's SIBLING - two hops off
+    // along the line, in beta's reach, and still not something beta may hit.
+    const v = view({
+      overlords: new Map([
+        ["beta", "alpha"], ["gamma", "beta"], ["delta", "alpha"],
+      ]),
+    });
+    expect(attackReach(v, "beta")).toContain("delta");
+    expect(marchHopsTo(v, "beta", "delta")).toBe(2);
+    expect(marchTargetsFrom(v, "beta", "beta")).not.toContain("delta");
+    // Its own vassal, one hop off, is still fair game - downward is upkeep.
+    expect(marchTargetsFrom(v, "beta", "beta")).toContain("gamma");
   });
 });
 
@@ -602,6 +688,23 @@ describe("cardBlockReason", () => {
     }
   });
 
+  it("refuses a war council to a seat with nobody in the chair", () => {
+    // `playCard` reads the actor's ruler through `rulerOf`, which throws on a
+    // vacant chair. It was unreachable prose while every leaderless land took
+    // no turn - a duel enemy fights chief or no chief now, and it crashed the
+    // run on a card its own hand called playable.
+    const vacant = view({ leaders: {} });
+    expect(cardBlockReason(vacant, "beta", "war-council"))
+      .toEqual({ code: "no-ruler" });
+    // Nothing else in the always-legal set cares who is sitting there.
+    for (const id of ["grow-crops", "favourable-omens", "miasma"]) {
+      expect(cardBlockReason(vacant, "beta", id), id).toBeNull();
+    }
+    // The rule is `CardDef.needsRuler` and not the card's name, so it is in
+    // the wire fingerprint with every other legality dial.
+    expect(CARDS["war-council"].needsRuler).toBe(true);
+  });
+
   it("tribute needs an overlord and is legal only as a vassal", () => {
     for (const id of TRIBUTE_CARDS) {
       expect(cardBlockReason(view(), "beta", id))
@@ -657,6 +760,54 @@ describe("cardBlockReason", () => {
     expect(cardBlockReason(theirs, "beta", "foul-winds")).toBeNull();
   });
 
+  it("plague counts only the stacks it may actually burn", () => {
+    // beta answers to alpha, so a hostile card may not strike alpha. Stacks
+    // that all sit on a peer of the actor's own realm are stacks the play
+    // would leave exactly where they are - `playCard` skips them - so the
+    // card is dead in hand rather than a turn spent on nothing.
+    const vassal = view({
+      overlords: new Map([["beta", "alpha"]]),
+      disease: { alpha: { beta: 2 } },
+    });
+    expect(cardBlockReason(vassal, "beta", "plague"))
+      .toEqual({ code: "no-disease" });
+    // Downward is upkeep, and a plague on your own vassal burns.
+    const lord = view({
+      overlords: new Map([["gamma", "beta"]]),
+      disease: { gamma: { beta: 2 } },
+    });
+    expect(cardBlockReason(lord, "beta", "plague")).toBeNull();
+  });
+
+  it("foul winds counts only the stacks the winds may actually reach", () => {
+    const vassal = view({
+      overlords: new Map([["beta", "alpha"]]),
+      disease: { alpha: { gamma: 3 } },
+    });
+    expect(cardBlockReason(vassal, "beta", "foul-winds"))
+      .toEqual({ code: "no-disease" });
+    // And stacks the actor already owns move to nobody: the play would shift
+    // nothing, which is the same dead card by another route.
+    const own = view({ disease: { gamma: { beta: 3 } } });
+    expect(cardBlockReason(own, "beta", "foul-winds"))
+      .toEqual({ code: "no-disease" });
+  });
+
+  it("great raid stays legal when the only target left is the actor's vassal", () => {
+    // The whole map under alpha, with beta held as a vassal rather than
+    // annexed: nothing borders the realm, and the one thing alpha may still
+    // strike is its own vassal - which is how the gate is held shut.
+    const v = view({
+      overlords: new Map([["beta", "alpha"]]),
+      incorporated: { gamma: "alpha", delta: "alpha" },
+    });
+    expect(attackReach(v, "alpha")).toEqual(new Set(["beta"]));
+    expect(greatRaidMarches(v, "alpha", "beta").length).toBeGreaterThan(0);
+    expect(cardBlockReason(v, "alpha", "great-raid")).toBeNull();
+    // The single raid already reads this reach; the two must agree.
+    expect(cardBlockReason(v, "alpha", "raid")).toBeNull();
+  });
+
   it("subjugate is no-target while every gate in reach is shut", () => {
     expect(cardBlockReason(view(), "beta", "subjugate"))
       .toEqual({ code: "no-target" });
@@ -708,7 +859,7 @@ describe("playableSet", () => {
     // cannot be played, which is what ends the run.
     const stuck = view({ marches: { "1": {
       id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: 1, holdsArmy: true, expiry: 2,
+      damage: 1, holdsArmy: true, declared: 1, expiry: 2,
     } }, armies: { beta: 1 } });
     expect(playableSet(stuck, "beta", ["raid", "grow-crops"],
       { repeatOnly: "raid" })).toEqual({ mode: "play", cardIndexes: [] });
@@ -935,13 +1086,27 @@ describe("targetEligibilityFor on untargeted cards", () => {
   });
 });
 
-describe("a hostile card may never be aimed up your own chain", () => {
+describe("a hostile card may never be aimed at your own realm's peers", () => {
   /** alpha - beta - gamma - delta on a line, with alpha lord of beta, beta
    *  lord of gamma. So gamma answers to beta AND, through beta, to alpha. */
   const pyramid = (extra: Partial<RulesView> = {}) =>
     view({
       adjacency: FULL_ADJ,
       overlords: new Map([["beta", "alpha"], ["gamma", "beta"]]),
+      ...extra,
+    });
+
+  /** The same pyramid with delta ALSO directly under alpha, so beta and delta
+   *  are siblings: one root, neither under the other. delta is reused rather
+   *  than a fifth id invented, because `ORDER` is what `FULL_ADJ` and
+   *  `factionIds` are built from and every other fixture here keeps its own
+   *  `overlords`. */
+  const siblings = (extra: Partial<RulesView> = {}) =>
+    view({
+      adjacency: FULL_ADJ,
+      overlords: new Map([
+        ["beta", "alpha"], ["gamma", "beta"], ["delta", "alpha"],
+      ]),
       ...extra,
     });
 
@@ -965,16 +1130,33 @@ describe("a hostile card may never be aimed up your own chain", () => {
     }
   });
 
-  it("leaves sideways and downward alone - the pyramid is not a truce", () => {
-    // delta is nobody's vassal and borders everything on FULL_ADJ, so it
-    // stands in for a fellow vassal: gamma may still fight it. And a lord
-    // keeps its own vassals in reach, which is what holds them under the
-    // independence gate.
+  it("blocks a vassal aimed at its sibling under the same lord", () => {
+    const v = siblings();
+    for (const cardId of HOSTILE) {
+      expect(validTargetsFor(v, "beta", cardId)).not.toContain("delta");
+      expect(validTargetsFor(v, "delta", cardId)).not.toContain("beta");
+    }
+  });
+
+  it("blocks a grand-vassal aimed at its lord's sibling", () => {
+    // gamma is under beta is under alpha; delta is under alpha. Same pyramid,
+    // no line of fealty between them, and an arrow between them is still the
+    // bloc fighting itself.
+    expect(validTargetsFor(siblings(), "gamma", "raid")).not.toContain("delta");
+  });
+
+  it("leaves DOWNWARD alone - holding your own vassals down is upkeep", () => {
+    // A lord keeps its own vassals in reach, which is what holds them under
+    // the independence gate. Closing this would end vassalage as a decision.
     const v = pyramid();
-    expect(validTargetsFor(v, "gamma", "raid")).toContain("delta");
     expect(validTargetsFor(v, "alpha", "raid")).toContain("beta");
     expect(validTargetsFor(v, "alpha", "raid")).toContain("gamma");
     expect(validTargetsFor(v, "beta", "raid")).toContain("gamma");
+  });
+
+  it("leaves a stranger alone - the rule is the realm, not a truce", () => {
+    // delta is nobody's vassal here, so it is not in gamma's pyramid at all.
+    expect(validTargetsFor(pyramid(), "gamma", "raid")).toContain("delta");
   });
 
   it("blocks a lord's ANNEXED land too - an annexation is its annexer", () => {

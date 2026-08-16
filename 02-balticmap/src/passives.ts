@@ -53,6 +53,16 @@ export const PASSIVES: Record<string, PassiveDef> = {
     text: "Earns its holder 1 extra wealth a turn.",
     strippedOnCapture: false,
   },
+  // The act's boss, and the one status the GAME puts on a land rather than the
+  // map. Stripped on capture, because it describes a seat that has been raised
+  // up to be beaten and not the ground it sits on - once it is taken the
+  // elevation is over, and a land that kept it would carry a boss's defenses
+  // into every fight after.
+  "regional-leader": {
+    id: "regional-leader", name: "Regional leader",
+    text: "The act's champion: the map has raised this land up to be beaten. Its people muster deeper than their neighbours and its chief leads their raids in person.",
+    strippedOnCapture: true,
+  },
   "burden-of-bureaucracy": {
     id: "burden-of-bureaucracy", name: "Burden of bureaucracy",
     text: "Its people are many and slow to muster: 1 army per 4 defense, not per 3.",
@@ -67,6 +77,17 @@ export const PASSIVES: Record<string, PassiveDef> = {
 export const QUIET_PASSIVES: readonly string[] = [
   "keeps-to-itself", "wild-lands", "no-successor",
 ];
+
+/** The statuses that make a land HARD TO TAKE - ground that fights for
+ *  whoever stands on it.
+ *
+ *  Named as a set rather than asked for by id at the one place that wants it,
+ *  the same rule the card classes keep: a surface that names `hill-country`
+ *  by literal answers for one status and not the class, and the second
+ *  defensive terrain a region grows would silently not count. Its one reader
+ *  is `rewardFor` in src/gauntlet.ts - beating such a land teaches the winner
+ *  how it was held. */
+export const DEFENSIVE_TERRAIN: readonly string[] = ["hill-country"];
 
 /** How often a land that keeps to itself sends a raid of its own at a
  *  neighbour.
@@ -85,6 +106,26 @@ export const RESTLESS_RAID_CHANCE = 0.25;
 export const WILD_LANDS_HEAL_CHANCE = 0.1;
 export const WILD_LANDS_HEAL = 1;
 export const HILL_COUNTRY_REDUCTION = 0.25;
+
+/** Every status that shrugs off part of an incoming blow, and how much.
+ *
+ *  A table rather than an `if` per status, because reductions COMPOSE: a land
+ *  carrying two would take both, and a version naming `hill-country` by
+ *  literal would silently apply one. The same lesson `DEFENSIVE_TERRAIN`
+ *  records one screen up - a surface that names a status by literal answers
+ *  for one status and not the class.
+ *
+ *  `regional-leader` is deliberately NOT in it, and that was measured rather
+ *  than chosen. An act's champion is already healed to a raised ceiling and
+ *  plays a deck thick with fortifies; giving it a damage reduction on top made
+ *  it a land the player's raids could not move at all. Watched turn by turn
+ *  through a real act-1 boss duel, both sides sat between 3/5 and 5/5 for
+ *  fourteen straight turns. A champion is dangerous because it PRESSES - its
+ *  chief leads its raids and there are more of them - not because it cannot be
+ *  hurt. */
+const DAMAGE_REDUCTIONS: Readonly<Record<string, number>> = {
+  "hill-country": HILL_COUNTRY_REDUCTION,
+};
 
 /** Defense per army on a land that carries `burden-of-bureaucracy`.
  *
@@ -206,13 +247,21 @@ export function quietPassives(
 export function damageAfterTerrain(
   view: { passives: Passives }, polygon: string, damage: number,
 ): number {
-  if (!hasPassive(view.passives, polygon, "hill-country")) return damage;
+  // Every reduction the land carries, multiplied together and rounded ONCE.
+  // Rounding between them would let two quarters come out as more than one
+  // quarter twice, and a champion on hill country is exactly the land where
+  // that would be noticed.
+  let kept = 1;
+  for (const [id, share] of Object.entries(DAMAGE_REDUCTIONS)) {
+    if (hasPassive(view.passives, polygon, id)) kept *= 1 - share;
+  }
+  if (kept === 1) return damage;
   // Whole numbers out. A quarter off a raid of 1 is 0.75, and a score that
   // reads 0.75/6 on a badge is a score nobody can plan against - the reduction
   // is only worth having where there is enough damage for a quarter of it to
   // be worth a number. Never below 1, and never ABOVE what was coming: a hill
   // must not make a half-damage Great raid hit harder than it would on a
   // plain.
-  const reduced = Math.round(damage * (1 - HILL_COUNTRY_REDUCTION));
+  const reduced = Math.round(damage * kept);
   return Math.min(damage, Math.max(1, reduced));
 }

@@ -203,6 +203,20 @@ describe("PRESENTATION_RULES", () => {
     // tracks - and the count is what would notice a sample going quiet.
     expect(walked).toBeGreaterThanOrEqual(6);
   });
+
+  it("says a void duel settled nothing, never that anybody lost it", () => {
+    // "Selonians loses the duel with Semigallians" would tell the player they
+    // were outplayed by a board change they had no part in - the fight lost
+    // one of its two ends before either land could move. The modal that
+    // follows this beat says the same words; the two surfaces must not
+    // disagree about what happened.
+    const e = sample("duel-void", { targetFactionId: "beta" });
+    const [beat] = mapBeats(presentEvents([e], ctxFor([e])));
+    const said = (beat.label ?? [])
+      .map((s) => (s.kind === "text" ? s.text : "")).join("");
+    expect(said).toContain("settles nothing");
+    expect(said).not.toContain("loses");
+  });
 });
 
 describe("presentEvents", () => {

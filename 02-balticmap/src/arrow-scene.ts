@@ -270,6 +270,14 @@ export interface ArrowKindDef {
    *  size and colour are part of what the arrow IS, and a literal at the draw
    *  site answers for one kind and silently mis-styles the next one added. */
   labelClass: string;
+  /** The font-size `labelClass` is declared at in style.css, in map units.
+   *  Here because the scene has to know how much room a label takes BEFORE it
+   *  is in the tree - a chip is placed against every label in the scene, and
+   *  the shaft the label sits on is laid out in the same pass - and reading it
+   *  back would mean a `getBBox` per arrow per paint on elements that may not
+   *  be attached yet. `tests/arrow-scene.test.ts` holds it to the stylesheet,
+   *  the way the detail ladder's sizes are held to theirs. */
+  labelPx: number;
   /** Why this kind is drawn the way it is. */
   why: string;
 }
@@ -279,18 +287,22 @@ export interface ArrowKindDef {
 export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   march: {
     shape: "spear", className: "march-arrow", labelClass: "march-strength",
+    labelPx: 13,
     why: "An army in flight. The widest thing on its border if it is the strongest.",
   },
   claim: {
     shape: "demand", className: "claim-arrow", labelClass: "claim-label",
+    labelPx: 12,
     why: "Nobody is marching, so it is dashed with a ring for a head - but it is a real declared thing on the board, so it takes a lane like everything else.",
   },
   aim: {
     shape: "spear", className: "aim-arrow", labelClass: "march-strength",
+    labelPx: 13,
     why: "The arrow a play would declare, at the width it will really have: it is packed into its border's block with the arrows already crossing it, so the preview IS the board the play is about to make. Laid out on its own it took the whole block and was drawn over the raid it was answering, which is the commonest aim there is.",
   },
   ghost: {
     shape: "spear", className: "clash-flash", labelClass: "clash-label",
+    labelPx: 22,
     why: "What a march left on the border it crossed, standing for the length of the beat that explains it. Keyed by the landing rather than by any march - a clash retires two arrows and leaves a force that is neither of them - and packed in the same block as the arrows still crossing that border, so it takes a lane beside them instead of being drawn over them.",
   },
 };
@@ -383,8 +395,33 @@ export interface ArrowSpec {
    *  ground. */
   labelAt?: number;
   chip?: { order: number; clash: boolean };
+  /** Turns until this arrow lands, printed on the chip behind the tail.
+   *
+   *  Left off below `MIN_SHOWN_ARRIVAL`. An army now takes a turn for every
+   *  land it crosses, so an arrow standing on a border says nothing about when
+   *  it gets there and a three-turn march looks exactly like tomorrow's raid.
+   *
+   *  On the CHIP and never on the shaft: the shaft carries exactly one number
+   *  - see `BARE_NUMBER_WIDTH` - and a second one on it turns the bare "1 STR"
+   *  form back into a guess. */
+  arrivesIn?: number;
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
+  /** This army is walking OVERLAND past lands in between, rather than standing
+   *  on a shared border or facing its target across water.
+   *
+   *  `crossingBetween` has one answer for "these two share no vertex" and it
+   *  is a strait, because until an army could march more than one land that
+   *  was the only way two lands with no border between them could be at war.
+   *  A two- or three-hop march is the other way, and drawn as a strait the
+   *  picture says the army is crossing water when it is crossing Latgale.
+   *
+   *  A dashed casing, `.march-overland` in src/style.css: same shape, same
+   *  colour, same width, so whose army it is and how strong stay exactly as
+   *  legible - it is the SOLIDITY of the line that says whether the army is on
+   *  a frontier or still on the road. It declares no opacity, for the reason
+   *  `march-counterable` may not. */
+  overland?: boolean;
   /** How loud this arrow is drawn, decided by `emphasisFor` from what the
    *  hover, the pin and a live aim have to say about it.
    *
@@ -399,11 +436,29 @@ export interface ArrowSpec {
   dataset?: Record<string, string>;
 }
 
+/** A box in map coordinates. */
+export interface Rect { x: number; y: number; w: number; h: number }
+
 export interface SceneCtx {
   /** The border between two lands, or null where there is none to draw on. */
   crossingFor(from: string, to: string): Crossing | null;
   /** Where an arrow with no target starts. */
   freeAnchor(from: string): Pt | null;
+  /** Boxes the map has already put ink in, which the landing chip steps
+   *  aside for - the threat badges, in practice.
+   *
+   *  It is the CHIP and not the arrow that dodges, because the chip is the
+   *  only part of an arrow whose position carries no information: the shaft
+   *  stands on the border it crosses and the head bites the land it is aimed
+   *  at, while the chip is a note pinned behind the tail and reads the same
+   *  wherever it is pinned. Nothing else in the scene may be moved to avoid
+   *  anything.
+   *
+   *  Asked of the CALLER rather than measured here: the badge layer is the
+   *  map's, drawn from the game state, and the scene knows nothing about
+   *  either. Absent in callers that draw no badges (the tests, and any
+   *  surface that is only arrows). */
+  keepOut?(): readonly Rect[];
 }
 
 /** One border, whichever way it is crossed. */
@@ -426,6 +481,12 @@ const CLAIM_LABEL_STATION = 1.18;
  *  chip sits behind the tail: the shaft carries exactly one number, so there
  *  is nothing for a bare number to be confused with. */
 const BARE_NUMBER_WIDTH = 24;
+
+/** The soonest arrival worth printing. Landing next turn is what an arrow used
+ *  to mean and is still what most of them mean, so "lands in 1" on every arrow
+ *  on the board would be noise over the one case the player has to notice: an
+ *  army that is not there yet. */
+const MIN_SHOWN_ARRIVAL = 2;
 
 /** How long an arrow takes to arrive, to leave, and to cross to a new lane.
  *
@@ -517,13 +578,21 @@ export function renderArrowScene(
   const drawn = new Map<string, SVGGElement>();
   const ordered: SVGGElement[] = [];
   const entered: HeldArrow[] = [];
+  // Read once for the whole render, like the width scale above it: every
+  // chip in one scene dodges the same board.
+  //
+  // COPIED, because the scene goes on adding to it: the caller's boxes are the
+  // map's ink, and this list ends up holding the scene's own as well - every
+  // arrow's strength label, and each chip already placed. Pushing into the
+  // caller's own array would grow it by a scene's worth of boxes per paint.
+  const keepOut: Rect[] = [...(ctx.keepOut?.() ?? [])];
   const draw = (spec: ArrowSpec, lane: Lane): void => {
     // One arrow per key, and the FIRST spec wins. A key names an element, so a
     // second spec claiming one already drawn this render would hand back an
     // element in neither the retained map nor the leaving set - stranded in the
     // host with nothing left that could ever take it out again.
     if (drawn.has(spec.id)) return;
-    const held = place(scene, host, spec, lane);
+    const held = place(scene, host, spec, lane, keepOut);
     if (held === null) return;
     drawn.set(spec.id, held.el);
     ordered.push(held.el);
@@ -562,13 +631,16 @@ export function renderArrowScene(
   const unit = unitWidthFor(crossings.map(({ group, cross }) => ({
     span: cross.span, strengths: group.map((s) => s.strength),
   })));
+  const placements: { spec: ArrowSpec; lane: Lane }[] = [];
   for (const { group, cross, a } of crossings) {
     const lanes = layoutLanes(
       cross,
       group.map((s) => ({ strength: s.strength, forward: s.from === a })),
       unit,
     );
-    for (const lane of lanes) draw(group[lane.index], lane);
+    for (const lane of lanes) {
+      placements.push({ spec: group[lane.index], lane });
+    }
   }
   for (const spec of free) {
     // `at` and `freeAnchor` are read the same way whether the caller aimed a
@@ -580,11 +652,26 @@ export function renderArrowScene(
     // At the render's own scale, like every arrow that DID find a border: a
     // drag over open map is the same play at the same strength, and a fixed
     // width here would have the preview change size the moment it found one.
-    draw(spec, {
-      index: 0, width: laneWidthFor(spec.strength, unit),
-      ax: start.x, ay: start.y, bx: end.x, by: end.y,
+    placements.push({
+      spec,
+      lane: {
+        index: 0, width: laneWidthFor(spec.strength, unit),
+        ax: start.x, ay: start.y, bx: end.x, by: end.y,
+      },
     });
   }
+  // Every lane is known before any chip is placed, which is the whole reason
+  // the layout is settled first: an arrow's strength sits ON its shaft and may
+  // not be moved for anything, so it is a keep-out box for every chip in the
+  // scene - including its own arrow's, which is far enough down the shaft that
+  // the box never reaches it. Two arrows crossing DIFFERENT borders can print
+  // their strengths within a few units of each other, and the chip that lands
+  // between them is the one thing here that is free to step aside.
+  for (const { spec, lane } of placements) {
+    const box = labelBoxOf(spec, lane);
+    if (box !== null) keepOut.push(box);
+  }
+  for (const { spec, lane } of placements) draw(spec, lane);
   for (const [key, held] of [...scene.held]) {
     if (drawn.has(key)) continue;
     // Dropped AT ONCE, before the fade is even started: the key is free the
@@ -605,6 +692,7 @@ export function renderArrowScene(
  *  the stylesheet gives it once it is in the tree. */
 function place(
   scene: Scene, host: SVGGElement, spec: ArrowSpec, lane: Lane,
+  keepOut: Rect[],
 ): HeldArrow | null {
   const held = scene.held.get(spec.id);
   let kept: HeldArrow | null = null;
@@ -627,7 +715,7 @@ function place(
     }
   }
   const el = kept?.el ?? svgEl("g");
-  if (!dressArrow(el, spec, lane)) {
+  if (!dressArrow(el, spec, lane, keepOut)) {
     // Nothing to draw at this width. An arrow already standing goes the way
     // any departing arrow goes rather than blinking out.
     if (kept !== null) {
@@ -812,7 +900,9 @@ function applyDataset(g: SVGGElement, data: Record<string, string>): void {
 /** Draws the spec into the group, whether the group is new or has been
  *  standing there for twenty renders. False where the geometry is degenerate,
  *  and then nothing has been touched. */
-function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
+function dressArrow(
+  g: SVGGElement, spec: ArrowSpec, lane: Lane, keepOut: Rect[],
+): boolean {
   const def = ARROW_KINDS[spec.kind];
   let used = 0;
   if (def.shape === "spear") {
@@ -840,41 +930,29 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   }
 
   if (spec.label !== undefined) {
-    const station = spec.kind === "claim"
-      // The one label that is a word rather than a number, and wider than the
-      // arrow it belongs to: past the head, in the land being demanded.
-      ? CLAIM_LABEL_STATION
-      : LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
-    const at = pointAlong(
-      lane.ax, lane.ay, lane.bx, lane.by, spec.labelAt ?? station,
-    );
+    const at = labelStationOf(spec, lane);
     const text = ensure(g, used++, "text");
     setAttrs(text, { x: at.x, y: at.y });
     setAttr(text, "class", def.labelClass);
     if (spec.kind !== "claim") setAttr(text, "dominant-baseline", "middle");
     else dropAttr(text, "dominant-baseline");
-    const words = spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
-      ? spec.label.replace(/ STR$/, "")
-      : spec.label;
+    const words = labelWordsOf(spec, lane);
     if (text.textContent !== words) text.textContent = words;
   }
 
-  if (spec.chip !== undefined) {
-    // Behind the tail, outside the block. On the shaft the chips collide as
-    // soon as a border carries three arrows, and a chip over the head reads
-    // as part of the arrowhead.
-    const at = pointAlong(
-      lane.ax, lane.ay, lane.bx, lane.by,
-      -0.18 - (lane.index % LABEL_STATIONS.length) * 0.14,
-    );
-    const label = spec.chip.clash
-      ? `${ordinal(spec.chip.order)} - clash` : ordinal(spec.chip.order);
-    const width = 12 + label.length * 5.6;
+  const chipLabel = chipTextFor(spec);
+  if (chipLabel !== null) {
+    const label = chipLabel;
+    const width = CHIP_PAD + label.length * CHIP_CHAR;
+    // Behind the tail, outside the block, and out from under whatever the map
+    // has already drawn there - see `chipStation`.
+    const at = chipStation(lane, width, keepOut);
     const chip = ensure(g, used++, "g");
     setAttr(chip, "class", "march-order");
     const bg = ensure(chip, 0, "rect");
+    const box = chipBox(at, width);
     setAttrs(bg, {
-      x: at.x - width / 2, y: at.y - 9, width, height: 15, rx: 7.5,
+      x: box.x, y: box.y, width: box.w, height: box.h, rx: CHIP_H / 2,
     });
     setAttr(bg, "class", "march-order-bg");
     const text = ensure(chip, 1, "text");
@@ -882,6 +960,11 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
     setAttr(text, "class", "march-order-text");
     if (text.textContent !== label) text.textContent = label;
     trim(chip, 2);
+    // The chip this arrow just took is ink too, so the next arrow's chip steps
+    // around it. Order-dependent and therefore declaration order, which is the
+    // order lanes are already packed in: the first chip on a border keeps the
+    // station it always had, and it is the later ones that give way.
+    keepOut.push(box);
   }
   trim(g, used);
 
@@ -893,10 +976,158 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   // fade can be aimed past.
   const classes = [def.className, `march-${spec.tone}`];
   if (spec.doomed === true) classes.push("claim-doomed");
+  if (spec.overland === true) classes.push("march-overland");
   classes.push(ARROW_EMPHASIS[spec.emphasis ?? "full"].className);
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
   return true;
+}
+
+/** The chip's own geometry: how tall it is, how much of its width is padding
+ *  and how much each character adds. One set of numbers, because the box that
+ *  is DRAWN and the box that is tested against the map's badges have to be the
+ *  same box - a dodge computed against a different rectangle than the one the
+ *  player sees is a dodge that lands the chip half under the badge. */
+const CHIP_H = 15;
+const CHIP_PAD = 12;
+const CHIP_CHAR = 5.6;
+
+/** How far the chip steps sideways per try, and how many tries it gets. Two
+ *  and a half steps clears the widest defense badge on either map from a chip
+ *  centred on it; four is the room to also miss the pip rows above and below
+ *  one. */
+const CHIP_DODGE = 15;
+const CHIP_DODGE_TRIES = 4;
+
+/** The box the chip occupies, centred on `at`. */
+function chipBox(at: Pt, width: number): Rect {
+  return { x: at.x - width / 2, y: at.y - 9, w: width, h: CHIP_H };
+}
+
+/** How wide one character of a label is, as a share of its font size. Taken
+ *  from the chip's own numbers - `CHIP_CHAR / 10px` - because both are the
+ *  same bold condensed face at different sizes, and the chip's width estimate
+ *  is the box that is DRAWN, so it has been read against the real text on
+ *  screen for as long as the chip has existed. */
+const LABEL_CHAR_RATIO = CHIP_CHAR / 10;
+
+/** Where a label sits along its shaft. One reader for the box the layout
+ *  reserves and for the text that is actually drawn, so the two cannot name
+ *  different points. */
+function labelStationOf(spec: ArrowSpec, lane: Lane): Pt {
+  const station = spec.kind === "claim"
+    // The one label that is a word rather than a number, and wider than the
+    // arrow it belongs to: past the head, in the land being demanded.
+    ? CLAIM_LABEL_STATION
+    : LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
+  return pointAlong(
+    lane.ax, lane.ay, lane.bx, lane.by, spec.labelAt ?? station,
+  );
+}
+
+/** What the label READS at this width - the bare number on a narrow lane, the
+ *  full "N STR" on a wide one. Shared for the same reason as the station: a
+ *  keep-out box measured off "2 STR" around text that says "2" is a box that
+ *  reserves ground nothing is standing on. */
+function labelWordsOf(spec: ArrowSpec, lane: Lane): string {
+  const label = spec.label ?? "";
+  return spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
+    ? label.replace(/ STR$/, "")
+    : label;
+}
+
+/** The ground an arrow's own strength label stands on, or null where it has
+ *  none. An estimate, and that is enough: this box only ranks candidate chip
+ *  stations against each other, and the stations are 15 units apart. */
+function labelBoxOf(spec: ArrowSpec, lane: Lane): Rect | null {
+  if (spec.label === undefined) return null;
+  const words = labelWordsOf(spec, lane);
+  if (words === "") return null;
+  const px = ARROW_KINDS[spec.kind].labelPx;
+  const w = words.length * px * LABEL_CHAR_RATIO;
+  const at = labelStationOf(spec, lane);
+  return { x: at.x - w / 2, y: at.y - px / 2, w, h: px };
+}
+
+/** Where the chip stands: behind the tail on the lane's own axis, stepped
+ *  SIDEWAYS when the map has already drawn something there.
+ *
+ *  The station behind the tail points into the land the army marched out of,
+ *  and that land's defense badge sits near the middle of it - so the two
+ *  collide on an ordinary board rather than in some exotic arrangement, and
+ *  the badge is drawn over the chip. Measured on the deployed build, `lands in
+ *  2` lost 15 of its 27 text pixels to a `1/3` badge: the one thing the chip
+ *  exists to say was the thing that could not be read.
+ *
+ *  Sideways rather than further back, because back is deeper into the same
+ *  land and toward the same badge. Sideways is along the border the arrow
+ *  crosses, where there is nothing but the arrow's own block - which the chip
+ *  is behind, not in.
+ *
+ *  Deterministic: candidates are tried in a fixed order, the first that clears
+ *  everything wins, and where nothing clears (a chip wider than the gap it is
+ *  looking for) the least-covered candidate wins rather than the base one. A
+ *  chip that jittered between renders would be worse than one under a badge. */
+function chipStation(
+  lane: Lane, width: number, keepOut: readonly Rect[],
+): Pt {
+  const base = pointAlong(
+    lane.ax, lane.ay, lane.bx, lane.by,
+    -0.18 - (lane.index % LABEL_STATIONS.length) * 0.14,
+  );
+  const len = Math.hypot(lane.bx - lane.ax, lane.by - lane.ay);
+  if (keepOut.length === 0 || len === 0) return base;
+  const px = -(lane.by - lane.ay) / len;
+  const py = (lane.bx - lane.ax) / len;
+  let best = base;
+  let bestCover = Number.POSITIVE_INFINITY;
+  for (let step = 0; step <= CHIP_DODGE_TRIES; step++) {
+    for (const side of step === 0 ? [0] : [1, -1]) {
+      const off = side * step * CHIP_DODGE;
+      const at = { x: base.x + px * off, y: base.y + py * off };
+      const cover = coveredArea(chipBox(at, width), keepOut);
+      if (cover === 0) return at;
+      if (cover < bestCover) {
+        bestCover = cover;
+        best = at;
+      }
+    }
+  }
+  return best;
+}
+
+/** How much of `box` the keep-out boxes cover, summed. Overlapping keep-outs
+ *  are double counted, which is fine: this only ever ranks candidates against
+ *  each other, and a spot two badges sit on is worse than one. */
+function coveredArea(box: Rect, keepOut: readonly Rect[]): number {
+  let total = 0;
+  for (const r of keepOut) {
+    const w = Math.min(box.x + box.w, r.x + r.w) - Math.max(box.x, r.x);
+    const h = Math.min(box.y + box.h, r.y + r.h) - Math.max(box.y, r.y);
+    if (w > 0 && h > 0) total += w * h;
+  }
+  return total;
+}
+
+/** Everything the chip behind the tail says, or null where it would say
+ *  nothing: where this arrow comes in the race for its target, whether it is
+ *  locked in a clash, and how far off its own arrival is.
+ *
+ *  One chip carrying all of it rather than a second badge beside it. They sit
+ *  behind the tail, outside the block, and two of them there would collide on
+ *  any border carrying three arrows - which is the reason the ordinal is not
+ *  on the shaft in the first place. Every number here is spelled with a word
+ *  next to it, so nothing on the chip can be read as a strength. */
+function chipTextFor(spec: ArrowSpec): string | null {
+  const parts: string[] = [];
+  if (spec.chip !== undefined) {
+    parts.push(spec.chip.clash
+      ? `${ordinal(spec.chip.order)} - clash` : ordinal(spec.chip.order));
+  }
+  if (spec.arrivesIn !== undefined && spec.arrivesIn >= MIN_SHOWN_ARRIVAL) {
+    parts.push(`lands in ${spec.arrivesIn}`);
+  }
+  return parts.length === 0 ? null : parts.join(" - ");
 }
 
 /** "1st", "2nd", "3rd", "4th" - the landing order in words, so the number can

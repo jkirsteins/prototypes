@@ -41,6 +41,19 @@ svg.map.dragging {
   stroke-width: 0.5;
 }
 
+/* A power beyond the frame, once the last act has summoned it. It is drawn on
+   the same baked silhouette every other neighbour uses - the ground was
+   always there - and what changes is that it stops being scenery: its own
+   fill (set inline, off the region's `ForeignPowerDef`) and a stroke dark
+   enough to read as a border rather than as a coastline.
+
+   `!important` on the stroke, because `.neighbor` above sets a pale one and
+   the two are the same specificity; the inline fill needs no such help. */
+.neighbor-power {
+  stroke: #3b3230 !important;
+  stroke-width: 2 !important;
+}
+
 /* The matte between the canvas and the frame - see the comment on `surround`
    in map-render.ts. Fully opaque: this hides the sea rect, the baked
    neighbour countries and their coastlines entirely, and not as a fainter
@@ -541,6 +554,14 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   top: 16px;
   left: 50%;
   transform: translateX(-50%);
+  /* Sized by its contents and centred by the transform, which the layout does
+     not see: at `left: 50%` the room an absolutely positioned box is offered
+     is only the half of the window to the RIGHT of that line, so the bar hit
+     that ceiling as chips were added and squeezed the turn prompt into four
+     wrapped words instead of growing. Capped at the window so a long prompt
+     still wraps rather than running off the screen. */
+  width: max-content;
+  max-width: calc(100vw - 32px);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -580,6 +601,29 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   border-left: 1px solid #d0d0d0;
   padding-left: 12px;
   color: #4a4f57;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Which act the run is in, and how far its boss still is. Same chip shape as
+   the rest of the row; a muted gold rather than the duel's red, because this
+   one is about the arc the run is on and not about a quarrel in it. */
+.status-act {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #7a5c1e;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The fight the run is in, and what is staked on it - same chip shape as the
+   treasury; the deep red marks it as the one chip about a quarrel rather than
+   about the realm's books. The names inside it are `faction()` segments, so
+   they carry the same hover every other name in the game does. */
+.status-duel {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #8a3324;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1254,6 +1298,26 @@ svg.map.arrow-focused .river {
      every zoom, and only its outline stops being drawn in map units. */
   vector-effect: non-scaling-stroke;
   stroke-linejoin: round;
+}
+
+/* An army walking past the lands in between, rather than one standing on a
+   shared frontier or facing its target across water. `crossingBetween` cannot
+   tell the last two apart - it knows vertices, and two lands three hops away
+   share none - so without this a march across Latgale is drawn exactly like
+   the Saaremaa strait and the map says the army is at sea.
+
+   The CASING goes dashed and nothing else moves: same spear, same colour, same
+   width, so whose army it is and how strong it is read exactly as before, and
+   only the solidity of the outline says the front line is not here yet. It is
+   also all this rule may declare - an opacity here would be a cue the enter
+   fade was never told about, the same reason `.march-counterable` sets none.
+
+   Before the counterable rule below on purpose: a counter's heavier casing
+   still wins on width, and the dashes survive under it, so an overland arrow
+   the player can answer says both things at once. */
+.march-arrow.march-overland polygon {
+  stroke-dasharray: 7 5;
+  stroke-width: 2.2px;
 }
 
 /* An arrow you hold a Raid for is a button: click it and the counter is
@@ -2095,6 +2159,18 @@ svg.map.arrow-focused .river {
   margin-top: 2px;
 }
 
+/* The sentence under a question's options, saying what the button below them
+   means. It sits between the scroll region and that button and never inside
+   the scroll region: what the player acts on - and what says what the action
+   costs - has to be on screen at every window size the game is played at. */
+.harvest-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b5d49;
+  text-align: left;
+  margin-bottom: 12px;
+}
+
 /* What a card costs, under its rules text. Its own colour rather than the
    rules text's: a price is the line the player scans the list for. */
 .harvest-option-price {
@@ -2704,7 +2780,18 @@ svg.map.pinning .realm-hover-halo {
 }
 
 /* Bottom-right, clear of the hand fan and the discard pile - re-check the
-   corner in a browser whenever either moves. */
+   corner in a browser whenever either moves.
+
+   ABOVE the activity log, which shares this gutter and is vertically centred
+   in it. At z-index 6 the log won on DOM order and swallowed the button:
+   measured with elementFromPoint, all three probes across the button hit the
+   log at 720x403 and two of three did at 1440x805, so ending a turn by
+   clicking was simply not available on a cramped window. The log's lower
+   entries are covered by 34px in exchange, and that is the right way round -
+   the log scrolls and nothing in it is lost, while a primary action nobody
+   can press has no way out at all. The real fix is a layout that does not
+   stack the two in one column; this is the one line that stops the game being
+   unplayable meanwhile. */
 .end-turn-btn {
   position: absolute;
   right: 16px;
@@ -2716,7 +2803,7 @@ svg.map.pinning .realm-hover-halo {
   background: #fff;
   color: #6b6152;
   cursor: pointer;
-  z-index: 6;
+  z-index: 7;
 }
 
 .end-turn-btn.hidden {

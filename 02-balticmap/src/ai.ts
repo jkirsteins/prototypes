@@ -2,21 +2,21 @@ import { CARDS, isTributeCard, type Rng } from "./cards";
 import { fullRealmOf, incorporatedRealmOf, realmOf } from "./relations";
 import {
   capturesOnArrival, defenseMaxOf, defenseOf, HILLFORT_HEAL,
-  independenceGateOpen,
-  INDEPENDENCE_GATE, MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
+  independenceGateLine, independenceGateOpen,
+  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, attackImpactOn, borderPolygonsOf, greatRaidMarches,
-  holdsGuard,
-  marchSourcesAgainst, plagueMultiplier, playableSet, spendCeilingOn,
-  validTargetsFor, type RulesView,
+  attackDamageFor, attackImpactOn, borderPolygonsOf,
+  foulWindsTargetsOf, greatRaidMarches, holdsGuard, marchHopsTo,
+  marchSourcesAgainst, plagueMultiplier, plagueTargetsOf, playableSet,
+  spendCeilingOn, validTargetsFor, type RulesView,
 } from "./playability";
 import { axesOf } from "./marches";
 import { damageAfterTerrain, hasPassive } from "./passives";
 import {
-  discardCard, endTurn, playCard, repeatOnlyOf, turnOpen, viewOf,
-  type GameState,
+  discardCard, endTurn, humanFactionOf, playCard, repeatOnlyOf, turnOpen,
+  viewOf, type GameState,
 } from "./game";
 
 export type AiAction =
@@ -68,19 +68,23 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "since it is the same play for one settlement and one more point. " +
     "Repeats with Fortify: same keyword, so either may follow either",
   "raid":
-    "2A: take a bordering land this raid overwhelms - one it deals more to " +
+    "2A: take a land in reach this raid overwhelms - one it deals more to " +
     "than it has standing, its defenses gone included - the biggest realm " +
-    "first; " +
+    "first, discounted by how many turns the army walks (`travelFactor`); " +
     "5A: counter a march that would break one of our lands, or that we out-" +
     "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
-    "11W: build toward the nearest gate. Source: the land the counter must " +
-    "leave from, else the one whose own defenses best survive being counter-" +
-    "raided back",
+    "11W: build toward the nearest gate, near counted in TURNS as well as " +
+    "points - `gateCandidates` divides the gap by the same discount. Source: " +
+    "the land the counter must leave from, else the one whose own defenses " +
+    "best survive being counter-raided back, and that pick is what decides " +
+    "how far the arrow walks and so how far the target is discounted",
   "great-raid":
     "6W: aim it where the arrows it musters flatten the land outright, which " +
     "takes it where they carry one point more than it holds; 11W: " +
     "pressure the neighbourhood that musters most, 2 arrows or more. Target: " +
-    "greatRaidPick, the bordering land its own neighbours can hit hardest",
+    "greatRaidPick, the bordering land its own neighbours can hit hardest. " +
+    "No travel discount, and it needs none: the fan is bordering lands by " +
+    "construction, so every arrow of it lands next turn",
   "prosperous-proliferation":
     "8R: raise the ceiling of the realm's biggest land whenever held - it is " +
     "always in the harvest offer, so a seat that never picked it up is a seat " +
@@ -114,6 +118,86 @@ function marchPick(
   return undefined;
 }
 
+/** What a blow keeps of its worth for every turn past the first that its army
+ *  spends walking.
+ *
+ *  An army takes a turn for every land it crosses, so the same card at the
+ *  same land is worth two different things depending on how far back it sets
+ *  out from: the board moves while the arrow is in the air, the target heals,
+ *  and the land the army left stands soft the whole time. A policy with no
+ *  notion of when a blow lands trades a target it can hit tomorrow for one it
+ *  can hit in three turns at no discount, which on the map reads as armies
+ *  thrown into the distance.
+ *
+ *  ONE dial, deliberately, so the playtest and the balance suite have one
+ *  number to argue about rather than a term per branch. It is a guess with a
+ *  shape behind it and not a measured number: at three hops - the furthest an
+ *  army may go - a blow keeps about a third of its worth, which is enough that
+ *  a nearer target has to be genuinely worse to lose. */
+export const TRAVEL_DISCOUNT = 0.6;
+
+/** How much of a value survives the walk. Multiplied into a WORTH and divided
+ *  into a COST - "worth less" and "further off" are the same statement twice,
+ *  and both branches that score a raid target read one of the two. */
+function travelFactor(hops: number): number {
+  return TRAVEL_DISCOUNT ** Math.max(0, hops - 1);
+}
+
+/** How much a target is worth for BEING the duel's enemy.
+ *
+ *  Large enough to outrank the pyramid sizes it competes with - a realm of
+ *  twenty-six lands cannot put more than that many under one root - so a seat
+ *  fighting a duel goes for the land that ends it rather than for whichever
+ *  neighbour happens to score best. Not infinite: a duel enemy nothing can
+ *  reach must still sort behind a target something can, and `travelFactor`
+ *  multiplies this the same way it multiplies every other worth. */
+const DUEL_FOCUS = 64;
+
+/** The land this actor should be trying to take to END the duel, or null.
+ *
+ *  Only the enemy's OWN polygon, and only for a seat on the player's side.
+ *  That is the whole rule: `duelDecidedBy` settles a duel on exactly two
+ *  lands, so a policy that scored the enemy's vassals alongside it would be
+ *  scoring lands that move the board and do not end the fight.
+ *
+ *  It exists because the cycle stalled without it. Measured on a seeded
+ *  44-turn run: the opening duel was still running when the game was won, no
+ *  duel had EVER settled, and the reason was that the policy had no notion of
+ *  one - it took thirteen lands while never once aiming at the one land that
+ *  would have closed the fight it was in.
+ *
+ *  Read on the acting seat rather than on the human's, because a lord's
+ *  vassals fight its duels: `fullRealmOf` is the side, the same set
+ *  `duelStanding` scopes the turn loop with. */
+function duelFocusOf(state: GameState, actor: string): string | null {
+  const g = state.gauntlet;
+  if (g.kind !== "duel") return null;
+  const home = humanFactionOf(state);
+  if (home === null) return null;
+  const mine = fullRealmOf(home, state.overlords, state.incorporated);
+  return mine.has(actor) ? g.enemy : null;
+}
+
+/** Turns before a blow at this polygon would land: the walk of the arrow the
+ *  policy would ACTUALLY declare, `marchSourceFor`'s tail included.
+ *
+ *  The chosen tail and not the nearest one, unlike `bestAttackOn` one field
+ *  over. That function answers "is this play available at all", where the best
+ *  case is the honest reading; this one answers "and when does it land", which
+ *  is a fact about the arrow that gets drawn. Every land in `attackReach`
+ *  borders the realm somewhere, so a nearest-source reading would be 1 almost
+ *  everywhere and the discount would be decoration.
+ *
+ *  Infinity where no land can send the army - it sorts last either way round,
+ *  which is what a target nothing can reach deserves. */
+function turnsToLand(
+  state: GameState, v: RulesView, actor: string, target: string,
+): number {
+  const from = marchSourceFor(state, v, actor, target);
+  if (from === undefined) return Number.POSITIVE_INFINITY;
+  return marchHopsTo(v, from, target) ?? Number.POSITIVE_INFINITY;
+}
+
 /** The subjugation-gate line of a polygon, and how far above it the score
  *  sits. Positive gap = closed by that much. */
 function gateGap(v: RulesView, polygon: string): number {
@@ -131,18 +215,25 @@ function gateGap(v: RulesView, polygon: string): number {
  *  polygon forever, every raid read as decisive, and a 150-turn all-warpath
  *  world starved its turnip loop to 13 plays and zero subjugations. A land
  *  standing open wants an army walked into it, which is step 2A, not more
- *  damage. Sorted nearest-gate-first, ties by faction order. */
+ *  damage. Sorted nearest-gate-first, ties by faction order.
+ *
+ *  "Nearest gate" counts the WALK as well as the points: a gap of 4 three
+ *  turns away is further off than a gap of 6 next door, because the arrow
+ *  crossing those lands gives the target two extra turns to heal and leaves
+ *  its own source soft for both. `travelFactor` is the one dial. */
 function gateCandidates(
   state: GameState, v: RulesView, actor: string, targets: string[],
 ): string[] {
   const realm = fullRealmOf(actor, v.overlords, v.incorporated);
+  const cost = (t: string): number =>
+    gateGap(v, t) / travelFactor(turnsToLand(state, v, actor, t));
   return targets
     .filter(
       (t) => !realm.has(t) && !(t in v.incorporated) && gateGap(v, t) > 0,
     )
     .sort(
       (a, b) =>
-        gateGap(v, a) - gateGap(v, b) ||
+        cost(a) - cost(b) ||
         state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
     );
 }
@@ -160,8 +251,7 @@ function vassalNearingEscape(
   return members
     .filter(
       (m) =>
-        defenseOf(v, m) + HILLFORT_HEAL >=
-        Math.ceil(INDEPENDENCE_GATE * defenseMaxOf(v, m)),
+        defenseOf(v, m) + HILLFORT_HEAL >= independenceGateLine(v, m),
     )
     .sort(
       (a, b) => state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
@@ -218,7 +308,11 @@ function raidAt(
     ...(sourceId !== undefined ? { sourceId } : {}),
     ...(sourceId === undefined
       ? {}
-      : { spend: raidSpendFor(v, actor, cardId, sourceId, target) }),
+      : {
+          spend: raidSpendFor(
+            v, actor, cardId, sourceId, target, duelFocusOf(state, actor),
+          ),
+        }),
   };
 }
 
@@ -244,6 +338,8 @@ function isFrontier(
  *  - A CONQUEST is paid for wherever the source stands: `defense + 1`, since
  *    `capturesOnArrival` wants the blow to EXCEED what is standing, and not a
  *    point more. A land taken is worth being left open for.
+ *  - Otherwise, at the land a DUEL is about, the ceiling wherever the source
+ *    stands. See below.
  *  - Otherwise, out of a FRONTIER land, the minimum. It will not gut the land
  *    facing one rival to soften another it cannot take this turn.
  *  - Otherwise the source is INTERIOR, and it spends its ceiling: the blow
@@ -255,14 +351,25 @@ function isFrontier(
  *  then send an arrow too small to take it - the AI choosing a conquest and
  *  declining to pay for it in the same turn.
  *
+ *  **The duel arm exists because the frontier arm stalls the run.** A duel
+ *  enemy is by construction a land on the frontier, so every raid at it came
+ *  out at `MIN_RAID_SPEND` - one point a turn, at a land that heals - and the
+ *  fight never resolved. Measured on a seeded 89-turn run: the enemy was a
+ *  legal target on 82 of 88 duelling turns, and exactly one duel settled in
+ *  the whole game. Committing at the one land that can END the fight is the
+ *  same judgement the conquest arm makes one line up, and it costs the same
+ *  thing: the source stands soft, on the map, for anyone to read.
+ *
  *  The `POLICY_COVERAGE` entries for all three raid cards name this rule; it
  *  is one function over the class rather than three copies keyed by card id. */
 function raidSpendFor(
   v: RulesView, actor: string, cardId: string, from: string, to: string,
+  focus: string | null = null,
 ): number {
   const ceiling = spendCeilingOn(v, cardId, from);
   const takes = defenseOf(v, to) + 1;
   if (takes <= ceiling) return Math.max(MIN_RAID_SPEND, takes);
+  if (to === focus) return Math.max(MIN_RAID_SPEND, ceiling);
   if (isFrontier(v, actor, from, to)) return MIN_RAID_SPEND;
   return Math.max(MIN_RAID_SPEND, ceiling);
 }
@@ -347,6 +454,15 @@ export function chooseAction(state: GameState): AiAction {
   const walkIn = marchPick(idxOf);
   if (walkIn !== undefined) {
     const realm = fullRealmOf(p.factionId, state.overlords, state.incorporated);
+    // The land that would END the duel this seat is in, if it is in one. It is
+    // added to the pyramid size rather than sorted ahead of it, so a duel
+    // enemy three hops off still loses to one next door - the walk discounts
+    // both the same way.
+    const focus = duelFocusOf(state, p.factionId);
+    const worth = (t: string): number =>
+      (fullRealmOf(t, state.overlords, state.incorporated).size +
+        (t === focus ? DUEL_FOCUS : 0)) *
+      travelFactor(turnsToLand(state, v, p.factionId, t));
     // Per target, because a raid's damage is now the ceiling of whichever of
     // OUR lands borders that one - two neighbours are two different numbers.
     const takeable = validTargetsFor(v, p.factionId, walkIn.id)
@@ -355,11 +471,14 @@ export function chooseAction(state: GameState): AiAction {
           damageAfterTerrain(v, t, bestAttackOn(v, p.factionId, walkIn.id, t)),
           defenseOf(v, t),
         ))
-      // The biggest pyramid first: taking a lord takes everything under it.
+      // The biggest pyramid first: taking a lord takes everything under it -
+      // discounted by the walk, because a conquest three turns out is a
+      // conquest the target has three turns to repair out of. A pyramid twice
+      // the size is still worth a turn further off; four times the size is
+      // worth two.
       .sort(
         (a, b) =>
-          fullRealmOf(b, state.overlords, state.incorporated).size -
-            fullRealmOf(a, state.overlords, state.incorporated).size ||
+          worth(b) - worth(a) ||
           order(a) - order(b),
       );
     if (takeable.length > 0) {
@@ -471,6 +590,38 @@ export function chooseAction(state: GameState): AiAction {
     return null;
   };
   const home = p.factionId;
+  // 5-0: the land this seat has WAGERED, while a duel runs. Above the realm
+  // walk below, because the walk is worst-first across every land the realm
+  // holds and the stake is rarely the worst - it is simply the only one whose
+  // loss ends the fight, and, in an act's last fight, the run.
+  //
+  // The mirror of `duelFocusOf` on the other side of the same rule: the policy
+  // was taught to attack the one land that ends a duel and not to defend the
+  // one that loses it, and the half that was missing is the half that was
+  // costing runs. Measured over 24 seeded runs before it: 20 ended at a boss
+  // duel and nowhere else.
+  //
+  // It fires on a stake AT RISK, not on one merely short of its ceiling. The
+  // first version asked only "is it below max", which is true almost every
+  // turn - the seat then healed the same land every turn, never raided, and
+  // the duel it was in became unwinnable rather than unloseable. Half the
+  // ceiling is the same line the realm walk below uses, and `incomingAt` is
+  // the same brace: an arrow is visible a turn ahead, and the stake is the one
+  // land where letting one land is losing the fight.
+  const wagered =
+    state.gauntlet.kind === "duel" &&
+    duelFocusOf(state, p.factionId) !== null
+      ? state.gauntlet.staked
+      : null;
+  if (
+    wagered !== null &&
+    fullRealmOf(p.factionId, state.overlords, state.incorporated).has(wagered) &&
+    Math.max(0, defenseOf(v, wagered) - incomingAt(v, wagered)) <
+      0.5 * defenseMaxOf(v, wagered)
+  ) {
+    const heal = healAt(wagered);
+    if (heal !== null) return heal;
+  }
   if (lord !== undefined && !independenceGateOpen(v, home)) {
     const heal = healAt(home);
     if (heal !== null) return heal;
@@ -709,6 +860,20 @@ function warpathDecisive(
     return raidAt(state, v, actor, raid, pick!.id, restive);
   }
 
+  // 6W-1b: the duel. Step 2A already walks into a duel enemy this card
+  // overwhelms; what this covers is the enemy it does NOT - softening the one
+  // land that can end the fight, rather than opening a gate somewhere else
+  // that settles nothing. Without it the policy took thirteen lands over a
+  // 44-turn run and never once aimed at the land that would have closed the
+  // duel it was in, so no duel ever settled and the cycle stalled at the first
+  // one. Below the vassal branch on purpose: a vassal at its gate is a land
+  // about to leave the realm, and losing it mid-duel is worse than a turn not
+  // spent on the enemy.
+  const focus = duelFocusOf(state, actor);
+  if (raid !== undefined && focus !== null && raidTargets.includes(focus)) {
+    return raidAt(state, v, actor, raid, pick!.id, focus);
+  }
+
   // Per target, and a ceiling: what the hardest arrow the realm could throw
   // at that land would land. A branch asking "can this card finish it" is
   // asking whether the play is available at all.
@@ -807,12 +972,32 @@ function warpathBuild(
  *  nearest falling. Null when no target musters an arrow at all.
  *
  *  One list, `greatRaidMarches`, which is also what legality and the card tip
- *  read - the AI must not score a fan the rules would not send. */
+ *  read - the AI must not score a fan the rules would not send.
+ *
+ *  The CANDIDATES come from `validTargetsFor`, the same way every other picker
+ *  in this module gets its list, and never from the bare border. That changes
+ *  the set in BOTH directions, and the widening is the half worth stating:
+ *
+ *  - It refuses what the rules refuse. A seat proposing a target the rules
+ *    will not take used to hang the run - `playCard` hands the state back
+ *    unchanged, `endTurn` refuses a standard turn that played nothing, and
+ *    `advance` will not move past an open turn. Reachable the moment a VASSAL
+ *    started taking turns, because a lord borders its vassal and the fattest
+ *    fan on the board is often aimed straight up the actor's own chain, which
+ *    `aimsWithinOwnRealm` forbids.
+ *  - It also OFFERS the actor's own vassals and grand-vassals, which the bare
+ *    border never did: `attackReach` is `borderPolygonsOf` plus the full realm
+ *    less what the actor holds outright. That is not a side effect to be
+ *    trimmed back - `raidPick` has always been able to aim there, and a lord
+ *    raiding its own vassal is the upkeep that holds it under the independence
+ *    gate. A Great raid that could not do what a Raid can was the inconsistency.
+ *
+ *  The second half is a live balance change and has not been measured. */
 function greatRaidPick(
   v: RulesView, actor: string,
 ): { target: string; arrows: number; damage: number } | null {
   let best: { target: string; arrows: number; damage: number } | null = null;
-  for (const target of borderPolygonsOf(v, actor)) {
+  for (const target of validTargetsFor(v, actor, "great-raid")) {
     if (target in v.incorporated) continue;
     const arrows = greatRaidMarches(v, actor, target).length;
     if (arrows === 0) continue;
@@ -849,6 +1034,10 @@ function pestilenceDecisive(
     v.disease[polygon]?.[actor] ?? 0;
   const plagueDamageAt = (polygon: string, m: number): number =>
     stacksOn(polygon) * PLAGUE_DAMAGE_PER_STACK * m;
+  // Scored only over `plagueTargetsOf`'s list below, so the reach question is
+  // already answered by the time this runs; the annexation check here is the
+  // AI's own gate-hunting preference, not a reach question - an annexed land
+  // has no gate of its own to open.
   const opensGate = (polygon: string, m: number): boolean =>
     !(polygon in v.incorporated) &&
     gateGap(v, polygon) > 0 &&
@@ -869,14 +1058,16 @@ function pestilenceDecisive(
   }
 
   // 6P-2: plague when it opens at least one gate, or when the total damage
-  // beats a raid's worth - the cash-out test.
+  // beats a raid's worth - the cash-out test. `plagueTargetsOf` is the same
+  // list legality, the resolution and the hover preview all read, so the
+  // policy never scores a stack the play cannot actually strike.
   if (plague !== undefined) {
-    const total = state.factionIds.reduce(
-      (sum, polygon) =>
-        sum + Math.min(defenseOf(v, polygon), plagueDamageAt(polygon, mult)),
+    const targets = plagueTargetsOf(v, actor);
+    const total = targets.reduce(
+      (sum, polygon) => sum + Math.min(defenseOf(v, polygon), plagueDamageAt(polygon, mult)),
       0,
     );
-    const opens = state.factionIds.some((polygon) => opensGate(polygon, mult));
+    const opens = targets.some((polygon) => opensGate(polygon, mult));
     // "Beats a raid's worth" - the best raid actually available, since a
     // raid's worth is no longer one number for the board.
     const raidWorth = [...borderPolygonsOf(v, actor)]
@@ -886,14 +1077,16 @@ function pestilenceDecisive(
     }
   }
 
-  // 6P-3: foul winds when rivals' stacks exceed our own.
+  // 6P-3: foul winds when rivals' stacks exceed our own. `theirs` walks
+  // `foulWindsTargetsOf`'s list - what the play could actually claim; `own`
+  // is not aim, so it walks every stack the actor holds with no filter.
   if (winds !== undefined) {
     let own = 0;
+    for (const owners of Object.values(v.disease)) own += owners[actor] ?? 0;
     let theirs = 0;
-    for (const owners of Object.values(v.disease)) {
-      for (const [owner, n] of Object.entries(owners)) {
-        if (owner === actor) own += n;
-        else theirs += n;
+    for (const polygon of foulWindsTargetsOf(v, actor)) {
+      for (const [owner, n] of Object.entries(v.disease[polygon] ?? {})) {
+        if (owner !== actor) theirs += n;
       }
     }
     if (theirs > own) return { type: "play", cardIndex: winds };
@@ -959,21 +1152,69 @@ function pestilenceBuild(
  *  differently. */
 export const MAX_AI_PLAYS = 16;
 
+/** Ends the seat's turn, and if the rules will not let it end, gives it up -
+ *  loudly. The whole of the hung-seat guard, and it closes the failure as a
+ *  CLASS rather than one picker at a time.
+ *
+ *  `turnOpen` after an `endTurn` is precisely "advance will refuse to move past
+ *  this seat", so this fires on exactly the states that freeze the run and on
+ *  no others. A seat that simply has nothing to do never reaches it: an empty
+ *  playable set makes `chooseAction` return a discard, and `discardCard` spends
+ *  the turn.
+ *
+ *  Two reachable ways in, and neither can be recovered through the engine's own
+ *  doors, which is why the flag is set here:
+ *
+ *  - A picker proposes a target the rules refuse, so `playCard` hands the state
+ *    straight back. `discardCard` is no escape - it refuses whenever
+ *    `playableSet` reports `mode: "play"`, which is exactly this case.
+ *  - The seat's hand is empty, so the set is `discard` with nothing in it and
+ *    `discardCard` refuses on the index.
+ *
+ *  And `endTurn` is no escape either: it is the door every seat uses, a person's
+ *  included, and letting a standard turn end unplayed there would let a player
+ *  skip a turn they could have played. `endTurn` already carries this same
+ *  reasoning for a re-opened turn - "a seat holding a raid it cannot aim
+ *  anywhere sits there forever" - and this is that sentence for the first play.
+ *
+ *  It SHOUTS because a silent recovery turns the next picker bug into
+ *  mysteriously skipped turns nobody can diagnose. Reaching this is a bug in
+ *  whatever chose the action, not a rule of the game: the console line names the
+ *  seat and what it proposed so the picker can be found. */
+function endOrGiveUp(state: GameState, proposed: AiAction | null): GameState {
+  const ended = endTurn(state);
+  if (ended.phase !== "playing" || !turnOpen(ended)) return ended;
+  const p = ended.players[ended.current];
+  console.error(
+    `AI seat cannot end its turn - giving it up. turn ${ended.turn}, ` +
+      `${p?.factionId}, proposed ${JSON.stringify(proposed)}, ` +
+      `hand ${JSON.stringify(p?.hand)}`,
+  );
+  return { ...ended, playedThisTurn: true, repeatGroup: null };
+}
+
 /** One WHOLE turn for the current seat, in either mode - every caller wraps
  *  this in `advance`, so a partial turn here would stall the game. */
 export function aiTakeTurn(state: GameState, rng: Rng): GameState {
   if (state.rules.turn === "unlimited") {
     let g = state;
+    let refused: AiAction | null = null;
     for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
       const a = chooseAction(g);
       if (a.type === "discard") break;
       const next = playCard(g, a.cardIndex, rng, a.targetId, {
         ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
       });
-      if (next === g) break; // a refused play must not spin
+      if (next === g) { // a refused play must not spin
+        refused = a;
+        break;
+      }
       g = next;
     }
-    return endTurn(g);
+    // Unlimited rules end a turn that played nothing, so the guard is inert
+    // here. It is asked anyway rather than only on the standard path: which
+    // rule axis is in force must not decide whether a hung seat is recoverable.
+    return endOrGiveUp(g, refused);
   }
   // The standard turn is one card - unless that card re-opened it for another
   // of its own kind, which is a question about the state after the play, not
@@ -983,6 +1224,7 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
   // state unchanged and stops it, so the rules end the run rather than a
   // count of plays; MAX_AI_PLAYS remains the belt-and-braces bound.
   let g = state;
+  let refused: AiAction | null = null;
   for (let plays = 0; g.phase === "playing" && plays < MAX_AI_PLAYS; plays++) {
     const a = chooseAction(g);
     const next = a.type === "discard"
@@ -990,12 +1232,17 @@ export function aiTakeTurn(state: GameState, rng: Rng): GameState {
       : playCard(g, a.cardIndex, rng, a.targetId, {
           ...(a.sourceId !== undefined ? { sourceId: a.sourceId } : {}),
         });
-    if (next === g) break;
+    if (next === g) {
+      refused = a;
+      break;
+    }
     g = next;
     if (!turnOpen(g)) break;
   }
   // Gives up whatever is left of a re-opened turn. A seat that stopped with a
   // repeat still on the table has decided it has no second play worth making,
-  // and `advance` will not move past a turn that is still open.
-  return endTurn(g);
+  // and `advance` will not move past a turn that is still open - and, if the
+  // rules will not let even that turn end, gives it up rather than freezing
+  // the run behind a seat that can never act.
+  return endOrGiveUp(g, refused);
 }

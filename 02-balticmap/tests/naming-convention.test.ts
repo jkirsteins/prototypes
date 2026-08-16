@@ -220,6 +220,46 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
     { turn: 1, playerId: 1, type: "harvest-burned", cardId: "hillfort" },
     { turn: 1, playerId: 2, type: "harvest-burned", cardId: "subjugate" },
   ],
+  // Both rewards, because the wealth arm writes a suffix of its own and the
+  // defense arm takes the walked one - two sentences, two chances to bake a
+  // name into text.
+  "duel-won": [
+    {
+      turn: 1, playerId: 1, type: "duel-won",
+      targetFactionId: H, sourceFactionId: RIVAL, amount: 1,
+    },
+    {
+      turn: 1, playerId: 1, type: "duel-won",
+      targetFactionId: H, sourceFactionId: RIVAL, wealth: 3,
+    },
+  ],
+  // The endings that pay nothing. Both name the enemy and nothing else, which
+  // is exactly the segment a flat string would have swallowed.
+  "duel-lost": [
+    {
+      turn: 1, playerId: 1, type: "duel-lost",
+      targetFactionId: H, sourceFactionId: RIVAL,
+    },
+  ],
+  "boss-foretold": [
+    {
+      turn: 1, playerId: 1, type: "boss-foretold",
+      targetFactionId: "gamma", sourceFactionId: "beta", amount: 1,
+    },
+  ],
+  "boon-taken": [
+    { turn: 1, playerId: 1, type: "boon-taken", targetFactionId: "beta" },
+    {
+      turn: 1, playerId: 1, type: "boon-taken", targetFactionId: "beta",
+      cardId: "raid",
+    },
+  ],
+  "duel-void": [
+    {
+      turn: 1, playerId: 1, type: "duel-void",
+      targetFactionId: H, sourceFactionId: RIVAL,
+    },
+  ],
   // Both bars, because the whole-map wording is a second line and the naming
   // rules apply to it exactly as they do to the first.
   victory: [

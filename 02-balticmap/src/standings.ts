@@ -80,6 +80,14 @@ export function scoreMovesOf(e: GameEvent, ctx: WalkCtx): ScoreMove[] {
       return e.amount === undefined
         ? []
         : [{ track: "defense", polygon, delta: e.amount }];
+    // A duel's spoils, on the two rewards of the three that move defense: the
+    // fortifying one, and the growth that lifts the ceiling and the score
+    // together. The wealth reward carries `wealth` instead and moves nothing
+    // here - a treasury is not a score this walks.
+    case "duel-won":
+      return e.amount === undefined || e.amount === 0
+        ? []
+        : [{ track: "defense", polygon, delta: e.amount }];
     // Both ends off one event: the land that gained is `targetFactionId` and
     // the land that gave is `sourceFactionId`. Walking only the gain would
     // leave the giving land's badge and the log disagreeing by the amount.

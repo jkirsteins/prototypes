@@ -50,10 +50,14 @@ navigation and the same URL gives the same run every time:
 - `march=jersikans>selonians;semigallian-confederacy>selonians:3` - declare an
   attack already in flight, `from>to` per arrow, with an optional `:N` for how
   much defense the raid tears out of its source. Declared through the real
-  rules, so a source with no free army, no defense to spend, or a target it
-  does not border is dropped rather than conjured. The amount is clamped into
-  `[1, the source's ceiling]` and DEFAULTS to 1, so a URL written before a
-  raid's strength was a choice still means what it always meant. Marches are
+  rules, so a source with no free army, no defense to spend, a target more
+  than `MAX_MARCH_HOPS` lands away, or a target that actor may not attack at
+  all is dropped rather than conjured. **A target the source does not border
+  is no longer refused**: an army marches up to three lands, and the arrow
+  boots with the expiry that distance earns it, so a clause naming a land two
+  hops off boots an arrow that lands two turns from now. The amount is clamped
+  into `[1, the source's ceiling]` and DEFAULTS to 1, so a URL written before
+  a raid's strength was a choice still means what it always meant. Marches are
   declared last, after `defense=`, and the spend lands on top of it:
   `defense=selonians:5&march=selonians>jersikans:3` boots Selonians at 2 with
   a 3 STR arrow in flight.
@@ -65,6 +69,13 @@ what `factionIds`, `defense`, `armies` and `marches` are keyed by. This
 section used to show `defense=selija:100`, which silently parsed and then
 dropped: `applyBootParams` skips a clause naming no known faction, so a wrong
 id boots a perfectly ordinary game and says nothing.
+  **`realm=` is also how a browser check reaches an ACT boundary.** Five lands
+  is act 1's exit on the Baltic map and thirteen is act 3's, so `realm=5` boots
+  one round short of a prophecy and `realm=13` one round short of the power
+  beyond the frame. One round SHORT, not on it: the boss is summoned at a round
+  wrap and boot params apply after the fast-forward, so the URL has to be
+  played a turn before the offer appears. `tests/boon-pick.test.ts` is that
+  navigation written down.
 - `realm=N` - how many lands the human's realm holds, clamped into
   `[1, the roster]`. The lands are ANNEXED, in map order, skipping your own:
   vassals would read the same on the scoreboard and then come apart while you
@@ -87,6 +98,19 @@ id boots a perfectly ordinary game and says nothing.
   naming the retired `copies` axis still boots - the unknown-axis rule drops
   it, and `rel=`, `deck=`, `known=` and `xp=` are simply not boot keys any
   more.
+- `duel=jersikans` - answers the gauntlet's pick on the way in: a faction id
+  opens a duel against it, and the literal `duel=none` declines the whole
+  offer for a world tick. Omitted, the run boots standing on its question -
+  and that question LOCKS the screen, so a URL that means to reach the board
+  behind it has to say so. Answered through the real `pickDuel` /
+  `declineDuel`, so an id the offer does not hold is dropped like any other
+  unknown clause.
+- `stake=jersikans` - which of your own lands `duel=` puts up against the
+  enemy. Every duel is staked, so this DEFAULTS to the first land `duelStakes`
+  offers rather than being required - a URL written before duels had a stake
+  still boots into a running duel. An id outside the legal set drops like any
+  other unknown id here. Name one for the check that is about the stake:
+  losing it, or reading it off the duel chip.
 - `popups=off` - sets the existing "Show popups" log pref.
 - `region=baltic|iberia` - which map the booted page plays on; it seeds the
   booted page's region preference the way `rules=` seeds the rules pick. An
@@ -110,17 +134,30 @@ is a clean start - the run is not persisted, and the way back is the URL.
 ## A status is the only difference between a land that plays and one that does not
 
 Every faction on the active region's map has a seat, a deck and a ruler's
-chair. Five of them act; the rest carry the passive status `keeps-to-itself`,
-and that status is the entire difference. `playsTurns` in `src/passives.ts` is
-the one question the turn loop asks, so a quiet land can be raided, subjugated,
-poached, healed and incorporated by the rules that already exist, and taking
-it strips the status - its people wake up as their new lord's vassal, holding
-the deck they were dealt.
+chair. All but a handful act - `QUIET_LANDS` (6) of them are drawn to stay
+quiet, and that is the whole of the seeding - and the quiet ones carry the
+passive status `keeps-to-itself`,
+and that status is the entire difference. `takesNoTurn` in `src/game.ts` is the
+one question the turn loop asks - `playsTurns` in `src/passives.ts` states what
+the status MEANS and is read only by presentation now - so a quiet land can be
+raided, subjugated, poached, healed and incorporated by the rules that already
+exist, and taking it strips the status - its people wake up as their new lord's
+vassal, holding the deck they were dealt.
 
 Two things ride on the same fact rather than on conditions written down twice:
 a quiet land raids a neighbour about one round in four (`RESTLESS_RAID_CHANCE`,
 resolved at the round wrap), and it stops the moment somebody takes it, because
 the raid asks for the status and capture takes the status off.
+
+**Why the map is awake now, when five seats used to be the whole table.** A
+duel scopes the turn loop to two realms, so a wide acting set costs turns only
+during the one unscoped world-tick round per gauntlet. That is what made the
+seeding affordable, and the reason it was worth spending: `duelCandidates`
+prefers a chiefed enemy but can only offer what the border holds, and with 21
+quiet lands a border held nothing - 41.6% of duels were against a land with no
+chief, against a spec that called that case rare. It is 0.0% now. The full
+reasoning, the measurement and why there is no spacing rule any more are on
+`QUIET_LANDS` and `actingFactions` in `src/game.ts`.
 
 Passive statuses are defined once, region-agnostic, as a table in
 `src/passives.ts` - the quiet set, the two terrain statuses and the burden -
@@ -135,23 +172,107 @@ cheating.
 ## A land with no leader takes no turn
 
 `pickFaction` seats a ruler on the acting factions alone (`vacateRulers`), and
-a vacant chair nobody sits in is what `advance` passes over. The gate is on
-ACTING, not on holding: a land somebody has taken still has no leader, and a
-leaderless faction takes no land - a restless raid out of the grey middle is a
-raid, not a conquest.
+a vacant chair nobody sits in is what `advance` passes over. A leaderless
+faction also takes no land - a restless raid out of the grey middle is a raid,
+not a conquest.
+
+**A conquest fills the chair.** `takeLand` calls `seatRuler` beside the
+`stripOnCapture` it already runs, so a land that changes hands wakes up: its
+people get a chief, and a chief is the whole of what makes a seat take turns.
+The new ruler holds whatever its OWN people's build brings (`seatingAbilities`
+in `src/game.ts`, off `BUILD_ABILITIES`), never the taker's, because the land
+keeps the deck it was dealt. An occupied chair is handed straight back, so a
+land taken from a lord who was already leading it keeps its leader - a conquest
+is not an assassination.
+
+The grey middle is therefore a starting condition and not a permanent class,
+and `beginTurn` keeps a LOCAL `rulers` and returns it: a turn that takes a land
+does not end with the rulers it began with.
+
+The consequence that bites is on the AI, not the engine. Every acting seat must
+be able to FINISH its turn, and a picker that proposes a target the rules refuse
+hangs the run - `playCard` hands the state back unchanged, `endTurn` refuses a
+standard turn that played nothing, and `advance` will not move past an open
+turn. Vassals take turns now, a lord borders its vassal, and
+`aimsWithinOwnRealm` forbids aiming at a peer of your own realm, so every AI
+target list has to come from `validTargetsFor`. `greatRaidPick` was scoring the
+bare border instead, and hung about one seeded run in ten the moment woken
+vassals started acting.
+
+Routing a picker through `validTargetsFor` is not only a narrowing. `attackReach`
+is `borderPolygonsOf` PLUS the actor's own vassals and grand-vassals, because a
+lord raids its vassals to hold them under the independence gate - so a picker
+moved onto it gains those targets as well as losing the illegal ones, which is
+what `raidPick` could always do.
+
+**And the freeze is guarded as a CLASS, not one picker at a time.**
+`endOrGiveUp` in `src/ai.ts` wraps the `endTurn` at the end of `aiTakeTurn`: if
+the turn still cannot be ended, the seat gives it up and `console.error`s what
+it proposed. The trigger is `turnOpen` after an `endTurn`, which is exactly
+"`advance` will refuse to move past this seat", so it fires on the states that
+freeze the run and on no others - a seat that merely has nothing to do ends
+through `discardCard` and never reaches it. It shouts because a silent recovery
+turns the next picker bug into mysteriously skipped turns nobody can diagnose,
+and it sets the flag locally because neither engine door is available:
+`discardCard` refuses whenever `playableSet` says `mode: "play"`, and weakening
+`endTurn` would let a PERSON skip a turn they could have played. A hung seat is
+the worst failure this app has - nothing is persisted, so the only way out is
+losing the run.
+
+## A bloc does not fight itself, and a lord still disciplines its own
+
+`aimsWithinOwnRealm` in `src/playability.ts` refuses a hostile card aimed at a
+PEER of the actor's realm: the set is the ROOT's full realm minus the ACTOR's
+own. Two shapes, one question, because both are the bloc fighting itself and a
+bloc whose members raid each other reads as the game behaving at random rather
+than as anybody's plan.
+
+- **Up** - a lord, its lord to the root, or a land one of them annexed. This
+  half is what keeps `overlords` acyclic: a Subjugate aimed at a liege would
+  close a loop, and Subjugate is hostile.
+- **Sideways** - a sibling under the same lord, its vassals, a cousin. Only
+  reachable since vassals started taking turns; before that no seat could
+  produce a sibling raid at all.
+
+**DOWNWARD is deliberately not in it.** A lord raiding its own vassal is
+upkeep - it is how a vassal is held under the independence gate - and
+`attackReach` exists to allow exactly that. Closing it would end vassalage as
+a decision, so `tests/playability.test.ts` pins the downward case as a test of
+its own next to the sideways ones.
+
+The predicate is asked by everything that aims: thirteen call sites over five
+surfaces - the targeting pass, the two-step march aim, the Plague resolution,
+the Foul winds resolution, and the arrows already in flight when somebody's
+subjugation reshapes the pyramid under them. A rule enforced at one of those is
+a rule with four ways around it. The two disease surfaces are the ones that
+look least like aiming, and they are the ones a scoped-down version of this
+rule would have left as back doors: they walk every polygon holding the actor's
+stacks, so a card refused at the border reaches the same land through a stack
+laid there last week. The block
+reason it raises keeps the code `liege`, which was always shorthand for the
+fealty structure rather than for one link; the explanation the player reads
+states both shapes.
 
 Because a leaderless actor never gets a `beginTurn` of its own, anything that
 resolves at the actor's turn start is swept at the round wrap instead, or its
 arrow would stand on the map for the rest of the game.
 
 **Unless a PERSON is sitting there.** `takesNoTurn` in `src/game.ts` asks
-three questions in an order that is load-bearing. An annexed people is passed
+four questions in an order that is load-bearing. An annexed people is passed
 over whoever was playing them - a person whose realm has been swallowed is out
 of the run, and exempting them would leave the table waiting on a turn that
-can never come. Otherwise a leaderless faction is passed over UNLESS
-`isHumanFaction` says somebody is playing it, because a player skipped forever
-is not a rule, it is a hung game. A leaderless person still takes no land;
-that gate is `hasRuler` at the capture sites and is untouched.
+can never come. Otherwise a person is never passed over at all, whichever seat
+they sit in, because a player skipped forever is not a rule, it is a hung
+game. Then the duel scope, which answers in BOTH directions and is why the
+count is four rather than three: a faction on neither side of a running duel
+takes no turn, and a faction on the ENEMY's side takes one whether or not
+anybody leads it. Last, nobody leads it. A leaderless person still takes no
+land; that gate is `hasRuler` at the capture sites and is untouched.
+
+The human arm is asked before the duel scope on purpose: a second person
+playing a seat on neither side would otherwise be frozen out for twenty rounds
+by a fight they are not in. It only fires if that person's seat is actually in
+`humanSeats`, which is `dealNetGame`'s job - see the seats rule below.
 
 The human arm belongs in `takesNoTurn` and not in `advance`, because the sweep
 above reads the same predicate. Spelled in `advance` alone it exempted the
@@ -163,6 +284,15 @@ marches at somebody else's turn start.
 `GameState.humanSeats` is the seats a PERSON plays. Two questions ride on it
 and they are not the same question, the `realmOf` / `fullRealmOf` split one
 level down:
+
+**`dealNetGame` is the one place a guest's seat joins the list**, because it
+is the one place in the app that knows which seat that is. Nothing did it,
+so `isHumanFaction` was false for the second person and both rules below
+were quietly wrong for them: a duel scoping the map to two realms neither of
+which was theirs froze them out for twenty rounds, and their conquests moved
+defenders with no question raised. A test that hand-sets `humanSeats` is a
+test that passes while the app is broken, which is why the multiplayer suites
+could not see it.
 
 - **"Is a person playing this faction"** is `isHumanFaction`, and it is
   plural. It decides who is ASKED rather than automated - the conquest
@@ -325,6 +455,26 @@ a geometry search. Five things about it are load-bearing:
   none and be drawn at the LAND depths, a 64-unit arrow standing in the sea
   with neither end on a coast. The table is what keeps `layoutLanes` one rule
   rather than a sea arm beside a land one.
+- **And a strait is not a long march either.** An army may be sent up to
+  `MAX_MARCH_HOPS` lands away, so most pairs with no shared vertex are now two
+  or three hops of ground rather than water, and `crossingBetween` calls every
+  one of them a strait because vertices are all it knows. The GAME graph tells
+  them apart - a strait pair is ADJACENT and shares no vertex, an overland
+  march is not adjacent at all - and `ArrowSpec.overland` carries the answer to
+  the scene, which dashes the casing (`.march-overland`). Same spear, same
+  colour, same width: whose army it is and how strong stay exactly as legible,
+  and only the solidity of the outline says the front line is not here yet.
+  Like `march-counterable` it declares no opacity, and it may not.
+
+**An arrow says WHEN it lands, on the chip behind the tail.** `arrivesIn` on
+the spec, printed as `lands in N` beside the landing ordinal on the one chip,
+and left off below `MIN_SHOWN_ARRIVAL` (2) - every arrow used to land next
+turn, so "lands in 1" everywhere would bury the arrow that is genuinely days
+away. It is on the CHIP and not on the shaft because the shaft carries exactly
+one number, which is the whole reason the bare "1 STR" form is readable; and
+it shares the chip rather than taking a second badge for the same reason the
+ordinal is not on the shaft, since two badges behind one tail collide on any
+border carrying three arrows.
 
 **Width is strength MAP-WIDE, and the scale is one number per render.**
 `width = unit * sqrt(strength)`, where `unitWidthFor` picks the `unit` once
@@ -612,6 +762,53 @@ ceiling spend would sink the grey middle toward 0 while nobody watched.
 The 2026-08-15 raid-spend doc in docs/superpowers/specs has the full
 reasoning.
 
+## An army marches three lands, and takes a turn for every one it crosses
+
+An arrow is no longer always one step long. `MAX_MARCH_HOPS` in
+`src/adjacency.ts` is how far an army may go, `hopsBetween` is the bounded
+breadth-first walk that measures it, and `marchHopsTo` in `src/playability.ts`
+is the ONE spelling of the question every surface asks. Three answers ride on
+it and they must be the same answer: whether the aim is legal
+(`marchTargetsFrom`), whether the land can send the army at all
+(`marchSourcesFor` / `marchSourcesAgainst`, and the `no-army` block reason
+through `marchReachFrom`), and the `expiry` the declaration writes -
+`state.turn + hops`, at all three declaration sites.
+
+Three things follow, and each is load-bearing:
+
+- **Distance decides how long, never whether it is worth doing.** Reach is
+  still `attackReach` and the bloc rule is still `aimsWithinOwnRealm`: a land
+  three hops off that borders nothing of yours is not a target, and a sibling
+  next door is not a target however close it stands. Widening the walk must
+  not become a way around either, which is what
+  `tests/playability.test.ts`'s peer case pins.
+- **A long march is a long time spent soft.** The spend comes off the source
+  at DECLARATION, so a three-turn arrow leaves that land readable at its
+  lowest for three turns rather than one. That is the cost of reaching deep,
+  and it is on the map for every rival.
+- **Arrows no longer land in the order they were declared.** A neighbour's
+  raid declared two turns later overtakes a march that set out three lands
+  away. `March.declared` exists because of this - `Axis.opening` cannot infer
+  which side started a quarrel from the expiry any more - and the whole axis
+  still comes off the board at the EARLIER of its two arrivals, so a counter
+  answering a long march pulls it in early rather than waiting for it.
+
+**The axis pull-in is the OPPOSING end, never this end's own stragglers.**
+Both directions of a clash cross the same lands, so a counter is always the
+same flight length as the arrow it answers - what the pull-in exists for is
+the pair MEETING. An arrow of the actor's own still walking toward the same
+land is not in that fight and waits for the turn its own expiry names.
+Resolving the axis whole was safe while every flight was one turn, because
+nothing un-lapsed could sit on a landing axis except the counter; a source
+with two armies raiding one land on consecutive turns now can, and taking the
+axis whole landed tomorrow's blow today.
+
+**A CLAIM does not walk.** `Claim.expiry` is still `turn + 1` whatever the
+distance: a demand of fealty is a message rather than an army. It is made out
+of the actor's HOME at anything its whole realm borders, which can be many
+lands away, so charging it for the distance would price Subjugate by where its
+lord happens to live. Only `March` pays per land crossed.
+
 ## The hand is the realm's, and it is a floor rather than a ceiling
 
 `handLimitFor` in `src/playability.ts` is how many cards a turn refills to: one
@@ -696,6 +893,210 @@ the offer is not made twice.
   path - and summing stretches is also what makes a played-on run come out
   right: both halves counted, the postmortem read in between left out.
 
+## The run asks which fight, and the offer is the promise
+
+The gauntlet cycle - pick a bordering realm, duel it, cash the reward, let the
+whole world take one turn, pick again - lives in `src/gauntlet.ts` and one
+field on `GameState`. Four things about its player-facing half are
+load-bearing:
+
+- **`rewardFor` is the one answer to what a land is worth.** The picker quotes
+  it and the round wrap that pays a won duel reads the same function on the
+  same land - the enemy the offer named, never the land that happened to
+  change hands. `SINGLE_LAND_HEAL`'s rule: a preview that promises what the
+  play will not do is the bug, and the only way two surfaces cannot promise
+  different things is for there to be nothing for them to disagree about. Both
+  its inputs survive a duel - `siteCaps` is map data and the defensive
+  terrains are not `strippedOnCapture` - so a promise made twenty rounds ago is
+  the one that gets paid.
+- **A won duel is recorded where the ground moved, never read back off the
+  board.** `duelDecidedBy` writes `Gauntlet.decided` at the moment an
+  allegiance changes and `settleDuel` reads it at the wrap. This used to be a
+  log walk keyed on `until`, and it went with the clock: see the duel section
+  below for why the moment of the move is the only moment the question has a
+  straight answer. Both allegiance doors record it - a chiefless enemy is
+  absorbed rather than sworn (below) - because `duelDecidedBy` is asked at the
+  capture rather than told which line was written.
+- **Declining is real and it is not free.** `declineDuel` spends the world
+  tick a finished duel spends: every realm takes a turn while yours stands
+  still, and a fresh offer comes round. The border is not a to-do list, so
+  ignoring a neighbour has to be available - but a decline that also skipped
+  the tick would be strictly better than fighting, and the loop would have
+  nothing in it. The modal says so in as many words.
+
+  **The tick carries its own `until`, and the number is where the price
+  lives.** A retiring duel sets `view.turn + 1`; `declineDuel` sets
+  `state.turn + 2`, and the 2 is not an off-by-one. A duel retires AT the
+  wrap, so the next wrap is one whole round later - but a decline is answered
+  mid-round, on the player's own turn, one line after the wrap, so a tick
+  ending at `+1` is ended by the very next wrap and buys nothing. It shipped
+  with no `until` at all on exactly that reasoning, and eleven straight turns
+  of the same four tiles were watched: the price was never paid and the modal
+  read as a nag. `+2` costs exactly one round and not two, because the tail of
+  the round a decline is answered in was already unscoped - `picking` scopes
+  nothing.
+- **The pick is host-only, and the guest is never shown it.** There is ONE
+  gauntlet on the state and its two sides are `humanFactionOf` - seat 0, the
+  same seat `phase` and `winSizeFor` speak for. Two people cannot be in
+  different duels, so `pick-duel` names no `NetAction` and `decidedHere`
+  answers false for a guest. That is the gate, and it is the same table that
+  routes the answer: the question is never raised on a screen whose answer has
+  nowhere to go.
+
+`picking` LOCKS the local screen - `pickOwed` inside `actionBlock`, never
+beside it - and `askDuelPick` repaints on the way in for the reason every
+derived lock owes a paint. It queues behind an owed conquest, which shares the
+overlay and is about the board the player was just shown.
+
+**An empty offer is a state, not a bug.** A realm that borders nothing it may
+fight is shown the offer with no rows in it, a sentence saying so, and the
+same button as the way on. A modal listing nothing with no way forward is a
+dead run.
+
+### A duel enemy fights, chief or no chief
+
+The seeding used to leave only five acting seats, so every land a realm
+bordered at turn 1 was one of the quiet ones - measured, and it was 110 of 110
+turn-1 candidates across all 26 seats. A leaderless enemy takes no turn and
+takes no land, so the map stood still while the player fought something that
+never answered, and `duel-lost` was unreachable. `QUIET_LANDS` is the lever
+that fixed it; the three parts below are the rest, and the scope of each is
+deliberate:
+
+- **A chiefless enemy is RARE.** `duelCandidates` prefers factions that have a
+  chief, as a FILTER rather than a sort. It does not refuse a chiefless one:
+  the border is what it is, and a realm hemmed in by quiet lands must still be
+  offered a fight rather than an empty modal.
+- **A duel enemy acts whether or not it has a chief.** `duelStanding` is one
+  walk of the two realms and three answers, and `takesNoTurn` reads it: this
+  is the ONLY place the leaderless arm is bypassed. Outside a duel a land with
+  no leader still takes no turn, and the grey middle is still the grey middle.
+- **Beating a chiefless enemy INCORPORATES it** (`absorbsDuelEnemy`). That is
+  the whole remaining difference between the two kinds of enemy: a people who
+  follow somebody become your vassal and may one day leave, and a people who
+  follow nobody are simply absorbed. It is also what stops "rare" from reading
+  as "worse". `beginTurn` therefore carries a local `incorporated`.
+
+**The asymmetry is stated so nobody reads it as an accident.** A leaderless
+land taken OUTSIDE a duel still gets a chief seated on it and becomes a
+vassal. Only the duel enemy is absorbed, because every quiet land is
+leaderless and universal absorption would mean a conquest never wakes anybody
+- the acting map would never grow. If a playtest says the split reads as two
+rules, the fix is to make absorption universal and wake the map some other
+way, not to widen this one quietly.
+
+**A seat that acts without a chief needs the cards to expect it.** War council
+reads the actor's ruler through `rulerOf`, which throws on a vacant chair, and
+it stated no legality about it because a leaderless land never took a turn.
+`CardDef.needsRuler` is that rule, as DATA rather than a branch naming the
+card, so it rides in `cardRulesHash` with every other legality dial. The other
+seat that reaches it is a person whose ruler was assassinated with no
+successor.
+
+**The scope reads the realm a seat is ABOUT to be in.** `advance` asks
+`takesNoTurn` on the board as it stands, and the independence escape is the
+first thing `beginTurn` does - so a vassal standing at its gate leaves the
+duelling realm one line after the scope decided it could play. `escapesVassalage`
+is the one spelling of the gate, applied by `beginTurn` and predicted by
+`takesNoTurn` through `overlordsAfterEscape`, only while a duel runs. The
+consequence, which is a rule and not a side effect: a vassal does not win its
+freedom while a duel runs, because a seat that never sees a `beginTurn` never
+reaches the line that frees it. It escapes at its first turn after the duel
+retires - and a vassal that was STAKED and escapes takes the wager off the
+table, which voids the duel (`duelVoided`).
+
+## The run is three acts, and each closes with a fight it announces
+
+`GameState.act` is 1 to `ACTS` (3), and `actExitSize(act, bar)` is thirds of
+`winSizeFor`'s bar - 5 / 9 / 13 on the Baltic map, 4 / 8 / 12 on the Iberian.
+Four things about the shape are load-bearing:
+
+- **Reaching an act's exit SUMMONS its boss; beating the boss advances the
+  act.** They were one number first, and the run then skipped its own boss the
+  moment a duel won two lands at once. The act is a high-water mark and never
+  falls.
+- **The beat before a boss is a prophecy and a breath.** `boss-foretold` is a
+  modal naming the enemy and the act - the whole of "unmissable", since a boss
+  the player only meets by walking into it reads as the game changing the rules
+  mid-run - and then a `rest` owes one of three boons. Both ride the picker's
+  overlay and `pickOwed` covers both, so one lock spans the pair.
+- **A boss offer is frozen and has no decline.** `picking.boss` holds exactly
+  the enemy the prophecy named; the wrap re-reads an ordinary offer and must
+  not re-read this one. `declineDuel` refuses it and the shared button is
+  HIDDEN rather than left showing a refusal the engine will not take.
+- **The act's exit boundaries are clamped at both ends.** The last act's exit
+  is the bar exactly, and an earlier act's is at least `act + 1`, because a run
+  opens holding one land - at a three-land bar the plain third is 1, which
+  summons act 1's boss before the player has taken anything.
+
+A champion is a neighbour the map has RAISED, not a new kind of entity:
+`elevateBoss` in `src/game.ts` gives it the `regional-leader` status, a ceiling
+raised by the act with a heal to it, `war-leader` AND the leadership that makes
+that ability mean anything, and more of its own build's raids. No new cards, so
+no `POLICY_COVERAGE` branch and no discovery route are owed. `regional-leader`
+carries no damage reduction, and that is measured rather than chosen - with one,
+a champion healed to a raised ceiling and holding four fortifies could not be
+moved at all.
+
+## A duel is a bet on one land, and it has no clock
+
+`DUEL_TURNS` is gone. A duel ends when ground moves between exactly two named
+polygons: the enemy's own land coming to the player's realm wins it, the
+player's `staked` land going to the enemy's loses it. Everything else that
+changes hands during a duel is an ordinary capture and leaves the fight running.
+
+- **Every duel is staked, the opening one included.** It was optional on a
+  one-land realm first, and that was wrong twice over: losing your home is
+  vassalage rather than defeat, so the bet was never the run; and a duel with
+  nothing staked can only be WON, which left the first duel of every run with
+  one ending. Measured on a real 44-turn run, that duel was still going at the
+  end and no duel had ever settled.
+- **`duelDecidedBy` records the outcome where the ground moves.** The moment of
+  the move is the only moment the question has a straight answer - read back a
+  round later, "the enemy took my stake" and "I took the enemy's home" both
+  look like one realm standing inside the other.
+- **`duelVoided` is the one arm that is neither.** An annexed enemy can lose no
+  land and a wagered land that has left the realm cannot be lost, so a duel
+  with nothing left to decide it retires and settles nothing. Not a clock: it
+  fires on a fact about the board.
+- **`DUEL_ATTRITION` is what makes an ordinary duel converge** - one point a
+  round off BOTH wagered lands, so the side that is ahead wins a siege. It skips
+  a BOSS duel, measured: wearing the wagered land through one as well ended 22
+  of 24 seeded runs at a boss duel, against 17 with it off.
+- **Losing a boss duel ends the run**, and losing an ordinary one does not.
+  That is the whole of what makes an act's last fight different to play. See
+  `FOLLOWUP.md` for what it costs - it is the number that decides how hard this
+  game is, and nobody has tuned it.
+
+**The policy has to know which fight it is in.** `duelFocusOf` in `src/ai.ts`
+adds the enemy's own polygon to the conquest scoring, gives the warpath branch
+a duel arm, and makes `raidSpendFor` commit there rather than paying the
+frontier minimum. Without it a 44-turn run took thirteen lands, never aimed at
+the land that would have closed the fight, and settled no duel at all.
+
+## The last act is fought off the map
+
+Each region authors a `ForeignPowerDef` (`src/regions.ts`): Rus' behind the
+Baltic's eastern forests, the Maghreb across Iberia's strait. It borrows its
+polygon from `MapData.neighbors` - the grey silhouettes the map has always
+drawn around the playable lands - and joins the roster only when act III
+summons it. Its adjacency is its authored `landings`, both ways, so
+`hopsBetween`, `attackReach` and `MAX_MARCH_HOPS` answer for it exactly as they
+answer for anywhere else and none of them was taught about it.
+
+- **`GameState.foreign` keeps it out of the arithmetic.** A power holding no
+  ground on the map must not move the bar from thirteen lands to fourteen at
+  the moment the last act begins, must not "unify" a map it was never on, and
+  must not be counted as a land by the postmortem. `homeRoster` is the one
+  reader all three go through.
+- **The run is won by taking that ground.** Half the map summons the last act's
+  boss; `endingFor`'s victory arm is the expedition. Playing on past it is still
+  measured in lands and still through `winSizeFor`, so the shown bar and the
+  applied bar stay one call.
+- **The landings are AUTHORED, like `terrainEligibility`.** There is no rim
+  concept in this codebase and the foreign power is not the change that should
+  invent one.
+
 ## Nothing ends itself
 
 A turn ends when the player says so, on both rule axes (`RULE_AXES` in
@@ -735,6 +1136,20 @@ does:
   else's army may break the claim, and the demand lapses. The same rule as a
   march arrow, for the same reason - an allegiance that changed the instant a
   card hit the table gave nobody a chance to see it coming.
+- A **march in flight is judged twice and no more**: when it is declared, and
+  again on the turn it lands. The arrival half is the pass at the top of
+  `resolveMarches`, and it is the ONLY place a standing arrow is taken off the
+  board for being illegal - a target that has become a peer of the actor's own
+  realm lapses there, with the `march-lapsed` line it always had, because an
+  arrow that vanishes with nothing said is the map lying about the board. Two
+  capture sites used to call the same rule off the moment a pyramid changed
+  shape under an arrow, which was indistinguishable from asking at arrival
+  while every flight lasted one turn. It is not indistinguishable now: an army
+  takes a turn per land it crosses, allegiance moves several times on the way,
+  and a mid-flight test cancels arrows the player is still watching fly - often
+  on a relation that has changed back before the army would have arrived. The
+  board's promise is that an arrow stands until it lands; what it may not
+  promise is that landing is legal.
 - A **capture** is an army arriving with more force than the land has left
   standing: `capturesOnArrival` in `src/defense.ts`, and it is one predicate
   read by the resolution and by the hover preview. Strictly more - a blow that
@@ -750,8 +1165,15 @@ does:
   middle breaks a land without taking it.
 
   The taker is then asked how much defense to send with the conquest
-  (`pendingTransfers` / `transferDefense`); a seat nobody is sitting at moves
-  half on the spot. 0 is a real answer. Keyed by FACTION, because every person
+  (`pendingTransfers` / `transferDefense`); 0 is a real answer. A seat nobody
+  is sitting at gets `autoTransfer`'s capped amount on the spot instead - as
+  much as it can spare, without arming the new vassal past its own
+  independence gate. An AI that moved a flat half in unconditionally was
+  paying for its own vassal's escape: the garrison alone often cleared the
+  gate line, so the vassal's first `beginTurn` read `independenceGateOpen`
+  true and won its freedom before the taker got a second turn - a playtest
+  measured the median vassalage at four turns. The cap leaves the new vassal
+  at exactly one point under its line instead. Keyed by FACTION, because every person
   is asked and one slot would have let one of them hold the only question on
   the board - and a QUEUE per faction, because a turn can take more than one
   land. Three conquests owe three questions, answered in the order the lands

@@ -1,11 +1,15 @@
 import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
+import { defenseOf } from "./defense";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
-  advance, chooseBuild, discardCard, endTurn, newGame, pickFaction, playCard,
-  repeatOnlyOf, startGame, turnOpen, viewOf, type GameState,
+  advance, chooseBuild, declineDuel, discardCard, endTurn, humanFactionOf,
+  newGame, pickBoon, pickDuel,
+  pickFaction, playCard, repeatOnlyOf, startGame, turnOpen, viewOf,
+  type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
+import { duelStakes } from "./gauntlet";
 import { seededRng } from "./rng";
 import { aiTakeTurn, chooseAction, MAX_AI_PLAYS } from "./ai";
 import { fullRealmOf } from "./relations";
@@ -191,8 +195,66 @@ function newSimGame(): GameState {
   );
 }
 
+/** The sim's answer to the gauntlet's offer: ALWAYS accept, and always the
+ *  first candidate the offer lists.
+ *
+ *  Stated rather than clever, deliberately. The sim's job is to exercise the
+ *  loop the run actually has, not to play it well - a policy that weighed
+ *  rewards would put a second opinion about what a duel is worth into the
+ *  measurement, and the balance suite would then be measuring the policy.
+ *  Declining only when the border offers nothing, since a decline spends the
+ *  world tick either way and a run that declined everything would measure the
+ *  pre-gauntlet game all over again.
+ *
+ *  The STAKE is the best-defended legal land, ties by map order.
+ *
+ *  That is a choice and it is deliberately the OBVIOUS one rather than a
+ *  clever one: the stake is what the duel is lost by, so "bet the land best
+ *  able to survive" is the single reading any player makes, and a sim that did
+ *  something else would be measuring its own carelessness. Map order - which
+ *  is what this was first - is not neutral. It is arbitrary, and it staked
+ *  freshly-taken border lands often enough that 22 of 24 runs ended at a boss
+ *  duel rather than anywhere else.
+ *
+ *  `duelCandidates` is already in map order, so this is deterministic and a
+ *  seeded run replays. It draws no rng, which is what keeps a run comparable
+ *  with one measured before the loop existed. */
+function answerTheOffer(state: GameState, rng: Rng): GameState {
+  // A rest is a question too, and one the engine holds until it is answered -
+  // so a sim that walked past it would leave the run standing on it for the
+  // rest of the game, never fighting the act's boss and never being offered
+  // another neighbour. The FIRST boon, the same stated-rather-than-clever rule
+  // the candidate pick keeps: a policy that weighed boons would put a second
+  // opinion about how to prepare into the measurement.
+  if (state.gauntlet.kind === "rest") {
+    const [first] = state.gauntlet.boons;
+    return first === undefined ? state : pickBoon(state, first, rng);
+  }
+  if (state.gauntlet.kind !== "picking") return state;
+  const [first] = state.gauntlet.candidates;
+  if (first === undefined) return declineDuel(state);
+  const home = humanFactionOf(state);
+  if (home === null) return state;
+  const v = viewOf(state);
+  const [stake] = duelStakes(v, home, first).sort(
+    (a, b) =>
+      defenseOf(v, b) - defenseOf(v, a) ||
+      state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+  );
+  // No legal stake is no legal duel: `pickDuel` would refuse it anyway, and a
+  // decline spends the world tick that keeps the run moving.
+  return stake === undefined ? declineDuel(state) : pickDuel(state, first, stake);
+}
+
 /** Plays one complete headless game. Throws rather than spinning if a turn
- *  fails to resolve - a stuck turn is a bug, not a data point. */
+ *  fails to resolve - a stuck turn is a bug, not a data point.
+ *
+ *  It answers the gauntlet's pick, which is the difference between measuring
+ *  this game and measuring the one before it. Left unanswered, every sim and
+ *  scenario game ran unscoped from end to end: 0 victories and a median end
+ *  around turn 68, against 2 victories and a median around 45 once the loop
+ *  is played. A balance suite that cannot see the run's own structure is a
+ *  balance suite measuring something else. */
 export function runGame(opts: RunOptions): GameSummary {
   const { seed, humanFaction, turnCap } = opts;
   const rng = seededRng(seed);
@@ -204,6 +266,10 @@ export function runGame(opts: RunOptions): GameSummary {
   state = applyBuildArm(state, opts.arm ?? "mixed");
   const humanTurn = opts.humanTurn ?? naiveHumanTurn;
   while (state.phase === "playing" && state.turn <= turnCap) {
+    // At the top of the loop rather than on the human's turn alone: nothing
+    // in the engine blocks on the question, so the only way to be sure the
+    // loop is exercised is to answer it wherever it stands.
+    state = answerTheOffer(state, rng);
     const actor = state.players[state.current].factionId;
     const next =
       state.current === 0 ? humanTurn(state, rng) : aiTakeTurn(state, rng);

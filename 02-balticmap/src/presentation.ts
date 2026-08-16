@@ -767,6 +767,68 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
     reason: "the turnip bar is its surface; cued beside the hand when it is " +
       "your own",
   },
+  // The spoils landing on the winner's own home. `framed`, so it takes the
+  // camera, the label and the badge walk every other map event takes - and the
+  // `causedHere` drop inside `framedBeats` cannot reach it, because a round
+  // wrap opens no batch with a play. A wealth reward moves no walked score and
+  // still earns its sentence: this is the beat that says the arc is over.
+  //
+  // The land is the winner's, and the enemy it beat is the other end - which
+  // is the one thing a duel's own label must name, since the fight has been
+  // running for up to twenty rounds and its subject is not on screen.
+  "duel-won": framed({
+    label: (e) =>
+      e.sourceFactionId === undefined
+        ? [landOf(e), t(" takes the spoils of the duel")]
+        : [
+            landOf(e), t(" takes the spoils of the duel with "),
+            faction(e.sourceFactionId),
+          ],
+  }),
+  // The other two ways a duel settles, framed exactly as the win is. Neither
+  // moves a score, and both still earn the camera and a sentence: what they
+  // report is a twenty-round arc closing, and the land the beat holds on is
+  // the player's own home, which is where the spoils would have landed. A
+  // beat with nothing to walk is the whole point here - the alternative is
+  // the silence this pair exists to end.
+  //
+  // Actor first, and the enemy named: the fight's other end is not on screen
+  // and cannot be pointed at, so the label has to say who it was with.
+  "duel-lost": framed({
+    label: (e) =>
+      e.sourceFactionId === undefined
+        ? [landOf(e), t(" loses the duel")]
+        : [landOf(e), t(" loses the duel with "), faction(e.sourceFactionId)],
+  }),
+  // "settles nothing with", never "loses": nobody was beaten here. The fight
+  // lost one of its two ends before either land could move, and a label that
+  // read as a defeat would tell the player they were outplayed by a board
+  // change they had no part in. The modal that follows the beat says the same
+  // words; two surfaces about one event must not disagree about what happened.
+  "duel-void": framed({
+    label: (e) =>
+      e.sourceFactionId === undefined
+        ? [landOf(e), t(" settles nothing in the duel")]
+        : [
+            landOf(e), t(" settles nothing with "),
+            faction(e.sourceFactionId),
+          ],
+  }),
+  // The camera goes to the boss. A prophecy naming a land the player has not
+  // looked at is a sentence about nowhere, and this is the one beat in the run
+  // whose whole job is to put a face on what is coming.
+  "boss-foretold": framed({
+    label: (e) => [
+      landOf(e), t(" is made ready to meet "),
+      faction(e.sourceFactionId ?? ""),
+    ],
+  }),
+  "boon-taken": {
+    kind: "never",
+    reason: "the player picked it on the rest modal and is already looking " +
+      "at it; what it healed earns its own `healed` beats, and the pick is " +
+      "cued beside the hand",
+  },
   "harvest-picked": handMotion("reveal"),
   "harvest-burned": {
     kind: "never",

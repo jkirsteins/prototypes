@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
 import {
   ARROW_EMPHASIS, ARROW_KINDS, ARROW_MOTION_MS, LAYOUT, blockWidthFor,
   borderKeyOf, emphasisFor, laneWidthFor, layoutLanes, renderArrowScene,
-  unitWidthFor, type ArrowCues, type ArrowSpec, type SceneCtx,
+  unitWidthFor, type ArrowCues, type ArrowSpec, type Rect, type SceneCtx,
 } from "../src/arrow-scene";
 import {
   ARROW_DEPTHS, crossingBetween, type Crossing, type Station,
@@ -331,6 +332,14 @@ const ctx: SceneCtx = {
   freeAnchor: () => ({ x: -100, y: 0 }),
 };
 
+/** How much of two boxes lies in both, which is the whole question a chip
+ *  standing clear of a badge is asking. */
+function overlap(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+  const h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+
 const march = (id: string, from: string, to: string, strength: number): ArrowSpec => ({
   id, kind: "march", from, to, strength, tone: "hostile", label: `${strength} STR`,
 });
@@ -445,6 +454,181 @@ describe("renderArrowScene", () => {
     renderArrowScene(host, [march("m1", "a", "b", 1)], ctx);
     const drawn = renderArrowScene(host, [march("m2", "a", "b", 1)], ctx);
     expect([...drawn.keys()]).toEqual(["m2"]);
+  });
+
+  it("says when an arrow lands, and only where that is not tomorrow", () => {
+    // Every arrow used to land next turn, so "lands in 1" is the reading a
+    // player already has and printing it everywhere would bury the one arrow
+    // that is genuinely days away.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("soon", "a", "b", 1), arrivesIn: 1 },
+      { ...march("far", "b", "a", 1), arrivesIn: 3 },
+    ], ctx);
+    const chip = (id: string): string | null =>
+      drawn.get(id)?.querySelector(".march-order-text")?.textContent ?? null;
+    expect(chip("soon")).toBeNull();
+    expect(chip("far")).toBe("lands in 3");
+  });
+
+  it("keeps the landing order and the arrival on ONE chip behind the tail", () => {
+    // Two badges behind the tail collide on any border carrying three arrows,
+    // which is the reason the ordinal is not on the shaft to begin with. And
+    // nothing about the arrival may reach the shaft: the shaft carries exactly
+    // one number, which is what makes the bare "1 STR" form readable.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      {
+        ...march("m1", "a", "b", 1),
+        chip: { order: 2, clash: false }, arrivesIn: 3,
+      },
+    ], ctx);
+    const g = drawn.get("m1")!;
+    expect(g.querySelectorAll(".march-order")).toHaveLength(1);
+    expect(g.querySelector(".march-order-text")?.textContent)
+      .toBe("2nd - lands in 3");
+    expect(g.querySelector(".march-strength")?.textContent).toBe("1 STR");
+  });
+
+  it("steps the chip out from under what the map has already drawn", () => {
+    // The station behind the tail points into the land the army marched out
+    // of, which is where that land's defense badge sits: on the deployed
+    // build `lands in 2` lost 15 of its 27 text pixels to a `1/3` badge. The
+    // obstacle here IS the box the chip takes when nothing is in its way, so
+    // a chip that did not move would be wholly covered by it.
+    const spec: ArrowSpec = { ...march("m1", "a", "b", 1), arrivesIn: 3 };
+    const chipBoxOf = (host: SVGGElement): Rect => {
+      const bg = host.querySelector(".march-order-bg")!;
+      const num = (name: string) => Number(bg.getAttribute(name));
+      return {
+        x: num("x"), y: num("y"), w: num("width"), h: num("height"),
+      };
+    };
+    const open = document.createElementNS(NS, "g") as SVGGElement;
+    renderArrowScene(open, [spec], ctx);
+    const under = chipBoxOf(open);
+
+    const blocked = document.createElementNS(NS, "g") as SVGGElement;
+    renderArrowScene(blocked, [spec], { ...ctx, keepOut: () => [under] });
+    const moved = chipBoxOf(blocked);
+    expect(overlap(moved, under)).toBe(0);
+    // Moved, not shrunk or dropped: the sentence the stage exists to deliver
+    // is still there and still says the same thing.
+    expect(blocked.querySelector(".march-order-text")?.textContent)
+      .toBe("lands in 3");
+    expect(moved.w).toBe(under.w);
+  });
+
+  it("steps the chip out from under another arrow's strength", () => {
+    // The keep-out used to be the caller's badges and nothing else, so the
+    // scene could not see its OWN ink: an overland march laid out on strait
+    // geometry printed `2 STR` where a neighbouring border's chip stood, and
+    // the chip took 8.3 px of it on the deployed build. A strength sits on its
+    // shaft and may not be moved for anything; the chip is the one thing here
+    // that is free to give way, so it has to be able to see the strength.
+    const strengthBoxOf = (host: SVGGElement): Rect => {
+      const t = host.querySelector(".march-strength")!;
+      const px = 13;
+      const w = (t.textContent ?? "").length * px * (5.6 / 10);
+      const x = Number(t.getAttribute("x"));
+      const y = Number(t.getAttribute("y"));
+      return { x: x - w / 2, y: y - px / 2, w, h: px };
+    };
+    const chipBoxOf = (g: Element): Rect => {
+      const bg = g.querySelector(".march-order-bg")!;
+      const num = (name: string) => Number(bg.getAttribute(name));
+      return { x: num("x"), y: num("y"), w: num("width"), h: num("height") };
+    };
+    // Two arrows on two different borders. `c` is anchored so its strength
+    // label lands on the ground `m1`'s chip would take if nothing were there.
+    const alone = document.createElementNS(NS, "g") as SVGGElement;
+    renderArrowScene(alone, [{ ...march("m1", "a", "b", 1), arrivesIn: 3 }], ctx);
+    const base = chipBoxOf(alone);
+    const strengthAt: SceneCtx = {
+      ...ctx,
+      crossingFor: (from, to) => from === "a" && to === "b"
+        ? ctx.crossingFor(from, to)
+        : null,
+      // The second arrow crosses no border, so it is a free arrow drawn from
+      // this anchor to `at` - which puts its label where we want it.
+      freeAnchor: () => ({ x: base.x + base.w / 2, y: base.y + base.h / 2 }),
+    };
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("m1", "a", "b", 1), arrivesIn: 3 },
+      { ...march("c", "c", "", 1), at: { x: base.x + 200, y: base.y } },
+    ], strengthAt);
+    const chip = chipBoxOf(drawn.get("m1")!);
+    const strength = strengthBoxOf(drawn.get("c")!);
+    // The obstacle really is where the chip would otherwise have stood.
+    expect(overlap(base, strength)).toBeGreaterThan(0);
+    expect(overlap(chip, strength)).toBe(0);
+  });
+
+  it("does not grow the caller's own keep-out list", () => {
+    // The scene adds its own ink to the list it dodges - every strength label,
+    // and each chip already placed. Pushed into the caller's array, that list
+    // would gain a scene's worth of boxes on every single paint.
+    const boxes: Rect[] = [{ x: 500, y: 500, w: 10, h: 10 }];
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const spec: ArrowSpec = { ...march("m1", "a", "b", 1), arrivesIn: 3 };
+    renderArrowScene(host, [spec], { ...ctx, keepOut: () => boxes });
+    renderArrowScene(host, [spec], { ...ctx, keepOut: () => boxes });
+    expect(boxes).toHaveLength(1);
+  });
+
+  it("declares each label size the stylesheet really gives it", () => {
+    // The chip is placed against boxes computed from these numbers before any
+    // label is in the tree, so a size that has drifted from style.css reserves
+    // ground the label is not standing on - and the chip dodges nothing.
+    const css = readFileSync("src/style.css", "utf8");
+    for (const [kind, def] of Object.entries(ARROW_KINDS)) {
+      const m = new RegExp(
+        `[\\s,]\\.${def.labelClass}\\s*\\{([^}]*)\\}`,
+      ).exec(css);
+      expect(m, `${kind}: no .${def.labelClass} block in style.css`)
+        .not.toBeNull();
+      const size = /font-size:\s*(\d+(?:\.\d+)?)px/.exec(m![1]);
+      expect(size, `${kind}: .${def.labelClass} declares no font-size`)
+        .not.toBeNull();
+      expect(Number(size![1]), `${kind}`).toBe(def.labelPx);
+    }
+  });
+
+  it("takes the least-covered station when nothing is clear", () => {
+    // A keep-out the size of the county cannot be dodged. The chip must still
+    // land somewhere fixed - a chip that jittered between renders would be
+    // worse than one under a badge - and somewhere no worse than the base.
+    const spec: ArrowSpec = { ...march("m1", "a", "b", 1), arrivesIn: 3 };
+    const everywhere: Rect = { x: -1000, y: -1000, w: 2000, h: 2000 };
+    const boxes: Rect[] = [];
+    for (let i = 0; i < 2; i++) {
+      const host = document.createElementNS(NS, "g") as SVGGElement;
+      renderArrowScene(host, [spec], { ...ctx, keepOut: () => [everywhere] });
+      const bg = host.querySelector(".march-order-bg")!;
+      boxes.push({
+        x: Number(bg.getAttribute("x")), y: Number(bg.getAttribute("y")),
+        w: Number(bg.getAttribute("width")),
+        h: Number(bg.getAttribute("height")),
+      });
+    }
+    expect(boxes[0]).toEqual(boxes[1]);
+  });
+
+  it("marks an army walking overland, and leaves a strait crossing alone", () => {
+    // Two lands three hops apart share no vertex, so the crossing they get is
+    // the one built for a strait. The arrow must not read as a sea crossing:
+    // the dashed casing is the only difference, so the shape, the colour and
+    // the width still say whose army it is and how strong.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("far", "a", "b", 1), overland: true },
+      march("near", "b", "a", 1),
+    ], ctx);
+    expect(drawn.get("far")?.classList.contains("march-overland")).toBe(true);
+    expect(drawn.get("near")?.classList.contains("march-overland")).toBe(false);
+    // Same spear either way - the cue is the casing and nothing else.
+    expect(drawn.get("far")?.querySelector("polygon")).not.toBeNull();
   });
 
   it("dresses a brand new arrow with the emphasis that decides how loud it is", () => {

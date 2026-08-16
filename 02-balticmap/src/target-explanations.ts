@@ -2,8 +2,8 @@ import {
   armyCapOn, attackImpactOn, omensMultiplier,
   failureRiskOf, freeSettlementsIn, freeSitesIn,
   holdsGuard, miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn,
-  plagueMultiplier, respiteExpiry, settlementsIn, subjugationGateOn,
-  targetEligibilityFor,
+  plagueMultiplier, plagueTargetsOf, respiteExpiry, settlementsIn,
+  subjugationGateOn, targetEligibilityFor,
   type CardBlockReason,
   type FailureRisk,
   type Guards,
@@ -13,7 +13,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import {
-  capturesOnArrival, defenseMaxOf, defenseOf, INDEPENDENCE_GATE,
+  capturesOnArrival, defenseMaxOf, defenseOf, independenceGateLine,
   SINGLE_LAND_HEAL,
 } from "./defense";
 import {
@@ -75,7 +75,12 @@ function explainReason(reason: TargetBlockReason): string[] {
     case "no-ruler":
       return ["Nobody leads this land."];
     case "liege":
-      return ["You owe them fealty, directly or through your lords."];
+      // Both halves, because the refusal has two shapes and the player needs
+      // to know which one they are looking at: a lord above them, or a peer
+      // beside them. "The same crown" and not "the same lord" - a cousin two
+      // branches over shares the ROOT and not the immediate lord, and so does
+      // a sibling's annexed land.
+      return ["Your own realm: you owe them fealty, or you both answer to the same crown."];
     case "incorporated":
       return ["Already incorporated."];
     case "self":
@@ -91,8 +96,8 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["No room for another settlement."];
     case "no-army":
       return [
-        "No free army borders this land. Your armies here are already out " +
-          "on a march; one comes home when it lands.",
+        "No free army can march this far. Your armies within reach of this " +
+          "land are already out; one comes home when it lands.",
       ];
     case "no-settlement":
       return [
@@ -418,7 +423,7 @@ export function defenseBreakdown(
   ];
   if (isVassalHome) {
     rows.push({
-      amount: `${Math.ceil(INDEPENDENCE_GATE * max)}`,
+      amount: `${independenceGateLine(view, polygon)}`,
       text: "or more regains independence at their turn",
     });
   }
@@ -547,7 +552,7 @@ export function cardBlockLine(reason: CardBlockReason): string {
     case "at-full-defense":
       return "Every land of your realm already stands at full defense.";
     case "no-army":
-      return "Every army on your borders is already out on a march.";
+      return "Every army in marching distance is already out on a march.";
     case "no-settlement":
       return "Every settlement in your realm has already been called on " +
         "this turn.";
@@ -556,6 +561,8 @@ export function cardBlockLine(reason: CardBlockReason): string {
       // in the hand, and this line is read on the greyed-out ones. A class,
       // not a copy - a Raid may be followed by a Strong raid.
       return "Only another card of the kind you played may follow.";
+    case "no-ruler":
+      return "Nobody leads your people - there is no council to hold.";
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "unavailable":
@@ -624,14 +631,16 @@ export function cardModifierLines(
 }
 
 /** What a Plague would deal right now, for its hover tip: the total across
- *  every polygon holding the actor's stacks, and the biggest single hit. */
+ *  every polygon it would actually land on. `plagueTargetsOf` is the same
+ *  list legality and the resolution read, which is the point - a stack
+ *  sitting on a lord or a sibling used to be summed in here even though the
+ *  card can never strike it, so the tip promised damage the play would not
+ *  deal. The same rule as a heal's amount, read by the play AND the hover. */
 export function plaguePreviewLines(
   view: RulesView,
   factionId: string,
 ): string[] {
-  const polygons = view.factionIds.filter(
-    (p) => (view.disease[p]?.[factionId] ?? 0) > 0,
-  );
+  const polygons = plagueTargetsOf(view, factionId);
   if (polygons.length === 0) return [];
   const total = polygons.reduce(
     (sum, p) => sum + Math.min(defenseOf(view, p), plagueDamageOn(view, factionId, p)),

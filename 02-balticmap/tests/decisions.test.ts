@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  chooseBuild, newGame, pickFaction, startGame, type GameState,
+  chooseBuild, humanFactionOf, newGame, pickFaction, startGame,
+  type GameState,
 } from "../src/game";
 import { commitDecision, type DecisionDeps } from "../src/decisions";
 import { seededRng } from "../src/rng";
@@ -90,5 +91,76 @@ describe("commitDecision - the conquest transfer", () => {
     expect(result.outcome).toBe("refused");
     expect(result).toMatchObject({ reason: expect.stringMatching(/number/) });
     expect(applied).toHaveLength(0);
+  });
+});
+
+describe("commitDecision - the duel pick", () => {
+  /** The offer a fresh deal opens on. `pickFaction` reaches the first round
+   *  wrap, which is what fills it. */
+  const offerOf = (g: GameState): string[] =>
+    g.gauntlet.kind === "picking" ? g.gauntlet.candidates : [];
+
+  it("opens a duel against a land the offer holds", () => {
+    const state = freshGame();
+    const enemy = offerOf(state)[0];
+    expect(enemy).toBeDefined();
+    const { deps, applied, sent } = soloDeps(state);
+    // A fresh deal is a one-land realm, and it stakes that land: losing your
+    // home is vassalage rather than the end of the run, and a duel with
+    // nothing on the table could only ever be won - see `pickDuel`. The seat
+    // is `humanFactionOf` and not `players[0]`, because that is the seat the
+    // gauntlet speaks for.
+    const home = humanFactionOf(state) as string;
+    const result = commitDecision(
+      deps, { kind: "pick-duel", enemyId: enemy, stakeId: home },
+    );
+    expect(result).toEqual({ outcome: "applied", settle: "action" });
+    expect(applied[0].gauntlet).toMatchObject({
+      kind: "duel", enemy, staked: home, decided: null, boss: false,
+    });
+    // Host-only: nothing crosses the wire, and the sentence saying why is the
+    // route's own.
+    expect(sent).toHaveLength(0);
+  });
+
+  it("takes declining as an answer, on the same kind", () => {
+    // One kind, one question. Split in two, a screen could route the answer
+    // the player reaches for when the whole offer is worth ignoring
+    // differently from the one that picks a fight.
+    const { deps, applied } = soloDeps(freshGame());
+    const result = commitDecision(
+      deps, { kind: "pick-duel", enemyId: null, stakeId: null },
+    );
+    expect(result).toEqual({ outcome: "applied", settle: "action" });
+    // `turn + 2`: a decline is answered mid-round, so a tick ending at the
+    // next wrap would be over before an unscoped round had run.
+    expect(applied[0].gauntlet)
+      .toEqual({ kind: "world-tick", until: applied[0].turn + 2 });
+  });
+
+  it("refuses a land the offer does not hold", () => {
+    // The engine returns its input, which is what `commitDecision` reads as
+    // refused - so a stale modal cannot scope the turn loop to a faction
+    // nobody may fight.
+    const { deps, applied } = soloDeps(freshGame());
+    const result = commitDecision(
+      deps, { kind: "pick-duel", enemyId: "alpha", stakeId: "alpha" },
+    );
+    expect(result.outcome).toBe("refused");
+    expect(applied).toHaveLength(0);
+  });
+
+  it("is refused outright on a guest, which is never shown it", () => {
+    const state = freshGame();
+    const enemy = offerOf(state)[0];
+    const { deps, applied, sent } = soloDeps(state);
+    const result = commitDecision(
+      { ...deps, role: "guest" },
+      { kind: "pick-duel", enemyId: enemy, stakeId: null },
+    );
+    expect(result.outcome).toBe("refused");
+    expect(result).toMatchObject({ reason: expect.stringMatching(/gauntlet/) });
+    expect(applied).toHaveLength(0);
+    expect(sent).toHaveLength(0);
   });
 });

@@ -187,6 +187,23 @@ function show(hud: Hud, g: GameState, from: number): void {
   hud.update(g);
 }
 
+/** A board on which the run's last act has been fought and won: a power from
+ *  beyond the frame, standing on the roster and taken.
+ *
+ *  Half the map no longer ends a run - it summons the last act's boss, and the
+ *  only victory is the expedition that beats it. So a fixture that wants a WON
+ *  board has to have won that fight, and this is the smallest board that has.
+ *  The land count is untouched: `foreign` is out of `homeRoster`, so the bar
+ *  the postmortem quotes is the same one it always was. */
+function beyondTheFrame(g: GameState, home: string): GameState {
+  return {
+    ...g,
+    factionIds: [...g.factionIds, "foreign-power"],
+    foreign: ["foreign-power"],
+    incorporated: { ...g.incorporated, "foreign-power": home },
+  };
+}
+
 describe("createHud", () => {
   const playing = () => newPlaying();
 
@@ -1748,7 +1765,7 @@ describe("hud v2", () => {
     );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
-    g = { ...g, incorporated: inc };
+    g = beyondTheFrame({ ...g, incorporated: inc }, "f0");
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("victory");
@@ -1769,7 +1786,7 @@ describe("hud v2", () => {
     );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
-    g = { ...g, incorporated: inc };
+    g = beyondTheFrame({ ...g, incorporated: inc }, "f0");
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("victory");
@@ -2796,6 +2813,58 @@ describe("localPlayerId", () => {
   });
 });
 
+describe("the duel chip", () => {
+  it("names the enemy and what is staked while a duel runs", () => {
+    // A duel used to have no surface at all: the word appeared nowhere on
+    // screen between the offer and the ending. There is no clock to count down
+    // now, so the chip names the two lands the fight is actually about.
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({
+      ...g, turn: 4,
+      gauntlet: {
+        kind: "duel", enemy: "gamma", staked: "beta", decided: null, boss: false
+      },
+    });
+    const chip = q(container, ".status-duel");
+    expect(chip.classList.contains("hidden")).toBe(false);
+    expect(chip.textContent).toBe("Duel Gamma - staking Beta");
+    // Both are segments and not text, so pointing at either lights up that
+    // realm the way every other name in the game does.
+    expect(
+      [...chip.querySelectorAll(".rt-faction")].map((n) => n.textContent),
+    ).toEqual(["Gamma", "Beta"]);
+  });
+
+  it("names a boss duel's stake the same way as any other", () => {
+    // Every duel is staked, the opening one included - so the chip has one
+    // shape and not two, and there is no dangling "staking" with no land
+    // after it to guard against.
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({
+      ...g, turn: 8,
+      gauntlet: {
+        kind: "duel", enemy: "gamma", staked: "beta", decided: null,
+        boss: true,
+      },
+    });
+    expect(q(container, ".status-duel").textContent)
+      .toBe("Duel Gamma - staking Beta");
+  });
+
+  it("hides itself when the run is between duels", () => {
+    const { container, hud } = setup();
+    const g = newPlaying();
+    hud.update({ ...g, gauntlet: { kind: "world-tick", until: g.turn + 1 } });
+    expect(q(container, ".status-duel").classList.contains("hidden"))
+      .toBe(true);
+    hud.update({ ...g, gauntlet: { kind: "picking", candidates: ["gamma"], boss: false } });
+    expect(q(container, ".status-duel").classList.contains("hidden"))
+      .toBe(true);
+  });
+});
+
 describe("the turnip bar chip and the harvest offer", () => {
   const playing = () => newPlaying();
 
@@ -3251,5 +3320,166 @@ describe("hand tips", () => {
     expect(tip.textContent).toContain("Favourable omens: this attack counts double.");
     // description still there
     expect(tip.textContent).toContain(CARDS.raid.text);
+  });
+});
+
+describe("the duel offer", () => {
+  const playing = () => newPlaying();
+
+  it("names each candidate as a segment and quotes what beating it pays", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onPick = vi.fn();
+    hud.showDuelOffer(
+      {
+        candidates: [
+          { factionId: "beta", reward: "3 wealth for the treasury." },
+          { factionId: "gamma", reward: "Your home land grows by 1." },
+        ],
+        boss: false,
+      },
+      { onPick, onDecline: vi.fn() },
+    );
+    expect(q(container, ".harvest-overlay").classList.contains("hidden"))
+      .toBe(false);
+    const rows = [...container.querySelectorAll(".harvest-option")];
+    expect(rows).toHaveLength(2);
+    // A name the player can point at, never baked text: pointing at it lights
+    // that realm on the map behind the modal, which is how a border offer is
+    // read at all.
+    expect(rows[0].querySelector(".rt-faction")).not.toBeNull();
+    expect(rows[0].textContent).toContain("3 wealth for the treasury.");
+    (rows[1] as HTMLButtonElement).click();
+    expect(onPick).toHaveBeenCalledWith("gamma");
+  });
+
+  it("says what declining does, on the button and beside it", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onDecline = vi.fn();
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }], boss: false },
+      { onPick: vi.fn(), onDecline },
+    );
+    // Not "Cancel": there is nothing to back out of, and the answer costs a
+    // world tick.
+    const out = [...container.querySelectorAll(".harvest-overlay button")]
+      .find((b) => b.textContent?.trim() === "Let the world turn");
+    expect(out).toBeDefined();
+    expect(q(container, ".harvest-note").textContent).toContain("takes a turn");
+    (out as HTMLButtonElement).click();
+    expect(onDecline).toHaveBeenCalled();
+  });
+
+  it("gives a realm with nothing to fight a way forward", () => {
+    // An empty offer is legitimate - a realm can hold every land it borders -
+    // and a modal listing nothing with no way out would be a dead run.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showDuelOffer(
+      { candidates: [], boss: false }, { onPick: vi.fn(), onDecline: vi.fn() });
+    expect(container.querySelectorAll(".harvest-option")).toHaveLength(0);
+    expect(q(container, ".harvest-note").textContent)
+      .toContain("No realm you border can be fought");
+    expect(
+      [...container.querySelectorAll(".harvest-overlay button")]
+        .some((b) => b.textContent?.trim() === "Let the world turn"),
+    ).toBe(true);
+  });
+
+  it("keeps the note out of the scroll region, with the button", () => {
+    // `.harvest-options` is the modal's scroll region and `.harvest-cancel`
+    // deliberately sits outside it. The note explains what that button costs,
+    // so it belongs on the same side of the scroll: measured at 200% zoom
+    // (720x403) and at 1280x600 @150%, a note inside the options scrolled out
+    // of view while the button stayed, and in the empty-offer arm the note is
+    // the only thing on screen saying why there is nothing to pick.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }], boss: false },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    const note = q(container, ".harvest-note");
+    expect(note.closest(".harvest-options")).toBeNull();
+    expect(note.closest(".harvest-card")).not.toBeNull();
+    // And below the options rather than above them: it is about the button.
+    const box = q(container, ".harvest-card");
+    const kids = [...box.children];
+    expect(kids.indexOf(note))
+      .toBeGreaterThan(kids.indexOf(q(container, ".harvest-options")));
+    expect(kids.indexOf(note))
+      .toBeLessThan(kids.indexOf(q(container, ".harvest-cancel")));
+  });
+
+  it("takes the note away with the question it belonged to", () => {
+    // One overlay serves four questions. A note left standing would explain
+    // the previous question's button beside this question's.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }], boss: false },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    expect(q(container, ".harvest-note").classList.contains("hidden"))
+      .toBe(false);
+    hud.showTransferOffer(
+      {
+        from: "alpha", to: "beta", max: 4,
+        fromHas: 5, toHas: 0, toMax: 6, fromMax: 6,
+      },
+      { onConfirm: vi.fn() },
+    );
+    expect(q(container, ".harvest-note").classList.contains("hidden"))
+      .toBe(true);
+  });
+});
+
+describe("the boss offer has no way past it", () => {
+  it("shows no decline, where an ordinary offer shows one", () => {
+    // The act does not close until its boss is fought, so a shared button
+    // offering to decline would be pressed, refused by the engine, and say
+    // nothing about why - the "hunting for a way out" the offer rules exist
+    // to prevent.
+    const { container, hud } = setup();
+    hud.update(newPlaying());
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "gamma", reward: "3 wealth." }], boss: false },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    const cancel = q(container, ".harvest-cancel");
+    expect(cancel.classList.contains("hidden")).toBe(false);
+    expect(cancel.textContent).toContain("Let the world turn");
+
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "gamma", reward: "3 wealth." }], boss: true },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    expect(q(container, ".harvest-cancel").classList.contains("hidden"))
+      .toBe(true);
+    // And the note says why, rather than leaving the player looking for it.
+    expect(q(container, ".harvest-note").textContent)
+      .toContain("no way round it");
+  });
+
+  it("takes a boon on the rest's shared button rather than refusing", () => {
+    const { container, hud } = setup();
+    hud.update(newPlaying());
+    const onTake = vi.fn();
+    hud.showBoonOffer(
+      {
+        boss: "gamma",
+        boons: [
+          { id: "mend", text: "Every land of your realm." },
+          { id: "growth", text: "Your home land grows." },
+        ],
+      },
+      { onTake },
+    );
+    const cancel = q(container, ".harvest-cancel");
+    expect(cancel.classList.contains("hidden")).toBe(false);
+    expect(cancel.textContent).toContain("Take the first");
+    (cancel as HTMLButtonElement).click();
+    expect(onTake).toHaveBeenCalledWith("mend");
   });
 });

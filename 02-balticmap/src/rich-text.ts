@@ -79,12 +79,14 @@ const VERBS = {
   reshuffle: { third: "reshuffles", past: "reshuffled" },
   resist: { third: "resists", past: "resisted" },
   rule: { third: "rules", past: "ruled" },
+  run: { third: "runs", past: "ran" },
   send: { third: "sends", past: "sent" },
   sow: { third: "sows", past: "sowed" },
   stand: { third: "stands", past: "stood" },
   submit: { third: "submits", past: "submitted" },
   trade: { third: "trades", past: "traded" },
   unify: { third: "unifies", past: "unified" },
+  win: { third: "wins", past: "won" },
 } as const;
 
 export type Verb = keyof typeof VERBS;
