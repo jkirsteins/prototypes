@@ -1540,7 +1540,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       marches = addMarch(marches, {
         id,
         actor: land, from: land, to, cardId: "raid", damage,
-        holdsArmy: true, expiry: state.turn + 1,
+        holdsArmy: true, declared: state.turn, expiry: state.turn + 1,
       });
       // Logged as the play it reads as on the map: an arrow with a strength on
       // it, answerable by a counter-raid like any other. No card leaves a deck
@@ -2285,7 +2285,7 @@ export function playCard(
     marches = addMarch(marches, {
       id,
       actor: p.factionId, from, to, cardId, damage, holdsArmy,
-      expiry: state.turn + 1,
+      declared: state.turn, expiry: state.turn + 1,
     });
     events.push({
       turn: state.turn, playerId: p.id, type: "march-declared",

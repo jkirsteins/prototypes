@@ -490,7 +490,7 @@ describe("raid", () => {
     expect(Object.values(after.marches)).toEqual([{
       id: g.nextMarchId,
       actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: MIN_RAID_SPEND, holdsArmy: true, expiry: g.turn + 1,
+      damage: MIN_RAID_SPEND, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     }]);
   });
 
@@ -661,7 +661,7 @@ describe("the counter-raid clash", () => {
         ),
         [String(g.nextMarchId)]: {
           id: g.nextMarchId, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: alphaDamage, holdsArmy: true, expiry: g.turn + 1,
+          damage: alphaDamage, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
         },
       },
     };
@@ -710,7 +710,7 @@ describe("the counter-raid clash", () => {
       id: number, from: string, to: string, cardId: string, damage: number,
     ) => ({
       id, actor: from, from, to, cardId, damage,
-      holdsArmy: true, expiry: g.turn + 1,
+      holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     });
     const after = landMarches({
       ...g,
@@ -748,7 +748,7 @@ describe("the counter-raid clash", () => {
     const g = playingState(LINE_ADJ);
     const arrow = (id: number) => ({
       id, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: 1, holdsArmy: true, expiry: g.turn + 1,
+      damage: 1, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     });
     const after = landMarches({
       ...g,
@@ -791,7 +791,7 @@ describe("the counter-raid clash", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-          damage: 3, holdsArmy: true, expiry: g.turn + 1,
+          damage: 3, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
         },
       },
     });
@@ -824,7 +824,7 @@ describe("the counter-raid clash", () => {
       id: number, from: string, to: string, cardId: string, damage: number,
     ) => ({
       id, actor: from, from, to, cardId, damage,
-      holdsArmy: true, expiry: g.turn + 1,
+      holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
     });
     const after = landMarches({
       ...g,
@@ -2460,7 +2460,7 @@ describe("an army walking into a broken land", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: g.turn,
+          damage: 1, holdsArmy: true, declared: g.turn - 1, expiry: g.turn,
         },
       },
     };
@@ -2483,7 +2483,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to, cardId: "raid",
-          damage, holdsArmy: true, expiry: base.turn + 1,
+          damage, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2524,7 +2524,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "strong-raid",
-          damage: 2, holdsArmy: true, expiry: base.turn + 1,
+          damage: 2, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2582,11 +2582,11 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: taker, from: taker, to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
         "2": {
           id: 2, actor: taker, from: "gamma", to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2632,7 +2632,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: taker, from: taker, to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2667,11 +2667,11 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: taker, from: taker, to: "alpha", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
         "2": {
           id: 2, actor: taker, from: "gamma", to: "delta", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2713,11 +2713,11 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: foe, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
         "2": {
           id: 2, actor: foe, from: foe, to: "beta", cardId: "raid",
-          damage: 3, holdsArmy: true, expiry: base.turn + 1,
+          damage: 3, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     });
@@ -2741,7 +2741,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "great-raid",
-          damage: 4, holdsArmy: true, expiry: base.turn + 1,
+          damage: 4, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       },
     };
@@ -2770,7 +2770,7 @@ describe("an army that overwhelms a land", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 3, holdsArmy: true, expiry: g.turn,
+          damage: 3, holdsArmy: true, declared: g.turn - 1, expiry: g.turn,
         },
       },
     }, rng());
@@ -2807,7 +2807,7 @@ describe("a run that ends at turn start", () => {
       marches: {
         "1": {
           id: 1, actor, from: actor, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -3084,7 +3084,7 @@ describe("the defense transfer", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -3114,7 +3114,7 @@ describe("the defense transfer", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -3145,7 +3145,7 @@ describe("the defense transfer", () => {
       marches: {
         "1": {
           id: 1, actor: raider, from: raider, to: target, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn,
+          damage: 1, holdsArmy: true, declared: base.turn - 1, expiry: base.turn,
         },
       },
     };
@@ -3227,7 +3227,7 @@ describe("the defense transfer", () => {
         String(i + 1),
         {
           id: i + 1, actor: "beta", from: "beta", to: t, cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: base.turn + 1,
+          damage: 1, holdsArmy: true, declared: base.turn, expiry: base.turn + 1,
         },
       ])),
     });
@@ -3339,7 +3339,7 @@ describe("the restless middle of the map", () => {
         marches: {
           "1": {
             id: 1, actor, from: actor, to: quiet, cardId: "raid",
-            damage: 1, holdsArmy: true, expiry: turn,
+            damage: 1, holdsArmy: true, declared: turn - 1, expiry: turn,
           },
         },
       },
@@ -3461,7 +3461,7 @@ describe("a status that does something says so", () => {
       marches: {
         "1": {
           id: 1, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: 1, holdsArmy: true, expiry: 99,
+          damage: 1, holdsArmy: true, declared: 98, expiry: 99,
         },
       },
     };
@@ -3668,7 +3668,7 @@ describe("every march that leaves the store is named by an event", () => {
       ...g.marches,
       [String(staleId)]: {
         id: staleId, actor, from: foreignLand, to: actor, cardId: "raid",
-        damage: 1, holdsArmy: true, expiry: g.turn + 1,
+        damage: 1, holdsArmy: true, declared: g.turn, expiry: g.turn + 1,
       },
     };
     const before = new Set(Object.values(staleMarches).map((m) => m.id));

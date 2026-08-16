@@ -439,7 +439,7 @@ export function applyBootParams(
         actor, from, to, cardId: "raid",
         damage: attackDamageFor(v, actor, "raid", paid).damage,
         holdsArmy: true,
-        expiry: g.turn + 1,
+        declared: g.turn, expiry: g.turn + 1,
       }),
       nextMarchId: g.nextMarchId + 1,
     };

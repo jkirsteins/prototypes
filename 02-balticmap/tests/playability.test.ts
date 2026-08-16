@@ -126,7 +126,7 @@ describe("marching: sources, targets and armies", () => {
   const outFrom = (from: string, to: string, over = {}) => ({
     "1": {
       id: 1, actor: from, from, to, cardId: "raid", damage: 4,
-      holdsArmy: true, expiry: 2, ...over,
+      holdsArmy: true, declared: 1, expiry: 2, ...over,
     },
   });
 
@@ -756,7 +756,7 @@ describe("playableSet", () => {
     // cannot be played, which is what ends the run.
     const stuck = view({ marches: { "1": {
       id: 1, actor: "beta", from: "beta", to: "alpha", cardId: "raid",
-      damage: 1, holdsArmy: true, expiry: 2,
+      damage: 1, holdsArmy: true, declared: 1, expiry: 2,
     } }, armies: { beta: 1 } });
     expect(playableSet(stuck, "beta", ["raid", "grow-crops"],
       { repeatOnly: "raid" })).toEqual({ mode: "play", cardIndexes: [] });

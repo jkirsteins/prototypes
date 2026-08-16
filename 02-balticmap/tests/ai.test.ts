@@ -278,7 +278,7 @@ describe("5A: answering a march", () => {
   const incoming = (from: string, at: string, damage: number, id = 1) => ({
     [String(id)]: {
       id, actor: from, from, to: at, cardId: "raid", damage,
-      holdsArmy: true, expiry: 3,
+      holdsArmy: true, declared: 2, expiry: 3,
     },
   });
 
@@ -335,7 +335,7 @@ describe("5A: answering a march", () => {
         ...incoming("beta", "alpha", 4),
         "2": {
           id: 2, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
-          damage: 4, holdsArmy: true, expiry: 3,
+          damage: 4, holdsArmy: true, declared: 2, expiry: 3,
         },
       },
     };

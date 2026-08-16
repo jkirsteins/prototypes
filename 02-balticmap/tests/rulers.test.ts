@@ -256,7 +256,7 @@ describe("the leader gate", () => {
       marches: {
         [key]: {
           id: 1, actor: quiet, from: quiet, to: "alpha", cardId: "raid",
-          damage: 6, holdsArmy: true, expiry: g.turn,
+          damage: 6, holdsArmy: true, declared: g.turn - 1, expiry: g.turn,
         },
       },
     };

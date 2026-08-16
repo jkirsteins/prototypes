@@ -56,6 +56,12 @@ export interface March {
    *  bumps on the wrap to seat 0, so T + 1 is the declaring seat's next turn
    *  whichever seat it is, and resolution runs in that seat's `beginTurn`. */
   expiry: number;
+  /** The turn this was declared on. Carried rather than derived: `opening`
+   *  used to read it off the expiry, which was the declaration turn plus one
+   *  for every march there was. A march now takes a turn per land it crosses,
+   *  so two arrows landing together may have set out turns apart, and the one
+   *  that started the quarrel is the one drawn full size. */
+  declared: number;
   /** This march's identity, for as long as it exists and never again.
    *
    *  Allocated from `GameState.nextMarchId` at declaration and never reused,
@@ -177,8 +183,8 @@ export interface Axis {
    *  as one confused shape, so the opening side is drawn full size on the axis
    *  and the answer smaller and off to one side.
    *
-   *  Read off the expiry, which IS the declaration turn plus one, falling back
-   *  to insertion order for two declared in the same round. */
+   *  Read off `declared`, falling back to insertion order for two declared in
+   *  the same round. */
   opening: "a" | "b";
 }
 
@@ -213,7 +219,7 @@ export function axesOf(marches: Marches): Axis[] {
     const earliest = (side: March[]): number =>
       side.length === 0
         ? Number.POSITIVE_INFINITY
-        : Math.min(...side.map((m) => m.expiry));
+        : Math.min(...side.map((m) => m.declared));
     const ea = earliest(axis.fromA);
     const eb = earliest(axis.fromB);
     const seen = firstSeen.get(axisKey)!;
