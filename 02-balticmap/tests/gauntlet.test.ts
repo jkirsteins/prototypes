@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-  advance, beginTurn, chooseBuild, declineDuel, newGame, pickDuel, pickFaction,
-  playCard, startGame, takesNoTurn, viewOf, type GameState,
+  advance, beginTurn, chooseBuild, declineDuel, escapesVassalage, newGame,
+  pickDuel, pickFaction, playCard, startGame, takesNoTurn, viewOf,
+  type GameState,
 } from "../src/game";
 import {
   BIG_LAND_SITES, DUEL_DEFENSE_REWARD, DUEL_TURNS, DUEL_WEALTH_REWARD,
@@ -178,8 +179,13 @@ describe("a duel scopes the turn loop", () => {
   });
 
   it("keeps a vassal of either side in it", () => {
-    const g = playing();
-    const [enemy, third] = ruledRivals(g);
+    const g0 = playing();
+    const [enemy, third] = ruledRivals(g0);
+    // Held UNDER its independence gate, which is what a vassal looks like:
+    // an absent defense score means a land at its ceiling, and a vassal
+    // standing there is one turn from winning its freedom - which takes it
+    // out of both realms and out of the fight (see `overlordsAfterEscape`).
+    const g = { ...g0, defense: { [third]: 10 } };
     const overlords = new Map(g.overlords);
     overlords.set(third, enemy);
     const duel = withGauntlet(
@@ -200,6 +206,30 @@ describe("a duel scopes the turn loop", () => {
         third,
       ),
     ).toBe(false);
+  });
+
+  it("does not leak for the one turn a vassal escapes on", () => {
+    // `advance` asks this question on the board as it stands, and the
+    // independence escape is the FIRST thing `beginTurn` does - so a vassal
+    // standing at its gate is a seat that leaves the duelling realm before it
+    // plays a card. Asked of the realm it is leaving, it played a turn the
+    // scope forbids and corrected itself only at the next wrap.
+    const g = playing();
+    const [enemy, third] = ruledRivals(g);
+    const overlords = new Map(g.overlords);
+    overlords.set(third, "beta");
+    // At its ceiling, so the gate stands open.
+    const duel = withGauntlet(
+      { ...g, overlords },
+      { kind: "duel", enemy, until: g.turn + DUEL_TURNS },
+    );
+    expect(escapesVassalage(duel, third)).toBe(true);
+    expect(takesNoTurn(duel, third)).toBe(true);
+    expect(actedIn(duel)).not.toContain(third);
+    // And nothing outside a duel reads the escape early: the world tick still
+    // hands that seat its turn, and the turn is where it wins its freedom.
+    const tick = withGauntlet({ ...g, overlords }, { kind: "world-tick" });
+    expect(takesNoTurn(tick, third)).toBe(false);
   });
 
   it("never stills a PERSON, whichever side they are on", () => {

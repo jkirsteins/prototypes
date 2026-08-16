@@ -1192,10 +1192,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // are not the ones it started with.
   let rulers = state.rulers;
   const lord = overlords.get(p.factionId);
-  if (
-    lord !== undefined &&
-    independenceGateOpen(viewOf(state), p.factionId)
-  ) {
+  // `escapesVassalage` and not the gate directly: `takesNoTurn` asks the same
+  // question one line earlier, to judge the duel scope against the realm this
+  // seat is about to be in, and two spellings of it would disagree.
+  if (lord !== undefined && escapesVassalage(state, p.factionId)) {
     overlords.delete(p.factionId);
     respites = { ...respites, [p.factionId]: state.turn + ESCAPE_RESPITE_TURNS };
     players = players.map((pl) =>
@@ -2266,6 +2266,47 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
   );
 }
 
+/** Whether this faction wins its independence the moment its own turn starts.
+ *
+ *  ONE spelling, because two readers must agree about it. `beginTurn` APPLIES
+ *  the escape as the very first thing a turn does; `takesNoTurn` is asked one
+ *  line earlier, by `advance`, and has to judge the duel scope against the
+ *  realm the seat will be in once the escape has run. */
+export function escapesVassalage(
+  state: GameState, factionId: string,
+): boolean {
+  return state.overlords.has(factionId) &&
+    independenceGateOpen(viewOf(state), factionId);
+}
+
+/** `state.overlords` with this faction's pending escape already applied, for
+ *  the duel scope alone.
+ *
+ *  The escape moves a faction OUT of whichever realm was holding it, so a
+ *  vassal about to win its freedom is about to leave the fight. Asked of the
+ *  realm it is leaving, `advance` let it play a turn the scope forbids and
+ *  then corrected itself at the next wrap - the two-readers-disagree shape,
+ *  122 times over eight seeded 80-turn runs.
+ *
+ *  The consequence, stated rather than discovered: a vassal that has healed
+ *  back to its gate does not escape WHILE a duel runs, because a seat that
+ *  never sees a `beginTurn` never reaches the line that frees it. It escapes
+ *  at its first turn after the duel retires. A realm does not come apart
+ *  mid-fight, and the alternative - freeing it at the round wrap, the way a
+ *  dormant seat's arrows are landed there - would also start freeing seeded
+ *  leaderless vassals that have never escaped in this game's history.
+ *
+ *  Nothing outside a duel pays for this: the gate is a `viewOf` build and
+ *  this is asked once per seat in `advance`'s loop, so the cheap questions
+ *  come first. */
+function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
+  if (state.gauntlet.kind !== "duel") return state.overlords;
+  if (!escapesVassalage(state, factionId)) return state.overlords;
+  const out = new Map(state.overlords);
+  out.delete(factionId);
+  return out;
+}
+
 /** Whether this faction will never see a `beginTurn` of its own. Four
  *  reasons, and they must be asked together, IN THIS ORDER:
  *
@@ -2327,7 +2368,7 @@ export function takesNoTurn(state: GameState, factionId: string): boolean {
   if (isHumanFaction(state, factionId)) return false;
   const standing = duelStanding(
     state.gauntlet, humanFactionOf(state), factionId,
-    state.overlords, state.incorporated,
+    overlordsAfterEscape(state, factionId), state.incorporated,
   );
   if (standing === "outside") return true;
   if (standing === "theirs") return false;
