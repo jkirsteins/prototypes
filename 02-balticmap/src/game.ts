@@ -41,7 +41,7 @@ import {
   SPEND_ORDER, type HarvestChoice,
 } from "./harvest";
 import {
-  damageAfterTerrain, hasPassive, quietPassives,
+  damageAfterTerrain, hasPassive, passivesOn, quietPassives,
   RESTLESS_RAID_CHANCE, seedTerrain, stripOnCapture, WILD_LANDS_HEAL,
   WILD_LANDS_HEAL_CHANCE, type Passives,
 } from "./passives";
@@ -52,10 +52,11 @@ import {
 } from "./rulers";
 import {
   absorbsDuelEnemy, actExitSize, ACTS, bossFor, boonsFor, BOON_GROWTH_AMOUNT,
+  BOSS_CEILING_PER_ACT, BOSS_LEADERSHIP_PER_ACT, BOSS_RAIDS_PER_ACT,
   duelDecidedBy, duelStakes, duelStanding, gauntletAtRoundWrap, rewardFor,
   type Boon, type DuelOutcome, type Gauntlet,
 } from "./gauntlet";
-import { BUILD_ABILITIES } from "./abilities";
+import { BUILD_ABILITIES, RAID_LEADERSHIP } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
 
@@ -1528,6 +1529,89 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     return { defense, taken: true };
   };
 
+  /** An act's champion, made ready to be beaten.
+   *
+   *  Four levers, and every one of them is something the game already does to
+   *  a land - which is the whole design of a boss here. It is not a new kind
+   *  of entity with rules of its own; it is a neighbour the map has raised up,
+   *  and a player who has learned to read a ceiling, a chief and a deck can
+   *  read this one too.
+   *
+   *  - The `regional-leader` status, which shrugs off a quarter of every blow
+   *    and is what the land hover names.
+   *  - A ceiling raised by the act, and a heal that takes it there. The
+   *    ceiling is what the player can READ before committing, which is what
+   *    makes the fight a decision rather than a surprise.
+   *  - A chief who leads its raids in person: `war-leader` AND the leadership
+   *    that makes the ability mean anything. Granting the ability alone was
+   *    the first version, and the boss raided for exactly what its neighbours
+   *    did - the ability adds the leader's leadership, and a chief seated by
+   *    `seatRuler` holds 0 of it.
+   *  - More of its own build's raids. A boss that only defends is a boss the
+   *    player starves out, and extra copies of a card the AI already has a
+   *    branch for is the cheapest way to make it answer.
+   *
+   *  A chiefless champion gets everything but the chief, and that is not a
+   *  hole: `bossFor` prefers a led candidate, so this is the hemmed-in border
+   *  the offer's own fallback covers, and beating such a land absorbs it
+   *  outright (`absorbsDuelEnemy`) - which is a bigger prize, not a smaller
+   *  one. */
+  const elevateBoss = (
+    boss: string, forAct: number,
+  ): {
+    passives: Passives;
+    defense: Defense;
+    defenseMax: Record<string, number>;
+    rulers: Rulers;
+    players: PlayerState[];
+  } => {
+    const held = passivesOn(passives, boss);
+    const nextPassives = held.includes("regional-leader")
+      ? passives
+      : { ...passives, [boss]: [...held, "regional-leader"] };
+    const nextMax = {
+      ...defenseMax,
+      [boss]:
+        defenseMaxOf({ defense, defenseMax }, boss) +
+        BOSS_CEILING_PER_ACT * forAct,
+    };
+    // To the ceiling, so the number the prophecy sends the player to look at
+    // is the number they will have to get through.
+    const nextDefense = applyHeal(
+      { defense, defenseMax: nextMax }, boss,
+      defenseMaxOf({ defense, defenseMax: nextMax }, boss),
+    );
+    let nextRulers = rulers;
+    if (hasRuler(rulers, boss)) {
+      nextRulers = grantAbility(nextRulers, [boss], RAID_LEADERSHIP);
+      const chief = nextRulers[boss];
+      if (chief !== undefined) {
+        nextRulers = {
+          ...nextRulers,
+          [boss]: {
+            ...chief,
+            leadership: chief.leadership + BOSS_LEADERSHIP_PER_ACT * forAct,
+          },
+        };
+      }
+    }
+    const extra = Array.from(
+      { length: BOSS_RAIDS_PER_ACT * forAct }, () => "raid",
+    );
+    // The tribute-injection shape: shuffled in rather than stacked on top, so
+    // the boss does not draw its whole reinforcement in one turn.
+    const nextPlayers = updateFaction(players, boss, (pl) => ({
+      ...pl, deck: shuffle([...pl.deck, ...extra], rng),
+    }));
+    return {
+      passives: nextPassives,
+      defense: nextDefense,
+      defenseMax: nextMax,
+      rulers: nextRulers,
+      players: nextPlayers,
+    };
+  };
+
   /** The duel's settlement, written at the wrap that retires it: ONE event
    *  whichever way the fight went, and the spoils on the one arm that earns
    *  them.
@@ -1589,7 +1673,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // are stable across a duel - `siteCaps` is map data and the defensive
     // terrains survive a capture (`strippedOnCapture: false`) - so what the
     // picker promised twenty rounds ago is what this pays.
-    const reward = rewardFor({ siteCaps: state.siteCaps, passives }, enemy);
+    // The act as it stood when the duel OPENED, which is `state.act`: the
+    // advance one line above has already moved the local `act` for a won boss
+    // duel, and paying the next act's rate for this act's fight would break
+    // the one thing the offer and the cashing must agree on.
+    const reward = rewardFor(
+      { siteCaps: state.siteCaps, passives }, enemy, state.act,
+    );
     if (reward.kind === "wealth") {
       events.push({
         turn: state.turn, playerId: winner?.id ?? p.id, type: "duel-won",
@@ -1689,6 +1779,16 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         // picker keeps running until the border gives it somebody.
         if (boss !== null) {
           const seat = players.find((pl) => pl.factionId === home);
+          // Made ready BEFORE the prophecy is written, so the modal that names
+          // it is describing the land as it now stands. A boss elevated after
+          // its own announcement would be a promise the board had not kept
+          // yet, and the player would read a badge that was about to move.
+          const raised = elevateBoss(boss, act);
+          passives = raised.passives;
+          defense = raised.defense;
+          defenseMax = raised.defenseMax;
+          rulers = raised.rulers;
+          players = raised.players;
           gauntlet = {
             kind: "rest", boss,
             boons: boonsFor(

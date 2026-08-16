@@ -701,7 +701,9 @@ function askDuelPick(): void {
         factionId,
         // `rewardFor` and not a second table: this is the promise, and the
         // wrap that pays it reads the same function on the same land.
-        reward: rewardLine(rewardFor(v, factionId)),
+        // The act rides along: what a win pays scales with it, and the offer
+        // is the promise the wrap has to keep.
+        reward: rewardLine(rewardFor(v, factionId, g.act)),
       })),
       boss: g.gauntlet.boss,
     },

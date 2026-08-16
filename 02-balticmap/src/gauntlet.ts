@@ -482,10 +482,21 @@ export function gauntletAtRoundWrap(
 
 /** The neighbour an act closes with, or null when the border offers nobody.
  *
- *  The first CHIEFED candidate in map order, falling back to the first of any:
- *  `duelCandidates` already prefers a chief as a filter, so this is that
- *  preference read once more rather than a second rule about who is worth
- *  fighting. Deterministic, so a seeded replay names the same boss.
+ *  Three preferences, in order, and the first is the one that matters most.
+ *
+ *  **A champion still standing keeps the job.** A boss duel that was lost or
+ *  voided leaves the enemy elevated, and the act is summoned again at the next
+ *  wrap - so without this the retry would raise a SECOND champion and leave
+ *  the first one carrying a boss's ceiling for the rest of the run. The act's
+ *  fight is meant to be the same fight until somebody wins it, and the
+ *  escalation is `elevateBoss` running again on the same land rather than the
+ *  map filling up with half-fought bosses.
+ *
+ *  Then the first CHIEFED candidate in map order, falling back to the first of
+ *  any: `duelCandidates` already prefers a chief as a filter, so that part is
+ *  the same preference read once more rather than a second rule about who is
+ *  worth fighting. Deterministic throughout, so a seeded replay names the same
+ *  boss.
  *
  *  Null is a real answer and not a failure. A realm that borders nothing it may
  *  fight cannot be handed a boss, so the act simply does not close yet - the
@@ -493,8 +504,11 @@ export function gauntletAtRoundWrap(
  *  running until the border gives it somebody. */
 export function bossFor(view: RulesView, human: string): string | null {
   const candidates = duelCandidates(view, human);
+  const standing = candidates.find(
+    (id) => hasPassive(view.passives, id, "regional-leader"),
+  );
   const led = candidates.find((id) => view.leaders[id] === true);
-  return led ?? candidates[0] ?? null;
+  return standing ?? led ?? candidates[0] ?? null;
 }
 
 /** Identity is worth keeping on a state that crosses the wire: a fresh
@@ -521,6 +535,32 @@ export const DUEL_DEFENSE_REWARD = 2;
  *  for. */
 export const DUEL_WEALTH_REWARD = 3;
 
+/** What an act's champion adds to its own ceiling, per act. Two, three and
+ *  six over a run: enough that the third boss is a different kind of problem
+ *  from the first, and not so much that a realm which has been winning cannot
+ *  crack it.
+ *
+ *  Ceiling and not current defense, because the heal that comes with it takes
+ *  the land to the ceiling anyway - and a ceiling is what the player can READ
+ *  off the badge before committing to the fight. */
+export const BOSS_CEILING_PER_ACT = 2;
+
+/** Extra raids shuffled into an act champion's deck, per act. One, two, three:
+ *  a boss that only defends is a boss the player can starve out, and the
+ *  cheapest way to make it answer is to give it more of what its own build
+ *  already does. No new cards, so no `POLICY_COVERAGE` branch and no discovery
+ *  route are owed - the AI already has a branch for a raid. */
+export const BOSS_RAIDS_PER_ACT = 1;
+
+/** The leadership an act's champion's chief is given, per act.
+ *
+ *  It is what makes `war-leader` mean anything: the ability adds the leader's
+ *  LEADERSHIP to every raid they send, and a chief seated at 0 with the
+ *  ability holds a rule that does nothing. Granting one without the other was
+ *  the first version, and the boss raided for exactly as much as its
+ *  neighbours did. */
+export const BOSS_LEADERSHIP_PER_ACT = 1;
+
 /** What beating a land pays. Derived from what the land IS, never rolled, so
  *  the map teaches its own logic: a big land is worth growing into, hill
  *  country teaches how hill country is held, and everywhere else pays coin.
@@ -544,15 +584,20 @@ export type DuelReward =
  *  big land in hill country is worth growing into rather than fortifying -
  *  the rarer prize wins the tie, and there is exactly one tie to lose. */
 export function rewardFor(
-  view: Pick<RulesView, "siteCaps" | "passives">, land: string,
+  view: Pick<RulesView, "siteCaps" | "passives">, land: string, act = 1,
 ): DuelReward {
+  // The act SCALES what a win is worth, and the same number scales what a boss
+  // brings to the fight (`BOSS_CEILING_PER_ACT`). A ramp that only tightened
+  // would be a run that gets steadily worse to be in; the two together are
+  // what make a later duel a bigger fight rather than a slower one.
+  const scale = Math.max(1, act);
   if ((view.siteCaps[land] ?? 0) >= BIG_LAND_SITES) {
-    return { kind: "growth", amount: LAND_GROWTH };
+    return { kind: "growth", amount: LAND_GROWTH * scale };
   }
   if (DEFENSIVE_TERRAIN.some((id) => hasPassive(view.passives, land, id))) {
-    return { kind: "defense", amount: DUEL_DEFENSE_REWARD };
+    return { kind: "defense", amount: DUEL_DEFENSE_REWARD * scale };
   }
-  return { kind: "wealth", amount: DUEL_WEALTH_REWARD };
+  return { kind: "wealth", amount: DUEL_WEALTH_REWARD * scale };
 }
 
 /** One line saying what a reward does, in the picker and nowhere else.

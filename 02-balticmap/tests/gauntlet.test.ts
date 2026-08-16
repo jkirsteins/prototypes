@@ -5,11 +5,15 @@ import {
   type GameState,
 } from "../src/game";
 import {
-  ACTS, actExitSize, BIG_LAND_SITES, BOON_GROWTH_AMOUNT, DUEL_DEFENSE_REWARD,
+  ACTS, actExitSize, BIG_LAND_SITES, BOON_GROWTH_AMOUNT,
+  BOSS_CEILING_PER_ACT, BOSS_LEADERSHIP_PER_ACT, bossFor, DUEL_DEFENSE_REWARD,
   DUEL_WEALTH_REWARD, duelCandidates, duelStakes, outsideTheDuel, rewardFor,
   type Gauntlet,
 } from "../src/gauntlet";
 import { LAND_GROWTH } from "../src/defense";
+import {
+  damageAfterTerrain, PASSIVES, stripOnCapture,
+} from "../src/passives";
 import { naiveHumanTurn, runGame, SIM_FACTION_IDS } from "../src/sim";
 import { hasRuler } from "../src/rulers";
 import type { Rng } from "../src/cards";
@@ -1166,5 +1170,139 @@ describe("the rest hands out one boon", () => {
   it("says what was taken, once", () => {
     const after = pickBoon(resting(), "mend", rng());
     expect(after.log.filter((e) => e.type === "boon-taken")).toHaveLength(1);
+  });
+});
+
+describe("an act's champion is made ready to be beaten", () => {
+  const wrap = (g: GameState): GameState =>
+    beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
+
+  /** A board sitting on `act`'s exit, with the summon about to fire.
+   *
+   *  The realm size is asked for rather than derived, because the six-land
+   *  fixture's bar is three: act 1 exits at two lands and act 3 at three, so a
+   *  helper that widened to one number would summon nothing for the later act
+   *  and quietly measure an empty board. */
+  function summoned(
+    act = 1, lands = 2,
+  ): { before: GameState; after: GameState } {
+    const base = { ...playing(), act };
+    const take = base.factionIds
+      .filter((f) => f !== "beta")
+      .slice(0, lands - 1);
+    const before = {
+      ...base,
+      incorporated: Object.fromEntries(take.map((f) => [f, "beta"])),
+    };
+    return { before, after: wrap(before) };
+  }
+
+  const bossOf = (g: GameState): string =>
+    g.gauntlet.kind === "rest" ? g.gauntlet.boss : "";
+
+  it("names the status the land hover reads, so the player can see it", () => {
+    // A status does not ship until the hover names it, and the hover walks
+    // PASSIVES generically - so what this pins is that the row EXISTS with a
+    // name and a line, which is what that walk needs.
+    const { after } = summoned();
+    const boss = bossOf(after);
+    expect(boss).not.toBe("");
+    expect(after.passives[boss]).toContain("regional-leader");
+    expect(PASSIVES["regional-leader"].name.length).toBeGreaterThan(0);
+    expect(PASSIVES["regional-leader"].text.length).toBeGreaterThan(0);
+  });
+
+  it("raises its ceiling by the act and heals it there", () => {
+    const { before, after } = summoned();
+    const boss = bossOf(after);
+    expect(after.defenseMax[boss])
+      .toBe(before.defenseMax[boss] + BOSS_CEILING_PER_ACT);
+    // At its ceiling, so the number the prophecy sends the player to look at
+    // is the number they have to get through.
+    expect(after.defense[boss] ?? after.defenseMax[boss])
+      .toBe(after.defenseMax[boss]);
+  });
+
+  it("scales with the act, so the third boss is a different problem", () => {
+    const one = summoned(1, 2);
+    const three = summoned(3, 3);
+    const gainOne =
+      one.after.defenseMax[bossOf(one.after)] -
+      one.before.defenseMax[bossOf(one.after)];
+    const gainThree =
+      three.after.defenseMax[bossOf(three.after)] -
+      three.before.defenseMax[bossOf(three.after)];
+    expect(gainThree).toBeGreaterThan(gainOne);
+  });
+
+  it("gives a chiefed champion the ability AND the leadership behind it", () => {
+    // `war-leader` adds the leader's LEADERSHIP to every raid. Granted alone,
+    // to a chief seated at 0, it is a rule that does nothing - which is what
+    // the first version shipped.
+    const { after } = summoned();
+    const boss = bossOf(after);
+    if (!hasRuler(after.rulers, boss)) return;
+    expect(after.rulers[boss].abilities).toContain("war-leader");
+    expect(after.rulers[boss].leadership)
+      .toBeGreaterThanOrEqual(BOSS_LEADERSHIP_PER_ACT);
+  });
+
+  it("shrugs off part of every blow, and stacks with the ground", () => {
+    // The reductions COMPOSE: a champion raised on hill country takes both,
+    // which the version naming `hill-country` by literal would have missed.
+    const plain = damageAfterTerrain({ passives: {} }, "x", 8);
+    const champion = damageAfterTerrain(
+      { passives: { x: ["regional-leader"] } }, "x", 8,
+    );
+    const both = damageAfterTerrain(
+      { passives: { x: ["regional-leader", "hill-country"] } }, "x", 8,
+    );
+    expect(champion).toBeLessThan(plain);
+    expect(both).toBeLessThan(champion);
+    // Never below 1, and never above what was coming.
+    expect(damageAfterTerrain(
+      { passives: { x: ["regional-leader", "hill-country"] } }, "x", 1,
+    )).toBe(1);
+  });
+
+  it("puts more of its own raids in its deck", () => {
+    const { before, after } = summoned();
+    const boss = bossOf(after);
+    const raidsIn = (g: GameState): number => {
+      const seat = g.players.find((pl) => pl.factionId === boss);
+      return (seat?.deck ?? []).filter((c) => c === "raid").length;
+    };
+    expect(raidsIn(after)).toBeGreaterThan(raidsIn(before));
+  });
+
+  it("keeps the same champion when a boss duel is not won", () => {
+    // The retry is the SAME fight. Without this the next summon would raise a
+    // second champion and leave the first carrying a boss's ceiling for the
+    // rest of the run.
+    const { after } = summoned();
+    const boss = bossOf(after);
+    const view = viewOf(after);
+    expect(bossFor(view, "beta")).toBe(boss);
+  });
+
+  it("ends the elevation when the champion is taken", () => {
+    // `strippedOnCapture`, so a land the player now holds does not carry a
+    // boss's defenses into every fight after.
+    const { after } = summoned();
+    const boss = bossOf(after);
+    expect(stripOnCapture(after.passives, boss)).not.toContain(
+      "regional-leader",
+    );
+  });
+
+  it("pays a bigger reward the deeper the act", () => {
+    const view = { siteCaps: {}, passives: {} };
+    const one = rewardFor(view, "gamma", 1);
+    const three = rewardFor(view, "gamma", 3);
+    expect(one.kind).toBe(three.kind);
+    expect(three.amount).toBeGreaterThan(one.amount);
+    // An act nobody named reads as the first one, so every older caller and
+    // every test built before acts existed still means what it meant.
+    expect(rewardFor(view, "gamma")).toEqual(one);
   });
 });
