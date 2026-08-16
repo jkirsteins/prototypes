@@ -10,7 +10,7 @@ import { CARDS, GUARDS } from "../src/cards";
 import { RAID_LEADERSHIP } from "../src/abilities";
 import type { TooltipLine } from "../src/panel";
 import {
-  failureRiskOf,
+  failureRiskOf, settlementAllowance,
   type RulesView, type TargetEligibility,
 } from "../src/playability";
 
@@ -638,7 +638,7 @@ describe("landFactsLines", () => {
       { amount: "0", text: "or less opens subjugation" },
       { amount: "20", text: "armies its defenses support" },
       { text: "Settlements", blockStart: true },
-      { amount: "1/3", text: "on this land" },
+      { amount: `1/${settlementAllowance()}`, text: "on this land" },
       { text: "Statuses", blockStart: true },
       { text: "Hill country", segments: [passive("hill-country")] },
     ]);
@@ -746,27 +746,32 @@ describe("respiteLines", () => {
 });
 
 describe("settlementBlock", () => {
-  it("counts the settlement every land starts with, against its authored cap", () => {
+  // The denominator is pinned against `settlementAllowance()` rather than a
+  // hardcoded number: it must never promise more than `found-settlement`'s
+  // own legality check (`needs-population`) will actually honour, so a
+  // future change to the allowance has to move this test's expectation with
+  // it rather than leaving it green while the hover quietly lies again.
+  it("counts the settlement every land starts with, against the allowance - never the map's own generous cap", () => {
     expect(settlementBlock(v({ siteCaps: { alpha: 6 } }), "alpha")).toEqual([
       { text: "Settlements", blockStart: true },
-      { amount: "1/7", text: "on this land" },
+      { amount: `1/${settlementAllowance()}`, text: "on this land" },
     ]);
   });
 
-  it("moves with each founding while the cap stays put", () => {
-    const view = v({ siteCaps: { alpha: 6 }, settlements: { alpha: 2 } });
-    expect(settlementBlock(view, "alpha")[1].amount).toBe("3/7");
+  it("moves with each founding while the allowance stays put", () => {
+    const view = v({ siteCaps: { alpha: 6 }, settlements: { alpha: 1 } });
+    expect(settlementBlock(view, "alpha")[1].amount).toBe(`2/${settlementAllowance()}`);
   });
 
-  it("reads 1/1 for a land the map authors no further site for", () => {
+  it("reads 1/1 for a land the map authors no further site for, below the allowance", () => {
     expect(settlementBlock(v(), "alpha")[1].amount).toBe("1/1");
   });
 
   it("answers for the land asked about, not its neighbour", () => {
     const view = v({
-      siteCaps: { alpha: 6, beta: 1 }, settlements: { alpha: 2 },
+      siteCaps: { alpha: 6, beta: 1 }, settlements: { alpha: 1 },
     });
-    expect(settlementBlock(view, "beta")[1].amount).toBe("1/2");
+    expect(settlementBlock(view, "beta")[1].amount).toBe(`1/${settlementAllowance()}`);
   });
 
   it("says how many a fortify has called on, and only while any has", () => {
@@ -775,12 +780,12 @@ describe("settlementBlock", () => {
     expect(settlementBlock(v({ siteCaps: { alpha: 6 } }), "alpha"))
       .toHaveLength(2);
     const view = v({
-      siteCaps: { alpha: 6 }, settlements: { alpha: 2 },
+      siteCaps: { alpha: 6 }, settlements: { alpha: 1 },
       settlementsSpent: { alpha: 2 },
     });
     expect(settlementBlock(view, "alpha")).toEqual([
       { text: "Settlements", blockStart: true },
-      { amount: "3/7", text: "on this land" },
+      { amount: `2/${settlementAllowance()}`, text: "on this land" },
       { amount: "2", text: "called on this turn" },
     ]);
     // Another land's spending is not this land's.

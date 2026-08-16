@@ -204,6 +204,20 @@ export function freeSitesIn(
   return Math.max(0, (view.siteCaps[land] ?? 0) - (view.settlements[land] ?? 0));
 }
 
+/** The most settlements `land` will ever actually hold: the map's own dot
+ *  cap, or `settlementAllowance`, whichever is smaller. The two are different
+ *  numbers - a land can author more dots than the flat rule will ever let it
+ *  found - and this is the one the player is allowed to be told, because it
+ *  is the one `found-settlement`'s legality (`needs-population` above) reads
+ *  too. Quoting the map's raw dot count instead promises founding the game
+ *  will refuse the moment the allowance is reached. */
+export function foundableCeilingIn(
+  view: { siteCaps: Record<string, number>; settlements: Record<string, number> },
+  land: string,
+): number {
+  return Math.min(settlementsIn(view, land) + freeSitesIn(view, land), settlementAllowance());
+}
+
 /** The actor's treasury. Absent = 0. */
 export function wealthOf(
   view: { wealth: Record<string, number> },

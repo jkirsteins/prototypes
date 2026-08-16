@@ -1,6 +1,6 @@
 import {
   armyCapOn, attackImpactOn, omensMultiplier,
-  failureRiskOf, freeSettlementsIn, freeSitesIn,
+  failureRiskOf, foundableCeilingIn, freeSettlementsIn,
   holdsGuard, miasmaHeld, omensHeld, outbreakPolygons, plagueDamageOn,
   plagueMultiplier, plagueTargetsOf, respiteExpiry, settlementsIn,
   subjugationGateOn, targetEligibilityFor,
@@ -505,7 +505,7 @@ export function settlementBlock(
   const spent = standing - freeSettlementsIn(view, landFactionId);
   return [
     { text: "Settlements", blockStart: true },
-    { amount: `${standing}/${standing + freeSitesIn(view, landFactionId)}`,
+    { amount: `${standing}/${foundableCeilingIn(view, landFactionId)}`,
       text: "on this land" },
     // Only while it is true. A land nobody has fortified this turn says
     // nothing, so the line appearing IS the news - the same reason the badge
