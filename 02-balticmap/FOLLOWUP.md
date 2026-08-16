@@ -52,9 +52,6 @@ by probing rather than reading.
 
 ## Known-false or unverified things left standing
 
-- **A multi-hop arrow renders as a sea crossing.** `crossingBetween` sets
-  `sea: true` for any pair sharing no vertex, and every 2-3 hop pair is one.
-  Nothing breaks; the picture lies about why the arrow spans.
 - **The human-seat freeze is untested.** `endTurn` refuses an unplayed standard
   turn for everybody, so a person whose every card is legal-in-hand but
   un-aimable would hit the same refusal the AI guard now covers, and the guard
@@ -72,6 +69,42 @@ by probing rather than reading.
 - **Root `npm run lint` is broken for everyone** whenever a sibling
   `.claude/worktrees/*` exists, because the root `biome.json` does not ignore
   `**/.claude/worktrees/**`. Not caused by this work; noticed by it.
+
+## Stage 2, tasks 4-6: what those five pieces left open
+
+- **A multi-hop arrow's GEOMETRY is still the strait's.** The dashed casing
+  (`.march-overland`) says an army is walking overland rather than crossing
+  water, and that was the cheap half. What was not done is the arrow's
+  placement: `straitCrossing` still puts it midway between the two lands'
+  nearest vertices with `gap / 2 + seaClearance` either side, so a long march
+  FLOATS between two coasts instead of being rooted in the land it sets out
+  from and the land it is headed for. The honest fix is an `overlandCrossing`
+  measuring `reach` into both ends, which is real geometry work and was judged
+  not worth the risk without a review round behind it.
+- **`chipTextFor` can produce a long chip.** "2nd - clash - lands in 3" is 24
+  characters, about a 146-unit badge behind a tail. Nothing was seen colliding
+  in the browser pass, but that combination was not constructed - it needs a
+  clash and a three-hop arrow on one border.
+- **The travel discount is unmeasured, and 0.6 is a guess.** `TRAVEL_DISCOUNT`
+  in `src/ai.ts` was picked for its shape (a three-hop blow keeps about a third
+  of its worth), not from a run of the balance suite. It is the one dial, and
+  it is the obvious thing to move if the AI now looks too parochial.
+- **The discount reads the tail the policy picked, and that pick is unchanged.**
+  `marchSourceFor` still sorts sources by highest defense with no distance
+  term, so the AI can choose a three-hop tail when a one-hop tail exists and
+  then discount the TARGET for a walk it chose. Discounting the target is
+  right; not preferring the nearer tail may not be. Deliberately out of scope -
+  the source rule is about surviving a counter-raid and moving it is its own
+  question.
+- **Mid-flight cancellation removed with no browser pass on the long case.** A
+  march is now judged only at declaration and arrival, which is covered by
+  three tests through the real capture routes. What was not watched in a
+  browser is a three-hop arrow surviving an allegiance change and lapsing on
+  landing, with the beat and the log line that go with it.
+- **Card prose says "up to three".** `MAX_MARCH_HOPS` is spelled in words in
+  Raid's and Strong raid's text rather than interpolated, per the rule against
+  interpolating into player-facing strings. Nothing fails if the constant
+  moves; the text would simply be wrong again.
 
 ## The one thing a playtest should look at first
 
