@@ -54,7 +54,13 @@ export function defenseMaxOf(data: MapData): Record<string, number> {
  *  Bounded rather than complete on purpose. The answer is wanted for a march,
  *  a march may not cross more than `MAX_MARCH_HOPS`, and a bounded walk stops
  *  at that ring instead of touring the map for an answer the caller will throw
- *  away. */
+ *  away. So `null` past `max` DISCARDS a real distance rather than reporting
+ *  the map has none: a land five hops off and a land on another continent
+ *  answer the same, and no caller may read "null" as "unreachable".
+ *
+ *  Breadth-first, and it has to be: the answer is the SHORTEST way round, so a
+ *  walk that took the first path it found would report a detour as the
+ *  distance and cost a march turns it does not owe. */
 export function hopsBetween(
   adjacency: Record<string, string[]>,
   from: string,
