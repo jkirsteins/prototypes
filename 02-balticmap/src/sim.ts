@@ -3,7 +3,7 @@ import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
   advance, chooseBuild, declineDuel, discardCard, endTurn, humanFactionOf,
-  newGame, pickDuel,
+  newGame, pickBoon, pickDuel,
   pickFaction, playCard, repeatOnlyOf, startGame, turnOpen, viewOf,
   type GameState,
 } from "./game";
@@ -214,7 +214,17 @@ function newSimGame(): GameState {
  *  `duelCandidates` is already in map order, so this is deterministic and a
  *  seeded run replays. It draws no rng, which is what keeps a run comparable
  *  with one measured before the loop existed. */
-function answerTheOffer(state: GameState): GameState {
+function answerTheOffer(state: GameState, rng: Rng): GameState {
+  // A rest is a question too, and one the engine holds until it is answered -
+  // so a sim that walked past it would leave the run standing on it for the
+  // rest of the game, never fighting the act's boss and never being offered
+  // another neighbour. The FIRST boon, the same stated-rather-than-clever rule
+  // the candidate pick keeps: a policy that weighed boons would put a second
+  // opinion about how to prepare into the measurement.
+  if (state.gauntlet.kind === "rest") {
+    const [first] = state.gauntlet.boons;
+    return first === undefined ? state : pickBoon(state, first, rng);
+  }
   if (state.gauntlet.kind !== "picking") return state;
   const [first] = state.gauntlet.candidates;
   if (first === undefined) return declineDuel(state);
@@ -249,7 +259,7 @@ export function runGame(opts: RunOptions): GameSummary {
     // At the top of the loop rather than on the human's turn alone: nothing
     // in the engine blocks on the question, so the only way to be sure the
     // loop is exercised is to answer it wherever it stands.
-    state = answerTheOffer(state);
+    state = answerTheOffer(state, rng);
     const actor = state.players[state.current].factionId;
     const next =
       state.current === 0 ? humanTurn(state, rng) : aiTakeTurn(state, rng);

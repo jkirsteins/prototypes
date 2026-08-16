@@ -814,6 +814,21 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
             faction(e.sourceFactionId),
           ],
   }),
+  // The camera goes to the boss. A prophecy naming a land the player has not
+  // looked at is a sentence about nowhere, and this is the one beat in the run
+  // whose whole job is to put a face on what is coming.
+  "boss-foretold": framed({
+    label: (e) => [
+      landOf(e), t(" is made ready to meet "),
+      faction(e.sourceFactionId ?? ""),
+    ],
+  }),
+  "boon-taken": {
+    kind: "never",
+    reason: "the player picked it on the rest modal and is already looking " +
+      "at it; what it healed earns its own `healed` beats, and the pick is " +
+      "cued beside the hand",
+  },
   "harvest-picked": handMotion("reveal"),
   "harvest-burned": {
     kind: "never",

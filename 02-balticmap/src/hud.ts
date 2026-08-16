@@ -9,6 +9,7 @@ import {
   buildRoundSummary, isNoticeWorthy, walkCtxOf,
   type NoticeCtx, type RoundSummary,
 } from "./notices";
+import { actExitSize, BOON_TITLES, type Boon } from "./gauntlet";
 import {
   allocateSpend, defenseMaxOf, defenseOf, diseaseOn, subjugationGateOpen,
 } from "./defense";
@@ -312,8 +313,25 @@ export interface Hud {
    *  legitimate offer, not a bug: the modal says so and the button is still
    *  the way on. */
   showDuelOffer(
-    offer: { candidates: { factionId: string; reward: string }[] },
+    offer: {
+      candidates: { factionId: string; reward: string }[];
+      /** Whether this is the act's boss rather than the border. A boss offer
+       *  has no decline: the act does not close until its fight is fought, and
+       *  the modal says so instead of showing a button the engine refuses. */
+      boss: boolean;
+    },
     hooks: { onPick(factionId: string): void; onDecline(): void },
+  ): void;
+  /** The rest before an act's boss: one boon, then the fight. `text` is prose
+   *  the caller built from `boonLine`, the offer's rule again.
+   *
+   *  There is no cancel and no decline. The act does not close until its boss
+   *  is fought, so the shared button takes the first boon rather than
+   *  dismissing the question - a modal that could be waved away here would
+   *  come straight back with nothing changed. */
+  showBoonOffer(
+    offer: { boss: string; boons: { id: Boon; text: string }[] },
+    hooks: { onTake(boon: Boon): void },
   ): void;
   /** The second half of that pick: which of your own lands is put up against
    *  the enemy. Same overlay, same lock - the gauntlet is `picking` behind
@@ -729,6 +747,24 @@ export function eventSegments(
       return clause(actor, "fail", [
         t(" to settle the duel with "), faction(e.sourceFactionId ?? ""),
       ], "past");
+    // The act's own two lines. The prophecy names the boss and the act it
+    // closes; `amount` is that act's number, which rides the event rather than
+    // being counted off the log.
+    case "boss-foretold":
+      return [
+        t("Act "), t(String(e.amount ?? 1)), t(" comes to a head: "),
+        faction(e.targetFactionId ?? ""), t(" is made ready"),
+      ];
+    case "boon-taken":
+      // The card boon names its card and the other two name what they did, so
+      // the line branches on whether a card came with it. Either way the boon
+      // itself has no name the player can point at - it is a choice on a
+      // modal, not a card - so the sentence carries it as prose.
+      return e.cardId === undefined
+        ? clause(actor, "keep", [t(" a boon before the fight")], "past")
+        : clause(actor, "keep", [
+            t(" "), card(e.cardId), t(" as a boon before the fight"),
+          ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
     case "victory":
@@ -1249,6 +1285,32 @@ export function createHud(
   // like every other name in the game, so pointing at it lights up their
   // realm - which is the whole answer to "who am I fighting" on a map of
   // twenty-six lands.
+  // Which act the run is in, and what it takes to close it. The longest arc
+  // the game has and it named itself nowhere: a player could not tell a
+  // neighbour from the fight that ends the act until the prophecy landed.
+  const actChip = document.createElement("span");
+  actChip.className = "status-act hidden";
+  actChip.addEventListener("mousemove", (e) => {
+    cb.onShowTip?.(
+      [
+        { text: "Act" },
+        {
+          text:
+            "The run is three acts long, and each one closes with a boss - " +
+            "a neighbour the map has made ready for you, and at the last a " +
+            "power from beyond the frame.",
+        },
+        {
+          text:
+            "Reaching the lands an act asks for summons its boss. Beating " +
+            "that boss is what carries the run into the next act; nothing " +
+            "else moves it, and losing ground never moves it back.",
+        },
+      ],
+      e.clientX, e.clientY,
+    );
+  });
+  actChip.addEventListener("mouseleave", () => cb.onHideTip?.());
   const duelChip = document.createElement("span");
   duelChip.className = "status-duel hidden";
   duelChip.addEventListener("mousemove", (e) => {
@@ -1301,7 +1363,7 @@ export function createHud(
   });
   turnipChip.addEventListener("mouseleave", () => cb.onHideTip?.());
   status.append(
-    statusText, wealthChip, handChip, rulerChip, duelChip, turnipChip,
+    statusText, wealthChip, handChip, rulerChip, actChip, duelChip, turnipChip,
   );
 
   function makePile(kind: string, label: string) {
@@ -1481,8 +1543,14 @@ export function createHud(
    *  a duel pick declines the whole offer. The word on the button is part of
    *  the answer, and set anywhere but here it would survive into the next
    *  question that replaces this one without hiding the overlay first. */
-  function armCancel(label: string, onCancel: (() => void) | null): void {
-    harvestCancel.textContent = label;
+  function armCancel(label: string | null, onCancel: (() => void) | null): void {
+    // A null label HIDES the button. Some questions genuinely have no way
+    // out - the act's boss is the standing one - and a shared button left
+    // showing a refusal the engine will not take is exactly the "hunting for
+    // a way out" the offer rules exist to prevent: the player presses it, it
+    // does nothing, and nothing says why.
+    harvestCancel.classList.toggle("hidden", label === null);
+    harvestCancel.textContent = label ?? "";
     harvestOnCancel = onCancel;
     // Cleared with the button it belongs to, and for the same reason: a note
     // set anywhere but through this pair would survive into the next question
@@ -1687,11 +1755,20 @@ export function createHud(
    *  tick a finished duel costs. It arms no Escape - a key press that spends a
    *  round of everybody else's growth is not a key press. */
   function showDuelOffer(
-    offer: { candidates: { factionId: string; reward: string }[] },
+    offer: {
+      candidates: { factionId: string; reward: string }[];
+      boss: boolean;
+    },
     hooks: { onPick(factionId: string): void; onDecline(): void },
   ): void {
     harvestTitle.textContent = "Which realm next?";
-    armCancel("Let the world turn", hooks.onDecline);
+    // No decline on the act's boss, and no button standing in for one. The
+    // engine refuses `declineDuel` there, so a button offering it would be
+    // pressed, do nothing and say nothing.
+    armCancel(
+      offer.boss ? null : "Let the world turn",
+      offer.boss ? null : hooks.onDecline,
+    );
     releaseHarvestEscape();
 
     const rows = offer.candidates.map(({ factionId, reward }) => {
@@ -1714,13 +1791,74 @@ export function createHud(
     // A realm with no bordering land it may fight still needs a way forward,
     // and the note is it: the button below is not a refusal of anything, it is
     // the only move on the board. Set AFTER `armCancel`, which clears it.
-    setNote(offer.candidates.length === 0
-      ? "No realm you border can be fought. Letting the world turn is the " +
-        "only way on: every realm takes a turn, and a fresh offer comes round."
-      : "The border is not a list. Letting the world turn declines all of " +
-        "them - every realm takes a turn, and a fresh offer comes round.");
+    setNote(
+      offer.boss
+        ? "This is the fight that closes the act. There is no way round it " +
+          "and no clock on it: it ends when ground changes hands."
+        : offer.candidates.length === 0
+          ? "No realm you border can be fought. Letting the world turn is " +
+            "the only way on: every realm takes a turn, and a fresh offer " +
+            "comes round."
+          : "The border is not a list. Letting the world turn declines all " +
+            "of them - every realm takes a turn, and a fresh offer comes " +
+            "round.");
 
     harvestOptions.replaceChildren(...rows);
+    harvestOverlay.classList.remove("hidden");
+  }
+
+  /** The rest before an act's boss. Same overlay as the pick, same lock.
+   *
+   *  Dumb render, the offer's rule: what a boon does is `boonLine` in
+   *  src/gauntlet.ts and this prints the sentence it was handed. The boss is a
+   *  `faction()` segment, so pointing at it lights that realm on the map
+   *  behind the modal - which is how a player reads a prophecy about a land
+   *  they may never have looked at.
+   *
+   *  `armCancel` takes the FIRST boon rather than refusing: there is nothing
+   *  to back out of, and a rest that could be dismissed would be a rest the
+   *  player never took and a modal that came straight back. No Escape key
+   *  either, the duel offer's rule - a key press that spends an act's boon is
+   *  not a key press. */
+  function showBoonOffer(
+    offer: { boss: string; boons: { id: Boon; text: string }[] },
+    hooks: { onTake(boon: Boon): void },
+  ): void {
+    harvestTitle.textContent = "One thing for the road";
+    const first = offer.boons[0];
+    armCancel(
+      "Take the first", () => { if (first !== undefined) hooks.onTake(first.id); },
+    );
+    releaseHarvestEscape();
+
+    const rows = offer.boons.map(({ id, text }) => {
+      const btn = document.createElement("button");
+      btn.className = "harvest-option";
+      const label = document.createElement("div");
+      label.className = "harvest-option-label";
+      label.textContent = BOON_TITLES[id];
+      const line = document.createElement("div");
+      line.className = "harvest-option-text";
+      line.textContent = text;
+      btn.append(label, line);
+      btn.addEventListener("click", () => hooks.onTake(id));
+      return btn;
+    });
+
+    // Set AFTER `armCancel`, which clears it.
+    setNote("");
+    const said = document.createElement("div");
+    said.className = "harvest-note";
+    said.append(
+      document.createTextNode("The next fight is "),
+      renderSegments([faction(offer.boss)], richTextHooks),
+      document.createTextNode(
+        ", made ready for you. There is no way round it, and no clock on it - " +
+        "it ends when ground changes hands.",
+      ),
+    );
+
+    harvestOptions.replaceChildren(said, ...rows);
     harvestOverlay.classList.remove("hidden");
   }
 
@@ -2911,6 +3049,19 @@ export function createHud(
       // any more, so the chip names the two lands the fight is about: the
       // enemy, and the land the player put up against it. A one-land realm
       // staked nothing and the chip says only who is being fought.
+      // The act, and how far off its boss is. The lands are `fullRealmOf` and
+      // the bar is `winSizeFor`, so the two numbers here are the same two the
+      // scoreboard one chip over is already showing - a third count of the
+      // realm would be a third thing to drift.
+      const held = fullRealmOf(
+        humanFaction, state.overlords, state.incorporated,
+      ).size;
+      const need = actExitSize(state.act, winSizeFor(state, humanFaction));
+      actChip.classList.remove("hidden");
+      actChip.textContent =
+        held >= need
+          ? `Act ${state.act} - its boss is at hand`
+          : `Act ${state.act} - ${count(need - held, "land")} to its boss`;
       const duel = state.gauntlet;
       duelChip.classList.toggle("hidden", duel.kind !== "duel");
       if (duel.kind === "duel") {
@@ -2948,6 +3099,7 @@ export function createHud(
       handChip.classList.add("hidden");
       rulerChip.classList.add("hidden");
       rulerTip = [];
+      actChip.classList.add("hidden");
       duelChip.classList.add("hidden");
       turnipChip.classList.add("hidden");
     }
@@ -3533,6 +3685,7 @@ export function createHud(
     showHarvestOffer,
     showDuelOffer,
     showStakeOffer,
+    showBoonOffer,
     revealGainedCards,
     showSpendOffer,
     showTransferOffer,

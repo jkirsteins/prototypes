@@ -97,6 +97,11 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   // happened and the sound should say so.
   "duel-lost": "bell-heavy",
   "duel-void": "rustle",
+  // The prophecy takes the heaviest bell in the set. It is the one line in a
+  // run that says something is coming rather than reporting what happened.
+  "boss-foretold": "bell-heavy",
+  // The rest's own pick, cued beside the hand like every other card choice.
+  "boon-taken": "harvest",
   "harvest-earned": "harvest",
   "harvest-picked": "confirm",
   "harvest-burned": "burn",

@@ -2806,7 +2806,7 @@ describe("the duel chip", () => {
     hud.update({
       ...g, turn: 4,
       gauntlet: {
-        kind: "duel", enemy: "gamma", staked: "beta", decided: null,
+        kind: "duel", enemy: "gamma", staked: "beta", decided: null, boss: false
       },
     });
     const chip = q(container, ".status-duel");
@@ -2826,7 +2826,7 @@ describe("the duel chip", () => {
     const g = newPlaying();
     hud.update({
       ...g, turn: 8,
-      gauntlet: { kind: "duel", enemy: "gamma", staked: null, decided: null },
+      gauntlet: { kind: "duel", enemy: "gamma", staked: null, decided: null, boss: false },
     });
     expect(q(container, ".status-duel").textContent).toBe("Duel Gamma");
   });
@@ -2837,7 +2837,7 @@ describe("the duel chip", () => {
     hud.update({ ...g, gauntlet: { kind: "world-tick", until: g.turn + 1 } });
     expect(q(container, ".status-duel").classList.contains("hidden"))
       .toBe(true);
-    hud.update({ ...g, gauntlet: { kind: "picking", candidates: ["gamma"] } });
+    hud.update({ ...g, gauntlet: { kind: "picking", candidates: ["gamma"], boss: false } });
     expect(q(container, ".status-duel").classList.contains("hidden"))
       .toBe(true);
   });
@@ -3314,6 +3314,7 @@ describe("the duel offer", () => {
           { factionId: "beta", reward: "3 wealth for the treasury." },
           { factionId: "gamma", reward: "Your home land grows by 1." },
         ],
+        boss: false,
       },
       { onPick, onDecline: vi.fn() },
     );
@@ -3335,7 +3336,7 @@ describe("the duel offer", () => {
     hud.update(playing());
     const onDecline = vi.fn();
     hud.showDuelOffer(
-      { candidates: [{ factionId: "beta", reward: "3 wealth." }] },
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }], boss: false },
       { onPick: vi.fn(), onDecline },
     );
     // Not "Cancel": there is nothing to back out of, and the answer costs a
@@ -3353,7 +3354,8 @@ describe("the duel offer", () => {
     // and a modal listing nothing with no way out would be a dead run.
     const { container, hud } = setup();
     hud.update(playing());
-    hud.showDuelOffer({ candidates: [] }, { onPick: vi.fn(), onDecline: vi.fn() });
+    hud.showDuelOffer(
+      { candidates: [], boss: false }, { onPick: vi.fn(), onDecline: vi.fn() });
     expect(container.querySelectorAll(".harvest-option")).toHaveLength(0);
     expect(q(container, ".harvest-note").textContent)
       .toContain("No realm you border can be fought");
@@ -3373,7 +3375,7 @@ describe("the duel offer", () => {
     const { container, hud } = setup();
     hud.update(playing());
     hud.showDuelOffer(
-      { candidates: [{ factionId: "beta", reward: "3 wealth." }] },
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }], boss: false },
       { onPick: vi.fn(), onDecline: vi.fn() },
     );
     const note = q(container, ".harvest-note");
@@ -3394,7 +3396,7 @@ describe("the duel offer", () => {
     const { container, hud } = setup();
     hud.update(playing());
     hud.showDuelOffer(
-      { candidates: [{ factionId: "beta", reward: "3 wealth." }] },
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }], boss: false },
       { onPick: vi.fn(), onDecline: vi.fn() },
     );
     expect(q(container, ".harvest-note").classList.contains("hidden"))
@@ -3408,5 +3410,54 @@ describe("the duel offer", () => {
     );
     expect(q(container, ".harvest-note").classList.contains("hidden"))
       .toBe(true);
+  });
+});
+
+describe("the boss offer has no way past it", () => {
+  it("shows no decline, where an ordinary offer shows one", () => {
+    // The act does not close until its boss is fought, so a shared button
+    // offering to decline would be pressed, refused by the engine, and say
+    // nothing about why - the "hunting for a way out" the offer rules exist
+    // to prevent.
+    const { container, hud } = setup();
+    hud.update(newPlaying());
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "gamma", reward: "3 wealth." }], boss: false },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    const cancel = q(container, ".harvest-cancel");
+    expect(cancel.classList.contains("hidden")).toBe(false);
+    expect(cancel.textContent).toContain("Let the world turn");
+
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "gamma", reward: "3 wealth." }], boss: true },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    expect(q(container, ".harvest-cancel").classList.contains("hidden"))
+      .toBe(true);
+    // And the note says why, rather than leaving the player looking for it.
+    expect(q(container, ".harvest-note").textContent)
+      .toContain("no way round it");
+  });
+
+  it("takes a boon on the rest's shared button rather than refusing", () => {
+    const { container, hud } = setup();
+    hud.update(newPlaying());
+    const onTake = vi.fn();
+    hud.showBoonOffer(
+      {
+        boss: "gamma",
+        boons: [
+          { id: "mend", text: "Every land of your realm." },
+          { id: "growth", text: "Your home land grows." },
+        ],
+      },
+      { onTake },
+    );
+    const cancel = q(container, ".harvest-cancel");
+    expect(cancel.classList.contains("hidden")).toBe(false);
+    expect(cancel.textContent).toContain("Take the first");
+    (cancel as HTMLButtonElement).click();
+    expect(onTake).toHaveBeenCalledWith("mend");
   });
 });

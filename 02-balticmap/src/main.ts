@@ -19,7 +19,9 @@ import {
   actionBlock as gateBlock, shouldAskPick, shouldReask,
   type PlayerAction, type ScreenFacts,
 } from "./gates";
-import { duelStakes, rewardFor, rewardLine } from "./gauntlet";
+import {
+  boonLine, duelStakes, rewardFor, rewardLine, type Boon,
+} from "./gauntlet";
 import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
@@ -682,6 +684,14 @@ function reaskOwedQuestions(): void {
  *  paint that drew the hand greyed would be the one left on screen. */
 function askDuelPick(): void {
   const g = game();
+  // The rest is the same window with a different question in it, so it is
+  // raised from the same place: one entry point means one repaint rule and one
+  // way for the lock and the modal to agree.
+  if (g.gauntlet.kind === "rest") {
+    askBoonPick(g.gauntlet.boss, g.gauntlet.boons);
+    refresh();
+    return;
+  }
   if (g.gauntlet.kind !== "picking") return;
   const v = viewOf(g);
   const home = humanFactionOf(g);
@@ -693,6 +703,7 @@ function askDuelPick(): void {
         // wrap that pays it reads the same function on the same land.
         reward: rewardLine(rewardFor(v, factionId)),
       })),
+      boss: g.gauntlet.boss,
     },
     {
       onPick(factionId) {
@@ -722,6 +733,25 @@ function askDuelPick(): void {
   // On the way IN, because the gate has answered "locked" since the board
   // reached `picking` and nothing has repainted the hand under it since.
   refresh();
+}
+
+/** The breath before a boss: one boon, then the fight.
+ *
+ *  No cancel and no way past. The act does not close until its boss is fought,
+ *  so a rest that could be dismissed would be a rest the player never took and
+ *  a modal that came straight back. `armCancel` is given the smallest boon
+ *  rather than a refusal, which is the harvest's own rule for an offer that
+ *  must be answered. */
+function askBoonPick(boss: string, boons: Boon[]): void {
+  hud.showBoonOffer(
+    { boss, boons: boons.map((id) => ({ id, text: boonLine(id) })) },
+    {
+      onTake(boon) {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-boon", boon });
+      },
+    },
+  );
 }
 
 /** The second screen of the same question. Back re-raises the first, which is
@@ -915,8 +945,13 @@ function liveTransferPending(): boolean {
   return owedTransfer() !== null;
 }
 
-/** Whether the run is between duels and THIS screen is the one that answers
- *  which fight comes next.
+/** Whether the gauntlet is asking THIS screen something - which fight comes
+ *  next, or which boon to take into the act's last one.
+ *
+ *  Both states, one predicate. They are one question in two screens on one
+ *  overlay, and a rest that did not lock would hand the board back with the
+ *  boon still owed - the offer behind it would then arrive with the boss
+ *  already summoned and nothing said about it.
  *
  *  `decidedHere` and not a role test written out here: the pick is host-only
  *  in `DECISION_ROUTES` because the run holds one gauntlet, so the table that
@@ -925,11 +960,12 @@ function liveTransferPending(): boolean {
  *  it is never shown.
  *
  *  One predicate, read by the lock and by the raise, so the two cannot
- *  disagree about whether a pick is owed. */
+ *  disagree about whether an answer is owed. */
 function localPickPending(): boolean {
+  const kind = game().gauntlet.kind;
   return (
     game().phase === "playing" &&
-    game().gauntlet.kind === "picking" &&
+    (kind === "picking" || kind === "rest") &&
     decidedHere("pick-duel", net.role)
   );
 }

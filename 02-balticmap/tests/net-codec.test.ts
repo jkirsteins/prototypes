@@ -33,7 +33,7 @@ function midGame(rng: Rng): GameState {
     // guest's scoreboard has to quote the scope the host's loop is applying,
     // so the arm carrying ids and numbers is the one worth walking.
     gauntlet: {
-      kind: "duel" as const, enemy: "beta", staked: "alpha", decided: null,
+      kind: "duel" as const, enemy: "beta", staked: "alpha", decided: null, boss: false
     },
   };
 }

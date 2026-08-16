@@ -372,7 +372,7 @@ describe("what only the host answers", () => {
     const named: Record<DecisionKind, true> = {
       play: true, harvest: true, discard: true,
       "end-turn": true, transfer: true, surrender: true,
-      "pick-duel": true, "keep-playing": true,
+      "pick-duel": true, "pick-boon": true, "keep-playing": true,
     };
     expect(Object.keys(DECISION_ROUTES).sort()).toEqual(
       Object.keys(named).sort(),
@@ -477,7 +477,7 @@ describe("the deal seats the guest as a person", () => {
     const duelling = {
       ...state,
       gauntlet: {
-        kind: "duel" as const, enemy, staked: null, decided: null,
+        kind: "duel" as const, enemy, staked: null, decided: null, boss: false
       },
     };
     expect(takesNoTurn(duelling, guestFaction)).toBe(false);

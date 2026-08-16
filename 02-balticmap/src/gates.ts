@@ -29,9 +29,12 @@ export interface ScreenFacts {
   harvestOpen: boolean;
   /** A conquest of the local seat's is waiting for its defenders. */
   transferOwed: boolean;
-  /** The run is between duels and THIS screen is the one that answers which
-   *  fight comes next. False on a guest, whose answer would have nowhere to
-   *  go - see the `pick-duel` route. */
+  /** The gauntlet is asking THIS screen something: which fight comes next, or
+   *  which boon to take into the act's last one. One fact and not two, because
+   *  they are one question in two screens on one overlay - see `askDuelPick`
+   *  in src/main.ts - and a second flag would be a second lock to keep in step
+   *  with it. False on a guest, whose answer would have nowhere to go - see
+   *  the `pick-duel` route. */
   pickOwed: boolean;
   /** The seat on turn is the one this screen plays. */
   localTurn: boolean;
@@ -93,9 +96,9 @@ export interface ReaskFacts {
   /** A conquest of the local seat's is waiting, and this screen has not given
    *  up on it. */
   transferOwed: boolean;
-  /** The run is between duels and this screen answers the pick -
-   *  `ScreenFacts.pickOwed`, the same fact, computed once by the caller so the
-   *  lock and the modal cannot disagree about whether a pick is owed. */
+  /** The gauntlet is asking this screen something - `ScreenFacts.pickOwed`,
+   *  the same fact, computed once by the caller so the lock and the modal
+   *  cannot disagree about whether an answer is owed. */
   pickOwed: boolean;
 }
 

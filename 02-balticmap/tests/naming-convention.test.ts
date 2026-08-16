@@ -241,6 +241,19 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       targetFactionId: H, sourceFactionId: RIVAL,
     },
   ],
+  "boss-foretold": [
+    {
+      turn: 1, playerId: 1, type: "boss-foretold",
+      targetFactionId: "gamma", sourceFactionId: "beta", amount: 1,
+    },
+  ],
+  "boon-taken": [
+    { turn: 1, playerId: 1, type: "boon-taken", targetFactionId: "beta" },
+    {
+      turn: 1, playerId: 1, type: "boon-taken", targetFactionId: "beta",
+      cardId: "raid",
+    },
+  ],
   "duel-void": [
     {
       turn: 1, playerId: 1, type: "duel-void",

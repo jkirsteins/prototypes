@@ -592,10 +592,21 @@ svg.map .region.land-fill:not(.land-edge):not(.realm-edge) {
   white-space: nowrap;
 }
 
-/* The fight the run is in, and its clock - same chip shape as the treasury;
-   the deep red marks it as the one chip about a quarrel rather than about the
-   realm's books. The enemy inside it is a `faction()` segment, so it carries
-   the same hover every other name in the game does. */
+/* Which act the run is in, and how far its boss still is. Same chip shape as
+   the rest of the row; a muted gold rather than the duel's red, because this
+   one is about the arc the run is on and not about a quarrel in it. */
+.status-act {
+  border-left: 1px solid #d0d0d0;
+  padding-left: 12px;
+  color: #7a5c1e;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The fight the run is in, and what is staked on it - same chip shape as the
+   treasury; the deep red marks it as the one chip about a quarrel rather than
+   about the realm's books. The names inside it are `faction()` segments, so
+   they carry the same hover every other name in the game does. */
 .status-duel {
   border-left: 1px solid #d0d0d0;
   padding-left: 12px;

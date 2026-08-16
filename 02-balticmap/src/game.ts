@@ -37,8 +37,8 @@ import {
   type Armies, type Claims, type March, type Marches,
 } from "./marches";
 import {
-  autoHarvestChoice, BURN_ORDER, harvestCard, removeCopies, SPEND_ORDER,
-  type HarvestChoice,
+  autoHarvestChoice, buildOffer, BURN_ORDER, harvestCard, removeCopies,
+  SPEND_ORDER, type HarvestChoice,
 } from "./harvest";
 import {
   damageAfterTerrain, hasPassive, quietPassives,
@@ -51,8 +51,9 @@ import {
   vacateRulers, type Rulers,
 } from "./rulers";
 import {
-  absorbsDuelEnemy, duelDecidedBy, duelStakes, duelStanding,
-  gauntletAtRoundWrap, rewardFor, type DuelOutcome, type Gauntlet,
+  absorbsDuelEnemy, actExitSize, ACTS, bossFor, boonsFor, BOON_GROWTH_AMOUNT,
+  duelDecidedBy, duelStakes, duelStanding, gauntletAtRoundWrap, rewardFor,
+  type Boon, type DuelOutcome, type Gauntlet,
 } from "./gauntlet";
 import { BUILD_ABILITIES } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
@@ -68,6 +69,7 @@ export type GameEventType =
   | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
   | "duel-won" | "duel-lost" | "duel-void"
+  | "boss-foretold" | "boon-taken"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
 /** How much defense a raid may tear out of `source`, given what the caller
@@ -292,6 +294,18 @@ export interface GameState {
    *  guest holds a replica, and the scope the host's turn loop is applying is
    *  the scope the guest's screen has to draw. */
   gauntlet: Gauntlet;
+  /** Which act the run is in, 1 to `ACTS`. A high-water mark: it moves only
+   *  when the act's boss is BEATEN, never on the realm shrinking and never on
+   *  a boss duel lost.
+   *
+   *  Reaching an act's exit size (`actExitSize`) SUMMONS that act's boss; it
+   *  does not advance the act. The two were one number first, and the run then
+   *  skipped its own boss the moment a duel won two lands at once.
+   *
+   *  A plain number, so it crosses `src/net-codec.ts` for free - and it has to
+   *  cross, because a guest's screen draws the act the host's engine is
+   *  applying, the same reason `playingOn` is state. */
+  act: number;
   turn: number; // 1-based
   players: PlayerState[]; // index 0 = human
   current: number;
@@ -604,7 +618,10 @@ export function newGame(
     // nobody has been dealt a land yet and a realm with no ground borders
     // nothing; `pickFaction` reaches the round wrap the moment the seats are
     // dealt, and that is what fills the offer.
-    gauntlet: { kind: "picking", candidates: [] },
+    gauntlet: { kind: "picking", candidates: [], boss: false },
+    // Every run opens on the first act. Nothing seeds it higher: an act is
+    // earned by beating the boss that closes the one before it.
+    act: 1,
     turn: 1,
     players: [],
     current: 0,
@@ -1095,11 +1112,15 @@ function nestsUnderItsCause(type: GameEventType): boolean {
       return true;
     // A duel settles at a round wrap, out of a batch that opens with no play
     // at all - the card that took the land was played a turn or twenty ago,
-    // and a lapsed one was decided by nothing being played. There is nothing
-    // above any of the three to indent under.
+    // and a void one was decided by nothing being played. There is nothing
+    // above any of the three to indent under. The prophecy is the same wrap's
+    // work, and the boon is a modal answered on the player's own turn with no
+    // card behind it.
     case "duel-won":
     case "duel-lost":
     case "duel-void":
+    case "boss-foretold":
+    case "boon-taken":
       return false;
   }
 }
@@ -1279,6 +1300,9 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // actually turns. Both write this one local, so the wrap reads a duel that
   // this very turn's arrivals have already settled.
   let gauntlet = state.gauntlet;
+  // The act moves in one place - a boss duel WON, in `settleDuel` - and is
+  // written back at the bottom with the gauntlet it belongs beside.
+  let act = state.act;
   const pendingTransfers = { ...state.pendingTransfers };
 
   /** The line that says an arrow got where it was aimed. It is the cause the
@@ -1536,11 +1560,18 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *  One event, whatever the reward, carrying the defense it moved so the
    *  before -> after suffix comes off the same walk every other score does. */
   const settleDuel = (
-    enemy: string, outcome: DuelOutcome,
+    enemy: string, outcome: DuelOutcome, boss: boolean,
   ): void => {
     const home = humanFactionOf(state);
     if (home === null) return;
     const winner = players.find((pl) => pl.factionId === home);
+    // Beating the act's boss is what carries the run forward, and it is the
+    // ONLY thing that does: reaching an act's exit size summons the boss and
+    // moves nothing. A losing boss duel leaves the act where it stands and the
+    // boss is summoned again at the next wrap, which is the retry the run's
+    // shape asks for - the escalation is the boss being elevated again rather
+    // than a rule invented for the failure.
+    if (outcome === "won" && boss) act = Math.min(ACTS, act + 1);
     if (outcome !== "won") {
       // The two un-won endings are separate types rather than one line with a
       // reason on it, because they are separate news: the staked land went the
@@ -1630,9 +1661,47 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // what throws the duel away: one line later there is no enemy left to name
     // and no `decided` left to read.
     if (gauntlet.kind === "duel" && wrapped.kind !== "duel") {
-      settleDuel(gauntlet.enemy, gauntlet.decided ?? "void");
+      settleDuel(gauntlet.enemy, gauntlet.decided ?? "void", gauntlet.boss);
     }
     gauntlet = wrapped;
+    // The act's boss is summoned HERE and not inside `gauntletAtRoundWrap`,
+    // because the question it asks - has the realm reached this act's share of
+    // the bar - is `winSizeFor`'s, about a board src/gauntlet.ts is
+    // deliberately not given. It runs after the wrap, so it reads the offer
+    // the wrap just produced rather than the one it replaced.
+    //
+    // Only an ORDINARY offer is replaced. A boss already standing is left
+    // alone, and so is a duel, a tick and a rest: summoning is what turns the
+    // border offer into the act's last fight, and it happens once per attempt.
+    if (gauntlet.kind === "picking" && !gauntlet.boss) {
+      const home = humanFactionOf(state);
+      const board = { ...state, overlords, incorporated };
+      if (
+        home !== null &&
+        fullRealmOf(home, overlords, incorporated).size >=
+          actExitSize(act, winSizeFor(board, home))
+      ) {
+        const boss = bossFor(
+          { ...viewOf(state), overlords, incorporated }, home,
+        );
+        // Null is a real answer: a realm bordering nothing it may fight cannot
+        // be handed a boss, so the act does not close yet and the ordinary
+        // picker keeps running until the border gives it somebody.
+        if (boss !== null) {
+          const seat = players.find((pl) => pl.factionId === home);
+          gauntlet = {
+            kind: "rest", boss,
+            boons: boonsFor(
+              seat !== undefined && buildOffer(seat).length > 0,
+            ),
+          };
+          events.push({
+            turn: state.turn, playerId: seat?.id ?? p.id, type: "boss-foretold",
+            targetFactionId: boss, sourceFactionId: home, amount: act,
+          });
+        }
+      }
+    }
     // A land that was hit THIS round does not also grow back in it. The heal
     // ran after the marches landed, so a raid arriving on a wild land could be
     // undone in the same batch: the log said the raid landed for 1 and the
@@ -1850,7 +1919,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   return {
     ...state, phase, players, overlords, incorporated, wealth, marches,
     nextMarchId, claims,
-    defense, defenseMax, passives, pendingTransfers, rulers, gauntlet,
+    defense, defenseMax, passives, pendingTransfers, rulers, gauntlet, act,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -2255,7 +2324,95 @@ export function pickDuel(
     ...state,
     gauntlet: {
       kind: "duel", enemy: enemyId, staked: stakeId, decided: null,
+      // The offer says which fight this is. A boss offer holds exactly the
+      // boss, so answering one opens the fight that closes the act.
+      boss: state.gauntlet.boss,
     },
+  };
+}
+
+/** The player answers the rest: one boon taken, and the act's boss offered.
+ *
+ *  The whole of the breath before a boss. It pays the boon, logs it, and turns
+ *  the rest into a FROZEN one-candidate offer - so the fight the prophecy named
+ *  is the fight the picker puts up, and the border moving in between cannot
+ *  swap it.
+ *
+ *  Shaped like `pickDuel`: an identity return is what `commitDecision` reads as
+ *  refused, so a boon the offer does not hold changes nothing.
+ *
+ *  It draws rng only on the card arm, and only to shuffle - the same one draw
+ *  the harvest's own grant makes, in the same place, so a seeded run's stream
+ *  depends on what was chosen rather than on what was offered. */
+export function pickBoon(
+  state: GameState, boon: Boon, rng: Rng,
+): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.gauntlet.kind !== "rest") return state;
+  if (!state.gauntlet.boons.includes(boon)) return state;
+  const home = humanFactionOf(state);
+  if (home === null) return state;
+  const seat = state.players.find((pl) => pl.factionId === home);
+  const realm = fullRealmOf(home, state.overlords, state.incorporated);
+
+  let defense = state.defense;
+  let defenseMax = state.defenseMax;
+  let players = state.players;
+  const events: GameEvent[] = [];
+  let granted: string | undefined;
+
+  if (boon === "growth") {
+    defenseMax = {
+      ...defenseMax,
+      [home]: defenseMaxOf({ defense, defenseMax }, home) + BOON_GROWTH_AMOUNT,
+    };
+  }
+  // Mending walks the whole realm; growing touches the home land alone. Both
+  // end in the same heal and the same line, because what the player is owed is
+  // the number that MOVED - a land already at its ceiling takes nothing, and
+  // an event claiming the whole amount would drift the walk that feeds the log
+  // and the round summary for the rest of the run.
+  const mended = boon === "mend" ? [...realm] : boon === "growth" ? [home] : [];
+  for (const land of state.factionIds.filter((f) => mended.includes(f))) {
+    const before = defenseOf({ defense, defenseMax }, land);
+    defense = applyHeal(
+      { defense, defenseMax },
+      land,
+      defenseMaxOf({ defense, defenseMax }, land),
+    );
+    const moved = defenseOf({ defense, defenseMax }, land) - before;
+    if (moved <= 0) continue;
+    events.push({
+      turn: state.turn, playerId: seat?.id ?? 1, type: "healed",
+      targetFactionId: land, amount: moved,
+    });
+  }
+  if (boon === "card" && seat !== undefined) {
+    // `buildOffer` and not a pool of this module's own: the rest hands out a
+    // card from the player's own build, which is the harvest's question and
+    // has one answer. First in build order, deterministically, so a seeded
+    // replay grants the same card.
+    const [cardId] = buildOffer(seat);
+    if (cardId === undefined) return state;
+    granted = cardId;
+    players = updateFaction(players, home, (pl) => ({
+      ...pl, deck: shuffle([...pl.deck, cardId], rng),
+    }));
+  }
+  events.unshift({
+    turn: state.turn, playerId: seat?.id ?? 1, type: "boon-taken",
+    targetFactionId: home,
+    ...(granted === undefined ? {} : { cardId: granted }),
+  });
+  return {
+    ...state,
+    defense,
+    defenseMax,
+    players,
+    gauntlet: {
+      kind: "picking", candidates: [state.gauntlet.boss], boss: true,
+    },
+    log: appendEvents(state, events),
   };
 }
 
@@ -2267,6 +2424,12 @@ export function pickDuel(
 export function declineDuel(state: GameState): GameState {
   if (state.phase !== "playing") return state;
   if (state.gauntlet.kind !== "picking") return state;
+  // A boss offer has no way past it. The act does not close until the fight
+  // that closes it is fought, so a decline here would be a decline of the act
+  // - and the offer would come straight back, which is a modal that reads as
+  // broken rather than as a rule. The screen says so rather than showing a
+  // button that does nothing.
+  if (state.gauntlet.boss) return state;
   // `turn + 2`, and the 2 is the whole of the fix. A decline is answered
   // MID-ROUND, on the player's own turn, which is the turn just after the
   // wrap - so a tick ending at `turn + 1` is ended by the very next wrap and

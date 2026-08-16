@@ -8,8 +8,10 @@
  */
 import { aiTakeTurn } from "./ai";
 import type { Rng } from "./cards";
+import type { Boon } from "./gauntlet";
 import {
-  advance, declineDuel, keepPlaying, pickDuel, surrender, type GameState,
+  advance, declineDuel, keepPlaying, pickBoon, pickDuel, surrender,
+  type GameState,
 } from "./game";
 import type { HarvestChoice } from "./harvest";
 import {
@@ -124,6 +126,13 @@ export type Decision =
    *  the router does not learn a second thing. It is `null` when the offer was
    *  declined, and `null` for a realm holding one land - see `pickDuel`. */
   | { kind: "pick-duel"; enemyId: string | null; stakeId: string | null }
+  /** Which boon the player takes at the rest before an act's boss.
+   *
+   *  Its own kind rather than an arm of `pick-duel`, because it is a different
+   *  question with a different answer set asked at a different point of the
+   *  cycle - and folding them would let a stale pick answer a rest. Host-only
+   *  for the same reason the pick is: there is ONE gauntlet on the state. */
+  | { kind: "pick-boon"; boon: Boon }
   /** Its own kind and not a variant of anything: it is the one decision taken
    *  after an ending rather than in play, and the only one that puts a phase
    *  BACK. */
@@ -205,6 +214,18 @@ export const DECISION_ROUTES: {
       d.enemyId === null
         ? declineDuel(state)
         : pickDuel(state, d.enemyId, d.stakeId),
+  },
+  "pick-boon": {
+    // `action`, the `pick-duel` rule: answering hands the board back, and the
+    // seat on turn may be an AI's whose turn an earlier stage left open.
+    settle: "action",
+    hostOnly:
+      "The run has ONE gauntlet and one act, and the rest belongs to the " +
+      "seat the act is about - `humanFactionOf` is seat 0, the same seat " +
+      "`phase` and `winSizeFor` speak for. The second person is never shown " +
+      "this question rather than being shown one whose answer has nowhere " +
+      "to go.",
+    apply: (state, rng, d) => pickBoon(state, d.boon, rng),
   },
   "keep-playing": {
     // `action` and not `repaint`, and this is load-bearing rather than tidy.

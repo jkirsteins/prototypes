@@ -110,7 +110,7 @@ describe("commitDecision - the duel pick", () => {
     );
     expect(result).toEqual({ outcome: "applied", settle: "action" });
     expect(applied[0].gauntlet)
-      .toMatchObject({ kind: "duel", enemy, staked: null, decided: null });
+      .toMatchObject({ kind: "duel", enemy, staked: null, decided: null, boss: false });
     // Host-only: nothing crosses the wire, and the sentence saying why is the
     // route's own.
     expect(sent).toHaveLength(0);

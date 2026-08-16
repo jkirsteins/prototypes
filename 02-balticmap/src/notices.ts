@@ -794,6 +794,41 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       t("round."),
     ]],
   },
+  // The prophecy: the one line in a run that says something is COMING. It is
+  // the whole of "unmissable" - a boss the player only meets by walking into
+  // it is a boss that reads as the game changing the rules mid-run - so it is
+  // a modal even though nothing on the board has moved yet.
+  //
+  // Gated on the local seat's own id rather than on somebody else having
+  // acted, for the reason the duel endings are: the act's exit was reached at
+  // a round wrap and there is no rival play to hang it on.
+  "boss-foretold": {
+    kind: "modal",
+    appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
+    lines: (events, changes) =>
+      events.map((e, i) => ({
+        text: [
+          t("The next fight is foretold: "), faction(e.targetFactionId ?? ""),
+          t(" stands between your realm and the rest of the map, and it has "),
+          t("been made ready for you"),
+        ],
+        changes: changesFor(i, changes),
+        tone: "bad" as const,
+      })),
+    footnotes: () => [[
+      t("Take one thing for the road, then the fight. There is no way "),
+      t("round this one."),
+    ]],
+  },
+  // The player picked it on a modal, so telling them what they chose teaches
+  // nothing - the same reason the harvest's own pick is silent. What the boon
+  // DID is not silent: mending and growing push `healed` lines that carry
+  // their own numbers, and the card is named in the log.
+  "boon-taken": {
+    kind: "silent",
+    reason: "the player picked it on the rest modal; the log carries it, and " +
+      "what it healed rides on `healed` lines of its own",
+  },
   "harvest-picked": {
     kind: "silent",
     // The pick is public - the log names the card for every seat, the same

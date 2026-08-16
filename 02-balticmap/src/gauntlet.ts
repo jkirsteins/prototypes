@@ -14,9 +14,102 @@ import {
 } from "./playability";
 import { fullRealmOf, type Incorporated, type Overlords } from "./relations";
 
-/** Where the run is in the gauntlet cycle. One field rather than three
- *  booleans, because the three states are exclusive and a reader that has to
- *  combine flags is a reader that will combine them wrongly.
+/** How many acts a run has. Three, and each closes with a boss: an elevated
+ *  neighbour, a stronger one, and then a power that does not stand on the map
+ *  at all. */
+export const ACTS = 3;
+
+/** How much of the map an act's realm must hold before the act's boss is
+ *  summoned.
+ *
+ *  Thirds of the BAR rather than literals, so the boundaries cannot rot when
+ *  the map changes: the 26-land Baltic map gives 5 / 9 / 13 and Iberia's 24
+ *  gives 4 / 8 / 12. One expression rather than three constants, because three
+ *  would be three places for the last act's exit to stop meaning "the bar".
+ *
+ *  The bar is passed IN and never read here, per the one-bar rule in
+ *  AGENTS.md: `winSizeFor` is the only thing allowed to answer what a faction
+ *  is playing for, and a second reader of `victoryRealmSize` is a second bar
+ *  that disagrees the moment somebody plays on.
+ *
+ *  Two clamps, and both are about small maps rather than about taste. The LAST
+ *  act's exit is the bar exactly, never a third of it rounded anywhere, so the
+ *  run's final fight and the run's own bar cannot drift apart. And an earlier
+ *  act's exit is at least `act + 1`, because a run opens holding one land: at
+ *  a three-land bar the plain third is 1, which summons act 1's boss before
+ *  the player has taken anything and skips the act it was supposed to close.
+ *  The six-land fixture in tests/gauntlet.test.ts is exactly that map, which
+ *  is how this was found rather than shipped. */
+export function actExitSize(act: number, bar: number): number {
+  if (act >= ACTS) return bar;
+  return Math.min(bar, Math.max(act + 1, Math.ceil((bar * act) / ACTS)));
+}
+
+/** What a rest before a boss may hand the player. Three, one of each currency
+ *  the run already pays in - so the rest is a bigger version of a reward the
+ *  player has been reading all game rather than a fourth vocabulary.
+ *
+ *  Plain string ids: they ride on `GameState` inside the `rest` arm and cross
+ *  the wire, and `src/net-codec.ts` is what proves that. */
+export type Boon = "mend" | "growth" | "card";
+
+/** Every land of the realm back to its ceiling. The strongest of the three and
+ *  deliberately so: it is the one that answers "the boss is about to hit me",
+ *  and a rest that could not undo a bad act would be a rest in name. */
+export const BOON_MEND = "mend";
+
+/** What the growth boon adds to the home land's ceiling. Three, against a won
+ *  duel's one: a rest happens at most twice a run before the last boss, and a
+ *  boon worth the same as an ordinary duel would not read as a reward for
+ *  clearing an act. */
+export const BOON_GROWTH_AMOUNT = 3;
+
+/** One line saying what a boon does, in the rest modal and nowhere else.
+ *
+ *  Plain text and not `Segment[]` - it names no card and no faction. The card
+ *  boon is the one that WOULD name one, which is why its line says "from your
+ *  build" rather than the card's name: the modal renders that name as a
+ *  segment beside this sentence, off the id the offer carries. */
+export function boonLine(boon: Boon): string {
+  switch (boon) {
+    case "mend":
+      return "Every land of your realm is restored to its ceiling.";
+    case "growth":
+      return `Your home land grows by ${BOON_GROWTH_AMOUNT} - ceiling and defense alike.`;
+    case "card":
+      return "One more card from your build, shuffled into your deck.";
+  }
+}
+
+/** The name a boon goes by on the rest modal. A table rather than a sentence
+ *  inside the renderer, the `PASSIVES` shape: the id is what crosses the wire
+ *  and the title is what the player reads, and one of them may be renamed
+ *  without touching the other. */
+export const BOON_TITLES: Record<Boon, string> = {
+  mend: "Mend the realm",
+  growth: "Grow your seat",
+  card: "One more card",
+};
+
+/** Which boons a rest may offer.
+ *
+ *  Two are always on the table: mending and growing are about the board, and
+ *  the board always exists. The card boon is offered only when the player's
+ *  own build still has something to give - `buildOffer` in src/harvest.ts,
+ *  asked by the caller and handed in as a boolean rather than imported here,
+ *  because this module knows about the cycle and a seat's piles are the
+ *  harvest's.
+ *
+ *  An offer of two is a real offer and not a degraded one, which is why there
+ *  is no filler third: a rest that padded itself with something worthless
+ *  would teach the player to stop reading it. */
+export function boonsFor(canTakeCard: boolean): Boon[] {
+  return canTakeCard ? ["mend", "growth", "card"] : ["mend", "growth"];
+}
+
+/** Where the run is in the gauntlet cycle. One field rather than four
+ *  booleans, because the states are exclusive and a reader that has to combine
+ *  flags is a reader that will combine them wrongly.
  *
  *  Plain values only. It rides on `GameState` and therefore crosses the wire,
  *  and `src/net-codec.ts` is what proves that rather than this sentence. */
@@ -46,6 +139,12 @@ export type Gauntlet =
       enemy: string;
       staked: string | null;
       decided: DuelOutcome | null;
+      /** Whether this is the fight that closes the act. A boss duel pays the
+       *  act forward when it is won, and losing one ends the run - see
+       *  `endingFor` in src/game.ts. A flag rather than "the enemy equals the
+       *  act's boss", because the boss is chosen once when the act's exit is
+       *  reached and the border can move under it afterwards. */
+      boss: boolean;
     }
   /** Exactly one unscoped round: every seat that would ever take a turn takes
    *  one.
@@ -73,7 +172,28 @@ export type Gauntlet =
    *  `?turns=` boot, a test. Holding the SCREEN while the question stands is
    *  `inputLocked`'s job, and it already does that for the harvest boon and
    *  the conquest's defenders. */
-  | { kind: "picking"; candidates: string[] };
+  | {
+      kind: "picking";
+      candidates: string[];
+      /** Whether `candidates` is the act's boss rather than the border.
+       *
+       *  A boss offer is FROZEN: the wrap re-reads an ordinary offer every
+       *  round, because a world tick can move the border under a list computed
+       *  a round ago, and re-reading a boss offer would quietly swap the enemy
+       *  the prophecy named. It also has no decline - the act does not close
+       *  until the boss is fought, and a modal offering a way past it would be
+       *  a way past the act. */
+      boss: boolean;
+    }
+  /** The breath before a boss. A boon is owed and the act's `boss` is already
+   *  chosen and elevated, so the prophecy that named it and the fight that
+   *  follows cannot disagree about who it is.
+   *
+   *  Like `picking`, nothing in the ENGINE blocks on this: an unanswered rest
+   *  leaves the world unscoped exactly as an unanswered pick does, because a
+   *  reducer that refuses to advance until a question is answered hangs every
+   *  caller with nobody to ask. Holding the SCREEN is `inputLocked`'s job. */
+  | { kind: "rest"; boss: string; boons: Boon[] };
 
 /** The factions the human may open a duel against: a bordering realm it may
  *  legally attack.
@@ -329,10 +449,20 @@ export function duelStakes(
  *    does NOT wait: the answer arrives through `pickDuel`, mid-round, from
  *    the screen. Re-reading matters because the offer is stale otherwise - a
  *    world tick can move the border under a list computed a round ago.
+ *  - A BOSS offer is held rather than re-read, and a `rest` is held outright.
+ *    Both are questions already put to the player about a fight already named,
+ *    and a wrap that recomputed either would swap the enemy the prophecy
+ *    promised while the modal quoting it was still on screen.
  *
  *  There is no `picking` -> `duel` arm here, and that asymmetry is
  *  deliberate: a person decides that one, and a wrap that could decide it for
- *  them would be the engine answering its own question. */
+ *  them would be the engine answering its own question. The same goes for
+ *  `rest` -> `picking`, which `pickBoon` answers.
+ *
+ *  Summoning the act's boss is NOT here either, and for a third version of the
+ *  same reason: it reads the realm against the bar, which is `winSizeFor`'s
+ *  question about a board this module is deliberately not given. `beginTurn`
+ *  asks it, one line after this returns. */
 export function gauntletAtRoundWrap(
   g: Gauntlet, view: RulesView, human: string | null,
 ): Gauntlet {
@@ -342,10 +472,29 @@ export function gauntletAtRoundWrap(
       duelVoided(g, human, view.overlords, view.incorporated);
     return over ? { kind: "world-tick", until: view.turn + 1 } : g;
   }
+  if (g.kind === "rest") return g;
   if (g.kind === "world-tick" && view.turn < g.until) return g;
+  if (g.kind === "picking" && g.boss) return g;
   const candidates = human === null ? [] : duelCandidates(view, human);
   if (g.kind === "picking" && sameList(g.candidates, candidates)) return g;
-  return { kind: "picking", candidates };
+  return { kind: "picking", candidates, boss: false };
+}
+
+/** The neighbour an act closes with, or null when the border offers nobody.
+ *
+ *  The first CHIEFED candidate in map order, falling back to the first of any:
+ *  `duelCandidates` already prefers a chief as a filter, so this is that
+ *  preference read once more rather than a second rule about who is worth
+ *  fighting. Deterministic, so a seeded replay names the same boss.
+ *
+ *  Null is a real answer and not a failure. A realm that borders nothing it may
+ *  fight cannot be handed a boss, so the act simply does not close yet - the
+ *  same shape an empty offer already has, and the ordinary picker keeps
+ *  running until the border gives it somebody. */
+export function bossFor(view: RulesView, human: string): string | null {
+  const candidates = duelCandidates(view, human);
+  const led = candidates.find((id) => view.leaders[id] === true);
+  return led ?? candidates[0] ?? null;
 }
 
 /** Identity is worth keeping on a state that crosses the wire: a fresh
