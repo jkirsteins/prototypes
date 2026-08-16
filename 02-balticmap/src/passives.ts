@@ -60,7 +60,7 @@ export const PASSIVES: Record<string, PassiveDef> = {
   // into every fight after.
   "regional-leader": {
     id: "regional-leader", name: "Regional leader",
-    text: "The act's champion: the map has raised this land up to be beaten. Incoming attack damage reduced by a quarter, and its chief leads its raids in person.",
+    text: "The act's champion: the map has raised this land up to be beaten. Its people muster deeper than their neighbours and its chief leads their raids in person.",
     strippedOnCapture: true,
   },
   "burden-of-bureaucracy": {
@@ -107,24 +107,24 @@ export const WILD_LANDS_HEAL_CHANCE = 0.1;
 export const WILD_LANDS_HEAL = 1;
 export const HILL_COUNTRY_REDUCTION = 0.25;
 
-/** How much of an incoming blow an act's champion shrugs off. The same quarter
- *  hill country takes, deliberately: the player has been reading that number
- *  all run, and a boss that reduced damage by some other fraction would be a
- *  second version of a rule rather than a land that is harder to take. What
- *  makes a boss a boss is the ceiling, the chief and the deck it was given -
- *  see `elevateBoss` in src/game.ts - not a bespoke number here. */
-export const REGIONAL_LEADER_REDUCTION = 0.25;
-
 /** Every status that shrugs off part of an incoming blow, and how much.
  *
- *  A table rather than an `if` per status, because they COMPOSE: a champion
- *  raised on hill country takes both reductions, and the version that named
- *  `hill-country` by literal would have silently applied one. The same lesson
- *  `DEFENSIVE_TERRAIN` records one screen up - a surface that names a status
- *  by literal answers for one status and not the class. */
+ *  A table rather than an `if` per status, because reductions COMPOSE: a land
+ *  carrying two would take both, and a version naming `hill-country` by
+ *  literal would silently apply one. The same lesson `DEFENSIVE_TERRAIN`
+ *  records one screen up - a surface that names a status by literal answers
+ *  for one status and not the class.
+ *
+ *  `regional-leader` is deliberately NOT in it, and that was measured rather
+ *  than chosen. An act's champion is already healed to a raised ceiling and
+ *  plays a deck thick with fortifies; giving it a damage reduction on top made
+ *  it a land the player's raids could not move at all. Watched turn by turn
+ *  through a real act-1 boss duel, both sides sat between 3/5 and 5/5 for
+ *  fourteen straight turns. A champion is dangerous because it PRESSES - its
+ *  chief leads its raids and there are more of them - not because it cannot be
+ *  hurt. */
 const DAMAGE_REDUCTIONS: Readonly<Record<string, number>> = {
   "hill-country": HILL_COUNTRY_REDUCTION,
-  "regional-leader": REGIONAL_LEADER_REDUCTION,
 };
 
 /** Defense per army on a land that carries `burden-of-bureaucracy`.

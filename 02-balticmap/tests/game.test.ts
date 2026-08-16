@@ -163,6 +163,23 @@ it("earns a harvest every second turnip, in a world nobody handed a map to", () 
   expect(TURNIP_HARVEST_THRESHOLD).toBe(2);
 });
 
+/** A board on which the run's last act has been fought and won: a power from
+ *  beyond the frame, standing on the roster and taken.
+ *
+ *  Half the map no longer ends a run - it summons the last act's boss, and the
+ *  only victory is the expedition that beats it. A fixture that wants a WON
+ *  board therefore has to have won that fight. The land count is untouched:
+ *  `foreign` is out of `homeRoster`, so every bar measured in map lands means
+ *  exactly what it meant before. */
+function beyondTheFrame(g: GameState, home: string): GameState {
+  return {
+    ...g,
+    factionIds: [...g.factionIds, "foreign-power"],
+    foreign: ["foreign-power"],
+    incorporated: { ...g.incorporated, "foreign-power": home },
+  };
+}
+
 describe("setup", () => {
   it("newGame initializes defense-score state", () => {
     const g = newGame(FACTIONS);
@@ -1775,6 +1792,9 @@ describe("endings", () => {
     // vassals; a one-level walk would see 2 lands and never end the run.
     let g = playingState();
     g = { ...g, overlords: new Map([["gamma", "beta"], ["delta", "gamma"]]) };
+    // The run is won by taking ground beyond the map now; what this test is
+    // about is the WALK that counts the realm, which is unchanged.
+    g = beyondTheFrame(g, "beta");
     g = withHand(g, 0, ["grow-crops"]);
     const after = playCard(g, 0, rng());
     expect(after.phase).toBe("victory");
@@ -2952,9 +2972,12 @@ describe("a run that ends at turn start", () => {
       (f) => f !== actor && f !== "gamma",
     )!;
     return {
-      ...base,
+      ...beyondTheFrame(base, actor),
       current,
       // Two lands already: itself and a vassal. The capture is the third.
+      // The power beyond the frame is already taken, so what this fixture is
+      // one land short of is the LAND count the ending still reads for a rival
+      // unification - and for the human, the arrival at turn start.
       overlords: new Map([...base.overlords, ["gamma", actor]]),
       defense: { [target]: 0, [actor]: 40 },
       marches: {
@@ -2998,10 +3021,13 @@ describe("a run that ends at turn start", () => {
 });
 
 describe("playing on past a won run", () => {
-  /** A won board: beta holds itself plus a vassal, and 2 of 4 wins. */
+  /** A won board: beta holds itself plus a vassal, and the power beyond the
+   *  frame that the run's last act was fought for. The land count is what it
+   *  always was - 2 of 4 - because a foreign power is out of the roster. */
   function won(): GameState {
     let g = playingState();
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = beyondTheFrame(g, "beta");
     g = withHand(g, 0, ["grow-crops"]);
     const after = playCard(g, 0, rng());
     expect(after.phase).toBe("victory");
@@ -3107,7 +3133,7 @@ describe("playing on past a won run", () => {
     const seat = base.players.findIndex((p) => p.factionId === rival);
     const ended = beginTurn(
       {
-        ...base,
+        ...beyondTheFrame(base, "beta"),
         current: seat,
         overlords: new Map([
           ...base.overlords, ...vassals.map((v) => [v, "beta"] as const),

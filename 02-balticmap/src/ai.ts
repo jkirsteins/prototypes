@@ -308,7 +308,11 @@ function raidAt(
     ...(sourceId !== undefined ? { sourceId } : {}),
     ...(sourceId === undefined
       ? {}
-      : { spend: raidSpendFor(v, actor, cardId, sourceId, target) }),
+      : {
+          spend: raidSpendFor(
+            v, actor, cardId, sourceId, target, duelFocusOf(state, actor),
+          ),
+        }),
   };
 }
 
@@ -334,6 +338,8 @@ function isFrontier(
  *  - A CONQUEST is paid for wherever the source stands: `defense + 1`, since
  *    `capturesOnArrival` wants the blow to EXCEED what is standing, and not a
  *    point more. A land taken is worth being left open for.
+ *  - Otherwise, at the land a DUEL is about, the ceiling wherever the source
+ *    stands. See below.
  *  - Otherwise, out of a FRONTIER land, the minimum. It will not gut the land
  *    facing one rival to soften another it cannot take this turn.
  *  - Otherwise the source is INTERIOR, and it spends its ceiling: the blow
@@ -358,10 +364,12 @@ function isFrontier(
  *  is one function over the class rather than three copies keyed by card id. */
 function raidSpendFor(
   v: RulesView, actor: string, cardId: string, from: string, to: string,
+  focus: string | null = null,
 ): number {
   const ceiling = spendCeilingOn(v, cardId, from);
   const takes = defenseOf(v, to) + 1;
   if (takes <= ceiling) return Math.max(MIN_RAID_SPEND, takes);
+  if (to === focus) return Math.max(MIN_RAID_SPEND, ceiling);
   if (isFrontier(v, actor, from, to)) return MIN_RAID_SPEND;
   return Math.max(MIN_RAID_SPEND, ceiling);
 }
@@ -582,6 +590,38 @@ export function chooseAction(state: GameState): AiAction {
     return null;
   };
   const home = p.factionId;
+  // 5-0: the land this seat has WAGERED, while a duel runs. Above the realm
+  // walk below, because the walk is worst-first across every land the realm
+  // holds and the stake is rarely the worst - it is simply the only one whose
+  // loss ends the fight, and, in an act's last fight, the run.
+  //
+  // The mirror of `duelFocusOf` on the other side of the same rule: the policy
+  // was taught to attack the one land that ends a duel and not to defend the
+  // one that loses it, and the half that was missing is the half that was
+  // costing runs. Measured over 24 seeded runs before it: 20 ended at a boss
+  // duel and nowhere else.
+  //
+  // It fires on a stake AT RISK, not on one merely short of its ceiling. The
+  // first version asked only "is it below max", which is true almost every
+  // turn - the seat then healed the same land every turn, never raided, and
+  // the duel it was in became unwinnable rather than unloseable. Half the
+  // ceiling is the same line the realm walk below uses, and `incomingAt` is
+  // the same brace: an arrow is visible a turn ahead, and the stake is the one
+  // land where letting one land is losing the fight.
+  const wagered =
+    state.gauntlet.kind === "duel" &&
+    duelFocusOf(state, p.factionId) !== null
+      ? state.gauntlet.staked
+      : null;
+  if (
+    wagered !== null &&
+    fullRealmOf(p.factionId, state.overlords, state.incorporated).has(wagered) &&
+    Math.max(0, defenseOf(v, wagered) - incomingAt(v, wagered)) <
+      0.5 * defenseMaxOf(v, wagered)
+  ) {
+    const heal = healAt(wagered);
+    if (heal !== null) return heal;
+  }
   if (lord !== undefined && !independenceGateOpen(v, home)) {
     const heal = healAt(home);
     if (heal !== null) return heal;

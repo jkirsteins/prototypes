@@ -331,6 +331,18 @@ export interface GameState {
    *  the run. `chooseRules` is the only writer. See src/rules.ts. */
   rules: RuleSelections;
   factionIds: string[];
+  /** The faction ids that do NOT stand on the map: powers from beyond the
+   *  frame, summoned for the run's last act.
+   *
+   *  A list rather than a flag on each faction, because everything that asks
+   *  is asking about the ROSTER - how much of the map is there to hold - and a
+   *  per-faction lookup would put that arithmetic at every call site.
+   *
+   *  The bar reads it (`winSizeFor`), and so does the scan for a rival about
+   *  to unify: a power that holds no ground on the map must not move the
+   *  number of lands a run is played for, and must not win the map by
+   *  arithmetic it was never on. */
+  foreign: string[];
   overlords: Overlords; // STORED vassal -> overlord map
   incorporated: Incorporated;
   adjacency: Record<string, string[]>;
@@ -544,17 +556,35 @@ export function humanFactionOf(
  *  It derives the human from the board rather than taking one, because the
  *  one caller that would get it wrong is the scoreboard: `renderScoreboard`
  *  reads its human from `localPlayerId`, which on a GUEST screen is the
- *  guest's seat and not the seat the raised bar belongs to. */
+ *  guest's seat and not the seat the raised bar belongs to.
+ *
+ *  The count is `homeRoster`, never `factionIds`: a power summoned from beyond
+ *  the frame joins the roster and holds no ground on the map, so counting it
+ *  would move the bar from thirteen lands to fourteen at the exact moment the
+ *  run's last act begins - a run getting harder because its own boss turned
+ *  up, in a number the player has been reading all game. */
 export function winSizeFor(
   board: Pick<
-    GameState, "factionIds" | "players" | "humanSeats" | "playingOn"
+    GameState, "factionIds" | "foreign" | "players" | "humanSeats" | "playingOn"
   >,
   factionId: string,
 ): number {
-  if (board.playingOn && factionId === humanFactionOf(board)) {
-    return board.factionIds.length;
-  }
-  return victoryRealmSize(board.factionIds.length);
+  const roster = homeRoster(board);
+  if (board.playingOn && factionId === humanFactionOf(board)) return roster;
+  return victoryRealmSize(roster);
+}
+
+/** How many factions actually stand on the map: the roster less anything
+ *  summoned from beyond the frame.
+ *
+ *  One reader per question rather than one number sprinkled about - the bar
+ *  above, and the rival-unification scan in `endingFor`. Both are asking "how
+ *  much of the map is there", and a power with no ground on it is not part of
+ *  the answer. */
+export function homeRoster(
+  board: Pick<GameState, "factionIds" | "foreign">,
+): number {
+  return board.factionIds.length - board.foreign.length;
 }
 
 export function viewOf(state: GameState): RulesView {
@@ -654,6 +684,8 @@ export function newGame(
     repeatGroup: null,
     rules: { ...DEFAULT_RULES },
     factionIds,
+    // Nothing from beyond the frame until the last act summons it.
+    foreign: [],
     overlords: realms.overlords,
     incorporated: realms.incorporated,
     guards: {},
@@ -1328,6 +1360,19 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // The act moves in one place - a boss duel WON, in `settleDuel` - and is
   // written back at the bottom with the gauntlet it belongs beside.
   let act = state.act;
+  /** Set by `settleDuel` when an act's boss took the land that was staked on
+   *  it. Read once, at the ending below: the phase is decided in one place in
+   *  this function, and a second writer of it is a second answer to "is the
+   *  run over" that the first would eventually disagree with. */
+  let bossLost = false;
+  // The five stores a summoned power joins. Locals from the top, the way every
+  // other store this function writes is: `summonForeignPower` runs mid-wrap
+  // and the round-wrap block below reads the roster it left behind.
+  let factionIds = state.factionIds;
+  let foreign = state.foreign;
+  let adjacency = state.adjacency;
+  let siteCaps = state.siteCaps;
+  let ethnicities = state.ethnicities;
   const pendingTransfers = { ...state.pendingTransfers };
 
   /** The line that says an arrow got where it was aimed. It is the cause the
@@ -1553,6 +1598,57 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     return { defense, taken: true };
   };
 
+  /** The last act's enemy, called onto the map's edge.
+   *
+   *  It is a FACTION and not a new kind of thing, for the reason a boss is a
+   *  neighbour rather than a new kind of entity: `attackReach`,
+   *  `marchTargetsFrom`, the arrow scene, the duel scope and the turn loop all
+   *  work on faction ids, and a power that was anything else would need every
+   *  one of them taught about it. What makes it foreign is one list -
+   *  `GameState.foreign` - which the bar and the unification scan read so that
+   *  a power holding no ground on the map cannot move either number.
+   *
+   *  It borrows its polygon from the map's baked neighbours (`ForeignPowerDef`
+   *  in src/regions.ts). The ground was always drawn there; nothing in the
+   *  game had ever heard of it.
+   *
+   *  Its adjacency is the `landings`, both ways. That is the whole geography
+   *  of it: an army may march out to it only from a land that faces it, and
+   *  its own raids reach only the lands it faces. `hopsBetween` then answers
+   *  for it exactly as it answers for anywhere else, so one land behind a
+   *  landing is two hops out and the three-hop rule needs nothing new.
+   *
+   *  Returns the state unchanged when the power is already standing, so a
+   *  second summon - a retry after a lost expedition - cannot deal it a second
+   *  seat. */
+  const summonForeignPower = (): void => {
+    const def = activeRegion().foreignPower;
+    if (state.factionIds.includes(def.id)) return;
+    factionIds = [...factionIds, def.id];
+    foreign = [...foreign, def.id];
+    // Both ways, and only the landings. A power reachable from a land that
+    // does not face it would be an expedition setting out from the wrong coast.
+    const nextAdjacency: Record<string, string[]> = { ...adjacency };
+    const reachable = def.landings.filter((l) => factionIds.includes(l));
+    nextAdjacency[def.id] = [...reachable];
+    for (const land of reachable) {
+      nextAdjacency[land] = [...(nextAdjacency[land] ?? []), def.id];
+    }
+    adjacency = nextAdjacency;
+    defenseMax = { ...defenseMax, [def.id]: def.defenseMax };
+    // No settlements, ever: it is not ground the player can build on, and a
+    // site cap would put a Found a settlement target beyond the frame.
+    siteCaps = { ...siteCaps, [def.id]: 0 };
+    ethnicities = { ...ethnicities, [def.id]: def.id };
+    // Its own seat, so it can answer. A warpath deck, because what it does is
+    // send armies - and the AI already has a branch for every card in one.
+    players = [...players, makePlayer(players.length, def.id, "warpath", rng)];
+    rulers = seatRuler(
+      rulers, ethnicities, def.id, state.turn,
+      BUILD_ABILITIES.warpath ?? [],
+    );
+  };
+
   /** An act's champion, made ready to be beaten.
    *
    *  Four levers, and every one of them is something the game already does to
@@ -1680,6 +1776,14 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // shape asks for - the escalation is the boss being elevated again rather
     // than a rule invented for the failure.
     if (outcome === "won" && boss) act = Math.min(ACTS, act + 1);
+    // Losing to a BOSS ends the run, and losing to a neighbour does not. That
+    // is the whole of what makes an act's last fight different to play: an
+    // ordinary duel forfeits the land you staked and leaves you the ladder
+    // this game has always had - vassalage, and the independence gate out of
+    // it - and the fight that closes an act is the one you cannot walk away
+    // from. A duel that settled NOTHING is not a loss and does not end
+    // anything: the boss is summoned again at the next wrap.
+    if (outcome === "lost" && boss) bossLost = true;
     if (outcome !== "won") {
       // The two un-won endings are separate types rather than one line with a
       // reason on it, because they are separate news: the staked land went the
@@ -1795,8 +1899,19 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         fullRealmOf(home, overlords, incorporated).size >=
           actExitSize(act, winSizeFor(board, home))
       ) {
+        // The LAST act is fought beyond the frame, so its enemy has to be
+        // called onto the map's edge before anybody can be offered it. Every
+        // earlier act closes with a neighbour that was already standing.
+        if (act >= ACTS) summonForeignPower();
+        const beyond = activeRegion().foreignPower.id;
         const boss = bossFor(
-          { ...viewOf(state), overlords, incorporated }, home,
+          {
+            ...viewOf(state), overlords, incorporated,
+            factionIds, adjacency, defenseMax, passives,
+            leaders: leadersByFaction(rulers),
+          },
+          home,
+          act >= ACTS ? beyond : null,
         );
         // Null is a real answer: a realm bordering nothing it may fight cannot
         // be handed a boss, so the act does not close yet and the ordinary
@@ -1835,7 +1950,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // Before the wild-lands heal below, so a land that is both wild and under
     // siege nets out the way the log reads it rather than mending the point it
     // has just lost inside one batch.
-    if (gauntlet.kind === "duel") {
+    // ORDINARY duels only. An act's champion presses on its own - its chief
+    // leads its raids and its deck is thick with them - so a boss duel needs
+    // no help converging. Wearing the wagered land through one as well was
+    // measured and is strictly worse for the player: 22 of 24 seeded runs
+    // ended at a boss duel with it on, against 17 with it off. The ground
+    // wears where nobody is pressing.
+    if (gauntlet.kind === "duel" && !gauntlet.boss) {
       for (const land of [gauntlet.staked, gauntlet.enemy]) {
         const before = defenseOf({ defense, defenseMax }, land);
         if (before <= 0) continue;
@@ -2068,11 +2189,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // above it has settled, because it reads the board rather than the play.
   const phase = endingFor(
     { ...state, players, overlords, incorporated }, p.id, events,
+    bossLost,
   ) ?? state.phase;
   return {
     ...state, phase, players, overlords, incorporated, wealth, marches,
     nextMarchId, claims,
     defense, defenseMax, passives, pendingTransfers, rulers, gauntlet, act,
+    factionIds, foreign, adjacency, siteCaps, ethnicities,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -2465,6 +2588,13 @@ export function pickDuel(
   const home = humanFactionOf(state);
   if (home === null) return state;
   if (!duelStakes(viewOf(state), home, enemyId).includes(stakeId)) return state;
+  // **Nothing is healed here, and that was measured rather than assumed.**
+  // Making the wagered land ready as the duel opened - the mirror of
+  // `elevateBoss` healing a champion when it is summoned - moved the win rate
+  // not at all over 24 seeded runs, and it quietly overrode `defense=`: a boot
+  // param that put a land at 1 found it back at its ceiling a line later,
+  // because `duel=` is applied after it. A rule that buys nothing and breaks
+  // the one surface a browser check is built on is a rule not worth having.
   return {
     ...state,
     gauntlet: {
@@ -2785,10 +2915,15 @@ export function takesNoTurn(state: GameState, factionId: string): boolean {
 function endingFor(
   board: Pick<
     GameState, "factionIds" | "overlords" | "incorporated" | "players" |
-    "humanSeats" | "turn" | "playingOn"
+    "humanSeats" | "turn" | "playingOn" | "foreign"
   >,
   playerId: number,
   events: GameEvent[],
+  /** An act's boss took the land staked against it. Passed in rather than read
+   *  off the board, because it is a fact about a fight that has just RETIRED -
+   *  one line later the gauntlet has moved on and the board shows only a land
+   *  that changed hands, which is not the same thing. */
+  bossLost = false,
 ): GamePhase | null {
   const { overlords, incorporated } = board;
   const humanFaction = humanFactionOf(board);
@@ -2800,13 +2935,53 @@ function endingFor(
     });
     return "defeat";
   }
+  // Losing to an act's boss. Above the victory arm, the same order the
+  // incorporation arm keeps: defeat before victory, and the two cannot
+  // coincide.
+  if (bossLost && humanFaction !== null) {
+    events.push({
+      turn: board.turn, playerId, type: "defeat",
+      targetFactionId: humanFaction,
+    });
+    return "defeat";
+  }
+  const realm =
+    humanFaction === null
+      ? new Set<string>()
+      : fullRealmOf(humanFaction, overlords, incorporated);
+  // **The run is won by taking ground beyond the map, not by counting lands
+  // on it.** Half the map used to end the run; it SUMMONS the last act's boss
+  // now, and the only victory is the expedition that beats it - which is why
+  // `winSizeFor` is read as an act boundary above rather than as an ending
+  // here.
+  //
+  // The second arm is the safety valve and not a second win condition: a run
+  // where nothing was ever summoned - a border that offered no boss, a boot
+  // param that handed the player the map - would otherwise have no way to end
+  // at all. A player holding every land on the map with nothing beyond it has
+  // won by any reading.
+  // Lands ON THE MAP, so a power taken from beyond the frame does not count
+  // toward a bar measured in map lands - it would be one free land against a
+  // number the player reads off the scoreboard.
+  const homeHeld = [...realm].filter((f) => !board.foreign.includes(f)).length;
+  const wonTheExpedition =
+    board.foreign.length > 0 && board.foreign.every((f) => realm.has(f));
+  const nothingLeftOnTheMap =
+    board.foreign.length === 0 && homeHeld >= homeRoster(board);
+  // A run played ON past its ending is the one case still measured in lands,
+  // and through `winSizeFor` rather than a second reading of the roster - the
+  // one-bar rule: the number the scoreboard shows and the number this applies
+  // are the same call. The offer was taken, so the expedition is already won
+  // and would otherwise re-fire the instant the board was handed back.
+  const won = board.playingOn
+    ? humanFaction !== null && homeHeld >= winSizeFor(board, humanFaction)
+    : wonTheExpedition || nothingLeftOnTheMap;
   if (
     humanFaction !== null &&
     // Only a free faction wins: a vassal's realm is a strict subset of its
     // root's, so victory belongs to roots.
     !overlords.has(humanFaction) &&
-    fullRealmOf(humanFaction, overlords, incorporated).size >=
-      winSizeFor(board, humanFaction)
+    won
   ) {
     events.push({
       turn: board.turn, playerId, type: "victory",
@@ -2814,9 +2989,13 @@ function endingFor(
     });
     return "victory";
   }
+  // A power from beyond the frame is not racing anybody for the map and holds
+  // no ground on it, so it is skipped: left in, it would "unify" the instant
+  // it took enough lands to clear a bar it was never on.
   const unifier = board.factionIds.find(
     (f) =>
       f !== humanFaction &&
+      !board.foreign.includes(f) &&
       !(f in incorporated) &&
       !overlords.has(f) &&
       fullRealmOf(f, overlords, incorporated).size >= winSizeFor(board, f),

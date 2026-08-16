@@ -485,7 +485,15 @@ export function gauntletAtRoundWrap(
 
 /** The neighbour an act closes with, or null when the border offers nobody.
  *
- *  Three preferences, in order, and the first is the one that matters most.
+ *  Four preferences, in order.
+ *
+ *  **`prefer` outranks everything**, and it is how the last act gets the fight
+ *  it is for: a power summoned from beyond the frame is appended to the roster
+ *  and would otherwise lose map order to every led neighbour on the border. It
+ *  is a preference and not an override, so a power the realm cannot yet reach
+ *  - no landing held - is passed over and the act closes on a neighbour
+ *  instead, which is a player fighting their way to the coast rather than an
+ *  act that cannot end.
  *
  *  **A champion still standing keeps the job.** A boss duel that was lost or
  *  voided leaves the enemy elevated, and the act is summoned again at the next
@@ -505,8 +513,11 @@ export function gauntletAtRoundWrap(
  *  fight cannot be handed a boss, so the act simply does not close yet - the
  *  same shape an empty offer already has, and the ordinary picker keeps
  *  running until the border gives it somebody. */
-export function bossFor(view: RulesView, human: string): string | null {
+export function bossFor(
+  view: RulesView, human: string, prefer: string | null = null,
+): string | null {
   const candidates = duelCandidates(view, human);
+  if (prefer !== null && candidates.includes(prefer)) return prefer;
   const standing = candidates.find(
     (id) => hasPassive(view.passives, id, "regional-leader"),
   );

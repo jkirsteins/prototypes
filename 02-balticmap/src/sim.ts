@@ -1,5 +1,6 @@
 import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
+import { defenseOf } from "./defense";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
   advance, chooseBuild, declineDuel, discardCard, endTurn, humanFactionOf,
@@ -205,10 +206,15 @@ function newSimGame(): GameState {
  *  world tick either way and a run that declined everything would measure the
  *  pre-gauntlet game all over again.
  *
- *  The STAKE is the same rule one level down: the first land `duelStakes`
- *  lists, which is map order again. A sim that staked its weakest land - or
- *  its strongest - would be a second opinion about how to bet, measured as if
- *  it were the game's own tempo.
+ *  The STAKE is the best-defended legal land, ties by map order.
+ *
+ *  That is a choice and it is deliberately the OBVIOUS one rather than a
+ *  clever one: the stake is what the duel is lost by, so "bet the land best
+ *  able to survive" is the single reading any player makes, and a sim that did
+ *  something else would be measuring its own carelessness. Map order - which
+ *  is what this was first - is not neutral. It is arbitrary, and it staked
+ *  freshly-taken border lands often enough that 22 of 24 runs ended at a boss
+ *  duel rather than anywhere else.
  *
  *  `duelCandidates` is already in map order, so this is deterministic and a
  *  seeded run replays. It draws no rng, which is what keeps a run comparable
@@ -229,7 +235,12 @@ function answerTheOffer(state: GameState, rng: Rng): GameState {
   if (first === undefined) return declineDuel(state);
   const home = humanFactionOf(state);
   if (home === null) return state;
-  const [stake] = duelStakes(viewOf(state), home, first);
+  const v = viewOf(state);
+  const [stake] = duelStakes(v, home, first).sort(
+    (a, b) =>
+      defenseOf(v, b) - defenseOf(v, a) ||
+      state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
+  );
   // No legal stake is no legal duel: `pickDuel` would refuse it anyway, and a
   // decline spends the world tick that keeps the run moving.
   return stake === undefined ? declineDuel(state) : pickDuel(state, first, stake);

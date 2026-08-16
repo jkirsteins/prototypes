@@ -187,6 +187,23 @@ function show(hud: Hud, g: GameState, from: number): void {
   hud.update(g);
 }
 
+/** A board on which the run's last act has been fought and won: a power from
+ *  beyond the frame, standing on the roster and taken.
+ *
+ *  Half the map no longer ends a run - it summons the last act's boss, and the
+ *  only victory is the expedition that beats it. So a fixture that wants a WON
+ *  board has to have won that fight, and this is the smallest board that has.
+ *  The land count is untouched: `foreign` is out of `homeRoster`, so the bar
+ *  the postmortem quotes is the same one it always was. */
+function beyondTheFrame(g: GameState, home: string): GameState {
+  return {
+    ...g,
+    factionIds: [...g.factionIds, "foreign-power"],
+    foreign: ["foreign-power"],
+    incorporated: { ...g.incorporated, "foreign-power": home },
+  };
+}
+
 describe("createHud", () => {
   const playing = () => newPlaying();
 
@@ -1748,7 +1765,7 @@ describe("hud v2", () => {
     );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
-    g = { ...g, incorporated: inc };
+    g = beyondTheFrame({ ...g, incorporated: inc }, "f0");
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("victory");
@@ -1769,7 +1786,7 @@ describe("hud v2", () => {
     );
     const inc: Record<string, string> = {};
     for (let i = 1; i <= 10; i++) inc[`f${i}`] = "f0";
-    g = { ...g, incorporated: inc };
+    g = beyondTheFrame({ ...g, incorporated: inc }, "f0");
     g = withHand(g, 0, ["grow-crops"]);
     g = playCard(g, 0, seededRng(1));
     expect(g.phase).toBe("victory");

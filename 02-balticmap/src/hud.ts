@@ -1,6 +1,6 @@
 import { CARDS, guardAgainst, KEYWORDS, repeatGroupOf } from "./cards";
 import {
-  metNothing, turnOpen, viewOf, winSizeFor,
+  homeRoster, metNothing, turnOpen, viewOf, winSizeFor,
   type GameEvent, type GameState,
 } from "./game";
 import { animations, flyCard, runAnimation, type Flight } from "./animate";
@@ -3369,9 +3369,15 @@ export function createHud(
     pmElapsed.textContent =
       elapsed === undefined ? "" : `Run time - ${formatElapsed(elapsed)}`;
     if (won) {
-      const size = fullRealmOf(
+      // LANDS ON THE MAP, both sides of the fraction: a power taken from
+      // beyond the frame is on the roster and is not a land, so counting it
+      // would print a realm one bigger than the map the player just looked at
+      // - and against a roster one bigger than the one the bar was measured
+      // in. `homeRoster` is the same reader `winSizeFor` uses.
+      const size = [...fullRealmOf(
         human.factionId, state.overlords, state.incorporated,
-      ).size;
+      )].filter((f) => !state.foreign.includes(f)).length;
+      const roster = homeRoster(state);
       setCause([
         t(state.playingOn
           // The whole map, which is what a run played on was held out for.
@@ -3379,9 +3385,8 @@ export function createHud(
           // happened to sweep the board is still a run the player never
           // chose to extend, and saying otherwise would credit them with a
           // decision they were never offered.
-          ? `The whole of the Baltic is yours - ${size} of ` +
-            `${state.factionIds.length} lands`
-          : `You rule the Baltic - ${size} of ${state.factionIds.length} lands`),
+          ? `The whole of the Baltic is yours - ${size} of ${roster} lands`
+          : `You rule the Baltic - ${size} of ${roster} lands`),
       ]);
       pmDeltas.textContent = "";
       pmBuildup.replaceChildren();

@@ -1324,18 +1324,21 @@ describe("an act's champion is made ready to be beaten", () => {
       .toBeGreaterThanOrEqual(BOSS_LEADERSHIP_PER_ACT);
   });
 
-  it("shrugs off part of every blow, and stacks with the ground", () => {
-    // The reductions COMPOSE: a champion raised on hill country takes both,
-    // which the version naming `hill-country` by literal would have missed.
+  it("presses rather than hides - a champion shrugs off nothing", () => {
+    // Measured rather than chosen. A champion is already healed to a raised
+    // ceiling and plays a deck thick with fortifies; a damage reduction on top
+    // made it a land the player's raids could not move at all, and both sides
+    // sat between 3/5 and 5/5 for fourteen straight turns of a real act-1 boss
+    // duel. What makes it dangerous is its chief and its raids.
     const plain = damageAfterTerrain({ passives: {} }, "x", 8);
-    const champion = damageAfterTerrain(
+    expect(damageAfterTerrain(
       { passives: { x: ["regional-leader"] } }, "x", 8,
-    );
-    const both = damageAfterTerrain(
+    )).toBe(plain);
+    // The ground still does its own defending, and still composes: the table
+    // is a table so a second defensive status would be applied with the first.
+    expect(damageAfterTerrain(
       { passives: { x: ["regional-leader", "hill-country"] } }, "x", 8,
-    );
-    expect(champion).toBeLessThan(plain);
-    expect(both).toBeLessThan(champion);
+    )).toBeLessThan(plain);
     // Never below 1, and never above what was coming.
     expect(damageAfterTerrain(
       { passives: { x: ["regional-leader", "hill-country"] } }, "x", 1,
