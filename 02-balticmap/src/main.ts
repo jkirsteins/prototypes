@@ -1695,11 +1695,15 @@ function turnsUntilActs(factionId: string): number {
 
 /** Everything in flight at each land, in the order it will resolve.
  *
- *  A march and a claim both land at the start of their actor's next turn, so
- *  the order is "whose turn comes first", and the answer decides whether a
- *  second raid finds a land already flat - or whether a subjugation arrives
- *  before the raids that would have answered it. The player cannot work that
- *  out from the board, so the arrows carry it.
+ *  A march lands at the start of one of its actor's turns - the one its
+ *  `expiry` names, a turn out per land the army crosses - and a claim always
+ *  at the next. So the order is the expiry first and then "whose turn comes
+ *  first", and the answer decides whether a second raid finds a land already
+ *  flat - or whether a subjugation arrives before the raids that would have
+ *  answered it. The player cannot work that out from the board, so the arrows
+ *  carry it. Two arrows at one land no longer resolve in the order they were
+ *  declared: a neighbour's raid declared later overtakes a march that set out
+ *  three lands away.
  *
  *  Grouped by TARGET, and only by target: an ordinal answers "who gets there
  *  first" between things racing for the SAME land.

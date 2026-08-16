@@ -313,9 +313,22 @@ describe("applyBootParams", () => {
     expect(boot("?faction=beta&settlements=selija:1").settlements).toEqual({});
   });
 
+  it("declares a march across two lands, and dates it two turns out", () => {
+    // The line is alpha - beta - gamma - delta. With alpha and gamma annexed,
+    // delta borders the realm and is therefore something beta may attack -
+    // two lands from beta's own army, so the arrow is two turns in the air.
+    const g = boot("?faction=beta&realm=3&march=beta>delta");
+    const march = Object.values(g.marches)[0];
+    expect([march.from, march.to]).toEqual(["beta", "delta"]);
+    expect(march.expiry).toBe(g.turn + 2);
+    expect(march.declared).toBe(g.turn);
+  });
+
   it("drops a march the rules would refuse, rather than conjuring one", () => {
-    // beta does not border delta, and a URL that could draw an impossible
-    // arrow would be checking a state the game cannot reach.
+    // delta is not something a lone beta may attack - it borders nothing beta
+    // holds - and a URL that could draw an impossible arrow would be checking
+    // a state the game cannot reach. Distance is not what refuses it: the
+    // realm=3 case above sends the same arrow.
     expect(boot("?faction=beta&march=beta>delta").marches).toEqual({});
     // Nor can one land send more armies than it has: shrink beta's ceiling so
     // its army cap (armyCapFor) reads as one, then ask for two marches.

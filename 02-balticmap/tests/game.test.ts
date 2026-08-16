@@ -531,15 +531,46 @@ describe("raid", () => {
     let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
     g = { ...g, overlords: new Map([["gamma", "beta"]]) };
     g = withHand(g, 0, ["raid"]);
-    // beta and gamma both border delta's neighbour gamma; only gamma borders
-    // delta itself, so gamma is the one legal tail.
+    // Both of the realm's lands can send an army at delta - gamma next door
+    // and beta the long way - so naming either is honoured.
     const out = playCard(g, 0, rng(), "delta", { sourceId: "gamma" });
     expect(Object.values(out.marches)[0]).toMatchObject({
       from: "gamma", to: "delta",
     });
-    // beta does not border delta, so naming it is refused outright rather
-    // than quietly redirected.
-    expect(playCard(g, 0, rng(), "delta", { sourceId: "beta" })).toBe(g);
+    // alpha is nobody's to march out of, so naming it is refused outright
+    // rather than quietly redirected to a land that is.
+    expect(playCard(g, 0, rng(), "delta", { sourceId: "alpha" })).toBe(g);
+  });
+
+  it("takes a turn for every land the army crosses", () => {
+    let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    // beta - gamma - delta: two lands crossed, so the arrow stands on the map
+    // for two turns.
+    const far = playCard(g, 0, rng(), "delta", { sourceId: "beta" });
+    expect(Object.values(far.marches)[0]).toMatchObject({
+      from: "beta", to: "delta", declared: g.turn, expiry: g.turn + 2,
+    });
+    // And a neighbour is still next turn, which is the case that would say
+    // something had gone wrong by changing.
+    const near = playCard(g, 0, rng(), "delta", { sourceId: "gamma" });
+    expect(Object.values(near.marches)[0]).toMatchObject({
+      from: "gamma", to: "delta", declared: g.turn, expiry: g.turn + 1,
+    });
+  });
+
+  it("stands on the map through the turn it is still walking", () => {
+    let g = playingState(LINE_ADJ);
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    const far = playCard(g, 0, rng(), "delta", { sourceId: "beta" });
+    const midway = landMarches(far);
+    expect(Object.keys(midway.marches)).toHaveLength(1); // still walking
+    expect(midway.defense.delta).toBeUndefined();
+    const arrived = landMarches(midway);
+    expect(arrived.marches).toEqual({});
+    expect(arrived.defense.delta).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
   });
 
   it("adds the ruler's leadership to the damage, frozen at declaration", () => {
@@ -779,6 +810,36 @@ describe("the counter-raid clash", () => {
     // the earlier of the two - otherwise the attack would land first and the
     // counter would survive to strike an already-battered land.
     expect(landMarches(facingRaids(4, 10)).marches).toEqual({});
+  });
+
+  it("takes the whole axis at the earlier arrival, however far apart they set out", () => {
+    // Both directions of a clash cross the same lands, so a counter is always
+    // the same number of turns as what it answers - what separates them now is
+    // the turn each set out on. beta's army left two rounds before delta's
+    // answer, so it arrives two rounds sooner and takes delta's arrow with it,
+    // still walking.
+    const g = {
+      ...playingState(LINE_ADJ),
+      overlords: new Map([["gamma", "beta"]]),
+    };
+    const after = beginTurn({
+      ...g,
+      turn: g.turn + 2,
+      marches: {
+        "1": {
+          id: 1, actor: "beta", from: "beta", to: "delta", cardId: "raid",
+          damage: 3, holdsArmy: true, declared: g.turn, expiry: g.turn + 2,
+        },
+        "2": {
+          id: 2, actor: "delta", from: "delta", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true,
+          declared: g.turn + 2, expiry: g.turn + 4,
+        },
+      },
+    }, rng());
+    expect(after.marches).toEqual({});
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 2);
+    expect(after.defense.beta).toBeUndefined();
   });
 
   it("a landing states the force aimed at it, not just what got through", () => {

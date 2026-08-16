@@ -50,10 +50,14 @@ navigation and the same URL gives the same run every time:
 - `march=jersikans>selonians;semigallian-confederacy>selonians:3` - declare an
   attack already in flight, `from>to` per arrow, with an optional `:N` for how
   much defense the raid tears out of its source. Declared through the real
-  rules, so a source with no free army, no defense to spend, or a target it
-  does not border is dropped rather than conjured. The amount is clamped into
-  `[1, the source's ceiling]` and DEFAULTS to 1, so a URL written before a
-  raid's strength was a choice still means what it always meant. Marches are
+  rules, so a source with no free army, no defense to spend, a target more
+  than `MAX_MARCH_HOPS` lands away, or a target that actor may not attack at
+  all is dropped rather than conjured. **A target the source does not border
+  is no longer refused**: an army marches up to three lands, and the arrow
+  boots with the expiry that distance earns it, so a clause naming a land two
+  hops off boots an arrow that lands two turns from now. The amount is clamped
+  into `[1, the source's ceiling]` and DEFAULTS to 1, so a URL written before
+  a raid's strength was a choice still means what it always meant. Marches are
   declared last, after `defense=`, and the spend lands on top of it:
   `defense=selonians:5&march=selonians>jersikans:3` boots Selonians at 2 with
   a 3 STR arrow in flight.
@@ -687,6 +691,37 @@ ceiling spend would sink the grey middle toward 0 while nobody watched.
 
 The 2026-08-15 raid-spend doc in docs/superpowers/specs has the full
 reasoning.
+
+## An army marches three lands, and takes a turn for every one it crosses
+
+An arrow is no longer always one step long. `MAX_MARCH_HOPS` in
+`src/adjacency.ts` is how far an army may go, `hopsBetween` is the bounded
+breadth-first walk that measures it, and `marchHopsTo` in `src/playability.ts`
+is the ONE spelling of the question every surface asks. Three answers ride on
+it and they must be the same answer: whether the aim is legal
+(`marchTargetsFrom`), whether the land can send the army at all
+(`marchSourcesFor` / `marchSourcesAgainst`, and the `no-army` block reason
+through `marchReachFrom`), and the `expiry` the declaration writes -
+`state.turn + hops`, at all three declaration sites.
+
+Three things follow, and each is load-bearing:
+
+- **Distance decides how long, never whether it is worth doing.** Reach is
+  still `attackReach` and the bloc rule is still `aimsWithinOwnRealm`: a land
+  three hops off that borders nothing of yours is not a target, and a sibling
+  next door is not a target however close it stands. Widening the walk must
+  not become a way around either, which is what
+  `tests/playability.test.ts`'s peer case pins.
+- **A long march is a long time spent soft.** The spend comes off the source
+  at DECLARATION, so a three-turn arrow leaves that land readable at its
+  lowest for three turns rather than one. That is the cost of reaching deep,
+  and it is on the map for every rival.
+- **Arrows no longer land in the order they were declared.** A neighbour's
+  raid declared two turns later overtakes a march that set out three lands
+  away. `March.declared` exists because of this - `Axis.opening` cannot infer
+  which side started a quarrel from the expiry any more - and the whole axis
+  still comes off the board at the EARLIER of its two arrivals, so a counter
+  answering a long march pulls it in early rather than waiting for it.
 
 ## The hand is the realm's, and it is a floor rather than a ceiling
 

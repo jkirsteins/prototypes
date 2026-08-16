@@ -8,6 +8,7 @@ import {
   handBlockReason, handLimitFor, holdsGuard, incorporateRealmGate,
   isCardPlayable, MAX_HAND, MIN_HAND,
   greatRaidPool, greatRaidSpends,
+  marchHopsTo,
   marchSourcesAgainst, marchSourcesFor, marchTargetsFrom, miasmaHeld, omensHeld,
   spendCeilingOn,
   outbreakPolygons, plagueDamageOn, plagueMultiplier, playableSet, reachOf,
@@ -200,14 +201,17 @@ describe("marching: sources, targets and armies", () => {
     expect(greatRaidPool(v, "beta", "delta")).toBe(6);
   });
 
-  it("aims an army only at what its own land borders", () => {
+  it("aims an army at everything in reach it can walk to", () => {
     const v = view({ overlords: new Map([["gamma", "beta"]]) });
-    // beta borders alpha and its own vassal gamma, and may batter either.
-    expect(marchTargetsFrom(v, "beta", "beta")).toEqual(["alpha", "gamma"]);
-    // The vassal's own army reaches delta - and not gamma itself: no land
-    // borders itself, so holding a vassal down takes an army from next door.
-    expect(marchTargetsFrom(v, "beta", "gamma")).toEqual(["delta"]);
-    expect(marchSourcesAgainst(v, "beta", "delta")).toEqual(["gamma"]);
+    // beta borders alpha and its own vassal gamma, and may batter either -
+    // and delta, two lands down the line, is a march of two turns rather than
+    // somewhere out of the question.
+    expect(marchTargetsFrom(v, "beta", "beta"))
+      .toEqual(["alpha", "gamma", "delta"]);
+    // The vassal's own army reaches delta next door and alpha the long way,
+    // but not gamma itself: no land marches at itself.
+    expect(marchTargetsFrom(v, "beta", "gamma")).toEqual(["alpha", "delta"]);
+    expect(marchSourcesAgainst(v, "beta", "delta")).toEqual(["beta", "gamma"]);
     expect(marchSourcesAgainst(v, "beta", "gamma")).toEqual(["beta"]);
   });
 
@@ -244,6 +248,86 @@ describe("marching: sources, targets and armies", () => {
       { from: "beta", to: "delta", holdsArmy: true },
       { from: "gamma", to: "delta", holdsArmy: true },
     ]);
+  });
+});
+
+describe("a march reaches past the border", () => {
+  // one - two - three - four - five in a line, with one holding two, three
+  // and four as vassals. The vassals are there to put the far end of the
+  // chain in REACH - a lord may batter its own vassals, and the land past
+  // them borders the realm - so that distance is the only thing left deciding
+  // what an army standing in `one` may be aimed at.
+  const CHAIN = ["one", "two", "three", "four", "five"];
+  const CHAIN_ADJ = {
+    one: ["two"],
+    two: ["one", "three"],
+    three: ["two", "four"],
+    four: ["three", "five"],
+    five: ["four"],
+  };
+  const chain = (extra: Partial<RulesView> = {}) =>
+    view({
+      factionIds: CHAIN,
+      adjacency: CHAIN_ADJ,
+      defenseMax: defenseMaxAll(CHAIN),
+      siteCaps: siteCaps(CHAIN),
+      leaders: Object.fromEntries(CHAIN.map((id) => [id, true])),
+      overlords: new Map([["two", "one"], ["three", "one"], ["four", "one"]]),
+      ...extra,
+    });
+
+  it("offers a land two hops away", () => {
+    expect(marchTargetsFrom(chain(), "one", "one")).toContain("three");
+  });
+
+  it("counts the bound inclusively - three hops is a march, four is not", () => {
+    expect(marchTargetsFrom(chain(), "one", "one")).toContain("four");
+    expect(marchTargetsFrom(chain(), "one", "one")).not.toContain("five");
+    // And `five` is refused for the distance alone: it is in reach, and an
+    // army standing next door may still be aimed at it.
+    expect(attackReach(chain(), "one")).toContain("five");
+    expect(marchTargetsFrom(chain(), "one", "four")).toContain("five");
+  });
+
+  it("is one question, so the source list and the target list agree", () => {
+    // `marchSourcesAgainst` is the other door into the same decision - the
+    // target-first flow - and a land it refuses is a land the aim would offer
+    // and the play then reject.
+    expect(marchSourcesAgainst(chain(), "one", "four")).toContain("one");
+    expect(marchSourcesAgainst(chain(), "one", "five")).not.toContain("one");
+    expect(marchHopsTo(chain(), "one", "four")).toBe(3);
+    expect(marchHopsTo(chain(), "one", "five")).toBeNull();
+    // No land marches at itself, whatever the graph says about the distance.
+    expect(marchHopsTo(chain(), "one", "one")).toBeNull();
+  });
+
+  it("does not call a distant target armyless when a source can reach it", () => {
+    // Every vassal's army is already out, so `one` is the realm's only source
+    // and the far end of the chain is three hops from it. The per-target block
+    // reason is the third door into the same decision, and a land the aim
+    // offers must not be a land the hover calls armyless.
+    const v = chain({ armies: { two: 0, three: 0, four: 0 } });
+    expect(marchSourcesFor(v, "one")).toEqual(["one"]);
+    const four = targetEligibilityFor(v, "one", "raid")
+      .find((e) => e.factionId === "four")!;
+    expect(four).toEqual({ state: "available", factionId: "four" });
+  });
+
+  it("still refuses a peer of the actor's own realm, however close", () => {
+    // The realm rule is not a distance rule and widening reach must not have
+    // quietly become a way around it. beta answers to alpha and holds gamma;
+    // delta answers to alpha as well, so it is beta's SIBLING - two hops off
+    // along the line, in beta's reach, and still not something beta may hit.
+    const v = view({
+      overlords: new Map([
+        ["beta", "alpha"], ["gamma", "beta"], ["delta", "alpha"],
+      ]),
+    });
+    expect(attackReach(v, "beta")).toContain("delta");
+    expect(marchHopsTo(v, "beta", "delta")).toBe(2);
+    expect(marchTargetsFrom(v, "beta", "beta")).not.toContain("delta");
+    // Its own vassal, one hop off, is still fair game - downward is upkeep.
+    expect(marchTargetsFrom(v, "beta", "beta")).toContain("gamma");
   });
 });
 

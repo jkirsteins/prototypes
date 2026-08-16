@@ -9,7 +9,8 @@ import { aiTakeTurn } from "./ai";
 import { applyDamage, defenseMaxOf, MIN_RAID_SPEND } from "./defense";
 import { addMarch } from "./marches";
 import {
-  attackDamageFor, marchSourcesAgainst, spendCeilingOn,
+  attackDamageFor, marchHopsTo, marchSourcesAgainst, marchTargetsFrom,
+  spendCeilingOn,
 } from "./playability";
 import { realmRootOf } from "./relations";
 import { rulerOf } from "./rulers";
@@ -408,15 +409,28 @@ export function applyBootParams(
     g = { ...g, overlords, incorporated };
   }
   // A booted march is declared through the same rules a played one is: the
-  // source must be in the actor's realm with an army free and the target must
-  // be something that actor may attack, or the clause is dropped. A URL that
-  // could conjure an impossible arrow would be checking a state the game
-  // cannot reach.
+  // source must be in the actor's realm with an army free and within marching
+  // distance, and the target must be something that actor may attack, or the
+  // clause is dropped. A URL that could conjure an impossible arrow would be
+  // checking a state the game cannot reach.
+  //
+  // Both halves are asked, because neither answers the other's question:
+  // `marchSourcesAgainst` says the army can walk that far and has the legs,
+  // and `marchTargetsFrom` says the land is one this actor may attack at all.
+  // A played card gets the second from `validTargetsFor` at the top of
+  // `playCard`; a URL has no such gate above it.
   for (const { from, to, spend } of params.marches) {
     if (!g.factionIds.includes(from) || !g.factionIds.includes(to)) continue;
     const actor = realmRootOf(from, g.overlords, g.incorporated);
     const v = viewOf(g);
     if (!marchSourcesAgainst(v, actor, to).includes(from)) continue;
+    if (!marchTargetsFrom(v, actor, from).includes(to)) continue;
+    // Never null: the two lines above have both already asked the same
+    // question through `marchHopsTo`. Read rather than assumed, because the
+    // turns the arrow spends in the air are exactly the distance it was let
+    // through for.
+    const hops = marchHopsTo(v, from, to);
+    if (hops === null) continue;
     // Clamped into [minimum, ceiling] like every other numeric override, and
     // against the source AS IT STANDS - which is after the defense override,
     // since marches are declared last. The two compose the way the sentence
@@ -439,7 +453,7 @@ export function applyBootParams(
         actor, from, to, cardId: "raid",
         damage: attackDamageFor(v, actor, "raid", paid).damage,
         holdsArmy: true,
-        declared: g.turn, expiry: g.turn + 1,
+        declared: g.turn, expiry: g.turn + hops,
       }),
       nextMarchId: g.nextMarchId + 1,
     };

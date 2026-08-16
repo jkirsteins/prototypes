@@ -2,8 +2,10 @@
  *
  *  A Raid played on turn T does not move a defense score. It commits an army
  *  out of one of the actor's lands, becomes a visible arrow on the map, and
- *  resolves at the start of that actor's next turn - which gives every other
- *  seat one turn to see it coming and answer. The answer is a Raid back down
+ *  resolves at the start of one of that actor's later turns - the next one for
+ *  a neighbour, and one further out for every land the army has to cross,
+ *  which gives every other seat that long to see it coming and answer. The
+ *  answer is a Raid back down
  *  the same axis: the two armies meet in the middle and only the difference
  *  lands, on whichever side pushed less hard. Armies pair off one for one, so
  *  a counter answers ONE arrow and not the bundle - see `resolveAxis`.
@@ -52,9 +54,15 @@ export interface March {
    *  the card would be dead until a realm grew a third land. */
   holdsArmy: boolean;
   /** The turn this lands on, the absolute-expiry convention of src/timed.ts:
-   *  declared on turn T stores T + 1. `state.turn` is a ROUND counter that
-   *  bumps on the wrap to seat 0, so T + 1 is the declaring seat's next turn
-   *  whichever seat it is, and resolution runs in that seat's `beginTurn`. */
+   *  declared on turn T stores T plus a turn for every land the army crosses
+   *  (`marchHopsTo`, at most `MAX_MARCH_HOPS`). `state.turn` is a ROUND
+   *  counter that bumps on the wrap to seat 0, so T + 1 is the declaring
+   *  seat's next turn whichever seat it is, and resolution runs in that seat's
+   *  `beginTurn`.
+   *
+   *  Nothing may infer the distance back out of it - `declared` carries the
+   *  turn it set out, because a neighbour's raid and one from three lands away
+   *  can now land on the same turn. */
   expiry: number;
   /** The turn this was declared on. Carried rather than derived: `opening`
    *  used to read it off the expiry, which was the declaration turn plus one

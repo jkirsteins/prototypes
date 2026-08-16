@@ -96,8 +96,8 @@ function explainReason(reason: TargetBlockReason): string[] {
       return ["No room for another settlement."];
     case "no-army":
       return [
-        "No free army borders this land. Your armies here are already out " +
-          "on a march; one comes home when it lands.",
+        "No free army can march this far. Your armies within reach of this " +
+          "land are already out; one comes home when it lands.",
       ];
     case "no-settlement":
       return [
@@ -552,7 +552,7 @@ export function cardBlockLine(reason: CardBlockReason): string {
     case "at-full-defense":
       return "Every land of your realm already stands at full defense.";
     case "no-army":
-      return "Every army on your borders is already out on a march.";
+      return "Every army in marching distance is already out on a march.";
     case "no-settlement":
       return "Every settlement in your realm has already been called on " +
         "this turn.";

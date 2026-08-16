@@ -24,7 +24,7 @@ import {
   ESCAPE_RESPITE_TURNS, foulWindsTargetsOf, freeArmiesFor, greatRaidMarches,
   marchSourcesAgainst,
   claimWouldLand, greatRaidPool, greatRaidSpends,
-  handLimitFor, marchTargetsFrom, outbreakPolygons,
+  handLimitFor, marchHopsTo, marchTargetsFrom, outbreakPolygons,
   MIN_HAND, plagueMultiplier, plagueTargetsOf,
   playableSet, spendCeilingOn,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
@@ -1534,13 +1534,19 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       );
       if (targets.length === 0) continue;
       const to = targets[Math.floor(rng() * targets.length)];
+      // `marchTargetsFrom` above offered it, so the walk exists; asked again
+      // here because the number of turns it takes is the same answer, and a
+      // second spelling of it is how the arrow and the legality that allowed
+      // it start to disagree.
+      const hops = marchHopsTo(view, land, to);
+      if (hops === null) continue;
       const id = nextMarchId++;
       const damage = attackDamageFor(view, land, "raid", MIN_RAID_SPEND).damage;
       defense = applyDamage({ defense, defenseMax: state.defenseMax }, land, MIN_RAID_SPEND);
       marches = addMarch(marches, {
         id,
         actor: land, from: land, to, cardId: "raid", damage,
-        holdsArmy: true, declared: state.turn, expiry: state.turn + 1,
+        holdsArmy: true, declared: state.turn, expiry: state.turn + hops,
       });
       // Logged as the play it reads as on the map: an arrow with a strength on
       // it, answerable by a counter-raid like any other. No card leaves a deck
@@ -2264,17 +2270,25 @@ export function playCard(
 
   /** One attack card committing one army. Emits `march-declared`, marking the
    *  moment the arrow appears and carrying the id the arrow is keyed on - the
-   *  damage on it is a promise about next turn, not a score that moved;
-   *  `march-resolved` is where the numbers go. Expiry is the src/timed.ts
-   *  convention, one turn out, which is this seat's next `beginTurn` whichever
-   *  seat it is. */
+   *  damage on it is a promise about the turn it lands, not a score that
+   *  moved; `march-resolved` is where the numbers go. Expiry is the
+   *  src/timed.ts convention, a turn out per land the army crosses, which is
+   *  one of this seat's own `beginTurn`s whichever seat it is. */
   const declareMarch = (
     from: string, to: string, spend: number, holdsArmy = true,
   ): void => {
+    // How far the army has to walk, and whether it may. Refused before
+    // anything is spent, which is the shape the play already had for a source
+    // with no free army: `marchSourcesAgainst` turned the whole play down at
+    // the top of `playCard`, so a pair out of range never reaches here and
+    // this is the same answer read a second time rather than a second rule.
+    const hops = marchHopsTo(view, from, to);
+    if (hops === null) return;
     // The spend comes off the source THE MOMENT the arrow appears, not when it
     // lands. That is the whole shape of the card: what it cost is on the map
-    // for a rival to read for the turn the arrow is in flight, and the number
-    // printed on the arrow is a promise precisely because it was already paid.
+    // for a rival to read for as long as the arrow is in flight, and the
+    // number printed on the arrow is a promise precisely because it was
+    // already paid. A long march is therefore a long time spent soft.
     defense = applyDamage({ defense, defenseMax }, from, spend);
     events.push({
       turn: state.turn, playerId: p.id, type: "levied",
@@ -2285,7 +2299,7 @@ export function playCard(
     marches = addMarch(marches, {
       id,
       actor: p.factionId, from, to, cardId, damage, holdsArmy,
-      declared: state.turn, expiry: state.turn + 1,
+      declared: state.turn, expiry: state.turn + hops,
     });
     events.push({
       turn: state.turn, playerId: p.id, type: "march-declared",
@@ -2429,7 +2443,7 @@ export function playCard(
   } else if (isMarchCard(cardId) && targetId !== undefined && sourceId !== undefined) {
     // Declared, not landed. `declareMarch` runs the spend through
     // `attackDamageFor`, the same call the card tip quotes, so what the arrow
-    // promises and what lands next turn cannot drift.
+    // promises and what eventually lands cannot drift.
     declareMarch(sourceId, targetId, clampSpend(view, cardId, sourceId, opts?.spend));
   } else if (cardId === "great-raid" && targetId !== undefined) {
     // `greatRaidSpends` is the one list: legality asked its fan, the slider

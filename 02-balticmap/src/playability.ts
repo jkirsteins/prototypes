@@ -16,6 +16,7 @@ import {
 import {
   freeArmiesOn, type Armies, type Claims, type Marches,
 } from "./marches";
+import { hopsBetween, MAX_MARCH_HOPS } from "./adjacency";
 import { hasPassive, perArmyOn, type Passives } from "./passives";
 import { boostsKeyword, type LeaderAbilities } from "./abilities";
 import { activeExpiry } from "./timed";
@@ -370,20 +371,25 @@ export function aimsWithinOwnRealm(
  *
  *  The realm half is `fullRealmOf`, not `incorporatedRealmOf` - a lord marches
  *  out of its vassals' lands too, the same pyramid rule `attackReach` follows
- *  on the other end. */
+ *  on the other end.
+ *
+ *  "Faces something worth attacking" is `marchHopsTo` and not adjacency, the
+ *  same question `marchTargetsFrom` asks from the other end. A land whose only
+ *  legal target is two hops off is a legal tail, and a source list that said
+ *  otherwise would grey out a card whose map still offered the land. */
 export function marchSourcesFor(
   view: RulesView, actor: string, cardId = "raid",
 ): string[] {
-  const reach = attackReach(view, actor);
+  const reach = [...attackReach(view, actor)].filter(
+    (target) => !aimsWithinOwnRealm(view, actor, cardId, target),
+  );
   const realm = fullRealmOf(actor, view.overlords, view.incorporated);
   return view.factionIds.filter(
     (land) =>
       realm.has(land) &&
       freeArmiesFor(view, land) > 0 &&
       spendCeilingOn(view, cardId, land) >= MIN_RAID_SPEND &&
-      (view.adjacency[land] ?? []).some(
-        (adj) => reach.has(adj) && !aimsWithinOwnRealm(view, actor, cardId, adj),
-      ),
+      reach.some((target) => marchHopsTo(view, land, target) !== null),
   );
 }
 
@@ -426,18 +432,46 @@ export function greatRaidPool(
     .reduce((sum, m) => sum + spendCeilingOn(view, "great-raid", m.from), 0);
 }
 
+/** How many turns an army out of `source` spends reaching `land`, or null if
+ *  it may not go that far.
+ *
+ *  The ONE spelling of the question, and the one reader of `MAX_MARCH_HOPS`
+ *  outside the constant itself. Legality, the expiry the declaration sets and
+ *  the arrival the arrow prints all have to agree, and three copies of a hop
+ *  count is how they stop agreeing.
+ *
+ *  A land is never a march at itself, so 0 answers the same as out of range:
+ *  no arrow, whichever reason. The two are not worth telling apart anywhere -
+ *  every caller wants "may an army go, and how long does it take". */
+export function marchHopsTo(
+  view: RulesView, source: string, land: string,
+): number | null {
+  const hops = hopsBetween(view.adjacency, source, land, MAX_MARCH_HOPS);
+  return hops === null || hops === 0 ? null : hops;
+}
+
 /** What an army standing in `source` can be aimed at: everything in the
- *  actor's attack reach that `source` borders. An army marches to a
- *  neighbouring land, so the arrow is always one step long. */
+ *  actor's attack reach it can march to inside `MAX_MARCH_HOPS`. An arrow is
+ *  as long as the walk, and the walk costs a turn per land crossed - so the
+ *  far end of this list is a play whose arrow stands on the map for three
+ *  turns with the source left soft behind it the whole time. */
 export function marchTargetsFrom(
   view: RulesView, actor: string, source: string, cardId = "raid",
 ): string[] {
   const reach = attackReach(view, actor);
-  const adjacent = new Set(view.adjacency[source] ?? []);
   return view.factionIds.filter(
     (land) =>
-      reach.has(land) && adjacent.has(land) &&
+      reach.has(land) && marchHopsTo(view, source, land) !== null &&
       !aimsWithinOwnRealm(view, actor, cardId, land),
+  );
+}
+
+/** Every land an army standing in `source` could walk to, distance alone -
+ *  no reach, no realm, no card. The set form of `marchHopsTo`, for the passes
+ *  that need the whole neighbourhood rather than one pair. */
+export function marchReachFrom(view: RulesView, source: string): Set<string> {
+  return new Set(
+    view.factionIds.filter((land) => marchHopsTo(view, source, land) !== null),
   );
 }
 
@@ -448,6 +482,12 @@ export function marchTargetsFrom(
  *  army sends one, so the card is a way to play several Raids at once rather
  *  than a fan across the frontier. Each arrow is its own axis, which is what
  *  makes it heavy: a counter-raid answers one of them and the rest land.
+ *
+ *  BORDERS, deliberately, and not `marchHopsTo` like the single-arrow cards.
+ *  A Raid chooses one land to send one army from and pays a turn per land
+ *  crossed; this card sends everything at once and cannot choose, so measuring
+ *  its fan in hops would empty half a realm at one land and land the arrows on
+ *  three different turns. The card's identity is the neighbourhood.
  *
  *  Order of play matters and is meant to. A land whose only army is already
  *  out on a march sends nothing, so a Raid declared first out of the same land
@@ -476,13 +516,14 @@ export function greatRaidMarches(
 }
 
 /** Which of the actor's lands could send an army at `target`. Empty means the
- *  target is in reach on the map but out of reach in fact: every land that
- *  borders it has its army already out. */
+ *  target is in reach on the map but out of reach in fact: every land within
+ *  marching distance of it has its army already out. */
 export function marchSourcesAgainst(
   view: RulesView, actor: string, target: string,
 ): string[] {
-  const adjacent = new Set(view.adjacency[target] ?? []);
-  return marchSourcesFor(view, actor).filter((land) => adjacent.has(land));
+  return marchSourcesFor(view, actor).filter(
+    (land) => marchHopsTo(view, land, target) !== null,
+  );
 }
 
 /** What the actor's held omens readings multiply an attack card by:
@@ -787,14 +828,19 @@ export function targetEligibilityFor(
   const inward = isInwardCard(cardId);
   const vassalCard = cardId === "incorporate";
 
-  // Every polygon a free army of the actor's borders, computed once for the
-  // whole pass rather than per candidate: `marchSourcesFor` walks the realm,
-  // and Raid asks the question 26 times.
+  // Every polygon a free army of the actor's could march to, computed once for
+  // the whole pass rather than per candidate: `marchSourcesFor` walks the
+  // realm, and Raid asks the question 26 times.
+  //
+  // `marchReachFrom` and not the source's neighbours: an army walks up to
+  // `MAX_MARCH_HOPS`, so a land three deep is a land this card has an army
+  // for, and a set built off adjacency would call it armyless while the aim
+  // offered it.
   const sources =
     isMarchCard(cardId)
       ? new Set(
           marchSourcesFor(view, actorFactionId).flatMap(
-            (land) => view.adjacency[land] ?? [],
+            (land) => [...marchReachFrom(view, land)],
           ),
         )
       : null;
