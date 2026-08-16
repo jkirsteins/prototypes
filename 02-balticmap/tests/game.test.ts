@@ -573,6 +573,45 @@ describe("raid", () => {
     expect(arrived.defense.delta).toBe(FIXTURE_MAX - MIN_RAID_SPEND);
   });
 
+  it("is judged when it lands and never while it is still walking", () => {
+    // The target joins the actor's own bloc mid-flight - beta and delta both
+    // kneeling to alpha - so the arrow is illegal a full turn before it
+    // arrives. It stays on the map anyway and lapses at its own landing:
+    // a march is asked the targeting rules twice, at declaration and on
+    // arrival, and never in between.
+    let g = playingState(LINE_ADJ); // alpha - beta - gamma - delta
+    g = { ...g, overlords: new Map([["gamma", "beta"]]) };
+    g = withHand(g, 0, ["raid"]);
+    const far = playCard(g, 0, rng(), "delta", { sourceId: "beta" });
+    expect(Object.values(far.marches)[0]).toMatchObject({
+      from: "beta", to: "delta", expiry: g.turn + 2,
+    });
+    // beta is held UNDER the independence gate, or its own turn start frees it
+    // and the fixture quietly tests a faction that answers to nobody.
+    const sibling: GameState = {
+      ...far,
+      overlords: new Map([
+        ["gamma", "beta"], ["beta", "alpha"], ["delta", "alpha"],
+      ]),
+      defense: { ...far.defense, beta: INDEPENDENCE_LINE - 1 },
+    };
+    const walking = far.log.length;
+    const midway = landMarches(sibling);
+    expect(Object.keys(midway.marches)).toHaveLength(1);
+    expect(fresh(midway, walking).some((e) => e.type === "march-lapsed"))
+      .toBe(false);
+
+    const before = midway.log.length;
+    const arrived = landMarches(midway);
+    expect(arrived.marches).toEqual({});
+    expect(arrived.defense.delta).toBeUndefined(); // no damage, no capture
+    expect(arrived.overlords.get("delta")).toBe("alpha"); // and no conquest
+    expect(fresh(arrived, before)).toContainEqual(expect.objectContaining({
+      type: "march-lapsed", cardId: "raid",
+      targetFactionId: "delta", sourceFactionId: "beta",
+    }));
+  });
+
   it("adds the ruler's leadership to the damage, frozen at declaration", () => {
     let g = withHand(playingState(), 0, ["raid"]);
     g = {
@@ -2410,6 +2449,31 @@ describe("a claim in flight", () => {
     expect(landed.claims["beta>alpha"]).toBeUndefined();
   });
 
+  it("leaves the land's own arrows flying when the demand takes it", () => {
+    // alpha's army is two turns from beta when beta's demand lands and alpha
+    // kneels. The arrow is aimed up alpha's own new chain and is therefore
+    // dead on arrival - but it is not called off HERE. A march is judged at
+    // declaration and again on landing, so the board keeps its promise that
+    // an arrow stands until it arrives.
+    const g = declared();
+    const flying: GameState = {
+      ...g,
+      marches: {
+        "1": {
+          id: 1, actor: "alpha", from: "alpha", to: "beta", cardId: "raid",
+          damage: 1, holdsArmy: true,
+          declared: g.turn, expiry: g.turn + 2,
+        },
+      },
+    };
+    const before = flying.log.length;
+    const landed = landMarches(flying);
+    expect(landed.overlords.get("alpha")).toBe("beta");
+    expect(landed.marches["1"]).toBeDefined();
+    expect(fresh(landed, before).some((e) => e.type === "march-lapsed"))
+      .toBe(false);
+  });
+
   it("lapses when it finds the gate closed, and takes nothing", () => {
     const g = declared();
     // alpha put its defenses back over the line while the demand was in the
@@ -3542,11 +3606,12 @@ describe("a status that does something says so", () => {
     expect(takesNoTurn(after, "alpha")).toBe(false);
   });
 
-  it("names the march it clears when a passive-taken land had one aimed at its new lord", () => {
-    // landSubjugation is the peer of callOffMarchesAgainstLord, reached
-    // through a play rather than a turn start: alpha already has a raid
-    // aimed at beta, no-successor hands alpha to beta on the same play, and
-    // the raid - now aimed up alpha's own new chain - is cleared with it.
+  it("leaves a passive-taken land's arrow flying when it is aimed at its new lord", () => {
+    // alpha already has a raid aimed at beta, and no-successor hands alpha to
+    // beta on the same play. The arrow is now aimed up alpha's own new chain,
+    // and it STAYS ON THE BOARD - a march is judged when it is declared and
+    // again when it lands, never at the moment somebody else's play reshapes
+    // the pyramid under it.
     const g: GameState = {
       ...playingState(),
       passives: { alpha: ["no-successor"] },
@@ -3562,9 +3627,9 @@ describe("a status that does something says so", () => {
       withHand(g, 0, ["assassinate-ruler"]), 0, rng(), "alpha",
     );
     expect(after.overlords.get("alpha")).toBe("beta");
-    expect(after.marches).toEqual({});
-    const lapsed = fresh(after, before).find((e) => e.type === "march-lapsed");
-    expect(lapsed).toMatchObject({ marchIds: [1] });
+    expect(after.marches["1"]).toBeDefined();
+    expect(fresh(after, before).some((e) => e.type === "march-lapsed"))
+      .toBe(false);
   });
 });
 

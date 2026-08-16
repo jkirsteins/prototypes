@@ -1284,10 +1284,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   };
 
   // Claims land before marches are declared and after they have resolved: a
-  // demand that arrives to find the land still broken takes it, and a land
-  // taken this way cannot send its armies at its new lord - those raids are
-  // called off, while anything it aimed elsewhere flies on. Wars have not
-  // stopped, only this one.
+  // demand that arrives to find the land still broken takes it. What the land
+  // already has in the air is NOT called off here - see the note on
+  // `resolveMarches`: an arrow is judged when it is declared and again when it
+  // lands, and never in between.
   const landClaims = (actor: string, playerId: number): void => {
     for (const { key, claim } of lapsedClaimsOf(claims, actor, state.turn)) {
       claims = clearClaims(claims, [key]);
@@ -1311,50 +1311,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       takeLand(claim.to, claim.actor, claim.from, {
         via: "claim", cardId: claim.cardId,
       });
-      callOffMarchesAgainstLord(claim.to, claim.actor, playerId);
     }
   };
-
-  /** A land just taken cannot send its armies anywhere inside the realm it has
-   *  joined - its new lord, anyone that lord answers to, or the peers it
-   *  acquired in the same moment: those raids are called off, while anything it
-   *  aimed elsewhere flies on, its own new vassals included. Wars have not
-   *  stopped, only the ones against its own side. Every route into `takeLand`
-   *  owes this, which is why it is a function rather than a step of the claim
-   *  path.
-   *
-   *  The whole realm, not just the direct lord: this is the hostile keyword's
-   *  rule applied at the instant the pyramid changes shape, and `resolveMarches`
-   *  applies the identical test to whatever is still in flight afterwards.
-   *  Two spellings of one rule would be two rules within a week - which is
-   *  precisely how this function came to hold the whole of it and the rest of
-   *  the game held none. */
-  function callOffMarchesAgainstLord(
-    land: string, _lord: string, playerId: number,
-  ): void {
-    const view = { ...viewOf({ ...state, players }), overlords, marches, defense };
-    for (const axis of axesOf(marches)) {
-      for (const march of [...axis.fromA, ...axis.fromB]) {
-        if (
-          march.actor !== land ||
-          !aimsWithinOwnRealm(view, march.actor, march.cardId, march.to)
-        ) {
-          continue;
-        }
-        marches = clearMarches(marches, [
-          ...Object.entries(marches)
-            .filter(([, m]) => m === march)
-            .map(([key]) => key),
-        ]);
-        events.push({
-          turn: state.turn, playerId, type: "march-lapsed",
-          cardId: march.cardId,
-          targetFactionId: march.to, sourceFactionId: march.from,
-          marchIds: [march.id],
-        });
-      }
-    }
-  }
 
   /** Armies that got through, one land at a time: the arrival is reported, and
    *  then the two gates decide whether the land actually changes hands.
@@ -1704,11 +1662,22 @@ function resolveMarches(
    *  a second arrow of the same actor spent rather than a raid on a vassal. */
   const takenHere = new Map<string, string>();
 
-  // A march whose ground moved under it while it was in flight is dropped:
-  // the army has no land left to have marched out of, the land it was aimed at
-  // is no longer something its actor may attack, or the actor has knelt to
-  // whoever it was aimed at since. All three are the ordinary consequence of
-  // somebody else's turn, so they are reported.
+  // THE one place a march in flight is judged, and it runs on the turn the
+  // march LANDS. A march whose ground moved under it while it was in flight is
+  // dropped: the army has no land left to have marched out of, the land it was
+  // aimed at is no longer something its actor may attack, or the actor has
+  // knelt to whoever it was aimed at since. All three are the ordinary
+  // consequence of somebody else's turn, so they are reported - an arrow that
+  // vanishes with nothing said is the map lying about the board.
+  //
+  // Declared and landed, never in between. Two capture sites used to call the
+  // same rule off the moment a pyramid changed shape, which was indisting-
+  // uishable from this while every flight lasted one turn. An army now takes a
+  // turn per land it crosses and allegiance moves under it several times on
+  // the way, so a mid-flight test cancels arrows the player is still watching
+  // fly - and cancels them on relations that may well have changed back before
+  // the army would have arrived. What the board promises is that the arrow is
+  // there until it lands; what it may not promise is that landing is legal.
   //
   // The source test is two questions, not one. A polygon stays in its own
   // `fullRealmOf` even after it is annexed - the id is the land's, and the
@@ -1717,12 +1686,9 @@ function resolveMarches(
   // land its owner has lost.
   //
   // The third is the hostile keyword catching up with an arrow drawn before
-  // the pyramid changed shape. `callOffMarchesAgainstLord` answers the same
-  // question at the instant of a capture, for the one land being taken; this
-  // answers it for everybody else, every turn, which is what makes "never at a
-  // peer of your own realm" a rule rather than a check performed once. A land
-  // that became your sibling while your arrow was in the air is as much your
-  // own bloc as one that became your lord.
+  // the pyramid changed shape. A land that became your sibling while your
+  // arrow was in the air is as much your own bloc as one that became your
+  // lord, and the arrow lapses for it rather than landing.
   const alive: typeof lapsed = [];
   for (const entry of lapsed) {
     const realm = fullRealmOf(entry.march.actor, state.overlords, state.incorporated);
@@ -2420,29 +2386,10 @@ export function playCard(
       ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // A land just taken cannot send its armies anywhere inside the realm it
-    // has joined: not at its new lord, not at anyone that lord answers to, and
-    // not at the peers it acquired in the same moment. Its arrows further down
-    // its own new branch fly on, because holding a vassal down is upkeep
-    // whoever the vassal now belongs to. The claim path in `beginTurn` says the
-    // same thing through the same predicate; both routes into a capture owe it,
-    // or which route took the land decides whether its raids fly on.
-    const chainView = { ...view, overlords, incorporated };
-    for (const [key, march] of Object.entries(marches)) {
-      if (
-        march.actor !== target ||
-        !aimsWithinOwnRealm(chainView, march.actor, march.cardId, march.to)
-      ) {
-        continue;
-      }
-      marches = clearMarches(marches, [key]);
-      events.push({
-        turn: state.turn, playerId: p.id, type: "march-lapsed",
-        cardId: march.cardId,
-        targetFactionId: march.to, sourceFactionId: march.from,
-        marchIds: [march.id],
-      });
-    }
+    // A land just taken keeps whatever it has in the air, including the arrows
+    // now aimed at its own new bloc. They are judged when they LAND - see the
+    // note on `resolveMarches` - and the ones that are still illegal then lapse
+    // there, with the same line, out of the one place that decides it.
   };
 
   const landIncorporation = (target: string): void => {
