@@ -121,7 +121,9 @@ is a clean start - the run is not persisted, and the way back is the URL.
 ## A status is the only difference between a land that plays and one that does not
 
 Every faction on the active region's map has a seat, a deck and a ruler's
-chair. Five of them act; the rest carry the passive status `keeps-to-itself`,
+chair. All but a handful act - `QUIET_LANDS` (6) of them are drawn to stay
+quiet, and that is the whole of the seeding - and the quiet ones carry the
+passive status `keeps-to-itself`,
 and that status is the entire difference. `takesNoTurn` in `src/game.ts` is the
 one question the turn loop asks - `playsTurns` in `src/passives.ts` states what
 the status MEANS and is read only by presentation now - so a quiet land can be
@@ -133,6 +135,16 @@ Two things ride on the same fact rather than on conditions written down twice:
 a quiet land raids a neighbour about one round in four (`RESTLESS_RAID_CHANCE`,
 resolved at the round wrap), and it stops the moment somebody takes it, because
 the raid asks for the status and capture takes the status off.
+
+**Why the map is awake now, when five seats used to be the whole table.** A
+duel scopes the turn loop to two realms, so a wide acting set costs turns only
+during the one unscoped world-tick round per gauntlet. That is what made the
+seeding affordable, and the reason it was worth spending: `duelCandidates`
+prefers a chiefed enemy but can only offer what the border holds, and with 21
+quiet lands a border held nothing - 41.6% of duels were against a land with no
+chief, against a spec that called that case rare. It is 0.0% now. The full
+reasoning, the measurement and why there is no spacing rule any more are on
+`QUIET_LANDS` and `actingFactions` in `src/game.ts`.
 
 Passive statuses are defined once, region-agnostic, as a table in
 `src/passives.ts` - the quiet set, the two terrain statuses and the burden -

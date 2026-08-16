@@ -826,10 +826,48 @@ function makePlayer(
   };
 }
 
-/** How many factions take turns on a map. Everybody else keeps a seat and a
- *  deck and simply never plays - see `keeps-to-itself` in src/passives.ts.
- *  Clamped to the land count, so a three-land test map has everybody acting. */
-export const MAX_ACTIVE = 5;
+/** How many lands are seeded with NO chief - the grey middle. Everybody else
+ *  gets a ruler and takes turns; these keep a seat and a deck and simply never
+ *  play, per `keeps-to-itself` in src/passives.ts.
+ *
+ *  The seeding is stated as how many stay quiet rather than as how many act,
+ *  because "quiet" is now the exception and a rule reads best from its
+ *  exception. It used to be the other way round - five acting seats on a
+ *  twenty-six land map - and the cost of that was measured: a duel enemy with
+ *  no chief was supposed to be RARE and was 41.6% of duels, because
+ *  `duelCandidates` can only prefer a chiefed land that the border actually
+ *  offers, and a border made of quiet lands offers none.
+ *
+ *  **Waking the map is affordable now and was not before.** A wide acting set
+ *  used to mean every seat playing every round, for the whole run. Under the
+ *  gauntlet only the two duelling realms act while a duel is running
+ *  (`duelStanding` in src/gauntlet.ts, read by `takesNoTurn`), so the width
+ *  costs turns only during the one unscoped world-tick round per gauntlet.
+ *  That is the reason the old constraint no longer binds, and if the duel
+ *  scope is ever removed this number has to be revisited with it.
+ *
+ *  **Six, and not zero.** A grey middle is a designed feature and not a
+ *  leftover: it is what the restless raid fires out of, it is what a young
+ *  realm expands into, and the three-part chiefless-duel rule (prefer a
+ *  chiefed candidate, fight a chiefless one fully, absorb it on defeat) needs
+ *  something to fire on or it rots. Six of the Baltic's twenty-six is about a
+ *  quarter of the map, which is a visible middle rather than a rounding error,
+ *  and no realm on either map is walled in by it.
+ *
+ *  **What the number actually bought, measured rather than intended.** 156
+ *  runs of the duel sweep, every faction as the human across six seeds: the
+ *  chiefless share of duels went from 41.6% (438 of 1053) to 0.0% (0 of 3184).
+ *  The curve is steep and there is no number that lands in between - 12 quiet
+ *  lands still measures 0.6%, and the 41.6% came from having 21 of them. So
+ *  "rare" here means the fallback is now the hemmed-in realm the shape of a
+ *  map can still produce, pinned by tests/gauntlet.test.ts rather than met on
+ *  every run. That is the honest reading and it is why the arm stays. */
+export const QUIET_LANDS = 6;
+
+/** The fewest lands that ever take turns, whatever `QUIET_LANDS` asks for.
+ *  This is the old acting CEILING read as a floor: a six-land test map still
+ *  seats five, and a three-land one seats everybody. */
+export const MIN_ACTING = 5;
 
 /** Whether this land may hold a seat at all: it must answer to nobody.
  *
@@ -850,39 +888,43 @@ function seatable(state: GameState, factionId: string): boolean {
   );
 }
 
-/** Which factions take turns: the human's pick, any reserved pick (a
- *  multiplayer guest), then lands drawn from a seeded shuffle of the rest,
- *  skipping any that borders one already chosen.
+/** Which factions take turns: everybody `seatable`, less the handful drawn to
+ *  stay quiet. The human's pick and any reserved pick (a multiplayer guest)
+ *  are never drawn.
  *
  *  Every candidate is `seatable`, so a map that opens with realms on it offers
  *  seats to the realm roots and the free lands and to nothing else.
  *
- *  The spacing pass can run out of room - a small or a chain-shaped map - so a
- *  second pass fills what is left without the test. Placement never fails, and
- *  that fallback is the only reason two acting lands may end up adjacent. */
+ *  **There is no spacing rule any more, and that is a measured decision.** The
+ *  draw used to keep the five acting seats off each other's borders. With most
+ *  of the map seated there is no room for such a test to decide anything - the
+ *  fallback pass placed nearly every seat regardless - so the rule was tried
+ *  inverted onto the quiet draw, where "two quiet lands never touch" would
+ *  stop a realm being walled in by chiefless neighbours. It was then measured
+ *  over 156 sweep runs and moved the chiefless share of duels by ONE duel in
+ *  3200. `QUIET_LANDS` alone does that job, and clumping is the only shape
+ *  that still produces the hemmed-in border the chiefless-duel rule exists
+ *  for, so keeping the test would have cost a scan per candidate to make a
+ *  documented rule slightly less reachable.
+ *
+ *  One `shuffle` and no other rng, the same as before: the draw count per deal
+ *  is a frozen contract (tests/rng-isolation.test.ts). */
 function actingFactions(
   state: GameState, humanFactionId: string, reserved: string[], rng: Rng,
 ): string[] {
-  const out = [humanFactionId];
+  const seated = [humanFactionId];
   for (const id of reserved) {
-    if (id !== humanFactionId && seatable(state, id) && !out.includes(id)) {
-      out.push(id);
+    if (id !== humanFactionId && seatable(state, id) && !seated.includes(id)) {
+      seated.push(id);
     }
   }
   const seats = state.factionIds.filter((id) => seatable(state, id));
-  const cap = Math.max(out.length, Math.min(MAX_ACTIVE, seats.length));
-  const pool = shuffle(seats.filter((id) => !out.includes(id)), rng);
-  const spaced = (id: string): boolean =>
-    out.every((placed) => !(state.adjacency[placed] ?? []).includes(id));
-  for (const id of pool) {
-    if (out.length >= cap) break;
-    if (spaced(id)) out.push(id);
-  }
-  for (const id of pool) {
-    if (out.length >= cap) break;
-    if (!out.includes(id)) out.push(id);
-  }
-  return out;
+  const pool = shuffle(seats.filter((id) => !seated.includes(id)), rng);
+  const want = Math.max(
+    0,
+    Math.min(QUIET_LANDS, seats.length - Math.max(MIN_ACTING, seated.length)),
+  );
+  return [...seated, ...pool.slice(want)];
 }
 
 /** What a newly seated ruler holds: whatever its own people's build brings,
@@ -907,8 +949,9 @@ function seatingAbilities(
   return pl === undefined ? [] : BUILD_ABILITIES[pl.strategy] ?? [];
 }
 
-/** Every faction gets a seat and the same starting deck; only `MAX_ACTIVE` of
- *  them take turns, and the rest carry `keeps-to-itself`. Each AI seat rolls
+/** Every faction gets a seat and the same starting deck; all but
+ *  `QUIET_LANDS` of them take turns, and the rest carry `keeps-to-itself`.
+ *  Each AI seat rolls
  *  its build, seeded - one rng draw per AI seat, in seat order, BEFORE its
  *  deck is shuffled, so the draw count per seat is a frozen contract the same
  *  way the old deck builder's was (tests/rng-isolation.test.ts pins it). The
@@ -2345,10 +2388,10 @@ function overlordsAfterEscape(state: GameState, factionId: string): Overlords {
  *  only place in the game the leaderless arm below is bypassed. Outside a
  *  duel a land with no chief still takes no turn and the grey middle is still
  *  the grey middle. It is here because the offer cannot always find a
- *  neighbour with a chief - `actingFactions` spaces the acting seats apart,
- *  so an opening duel is usually against a quiet land - and an enemy that
- *  never answers is twenty rounds of the map standing still, with `duel-lost`
- *  unreachable. A leaderless enemy still takes no LAND; that gate is
+ *  neighbour with a chief - a realm hemmed in by quiet lands is a shape the
+ *  map can still produce, rare as `QUIET_LANDS` now makes it - and an enemy
+ *  that never answers is twenty rounds of the map standing still, with
+ *  `duel-lost` unreachable. A leaderless enemy still takes no LAND; that gate is
  *  `hasRuler` at the capture sites and is untouched, which is why beating one
  *  ABSORBS it rather than swearing it (`absorbsDuelEnemy`).
  *

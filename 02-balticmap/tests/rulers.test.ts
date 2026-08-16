@@ -10,7 +10,7 @@ import genericNames from "../src/data/ruler-names-generic.json";
 import type { MapData } from "../src/types";
 import {
   newGame, startGame, chooseBuild, pickFaction, advance, beginTurn, takesNoTurn,
-  MAX_ACTIVE, type GameState,
+  MIN_ACTING, type GameState,
 } from "../src/game";
 import {
   applyBootParams, parseBootParams, type BootParams,
@@ -190,7 +190,8 @@ describe("vacateRulers", () => {
 });
 
 describe("the leader gate", () => {
-  // Six lands on a complete graph: MAX_ACTIVE caps the table at five, so
+  // Six lands on a complete graph: `MIN_ACTING` is the floor under the quiet
+  // draw, so the seeding may take exactly one land out of the table and
   // exactly one land ends up leaderless whatever the seed does.
   const SIX = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta"];
 
@@ -206,8 +207,8 @@ describe("the leader gate", () => {
 
   it("seats a leader on the acting factions alone", () => {
     const g = dealt();
-    expect(Object.keys(g.rulers)).toHaveLength(MAX_ACTIVE);
-    expect(leaderless(g)).toHaveLength(SIX.length - MAX_ACTIVE);
+    expect(Object.keys(g.rulers)).toHaveLength(MIN_ACTING);
+    expect(leaderless(g)).toHaveLength(SIX.length - MIN_ACTING);
     // A land nobody leads is exactly a land that keeps to itself: one fact,
     // read two ways, never two conditions that could disagree.
     for (const id of leaderless(g)) {
@@ -226,9 +227,9 @@ describe("the leader gate", () => {
     );
     expect(hasRuler(g.rulers, quiet)).toBe(true);
     expect(playsTurns(g.passives, quiet)).toBe(true);
-    // The table is still MAX_ACTIVE wide: a reservation displaces a drawn
-    // land rather than seating one more.
-    expect(Object.keys(g.rulers)).toHaveLength(MAX_ACTIVE);
+    // The table is still the same width: a reservation is one of the lands
+    // the quiet draw may not take, rather than a seat added beside it.
+    expect(Object.keys(g.rulers)).toHaveLength(MIN_ACTING);
   });
 
   it("passes over a leaderless seat when the turn moves on", () => {
@@ -309,15 +310,36 @@ describe("a conquest wakes the land", () => {
     return p;
   };
 
-  /** A pair the MAP says share a border, read out of the same adjacency the
-   *  game is dealt from rather than named here. `applyBootParams` silently
-   *  drops a `march=` clause whose source does not border its target, so two
-   *  hardcoded ids that drifted apart would boot an ordinary game and leave the
-   *  helper below spinning until it gave up on a conquest nobody declared. */
-  const ATTACKER = SIM_FACTION_IDS.find(
-    (id) => (SIM_ADJACENCY[id] ?? []).length > 0,
-  )!;
-  const VICTIM = SIM_ADJACENCY[ATTACKER][0];
+  /** An attacker and a CHIEFLESS neighbour, both read out of a REAL deal on
+   *  this seed rather than named here.
+   *
+   *  Two things would otherwise drift under it. `applyBootParams` silently
+   *  drops a `march=` clause whose source does not border its target, so a
+   *  hardcoded pair that stopped bordering would boot an ordinary game and
+   *  leave the helper below spinning until it gave up on a conquest nobody
+   *  declared. And only `QUIET_LANDS` lands are seeded without a chief now, so
+   *  a neighbour picked off the adjacency alone is almost certainly led - and
+   *  this whole block is about what happens when a LEADERLESS land is taken.
+   *
+   *  The probe deal names the same seed and the same faction as the real one,
+   *  and the overrides land after the deal, so the land it finds chiefless is
+   *  chiefless in the run under test too. */
+  const dealtOn = (attacker: string): GameState =>
+    applyBootParams(
+      newGame(SIM_FACTION_IDS, SIM_ADJACENCY),
+      params(`?seed=4&faction=${attacker}`), seededRng(4),
+    );
+  const pair = (): { attacker: string; victim: string } => {
+    for (const attacker of SIM_FACTION_IDS) {
+      const dealt = dealtOn(attacker);
+      const victim = (SIM_ADJACENCY[attacker] ?? []).find(
+        (id) => !hasRuler(dealt.rulers, id),
+      );
+      if (victim !== undefined) return { attacker, victim };
+    }
+    throw new Error("no land on seed 4 borders a chiefless neighbour");
+  };
+  const { attacker: ATTACKER, victim: VICTIM } = pair();
   const SEARCH =
     `?seed=4&faction=${ATTACKER}&defense=${VICTIM}:0&march=${ATTACKER}>${VICTIM}`;
 
@@ -335,7 +357,9 @@ describe("a conquest wakes the land", () => {
       newGame(SIM_FACTION_IDS, SIM_ADJACENCY), params(SEARCH), seededRng(4),
     );
     let g = booted;
-    for (let i = 0; i < 40 && g.overlords.get(VICTIM) === undefined; i++) {
+    // Two whole rounds of a woken map and then some: the arrow lands at its
+    // actor's NEXT turn, and a round is now most of the roster.
+    for (let i = 0; i < 200 && g.overlords.get(VICTIM) === undefined; i++) {
       g = advance({ ...g, playedThisTurn: true }, seededRng(i + 1));
     }
     if (g.overlords.get(VICTIM) === undefined) {
@@ -359,10 +383,10 @@ describe("a conquest wakes the land", () => {
   });
 
   it("is warpath, because the quiet lands were never dealt pestilence", () => {
-    // Which is why the pestilence arm of the seating is not reachable through a
-    // conquest on this map: `pestilence` is dealt to the ACTING rivals alone,
-    // and the deal spaces those out so none of them ever borders the human's
-    // own land. The arm itself is pinned by the `seatRuler` unit tests above.
+    // Which is why the pestilence arm of the seating is not reachable through
+    // a conquest of a QUIET land: `pestilence` is dealt to the ACTING rivals
+    // alone, and a land with no chief is by definition not one of them. The
+    // arm itself is pinned by the `seatRuler` unit tests above.
     expect(conquest().state.players.find((p) => p.factionId === VICTIM)?.strategy)
       .toBe("warpath");
   });

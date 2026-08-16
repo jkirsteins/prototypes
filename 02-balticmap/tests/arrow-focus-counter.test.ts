@@ -1,5 +1,9 @@
 // @vitest-environment happy-dom
-// @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&defense=ravalans:1&duel=harjuans&march=harjuans>ravalans&hand=raid,grow-crops"}
+// @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&defense=ravalans:1&duel=laanians&march=harjuans>ravalans&hand=raid,grow-crops"}
+/** The duel enemy is NOT the arrow's far end, deliberately: `duel=` is
+ *  answered through the real offer, and the offer prefers a land with a
+ *  chief. Naming a quiet neighbour boots on `picking` instead, which locks
+ *  input behind the offer modal and refuses every click this file makes. */
 /** The one interaction that plays a card without ever arming one: a click on
  *  an arrow already answerable (`armArrowAsCounter`, wired from
  *  `renderMarchArrows` in src/main.ts) goes straight to `decide({kind:

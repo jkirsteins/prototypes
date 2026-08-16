@@ -30,16 +30,24 @@ const SUBJUGATE_LINE = Math.floor(SUBJUGATION_GATE * FIXTURE_MAX);
 const INDEPENDENCE_LINE = Math.ceil(INDEPENDENCE_GATE * FIXTURE_MAX);
 
 function base(): GameState {
+  // Every faction acts here. These tests are about the policy, not about who
+  // is quiet, and a quiet rival would drop out of the candidate sets the
+  // branches sort over without the test ever saying so.
+  //
+  // Asked of the DEAL, by reserving every seat, rather than patched over
+  // afterwards. Quiet is spelled twice - the status and the empty chair - and
+  // a fixture that cleared only the status left a land the policy still
+  // refused to count. A chair filled by hand is worse still: a warpath seat's
+  // ruler brings `war-leader`, so a hand-seated one raids for less than the
+  // real thing and every "is this worth a raid" branch reads differently.
   const g = pickFaction(
     chooseBuild(
       startGame(newGame(FACTIONS, undefined, {}, undefined, MAXES)),
       "warpath", seededRng(1),
     ),
     "zeta", seededRng(1),
+    { reservedFactionIds: FACTIONS.filter((id) => id !== "zeta") },
   );
-  // Every faction acts here. These tests are about the policy, not about who
-  // is quiet, and a quiet rival would drop out of the candidate sets the
-  // branches sort over without the test ever saying so.
   return { ...g, current: 1, passives: {} };
 }
 
@@ -608,15 +616,17 @@ describe("6P: pestilence decisive moves", () => {
   });
 
   it("6P-2: cashes when the total damage beats a raid, else waits", () => {
-    // "A raid's worth" moves with leadership, so the waits-arm needs a proven
-    // ruler: at leadership 1 a raid is worth 2, and two stacks sit level with
-    // it while three beat it. No gate is near, so this is the total arm alone.
+    // "A raid's worth" moves with what the land can pay, so the waits-arm
+    // needs a shallow purse: alpha at 3 reaches half of it rounded up, which
+    // is 2, and two stacks sit level with that while three beat it. No gate is
+    // near, so this is the total arm alone.
+    //
+    // The purse and not a proven ruler, because this seat is PESTILENCE and a
+    // chief adds to a raid only through `war-leader`, which a pestilence build
+    // never brings. A 60-point land could pay for far more than two, which is
+    // why the defense is stated rather than left pristine.
     let g = asStrategy(base(), "pestilence");
-    g = withLeadership(g, { alpha: 1 });
-    // alpha at 2, so the raid it could send reaches 1 and its ruler adds the
-    // second point. "A raid's worth" is the best one actually available now,
-    // and a 60-point land could pay for far more than two.
-    g = { ...g, defense: { alpha: 2 } };
+    g = { ...g, defense: { alpha: 3 } };
     const fat = { ...g, disease: { beta: { alpha: 3 } } };
     expect(chooseAction(withHand(fat, ["plague", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 0 });
@@ -642,8 +652,9 @@ describe("6P: pestilence decisive moves", () => {
     // enough to tip the total past that line.
     let g = asStrategy(base(), "pestilence");
     g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
-    g = withLeadership(g, { alpha: 1 });
-    g = { ...g, defense: { alpha: 2 } };
+    // alpha at 3 pays 2 into a raid, which is the worth the total is measured
+    // against - see the test above for why a chief adds nothing here.
+    g = { ...g, defense: { alpha: 3 } };
     g = { ...g, disease: { delta: { alpha: 2 }, beta: { alpha: 1 } } };
     g = withHand(g, ["plague", "grow-crops"]);
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });

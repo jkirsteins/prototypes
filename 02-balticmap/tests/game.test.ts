@@ -3,7 +3,7 @@ import {
   newGame, startGame, chooseBuild, chooseRules, pickFaction, beginTurn,
   playCard, discardCard, endTurn, advance, surrender, viewOf,
   autoTransfer, transferDefense, transferLimit, takesNoTurn,
-  OPENING_HAND, MAX_ACTIVE, TURNIP_HARVEST_THRESHOLD,
+  OPENING_HAND, QUIET_LANDS, MIN_ACTING, TURNIP_HARVEST_THRESHOLD,
   victoryRealmSize, winSizeFor, keepPlaying, type GameState,
 } from "../src/game";
 import {
@@ -1886,6 +1886,10 @@ describe("a card that plays again", () => {
         ...g,
         overlords: new Map([["gamma", "beta"]]),
         armies: { beta: 1, gamma: 1 },
+        // Nothing in the air: a quiet land's restless raid at the opening
+        // wrap is real and is somebody else's question, and counting arrows
+        // is how this test reads what the two plays did.
+        marches: {},
       },
       0, ["raid", "raid", "fortify"],
     );
@@ -2288,10 +2292,9 @@ describe("the hand sweep", () => {
 });
 
 describe("who acts", () => {
-  /** A ring of twenty: each land borders the next, so the spacing rule has
-   *  real work, and there is room for five apart from each other. A ring of
-   *  ten would not be - a 10-cycle has exactly one five-land independent set,
-   *  and greedy placement is not meant to search for it. */
+  /** A ring of twenty: comfortably over `MIN_ACTING`, so the quiet draw takes
+   *  its full `QUIET_LANDS`, and shaped rather than complete so "who borders
+   *  whom" is a real question about the deal. */
   const RING = [
     "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
     "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
@@ -2317,25 +2320,26 @@ describe("who acts", () => {
     }
   });
 
-  it("lets exactly five of them act, the human first", () => {
+  it("leaves exactly the quiet draw out, and the human acts first", () => {
     const g = deal(1);
-    expect(acting(g)).toHaveLength(MAX_ACTIVE);
+    expect(acting(g)).toHaveLength(RING.length - QUIET_LANDS);
     expect(acting(g)[0]).toBe("a");
   });
 
-  it("never lets two acting factions border each other", () => {
+  it("quietens exactly the draw, whatever the seed and whoever they border", () => {
+    // No spacing rule: two quiet lands may perfectly well touch. What is
+    // pinned is the COUNT, because that is the whole of the seeding now - see
+    // the comment on `actingFactions` for the measurement that took the
+    // spacing test out.
     for (const seed of [1, 2, 3, 7, 11]) {
-      const homes = acting(deal(seed));
-      for (const home of homes) {
-        for (const other of homes) {
-          if (home === other) continue;
-          expect(ringAdj[home], `seed ${seed}`).not.toContain(other);
-        }
-      }
+      const g = deal(seed);
+      const quiet = RING.filter((id) => !playsTurns(g.passives, id));
+      expect(quiet, `seed ${seed}`).toHaveLength(QUIET_LANDS);
+      expect(quiet, `seed ${seed}`).not.toContain("a");
     }
   });
 
-  it("picks the same five twice from the same seed", () => {
+  it("draws the same quiet lands twice from the same seed", () => {
     expect(acting(deal(5))).toEqual(acting(deal(5)));
   });
 
@@ -2343,30 +2347,23 @@ describe("who acts", () => {
     expect(acting(deal(4, { reservedFactionIds: ["f"] }))).toContain("f");
   });
 
-  it("seats the table anyway on a map with no room to spread out", () => {
-    // A ring of five wanting five: every candidate borders one already
-    // chosen, so the spacing pass finds nothing and the fallback fills the
-    // table. Placement never failing outranks placement being pretty.
-    const TIGHT = ["a", "b", "c", "d", "e"];
-    const tightAdj = Object.fromEntries(
-      TIGHT.map((id, i) => [
-        id,
-        [TIGHT[(i + 1) % TIGHT.length], TIGHT[(i + TIGHT.length - 1) % TIGHT.length]],
-      ]),
-    );
-    const g = pickFaction(
-      chooseBuild(startGame(newGame(TIGHT, tightAdj)), "warpath", seededRng(1)),
-      "a", seededRng(1),
-    );
-    expect(acting(g)).toHaveLength(MAX_ACTIVE);
-  });
-
-  it("lets everybody act when the map is smaller than the table", () => {
+  it("never quietens the map below the acting floor", () => {
+    // Three lands: `MIN_ACTING` is under the roster, so the quiet draw takes
+    // nobody and a tiny test map has everybody at the table.
     const g = pickFaction(
       chooseBuild(startGame(newGame(["a", "b", "c"])), "warpath", seededRng(1)),
       "a", seededRng(1),
     );
     expect(acting(g)).toHaveLength(3);
+    // And six: one land over the floor is one land the draw may take.
+    const six = pickFaction(
+      chooseBuild(
+        startGame(newGame(["a", "b", "c", "d", "e", "f"])),
+        "warpath", seededRng(1),
+      ),
+      "a", seededRng(1),
+    );
+    expect(acting(six)).toHaveLength(MIN_ACTING);
   });
 
   it("skips a quiet seat when the turn moves on", () => {
@@ -2379,8 +2376,8 @@ describe("who acts", () => {
 
 describe("the ground under the faction picker", () => {
   /** Real land ids, because the terrain tables name the shipped map and this
-   *  is a question about what the shipped map's picker can say. More lands
-   *  than MAX_ACTIVE, so somebody ends up quiet. */
+   *  is a question about what the shipped map's picker can say. Enough lands
+   *  over `MIN_ACTING` that the quiet draw takes somebody. */
   const GROUND = [
     "lietuva", "selonians", "jersikans", "sakalans",
     "ugandians", "talavians", "dainavians", "osilians",
@@ -2724,7 +2721,7 @@ describe("an army that overwhelms a land", () => {
     // Those defenders are exactly what a second arrow must NOT take back off.
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
-        f !== "beta" && f !== "alpha" && f !== "gamma",
+        f !== "beta" && f !== "alpha" && f !== "gamma" && f !== "delta",
     )!;
     const after = landMarches({
       ...base,
@@ -2776,7 +2773,7 @@ describe("an army that overwhelms a land", () => {
     const base = playingTen();
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
-        f !== "beta" && f !== "alpha" && f !== "gamma",
+        f !== "beta" && f !== "alpha" && f !== "gamma" && f !== "delta",
     )!;
     // Both arrows resolve in the same pass: the sweep over the seats that
     // never take a turn runs every one of them inside a single beginTurn.
@@ -2812,7 +2809,7 @@ describe("an army that overwhelms a land", () => {
     const base = playingTen();
     const taker = base.factionIds.find(
       (f) => hasRuler(base.rulers, f) &&
-        f !== "beta" && f !== "alpha" && f !== "gamma",
+        f !== "beta" && f !== "alpha" && f !== "gamma" && f !== "delta",
     )!;
     const before = base.log.length;
     const after = landMarches({

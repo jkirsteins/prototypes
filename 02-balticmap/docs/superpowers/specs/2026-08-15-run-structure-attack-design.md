@@ -245,6 +245,17 @@ refactor spec adds no cards in this pass and the repo's card gate agrees.
   bigger swing than letting conquest wake a land, it would confound the read on
   this stage, and the grey middle is a designed feature rather than an
   accident. It is a separate experiment if the stage argues for one.
+
+  **This was overridden on 2026-08-16, and the stage did argue for it.** The
+  chiefless-duel section below rules that a duel enemy with no chief must be
+  rare; it was measured at 41.6% and the picker was not the reason, because
+  five acting seats spaced apart leave a realm no chiefed neighbour to be
+  offered. Seeding is the only lever on that, and the duel scope is what made
+  it cheap: only the two duelling realms take turns while a duel runs, so a
+  wide acting set costs turns during the one world-tick round per gauntlet
+  rather than every round of the run. `QUIET_LANDS` (6) in `src/game.ts` is the
+  seeding now, the grey middle survives at about a quarter of the map, and the
+  chiefless share of duels is 0.0%.
 - **Presentation.** `involvesLocalSeats` is untouched. Whether fifteen acting
   seats make the turn-start replay too long is a measurement, not an
   assumption, and the existing audience gate already filters most of a stranger
@@ -479,6 +490,12 @@ Three things fix it, and the scope is deliberately narrow.
 - **A leaderless enemy is RARE.** `duelCandidates` prefers factions that have a
   chief. It does not refuse a leaderless one outright, because the border is
   what it is and a realm hemmed in by quiet lands must still be offered a fight.
+
+  **The filter alone did not deliver this, and the seeding does.** With five
+  acting seats the preference had nothing chiefed to prefer and the measured
+  share stayed at 41.6%. Section C's seeding decision was overridden on
+  2026-08-16 for exactly this reason; see the note there. Measured after:
+  0.0% over 156 runs, and 2 of 9195 duels over 468.
 - **A duel enemy acts whether or not it has a chief.** Inside a duel, the
   enemy's side is exempt from the leaderless arm of `takesNoTurn`. It plays its
   deck, raids, and answers. This is the ONLY place that arm is bypassed:

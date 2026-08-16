@@ -93,15 +93,19 @@ export type Gauntlet =
  *  same lands in the same order.
  *
  *  **A land with a CHIEF is preferred, and the preference is a filter rather
- *  than a sort.** `actingFactions` spaces the acting seats apart, so every
- *  land a realm borders at turn 1 is one of the quiet ones - measured, and it
- *  was 110 of 110 candidates across all 26 seats. A duel is the fight the run
- *  is built around, and one against a land that never answers is twenty
- *  rounds of the map standing still.
+ *  than a sort.** A duel is the fight the run is built around, and one against
+ *  a land that never answers is twenty rounds of the map standing still.
+ *
+ *  The filter can only prefer what the border holds, which is why it is not
+ *  the whole answer and never was: with five acting seats on a twenty-six land
+ *  map every neighbour was quiet, and 41.6% of duels were chiefless with this
+ *  filter working exactly as written. The lever was the seeding - see
+ *  `QUIET_LANDS` in src/game.ts - and it is 0.0% now.
  *
  *  It does NOT refuse a chiefless candidate outright: the border is what it
  *  is, and a realm hemmed in entirely by quiet lands must still be offered a
- *  fight rather than an empty modal. What makes that offer worth taking is
+ *  fight rather than an empty modal. Rare, not gone: 2 of 9195 duels over 468
+ *  sweep runs. What makes that offer worth taking is
  *  the other half of the same rule - a duel enemy acts chief or no chief
  *  (`duelStanding`), and beating a chiefless one absorbs it outright
  *  (`absorbsDuelEnemy`). */
