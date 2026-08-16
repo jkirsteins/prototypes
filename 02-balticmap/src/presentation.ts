@@ -800,12 +800,17 @@ export const PRESENTATION_RULES: Record<GameEventType, PresentationRule> = {
         ? [landOf(e), t(" loses the duel")]
         : [landOf(e), t(" loses the duel with "), faction(e.sourceFactionId)],
   }),
+  // "runs out OF TIME", never "runs out the duel": the clock is what ended
+  // this fight, and the shorter phrasing reads as the player having chosen to
+  // run it down - a decision nobody made, described as a tactic. The modal
+  // that follows the beat already says "runs out of time"; two surfaces about
+  // one event must not disagree about who did it.
   "duel-lapsed": framed({
     label: (e) =>
       e.sourceFactionId === undefined
-        ? [landOf(e), t(" runs out the duel")]
+        ? [landOf(e), t(" runs out of time in the duel")]
         : [
-            landOf(e), t(" runs out the duel with "),
+            landOf(e), t(" runs out of time in the duel with "),
             faction(e.sourceFactionId),
           ],
   }),
