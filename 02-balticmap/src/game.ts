@@ -1255,12 +1255,13 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       ...cause,
       ...(formerLord !== undefined ? { formerOverlordFactionId: formerLord } : {}),
     });
-    // A PERSON is asked, whichever seat they sit in; everybody else moves half
-    // on the spot. Every conquest asks: a turn that takes three lands queues
-    // three questions and they are answered in the order the lands fell. It
-    // must NOT fall through to the automatic half - that moved points out of a
-    // land the player was never asked about, which is the one thing
-    // `pendingTransfers` exists to prevent.
+    // A PERSON is asked, whichever seat they sit in; everybody else gets
+    // `autoTransfer`'s capped amount on the spot (see its doc comment for why
+    // the cap exists). Every conquest asks: a turn that takes three lands
+    // queues three questions and they are answered in the order the lands
+    // fell. It must NOT fall through to the automatic transfer - that moved
+    // points out of a land the player was never asked about, which is the one
+    // thing `pendingTransfers` exists to prevent.
     if (isHumanFaction(state, by)) {
       pendingTransfers[by] = [...(pendingTransfers[by] ?? []), { from, to: land }];
       return;

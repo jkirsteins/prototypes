@@ -826,8 +826,15 @@ does:
   middle breaks a land without taking it.
 
   The taker is then asked how much defense to send with the conquest
-  (`pendingTransfers` / `transferDefense`); a seat nobody is sitting at moves
-  half on the spot. 0 is a real answer. Keyed by FACTION, because every person
+  (`pendingTransfers` / `transferDefense`); 0 is a real answer. A seat nobody
+  is sitting at gets `autoTransfer`'s capped amount on the spot instead - as
+  much as it can spare, without arming the new vassal past its own
+  independence gate. An AI that moved a flat half in unconditionally was
+  paying for its own vassal's escape: the garrison alone often cleared the
+  gate line, so the vassal's first `beginTurn` read `independenceGateOpen`
+  true and won its freedom before the taker got a second turn - a playtest
+  measured the median vassalage at four turns. The cap leaves the new vassal
+  at exactly one point under its line instead. Keyed by FACTION, because every person
   is asked and one slot would have let one of them hold the only question on
   the board - and a QUEUE per faction, because a turn can take more than one
   land. Three conquests owe three questions, answered in the order the lands

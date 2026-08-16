@@ -557,6 +557,38 @@ describe("6P: pestilence decisive moves", () => {
     expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
+  it("6P-2: a stack on a peer land does not feed the cash-out total", () => {
+    // beta is alpha's sibling under gamma - a plague cannot strike it, so its
+    // stack must not count toward "does the total beat a raid's worth" any
+    // more than it counts toward the damage the card would actually deal.
+    // delta alone (2 stacks, legal) keeps the card playable and stays under
+    // the raid's worth of 2; beta's 1 stack summed in on top of it was
+    // enough to tip the total past that line.
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
+    g = withLeadership(g, { alpha: 1 });
+    g = { ...g, defense: { alpha: 2 } };
+    g = { ...g, disease: { delta: { alpha: 2 }, beta: { alpha: 1 } } };
+    g = withHand(g, ["plague", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6P-2: a gate only a peer's stack would open is not a cash-out", () => {
+    // beta's gate sits exactly one stack from opening, but beta is alpha's
+    // sibling under gamma and a plague cannot land there. delta's own stack
+    // opens nothing and the total is nowhere near a raid's worth at full
+    // defense, so the only way this fires is counting beta's gate anyway.
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
+    g = {
+      ...g,
+      defense: { beta: SUBJUGATE_LINE + PLAGUE_DAMAGE_PER_STACK },
+      disease: { beta: { alpha: 1 }, delta: { alpha: 1 } },
+    };
+    g = withHand(g, ["plague", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
+  });
+
   it("6P-3: claims the board with foul winds while rivals hold more stacks", () => {
     let g = asStrategy(base(), "pestilence");
     g = { ...g, disease: { beta: { gamma: 2 }, gamma: { alpha: 1 } } };
@@ -565,6 +597,25 @@ describe("6P: pestilence decisive moves", () => {
     const ahead = { ...g, disease: { beta: { alpha: 2 }, gamma: { delta: 1 } } };
     expect(chooseAction(withHand(ahead, ["foul-winds", "grow-crops"])))
       .toEqual({ type: "play", cardIndex: 1 });
+  });
+
+  it("6P-3: a rival's stack on a peer land does not feed the winds tally", () => {
+    // beta holds a rival's 5 stacks, but beta is alpha's sibling under gamma
+    // and foul winds cannot claim what it cannot reach. epsilon's 1 stack
+    // keeps the card legal; alpha's own 2 stacks elsewhere outweigh it, so
+    // the honest tally waits. Only counting beta's unreachable 5 flips it.
+    let g = asStrategy(base(), "pestilence");
+    g = { ...g, overlords: new Map([["alpha", "gamma"], ["beta", "gamma"]]) };
+    g = {
+      ...g,
+      disease: {
+        beta: { delta: 5 },
+        epsilon: { delta: 1 },
+        zeta: { alpha: 2 },
+      },
+    };
+    g = withHand(g, ["foul-winds", "grow-crops"]);
+    expect(chooseAction(g)).toEqual({ type: "play", cardIndex: 1 });
   });
 
   it("6P-4: reads the miasma when only the doubled plague opens a gate", () => {

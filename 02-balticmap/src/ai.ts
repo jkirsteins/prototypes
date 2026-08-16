@@ -7,8 +7,8 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  attackDamageFor, attackImpactOn, borderPolygonsOf, greatRaidMarches,
-  holdsGuard,
+  aimsWithinOwnRealm, attackDamageFor, attackImpactOn, borderPolygonsOf,
+  greatRaidMarches, holdsGuard,
   marchSourcesAgainst, plagueMultiplier, playableSet, spendCeilingOn,
   validTargetsFor, type RulesView,
 } from "./playability";
@@ -868,8 +868,12 @@ function pestilenceDecisive(
     v.disease[polygon]?.[actor] ?? 0;
   const plagueDamageAt = (polygon: string, m: number): number =>
     stacksOn(polygon) * PLAGUE_DAMAGE_PER_STACK * m;
+  // `aimsWithinOwnRealm` is asked here too: the Plague resolution skips a
+  // stack sitting on a lord or a sibling, so a policy that scored that same
+  // stack would expect damage the play can never actually deal.
   const opensGate = (polygon: string, m: number): boolean =>
     !(polygon in v.incorporated) &&
+    !aimsWithinOwnRealm(v, actor, "plague", polygon) &&
     gateGap(v, polygon) > 0 &&
     gateGap(v, polygon) <= plagueDamageAt(polygon, m);
 
@@ -892,7 +896,9 @@ function pestilenceDecisive(
   if (plague !== undefined) {
     const total = state.factionIds.reduce(
       (sum, polygon) =>
-        sum + Math.min(defenseOf(v, polygon), plagueDamageAt(polygon, mult)),
+        aimsWithinOwnRealm(v, actor, "plague", polygon)
+          ? sum
+          : sum + Math.min(defenseOf(v, polygon), plagueDamageAt(polygon, mult)),
       0,
     );
     const opens = state.factionIds.some((polygon) => opensGate(polygon, mult));
@@ -905,14 +911,20 @@ function pestilenceDecisive(
     }
   }
 
-  // 6P-3: foul winds when rivals' stacks exceed our own.
+  // 6P-3: foul winds when rivals' stacks exceed our own. `theirs` is what
+  // the play could actually claim, so a polygon `aimsWithinOwnRealm` refuses
+  // - the Foul winds resolution skips it the same way the Plague loop above
+  // does - does not feed the tally; `own` is not aim, so it needs no filter.
   if (winds !== undefined) {
     let own = 0;
     let theirs = 0;
-    for (const owners of Object.values(v.disease)) {
+    for (const [polygon, owners] of Object.entries(v.disease)) {
       for (const [owner, n] of Object.entries(owners)) {
-        if (owner === actor) own += n;
-        else theirs += n;
+        if (owner === actor) {
+          own += n;
+        } else if (!aimsWithinOwnRealm(v, actor, "foul-winds", polygon)) {
+          theirs += n;
+        }
       }
     }
     if (theirs > own) return { type: "play", cardIndex: winds };
