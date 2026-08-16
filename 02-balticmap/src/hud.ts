@@ -1446,10 +1446,19 @@ export function createHud(
   harvestTitle.className = "notice-title";
   const harvestOptions = document.createElement("div");
   harvestOptions.className = "harvest-options";
+  // What the button below MEANS, where the button's own word cannot say it.
+  // Outside `harvestOptions` on purpose: the options are the scroll region,
+  // and the build screen's rule is that everything the player acts on - and
+  // everything that says what an action costs - stays out of it. Inside, at
+  // 200% zoom and at 1280x600 @150%, the note scrolled out of view while the
+  // button it explains stayed put, so the price of declining was invisible
+  // exactly on the screens with the least room to guess it.
+  const harvestNote = document.createElement("div");
+  harvestNote.className = "harvest-note hidden";
   const harvestCancel = document.createElement("button");
   harvestCancel.className = "notice-continue harvest-cancel";
   harvestCancel.textContent = "Cancel";
-  harvestBox.append(harvestTitle, harvestOptions, harvestCancel);
+  harvestBox.append(harvestTitle, harvestOptions, harvestNote, harvestCancel);
   harvestOverlay.appendChild(harvestBox);
   let harvestOnCancel: (() => void) | null = null;
   harvestCancel.addEventListener("click", () => harvestOnCancel?.());
@@ -1465,6 +1474,19 @@ export function createHud(
   function armCancel(label: string, onCancel: (() => void) | null): void {
     harvestCancel.textContent = label;
     harvestOnCancel = onCancel;
+    // Cleared with the button it belongs to, and for the same reason: a note
+    // set anywhere but through this pair would survive into the next question
+    // that replaces this one without hiding the overlay first, and then it
+    // would be explaining a button that no longer does what it says.
+    setNote(null);
+  }
+
+  /** The sentence under the options and above the button, or nothing. Hidden
+   *  rather than emptied, so the box does not carry the gap of a note that is
+   *  not there. */
+  function setNote(text: string | null): void {
+    harvestNote.textContent = text ?? "";
+    harvestNote.classList.toggle("hidden", text === null);
   }
 
   /** Escape backs out of the harvest offer, the same answer its Cancel button
@@ -1681,16 +1703,14 @@ export function createHud(
 
     // A realm with no bordering land it may fight still needs a way forward,
     // and the note is it: the button below is not a refusal of anything, it is
-    // the only move on the board.
-    const note = document.createElement("div");
-    note.className = "duel-note";
-    note.textContent = offer.candidates.length === 0
+    // the only move on the board. Set AFTER `armCancel`, which clears it.
+    setNote(offer.candidates.length === 0
       ? "No realm you border can be fought. Letting the world turn is the " +
         "only way on: every realm takes a turn, and a fresh offer comes round."
       : "The border is not a list. Letting the world turn declines all of " +
-        "them - every realm takes a turn, and a fresh offer comes round.";
+        "them - every realm takes a turn, and a fresh offer comes round.");
 
-    harvestOptions.replaceChildren(...rows, note);
+    harvestOptions.replaceChildren(...rows);
     harvestOverlay.classList.remove("hidden");
   }
 

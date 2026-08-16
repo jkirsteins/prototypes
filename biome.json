@@ -61,7 +61,9 @@
                       "startGame",
                       "chooseBuild",
                       "chooseRules",
-                      "pickFaction"
+                      "pickFaction",
+                      "pickDuel",
+                      "declineDuel"
                     ],
                     "message": "A decision the local player makes goes through commitDecision in src/decisions.ts, the only place that knows whether this screen is the host, the guest or alone. A branch here is a branch a new decision can forget the guest on - see 02-balticmap/AGENTS.md. The turn-order and lobby moves in this list append events to a GameState the same way a decision does; their wrappers in src/moves.ts are the door for those."
                   },

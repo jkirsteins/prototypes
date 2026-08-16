@@ -3337,7 +3337,7 @@ describe("the duel offer", () => {
     const out = [...container.querySelectorAll(".harvest-overlay button")]
       .find((b) => b.textContent?.trim() === "Let the world turn");
     expect(out).toBeDefined();
-    expect(q(container, ".duel-note").textContent).toContain("takes a turn");
+    expect(q(container, ".harvest-note").textContent).toContain("takes a turn");
     (out as HTMLButtonElement).click();
     expect(onDecline).toHaveBeenCalled();
   });
@@ -3349,11 +3349,58 @@ describe("the duel offer", () => {
     hud.update(playing());
     hud.showDuelOffer({ candidates: [] }, { onPick: vi.fn(), onDecline: vi.fn() });
     expect(container.querySelectorAll(".harvest-option")).toHaveLength(0);
-    expect(q(container, ".duel-note").textContent)
+    expect(q(container, ".harvest-note").textContent)
       .toContain("No realm you border can be fought");
     expect(
       [...container.querySelectorAll(".harvest-overlay button")]
         .some((b) => b.textContent?.trim() === "Let the world turn"),
     ).toBe(true);
+  });
+
+  it("keeps the note out of the scroll region, with the button", () => {
+    // `.harvest-options` is the modal's scroll region and `.harvest-cancel`
+    // deliberately sits outside it. The note explains what that button costs,
+    // so it belongs on the same side of the scroll: measured at 200% zoom
+    // (720x403) and at 1280x600 @150%, a note inside the options scrolled out
+    // of view while the button stayed, and in the empty-offer arm the note is
+    // the only thing on screen saying why there is nothing to pick.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }] },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    const note = q(container, ".harvest-note");
+    expect(note.closest(".harvest-options")).toBeNull();
+    expect(note.closest(".harvest-card")).not.toBeNull();
+    // And below the options rather than above them: it is about the button.
+    const box = q(container, ".harvest-card");
+    const kids = [...box.children];
+    expect(kids.indexOf(note))
+      .toBeGreaterThan(kids.indexOf(q(container, ".harvest-options")));
+    expect(kids.indexOf(note))
+      .toBeLessThan(kids.indexOf(q(container, ".harvest-cancel")));
+  });
+
+  it("takes the note away with the question it belonged to", () => {
+    // One overlay serves four questions. A note left standing would explain
+    // the previous question's button beside this question's.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }] },
+      { onPick: vi.fn(), onDecline: vi.fn() },
+    );
+    expect(q(container, ".harvest-note").classList.contains("hidden"))
+      .toBe(false);
+    hud.showTransferOffer(
+      {
+        from: "alpha", to: "beta", max: 4,
+        fromHas: 5, toHas: 0, toMax: 6, fromMax: 6,
+      },
+      { onConfirm: vi.fn() },
+    );
+    expect(q(container, ".harvest-note").classList.contains("hidden"))
+      .toBe(true);
   });
 });

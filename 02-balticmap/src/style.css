@@ -2135,14 +2135,16 @@ svg.map.arrow-focused .river {
   margin-top: 2px;
 }
 
-/* The sentence under the duel offer's candidates, saying what letting the
-   world turn does. Not a button and not an option: it explains the control
-   that sits below the scroll region, so it is the last thing in the list. */
-.duel-note {
+/* The sentence under a question's options, saying what the button below them
+   means. It sits between the scroll region and that button and never inside
+   the scroll region: what the player acts on - and what says what the action
+   costs - has to be on screen at every window size the game is played at. */
+.harvest-note {
   font-size: 12px;
   line-height: 1.5;
   color: #6b5d49;
-  margin-top: 4px;
+  text-align: left;
+  margin-bottom: 12px;
 }
 
 /* What a card costs, under its rules text. Its own colour rather than the

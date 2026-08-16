@@ -122,11 +122,12 @@ is a clean start - the run is not persisted, and the way back is the URL.
 
 Every faction on the active region's map has a seat, a deck and a ruler's
 chair. Five of them act; the rest carry the passive status `keeps-to-itself`,
-and that status is the entire difference. `playsTurns` in `src/passives.ts` is
-the one question the turn loop asks, so a quiet land can be raided, subjugated,
-poached, healed and incorporated by the rules that already exist, and taking
-it strips the status - its people wake up as their new lord's vassal, holding
-the deck they were dealt.
+and that status is the entire difference. `takesNoTurn` in `src/game.ts` is the
+one question the turn loop asks - `playsTurns` in `src/passives.ts` states what
+the status MEANS and is read only by presentation now - so a quiet land can be
+raided, subjugated, poached, healed and incorporated by the rules that already
+exist, and taking it strips the status - its people wake up as their new lord's
+vassal, holding the deck they were dealt.
 
 Two things ride on the same fact rather than on conditions written down twice:
 a quiet land raids a neighbour about one round in four (`RESTLESS_RAID_CHANCE`,
@@ -232,13 +233,21 @@ resolves at the actor's turn start is swept at the round wrap instead, or its
 arrow would stand on the map for the rest of the game.
 
 **Unless a PERSON is sitting there.** `takesNoTurn` in `src/game.ts` asks
-three questions in an order that is load-bearing. An annexed people is passed
+four questions in an order that is load-bearing. An annexed people is passed
 over whoever was playing them - a person whose realm has been swallowed is out
 of the run, and exempting them would leave the table waiting on a turn that
-can never come. Otherwise a leaderless faction is passed over UNLESS
-`isHumanFaction` says somebody is playing it, because a player skipped forever
-is not a rule, it is a hung game. A leaderless person still takes no land;
-that gate is `hasRuler` at the capture sites and is untouched.
+can never come. Otherwise a person is never passed over at all, whichever seat
+they sit in, because a player skipped forever is not a rule, it is a hung
+game. Then the duel scope, which answers in BOTH directions and is why the
+count is four rather than three: a faction on neither side of a running duel
+takes no turn, and a faction on the ENEMY's side takes one whether or not
+anybody leads it. Last, nobody leads it. A leaderless person still takes no
+land; that gate is `hasRuler` at the capture sites and is untouched.
+
+The human arm is asked before the duel scope on purpose: a second person
+playing a seat on neither side would otherwise be frozen out for twenty rounds
+by a fight they are not in. It only fires if that person's seat is actually in
+`humanSeats`, which is `dealNetGame`'s job - see the seats rule below.
 
 The human arm belongs in `takesNoTurn` and not in `advance`, because the sweep
 above reads the same predicate. Spelled in `advance` alone it exempted the
@@ -250,6 +259,15 @@ marches at somebody else's turn start.
 `GameState.humanSeats` is the seats a PERSON plays. Two questions ride on it
 and they are not the same question, the `realmOf` / `fullRealmOf` split one
 level down:
+
+**`dealNetGame` is the one place a guest's seat joins the list**, because it
+is the one place in the app that knows which seat that is. Nothing did it,
+so `isHumanFaction` was false for the second person and both rules below
+were quietly wrong for them: a duel scoping the map to two realms neither of
+which was theirs froze them out for twenty rounds, and their conquests moved
+defenders with no question raised. A test that hand-sets `humanSeats` is a
+test that passes while the app is broken, which is why the multiplayer suites
+could not see it.
 
 - **"Is a person playing this faction"** is `isHumanFaction`, and it is
   plural. It decides who is ASKED rather than automated - the conquest
@@ -868,12 +886,14 @@ load-bearing:
   the one that gets paid.
 - **A won duel is read off the LOG, never off `until`.** A land moving between
   the two realms ends a duel by pulling `until` in to the turn it moved, so the
-  clock running out and a conquest arrive in exactly the same shape. `duelWon`
-  looks at one turn - `until` itself - which is exact rather than approximate:
-  no cross-realm conquest can sit earlier in a duel that is still running,
-  because one would have ended it. It is handed the batch being written as well
-  as `state.log`, since a conquest at the human's own turn start is decided and
-  swept in the same `beginTurn`.
+  clock running out and a conquest arrive in exactly the same shape.
+  `duelOutcome` looks at one turn - `until` itself - which is exact rather
+  than approximate: no cross-realm conquest can sit earlier in a duel that is
+  still running, because one would have ended it. It is handed the batch being
+  written as well as `state.log`, since a conquest at the human's own turn
+  start is decided and swept in the same `beginTurn`. It reads BOTH allegiance
+  lines - `subjugated` and `incorporated` - because a chiefless enemy is
+  absorbed rather than sworn (below) and says so with the second one.
 - **Declining is real and it is not free.** `declineDuel` spends the world
   tick a finished duel spends: every realm takes a turn while yours stands
   still, and a fresh offer comes round. The border is not a to-do list, so
@@ -897,6 +917,56 @@ overlay and is about the board the player was just shown.
 fight is shown the offer with no rows in it, a sentence saying so, and the
 same button as the way on. A modal listing nothing with no way forward is a
 dead run.
+
+### A duel enemy fights, chief or no chief
+
+`actingFactions` spaces the acting seats apart, so every land a realm borders
+at turn 1 is one of the quiet ones - measured, and it was 110 of 110 turn-1
+candidates across all 26 seats. A leaderless enemy takes no turn and takes no
+land, so the map stood still for twenty rounds while the player fought
+something that never answered, and `duel-lost` was unreachable. Three parts,
+and the scope of each is deliberate:
+
+- **A chiefless enemy is RARE.** `duelCandidates` prefers factions that have a
+  chief, as a FILTER rather than a sort. It does not refuse a chiefless one:
+  the border is what it is, and a realm hemmed in by quiet lands must still be
+  offered a fight rather than an empty modal.
+- **A duel enemy acts whether or not it has a chief.** `duelStanding` is one
+  walk of the two realms and three answers, and `takesNoTurn` reads it: this
+  is the ONLY place the leaderless arm is bypassed. Outside a duel a land with
+  no leader still takes no turn, and the grey middle is still the grey middle.
+- **Beating a chiefless enemy INCORPORATES it** (`absorbsDuelEnemy`). That is
+  the whole remaining difference between the two kinds of enemy: a people who
+  follow somebody become your vassal and may one day leave, and a people who
+  follow nobody are simply absorbed. It is also what stops "rare" from reading
+  as "worse". `beginTurn` therefore carries a local `incorporated`.
+
+**The asymmetry is stated so nobody reads it as an accident.** A leaderless
+land taken OUTSIDE a duel still gets a chief seated on it and becomes a
+vassal. Only the duel enemy is absorbed, because every quiet land is
+leaderless and universal absorption would mean a conquest never wakes anybody
+- the acting map would never grow. If a playtest says the split reads as two
+rules, the fix is to make absorption universal and wake the map some other
+way, not to widen this one quietly.
+
+**A seat that acts without a chief needs the cards to expect it.** War council
+reads the actor's ruler through `rulerOf`, which throws on a vacant chair, and
+it stated no legality about it because a leaderless land never took a turn.
+`CardDef.needsRuler` is that rule, as DATA rather than a branch naming the
+card, so it rides in `cardRulesHash` with every other legality dial. The other
+seat that reaches it is a person whose ruler was assassinated with no
+successor.
+
+**The scope reads the realm a seat is ABOUT to be in.** `advance` asks
+`takesNoTurn` on the board as it stands, and the independence escape is the
+first thing `beginTurn` does - so a vassal standing at its gate leaves the
+duelling realm one line after the scope decided it could play. `escapesVassalage`
+is the one spelling of the gate, applied by `beginTurn` and predicted by
+`takesNoTurn` through `overlordsAfterEscape`, only while a duel runs. The
+consequence, which is a rule and not a side effect: a vassal does not win its
+freedom while a duel runs, because a seat that never sees a `beginTurn` never
+reaches the line that frees it. It escapes at its first turn after the duel
+retires.
 
 ## Nothing ends itself
 
