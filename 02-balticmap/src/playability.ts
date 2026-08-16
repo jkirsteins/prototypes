@@ -970,18 +970,24 @@ export function cardBlockReason(
       : null;
   }
   // The two attack cards answer the same two questions in the same order: is
-  // there anything to hit, and is there an army free to send at it. The border
-  // question first, because a realm surrounded by its own lands has nothing to
+  // there anything to hit, and is there an army free to send at it. The reach
+  // question first, because a realm with nothing left in reach has nothing to
   // raid however many armies it is sitting on.
   // Both filter what a hostile card may not be aimed at before counting, or a
   // vassal whose only neighbour is its own lord would be told its raid was
   // playable and then offered nothing to aim it at.
+  // `attackReach` and not `borderPolygonsOf`, the same set the per-target pass
+  // scores: the reach includes the actor's own vassals, and a lord whose only
+  // fannable target is one of them is playing the card for exactly the reason
+  // the rule keeps legal - holding a vassal under the independence gate. Read
+  // off the border alone, the card was greyed while its map still offered the
+  // land.
   if (cardId === "great-raid") {
-    const border = [...borderPolygonsOf(view, factionId)].filter(
+    const reach = [...attackReach(view, factionId)].filter(
       (t) => !aimsWithinOwnRealm(view, factionId, cardId, t),
     );
-    if (border.length === 0) return { code: "no-target" };
-    return border.some((t) => greatRaidMarches(view, factionId, t).length > 0)
+    if (reach.length === 0) return { code: "no-target" };
+    return reach.some((t) => greatRaidMarches(view, factionId, t).length > 0)
       ? null
       : { code: "no-army" };
   }
@@ -994,15 +1000,29 @@ export function cardBlockReason(
       ? null
       : { code: "no-army" };
   }
+  // Neither disease card is aimed, so legality has to walk the map the way the
+  // resolution does - and skip exactly what the resolution skips. A hostile
+  // card may not strike a peer of the actor's own realm, so a stack standing
+  // on a lord or a sibling stays where it is and burns nothing; counted here,
+  // it would tell a seat the card was playable, take its turn and move nothing
+  // at all. Downward is not skipped at either end: a plague on your own vassal
+  // is upkeep.
   if (cardId === "plague") {
-    const held = Object.values(view.disease).some(
-      (owners) => (owners[factionId] ?? 0) > 0,
+    const held = Object.entries(view.disease).some(
+      ([polygon, owners]) =>
+        (owners[factionId] ?? 0) > 0 &&
+        !aimsWithinOwnRealm(view, factionId, cardId, polygon),
     );
     return held ? null : { code: "no-disease" };
   }
   if (cardId === "foul-winds") {
-    const any = Object.values(view.disease).some((owners) =>
-      Object.values(owners).some((n) => n > 0),
+    // Somebody ELSE's stacks, for the same reason: the winds move what the
+    // actor does not already own, so a map holding only the actor's own stacks
+    // is a map the card shifts nothing on.
+    const any = Object.entries(view.disease).some(
+      ([polygon, owners]) =>
+        !aimsWithinOwnRealm(view, factionId, cardId, polygon) &&
+        Object.entries(owners).some(([owner, n]) => owner !== factionId && n > 0),
     );
     return any ? null : { code: "no-disease" };
   }

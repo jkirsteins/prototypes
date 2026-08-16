@@ -657,6 +657,54 @@ describe("cardBlockReason", () => {
     expect(cardBlockReason(theirs, "beta", "foul-winds")).toBeNull();
   });
 
+  it("plague counts only the stacks it may actually burn", () => {
+    // beta answers to alpha, so a hostile card may not strike alpha. Stacks
+    // that all sit on a peer of the actor's own realm are stacks the play
+    // would leave exactly where they are - `playCard` skips them - so the
+    // card is dead in hand rather than a turn spent on nothing.
+    const vassal = view({
+      overlords: new Map([["beta", "alpha"]]),
+      disease: { alpha: { beta: 2 } },
+    });
+    expect(cardBlockReason(vassal, "beta", "plague"))
+      .toEqual({ code: "no-disease" });
+    // Downward is upkeep, and a plague on your own vassal burns.
+    const lord = view({
+      overlords: new Map([["gamma", "beta"]]),
+      disease: { gamma: { beta: 2 } },
+    });
+    expect(cardBlockReason(lord, "beta", "plague")).toBeNull();
+  });
+
+  it("foul winds counts only the stacks the winds may actually reach", () => {
+    const vassal = view({
+      overlords: new Map([["beta", "alpha"]]),
+      disease: { alpha: { gamma: 3 } },
+    });
+    expect(cardBlockReason(vassal, "beta", "foul-winds"))
+      .toEqual({ code: "no-disease" });
+    // And stacks the actor already owns move to nobody: the play would shift
+    // nothing, which is the same dead card by another route.
+    const own = view({ disease: { gamma: { beta: 3 } } });
+    expect(cardBlockReason(own, "beta", "foul-winds"))
+      .toEqual({ code: "no-disease" });
+  });
+
+  it("great raid stays legal when the only target left is the actor's vassal", () => {
+    // The whole map under alpha, with beta held as a vassal rather than
+    // annexed: nothing borders the realm, and the one thing alpha may still
+    // strike is its own vassal - which is how the gate is held shut.
+    const v = view({
+      overlords: new Map([["beta", "alpha"]]),
+      incorporated: { gamma: "alpha", delta: "alpha" },
+    });
+    expect(attackReach(v, "alpha")).toEqual(new Set(["beta"]));
+    expect(greatRaidMarches(v, "alpha", "beta").length).toBeGreaterThan(0);
+    expect(cardBlockReason(v, "alpha", "great-raid")).toBeNull();
+    // The single raid already reads this reach; the two must agree.
+    expect(cardBlockReason(v, "alpha", "raid")).toBeNull();
+  });
+
   it("subjugate is no-target while every gate in reach is shut", () => {
     expect(cardBlockReason(view(), "beta", "subjugate"))
       .toEqual({ code: "no-target" });
