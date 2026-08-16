@@ -314,3 +314,116 @@ dev server. What is NOT verified, and what a later pass should pick up:
   clears every badge on both maps from a chip centred on one - but a board that
   crowded it further would degrade to "least bad" rather than to "clear", and
   nothing says so on screen.
+
+## Presentation review, the four fixes (2026-08-16)
+
+An adversarial review measured four things in a browser that 1615 tests had
+not. Three are fixed and verified the same way, with pixel measurements before
+and after; one is engine work in another session's files and is specified here
+rather than done. Everything below was driven over CDP in a headed Chrome
+against the dev server at `?seed=7&faction=selonians`, with a self-tested
+console hook: **zero errors and zero warnings across every run**.
+
+### What was NOT fixed, and exactly what it needs
+
+**Declining a duel still costs nothing.** The offer returns on the very next
+turn - eleven straight turns of the same four tiles was what the review
+watched. `declineDuel` moves the gauntlet to `world-tick`, but `world-tick`
+and `picking` are BOTH unscoped, and `gauntletAtRoundWrap` turns `world-tick`
+into `picking` at the first wrap it sees. A decline made mid-round is
+therefore seen at the wrap that opens the very next round, so the price is the
+tail of the round the player was already in: zero. Batch A wrote this down as
+"declining costs nothing extra today" and Batch C measured it; this is the
+third time it has been recorded and it is still true.
+
+It is engine work, in `src/gauntlet.ts` and `src/game.ts`, which this pass did
+not own. What it needs, precisely:
+
+- `Gauntlet`'s `world-tick` arm gains `until: number` - the turn the offer
+  comes back on. A plain number, so `src/net-codec.ts` needs nothing.
+- `gauntletAtRoundWrap`: `if (g.kind === "world-tick") return view.turn >=
+  g.until ? { kind: "picking", candidates } : g;`
+- The duel-retirement arm returns `{ kind: "world-tick", until: view.turn + 1 }`.
+  That is the CURRENT behaviour written down, not a change: the wrap runs
+  inside `beginTurn` for the round that is beginning, so `until = T + 1` is
+  reached at the next wrap exactly as the bare `world-tick` was.
+- `declineDuel` returns `{ kind: "world-tick", until: state.turn + 2 }`. Two
+  and not one, and that asymmetry is the whole fix: a decline is answered
+  MID-round, so `turn + 1` is the wrap that opens the next round and would buy
+  the player nothing. `turn + 2` buys one whole unscoped round, which is what
+  "let the world turn" says on the button.
+- The test that would fail if it were reverted: decline at turn N, run two
+  round wraps, and assert the gauntlet is still `world-tick` after the first
+  and `picking` only after the second.
+
+Note what this does NOT fix, and deliberately: `sameList` keeps the offer
+byte-identical while the borders hold, so the second offer is the same four
+tiles a round later. Whether declining should also reroll is a separate
+question the review did not ask.
+
+### The shaft geometry: decided against, with the reason
+
+The review found a second collision in the same run - two arrows' `N STR`
+labels overlapping by 66 px - and asked for a judgement on the
+`overlandCrossing` this file already records as the honest fix. The judgement
+is **no, not in this pass**, and the reason is structural rather than nerve:
+
+`crossingBetween` is handed two RING SETS and nothing else. It cannot tell
+"these two lands share no vertex because there is sea between them" from
+"these two lands share no vertex because they are three lands apart", so it
+cannot choose between strait geometry and overland geometry - and every
+multi-hop march therefore gets the strait's, which puts the shaft midway
+between the two lands' nearest vertices. That is what stands a long march's
+label in the middle of somebody else's border.
+
+Giving it the answer means one of two things, and both are bigger than they
+look. Changing `crossingBetween`'s signature reaches `tests/borders.test.ts`,
+which walks all 103 adjacencies on both maps. Branching in main.ts's
+`crossingFor` instead is feasible - main.ts already computes `overland` off
+`game().adjacency` for the spec - but it makes the geometry a function of live
+game state where it is currently a pure function of the map, and `crossings`
+in main.ts is CACHED per unordered border pair, so the cache key has to grow
+the overland flag or the first caller decides the shape for every later one.
+
+What the fix would be, for whoever picks it up: an `overlandCrossing(a, b)`
+that takes the axis between the two lands' CENTROIDS rather than their nearest
+vertices, walks out to each land's boundary along it, and uses `reach` to
+measure the depth available inside each end - so the arrow is rooted in the
+land it sets out from and bites the land it is headed for, instead of standing
+wherever the two happen to nearly touch.
+
+The cheap alternative was considered and refused on the standing rule: the
+strength label could dodge the way the chip does, and must not. A strength
+sits on its shaft and its position is what says which arrow it belongs to.
+The chip is the only part of an arrow whose position carries no information,
+which is why it is still the only thing in the scene that moves.
+
+### What was fixed, and what is still unverified about it
+
+- **The chip's keep-out set.** Verified: the `1st` chip's box went from
+  x 740.5-755.3, y 374.9-382.6 with all 114 px inside SELONIANS (plus 8.3 px
+  on a `2 STR`), to x 764.5-779.3, y 355.5-363.2 with 0 px on anything. What
+  is NOT verified is a CROWDED board: `CHIP_DODGE_TRIES` gives four steps of
+  15 either way, and the map's words are far larger obstacles than the badges
+  the dodge was tuned against - a people's name is roughly 200 units wide.
+  Nothing was seen degrading to "least bad", but nothing constructed a board
+  that would.
+- **`ArrowKindDef.labelPx` is an ESTIMATE of the drawn label**, `characters *
+  fontPx * 0.56`, the chip's own ratio. It is held to style.css by a test, so
+  the font size cannot drift - but the 0.56 is not measured per face, and a
+  label in a much wider or narrower face would reserve the wrong ground. It
+  only ranks candidate chip stations 15 units apart, so the tolerance is
+  large.
+- **The note outside the scroll region** was measured at 720x403, 853x400 and
+  1440x805. Not measured: a window short enough that the CARD itself overflows
+  once the note is outside the scroll - at 720x403 the card is 339px in a
+  403px viewport, so there is room, but the margin is not large.
+- **The lapsed-duel label has still never been watched on a screen.** The
+  wording is fixed and pinned by a test; the beat itself remains in the "never
+  eyeballed" list two sections above.
+- **End turn's z-index** was raised over the activity log after
+  `elementFromPoint` showed the button unhittable at 720x403 and two-thirds
+  unhittable at 1440x805. What that BUYS is a clickable button; what it costs
+  is 34px of the log's lower entries drawn over. The log scrolls, so nothing
+  is lost - but the two controls still share one column, and the layout fix
+  was not attempted.
