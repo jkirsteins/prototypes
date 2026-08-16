@@ -205,3 +205,84 @@ is NOT verified:
 - **`duel=` is answered before `march=` and after `realm=`.** No test covers
   the interaction of `realm=25` with a `duel=` clause, since a realm holding
   the map borders little.
+
+## Batch C: what a browser said (2026-08-16)
+
+The deployed preview at `695c2bd` was played over CDP - the offer answered, a
+duel fought to a defeat ending, a duel won, a duel run out to its clock, world
+ticks timed, multi-hop arrows booted and hovered. **Zero console errors and
+zero warnings across all of it, and the "AI seat cannot end its turn" guard
+never fired.** The console hook was self-tested, so that is evidence rather
+than a harness reporting nothing.
+
+What the browser CONFIRMED, that was unverified above:
+
+- **The world tick is not the problem stage 1 feared.** Ten unscoped rounds at
+  a six-land realm: median 7.9s, max 15.5s at 9 beats, beat cadence a steady
+  1.72s. `involvesLocalSeats` is why - the whole map acts, most of it earns no
+  beat. Duel rounds are smaller again: median 6.1s, max 14.5s.
+- **The offer is one modal per cycle**, raised after the round summary, over a
+  dimmed map. At 8 candidates the panel is 720px in an 805px viewport with no
+  overflow, and a WIDER realm gives FEWER candidates rather than more, so the
+  clipping risk Batch B could not rule out does not exist.
+- **A won duel closes cleanly**: "The duel with Jersikans is won - 3 wealth
+  comes home / The whole map takes one turn now, and then a fresh offer comes
+  round."
+- **The duel's turn scope holds.** Four duel rounds produced 20 third-party
+  card plays and all 20 were `keeps-to-itself` restless raids. No third party
+  took a turn.
+- **A conquered land's hover names its new ruler**, and the log shows it
+  acting: "Jersika (Jersikans) / Your vassal / ... / Leader Drivinalde / War
+  leader", against "Nobody leads this land / No successor" on an untaken one,
+  and then "Drivinalde of the Jersikans played Fortify on Jersikans".
+- **The dashed overland casing works.** A gold shaft inside a white dashed
+  outline reads as an army still on the road and not as damage or weakness.
+
+What the browser FOUND, and none of it is above:
+
+- **A duel that is not WON ends in total silence.** `gauntletAtRoundWrap`
+  retires the duel with no event, and `duel-won` is the only gauntlet event
+  that exists - there is no duel-lost and no duel-expired. Watched: a duel
+  declared on turn 1 with `until` 21 produced 35 log lines on turn 21 and not
+  one of them mentions it. The only signal is the offer modal reappearing on
+  turn 22. This is the loop's premise - a promise made and then settled - going
+  unsettled in three of its four endings.
+- **A duel has no visible MIDDLE either.** Mid-duel the string "duel" appears
+  nowhere on screen, no element carries a duel/enemy/gauntlet class, and the
+  status bar is exactly what it always was. There is no chip naming the enemy
+  and no turns-remaining, so the clock the player is running out of cannot be
+  seen running out. `duel-note` lives inside the offer modal and nowhere else.
+- **The `lands in N` chip hides behind the land's own defense badge.** Measured
+  client rects: `lands in 2` text spans x 713-740 with the `1/3` badge at
+  725-744 - 15 of 27px covered; `2nd - lands in 3` spans 814-858 with `6/7` at
+  837-857 - 21 of 44px covered. The badge wins the z-order, so the number is
+  the part that disappears. This is NOT the collision predicted above: the
+  feared case was the 24-character `2nd - clash - lands in 3` against a clash
+  label, and the case that actually bites is the ordinary ten-character chip
+  against a badge that is on the map every turn. The clash-plus-hops chip could
+  not be constructed at all - every counter-march booted back down a multi-hop
+  border was refused by the real rules.
+- **Declining rerolls nothing.** The offer is byte-identical across consecutive
+  declines - seven turns in a row of the same eight tiles - which is what
+  `sameList` guarantees while the borders hold. So declining is a pass, not a
+  choice, and it costs a full world round stated only as "every realm takes a
+  turn", which does not read as a price. Batch A's "if declining is meant to
+  cost something the player can feel, Batch B has to say what" is still open,
+  and now measured.
+- **The log during a duel is two thirds grey middle.** The scope holds for
+  turns, but the restless raids do not stop, so twenty of roughly thirty log
+  lines a round are lands you have no relationship with. "The world stands
+  still" is true of the turn loop and false of the activity log.
+- **Reward variety is thin early.** The turn-1 offer gave "3 wealth" on three
+  of four tiles; at six lands it was 5 wealth / 2 defense / 1 growth of eight.
+  Wealth is the default and it shows.
+- **`duel=` with a wrong id boots onto the offer modal** - `duel=semigallians`
+  drops silently because the id is `semigallian-confederacy`. Documented
+  behaviour, but the only tell is the modal you were trying to skip past.
+- **Boot-order artefact:** with `realm=N` and no `duel=`, the first offer is
+  computed before the annexation (4 candidates at `realm=6`) and the next wrap
+  recomputes it to 8. Boot path only, no effect on a played run.
+
+The ranked recommendation from the playtest: **an event at the wrap that
+retires a duel un-won**, with a notice in the same shape as the win, plus a HUD
+chip naming the enemy and the turns left. Then the chip/badge collision.
