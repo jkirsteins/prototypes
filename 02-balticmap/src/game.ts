@@ -51,8 +51,8 @@ import {
   vacateRulers, type Rulers,
 } from "./rulers";
 import {
-  absorbsDuelEnemy, duelDecidedBy, duelOutcome, duelStanding,
-  gauntletAtRoundWrap, rewardFor, DUEL_TURNS, type Gauntlet,
+  absorbsDuelEnemy, duelDecidedBy, duelStakes, duelStanding,
+  gauntletAtRoundWrap, rewardFor, type DuelOutcome, type Gauntlet,
 } from "./gauntlet";
 import { BUILD_ABILITIES } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
@@ -67,7 +67,7 @@ export type GameEventType =
   | "passive-fired"
   | "march-declared" | "march-resolved" | "march-lapsed"
   | "harvest-earned" | "harvest-picked" | "harvest-burned"
-  | "duel-won" | "duel-lost" | "duel-lapsed"
+  | "duel-won" | "duel-lost" | "duel-void"
   | "victory" | "played-on" | "defeat" | "unified" | "surrendered";
 
 /** How much defense a raid may tear out of `source`, given what the caller
@@ -1099,7 +1099,7 @@ function nestsUnderItsCause(type: GameEventType): boolean {
     // above any of the three to indent under.
     case "duel-won":
     case "duel-lost":
-    case "duel-lapsed":
+    case "duel-void":
       return false;
   }
 }
@@ -1336,8 +1336,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
       !hasRuler(rulers, land), overlords, incorporated,
     );
     gauntlet = duelDecidedBy(
-      gauntlet, humanFactionOf(state), land, by,
-      overlords, incorporated, state.turn,
+      gauntlet, humanFactionOf(state), land, by, overlords, incorporated,
     );
     if (absorbed) {
       // A people who follow nobody are taken outright rather than sworn -
@@ -1510,13 +1509,21 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *  them.
    *
    *  Every ending is announced and not only the win. A duel is a promise the
-   *  run makes and then settles, and three of the four ways it settles used to
-   *  produce nothing at all - no event, no line, no sound - so a player whose
-   *  clock ran out learned it from the next offer appearing. `duelOutcome`
-   *  says which of the three it was, because the difference is the sentence.
+   *  run makes and then settles, and the un-won ways it settles used to produce
+   *  nothing at all - no event, no line, no sound - so a player learned it from
+   *  the next offer appearing. `Gauntlet.decided` says which it was, written at
+   *  the moment the ground moved, because the difference is the sentence.
    *
-   *  What a won duel is worth is paid into the winner's realm here, and
-   *  losing or timing out pays nothing.
+   *  A duel retiring with nothing recorded is a VOID one - the fight lost one
+   *  of its two ends before either land could move (`duelVoided`). It is the
+   *  only outcome derived here rather than read, and the derivation is
+   *  exhaustive: the wrap retires a duel for exactly two reasons and `decided`
+   *  covers the other.
+   *
+   *  What a won duel is worth is paid into the winner's realm here. Losing pays
+   *  nothing and takes nothing extra either: the forfeit IS the staked land,
+   *  and the enemy has already walked into it, so there is no second transfer
+   *  to make here.
    *
    *  The spoils COME HOME - to the human's own land, whichever of the enemy's
    *  lands actually changed hands. Two reasons, and the second is the one that
@@ -1528,21 +1535,21 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
    *
    *  One event, whatever the reward, carrying the defense it moved so the
    *  before -> after suffix comes off the same walk every other score does. */
-  const settleDuel = (enemy: string, seen: GameEvent[]): void => {
+  const settleDuel = (
+    enemy: string, outcome: DuelOutcome,
+  ): void => {
     const home = humanFactionOf(state);
     if (home === null) return;
     const winner = players.find((pl) => pl.factionId === home);
-    const outcome = duelOutcome(
-      gauntlet, home, seen, overlords, incorporated,
-    );
     if (outcome !== "won") {
       // The two un-won endings are separate types rather than one line with a
-      // reason on it, because they are separate news: a land went the other
-      // way, or twenty rounds passed and neither realm gave anything up. Both
-      // move no score, so both carry only the two ends of the fight.
+      // reason on it, because they are separate news: the staked land went the
+      // other way, or the fight lost an end and settled nothing. Both move no
+      // score here, so both carry only the two ends of the fight - a loss
+      // already moved its score at the capture that caused it.
       events.push({
         turn: state.turn, playerId: winner?.id ?? p.id,
-        type: outcome === "lost" ? "duel-lost" : "duel-lapsed",
+        type: outcome === "lost" ? "duel-lost" : "duel-void",
         targetFactionId: home, sourceFactionId: enemy,
       });
       return;
@@ -1620,15 +1627,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // The duel settled - announced, and paid where it is owed - at the moment
     // it retires and nowhere else.
     // Asked of the gauntlet as it stood BEFORE the wrap, because the wrap is
-    // what throws the duel away - one line later there is no enemy left to
-    // ask about. `duelOutcome` says why the log rather than `until` is what
-    // answers how it ended.
-    //
-    // The batch being written is handed in alongside `state.log`: a conquest
-    // at the human's own turn start is decided and swept in this same
-    // `beginTurn`, so the line that decided it is still in `events`.
+    // what throws the duel away: one line later there is no enemy left to name
+    // and no `decided` left to read.
     if (gauntlet.kind === "duel" && wrapped.kind !== "duel") {
-      settleDuel(gauntlet.enemy, [...state.log, ...events]);
+      settleDuel(gauntlet.enemy, gauntlet.decided ?? "void");
     }
     gauntlet = wrapped;
     // A land that was hit THIS round does not also grow back in it. The heal
@@ -2202,8 +2204,12 @@ export function keepPlaying(state: GameState): GameState {
   };
 }
 
-/** The player answers the pick: a duel opens against `enemyId`, running until
- *  a land moves between the two realms or `DUEL_TURNS` rounds have passed.
+/** The player answers the pick: a duel opens against `enemyId`, with `stakeId`
+ *  of their own lands put up against it.
+ *
+ *  Two answers and one call, because they are one decision - which fight, and
+ *  what it is worth risking - and a run that could open a duel with the stake
+ *  still owed would be a duel whose losing condition does not exist yet.
  *
  *  Shaped like `keepPlaying` and `transferDefense`: an identity return is what
  *  `commitDecision` reads as refused, so a pick naming a land the offer does
@@ -2213,17 +2219,42 @@ export function keepPlaying(state: GameState): GameState {
  *  the player was shown; it is re-read at every round wrap, so it is never
  *  more than a round behind the board.
  *
+ *  The STAKE is checked against `duelStakes` for the same reason, and it is
+ *  read fresh rather than carried on the offer: the candidates were computed
+ *  at a wrap and a stake is about the player's own realm, which their own turn
+ *  may have changed since.
+ *
+ *  **A realm holding one land stakes nothing**, and passes `null`. There is
+ *  nothing to bet there that is not the run itself, and a rule that bets the
+ *  run on turn 1 is a rule that ends runs on turn 1. Such a duel can be won
+ *  and cannot be lost; it still ends, because winning it is a capture like any
+ *  other.
+ *
  *  It moves the gauntlet and nothing else. The duel takes effect from the next
  *  seat onward - the turn it was answered in is the player's own, and taking
  *  it off them would be answering a question by skipping the asker. */
-export function pickDuel(state: GameState, enemyId: string): GameState {
+export function pickDuel(
+  state: GameState, enemyId: string, stakeId: string | null = null,
+): GameState {
   if (state.phase !== "playing") return state;
   if (state.gauntlet.kind !== "picking") return state;
   if (!state.gauntlet.candidates.includes(enemyId)) return state;
+  const home = humanFactionOf(state);
+  if (home === null) return state;
+  // The realm's SIZE and not the length of the legal list, because they answer
+  // different questions: a wide realm with one land near the enemy still has
+  // something to bet, and must bet it. `null` is the one-land board alone.
+  const alone =
+    fullRealmOf(home, state.overlords, state.incorporated).size <= 1;
+  if (stakeId === null) {
+    if (!alone) return state;
+  } else if (!duelStakes(viewOf(state), home, enemyId).includes(stakeId)) {
+    return state;
+  }
   return {
     ...state,
     gauntlet: {
-      kind: "duel", enemy: enemyId, until: state.turn + DUEL_TURNS,
+      kind: "duel", enemy: enemyId, staked: stakeId, decided: null,
     },
   };
 }
@@ -2732,7 +2763,7 @@ export function playCard(
     // line later `overlords` no longer knows which side the land was on.
     gauntlet = duelDecidedBy(
       gauntlet, humanFactionOf(state), target, p.factionId,
-      overlords, incorporated, state.turn,
+      overlords, incorporated,
     );
     // The target's own vassals come along: taking a lord takes its pyramid.
     overlords.set(target, p.factionId);

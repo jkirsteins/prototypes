@@ -96,7 +96,7 @@ export const EVENT_SOUNDS: Record<GameEventType, SoundName | null> = {
   // gone; a lapsed one gets the quietest cue there is, because nothing
   // happened and the sound should say so.
   "duel-lost": "bell-heavy",
-  "duel-lapsed": "rustle",
+  "duel-void": "rustle",
   "harvest-earned": "harvest",
   "harvest-picked": "confirm",
   "harvest-burned": "burn",

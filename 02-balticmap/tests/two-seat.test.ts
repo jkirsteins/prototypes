@@ -19,7 +19,6 @@ import { defenseOf, MIN_RAID_SPEND } from "../src/defense";
 import { aiTakeTurn } from "../src/ai";
 import type { Rng } from "../src/cards";
 import { autoHarvestChoice, buildOffer } from "../src/harvest";
-import { DUEL_TURNS } from "../src/gauntlet";
 import { seededRng } from "../src/rng";
 import {
   dealNetGame, guestPhaseView, wirePair, type NetAction,
@@ -478,7 +477,7 @@ describe("the deal seats the guest as a person", () => {
     const duelling = {
       ...state,
       gauntlet: {
-        kind: "duel" as const, enemy, until: state.turn + DUEL_TURNS,
+        kind: "duel" as const, enemy, staked: null, decided: null,
       },
     };
     expect(takesNoTurn(duelling, guestFaction)).toBe(false);

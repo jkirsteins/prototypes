@@ -108,7 +108,7 @@ describe("parseBootParams", () => {
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
       defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
       marches: [], realm: null, turnips: null, wealth: null, popups: null,
-      rules: null, region: null, duel: null,
+      rules: null, region: null, duel: null, stake: null,
     });
   });
 

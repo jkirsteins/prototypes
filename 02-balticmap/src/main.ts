@@ -12,14 +12,14 @@ import { attachInteraction, DRAG_THRESHOLD_PX, landAtPoint } from "./interaction
 // appends events to a `GameState` goes through `./moves`, whose wrappers are
 // shaped for `apply` so there is no local path around either door.
 import {
-  newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen, transferLimit,
-  type GameEvent, type GameState,
+  humanFactionOf, newGame, viewOf, repeatOnlyOf, takesNoTurn, turnOpen,
+  transferLimit, type GameEvent, type GameState,
 } from "./game";
 import {
   actionBlock as gateBlock, shouldAskPick, shouldReask,
   type PlayerAction, type ScreenFacts,
 } from "./gates";
-import { rewardFor, rewardLine } from "./gauntlet";
+import { duelStakes, rewardFor, rewardLine } from "./gauntlet";
 import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
@@ -667,13 +667,15 @@ function reaskOwedQuestions(): void {
 }
 
 /** Puts the gauntlet's offer to the player: which bordering realm the run
- *  duels next, or none of them.
+ *  duels next, or none of them - and then what they put up against it.
  *
  *  It holds nothing open and releases nothing. The pick is a STATE the engine
  *  carries until it is answered - `picking` leaves the world unscoped rather
  *  than blocking, per src/gauntlet.ts - so what holds the screen is
  *  `localPickPending` inside the action gate, and what takes the modal down is
- *  the answer moving the gauntlet off `picking`.
+ *  the answer moving the gauntlet off `picking`. The stake screen rides inside
+ *  that same window: the gauntlet is still `picking` behind it, so the lock
+ *  spans both screens with nothing extra holding it and Back is free.
  *
  *  Both repaints are owed by hand, for the reason every derived lock owes
  *  them: nothing repaints when the gate opens or closes on its own, so the
@@ -682,6 +684,7 @@ function askDuelPick(): void {
   const g = game();
   if (g.gauntlet.kind !== "picking") return;
   const v = viewOf(g);
+  const home = humanFactionOf(g);
   hud.showDuelOffer(
     {
       candidates: g.gauntlet.candidates.map((factionId) => ({
@@ -693,18 +696,58 @@ function askDuelPick(): void {
     },
     {
       onPick(factionId) {
-        hud.hideHarvestUi();
-        decide({ kind: "pick-duel", enemyId: factionId });
+        // Read fresh rather than captured: the realm is the player's own and
+        // their turn may have moved it since the offer was computed at a wrap.
+        const stakes =
+          home === null ? [] : duelStakes(viewOf(game()), home, factionId);
+        // A realm with one thing to bet is not asked which - see `pickDuel`.
+        // The question is about the REALM's size, not the length of this list:
+        // a wide realm with one land near the enemy still has to bet it.
+        const alone =
+          home !== null &&
+          fullRealmOf(home, game().overlords, game().incorporated).size <= 1;
+        if (alone || stakes.length === 0) {
+          hud.hideHarvestUi();
+          decide({ kind: "pick-duel", enemyId: factionId, stakeId: null });
+          return;
+        }
+        askDuelStake(factionId, stakes);
       },
       onDecline() {
         hud.hideHarvestUi();
-        decide({ kind: "pick-duel", enemyId: null });
+        decide({ kind: "pick-duel", enemyId: null, stakeId: null });
       },
     },
   );
   // On the way IN, because the gate has answered "locked" since the board
   // reached `picking` and nothing has repainted the hand under it since.
   refresh();
+}
+
+/** The second screen of the same question. Back re-raises the first, which is
+ *  why it is a function of its own rather than a closure inside the offer. */
+function askDuelStake(enemy: string, stakes: string[]): void {
+  const g = game();
+  const v = viewOf(g);
+  hud.showStakeOffer(
+    {
+      enemy,
+      stakes: stakes.map((factionId) => ({
+        factionId,
+        defense: defenseOf(v, factionId),
+        max: defenseMaxOf(v, factionId),
+      })),
+    },
+    {
+      onStake(factionId) {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-duel", enemyId: enemy, stakeId: factionId });
+      },
+      onBack() {
+        askDuelPick();
+      },
+    },
+  );
 }
 
 /** The seat this screen plays. 0 for solo and host; the guest learns its

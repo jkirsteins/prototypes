@@ -2,11 +2,13 @@ import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
-  advance, chooseBuild, declineDuel, discardCard, endTurn, newGame, pickDuel,
+  advance, chooseBuild, declineDuel, discardCard, endTurn, humanFactionOf,
+  newGame, pickDuel,
   pickFaction, playCard, repeatOnlyOf, startGame, turnOpen, viewOf,
   type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
+import { duelStakes } from "./gauntlet";
 import { seededRng } from "./rng";
 import { aiTakeTurn, chooseAction, MAX_AI_PLAYS } from "./ai";
 import { fullRealmOf } from "./relations";
@@ -203,13 +205,25 @@ function newSimGame(): GameState {
  *  world tick either way and a run that declined everything would measure the
  *  pre-gauntlet game all over again.
  *
+ *  The STAKE is the same rule one level down: the first land `duelStakes`
+ *  lists, which is map order again. A sim that staked its weakest land - or
+ *  its strongest - would be a second opinion about how to bet, measured as if
+ *  it were the game's own tempo. `null` where the realm holds one land, which
+ *  is what `pickDuel` requires of that board.
+ *
  *  `duelCandidates` is already in map order, so this is deterministic and a
  *  seeded run replays. It draws no rng, which is what keeps a run comparable
  *  with one measured before the loop existed. */
 function answerTheOffer(state: GameState): GameState {
   if (state.gauntlet.kind !== "picking") return state;
   const [first] = state.gauntlet.candidates;
-  return first === undefined ? declineDuel(state) : pickDuel(state, first);
+  if (first === undefined) return declineDuel(state);
+  const home = humanFactionOf(state);
+  if (home === null) return state;
+  const alone =
+    fullRealmOf(home, state.overlords, state.incorporated).size <= 1;
+  const [stake] = duelStakes(viewOf(state), home, first);
+  return pickDuel(state, first, alone ? null : stake ?? null);
 }
 
 /** Plays one complete headless game. Throws rather than spinning if a turn

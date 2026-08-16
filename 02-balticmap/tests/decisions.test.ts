@@ -104,9 +104,13 @@ describe("commitDecision - the duel pick", () => {
     const enemy = offerOf(state)[0];
     expect(enemy).toBeDefined();
     const { deps, applied, sent } = soloDeps(state);
-    const result = commitDecision(deps, { kind: "pick-duel", enemyId: enemy });
+    // A fresh deal is a one-land realm, which stakes nothing - see `pickDuel`.
+    const result = commitDecision(
+      deps, { kind: "pick-duel", enemyId: enemy, stakeId: null },
+    );
     expect(result).toEqual({ outcome: "applied", settle: "action" });
-    expect(applied[0].gauntlet).toMatchObject({ kind: "duel", enemy });
+    expect(applied[0].gauntlet)
+      .toMatchObject({ kind: "duel", enemy, staked: null, decided: null });
     // Host-only: nothing crosses the wire, and the sentence saying why is the
     // route's own.
     expect(sent).toHaveLength(0);
@@ -117,7 +121,9 @@ describe("commitDecision - the duel pick", () => {
     // the player reaches for when the whole offer is worth ignoring
     // differently from the one that picks a fight.
     const { deps, applied } = soloDeps(freshGame());
-    const result = commitDecision(deps, { kind: "pick-duel", enemyId: null });
+    const result = commitDecision(
+      deps, { kind: "pick-duel", enemyId: null, stakeId: null },
+    );
     expect(result).toEqual({ outcome: "applied", settle: "action" });
     // `turn + 2`: a decline is answered mid-round, so a tick ending at the
     // next wrap would be over before an unscoped round had run.
@@ -130,7 +136,9 @@ describe("commitDecision - the duel pick", () => {
     // refused - so a stale modal cannot scope the turn loop to a faction
     // nobody may fight.
     const { deps, applied } = soloDeps(freshGame());
-    const result = commitDecision(deps, { kind: "pick-duel", enemyId: "alpha" });
+    const result = commitDecision(
+      deps, { kind: "pick-duel", enemyId: "alpha", stakeId: null },
+    );
     expect(result.outcome).toBe("refused");
     expect(applied).toHaveLength(0);
   });
@@ -140,7 +148,8 @@ describe("commitDecision - the duel pick", () => {
     const enemy = offerOf(state)[0];
     const { deps, applied, sent } = soloDeps(state);
     const result = commitDecision(
-      { ...deps, role: "guest" }, { kind: "pick-duel", enemyId: enemy },
+      { ...deps, role: "guest" },
+      { kind: "pick-duel", enemyId: enemy, stakeId: null },
     );
     expect(result.outcome).toBe("refused");
     expect(result).toMatchObject({ reason: expect.stringMatching(/gauntlet/) });

@@ -748,8 +748,8 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
   },
   // The two un-won endings, in the same shape and the same footer as the win.
   // A duel is a promise the run settles, so every way it settles is news: the
-  // player who is told nothing is left to infer that the last fight lapsed
-  // from the next offer appearing, which is not a settlement at all.
+  // player who is told nothing is left to infer that the last fight ended from
+  // the next offer appearing, which is not a settlement at all.
   "duel-lost": {
     kind: "modal",
     // The local seat's own fight. Not gated on somebody else having acted,
@@ -760,7 +760,7 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       events.map((e, i) => ({
         text: [
           t("The duel with "), faction(e.sourceFactionId ?? ""),
-          t(" is lost - a land of yours changed hands, and there are no "),
+          t(" is lost - the land you staked changed hands, and there are no "),
           t("spoils"),
         ],
         changes: changesFor(i, changes),
@@ -771,15 +771,20 @@ export const NOTICE_RULES: Record<GameEventType, NoticeRule> = {
       t("round."),
     ]],
   },
-  "duel-lapsed": {
+  // The rare ending, and never the player's doing: the fight lost one of its
+  // two ends - the enemy was annexed by somebody else, or the staked land left
+  // the realm without the enemy taking it - so neither land can settle it any
+  // more. It says WHY rather than only that it ended, because a fight that
+  // stops with nothing said reads as the run losing track of itself.
+  "duel-void": {
     kind: "modal",
     appliesToHuman: (e, _ctx, localPlayerId = 1) => e.playerId === localPlayerId,
     lines: (events, changes) =>
       events.map((e, i) => ({
         text: [
           t("The duel with "), faction(e.sourceFactionId ?? ""),
-          t(" runs out of time - no land changed hands, and there are no "),
-          t("spoils"),
+          t(" settles nothing - what it was fought over is gone, so neither "),
+          t("side takes anything"),
         ],
         changes: changesFor(i, changes),
         tone: "neutral" as const,

@@ -204,18 +204,18 @@ describe("PRESENTATION_RULES", () => {
     expect(walked).toBeGreaterThanOrEqual(6);
   });
 
-  it("says a lapsed duel ran out of time, not that somebody ran it out", () => {
-    // "Selonians runs out the duel with Semigallians" reads as the player
-    // deliberately running the clock down - a tactic nobody chose, described
-    // as one. The clock is what ended the fight, and the modal that follows
-    // this beat already says so; the two surfaces must not disagree about who
-    // did it.
-    const e = sample("duel-lapsed", { targetFactionId: "beta" });
+  it("says a void duel settled nothing, never that anybody lost it", () => {
+    // "Selonians loses the duel with Semigallians" would tell the player they
+    // were outplayed by a board change they had no part in - the fight lost
+    // one of its two ends before either land could move. The modal that
+    // follows this beat says the same words; the two surfaces must not
+    // disagree about what happened.
+    const e = sample("duel-void", { targetFactionId: "beta" });
     const [beat] = mapBeats(presentEvents([e], ctxFor([e])));
     const said = (beat.label ?? [])
       .map((s) => (s.kind === "text" ? s.text : "")).join("");
-    expect(said).toContain("runs out of time");
-    expect(said).not.toContain("runs out the duel");
+    expect(said).toContain("settles nothing");
+    expect(said).not.toContain("loses");
   });
 });
 

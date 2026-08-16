@@ -109,14 +109,21 @@ export type Decision =
    *  against a moved board landed on the wrong conquest or on none. */
   | { kind: "transfer"; from: string; to: string; amount: number }
   | { kind: "surrender" }
-  /** Which bordering realm the run duels next, or `null` for none of them.
+  /** Which bordering realm the run duels next, or `null` for none of them,
+   *  and which of the player's own lands is put up against it.
    *
    *  ONE kind and not two, because it is one question with one answer -
    *  "which fight, or no fight" - asked once, on one modal, with one way out.
    *  Split into `pick-duel` and `decline-duel` the table would let a screen
    *  route the two differently, and the answer that got dropped would be the
-   *  one the player reaches for when the whole offer is worth ignoring. */
-  | { kind: "pick-duel"; enemyId: string | null }
+   *  one the player reaches for when the whole offer is worth ignoring.
+   *
+   *  `stakeId` rides the same decision rather than taking a kind of its own,
+   *  the way a raid's `spend` rides its `play`: the amount and the target are
+   *  settled before anything is committed, so they are part of one answer and
+   *  the router does not learn a second thing. It is `null` when the offer was
+   *  declined, and `null` for a realm holding one land - see `pickDuel`. */
+  | { kind: "pick-duel"; enemyId: string | null; stakeId: string | null }
   /** Its own kind and not a variant of anything: it is the one decision taken
    *  after an ending rather than in play, and the only one that puts a phase
    *  BACK. */
@@ -195,7 +202,9 @@ export const DECISION_ROUTES: {
       "the second person is never shown this question rather than being " +
       "shown one whose answer has nowhere to go.",
     apply: (state, _rng, d) =>
-      d.enemyId === null ? declineDuel(state) : pickDuel(state, d.enemyId),
+      d.enemyId === null
+        ? declineDuel(state)
+        : pickDuel(state, d.enemyId, d.stakeId),
   },
   "keep-playing": {
     // `action` and not `repaint`, and this is load-bearing rather than tidy.

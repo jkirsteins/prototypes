@@ -1,10 +1,11 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import { REGIONS, type RegionId } from "./regions";
 import {
-  advance, chooseBuild, chooseRules, declineDuel, isHumanTurn, pickDuel,
-  pickFaction, startGame, TURNIP_HARVEST_THRESHOLD, viewOf,
+  advance, chooseBuild, chooseRules, declineDuel, humanFactionOf, isHumanTurn,
+  pickDuel, pickFaction, startGame, TURNIP_HARVEST_THRESHOLD, viewOf,
   type GameState,
 } from "./game";
+import { duelStakes } from "./gauntlet";
 import { aiTakeTurn } from "./ai";
 import { applyDamage, defenseMaxOf, MIN_RAID_SPEND } from "./defense";
 import { addMarch } from "./marches";
@@ -12,7 +13,7 @@ import {
   attackDamageFor, marchHopsTo, marchSourcesAgainst, marchTargetsFrom,
   spendCeilingOn,
 } from "./playability";
-import { realmRootOf } from "./relations";
+import { fullRealmOf, realmRootOf } from "./relations";
 import { rulerOf } from "./rulers";
 import { mergeRules, type RuleSelections } from "./rules";
 
@@ -82,6 +83,16 @@ export interface BootParams {
    *  real `pickDuel` / `declineDuel`, so an id the offer does not hold is
    *  dropped rather than scoping the loop to a land nobody may fight. */
   duel: string | null;
+  /** Which of the player's own lands `duel=` puts up, or null to take the
+   *  first `duelStakes` offers.
+   *
+   *  It DEFAULTS rather than being required, so every `duel=` URL written
+   *  before a duel had a stake still boots into a running duel instead of
+   *  silently bouncing off `pickDuel`'s refusal. Naming one is for the check
+   *  that is about the stake - losing it, or watching the chip name it - and
+   *  an id outside the legal set drops the same way every other unknown id in
+   *  this file does. */
+  stake: string | null;
   /** `region=iberia` - which map the booted page plays on; seeds the booted
    *  page's region preference the way `rules=` seeds the rules. An unknown
    *  value drops to null rather than a default, since main.ts must tell "no
@@ -214,7 +225,7 @@ function parseRules(raw: string): RuleSelections {
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
   "leadership", "armies", "settlements", "march", "realm", "turnips", "wealth",
-  "popups", "rules", "region", "duel",
+  "popups", "rules", "region", "duel", "stake",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -269,6 +280,7 @@ export function parseBootParams(search: string): BootParams | null {
     rules: rules === null ? null : parseRules(rules),
     region: region !== null && region in REGIONS ? (region as RegionId) : null,
     duel: q.get("duel"),
+    stake: q.get("stake"),
   };
 }
 
@@ -424,7 +436,25 @@ export function applyBootParams(
   // the board, and the shape does not read the board. Through the real
   // decision's two engine calls, so a stale or fabricated id changes nothing.
   if (params.duel !== null) {
-    g = params.duel === "none" ? declineDuel(g) : pickDuel(g, params.duel);
+    if (params.duel === "none") {
+      g = declineDuel(g);
+    } else {
+      // The stake defaults to the first land `duelStakes` offers, in map
+      // order, so a URL written before duels had a stake still reaches a
+      // running duel. `null` on a one-land realm, which is the one board
+      // `pickDuel` requires it of.
+      const home = humanFactionOf(g);
+      const alone =
+        home !== null &&
+        fullRealmOf(home, g.overlords, g.incorporated).size <= 1;
+      const legal =
+        home === null ? [] : duelStakes(viewOf(g), home, params.duel);
+      const named =
+        params.stake !== null && legal.includes(params.stake)
+          ? params.stake
+          : legal[0] ?? null;
+      g = pickDuel(g, params.duel, alone ? null : named);
+    }
   }
   // A booted march is declared through the same rules a played one is: the
   // source must be in the actor's realm with an army free and within marching

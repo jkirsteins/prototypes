@@ -19,7 +19,6 @@ import {
   type RulesView,
 } from "./playability";
 import { abilitiesOf, LEADER_ABILITIES } from "./abilities";
-import { DUEL_TURNS } from "./gauntlet";
 import { milestonePoints, milestoneStandings } from "./milestones";
 import { count } from "./plural";
 import type { PlayerAction } from "./gates";
@@ -315,6 +314,17 @@ export interface Hud {
   showDuelOffer(
     offer: { candidates: { factionId: string; reward: string }[] },
     hooks: { onPick(factionId: string): void; onDecline(): void },
+  ): void;
+  /** The second half of that pick: which of your own lands is put up against
+   *  the enemy. Same overlay, same lock - the gauntlet is `picking` behind
+   *  both screens - and the shared button goes BACK to the enemy list rather
+   *  than declining, so reading the stakes costs nothing. */
+  showStakeOffer(
+    offer: {
+      enemy: string;
+      stakes: { factionId: string; defense: number; max: number }[];
+    },
+    hooks: { onStake(factionId: string): void; onBack(): void },
   ): void;
   /** Asks how hard to raid: how much defense comes out of the land or lands
    *  the arrows set out from. One slider whatever the card, because Great raid
@@ -708,15 +718,16 @@ export function eventSegments(
         ...(e.wealth === undefined ? [] : [t(` - ${e.wealth} wealth`)]),
       ], "past");
     // The two un-won endings. Separate verbs rather than one line with a
-    // reason appended: a land lost and a clock run out are different news,
-    // and the log is where a player goes to find out which it was.
+    // reason appended: a staked land handed over and a fight that lost its
+    // other end are different news, and the log is where a player goes to
+    // find out which it was.
     case "duel-lost":
       return clause(actor, "lose", [
         t(" the duel with "), faction(e.sourceFactionId ?? ""),
       ], "past");
-    case "duel-lapsed":
-      return clause(actor, "run", [
-        t(" out of time in the duel with "), faction(e.sourceFactionId ?? ""),
+    case "duel-void":
+      return clause(actor, "fail", [
+        t(" to settle the duel with "), faction(e.sourceFactionId ?? ""),
       ], "past");
     case "surrendered":
       return clause(actor, "concede", [t(" the Baltic")], "past");
@@ -1251,10 +1262,9 @@ export function createHud(
         },
         {
           text:
-            "It ends the moment a land changes hands between the two realms, " +
-            `or after ${DUEL_TURNS} rounds, whichever comes first. Taking a ` +
-            "land off them pays the reward the offer named; losing one, or " +
-            "running out of turns, pays nothing.",
+            "There is no clock. It ends when ground changes hands: take " +
+            "their land and the reward the offer named comes home, or lose " +
+            "the land you staked and the duel is theirs.",
         },
         {
           text:
@@ -1709,6 +1719,60 @@ export function createHud(
         "only way on: every realm takes a turn, and a fresh offer comes round."
       : "The border is not a list. Letting the world turn declines all of " +
         "them - every realm takes a turn, and a fresh offer comes round.");
+
+    harvestOptions.replaceChildren(...rows);
+    harvestOverlay.classList.remove("hidden");
+  }
+
+  /** The second half of the gauntlet's question: which of your own lands is
+   *  put up against the enemy you just chose.
+   *
+   *  A second screen on the SAME overlay rather than a second modal, because
+   *  it is the same question - which fight, and what it is worth risking - and
+   *  the gauntlet is still `picking` behind both, so the screen stays locked
+   *  across the pair with nothing extra holding it.
+   *
+   *  The shared button goes BACK here rather than declining. A player who has
+   *  read the stakes and wants a different enemy must be able to say so, and
+   *  the decline is one step behind them; a cancel that spent a world tick
+   *  from this screen would charge them a round for reading.
+   *
+   *  Dumb render, the offer's rule: what may be staked is `duelStakes` in
+   *  src/gauntlet.ts and the defense on each row is the store's, handed in. */
+  function showStakeOffer(
+    offer: {
+      enemy: string;
+      stakes: { factionId: string; defense: number; max: number }[];
+    },
+    hooks: { onStake(factionId: string): void; onBack(): void },
+  ): void {
+    harvestTitle.textContent = "What do you put up?";
+    armCancel("Choose another realm", hooks.onBack);
+    releaseHarvestEscape();
+
+    const rows = offer.stakes.map(({ factionId, defense, max }) => {
+      const btn = document.createElement("button");
+      btn.className = "harvest-option";
+      const label = document.createElement("div");
+      label.className = "harvest-option-label";
+      label.append(
+        document.createTextNode("Stake "),
+        renderSegments([faction(factionId)], richTextHooks),
+      );
+      const text = document.createElement("div");
+      text.className = "harvest-option-text";
+      text.textContent = `Defense ${defense} of ${max}. Lose the duel and it changes hands.`;
+      btn.append(label, text);
+      btn.addEventListener("click", () => hooks.onStake(factionId));
+      return btn;
+    });
+
+    // Set AFTER `armCancel`, which clears it.
+    setNote(
+      "A duel has no clock. It ends when ground changes hands: take their " +
+      "land and the spoils come home, or lose the land you stake and the " +
+      "duel is theirs. Every land here is close enough to march on them.",
+    );
 
     harvestOptions.replaceChildren(...rows);
     harvestOverlay.classList.remove("hidden");
@@ -2843,16 +2907,19 @@ export function createHud(
       } else {
         rulerTip = [];
       }
-      // The duel and its clock. `until` is the turn the duel is over BY, so
-      // the turns left is the distance to it - the same subtraction the wrap
-      // makes, rather than a second count of rounds kept beside it.
+      // The duel and what is on the table. There is no clock to count down
+      // any more, so the chip names the two lands the fight is about: the
+      // enemy, and the land the player put up against it. A one-land realm
+      // staked nothing and the chip says only who is being fought.
       const duel = state.gauntlet;
       duelChip.classList.toggle("hidden", duel.kind !== "duel");
       if (duel.kind === "duel") {
         duelChip.replaceChildren(renderSegments(
           [
             t("Duel "), faction(duel.enemy),
-            t(` - ${count(Math.max(0, duel.until - state.turn), "turn")} left`),
+            ...(duel.staked === null
+              ? []
+              : [t(" - staking "), faction(duel.staked)]),
           ],
           richTextHooks,
         ));
@@ -3465,6 +3532,7 @@ export function createHud(
     },
     showHarvestOffer,
     showDuelOffer,
+    showStakeOffer,
     revealGainedCards,
     showSpendOffer,
     showTransferOffer,

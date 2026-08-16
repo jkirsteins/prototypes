@@ -8,21 +8,11 @@
  */
 
 import { LAND_GROWTH } from "./defense";
-import type { GameEvent } from "./game";
 import { DEFENSIVE_TERRAIN, hasPassive } from "./passives";
 import {
-  aimsWithinOwnRealm, attackReach, type RulesView,
+  aimsWithinOwnRealm, attackReach, marchHopsTo, type RulesView,
 } from "./playability";
 import { fullRealmOf, type Incorporated, type Overlords } from "./relations";
-
-/** How many rounds a duel may run before it ends itself.
- *
- *  The backstop and not the common case: a duel ends the moment a land moves
- *  between the two realms, and that is what usually ends one. The cap exists
- *  so a duel nobody can win still ends - the pre-refactor game stalled at a
- *  median of 110 turns, and a scope with no clock on it would put that back
- *  one duel at a time. */
-export const DUEL_TURNS = 20;
 
 /** Where the run is in the gauntlet cycle. One field rather than three
  *  booleans, because the three states are exclusive and a reader that has to
@@ -33,15 +23,30 @@ export const DUEL_TURNS = 20;
 export type Gauntlet =
   /** The player's realm and `enemy`'s realm act; nobody else does.
    *
-   *  `until` is the turn this duel is over BY, and it is the WHOLE of the
-   *  ending. A land changing hands between the two realms pulls it in to the
-   *  turn that happened on (`duelDecidedBy`), so the clock running out and a
-   *  land being taken are ONE comparison at the round wrap. The alternative
-   *  is a second field saying "decided", and the two would eventually
-   *  disagree about which round a duel ended in. Which of the two endings it
-   *  was, when somebody needs to know, is in the log - the reward is owed for
-   *  a land taken from the enemy, and only the log says whether one was. */
-  | { kind: "duel"; enemy: string; until: number }
+   *  **A duel has no clock.** It is decided by ground changing hands and by
+   *  nothing else: the enemy's own land coming to the player's realm, or the
+   *  player's `staked` land going to the enemy's. There used to be a
+   *  `DUEL_TURNS` backstop, and what replaced it is the stake - a duel is a
+   *  race between two named polygons rather than an open war, so it converges
+   *  on a fact about the board instead of on a number running out.
+   *
+   *  `staked` is the land the player put up when they answered the offer, and
+   *  `null` for a realm that held exactly one land at the time - there is
+   *  nothing to bet there that is not the run itself, and a rule that bets the
+   *  run on turn 1 is a rule that ends runs on turn 1.
+   *
+   *  `decided` is written by `duelDecidedBy` at the moment the ground moves,
+   *  and read at the round wrap. A field rather than a log walk because the
+   *  moment of the move is the only moment the question has a straight answer:
+   *  read back a round later, "the enemy took my stake" and "I took the
+   *  enemy's home" both look like one realm standing inside the other. Null
+   *  while the duel runs. */
+  | {
+      kind: "duel";
+      enemy: string;
+      staked: string | null;
+      decided: DuelOutcome | null;
+    }
   /** Exactly one unscoped round: every seat that would ever take a turn takes
    *  one.
    *
@@ -210,27 +215,32 @@ export function absorbsDuelEnemy(
   return fullRealmOf(human, overlords, incorporated).has(taker);
 }
 
-/** A land has just changed hands: the duel ends if it moved BETWEEN the two
- *  realms, in either direction.
+/** A land has just changed hands: the duel is decided if that land was one of
+ *  the two the fight is ABOUT, and it moved to the other side.
+ *
+ *  Exactly two polygons, which is the whole of the stake rule. The enemy's own
+ *  land coming to the player's realm wins it; the player's staked land going
+ *  to the enemy's realm loses it. Every other capture during a duel is an
+ *  ordinary capture: a raid on the enemy's vassal, a third party's arrow
+ *  landing at the wrap, a lord disciplining its own. They move the board and
+ *  they do not end the fight, because the fight was declared over two named
+ *  lands and a player who bet one of them is owed a duel that ends on it.
  *
  *  Asked at the moment the allegiance moves, and never afterwards, because
  *  that is the only moment the question has a straight answer. Read back off
- *  the board a round later, "the enemy took my home" and "I took the enemy's
+ *  the board a round later, "the enemy took my stake" and "I took the enemy's
  *  home" both look like one realm standing inside the other, and a log walk
  *  would have to reconstruct who was on which side before each line. Here,
  *  `overlords` and `incorporated` are still the ones the land moved out of.
  *
- *  Either direction, and that is the point rather than a nicety. A duel that
- *  ended only on the player's own conquest would trap a losing player inside
- *  the scope that is beating them, for as many rounds as the clock has left.
+ *  It records the outcome rather than ending the duel here: the cycle turns at
+ *  the round wrap and nowhere else, so a conquest mid-round leaves the round
+ *  it happened in intact.
  *
- *  A land taken from somebody OUTSIDE both realms does not end the duel -
- *  neither side gave anything up, so the fight the player picked is still
- *  running.
- *
- *  It ends the duel by pulling `until` in rather than by ending it here: the
- *  cycle turns at the round wrap and nowhere else, so a conquest mid-round
- *  leaves the round it happened in intact. */
+ *  A duel already decided is not re-decided. Both lands can move in one round
+ *  - the enemy takes the stake at its turn start, the player's own arrow lands
+ *  on the enemy at theirs - and the first answer stands, because that is the
+ *  one the round the player watched actually produced. */
 export function duelDecidedBy(
   g: Gauntlet,
   human: string | null,
@@ -238,27 +248,79 @@ export function duelDecidedBy(
   taker: string,
   overlords: Overlords,
   incorporated: Incorporated,
-  turn: number,
 ): Gauntlet {
-  if (g.kind !== "duel" || human === null) return g;
+  if (g.kind !== "duel" || human === null || g.decided !== null) return g;
   const mine = fullRealmOf(human, overlords, incorporated);
   const theirs = fullRealmOf(g.enemy, overlords, incorporated);
-  const side = (f: string): "mine" | "theirs" | null =>
-    mine.has(f) ? "mine" : theirs.has(f) ? "theirs" : null;
-  const from = side(land);
-  const to = side(taker);
-  if (from === null || to === null || from === to) return g;
-  return { ...g, until: Math.min(g.until, turn) };
+  if (land === g.enemy && mine.has(taker)) return { ...g, decided: "won" };
+  if (g.staked !== null && land === g.staked && theirs.has(taker)) {
+    return { ...g, decided: "lost" };
+  }
+  return g;
+}
+
+/** Whether the fight has lost one of its two ends, so nothing can decide it
+ *  any more.
+ *
+ *  Not a third way to lose and not a clock in disguise: it is the answer to
+ *  "the thing this duel was about has stopped existing". Two shapes reach it,
+ *  and with no clock behind them either would otherwise be a duel that runs
+ *  for the rest of the run.
+ *
+ *  - The enemy is ANNEXED, by anybody. An absorbed people has no seat, takes
+ *    no turn and can lose no land, so there is nobody left to beat. A vassal
+ *    is deliberately not this case: an enemy that swore to somebody else still
+ *    holds its own land and still acts, so that duel goes on.
+ *  - The STAKE has left the player's realm without the enemy taking it - a
+ *    third party's arrow landing at the wrap, a staked vassal winning its
+ *    independence. The bet cannot be settled once what was wagered is gone.
+ *
+ *  A duel that is already decided is left alone: the ground moved, and what
+ *  the board looks like afterwards does not get to relabel it. */
+export function duelVoided(
+  g: Gauntlet,
+  human: string | null,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): boolean {
+  if (g.kind !== "duel" || human === null || g.decided !== null) return false;
+  if (incorporated[g.enemy] !== undefined) return true;
+  if (g.staked === null) return false;
+  return !fullRealmOf(human, overlords, incorporated).has(g.staked);
+}
+
+/** The lands the player may put up against `enemy`: members of their own realm
+ *  that stand within marching distance of it.
+ *
+ *  `marchHopsTo` and not a fourth spelling of distance - the aim, the source
+ *  list and this all ask how far an army walks, and a stake the player's own
+ *  arrows cannot reach would be a bet on a fight happening somewhere else.
+ *  `fullRealmOf` and not the lands held outright, per the realm-sizes rule: a
+ *  lord marches out of its vassals' lands, so a vassal's border land is as
+ *  much a front as the lord's own. Staking one is a real risk on top of the
+ *  ordinary one - a vassal that wins its independence takes the wager off the
+ *  table (`duelVoided`) - and that is a decision rather than a trap, because
+ *  the player can read the gate on the same map.
+ *
+ *  Returned in map order, so the offer reads the same way twice and a replay
+ *  of one seed lists the same lands in the same order. */
+export function duelStakes(
+  view: RulesView, human: string, enemy: string,
+): string[] {
+  const realm = fullRealmOf(human, view.overlords, view.incorporated);
+  return view.factionIds.filter(
+    (land) => realm.has(land) && marchHopsTo(view, land, enemy) !== null,
+  );
 }
 
 /** The cycle, turned once. Called at the round wrap and nowhere else, so
  *  every transition happens between rounds and a round is never half scoped.
  *
- *  - `duel` -> `world-tick` once `until` has come, which is both endings:
- *    the clock, and a land having moved between the two realms (see
- *    `duelDecidedBy`). The tick is over by the NEXT wrap - `view.turn + 1` -
- *    which is one whole unscoped round, this one, and is the behaviour this
- *    arm always had, now written down rather than implied.
+ *  - `duel` -> `world-tick` once the fight is settled: ground has moved
+ *    between the two named lands (`duelDecidedBy`), or the fight has lost one
+ *    of its ends (`duelVoided`). There is no clock - see the `duel` arm. The
+ *    tick is over by the NEXT wrap - `view.turn + 1` - which is one whole
+ *    unscoped round, this one, and is the behaviour this arm always had.
  *  - `world-tick` -> `picking`, once the tick's own `until` has come. Asked
  *    the same way a duel's is, because a tick entered from `declineDuel`
  *    starts mid-round and one entered here starts at a wrap, and "one round"
@@ -275,9 +337,10 @@ export function gauntletAtRoundWrap(
   g: Gauntlet, view: RulesView, human: string | null,
 ): Gauntlet {
   if (g.kind === "duel") {
-    return view.turn >= g.until
-      ? { kind: "world-tick", until: view.turn + 1 }
-      : g;
+    const over =
+      g.decided !== null ||
+      duelVoided(g, human, view.overlords, view.incorporated);
+    return over ? { kind: "world-tick", until: view.turn + 1 } : g;
   }
   if (g.kind === "world-tick" && view.turn < g.until) return g;
   const candidates = human === null ? [] : duelCandidates(view, human);
@@ -360,78 +423,14 @@ export function rewardLine(reward: DuelReward): string {
   }
 }
 
-/** How a duel that is retiring at this wrap ended.
+/** How a duel ended.
  *
  *  Three answers and not two, because the difference between them is the whole
- *  of what the player is owed at the end of a fight: a land came off the enemy
- *  (`won`), a land went the other way (`lost`), or twenty rounds passed and
- *  neither happened (`lapsed`). A single "it is over" would be the silence
- *  this exists to end, one sentence later. */
-export type DuelOutcome = "won" | "lost" | "lapsed";
+ *  of what the player is owed at the end of a fight: the enemy's ground came
+ *  home (`won`), the staked land went the other way (`lost`), or the fight
+ *  lost one of its two ends before either happened (`void`). A single "it is
+ *  over" would be the silence this exists to end, one sentence later.
+ *
+ *  `void` is the rare one and is never the player's doing - see `duelVoided`. */
+export type DuelOutcome = "won" | "lost" | "void";
 
-/** How the duel now ending turned out - a land off the enemy's realm, a land
- *  lost to it, or the clock simply running out.
- *
- *  Read off the LOG, because `until` cannot say: `duelDecidedBy` ends a duel
- *  by pulling `until` in to the turn the land moved, so a duel decided by a
- *  conquest and one decided by the clock arrive here in the same shape. That
- *  is the trade the single field buys, and this is the reader that pays for
- *  it.
- *
- *  It looks at ONE turn - `until` itself - and that is exact rather than
- *  approximate. A land moving between the two realms pulls `until` in to its
- *  own turn, so no cross-realm conquest can sit earlier in a duel that is
- *  still running; and a duel that ran its clock out ends at the wrap onto
- *  `until`, before any of that round is played. Either way the deciding line,
- *  if there is one, carries that turn number.
- *
- *  The direction is read off the two realms AS THEY NOW STAND, which survives
- *  the conquest that ended the duel. The taker is still in the realm it took
- *  for; the land it took is no longer in the realm it came from, so the side
- *  it LEFT is read off `formerOverlordFactionId` - or off the land itself,
- *  since a land nobody held is its own root and `fullRealmOf` includes it.
- *
- *  A win outranks a loss in the one turn that could carry both lines, because
- *  the reward is owed for a land taken and nothing is owed for one lost. The
- *  scope is small - both would have to land on the same turn - and the arm
- *  that pays is the one the offer promised.
- *
- *  `log` must include the events of the batch being written, not just
- *  `state.log`: a conquest at the human's own turn start is decided and swept
- *  in the same `beginTurn`, so the deciding line has not been appended yet. */
-export function duelOutcome(
-  g: Gauntlet,
-  human: string | null,
-  log: readonly GameEvent[],
-  overlords: Overlords,
-  incorporated: Incorporated,
-): DuelOutcome {
-  if (g.kind !== "duel" || human === null) return "lapsed";
-  const mine = fullRealmOf(human, overlords, incorporated);
-  const theirs = fullRealmOf(g.enemy, overlords, incorporated);
-  let lost = false;
-  for (const e of log) {
-    // Both allegiance lines, because a duel can be won either way round: a
-    // chiefless enemy is ABSORBED rather than sworn (`absorbsDuelEnemy`) and
-    // says so with an `incorporated` line. Reading only `subjugated` would
-    // have made every won duel against a quiet land read as a lapsed one -
-    // no spoils, and the offer's promise silently broken. The Incorporate
-    // card writes the same line and cannot be mistaken for this: it aims at
-    // the actor's own vassal, so both ends sit on one side and neither arm
-    // below fires.
-    if (e.type !== "subjugated" && e.type !== "incorporated") continue;
-    if (e.turn !== g.until) continue;
-    const taker = e.overlordFactionId;
-    const land = e.targetFactionId;
-    if (taker === undefined || land === undefined) continue;
-    // The side the land LEFT, which is what makes this a cross-realm move
-    // rather than housekeeping inside one realm.
-    const from = e.formerOverlordFactionId ?? land;
-    if (mine.has(taker) && theirs.has(from)) return "won";
-    // Mirrored, and the sets are read the same way round: a home land taken
-    // off the human leaves the human a vassal of the enemy, so `theirs` holds
-    // the taker while `mine` still holds the human's own root.
-    if (theirs.has(taker) && mine.has(from)) lost = true;
-  }
-  return lost ? "lost" : "lapsed";
-}

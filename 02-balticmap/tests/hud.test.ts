@@ -2797,32 +2797,38 @@ describe("localPlayerId", () => {
 });
 
 describe("the duel chip", () => {
-  it("names the enemy and the turns left while a duel runs", () => {
-    // A duel is up to twenty rounds long and used to have no surface at all:
-    // the word appeared nowhere on screen between the offer and the ending,
-    // so the clock the player was running out of was invisible - which made
-    // an expiry unforeseeable as well as unannounced.
+  it("names the enemy and what is staked while a duel runs", () => {
+    // A duel used to have no surface at all: the word appeared nowhere on
+    // screen between the offer and the ending. There is no clock to count down
+    // now, so the chip names the two lands the fight is actually about.
     const { container, hud } = setup();
     const g = newPlaying();
     hud.update({
-      ...g, turn: 4, gauntlet: { kind: "duel", enemy: "gamma", until: 9 },
+      ...g, turn: 4,
+      gauntlet: {
+        kind: "duel", enemy: "gamma", staked: "beta", decided: null,
+      },
     });
     const chip = q(container, ".status-duel");
     expect(chip.classList.contains("hidden")).toBe(false);
-    expect(chip.textContent).toBe("Duel Gamma - 5 turns left");
-    // The enemy is a segment and not text, so pointing at it lights up their
+    expect(chip.textContent).toBe("Duel Gamma - staking Beta");
+    // Both are segments and not text, so pointing at either lights up that
     // realm the way every other name in the game does.
-    expect(chip.querySelector(".rt-faction")?.textContent).toBe("Gamma");
+    expect(
+      [...chip.querySelectorAll(".rt-faction")].map((n) => n.textContent),
+    ).toEqual(["Gamma", "Beta"]);
   });
 
-  it("counts down to one turn, singular", () => {
+  it("names the enemy alone when the realm staked nothing", () => {
+    // A one-land realm has nothing to bet that is not the run itself, so the
+    // chip must not print a dangling "staking" with no land after it.
     const { container, hud } = setup();
     const g = newPlaying();
     hud.update({
-      ...g, turn: 8, gauntlet: { kind: "duel", enemy: "gamma", until: 9 },
+      ...g, turn: 8,
+      gauntlet: { kind: "duel", enemy: "gamma", staked: null, decided: null },
     });
-    expect(q(container, ".status-duel").textContent)
-      .toBe("Duel Gamma - 1 turn left");
+    expect(q(container, ".status-duel").textContent).toBe("Duel Gamma");
   });
 
   it("hides itself when the run is between duels", () => {

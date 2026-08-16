@@ -241,9 +241,9 @@ const SAMPLES: Record<GameEventType, GameEvent[]> = {
       targetFactionId: H, sourceFactionId: RIVAL,
     },
   ],
-  "duel-lapsed": [
+  "duel-void": [
     {
-      turn: 1, playerId: 1, type: "duel-lapsed",
+      turn: 1, playerId: 1, type: "duel-void",
       targetFactionId: H, sourceFactionId: RIVAL,
     },
   ],
