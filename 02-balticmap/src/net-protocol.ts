@@ -104,7 +104,19 @@ export function seatOfFaction(state: GameState, factionId: string): number {
  *  The guest's land is RESERVED, because only the acting factions keep a
  *  leader and a land without one takes no turn: dealt like any other rival
  *  it would be drawn into the acting set or not, and a guest whose land was
- *  not drawn would sit through the whole game unable to play. */
+ *  not drawn would sit through the whole game unable to play.
+ *
+ *  **And the guest's seat joins `humanSeats` here**, which is the only place
+ *  in the app that knows which seat it is. `isHumanFaction` is the whole of
+ *  what that buys, and two rules ride on it: a person is never skipped by
+ *  `takesNoTurn`, and a person is ASKED how many defenders to send with a
+ *  conquest rather than having `autoTransfer` answer for them. Left out, both
+ *  were quietly false for the guest - a duel scoping the map to two realms
+ *  neither of which was theirs froze them out for twenty rounds, and their
+ *  conquests moved half a land's defense without a question being raised.
+ *
+ *  Appended and never prepended: index 0 alone answers "whose ending is on
+ *  screen", and that is the host's. */
 export function dealNetGame(
   state: GameState,
   rng: Rng,
@@ -120,6 +132,12 @@ export function dealNetGame(
       players: dealt.players.map((p, i) =>
         i === guestSeat ? { ...p, strategy: picks.guestBuild } : p,
       ),
+      // A seat the deal did not produce is no seat at all. The reservation
+      // above is what makes that unreachable; carrying a -1 into `humanSeats`
+      // would be inert rather than loud, which is the failure this whole
+      // function exists to have caught.
+      humanSeats:
+        guestSeat < 0 ? dealt.humanSeats : [...dealt.humanSeats, guestSeat],
     },
     guestSeat,
   };
