@@ -470,6 +470,12 @@ NOT verify:
   `tests/two-seat.test.ts`, which is the suite that exists because hand-written
   copies rotted - but a two-tab pass would show the guest actually being asked
   for a conquest's defenders, which is the arm most likely to surprise.
+- **The decline price has never been watched on a screen.** It was found by
+  watching the modal come back eleven turns running, and the fix is pinned by
+  a test that drives the two wraps - but nobody has declined in a browser and
+  seen one world round go by before the offer returns. What to look for: the
+  turn after a decline should show the round summary of a full unscoped round
+  and NO picker, and the picker should be back the turn after that.
 - **`cardRulesHash` still covers TABLES and not legality CODE.**
   `MAX_MARCH_HOPS` is in it now, and War council's ruler requirement was moved
   onto `CardDef.needsRuler` so it rides in too. But any legality rule written

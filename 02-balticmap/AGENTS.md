@@ -900,6 +900,18 @@ load-bearing:
   ignoring a neighbour has to be available - but a decline that also skipped
   the tick would be strictly better than fighting, and the loop would have
   nothing in it. The modal says so in as many words.
+
+  **The tick carries its own `until`, and the number is where the price
+  lives.** A retiring duel sets `view.turn + 1`; `declineDuel` sets
+  `state.turn + 2`, and the 2 is not an off-by-one. A duel retires AT the
+  wrap, so the next wrap is one whole round later - but a decline is answered
+  mid-round, on the player's own turn, one line after the wrap, so a tick
+  ending at `+1` is ended by the very next wrap and buys nothing. It shipped
+  with no `until` at all on exactly that reasoning, and eleven straight turns
+  of the same four tiles were watched: the price was never paid and the modal
+  read as a nag. `+2` costs exactly one round and not two, because the tail of
+  the round a decline is answered in was already unscoped - `picking` scopes
+  nothing.
 - **The pick is host-only, and the guest is never shown it.** There is ONE
   gauntlet on the state and its two sides are `humanFactionOf` - seat 0, the
   same seat `phase` and `winSizeFor` speak for. Two people cannot be in
