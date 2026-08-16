@@ -79,7 +79,21 @@ export type Gauntlet =
  *
  *  Returned in map order (`factionIds`) rather than in reach order, so the
  *  offer reads the same way twice and a replay of the same seed lists the
- *  same lands in the same order. */
+ *  same lands in the same order.
+ *
+ *  **A land with a CHIEF is preferred, and the preference is a filter rather
+ *  than a sort.** `actingFactions` spaces the acting seats apart, so every
+ *  land a realm borders at turn 1 is one of the quiet ones - measured, and it
+ *  was 110 of 110 candidates across all 26 seats. A duel is the fight the run
+ *  is built around, and one against a land that never answers is twenty
+ *  rounds of the map standing still.
+ *
+ *  It does NOT refuse a chiefless candidate outright: the border is what it
+ *  is, and a realm hemmed in entirely by quiet lands must still be offered a
+ *  fight rather than an empty modal. What makes that offer worth taking is
+ *  the other half of the same rule - a duel enemy acts chief or no chief
+ *  (`duelStanding`), and beating a chiefless one absorbs it outright
+ *  (`absorbsDuelEnemy`). */
 export function duelCandidates(view: RulesView, human: string): string[] {
   const realm = fullRealmOf(human, view.overlords, view.incorporated);
   const offered = new Set<string>();
@@ -90,7 +104,44 @@ export function duelCandidates(view: RulesView, human: string): string[] {
     if (aimsWithinOwnRealm(view, human, "raid", polygon)) continue;
     offered.add(view.incorporated[polygon] ?? polygon);
   }
-  return view.factionIds.filter((id) => offered.has(id) && !realm.has(id));
+  const all = view.factionIds.filter(
+    (id) => offered.has(id) && !realm.has(id),
+  );
+  const led = all.filter((id) => view.leaders[id] === true);
+  return led.length > 0 ? led : all;
+}
+
+/** Which side of a RUNNING duel this faction stands on, or null when no duel
+ *  is running and when nobody is playing this board at all (`human === null`,
+ *  a world simulation).
+ *
+ *  One walk of the two realms and three answers, because the turn loop asks
+ *  two questions about a duel and they are the same question read twice: a
+ *  faction on NEITHER side is stilled for the duel's length, and a faction on
+ *  the ENEMY side acts whether or not anybody leads it. Two predicates would
+ *  be two walks that could disagree about which realm a land is in.
+ *
+ *  Both sides are `fullRealmOf` and not `realmOf`, per the realm-sizes rule:
+ *  taking a lord takes its whole pyramid, so a grand-vassal is as much a part
+ *  of the fight as the lord that answers for it. A duel scoped to one fealty
+ *  link would leave half of each side standing still while its lord fought.
+ *
+ *  The human's own side wins the tie. A land inside both realms is not a
+ *  shape the rules produce, and reading it as the player's own is the answer
+ *  that keeps the player's seat playing. */
+export function duelStanding(
+  g: Gauntlet,
+  human: string | null,
+  factionId: string,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): "mine" | "theirs" | "outside" | null {
+  if (g.kind !== "duel" || human === null) return null;
+  if (fullRealmOf(human, overlords, incorporated).has(factionId)) return "mine";
+  if (fullRealmOf(g.enemy, overlords, incorporated).has(factionId)) {
+    return "theirs";
+  }
+  return "outside";
 }
 
 /** Whether the duel scope leaves this faction out - it stands in neither
@@ -99,12 +150,8 @@ export function duelCandidates(view: RulesView, human: string): string[] {
  *  False whenever no duel is running, and false when nobody is playing this
  *  board at all (`human === null`, a world simulation): a scope with no side
  *  to be on would freeze every seat, and `advance` throws when it runs out of
- *  seats rather than spinning.
- *
- *  Both sides are `fullRealmOf` and not `realmOf`, per the realm-sizes rule:
- *  taking a lord takes its whole pyramid, so a grand-vassal is as much a part
- *  of the fight as the lord that answers for it. A duel scoped to one fealty
- *  link would leave half of each side standing still while its lord fought. */
+ *  seats rather than spinning. `duelStanding` above answers both of those
+ *  with `null`, which is why this is one comparison. */
 export function outsideTheDuel(
   g: Gauntlet,
   human: string | null,
@@ -112,9 +159,40 @@ export function outsideTheDuel(
   overlords: Overlords,
   incorporated: Incorporated,
 ): boolean {
+  return duelStanding(g, human, factionId, overlords, incorporated) ===
+    "outside";
+}
+
+/** Whether beating this land ABSORBS it - annexed outright - rather than
+ *  making it a vassal that may one day leave.
+ *
+ *  The whole remaining difference between a duel enemy with a chief and one
+ *  without. A people who follow somebody swear to their conqueror; a people
+ *  who follow nobody are simply taken. It is also what stops "a chiefless
+ *  enemy is RARE" (`duelCandidates`) from reading as "a chiefless enemy is
+ *  WORSE": the prize for fighting a quiet land is a permanent one.
+ *
+ *  Narrow on purpose, and the asymmetry it leaves is not an accident. A
+ *  leaderless land taken outside a duel still gets a chief seated on it and
+ *  becomes a vassal - that is what wakes the map, since every quiet land is
+ *  leaderless and universal absorption would mean a conquest never wakes
+ *  anybody. Only the land the duel was declared against is absorbed, and only
+ *  by the side that declared it.
+ *
+ *  `leaderless` is passed in rather than read here: this module knows about
+ *  the cycle and the two realms, and `GameState.rulers` is the turn loop's. */
+export function absorbsDuelEnemy(
+  g: Gauntlet,
+  human: string | null,
+  land: string,
+  taker: string,
+  leaderless: boolean,
+  overlords: Overlords,
+  incorporated: Incorporated,
+): boolean {
   if (g.kind !== "duel" || human === null) return false;
-  if (fullRealmOf(human, overlords, incorporated).has(factionId)) return false;
-  return !fullRealmOf(g.enemy, overlords, incorporated).has(factionId);
+  if (land !== g.enemy || !leaderless) return false;
+  return fullRealmOf(human, overlords, incorporated).has(taker);
 }
 
 /** A land has just changed hands: the duel ends if it moved BETWEEN the two
@@ -311,7 +389,16 @@ export function duelOutcome(
   const theirs = fullRealmOf(g.enemy, overlords, incorporated);
   let lost = false;
   for (const e of log) {
-    if (e.type !== "subjugated" || e.turn !== g.until) continue;
+    // Both allegiance lines, because a duel can be won either way round: a
+    // chiefless enemy is ABSORBED rather than sworn (`absorbsDuelEnemy`) and
+    // says so with an `incorporated` line. Reading only `subjugated` would
+    // have made every won duel against a quiet land read as a lapsed one -
+    // no spoils, and the offer's promise silently broken. The Incorporate
+    // card writes the same line and cannot be mistaken for this: it aims at
+    // the actor's own vassal, so both ends sit on one side and neither arm
+    // below fires.
+    if (e.type !== "subjugated" && e.type !== "incorporated") continue;
+    if (e.turn !== g.until) continue;
     const taker = e.overlordFactionId;
     const land = e.targetFactionId;
     if (taker === undefined || land === undefined) continue;

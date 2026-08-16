@@ -51,8 +51,8 @@ import {
   vacateRulers, type Rulers,
 } from "./rulers";
 import {
-  duelDecidedBy, duelOutcome, gauntletAtRoundWrap, outsideTheDuel, rewardFor,
-  DUEL_TURNS, type Gauntlet,
+  absorbsDuelEnemy, duelDecidedBy, duelOutcome, duelStanding,
+  gauntletAtRoundWrap, rewardFor, DUEL_TURNS, type Gauntlet,
 } from "./gauntlet";
 import { BUILD_ABILITIES } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
@@ -1180,6 +1180,12 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   const p = state.players[state.current];
   const events: GameEvent[] = [];
   const overlords = new Map(state.overlords);
+  // The second allegiance store, and it moves in here for one reason: a duel
+  // enemy that follows nobody is ABSORBED rather than sworn (`takeLand`
+  // below). Local rather than read off the snapshot, because everything after
+  // that point - the next arrow's arrival, the hand refill, the ending - has
+  // to see the land inside the winner's realm.
+  let incorporated = state.incorporated;
   let respites = state.respites;
   let players = state.players;
   // A conquest below seats a leader on the land it takes, so the turn's rulers
@@ -1280,11 +1286,56 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   ): void => {
     const formerLord = overlords.get(land);
     // Before the move, because the question is which side the land was on -
-    // one line later `overlords` no longer knows.
+    // one line later `overlords` no longer knows. Both of these ask it, so
+    // both are asked here.
+    const absorbed = absorbsDuelEnemy(
+      gauntlet, humanFactionOf(state), land, by,
+      !hasRuler(rulers, land), overlords, incorporated,
+    );
     gauntlet = duelDecidedBy(
       gauntlet, humanFactionOf(state), land, by,
-      overlords, state.incorporated, state.turn,
+      overlords, incorporated, state.turn,
     );
+    if (absorbed) {
+      // A people who follow nobody are taken outright rather than sworn -
+      // see `absorbsDuelEnemy` for why that is the difference a chiefless
+      // duel enemy makes, and why nothing outside a duel reads this way.
+      //
+      // The pyramid under it comes apart on Incorporate's own rule: fealty
+      // was to a lord that has just stopped existing as a seat, and
+      // re-parenting its vassals would make absorbing a mid-lord strictly
+      // better than digesting one. Its OWN annexations follow it, because
+      // they were never a fealty link to begin with.
+      overlords.delete(land);
+      for (const [vassal, lord] of [...overlords]) {
+        if (lord === land) {
+          overlords.delete(vassal);
+          respites = {
+            ...respites, [vassal]: state.turn + ESCAPE_RESPITE_TURNS,
+          };
+          players = updateFaction(players, vassal, stripTribute);
+          events.push({
+            turn: state.turn, playerId: p.id, type: "released",
+            targetFactionId: vassal, overlordFactionId: land,
+          });
+        }
+      }
+      incorporated = { ...incorporated, [land]: by };
+      for (const [annexed, owner] of Object.entries(incorporated)) {
+        if (owner === land) incorporated = { ...incorporated, [annexed]: by };
+      }
+      passives = stripOnCapture(passives, land);
+      players = updateFaction(players, land, stripTribute);
+      // No chief is seated and no tribute is dealt: an annexed people has no
+      // seat to sit in and no turn to spend a card on. No transfer question
+      // either - defenders are moved into a land that will hold a border, and
+      // an absorbed one is inside the realm rather than on the edge of it.
+      events.push({
+        turn: state.turn, playerId: p.id, type: "incorporated",
+        targetFactionId: land, overlordFactionId: by,
+      });
+      return;
+    }
     overlords.set(land, by);
     passives = stripOnCapture(passives, land);
     // The people wake up under their new lord: a land that has changed hands
@@ -1401,7 +1452,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // into. It gets its arrival line above - the arrow is accounted for on
     // the surface the player reads - and no damage.
     if (
-      fullRealmOf(capture.by, overlords, state.incorporated).has(capture.land)
+      fullRealmOf(capture.by, overlords, incorporated).has(capture.land)
     ) {
       return { defense, taken: false };
     }
@@ -1439,7 +1490,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     if (home === null) return;
     const winner = players.find((pl) => pl.factionId === home);
     const outcome = duelOutcome(
-      gauntlet, home, seen, overlords, state.incorporated,
+      gauntlet, home, seen, overlords, incorporated,
     );
     if (outcome !== "won") {
       // The two un-won endings are separate types rather than one line with a
@@ -1520,7 +1571,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // and the arrivals below it have already moved the realms, and the offer
     // this reads out is the board as it now stands.
     const wrapped = gauntletAtRoundWrap(
-      gauntlet, { ...viewOf(state), overlords }, humanFactionOf(state),
+      gauntlet, { ...viewOf(state), overlords, incorporated },
+      humanFactionOf(state),
     );
     // The duel settled - announced, and paid where it is owed - at the moment
     // it retires and nowhere else.
@@ -1594,7 +1646,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // back this round, and a sweep reading the old scope would land the
     // arrows of seats that are about to play them themselves.
     const dormant = state.factionIds.filter(
-      (land) => takesNoTurn({ ...state, gauntlet }, land),
+      // `incorporated` and not the snapshot: a land ABSORBED moments ago is
+      // annexed, so it is a seat that will never see a `beginTurn` and its
+      // arrows have to be landed here or stand on the map for the rest of the
+      // run. The other stores stay on the snapshot, as they always have.
+      (land) => takesNoTurn({ ...state, gauntlet, incorporated }, land),
     );
     for (const land of dormant) {
       const seat = players.find((pl) => pl.factionId === land);
@@ -1717,7 +1773,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // Each draw logs the same `draw` event the single-draw path logged, and a
   // deck that runs dry mid-refill reshuffles exactly as it does between turns.
   const handLimit = handLimitFor(
-    { overlords, incorporated: state.incorporated }, p.factionId,
+    { overlords, incorporated }, p.factionId,
   );
   while (hand.length < handLimit && (deck.length > 0 || discard.length > 0)) {
     if (deck.length === 0) {
@@ -1744,10 +1800,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // is the one place `beginTurn` may set the phase. Last, after every store
   // above it has settled, because it reads the board rather than the play.
   const phase = endingFor(
-    { ...state, players, overlords }, p.id, events,
+    { ...state, players, overlords, incorporated }, p.id, events,
   ) ?? state.phase;
   return {
-    ...state, phase, players, overlords, wealth, marches, nextMarchId, claims,
+    ...state, phase, players, overlords, incorporated, wealth, marches,
+    nextMarchId, claims,
     defense, defenseMax, passives, pendingTransfers, rulers, gauntlet,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
@@ -2226,13 +2283,25 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
  *  they are not in. A leaderless person still takes no LAND; that gate is
  *  `hasRuler` at the capture sites and is untouched.
  *
- *  Then the duel scope. While a duel runs, only the two realms act - and it
- *  is asked HERE, third: after the annexed arm, because an annexed seat is
- *  out of the run whatever the gauntlet says; after the human arm, for the
- *  reason just above; and BEFORE the leaderless arm, because a duel has to be
- *  able to still a faction that has a perfectly good chief - stilling the
- *  leaderless is what the last arm already does, and a scope asked after it
- *  would be a scope that never applied to anybody.
+ *  Then the duel scope, which answers in BOTH directions and is therefore two
+ *  of the four. It is asked HERE, third: after the annexed arm, because an
+ *  annexed seat is out of the run whatever the gauntlet says; after the human
+ *  arm, for the reason just above; and BEFORE the leaderless arm, because a
+ *  duel has to be able to still a faction that has a perfectly good chief -
+ *  stilling the leaderless is what the last arm already does, and a scope
+ *  asked after it would be a scope that never applied to anybody.
+ *
+ *  While a duel runs, a faction on NEITHER side takes no turn. And a faction
+ *  on the ENEMY's side takes one whether or not anybody leads it: this is the
+ *  only place in the game the leaderless arm below is bypassed. Outside a
+ *  duel a land with no chief still takes no turn and the grey middle is still
+ *  the grey middle. It is here because the offer cannot always find a
+ *  neighbour with a chief - `actingFactions` spaces the acting seats apart,
+ *  so an opening duel is usually against a quiet land - and an enemy that
+ *  never answers is twenty rounds of the map standing still, with `duel-lost`
+ *  unreachable. A leaderless enemy still takes no LAND; that gate is
+ *  `hasRuler` at the capture sites and is untouched, which is why beating one
+ *  ABSORBS it rather than swearing it (`absorbsDuelEnemy`).
  *
  *  Last, nobody leads it - and a land nobody has taken is the only kind that
  *  stays that way, because `takeLand` seats a chief on the land it takes and
@@ -2256,14 +2325,12 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
 export function takesNoTurn(state: GameState, factionId: string): boolean {
   if (factionId in state.incorporated) return true;
   if (isHumanFaction(state, factionId)) return false;
-  if (
-    outsideTheDuel(
-      state.gauntlet, humanFactionOf(state), factionId,
-      state.overlords, state.incorporated,
-    )
-  ) {
-    return true;
-  }
+  const standing = duelStanding(
+    state.gauntlet, humanFactionOf(state), factionId,
+    state.overlords, state.incorporated,
+  );
+  if (standing === "outside") return true;
+  if (standing === "theirs") return false;
   return !hasRuler(state.rulers, factionId);
 }
 

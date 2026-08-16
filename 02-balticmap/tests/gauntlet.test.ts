@@ -115,11 +115,33 @@ describe("the run opens on a pick", () => {
 });
 
 describe("the candidates", () => {
-  it("are the bordering realms, in map order", () => {
+  it("are the bordering realms with a chief, in map order", () => {
     const g = playing();
-    expect(duelCandidates(viewOf(g), "beta")).toEqual(
-      SIX.filter((id) => id !== "beta"),
-    );
+    const led = SIX.filter((id) => id !== "beta" && hasRuler(g.rulers, id));
+    expect(led.length).toBeGreaterThan(0);
+    expect(duelCandidates(viewOf(g), "beta")).toEqual(led);
+  });
+
+  it("prefer a chief - a leaderless enemy is the rare case, not the usual one", () => {
+    // Measured before this rule: 110 of 110 turn-1 candidates across all 26
+    // seats of the real map were leaderless, because `actingFactions` spaces
+    // the acting seats apart. A duel is the fight the run is built around,
+    // and one against a land that never answers is the map standing still.
+    const g = playing();
+    for (const id of duelCandidates(viewOf(g), "beta")) {
+      expect(hasRuler(g.rulers, id)).toBe(true);
+    }
+    expect(SIX.some((id) => id !== "beta" && !hasRuler(g.rulers, id)))
+      .toBe(true);
+  });
+
+  it("still offer a chiefless land to a realm hemmed in by quiet ones", () => {
+    // The border is what it is. An empty modal would be worse than a fight
+    // against a quiet land, which acts for the duel's length anyway.
+    const g = playing();
+    const quiet = { ...g, rulers: { beta: g.rulers.beta } };
+    const offered = duelCandidates(viewOf(quiet), "beta");
+    expect(offered).toEqual(SIX.filter((id) => id !== "beta"));
   });
 
   it("drop the actor's own vassals - a duel needs two realms", () => {
@@ -226,9 +248,12 @@ describe("a duel scopes the turn loop", () => {
 describe("answering the pick", () => {
   it("opens a duel that runs DUEL_TURNS rounds", () => {
     const g = playing();
-    const after = pickDuel(g, "gamma");
+    // Off the offer rather than named: which lands hold a chair is a seeded
+    // roll, and the offer prefers the ones that do.
+    const [enemy] = ruledRivals(g);
+    const after = pickDuel(g, enemy);
     expect(after.gauntlet).toEqual({
-      kind: "duel", enemy: "gamma", until: g.turn + DUEL_TURNS,
+      kind: "duel", enemy, until: g.turn + DUEL_TURNS,
     });
   });
 
@@ -239,10 +264,11 @@ describe("answering the pick", () => {
     const g = playing();
     expect(pickDuel(g, "beta")).toBe(g);
     expect(pickDuel(g, "nobody")).toBe(g);
+    const [enemy, third] = ruledRivals(g);
     const duel = withGauntlet(g, {
-      kind: "duel", enemy: "gamma", until: g.turn + DUEL_TURNS,
+      kind: "duel", enemy, until: g.turn + DUEL_TURNS,
     });
-    expect(pickDuel(duel, "delta")).toBe(duel);
+    expect(pickDuel(duel, third)).toBe(duel);
   });
 
   it("takes declining as an answer, and spends the round on the world", () => {
@@ -595,5 +621,102 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     expect(after.overlords.get(third)).toBe("beta");
     expect(after.gauntlet).toEqual({ kind: "world-tick" });
     expect(spoils(after)).toHaveLength(0);
+  });
+});
+
+describe("a duel enemy fights, chief or no chief", () => {
+  /** A land nobody leads, named off the board rather than hardcoded: which
+   *  lands are dealt a chair is a seeded roll. */
+  function chiefless(g: GameState): string {
+    const id = SIX.find((f) => f !== "beta" && !hasRuler(g.rulers, f));
+    expect(id).toBeDefined();
+    return id as string;
+  }
+
+  const duelWith = (g: GameState, enemy: string): GameState =>
+    withGauntlet(g, { kind: "duel", enemy, until: g.turn + DUEL_TURNS });
+
+  it("sits the enemy down at the table with an empty chair", () => {
+    const g = playing();
+    const enemy = chiefless(g);
+    // Outside a duel the same land takes no turn at all. This is the ONLY
+    // bypass of the leaderless arm - the grey middle is still the grey
+    // middle - and without it the map stands still for twenty rounds while
+    // the player fights something that never answers.
+    expect(takesNoTurn(g, enemy)).toBe(true);
+    expect(takesNoTurn(duelWith(g, enemy), enemy)).toBe(false);
+    expect(new Set(actedIn(duelWith(g, enemy)))).toEqual(
+      new Set(["beta", enemy]),
+    );
+  });
+
+  /** The human's arrow lands on the chiefless enemy at the wrap that retires
+   *  the duel - the same shape the reward tests use. */
+  function beat(g0: GameState, enemy: string, gauntlet: Gauntlet): GameState {
+    const g = withGauntlet(
+      { ...g0, defense: { [enemy]: 0, beta: 10 }, marches: {}, passives: {} },
+      gauntlet,
+    );
+    const declared = playCard(
+      withHand(g, 0, ["raid"]), 0, rng(), enemy, { sourceId: "beta" },
+    );
+    return beginTurn({ ...declared, turn: declared.turn + 1 }, rng());
+  }
+
+  it("absorbs a beaten one rather than swearing it", () => {
+    const g0 = playing();
+    const enemy = chiefless(g0);
+    const after = beat(
+      g0, enemy,
+      { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
+    );
+    // A people who follow nobody are taken outright: annexed, not sworn, so
+    // there is no independence gate for them to walk back out through.
+    expect(after.incorporated[enemy]).toBe("beta");
+    expect(after.overlords.has(enemy)).toBe(false);
+    expect(hasRuler(after.rulers, enemy)).toBe(false);
+    expect(
+      after.log.some(
+        (e) => e.type === "incorporated" && e.targetFactionId === enemy,
+      ),
+    ).toBe(true);
+  });
+
+  it("still pays the duel it won, off the line absorption writes", () => {
+    // `duelOutcome` reads the log, and an absorbed land says `incorporated`
+    // rather than `subjugated`. Reading only the one line would have made
+    // every won duel against a quiet land read as a lapsed one.
+    const g0 = playing();
+    const enemy = chiefless(g0);
+    const after = beat(
+      g0, enemy,
+      { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
+    );
+    expect(after.gauntlet).toEqual({ kind: "world-tick" });
+    expect(after.log.filter((e) => e.type === "duel-won")).toHaveLength(1);
+    expect(after.log.filter((e) => e.type === "duel-lapsed")).toHaveLength(0);
+  });
+
+  it("swears a chiefless land taken OUTSIDE a duel, which is the asymmetry", () => {
+    // Stated so nobody reads it as an oversight. Every quiet land is
+    // leaderless, so universal absorption would mean a conquest never wakes
+    // anybody and the acting map would never grow.
+    const g0 = playing();
+    const enemy = chiefless(g0);
+    const after = beat(g0, enemy, { kind: "world-tick" });
+    expect(after.overlords.get(enemy)).toBe("beta");
+    expect(after.incorporated[enemy]).toBeUndefined();
+    expect(hasRuler(after.rulers, enemy)).toBe(true);
+  });
+
+  it("swears a duel enemy that HAS a chief", () => {
+    const g0 = playing();
+    const [enemy] = ruledRivals(g0);
+    const after = beat(
+      g0, enemy,
+      { kind: "duel", enemy, until: g0.turn + DUEL_TURNS },
+    );
+    expect(after.overlords.get(enemy)).toBe("beta");
+    expect(after.incorporated[enemy]).toBeUndefined();
   });
 });
