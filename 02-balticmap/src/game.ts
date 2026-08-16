@@ -50,6 +50,10 @@ import {
   leadershipByFaction, replaceRuler, rulerNameOf, rulerOf, seatRuler,
   vacateRulers, type Rulers,
 } from "./rulers";
+import {
+  duelDecidedBy, gauntletAtRoundWrap, outsideTheDuel,
+  DUEL_TURNS, type Gauntlet,
+} from "./gauntlet";
 import { BUILD_ABILITIES } from "./abilities";
 import { DEFAULT_RULES, sweepsHandAtTurnEnd, type RuleSelections } from "./rules";
 import { sweepLapsed } from "./timed";
@@ -277,6 +281,14 @@ export interface GameState {
    *  One-way. Nothing clears it: the bar it raised is the run's now, and a
    *  player who could put it back would be choosing when to win. */
   playingOn: boolean;
+  /** Where the run is in the gauntlet cycle - picking a target, dueling one,
+   *  or letting the world take its one turn. See src/gauntlet.ts, which owns
+   *  the union and every transition it makes.
+   *
+   *  On the state and not in src/main.ts for the reason `playingOn` is: a
+   *  guest holds a replica, and the scope the host's turn loop is applying is
+   *  the scope the guest's screen has to draw. */
+  gauntlet: Gauntlet;
   turn: number; // 1-based
   players: PlayerState[]; // index 0 = human
   current: number;
@@ -585,6 +597,11 @@ export function newGame(
     phase: "main-menu",
     // A run nobody has won yet, so nobody has declined to stop.
     playingOn: false,
+    // The first thing a run does is choose who to fight. Empty here because
+    // nobody has been dealt a land yet and a realm with no ground borders
+    // nothing; `pickFaction` reaches the round wrap the moment the seats are
+    // dealt, and that is what fills the offer.
+    gauntlet: { kind: "picking", candidates: [] },
     turn: 1,
     players: [],
     current: 0,
@@ -1187,6 +1204,12 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   let claims = state.claims;
   let defense = state.defense;
   let passives = state.passives;
+  // The gauntlet moves in two places in this function and they are different
+  // kinds of move. A conquest below may DECIDE a running duel the moment the
+  // land changes hands; the round wrap further down is where the cycle
+  // actually turns. Both write this one local, so the wrap reads a duel that
+  // this very turn's arrivals have already settled.
+  let gauntlet = state.gauntlet;
   const pendingTransfers = { ...state.pendingTransfers };
 
   /** The line that says an arrow got where it was aimed. It is the cause the
@@ -1236,6 +1259,12 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     land: string, by: string, from: string, cause: ArrivingCause,
   ): void => {
     const formerLord = overlords.get(land);
+    // Before the move, because the question is which side the land was on -
+    // one line later `overlords` no longer knows.
+    gauntlet = duelDecidedBy(
+      gauntlet, humanFactionOf(state), land, by,
+      overlords, state.incorporated, state.turn,
+    );
     overlords.set(land, by);
     passives = stripOnCapture(passives, land);
     // The people wake up under their new lord: a land that has changed hands
@@ -1386,6 +1415,19 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   // beginning owns the line, the same turn-start-clock convention the
   // independence gate above already keeps.
   if (state.current === 0) {
+    // The cycle turns HERE and nowhere else, so a round is never half scoped:
+    // whoever the wrap decides may act is who acts for the whole of the round
+    // that is beginning. First in the block, because the sweep below asks
+    // `takesNoTurn` - a seat this wrap has just released from a duel scope is
+    // a seat that will see a `beginTurn` of its own this round, and its
+    // arrows must be left for it rather than landed here.
+    //
+    // `overlords` and not the snapshot: the escape at the top of this turn
+    // and the arrivals below it have already moved the realms, and the offer
+    // this reads out is the board as it now stands.
+    gauntlet = gauntletAtRoundWrap(
+      gauntlet, { ...viewOf(state), overlords }, humanFactionOf(state),
+    );
     // A land that was hit THIS round does not also grow back in it. The heal
     // ran after the marches landed, so a raid arriving on a wild land could be
     // undone in the same batch: the log said the raid landed for 1 and the
@@ -1439,8 +1481,12 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // in: taking a quiet land strips the status while its arrow is in flight,
     // and a vassal that was taking turns can be Incorporated out of its seat
     // with a march or a Subjugate already declared.
+    // Asked of the gauntlet this wrap just settled, never of the snapshot: a
+    // duel that ended one line above hands its stilled factions their turns
+    // back this round, and a sweep reading the old scope would land the
+    // arrows of seats that are about to play them themselves.
     const dormant = state.factionIds.filter(
-      (land) => takesNoTurn(state, land),
+      (land) => takesNoTurn({ ...state, gauntlet }, land),
     );
     for (const land of dormant) {
       const seat = players.find((pl) => pl.factionId === land);
@@ -1597,7 +1643,7 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   ) ?? state.phase;
   return {
     ...state, phase, players, overlords, wealth, marches, nextMarchId, claims,
-    defense, passives, pendingTransfers, rulers,
+    defense, passives, pendingTransfers, rulers, gauntlet,
     // The lapsed half is discarded: a run-out respite moves nothing and the
     // badge already counted it down, so there is nothing to report.
     respites: sweepLapsed(respites, state.turn, (e) => e).kept,
@@ -1951,6 +1997,43 @@ export function keepPlaying(state: GameState): GameState {
   };
 }
 
+/** The player answers the pick: a duel opens against `enemyId`, running until
+ *  a land moves between the two realms or `DUEL_TURNS` rounds have passed.
+ *
+ *  Shaped like `keepPlaying` and `transferDefense`: an identity return is what
+ *  `commitDecision` reads as refused, so a pick naming a land the offer does
+ *  not hold - a stale modal, a wire message, a hand-edited record - changes
+ *  nothing rather than scoping the turn loop to a faction nobody may fight.
+ *  The offer is the authority and not `attackReach`, because the offer is what
+ *  the player was shown; it is re-read at every round wrap, so it is never
+ *  more than a round behind the board.
+ *
+ *  It moves the gauntlet and nothing else. The duel takes effect from the next
+ *  seat onward - the turn it was answered in is the player's own, and taking
+ *  it off them would be answering a question by skipping the asker. */
+export function pickDuel(state: GameState, enemyId: string): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.gauntlet.kind !== "picking") return state;
+  if (!state.gauntlet.candidates.includes(enemyId)) return state;
+  return {
+    ...state,
+    gauntlet: {
+      kind: "duel", enemy: enemyId, until: state.turn + DUEL_TURNS,
+    },
+  };
+}
+
+/** The player declines the whole offer. The border is not a to-do list, so
+ *  passing is a real answer - and it costs the world tick that a finished duel
+ *  costs, which is the price of a round spent not fighting anybody.
+ *
+ *  The same identity-return refusal as `pickDuel`, for the same reason. */
+export function declineDuel(state: GameState): GameState {
+  if (state.phase !== "playing") return state;
+  if (state.gauntlet.kind !== "picking") return state;
+  return { ...state, gauntlet: { kind: "world-tick" } };
+}
+
 /** The injected tribute cards leave on every exit from vassalage, so a freed
  *  or poached faction never carries a stale demand into its next life. */
 const stripTribute = (p: PlayerState): PlayerState => ({
@@ -2021,7 +2104,7 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
   );
 }
 
-/** Whether this faction will never see a `beginTurn` of its own. Three
+/** Whether this faction will never see a `beginTurn` of its own. Four
  *  reasons, and they must be asked together, IN THIS ORDER:
  *
  *  An annexed people no longer has a seat to sit in, and that holds whoever
@@ -2029,12 +2112,26 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
  *  run, and exempting them here would leave everybody else waiting on a turn
  *  that can never be taken.
  *
- *  Otherwise nobody leads it - and a land nobody has taken is the only kind
- *  that stays that way, because `takeLand` seats a chief on the land it takes
- *  and a woken vassal comes to the table. The vacancy is still the whole of
- *  the gate, UNLESS a person is sitting there, because a player skipped
- *  forever is not a rule, it is a hung game. A leaderless person still takes
- *  no LAND; that gate is `hasRuler` at the capture sites and is untouched.
+ *  Otherwise a PERSON always gets their turn, whichever seat they sit in and
+ *  whatever the run's shape says, because a player skipped forever is not a
+ *  rule, it is a hung game. It is stated before the two board reasons below
+ *  rather than folded into the leaderless one, which is where it used to sit:
+ *  a duel scopes the map to two realms, and a second person playing a seat on
+ *  neither side would otherwise be frozen out for twenty rounds by a fight
+ *  they are not in. A leaderless person still takes no LAND; that gate is
+ *  `hasRuler` at the capture sites and is untouched.
+ *
+ *  Then the duel scope. While a duel runs, only the two realms act - and it
+ *  is asked HERE, third: after the annexed arm, because an annexed seat is
+ *  out of the run whatever the gauntlet says; after the human arm, for the
+ *  reason just above; and BEFORE the leaderless arm, because a duel has to be
+ *  able to still a faction that has a perfectly good chief - stilling the
+ *  leaderless is what the last arm already does, and a scope asked after it
+ *  would be a scope that never applied to anybody.
+ *
+ *  Last, nobody leads it - and a land nobody has taken is the only kind that
+ *  stays that way, because `takeLand` seats a chief on the land it takes and
+ *  a woken vassal comes to the table.
  *
  *  ONE spelling, because two readers depend on the answer matching. `advance`
  *  passes over such a seat, and `beginTurn`'s round wrap lands the arrows it
@@ -2043,11 +2140,26 @@ export function isHumanFaction(state: GameState, factionId: string): boolean {
  *  somebody else now holds. The human arm belongs here for exactly that
  *  reason: spelled in `advance` alone, it exempted the first seat from the
  *  skip while the sweep still resolved a second person's marches at somebody
- *  else's turn start. */
+ *  else's turn start. The duel arm inherits that for free - a faction stilled
+ *  by the scope has its arrows landed by the same sweep, so a duel does not
+ *  freeze a third party's army in the air for twenty rounds.
+ *
+ *  The duel's own side is `humanFactionOf`, seat 0 - the run has one shape
+ *  and two people cannot be in different duels, the same reason `playingOn`
+ *  and `winSizeFor` read that seat. Who is ASKED and who is never skipped is
+ *  still `isHumanFaction`, plural, one line above. */
 export function takesNoTurn(state: GameState, factionId: string): boolean {
   if (factionId in state.incorporated) return true;
-  if (hasRuler(state.rulers, factionId)) return false;
-  return !isHumanFaction(state, factionId);
+  if (isHumanFaction(state, factionId)) return false;
+  if (
+    outsideTheDuel(
+      state.gauntlet, humanFactionOf(state), factionId,
+      state.overlords, state.incorporated,
+    )
+  ) {
+    return true;
+  }
+  return !hasRuler(state.rulers, factionId);
 }
 
 /** Whether this board ends the run, and how. Pushes the ending event onto
@@ -2195,6 +2307,10 @@ export function playCard(
   const armies = state.armies;
   let passives = state.passives;
   let defenseMax = state.defenseMax;
+  // A play can take a land - the other of the two allegiance doors - and a
+  // land moving between the duel's two realms decides the duel. The cycle
+  // itself does not turn here: that is the round wrap in `beginTurn`.
+  let gauntlet = state.gauntlet;
 
   // The reserve spends, computed against the PRE-play state. An attack play
   // cashes the whole omens stack at once; a Plague cashes the miasma stack.
@@ -2348,6 +2464,12 @@ export function playCard(
    *  reason it is on `takeLand`. */
   const landSubjugation = (target: string, cause: SubjugationCause): void => {
     const formerLord = overlords.get(target);
+    // Before the move, for the reason the same call gives at `takeLand`: one
+    // line later `overlords` no longer knows which side the land was on.
+    gauntlet = duelDecidedBy(
+      gauntlet, humanFactionOf(state), target, p.factionId,
+      overlords, incorporated, state.turn,
+    );
     // The target's own vassals come along: taking a lord takes its pyramid.
     overlords.set(target, p.factionId);
     // A land that has changed hands is no longer a land nobody holds, so the
@@ -2392,6 +2514,11 @@ export function playCard(
     // there, with the same line, out of the one place that decides it.
   };
 
+  /** No `duelDecidedBy` here, and it is not an oversight: Incorporate aims at
+   *  the actor's OWN vassal (`vassalCard` in src/playability.ts), so the land
+   *  is already inside the actor's realm and is on the same side of a duel
+   *  before and after. A card that could digest somebody else's land would be
+   *  a third allegiance door and would owe the call. */
   const landIncorporation = (target: string): void => {
     overlords.delete(target);
     // A real rule, not defense: digesting a mid-lord frees its vassals.
@@ -2731,6 +2858,7 @@ export function playCard(
     ...state, phase, players, overlords, incorporated, guards, omens, miasma,
     settlements, settlementsSpent, defense, defenseMax, disease, turnips,
     wealth, respites, rulers, marches, nextMarchId, claims, armies, passives,
+    gauntlet,
     log: appendEvents(state, events),
     // A standard turn is spent by its one play. An unlimited turn stays open
     // until the player says otherwise, even with an empty hand: a turn that

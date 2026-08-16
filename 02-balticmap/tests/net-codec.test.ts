@@ -29,6 +29,10 @@ function midGame(rng: Rng): GameState {
     disease: { ...g.disease, gamma: { alpha: 2, beta: 1 } },
     miasma: { ...g.miasma, alpha: 1 },
     turnips: { ...g.turnips, delta: 3 },
+    // The duel variant rather than the `picking` one a fresh deal leaves: a
+    // guest's scoreboard has to quote the scope the host's loop is applying,
+    // so the arm carrying ids and numbers is the one worth walking.
+    gauntlet: { kind: "duel", enemy: "beta", until: g.turn + 20 },
   };
 }
 
