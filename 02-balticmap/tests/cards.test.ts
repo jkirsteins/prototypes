@@ -9,6 +9,7 @@ import {
   upgradesInto,
   type CardDef, type CardRules,
 } from "../src/cards";
+import { MAX_MARCH_HOPS } from "../src/adjacency";
 import {
   COMBAT_RULES, capturesOnArrival, RAID_SPEND_FRACTION, SINGLE_LAND_HEAL,
 } from "../src/defense";
@@ -732,6 +733,17 @@ describe("the wire's card fingerprint", () => {
     expect(cardRulesHash(tweaked({
       combat: { ...COMBAT_RULES, subjugationGate: 0.25 },
     }))).not.toBe(base);
+  });
+
+  it("moves when how far an army may march moves", () => {
+    // A legality dial outside the hash is the divergence the hash exists to
+    // refuse: two deploys differing on it shake hands and then disagree about
+    // which lands a Raid may be aimed at and what the aim preview draws.
+    const base = cardRulesHash();
+    expect(cardRulesHash(tweaked({ maxMarchHops: MAX_MARCH_HOPS + 1 })))
+      .not.toBe(base);
+    // And the table quotes the constant rather than a copy of its value.
+    expect(CARD_RULES.maxMarchHops).toBe(MAX_MARCH_HOPS);
   });
 
   it("keeps the hashed capture rule and the predicate saying one thing", () => {

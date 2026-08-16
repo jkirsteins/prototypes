@@ -91,5 +91,11 @@ export function hopsBetween(
  *  it does not exist yet, and without a cap every land on the map is a legal
  *  target - an aim preview lighting up all 26 and an AI scoring every faction
  *  from every source. Three also keeps the rule sayable, which an emergent cap
- *  never is. */
+ *  never is.
+ *
+ *  It is a LEGALITY dial, so it rides in `CARD_RULES` and therefore in
+ *  `cardRulesHash`: two deploys that differ on it shake hands and then
+ *  disagree about which lands a Raid may be aimed at, what the aim preview
+ *  draws and what the host will accept - the exact divergence the handshake
+ *  exists to refuse. */
 export const MAX_MARCH_HOPS = 3;

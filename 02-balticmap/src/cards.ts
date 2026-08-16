@@ -1,3 +1,4 @@
+import { MAX_MARCH_HOPS } from "./adjacency";
 import {
   COMBAT_RULES, RAID_SPEND_FRACTION, SINGLE_LAND_HEAL, type CombatRules,
 } from "./defense";
@@ -550,6 +551,11 @@ export interface CardRules {
   builds: Record<Strategy, readonly string[]>;
   upgrades: Readonly<Record<string, UpgradeCost>>;
   marchCards: ReadonlySet<string>;
+  /** How far an army may march (`MAX_MARCH_HOPS`, src/adjacency.ts). Not a
+   *  card table and here anyway, for the reason `combat` is: it decides which
+   *  lands every march card may be aimed at, so two deploys that disagree
+   *  about it disagree about what those cards do. */
+  maxMarchHops: number;
   guards: Readonly<Record<string, string>>;
   tributeCards: readonly string[];
   /** What a blow BUYS, as against what a card carries: the gates, and the rule
@@ -567,6 +573,7 @@ export const CARD_RULES: CardRules = {
   builds: BUILDS,
   upgrades: UPGRADES,
   marchCards: MARCH_CARDS,
+  maxMarchHops: MAX_MARCH_HOPS,
   guards: GUARDS,
   tributeCards: TRIBUTE_CARDS,
   combat: COMBAT_RULES,
@@ -599,6 +606,7 @@ export function cardRulesHash(rules: CardRules = CARD_RULES): string {
     `builds:${stable(rules.builds)}`,
     `upgrades:${stable(rules.upgrades)}`,
     `march:${[...rules.marchCards].sort().join(",")}`,
+    `hops:${rules.maxMarchHops}`,
     `guards:${stable(rules.guards)}`,
     `tribute:${[...rules.tributeCards].sort().join(",")}`,
     `combat:${stable(rules.combat)}`,
