@@ -658,7 +658,7 @@ describe("landFactsLines", () => {
 
   it("never speaks of vassalage - nobody owes fealty before the deal", () => {
     for (const line of facts()) {
-      expect(line.text).not.toContain("independence");
+      expect(line.text).not.toContain("vassal");
     }
   });
 });

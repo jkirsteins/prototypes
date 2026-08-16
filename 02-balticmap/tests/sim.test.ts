@@ -214,7 +214,7 @@ describe("summarize", () => {
     });
   });
 
-  it("counts releases and independences apart - freed BY a fall versus freed itself", () => {
+  it("counts a release - a vassal freed by the fall of the lord above it", () => {
     const s = summarize(
       state(
         [

@@ -3084,9 +3084,9 @@ describe("playing on past a won run", () => {
     // it: the chain has to be able to carry that seat's turn from here.
     const base = playingSix();
     const vassals = ["gamma", "delta"];
-    // Not one of the vassals: the independence gate is checked at a vassal's
-    // OWN turn start, so seating the turn there would free it and take the
-    // board back below the bar before the ending was ever read.
+    // Not one of the vassals: the seat carrying the turn from here has to be
+    // one OUTSIDE the realm whose size read the victory, or the turn under
+    // test would be the winning realm's own.
     const rival = base.factionIds.find(
       (f) => f !== "beta" && !vassals.includes(f) && hasRuler(base.rulers, f),
     )!;

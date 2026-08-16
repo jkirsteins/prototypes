@@ -441,8 +441,8 @@ describe("ruler invariant over a full game", () => {
     expect(state.turn).toBeGreaterThan(1);
     // A run vacates nobody, and the ONLY seats it fills are the lands that
     // changed hands: taking a land wakes its people up under their new lord.
-    // Read off the log rather than off `overlords`, because a land that won
-    // its independence back keeps the chief it was given.
+    // Read off the log rather than off `overlords`, because a land absorbed
+    // outright answers to `incorporated` and would be missed.
     const woken = new Set(
       state.log
         .filter((e) => e.type === "subjugated")

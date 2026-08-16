@@ -535,8 +535,9 @@ describe("applyBootParams", () => {
     });
 
     it("annexes rather than swearing, so nothing can walk back out", () => {
-      // A vassal wins its independence at its own turn start; an annexation
-      // is permanent, which is the only way the count survives a round.
+      // An annexed people is out of the run; a vassal is a seat that wakes
+      // up whenever its lord duels, which is a round of AI turns the check
+      // did not ask for.
       const g = boot("?faction=beta&realm=3");
       expect([...g.overlords]).toEqual([]);
       expect(g.incorporated).toMatchObject({ alpha: "beta", gamma: "beta" });
