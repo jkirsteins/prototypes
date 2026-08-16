@@ -9,6 +9,7 @@ import {
   duelCandidates, outsideTheDuel, rewardFor, type Gauntlet,
 } from "../src/gauntlet";
 import { LAND_GROWTH } from "../src/defense";
+import { naiveHumanTurn, runGame, SIM_FACTION_IDS } from "../src/sim";
 import { hasRuler } from "../src/rulers";
 import type { Rng } from "../src/cards";
 
@@ -748,5 +749,26 @@ describe("a duel enemy fights, chief or no chief", () => {
     );
     expect(after.overlords.get(enemy)).toBe("beta");
     expect(after.incorporated[enemy]).toBeUndefined();
+  });
+});
+
+describe("the balance suite plays the loop", () => {
+  it("answers the offer, so a sim game is scoped the way a run is", () => {
+    // `runGame` never answered the pick, so every sim and scenario game ran
+    // unscoped from end to end and the whole balance suite was measuring the
+    // pre-gauntlet game. Read through the human-turn hook because a summary
+    // says nothing about the cycle - and this is the real `runGame`, not a
+    // copy of its loop.
+    const seen = new Set<string>();
+    runGame({
+      seed: 3,
+      humanFaction: SIM_FACTION_IDS[0],
+      turnCap: 20,
+      humanTurn: (s, r) => {
+        seen.add(s.gauntlet.kind);
+        return naiveHumanTurn(s, r);
+      },
+    });
+    expect(seen).toContain("duel");
   });
 });

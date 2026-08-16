@@ -2,8 +2,9 @@ import type { MapData } from "./types";
 import { defenseMaxOf, factionAdjacencyOf, siteCapsOf } from "./adjacency";
 import { CARDS, GUARDS, guardAgainst, type Rng, type Strategy } from "./cards";
 import {
-  advance, chooseBuild, discardCard, endTurn, newGame, pickFaction, playCard,
-  repeatOnlyOf, startGame, turnOpen, viewOf, type GameState,
+  advance, chooseBuild, declineDuel, discardCard, endTurn, newGame, pickDuel,
+  pickFaction, playCard, repeatOnlyOf, startGame, turnOpen, viewOf,
+  type GameState,
 } from "./game";
 import { playableSet, validTargetsFor } from "./playability";
 import { seededRng } from "./rng";
@@ -191,8 +192,35 @@ function newSimGame(): GameState {
   );
 }
 
+/** The sim's answer to the gauntlet's offer: ALWAYS accept, and always the
+ *  first candidate the offer lists.
+ *
+ *  Stated rather than clever, deliberately. The sim's job is to exercise the
+ *  loop the run actually has, not to play it well - a policy that weighed
+ *  rewards would put a second opinion about what a duel is worth into the
+ *  measurement, and the balance suite would then be measuring the policy.
+ *  Declining only when the border offers nothing, since a decline spends the
+ *  world tick either way and a run that declined everything would measure the
+ *  pre-gauntlet game all over again.
+ *
+ *  `duelCandidates` is already in map order, so this is deterministic and a
+ *  seeded run replays. It draws no rng, which is what keeps a run comparable
+ *  with one measured before the loop existed. */
+function answerTheOffer(state: GameState): GameState {
+  if (state.gauntlet.kind !== "picking") return state;
+  const [first] = state.gauntlet.candidates;
+  return first === undefined ? declineDuel(state) : pickDuel(state, first);
+}
+
 /** Plays one complete headless game. Throws rather than spinning if a turn
- *  fails to resolve - a stuck turn is a bug, not a data point. */
+ *  fails to resolve - a stuck turn is a bug, not a data point.
+ *
+ *  It answers the gauntlet's pick, which is the difference between measuring
+ *  this game and measuring the one before it. Left unanswered, every sim and
+ *  scenario game ran unscoped from end to end: 0 victories and a median end
+ *  around turn 68, against 2 victories and a median around 45 once the loop
+ *  is played. A balance suite that cannot see the run's own structure is a
+ *  balance suite measuring something else. */
 export function runGame(opts: RunOptions): GameSummary {
   const { seed, humanFaction, turnCap } = opts;
   const rng = seededRng(seed);
@@ -204,6 +232,10 @@ export function runGame(opts: RunOptions): GameSummary {
   state = applyBuildArm(state, opts.arm ?? "mixed");
   const humanTurn = opts.humanTurn ?? naiveHumanTurn;
   while (state.phase === "playing" && state.turn <= turnCap) {
+    // At the top of the loop rather than on the human's turn alone: nothing
+    // in the engine blocks on the question, so the only way to be sure the
+    // loop is exercised is to answer it wherever it stands.
+    state = answerTheOffer(state);
     const actor = state.players[state.current].factionId;
     const next =
       state.current === 0 ? humanTurn(state, rng) : aiTakeTurn(state, rng);
