@@ -8,7 +8,7 @@ import {
 } from "./defense";
 import {
   attackDamageFor, attackImpactOn, borderPolygonsOf,
-  foulWindsTargetsOf, greatRaidMarches, holdsGuard,
+  foulWindsTargetsOf, greatRaidMarches, holdsGuard, marchHopsTo,
   marchSourcesAgainst, plagueMultiplier, plagueTargetsOf, playableSet,
   spendCeilingOn, validTargetsFor, type RulesView,
 } from "./playability";
@@ -68,19 +68,23 @@ export const POLICY_COVERAGE: Record<string, string> = {
     "since it is the same play for one settlement and one more point. " +
     "Repeats with Fortify: same keyword, so either may follow either",
   "raid":
-    "2A: take a bordering land this raid overwhelms - one it deals more to " +
+    "2A: take a land in reach this raid overwhelms - one it deals more to " +
     "than it has standing, its defenses gone included - the biggest realm " +
-    "first; " +
+    "first, discounted by how many turns the army walks (`travelFactor`); " +
     "5A: counter a march that would break one of our lands, or that we out-" +
     "muscle; 6W: suppress a vassal nearing its gate or finish an opening; " +
-    "11W: build toward the nearest gate. Source: the land the counter must " +
-    "leave from, else the one whose own defenses best survive being counter-" +
-    "raided back",
+    "11W: build toward the nearest gate, near counted in TURNS as well as " +
+    "points - `gateCandidates` divides the gap by the same discount. Source: " +
+    "the land the counter must leave from, else the one whose own defenses " +
+    "best survive being counter-raided back, and that pick is what decides " +
+    "how far the arrow walks and so how far the target is discounted",
   "great-raid":
     "6W: aim it where the arrows it musters flatten the land outright, which " +
     "takes it where they carry one point more than it holds; 11W: " +
     "pressure the neighbourhood that musters most, 2 arrows or more. Target: " +
-    "greatRaidPick, the bordering land its own neighbours can hit hardest",
+    "greatRaidPick, the bordering land its own neighbours can hit hardest. " +
+    "No travel discount, and it needs none: the fan is bordering lands by " +
+    "construction, so every arrow of it lands next turn",
   "prosperous-proliferation":
     "8R: raise the ceiling of the realm's biggest land whenever held - it is " +
     "always in the harvest offer, so a seat that never picked it up is a seat " +
@@ -114,6 +118,51 @@ function marchPick(
   return undefined;
 }
 
+/** What a blow keeps of its worth for every turn past the first that its army
+ *  spends walking.
+ *
+ *  An army takes a turn for every land it crosses, so the same card at the
+ *  same land is worth two different things depending on how far back it sets
+ *  out from: the board moves while the arrow is in the air, the target heals,
+ *  and the land the army left stands soft the whole time. A policy with no
+ *  notion of when a blow lands trades a target it can hit tomorrow for one it
+ *  can hit in three turns at no discount, which on the map reads as armies
+ *  thrown into the distance.
+ *
+ *  ONE dial, deliberately, so the playtest and the balance suite have one
+ *  number to argue about rather than a term per branch. It is a guess with a
+ *  shape behind it and not a measured number: at three hops - the furthest an
+ *  army may go - a blow keeps about a third of its worth, which is enough that
+ *  a nearer target has to be genuinely worse to lose. */
+export const TRAVEL_DISCOUNT = 0.6;
+
+/** How much of a value survives the walk. Multiplied into a WORTH and divided
+ *  into a COST - "worth less" and "further off" are the same statement twice,
+ *  and both branches that score a raid target read one of the two. */
+function travelFactor(hops: number): number {
+  return TRAVEL_DISCOUNT ** Math.max(0, hops - 1);
+}
+
+/** Turns before a blow at this polygon would land: the walk of the arrow the
+ *  policy would ACTUALLY declare, `marchSourceFor`'s tail included.
+ *
+ *  The chosen tail and not the nearest one, unlike `bestAttackOn` one field
+ *  over. That function answers "is this play available at all", where the best
+ *  case is the honest reading; this one answers "and when does it land", which
+ *  is a fact about the arrow that gets drawn. Every land in `attackReach`
+ *  borders the realm somewhere, so a nearest-source reading would be 1 almost
+ *  everywhere and the discount would be decoration.
+ *
+ *  Infinity where no land can send the army - it sorts last either way round,
+ *  which is what a target nothing can reach deserves. */
+function turnsToLand(
+  state: GameState, v: RulesView, actor: string, target: string,
+): number {
+  const from = marchSourceFor(state, v, actor, target);
+  if (from === undefined) return Number.POSITIVE_INFINITY;
+  return marchHopsTo(v, from, target) ?? Number.POSITIVE_INFINITY;
+}
+
 /** The subjugation-gate line of a polygon, and how far above it the score
  *  sits. Positive gap = closed by that much. */
 function gateGap(v: RulesView, polygon: string): number {
@@ -131,18 +180,25 @@ function gateGap(v: RulesView, polygon: string): number {
  *  polygon forever, every raid read as decisive, and a 150-turn all-warpath
  *  world starved its turnip loop to 13 plays and zero subjugations. A land
  *  standing open wants an army walked into it, which is step 2A, not more
- *  damage. Sorted nearest-gate-first, ties by faction order. */
+ *  damage. Sorted nearest-gate-first, ties by faction order.
+ *
+ *  "Nearest gate" counts the WALK as well as the points: a gap of 4 three
+ *  turns away is further off than a gap of 6 next door, because the arrow
+ *  crossing those lands gives the target two extra turns to heal and leaves
+ *  its own source soft for both. `travelFactor` is the one dial. */
 function gateCandidates(
   state: GameState, v: RulesView, actor: string, targets: string[],
 ): string[] {
   const realm = fullRealmOf(actor, v.overlords, v.incorporated);
+  const cost = (t: string): number =>
+    gateGap(v, t) / travelFactor(turnsToLand(state, v, actor, t));
   return targets
     .filter(
       (t) => !realm.has(t) && !(t in v.incorporated) && gateGap(v, t) > 0,
     )
     .sort(
       (a, b) =>
-        gateGap(v, a) - gateGap(v, b) ||
+        cost(a) - cost(b) ||
         state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
     );
 }
@@ -346,6 +402,9 @@ export function chooseAction(state: GameState): AiAction {
   const walkIn = marchPick(idxOf);
   if (walkIn !== undefined) {
     const realm = fullRealmOf(p.factionId, state.overlords, state.incorporated);
+    const worth = (t: string): number =>
+      fullRealmOf(t, state.overlords, state.incorporated).size *
+      travelFactor(turnsToLand(state, v, p.factionId, t));
     // Per target, because a raid's damage is now the ceiling of whichever of
     // OUR lands borders that one - two neighbours are two different numbers.
     const takeable = validTargetsFor(v, p.factionId, walkIn.id)
@@ -354,11 +413,14 @@ export function chooseAction(state: GameState): AiAction {
           damageAfterTerrain(v, t, bestAttackOn(v, p.factionId, walkIn.id, t)),
           defenseOf(v, t),
         ))
-      // The biggest pyramid first: taking a lord takes everything under it.
+      // The biggest pyramid first: taking a lord takes everything under it -
+      // discounted by the walk, because a conquest three turns out is a
+      // conquest the target has three turns to repair out of. A pyramid twice
+      // the size is still worth a turn further off; four times the size is
+      // worth two.
       .sort(
         (a, b) =>
-          fullRealmOf(b, state.overlords, state.incorporated).size -
-            fullRealmOf(a, state.overlords, state.incorporated).size ||
+          worth(b) - worth(a) ||
           order(a) - order(b),
       );
     if (takeable.length > 0) {

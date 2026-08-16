@@ -65,6 +65,82 @@ function withLeadership(g: GameState, lead: Record<string, number>): GameState {
   return { ...g, rulers };
 }
 
+/** zeta - alpha - beta - gamma - delta - epsilon, a line rather than the
+ *  complete graph the rest of this file works on. The one fixture where
+ *  distance is the subject. */
+const LINE_ADJ: Record<string, string[]> = {
+  alpha: ["zeta", "beta"],
+  beta: ["alpha", "gamma"],
+  gamma: ["beta", "delta"],
+  delta: ["gamma", "epsilon"],
+  epsilon: ["delta"],
+  zeta: ["alpha"],
+};
+
+function lineBase(): GameState {
+  const g = pickFaction(
+    chooseBuild(
+      startGame(newGame(FACTIONS, LINE_ADJ, {}, undefined, MAXES)),
+      "warpath", seededRng(1),
+    ),
+    "zeta", seededRng(1),
+  );
+  return { ...g, current: 1, passives: {} };
+}
+
+describe("a blow three turns out is worth less than one tomorrow", () => {
+  /** alpha holding beta and gamma down the line, facing two rivals whose gates
+   *  are the SAME distance in points: zeta next door, delta at the far end.
+   *
+   *  gamma has no army, so delta's arrow cannot set out from the land that
+   *  borders it - `marchSourceFor` sends it out of alpha, three lands back,
+   *  and the blow lands in three turns. zeta's sets out of alpha too and lands
+   *  tomorrow. Nothing else separates the two: equal gaps, and faction order
+   *  puts delta FIRST, so the untouched policy takes the far one. */
+  const twoRivals = (): GameState => {
+    const g = asStrategy(lineBase(), "warpath");
+    return withLeadership({
+      ...g,
+      incorporated: { beta: "alpha", gamma: "alpha" },
+      // alpha the roomiest, so `marchSourceFor` picks it for both targets and
+      // the only thing left between them is how far the army has to walk.
+      defense: { alpha: 30, beta: 20 },
+      armies: { gamma: 0 },
+    }, { alpha: 0 });
+  };
+
+  it("11W: raids the near gate over an equal one three turns away", () => {
+    expect(chooseAction(withHand(twoRivals(), ["raid"]))).toMatchObject({
+      type: "play", cardIndex: 0, targetId: "zeta", sourceId: "alpha",
+    });
+  });
+
+  it("does not pass on faction order - the far land sorts first", () => {
+    // Without the discount this is a tie broken by `state.factionIds`, and
+    // delta comes before zeta in it. A test that passed on the tie-break would
+    // be testing nothing.
+    const g = twoRivals();
+    expect(g.factionIds.indexOf("delta"))
+      .toBeLessThan(g.factionIds.indexOf("zeta"));
+    // And the two really are equal in points, so distance is the whole of it.
+    expect(g.defense.delta).toBeUndefined();
+    expect(g.defense.zeta).toBeUndefined();
+  });
+
+  it("still crosses the map for a target worth enough more", () => {
+    // The discount is a discount and not a leash: delta four points nearer its
+    // gate is worth the extra two turns of walking.
+    const g = twoRivals();
+    const richer = {
+      ...g,
+      defense: { ...g.defense, delta: SUBJUGATE_LINE + 1 },
+    };
+    expect(chooseAction(withHand(richer, ["raid"]))).toMatchObject({
+      type: "play", cardIndex: 0, targetId: "delta",
+    });
+  });
+});
+
 describe("POLICY_COVERAGE", () => {
   it("names a policy branch for every card in the game", () => {
     expect(Object.keys(POLICY_COVERAGE).sort()).toEqual(Object.keys(CARDS).sort());
