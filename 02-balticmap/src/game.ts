@@ -21,10 +21,11 @@ import {
 } from "./defense";
 import {
   aimsWithinOwnRealm, attackDamageFor, omensMultiplier, attackReach,
-  ESCAPE_RESPITE_TURNS, freeArmiesFor, greatRaidMarches, marchSourcesAgainst,
+  ESCAPE_RESPITE_TURNS, foulWindsTargetsOf, freeArmiesFor, greatRaidMarches,
+  marchSourcesAgainst,
   claimWouldLand, greatRaidPool, greatRaidSpends,
   handLimitFor, marchTargetsFrom, outbreakPolygons,
-  MIN_HAND, plagueMultiplier,
+  MIN_HAND, plagueMultiplier, plagueTargetsOf,
   playableSet, spendCeilingOn,
   turnipThresholdOn, validTargetsFor, wealthIncomeFor,
   type Guards, type Omens, type RulesView,
@@ -2500,17 +2501,15 @@ export function playCard(
     }
   } else if (cardId === "plague") {
     const mult = plagueMultiplier(view, p.factionId);
-    for (const polygon of state.factionIds) {
+    // Hostile, and a Plague has no aim of its own - it lands wherever the
+    // actor's stacks already sit, which may include a land that was a rival
+    // when the stack was laid and is a lord or a sibling now. `plagueTargetsOf`
+    // is the one list of where that stays true; legality and the hover preview
+    // read the same list, so a card the player was told was playable, and told
+    // would deal a given total, cannot land anywhere else or for any less.
+    const targets = plagueTargetsOf(view, p.factionId);
+    for (const polygon of targets) {
       const stacks = disease[polygon]?.[p.factionId] ?? 0;
-      if (stacks === 0) continue;
-      // Hostile, and a Plague has no aim of its own - it lands wherever the
-      // actor's stacks already sit, which may include a land that was a rival
-      // when the stack was laid and is a lord or a sibling now. The stacks stay
-      // where they are and burn nothing: a card whose keyword says it cannot
-      // strike a peer of its own realm must not find a back door through a
-      // stack laid last week. A stack on the actor's OWN vassal still burns -
-      // downward is upkeep, and this is the one place a plague is aimed.
-      if (aimsWithinOwnRealm(view, p.factionId, cardId, polygon)) continue;
       const damage = damageAfterTerrain(
         view, polygon, stacks * PLAGUE_DAMAGE_PER_STACK * mult,
       );
@@ -2525,39 +2524,35 @@ export function playCard(
         targetFactionId: polygon, amount: moved, stacksSpent: stacks,
       });
     }
-    // The same predicate the damage loop skipped on: a land the plague could
-    // not strike keeps its stacks, or the card would cost the actor its
+    // Only what the damage loop just walked is spent; a stack the plague
+    // could not strike keeps standing, or the card would cost the actor its
     // disease for nothing.
-    disease = clearDiseaseOf(
-      disease, p.factionId,
-      (polygon) => aimsWithinOwnRealm(view, p.factionId, cardId, polygon),
-    );
+    const struck = new Set(targets);
+    disease = clearDiseaseOf(disease, p.factionId, (polygon) => !struck.has(polygon));
   } else if (cardId === "foul-winds") {
     // One event per polygon whose ownership moved: the stacks the actor
     // GAINED there (the total held by others before the shift), plus the
     // per-loser breakdown the walk needs to zero each of THEIR counts too.
-    for (const polygon of state.factionIds) {
-      const owners = disease[polygon];
-      if (owners === undefined) continue;
-      // The same clause as the Plague above, for the same reason: claiming the
-      // stacks standing on a peer's land is how the NEXT plague would strike
-      // it, so a hostile card stops at the realm here too.
-      if (aimsWithinOwnRealm(view, p.factionId, cardId, polygon)) continue;
+    // `foulWindsTargetsOf` is the same filtered list as the Plague loop above,
+    // for the same reason - claiming the stacks standing on a peer's land is
+    // how the NEXT plague would strike it, so a hostile card stops at the
+    // realm here too, and legality already refused a play with nothing in it.
+    const targets = foulWindsTargetsOf(view, p.factionId);
+    for (const polygon of targets) {
+      const owners = disease[polygon] ?? {};
       const losses = Object.fromEntries(
         Object.entries(owners).filter(([owner]) => owner !== p.factionId),
       );
       const gained = Object.values(losses).reduce((sum, n) => sum + n, 0);
-      if (gained === 0) continue;
       events.push({
         turn: state.turn, playerId: p.id, type: "winds-shifted", cardId,
         targetFactionId: polygon, amount: gained, losses,
       });
     }
-    // The same predicate the event loop above skipped on, so the store and the
-    // log cannot disagree about which polygons the winds reached.
+    // Only what the event loop just walked changes hands.
+    const claimed = new Set(targets);
     disease = transferAllDiseaseTo(
-      disease, p.factionId,
-      (polygon) => aimsWithinOwnRealm(view, p.factionId, cardId, polygon),
+      disease, p.factionId, (polygon) => !claimed.has(polygon),
     );
   } else if (isSingleLandHeal(cardId) && targetId !== undefined) {
     // One branch for the whole class: which card it is decides only how much,

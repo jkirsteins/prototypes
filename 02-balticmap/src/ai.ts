@@ -7,10 +7,10 @@ import {
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
-  aimsWithinOwnRealm, attackDamageFor, attackImpactOn, borderPolygonsOf,
-  greatRaidMarches, holdsGuard,
-  marchSourcesAgainst, plagueMultiplier, playableSet, spendCeilingOn,
-  validTargetsFor, type RulesView,
+  attackDamageFor, attackImpactOn, borderPolygonsOf,
+  foulWindsTargetsOf, greatRaidMarches, holdsGuard,
+  marchSourcesAgainst, plagueMultiplier, plagueTargetsOf, playableSet,
+  spendCeilingOn, validTargetsFor, type RulesView,
 } from "./playability";
 import { axesOf } from "./marches";
 import { damageAfterTerrain, hasPassive } from "./passives";
@@ -868,12 +868,12 @@ function pestilenceDecisive(
     v.disease[polygon]?.[actor] ?? 0;
   const plagueDamageAt = (polygon: string, m: number): number =>
     stacksOn(polygon) * PLAGUE_DAMAGE_PER_STACK * m;
-  // `aimsWithinOwnRealm` is asked here too: the Plague resolution skips a
-  // stack sitting on a lord or a sibling, so a policy that scored that same
-  // stack would expect damage the play can never actually deal.
+  // Scored only over `plagueTargetsOf`'s list below, so the reach question is
+  // already answered by the time this runs; the annexation check here is the
+  // AI's own gate-hunting preference, not a reach question - an annexed land
+  // has no gate of its own to open.
   const opensGate = (polygon: string, m: number): boolean =>
     !(polygon in v.incorporated) &&
-    !aimsWithinOwnRealm(v, actor, "plague", polygon) &&
     gateGap(v, polygon) > 0 &&
     gateGap(v, polygon) <= plagueDamageAt(polygon, m);
 
@@ -892,16 +892,16 @@ function pestilenceDecisive(
   }
 
   // 6P-2: plague when it opens at least one gate, or when the total damage
-  // beats a raid's worth - the cash-out test.
+  // beats a raid's worth - the cash-out test. `plagueTargetsOf` is the same
+  // list legality, the resolution and the hover preview all read, so the
+  // policy never scores a stack the play cannot actually strike.
   if (plague !== undefined) {
-    const total = state.factionIds.reduce(
-      (sum, polygon) =>
-        aimsWithinOwnRealm(v, actor, "plague", polygon)
-          ? sum
-          : sum + Math.min(defenseOf(v, polygon), plagueDamageAt(polygon, mult)),
+    const targets = plagueTargetsOf(v, actor);
+    const total = targets.reduce(
+      (sum, polygon) => sum + Math.min(defenseOf(v, polygon), plagueDamageAt(polygon, mult)),
       0,
     );
-    const opens = state.factionIds.some((polygon) => opensGate(polygon, mult));
+    const opens = targets.some((polygon) => opensGate(polygon, mult));
     // "Beats a raid's worth" - the best raid actually available, since a
     // raid's worth is no longer one number for the board.
     const raidWorth = [...borderPolygonsOf(v, actor)]
@@ -911,20 +911,16 @@ function pestilenceDecisive(
     }
   }
 
-  // 6P-3: foul winds when rivals' stacks exceed our own. `theirs` is what
-  // the play could actually claim, so a polygon `aimsWithinOwnRealm` refuses
-  // - the Foul winds resolution skips it the same way the Plague loop above
-  // does - does not feed the tally; `own` is not aim, so it needs no filter.
+  // 6P-3: foul winds when rivals' stacks exceed our own. `theirs` walks
+  // `foulWindsTargetsOf`'s list - what the play could actually claim; `own`
+  // is not aim, so it walks every stack the actor holds with no filter.
   if (winds !== undefined) {
     let own = 0;
+    for (const owners of Object.values(v.disease)) own += owners[actor] ?? 0;
     let theirs = 0;
-    for (const [polygon, owners] of Object.entries(v.disease)) {
-      for (const [owner, n] of Object.entries(owners)) {
-        if (owner === actor) {
-          own += n;
-        } else if (!aimsWithinOwnRealm(v, actor, "foul-winds", polygon)) {
-          theirs += n;
-        }
+    for (const polygon of foulWindsTargetsOf(v, actor)) {
+      for (const [owner, n] of Object.entries(v.disease[polygon] ?? {})) {
+        if (owner !== actor) theirs += n;
       }
     }
     if (theirs > own) return { type: "play", cardIndex: winds };

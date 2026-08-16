@@ -618,6 +618,48 @@ export function plagueDamageOn(
   return stacks * PLAGUE_DAMAGE_PER_STACK * plagueMultiplier(view, actorFactionId);
 }
 
+/** The polygons a Plague played by `actor` would actually land on right now:
+ *  every polygon holding one of the actor's own stacks, minus whatever
+ *  `aimsWithinOwnRealm` refuses a hostile card to strike - a stack sitting on
+ *  a lord or a sibling stays where it is and burns nothing.
+ *
+ *  The one list, read by legality (a Plague with stacks only in the refused
+ *  set is `no-disease`, not playable), the resolution (exactly the polygons
+ *  it damages and clears), the AI's cash-out and gate-hunting arithmetic, and
+ *  the hover preview. That last one is the reason this exists as a function
+ *  and not four copies of the same filter: a heal's amount is read by the
+ *  play AND by the hover so the preview cannot promise what the card will
+ *  not do (see the fortify rules in AGENTS.md), and a Plague's total is the
+ *  same promise one card over. Four hand-rolled sums of "which polygons can
+ *  this actually reach" is how the hover ended up quoting damage the card
+ *  could never deal. */
+export function plagueTargetsOf(view: RulesView, actor: string): string[] {
+  return view.factionIds.filter(
+    (polygon) =>
+      (view.disease[polygon]?.[actor] ?? 0) > 0 &&
+      !aimsWithinOwnRealm(view, actor, "plague", polygon),
+  );
+}
+
+/** The polygons Foul winds played by `actor` would actually claim stacks
+ *  from right now: every polygon holding somebody ELSE's disease, minus
+ *  whatever `aimsWithinOwnRealm` refuses the card to reach. The same shape as
+ *  `plagueTargetsOf`, for the same reason - legality, the resolution's
+ *  gain/loss walk and the AI's `theirs` tally all asked this filter
+ *  separately before this existed. Foul winds has no hover preview to point
+ *  at it too; if one is ever added, it belongs here rather than as a fifth
+ *  copy. */
+export function foulWindsTargetsOf(view: RulesView, actor: string): string[] {
+  return view.factionIds.filter((polygon) => {
+    if (aimsWithinOwnRealm(view, actor, "foul-winds", polygon)) return false;
+    const owners = view.disease[polygon];
+    return (
+      owners !== undefined &&
+      Object.entries(owners).some(([owner, n]) => owner !== actor && n > 0)
+    );
+  });
+}
+
 /** Localized outbreak's splash: every neighbour of the target polygon except
  *  polygons of the actor's own full realm, and except anything up the actor's
  *  own chain of lords. Indiscriminate otherwise - third parties are hit, which
@@ -1000,31 +1042,19 @@ export function cardBlockReason(
       ? null
       : { code: "no-army" };
   }
-  // Neither disease card is aimed, so legality has to walk the map the way the
-  // resolution does - and skip exactly what the resolution skips. A hostile
-  // card may not strike a peer of the actor's own realm, so a stack standing
-  // on a lord or a sibling stays where it is and burns nothing; counted here,
-  // it would tell a seat the card was playable, take its turn and move nothing
-  // at all. Downward is not skipped at either end: a plague on your own vassal
-  // is upkeep.
+  // Neither disease card is aimed, so legality asks the same reachable-target
+  // lists the resolution and the hover preview read - a card whose only
+  // stacks sit where `aimsWithinOwnRealm` refuses would otherwise tell a seat
+  // it was playable, take its turn and move nothing at all.
   if (cardId === "plague") {
-    const held = Object.entries(view.disease).some(
-      ([polygon, owners]) =>
-        (owners[factionId] ?? 0) > 0 &&
-        !aimsWithinOwnRealm(view, factionId, cardId, polygon),
-    );
-    return held ? null : { code: "no-disease" };
+    return plagueTargetsOf(view, factionId).length > 0
+      ? null
+      : { code: "no-disease" };
   }
   if (cardId === "foul-winds") {
-    // Somebody ELSE's stacks, for the same reason: the winds move what the
-    // actor does not already own, so a map holding only the actor's own stacks
-    // is a map the card shifts nothing on.
-    const any = Object.entries(view.disease).some(
-      ([polygon, owners]) =>
-        !aimsWithinOwnRealm(view, factionId, cardId, polygon) &&
-        Object.entries(owners).some(([owner, n]) => owner !== factionId && n > 0),
-    );
-    return any ? null : { code: "no-disease" };
+    return foulWindsTargetsOf(view, factionId).length > 0
+      ? null
+      : { code: "no-disease" };
   }
   if (cardId === "harvest-feast") {
     const damaged = [

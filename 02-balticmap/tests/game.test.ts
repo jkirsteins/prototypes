@@ -23,6 +23,7 @@ import {
   validTargetsFor,
 } from "../src/playability";
 import { rulerOf } from "../src/rulers";
+import { plaguePreviewLines } from "../src/target-explanations";
 import { aiTakeTurn } from "../src/ai";
 import {
   SIM_ADJACENCY, SIM_DEFENSE_MAX, SIM_ETHNICITIES, SIM_FACTION_IDS,
@@ -1052,6 +1053,40 @@ describe("disease", () => {
       type: "plagued", targetFactionId: "alpha", amount: 0,
     });
     expect(after.disease).toEqual({});
+  });
+
+  it("the hover preview quotes exactly what the play deals, sibling stacks excluded", () => {
+    // beta is alpha's vassal, gamma is alpha's other vassal - a sibling beta
+    // may not strike. beta holds a stack on gamma (untouchable) and on delta
+    // (a genuine foreigner, legal). The preview and the real play must agree,
+    // and neither may count gamma's stack: the hover promising damage the
+    // resolution then does not deal is the bug this test exists to catch.
+    let g = playingState();
+    g = {
+      ...g,
+      overlords: new Map([["beta", "alpha"], ["gamma", "alpha"]]),
+      disease: { gamma: { beta: 2 }, delta: { beta: 3 } },
+    };
+    g = withHand(g, 0, ["plague"]);
+    const preview = plaguePreviewLines(viewOf(g), "beta");
+    const match = preview[0]?.match(/^Would deal (\d+) damage across (\d+) land/);
+    if (match === null || match === undefined) {
+      throw new Error(`expected a plague preview line, got ${JSON.stringify(preview)}`);
+    }
+    const [, quotedTotal, quotedLands] = match;
+    const before = g.log.length;
+    const after = playCard(g, 0, rng());
+    const plagued = fresh(after, before).filter((e) => e.type === "plagued");
+    const dealt = plagued.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+    // The preview's promise matches the play's outcome...
+    expect(Number(quotedTotal)).toBe(dealt);
+    expect(Number(quotedLands)).toBe(plagued.length);
+    // ...and both are the delta-only figure, not gamma's stack counted in.
+    expect(Number(quotedTotal)).toBe(3 * PLAGUE_DAMAGE_PER_STACK);
+    expect(plagued.map((e) => e.targetFactionId)).toEqual(["delta"]);
+    // The sibling's stack was never spent - it is not this card's to burn.
+    expect(after.disease.gamma).toEqual({ beta: 2 });
+    expect(after.defense.gamma).toBeUndefined();
   });
 
   it("foul-winds claims every stack on every land, logging what was gained", () => {
