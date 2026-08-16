@@ -44,15 +44,16 @@ describe("cards", () => {
     // Build A - Warpath.
     expectProps(
       "raid", "Raid", true, false, null, true, false,
-      "Send an army at a bordering land, spending up to HALF that land's " +
-      "defense. It lands next turn for what you spent, " +
-        "less any counter-raid.",
+      "Send an army at a land your realm can reach, out of any land of " +
+      "yours up to three away, spending up to HALF the source land's " +
+      "defense. It marches a turn for every land it crosses and lands for " +
+        "what you spent, less any counter-raid.",
     );
     expectProps(
       "great-raid", "Great raid", true, false, null, true, false,
       "Every land of yours bordering one land raids it, one army each, " +
-      "spending defense you divide between them. Each " +
-        "lands next turn like a Raid, answered separately.",
+      "spending defense you divide between them. They are all neighbours, " +
+        "so unlike a Raid every arrow lands next turn, answered separately.",
     );
     expectProps(
       "favourable-omens", "Favourable omens", false, false, null, true, false,
@@ -65,9 +66,10 @@ describe("cards", () => {
     );
     expectProps(
       "strong-raid", "Strong raid", true, false, null, true, false,
-      "Send an army at a bordering land, spending as much of that land's " +
-      "defense as you like. It lands next turn for what you spent, " +
-        "less any counter-raid.",
+      "Send an army at a land your realm can reach, out of any land of " +
+      "yours up to three away, spending as much of the source land's " +
+      "defense as you like. It marches a turn for every land it crosses " +
+        "and lands for what you spent, less any counter-raid.",
     );
     expectProps(
       "strong-fortify", "Strong fortify", true, false, null, true, false,
@@ -154,6 +156,24 @@ describe("cards", () => {
     // The table above IS the roster: a card added to CARDS without a row here
     // fails, so nothing ships property-unreviewed.
     expect([...LISTED].sort()).toEqual(Object.keys(CARDS).sort());
+  });
+
+  it("does not promise a single-arrow raid lands next turn", () => {
+    // An army takes a turn for every land it crosses, and a raid may be sent
+    // as far as `MAX_MARCH_HOPS`, so "a bordering land" and "lands next turn"
+    // were both false the moment travel time shipped. A card tip the board
+    // contradicts is worse than no tip - the player reads it once and then
+    // plays against a rule they were told wrong.
+    for (const id of ["raid", "strong-raid"]) {
+      expect(CARDS[id].text, id).not.toContain("lands next turn");
+      expect(CARDS[id].text, id).not.toContain("bordering land");
+      expect(CARDS[id].text, id).toContain("a turn for every land it crosses");
+    }
+    // Great raid's fan is bordering lands BY CONSTRUCTION - see
+    // `greatRaidMarches` - so its arrows really do all land next turn, and it
+    // now says why rather than pointing at a Raid that no longer does.
+    expect(CARDS["great-raid"].text).toContain("lands next turn");
+    expect(CARDS["great-raid"].text).toContain("neighbours");
   });
 
   it("keeps textSegments and text saying the same thing", () => {
