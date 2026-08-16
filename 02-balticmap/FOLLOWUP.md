@@ -114,3 +114,51 @@ land below its own independence gate for three turns may free itself. If the
 defender simply out-heals every long arrow, rear lands are pure economy and the
 travel-time stage bought nothing - which the spec names in advance as the most
 likely way the numbers are wrong.
+
+# Gauntlet loop, Batch A (the engine)
+
+`GameState.gauntlet` and the duel scoping ship on their own, ahead of the
+modal that raises the pick. Everything below is unverified rather than
+unfinished, and the reviews for this stage were skipped for time.
+
+## Nothing in the app reaches it yet, and that is on purpose
+
+No surface answers the pick, so a shipped run sits at `{ kind: "picking" }`
+for its whole length and the turn loop is unscoped - which is the game
+exactly as it was. Batch B is what makes any of this visible. Read a green
+`npm test` as "the engine cannot hang", not as "the loop works".
+
+## Unverified
+
+- **No browser pass.** Nothing on screen changed, so there was nothing to
+  look at; the first real pass belongs to Batch B's modal.
+- **Balance unmeasured**, per the standing rule. A duel gives the two sides
+  a turn each round and everybody else none, so every pacing band the
+  scenario suite pins is certainly moved. Nobody has looked.
+- **A duel does not restrict TARGETS, only turns.** During a duel the player
+  may still raid, sicken or subjugate a third party - it just cannot answer.
+  Taking a third party's land does not end the duel, which is right by the
+  rule as written but has never been played.
+- **The grey middle still raids during a duel.** A restless raid fires off
+  `keeps-to-itself` at the round wrap rather than off a turn, so quiet lands
+  go on picking fights while two realms duel. Deliberate - the alternative is
+  a second rule about the gauntlet living in `src/passives.ts` - but "the
+  world stands still" is not literally true and a playtest should say whether
+  it reads as noise.
+- **A third party can still take a land at the wrap.** Its arrows are landed
+  by the dormant sweep, and it keeps its chief, so an arrow declared before
+  the duel can capture during one. That is how the enemy can stop existing
+  mid-duel. The clock is the backstop and the sweep proves it is reachable,
+  but no run was watched hitting it.
+- **Declining costs nothing extra today.** `declineDuel` moves to
+  `world-tick`, but `picking` is unscoped as well, so at the engine level
+  declining and leaving the offer alone spend the same round. If declining is
+  meant to cost something the player can feel, Batch B has to say what.
+
+## Seams left for Batch B
+
+`pickDuel` and `declineDuel` in `src/game.ts` are the two engine doors, both
+identity-return on refusal, which is what `commitDecision` reads as
+`RULES_REFUSED`. `DUEL_TURNS` and `duelCandidates` are in `src/gauntlet.ts`.
+There is no `NetAction` and no `Decision` for either yet, and no boot param -
+a `duel=` key would be the cheap way to boot straight into a scoped board.
