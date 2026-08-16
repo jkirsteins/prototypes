@@ -723,6 +723,22 @@ Three things follow, and each is load-bearing:
   still comes off the board at the EARLIER of its two arrivals, so a counter
   answering a long march pulls it in early rather than waiting for it.
 
+**The axis pull-in is the OPPOSING end, never this end's own stragglers.**
+Both directions of a clash cross the same lands, so a counter is always the
+same flight length as the arrow it answers - what the pull-in exists for is
+the pair MEETING. An arrow of the actor's own still walking toward the same
+land is not in that fight and waits for the turn its own expiry names.
+Resolving the axis whole was safe while every flight was one turn, because
+nothing un-lapsed could sit on a landing axis except the counter; a source
+with two armies raiding one land on consecutive turns now can, and taking the
+axis whole landed tomorrow's blow today.
+
+**A CLAIM does not walk.** `Claim.expiry` is still `turn + 1` whatever the
+distance: a demand of fealty is a message rather than an army. It is made out
+of the actor's HOME at anything its whole realm borders, which can be many
+lands away, so charging it for the distance would price Subjugate by where its
+lord happens to live. Only `March` pays per land crossed.
+
 ## The hand is the realm's, and it is a floor rather than a ceiling
 
 `handLimitFor` in `src/playability.ts` is how many cards a turn refills to: one

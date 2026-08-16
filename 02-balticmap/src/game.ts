@@ -34,7 +34,7 @@ import {
   addClaim, addMarch, axesOf, axisKeyOf, claimKeyOf, clearClaims,
   clearMarches,
   lapsedClaimsOf, lapsedMarchesOf, resolveAxis,
-  type Armies, type Claims, type Marches,
+  type Armies, type Claims, type March, type Marches,
 } from "./marches";
 import {
   autoHarvestChoice, BURN_ORDER, harvestCard, removeCopies, SPEND_ORDER,
@@ -1652,8 +1652,8 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
   };
 }
 
-/** Lands every march this seat declared a turn ago, and every counter standing
- *  against one of them.
+/** Lands every march of this seat's whose arrival turn has come, and every
+ *  counter standing against one of them.
  *
  *  Resolution is per AXIS: both directions of a clash come off the board
  *  together, and within the axis the armies pair off one for one, each pair
@@ -1663,6 +1663,10 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
  *  makes a counter-raid an answer rather than a trade, and leaving half a
  *  clash on the board would let the attacker's own resolution hit before the
  *  counter it provoked.
+ *
+ *  The pull-in is the OPPOSING end and never this end's own stragglers. An
+ *  arrow of the actor's still walking toward the same land is not part of the
+ *  clash it has not reached; it waits for the turn its own expiry names.
  *
  *  Pushes onto `events` and returns the moved stores; the caller owns the
  *  batch.
@@ -1742,17 +1746,50 @@ function resolveMarches(
   }
   if (alive.length === 0) return { marches, defense };
 
-  // Only the axes the landing marches run along, but each taken WHOLE, so a
-  // counter still in flight is spent answering the attack it was declared
-  // against rather than surviving to strike an undefended land next turn.
-  const landing = new Set(alive.map((e) => axisKeyOf(e.march.from, e.march.to)));
+  // Only the axes the landing marches run along, and on each one only the
+  // arrows that are actually in the fight: everything arriving out of the
+  // landing end, plus the OPPOSING end whole.
+  //
+  // The opposing end whole is the counter rule - a counter still in flight is
+  // spent answering the attack it was declared against rather than surviving
+  // to strike an undefended land next turn, which is what makes a counter-raid
+  // an answer rather than a trade. It is a rule about the two ENDS meeting,
+  // and it says nothing about a second arrow of the actor's own.
+  //
+  // That distinction did not exist while every flight was one turn: nothing
+  // un-lapsed could sit on a landing axis except the counter. With a turn per
+  // land crossed, a source with two armies raiding one land on consecutive
+  // turns puts two of its own arrows on one axis with different arrival turns,
+  // and taking the axis whole landed tomorrow's blow today.
+  const arriving = new Set(alive.map((e) => e.key));
+  /** Axis key -> the source polygons whose arrows are landing on it. Every
+   *  entry of `alive` shares one actor, and no faction may aim at its own
+   *  home, so in practice this is one end - but it is read per end rather
+   *  than assumed, so a future two-ended case filters both. */
+  const landingFroms = new Map<string, Set<string>>();
+  for (const e of alive) {
+    const key = axisKeyOf(e.march.from, e.march.to);
+    const set = landingFroms.get(key) ?? new Set<string>();
+    set.add(e.march.from);
+    landingFroms.set(key, set);
+  }
   for (const axis of axesOf(marches)) {
-    if (!landing.has(axisKeyOf(axis.a, axis.b))) continue;
-    marches = clearMarches(marches, axis.keys);
+    const landing = landingFroms.get(axisKeyOf(axis.a, axis.b));
+    if (landing === undefined) continue;
+    // The store is keyed by the march's own id, so this is its key.
+    const inFight = (from: string, side: March[]): March[] =>
+      landing.has(from)
+        ? side.filter((m) => arriving.has(String(m.id)))
+        : side;
+    const fromA = inFight(axis.a, axis.fromA);
+    const fromB = inFight(axis.b, axis.fromB);
+    marches = clearMarches(
+      marches, [...fromA, ...fromB].map((m) => String(m.id)),
+    );
     // One pairing at a time, against the defense as the pairing before it left
     // it. That ordering is what lets two armies down one axis break a land and
     // then walk into it, the same way two armies down two axes already could.
-    for (const eng of resolveAxis(axis.a, axis.b, axis.fromA, axis.fromB)) {
+    for (const eng of resolveAxis(axis.a, axis.b, fromA, fromB)) {
       const contested = eng.fromA !== null && eng.fromB !== null;
       const strengthA = eng.fromA?.damage ?? 0;
       const strengthB = eng.fromB?.damage ?? 0;

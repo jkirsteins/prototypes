@@ -203,7 +203,7 @@ export const NET_ACTION_RULES: {
           viewOf(state), state.players[seat].factionId, action.targetId,
         ).includes(action.sourceId)
       ) {
-        return "no free army of yours borders that land";
+        return "no free army of yours can march that far";
       }
       return null;
     },

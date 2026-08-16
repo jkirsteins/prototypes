@@ -309,6 +309,13 @@ export interface Claim {
    *  Subjugate is the only declarer today, and writing that down here is what
    *  keeps a second one from inheriting its name. */
   cardId: string;
+  /** The turn this is answered on, and it is ALWAYS the next one - a demand
+   *  of fealty is a message, not an army, so it does not walk and takes no
+   *  turn per land crossed the way `March.expiry` now does. The asymmetry is
+   *  real and deliberate: a Subjugate is made out of the actor's own home at
+   *  anything its whole realm borders, which can be many lands from that
+   *  home, and charging it for the distance would price the card by where its
+   *  lord happens to live. */
   expiry: number;
 }
 

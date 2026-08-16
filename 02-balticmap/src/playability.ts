@@ -366,8 +366,8 @@ export function aimsWithinOwnRealm(
 }
 
 /** Lands the actor could march an army OUT of: full-realm members holding a
- *  free army that border something the actor may attack. The tail of every
- *  arrow the actor can draw.
+ *  free army within marching distance of something the actor may attack. The
+ *  tail of every arrow the actor can draw.
  *
  *  The realm half is `fullRealmOf`, not `incorporatedRealmOf` - a lord marches
  *  out of its vassals' lands too, the same pyramid rule `attackReach` follows

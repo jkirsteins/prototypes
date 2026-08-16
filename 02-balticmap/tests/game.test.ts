@@ -812,6 +812,37 @@ describe("the counter-raid clash", () => {
     expect(landMarches(facingRaids(4, 10)).marches).toEqual({});
   });
 
+  it("leaves this actor's own later arrow walking when an earlier one lands", () => {
+    // Two raids down the same axis, out of a source with two armies: one
+    // declared at T landing at T+2, one declared at T+1 and still a turn from
+    // arriving. The axis is taken whole for the COUNTER's sake - an answer,
+    // not a trade - and that reason says nothing about the attacker's own
+    // second arrow, which has not got there yet.
+    const g = {
+      ...playingState(LINE_ADJ),
+      overlords: new Map([["gamma", "beta"]]),
+    };
+    const after = beginTurn({
+      ...g,
+      turn: g.turn + 2,
+      marches: {
+        "1": {
+          id: 1, actor: "beta", from: "beta", to: "delta", cardId: "raid",
+          damage: 3, holdsArmy: true, declared: g.turn, expiry: g.turn + 2,
+        },
+        "2": {
+          id: 2, actor: "beta", from: "beta", to: "delta", cardId: "raid",
+          damage: 5, holdsArmy: true,
+          declared: g.turn + 1, expiry: g.turn + 3,
+        },
+      },
+    }, rng());
+    expect(Object.keys(after.marches)).toEqual(["2"]);
+    expect(after.defense.delta).toBe(FIXTURE_MAX - 3);
+    // And it is still going to land: nothing about it was reported.
+    expect(after.log.filter((e) => e.type === "march-resolved")).toHaveLength(1);
+  });
+
   it("takes the whole axis at the earlier arrival, however far apart they set out", () => {
     // Both directions of a clash cross the same lands, so a counter is always
     // the same number of turns as what it answers - what separates them now is
