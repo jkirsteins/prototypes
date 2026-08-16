@@ -41,6 +41,19 @@ svg.map.dragging {
   stroke-width: 0.5;
 }
 
+/* A power beyond the frame, once the last act has summoned it. It is drawn on
+   the same baked silhouette every other neighbour uses - the ground was
+   always there - and what changes is that it stops being scenery: its own
+   fill (set inline, off the region's `ForeignPowerDef`) and a stroke dark
+   enough to read as a border rather than as a coastline.
+
+   `!important` on the stroke, because `.neighbor` above sets a pale one and
+   the two are the same specificity; the inline fill needs no such help. */
+.neighbor-power {
+  stroke: #3b3230 !important;
+  stroke-width: 2 !important;
+}
+
 /* The matte between the canvas and the frame - see the comment on `surround`
    in map-render.ts. Fully opaque: this hides the sea rect, the baked
    neighbour countries and their coastlines entirely, and not as a fainter

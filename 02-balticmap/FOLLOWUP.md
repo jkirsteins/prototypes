@@ -524,3 +524,109 @@ of lands now hold a chief and take turns. What is not verified:
   but it reads differently now that the round is thirteen seconds rather than
   two: the player is watching the longest round of the gauntlet with nothing on
   screen naming it.
+
+# Difficulty ramp and the final boss
+
+Written while building three acts, the staked duel and the power beyond the
+frame on `claude/difficulty-ramp-final-boss-v112f8`. Same rule as everything
+above: each item names what is unverified and what it would cost to be wrong.
+
+## The one number that needs a decision, not a fix
+
+**A run is lost at a boss duel almost every time.** Measured over 24 seeded
+runs at a 250-turn cap, driving the COMPETENT policy on the human seat: 0-2
+victories, 1-5 unresolved, and essentially every other run ended at a boss
+duel rather than by incorporation or a rival unifying.
+
+It is not the champion's strength. That was isolated by turning the entire
+elevation off - no raised ceiling, no war-leader, no extra raids - and the
+count barely moved (14 boss deaths of 24 against 17-20 with it on). The driver
+is the arithmetic of the rule: an ordinary duel is roughly even, and
+`if (outcome === "lost" && boss) bossLost = true` ends the run outright, so a
+three-act run is two or three near-coin-flips with the run on each.
+
+Five things were tried against it and each was measured; four are in the tree
+because they are right on their own terms, and the fifth was taken out:
+
+- `duelFocusOf` in `src/ai.ts` - the policy now aims at the one land that ends
+  the duel it is in. Before it, a 44-turn run took thirteen lands, settled no
+  duel at all and never closed an act. **Kept.**
+- The duel arm of `raidSpendFor` - committing at that land rather than paying
+  the frontier minimum. Watched turn by turn, an act-1 boss duel sat between
+  3/5 and 5/5 for fourteen straight turns without it. **Kept.**
+- `DUEL_ATTRITION` skipping boss duels. Wearing the wagered land through one as
+  well: 22 boss deaths of 24, against 17 with it off. **Kept.**
+- `regional-leader` carrying no damage reduction. With one, a champion healed
+  to a raised ceiling and holding four fortifies could not be moved at all.
+  **Kept.**
+- Healing the staked land as the duel opened. It moved the win rate not at all,
+  and it silently overrode `defense=` - `duel=` is applied after it, so a boot
+  param that put a land at 1 found it back at its ceiling. **Taken out.**
+
+So the honest state is: the loop works, the acts work, the expedition works, and
+the difficulty is set by a rule the player asked for rather than by a number
+anybody has tuned. The dials, cheapest first: make a lost boss duel cost the
+stake rather than the run; give the rest more than one boon; lower
+`BOSS_CEILING_PER_ACT`. **`npm run balance` has still not been run against any
+of this** - `npm run sweep` is what produced every number above, and it measures
+survival rather than card balance.
+
+## What the sim measures, and what it therefore does not
+
+The sweep drives `aiTakeTurn` on the human seat. It picks the first candidate
+the offer lists and stakes the best-defended legal land, which is the obvious
+reading rather than a good one. It never plays Great raid or Favourable omens
+*to crack a champion* - those are the tools a person would reach for, and the
+policy only reaches for them when its existing branches happen to fire. A
+human's win rate is very likely higher than these numbers and nobody has
+measured it, because nobody has played this branch in a browser yet.
+
+## Not built, and named so it is not mistaken for shipped
+
+- **Foreign raids do not begin an act early.** The power is summoned at the act
+  III boundary and raids from that moment as an ordinary seat. The ramp dial
+  asked for was raids beginning while it was still unfightable, as pressure
+  and telegraph; what is there instead is the prophecy plus the summon. Making
+  it real means summoning at act II and keeping it out of `duelCandidates`
+  until act III, which is a `RulesView` field rather than a one-liner.
+- **The act III boss can be unreachable.** `bossFor` prefers the power only if
+  the realm can already attack it, which needs a landing held. A realm at
+  thirteen lands holding no landing closes act III against a neighbour instead
+  and tries again. That is playable - it reads as fighting your way to the
+  coast - and it has never been watched.
+- **A long march to the power draws as a strait.** `crossingBetween` shares no
+  vertices with a baked country outline, so the expedition's arrow gets the sea
+  treatment. Same limitation this file already records for three-hop marches.
+- **The surround matte may clip it.** Both powers' polygons overlap
+  `visibleRectOf` by construction - checked - so part of each is on screen, but
+  how much of Rus' or the Maghreb actually reads as a country has not been
+  looked at in a browser.
+- **Iberia has never been played, and now has a foreign power too.** The
+  Maghreb's landings are authored to the same standard as the Baltic's and
+  checked by `tests/regions.test.ts`, not by anybody's eyes.
+
+## Unverified in a browser, all of it
+
+Nothing on this branch has been seen on screen. `tests/stake-pick.test.ts` and
+`tests/boon-pick.test.ts` drive the real screen through happy-dom - the stake
+screen, the rest, the frozen boss offer and the lock across all three - which
+is stronger than nothing and is not a browser. Specifically unwatched: the act
+chip's two forms, the prophecy modal's camera glide to a land the player may
+never have looked at, a champion reading as a champion, the power appearing on
+the coast, and an arrow of the player's own drawn out past the frame.
+
+## Smaller things
+
+- **`DUEL_ATTRITION` is logged as `levied`.** That line means "this land lost
+  defense to something other than an attack", which is true, and it is also the
+  line a raid's own source pays. A player reading the log will see `levied` for
+  two different reasons and the sentence does not distinguish them.
+- **A void duel is more common than expected.** Up to five per run in seeded
+  sweeps, mostly the enemy being annexed by a third party mid-duel. It settles
+  nothing and costs nothing, and whether it reads as a let-off or as the run
+  losing track of itself has not been judged.
+- **An un-beaten champion keeps its status forever** if `bossFor` ever picks a
+  different land - which it should not, since a standing champion is preferred,
+  but nothing asserts the map cannot accumulate them.
+- **`?stake=` is new and only lightly exercised.** It defaults to the first
+  legal stake so every older `duel=` URL still boots into a running duel.

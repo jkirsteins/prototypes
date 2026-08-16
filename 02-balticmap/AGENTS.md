@@ -69,6 +69,13 @@ what `factionIds`, `defense`, `armies` and `marches` are keyed by. This
 section used to show `defense=selija:100`, which silently parsed and then
 dropped: `applyBootParams` skips a clause naming no known faction, so a wrong
 id boots a perfectly ordinary game and says nothing.
+  **`realm=` is also how a browser check reaches an ACT boundary.** Five lands
+  is act 1's exit on the Baltic map and thirteen is act 3's, so `realm=5` boots
+  one round short of a prophecy and `realm=13` one round short of the power
+  beyond the frame. One round SHORT, not on it: the boss is summoned at a round
+  wrap and boot params apply after the fast-forward, so the URL has to be
+  played a turn before the offer appears. `tests/boon-pick.test.ts` is that
+  navigation written down.
 - `realm=N` - how many lands the human's realm holds, clamped into
   `[1, the roster]`. The lands are ANNEXED, in map order, skipping your own:
   vassals would read the same on the scoreboard and then come apart while you
@@ -98,6 +105,12 @@ id boots a perfectly ordinary game and says nothing.
   behind it has to say so. Answered through the real `pickDuel` /
   `declineDuel`, so an id the offer does not hold is dropped like any other
   unknown clause.
+- `stake=jersikans` - which of your own lands `duel=` puts up against the
+  enemy. Every duel is staked, so this DEFAULTS to the first land `duelStakes`
+  offers rather than being required - a URL written before duels had a stake
+  still boots into a running duel. An id outside the legal set drops like any
+  other unknown id here. Name one for the check that is about the stake:
+  losing it, or reading it off the duel chip.
 - `popups=off` - sets the existing "Show popups" log pref.
 - `region=baltic|iberia` - which map the booted page plays on; it seeds the
   booted page's region preference the way `rules=` seeds the rules pick. An
@@ -896,16 +909,14 @@ load-bearing:
   its inputs survive a duel - `siteCaps` is map data and the defensive
   terrains are not `strippedOnCapture` - so a promise made twenty rounds ago is
   the one that gets paid.
-- **A won duel is read off the LOG, never off `until`.** A land moving between
-  the two realms ends a duel by pulling `until` in to the turn it moved, so the
-  clock running out and a conquest arrive in exactly the same shape.
-  `duelOutcome` looks at one turn - `until` itself - which is exact rather
-  than approximate: no cross-realm conquest can sit earlier in a duel that is
-  still running, because one would have ended it. It is handed the batch being
-  written as well as `state.log`, since a conquest at the human's own turn
-  start is decided and swept in the same `beginTurn`. It reads BOTH allegiance
-  lines - `subjugated` and `incorporated` - because a chiefless enemy is
-  absorbed rather than sworn (below) and says so with the second one.
+- **A won duel is recorded where the ground moved, never read back off the
+  board.** `duelDecidedBy` writes `Gauntlet.decided` at the moment an
+  allegiance changes and `settleDuel` reads it at the wrap. This used to be a
+  log walk keyed on `until`, and it went with the clock: see the duel section
+  below for why the moment of the move is the only moment the question has a
+  straight answer. Both allegiance doors record it - a chiefless enemy is
+  absorbed rather than sworn (below) - because `duelDecidedBy` is asked at the
+  capture rather than told which line was written.
 - **Declining is real and it is not free.** `declineDuel` spends the world
   tick a finished duel spends: every realm takes a turn while yours stands
   still, and a fresh offer comes round. The border is not a to-do list, so
@@ -944,12 +955,13 @@ dead run.
 
 ### A duel enemy fights, chief or no chief
 
-`actingFactions` spaces the acting seats apart, so every land a realm borders
-at turn 1 is one of the quiet ones - measured, and it was 110 of 110 turn-1
-candidates across all 26 seats. A leaderless enemy takes no turn and takes no
-land, so the map stood still for twenty rounds while the player fought
-something that never answered, and `duel-lost` was unreachable. Three parts,
-and the scope of each is deliberate:
+The seeding used to leave only five acting seats, so every land a realm
+bordered at turn 1 was one of the quiet ones - measured, and it was 110 of 110
+turn-1 candidates across all 26 seats. A leaderless enemy takes no turn and
+takes no land, so the map stood still while the player fought something that
+never answered, and `duel-lost` was unreachable. `QUIET_LANDS` is the lever
+that fixed it; the three parts below are the rest, and the scope of each is
+deliberate:
 
 - **A chiefless enemy is RARE.** `duelCandidates` prefers factions that have a
   chief, as a FILTER rather than a sort. It does not refuse a chiefless one:
@@ -990,7 +1002,100 @@ is the one spelling of the gate, applied by `beginTurn` and predicted by
 consequence, which is a rule and not a side effect: a vassal does not win its
 freedom while a duel runs, because a seat that never sees a `beginTurn` never
 reaches the line that frees it. It escapes at its first turn after the duel
-retires.
+retires - and a vassal that was STAKED and escapes takes the wager off the
+table, which voids the duel (`duelVoided`).
+
+## The run is three acts, and each closes with a fight it announces
+
+`GameState.act` is 1 to `ACTS` (3), and `actExitSize(act, bar)` is thirds of
+`winSizeFor`'s bar - 5 / 9 / 13 on the Baltic map, 4 / 8 / 12 on the Iberian.
+Four things about the shape are load-bearing:
+
+- **Reaching an act's exit SUMMONS its boss; beating the boss advances the
+  act.** They were one number first, and the run then skipped its own boss the
+  moment a duel won two lands at once. The act is a high-water mark and never
+  falls.
+- **The beat before a boss is a prophecy and a breath.** `boss-foretold` is a
+  modal naming the enemy and the act - the whole of "unmissable", since a boss
+  the player only meets by walking into it reads as the game changing the rules
+  mid-run - and then a `rest` owes one of three boons. Both ride the picker's
+  overlay and `pickOwed` covers both, so one lock spans the pair.
+- **A boss offer is frozen and has no decline.** `picking.boss` holds exactly
+  the enemy the prophecy named; the wrap re-reads an ordinary offer and must
+  not re-read this one. `declineDuel` refuses it and the shared button is
+  HIDDEN rather than left showing a refusal the engine will not take.
+- **The act's exit boundaries are clamped at both ends.** The last act's exit
+  is the bar exactly, and an earlier act's is at least `act + 1`, because a run
+  opens holding one land - at a three-land bar the plain third is 1, which
+  summons act 1's boss before the player has taken anything.
+
+A champion is a neighbour the map has RAISED, not a new kind of entity:
+`elevateBoss` in `src/game.ts` gives it the `regional-leader` status, a ceiling
+raised by the act with a heal to it, `war-leader` AND the leadership that makes
+that ability mean anything, and more of its own build's raids. No new cards, so
+no `POLICY_COVERAGE` branch and no discovery route are owed. `regional-leader`
+carries no damage reduction, and that is measured rather than chosen - with one,
+a champion healed to a raised ceiling and holding four fortifies could not be
+moved at all.
+
+## A duel is a bet on one land, and it has no clock
+
+`DUEL_TURNS` is gone. A duel ends when ground moves between exactly two named
+polygons: the enemy's own land coming to the player's realm wins it, the
+player's `staked` land going to the enemy's loses it. Everything else that
+changes hands during a duel is an ordinary capture and leaves the fight running.
+
+- **Every duel is staked, the opening one included.** It was optional on a
+  one-land realm first, and that was wrong twice over: losing your home is
+  vassalage rather than defeat, so the bet was never the run; and a duel with
+  nothing staked can only be WON, which left the first duel of every run with
+  one ending. Measured on a real 44-turn run, that duel was still going at the
+  end and no duel had ever settled.
+- **`duelDecidedBy` records the outcome where the ground moves.** The moment of
+  the move is the only moment the question has a straight answer - read back a
+  round later, "the enemy took my stake" and "I took the enemy's home" both
+  look like one realm standing inside the other.
+- **`duelVoided` is the one arm that is neither.** An annexed enemy can lose no
+  land and a wagered land that has left the realm cannot be lost, so a duel
+  with nothing left to decide it retires and settles nothing. Not a clock: it
+  fires on a fact about the board.
+- **`DUEL_ATTRITION` is what makes an ordinary duel converge** - one point a
+  round off BOTH wagered lands, so the side that is ahead wins a siege. It skips
+  a BOSS duel, measured: wearing the wagered land through one as well ended 22
+  of 24 seeded runs at a boss duel, against 17 with it off.
+- **Losing a boss duel ends the run**, and losing an ordinary one does not.
+  That is the whole of what makes an act's last fight different to play. See
+  `FOLLOWUP.md` for what it costs - it is the number that decides how hard this
+  game is, and nobody has tuned it.
+
+**The policy has to know which fight it is in.** `duelFocusOf` in `src/ai.ts`
+adds the enemy's own polygon to the conquest scoring, gives the warpath branch
+a duel arm, and makes `raidSpendFor` commit there rather than paying the
+frontier minimum. Without it a 44-turn run took thirteen lands, never aimed at
+the land that would have closed the fight, and settled no duel at all.
+
+## The last act is fought off the map
+
+Each region authors a `ForeignPowerDef` (`src/regions.ts`): Rus' behind the
+Baltic's eastern forests, the Maghreb across Iberia's strait. It borrows its
+polygon from `MapData.neighbors` - the grey silhouettes the map has always
+drawn around the playable lands - and joins the roster only when act III
+summons it. Its adjacency is its authored `landings`, both ways, so
+`hopsBetween`, `attackReach` and `MAX_MARCH_HOPS` answer for it exactly as they
+answer for anywhere else and none of them was taught about it.
+
+- **`GameState.foreign` keeps it out of the arithmetic.** A power holding no
+  ground on the map must not move the bar from thirteen lands to fourteen at
+  the moment the last act begins, must not "unify" a map it was never on, and
+  must not be counted as a land by the postmortem. `homeRoster` is the one
+  reader all three go through.
+- **The run is won by taking that ground.** Half the map summons the last act's
+  boss; `endingFor`'s victory arm is the expedition. Playing on past it is still
+  measured in lands and still through `winSizeFor`, so the shown bar and the
+  applied bar stay one call.
+- **The landings are AUTHORED, like `terrainEligibility`.** There is no rim
+  concept in this codebase and the foreign power is not the change that should
+  invent one.
 
 ## Nothing ends itself
 

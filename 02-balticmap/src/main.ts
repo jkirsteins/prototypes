@@ -92,7 +92,7 @@ import { parseBootParams } from "./boot-params";
 import {
   advanceMove, bootGame, chooseBuildMove, pickFactionMove, startGameMove,
 } from "./moves";
-import { REGIONS, setActiveRegion, type RegionId } from "./regions";
+import { REGIONS, activeRegion, setActiveRegion, type RegionId } from "./regions";
 import {
   forcesDiscardWhenStuck, RULES_PREFS_KEY, loadRulesPrefs,
   saveRulesPrefs, type RuleSelections,
@@ -1246,6 +1246,27 @@ function applyOwnership(): void {
     inPlay() && humanOverlord !== undefined
       ? fullRealmOf(humanOverlord, game().overlords, game().incorporated)
       : new Set<string>();
+  // The power beyond the frame, once the last act has called it up. It has no
+  // region of its own - it borrows a baked neighbour's silhouette, which is
+  // ground the map has always drawn and nothing had ever claimed - so it is
+  // painted here rather than in the walk below, which is over `regionPaths`.
+  //
+  // Painted whether or not it is being duelled: it is on the roster, it takes
+  // turns and it sends arrows, and a faction that acts while drawn as scenery
+  // is the map lying about the board.
+  {
+    const power = activeRegion().foreignPower;
+    const path = svg.querySelector<SVGPathElement>(
+      `.neighbors path[data-neighbor="${power.neighbor}"]`,
+    );
+    if (path !== null) {
+      const summoned = inPlay() && game().foreign.includes(power.id);
+      path.classList.toggle("neighbor-power", summoned);
+      // Back to the grey the stylesheet gives every other neighbour when it is
+      // not standing - a New game must not leave the last run's enemy painted.
+      path.style.fill = summoned ? power.color : "";
+    }
+  }
   for (const [id, el] of regionPaths) {
     const region = regionById.get(id)!;
     const effective = inPlay() ? fillFactionFor(region.faction) : region.faction;
