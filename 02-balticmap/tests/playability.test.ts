@@ -38,6 +38,8 @@ function view(partial: Partial<RulesView> = {}): RulesView {
     incorporated: {},
     adjacency: LINE_ADJ,
     factionIds: ORDER,
+    // Nothing beyond the frame: these views are about the map's own rules.
+    foreign: [],
     passives: {},
     turn: 1,
     guards: {},

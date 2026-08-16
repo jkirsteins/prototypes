@@ -593,6 +593,7 @@ export function viewOf(state: GameState): RulesView {
     incorporated: state.incorporated,
     adjacency: state.adjacency,
     factionIds: state.factionIds,
+    foreign: state.foreign,
     turn: state.turn,
     guards: state.guards,
     omens: state.omens,
@@ -1582,6 +1583,21 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
     // quietly ate itself, and lands with no chief to answer for them ended up
     // holding vassals.
     if (!hasRuler(state.rulers, capture.by)) return { defense, taken: false };
+    // **A power beyond the frame RAIDS before the last act, and settles only
+    // in it.** It stands on the map from the act before the one it is fought
+    // in, so its arrows are the telegraph - the player watches them come out
+    // of the grey and land on their coast, and knows what is coming before
+    // anything asks them to fight it. What it may not do in that window is
+    // take ground: it musters far above any land on the map, so a power free
+    // to conquer through the act before its own would simply eat the coast
+    // while the player was fighting somebody else. Once it IS the fight, this
+    // stands down and it takes ground like anybody.
+    if (
+      foreign.includes(capture.by) &&
+      !(gauntlet.kind === "duel" && gauntlet.enemy === capture.by)
+    ) {
+      return { defense, taken: false };
+    }
     // The actor already holds this land, because an earlier arrival of its
     // own took it this same turn. The arrow is SPENT and lands nothing: an
     // army does not sack the land its own side has just moved defenders
@@ -1902,7 +1918,11 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         // The LAST act is fought beyond the frame, so its enemy has to be
         // called onto the map's edge before anybody can be offered it. Every
         // earlier act closes with a neighbour that was already standing.
-        if (act >= ACTS) summonForeignPower();
+        // Summoned an ACT EARLY, so it is standing - and raiding - before it
+        // is ever offered as a fight. That is the whole of "you see it
+        // coming": a power that turned up in the same breath as the modal
+        // asking you to fight it would be an announcement, not a threat.
+        if (act >= ACTS - 1) summonForeignPower();
         const beyond = activeRegion().foreignPower.id;
         const boss = bossFor(
           {

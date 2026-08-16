@@ -55,6 +55,12 @@ export interface RulesView {
   incorporated: Incorporated;
   adjacency: Record<string, string[]>; // polygon id -> adjacent polygon ids
   factionIds: string[];
+  /** The faction ids that hold no ground on the map - powers summoned from
+   *  beyond the frame. `GameState.foreign`, projected. Read by
+   *  `duelCandidates`, which must not offer one as an ordinary neighbour: it
+   *  stands on the map an act before it is fought, and the fight it belongs to
+   *  is the one the run's last act names. */
+  foreign: string[];
   /** Polygon id -> the passive statuses it carries (src/passives.ts). Read by
    *  the damage sites, the income rule and the AI. */
   passives: Passives;

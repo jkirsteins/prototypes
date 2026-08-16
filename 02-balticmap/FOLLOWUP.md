@@ -583,12 +583,17 @@ measured it, because nobody has played this branch in a browser yet.
 
 ## Not built, and named so it is not mistaken for shipped
 
-- **Foreign raids do not begin an act early.** The power is summoned at the act
-  III boundary and raids from that moment as an ordinary seat. The ramp dial
-  asked for was raids beginning while it was still unfightable, as pressure
-  and telegraph; what is there instead is the prophecy plus the summon. Making
-  it real means summoning at act II and keeping it out of `duelCandidates`
-  until act III, which is a `RulesView` field rather than a one-liner.
+- **The power's raids have never been watched landing.** It is summoned at the
+  act II boundary and raids the landings through act III's build-up, taking no
+  ground until it is the fight (`applyArrival`). That is the telegraph, and it
+  is covered by tests rather than by eyes: what an arrow coming out of the grey
+  onto your coast actually looks like, and whether the player reads it as a
+  warning, is the first thing a browser pass should look at.
+- **The power raids but cannot be answered for two acts.** It is on the map
+  from act II and `duelCandidates` refuses to offer it, so a player who wants
+  to hit it early cannot pick that fight - though nothing stops them raiding it
+  with a card. Whether that reads as dread or as an itch is a judgement nobody
+  has made.
 - **The act III boss can be unreachable.** `bossFor` prefers the power only if
   the realm can already attack it, which needs a landing held. A realm at
   thirteen lands holding no landing closes act III against a neighbour instead

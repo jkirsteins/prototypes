@@ -29,6 +29,8 @@ const ORDER = ["alpha", "beta", "gamma", "delta"];
  *  heal and a raid both quote a number the cap has not already swallowed. */
 const v = (partial: Partial<RulesView> = {}): RulesView => ({
   overlords: new Map(), incorporated: {},
+  // Nothing beyond the frame: these views are about the map's own rules.
+  foreign: [],
   adjacency: {
     alpha: ["beta"], beta: ["alpha", "gamma"], gamma: ["beta", "delta"],
     delta: ["gamma"],

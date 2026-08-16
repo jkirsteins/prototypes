@@ -251,7 +251,11 @@ export function duelCandidates(view: RulesView, human: string): string[] {
     offered.add(view.incorporated[polygon] ?? polygon);
   }
   const all = view.factionIds.filter(
-    (id) => offered.has(id) && !realm.has(id),
+    // A power from beyond the frame is never an ordinary offer. It stands on
+    // the map an act before it is fought, so the border reaches it long before
+    // the run means to send anybody at it - and the fight it belongs to is the
+    // one the last act names, through `bossFor`'s `prefer`.
+    (id) => offered.has(id) && !realm.has(id) && !view.foreign.includes(id),
   );
   const led = all.filter((id) => view.leaders[id] === true);
   return led.length > 0 ? led : all;
@@ -517,7 +521,17 @@ export function bossFor(
   view: RulesView, human: string, prefer: string | null = null,
 ): string | null {
   const candidates = duelCandidates(view, human);
-  if (prefer !== null && candidates.includes(prefer)) return prefer;
+  // `prefer` is checked against REACH rather than against the offer, because
+  // the one thing it is ever used for - the power beyond the frame - is
+  // deliberately not in the offer. Reach and the bloc rule still have to hold:
+  // an expedition against a coast the realm cannot touch is not a fight.
+  if (
+    prefer !== null &&
+    attackReach(view, human).has(prefer) &&
+    !aimsWithinOwnRealm(view, human, "raid", prefer)
+  ) {
+    return prefer;
+  }
   const standing = candidates.find(
     (id) => hasPassive(view.passives, id, "regional-leader"),
   );

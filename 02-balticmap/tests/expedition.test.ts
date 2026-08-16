@@ -100,8 +100,12 @@ describe("the last act is fought off the map", () => {
     // The ordinary reach and march rules answer for it with nothing added:
     // a landing may aim at it, and `duelStakes` offers the lands that can.
     const home = humanFactionOf(offered) as string;
-    expect(duelCandidates(viewOf(offered), home)).toContain(POWER.id);
     expect(marchTargetsFrom(viewOf(offered), home, HOME)).toContain(POWER.id);
+    // But it is never an ORDINARY offer, at any act. It stands on the map from
+    // the act before the one it is fought in, so the border reaches it long
+    // before the run means to send anybody at it - the only route to it is the
+    // last act naming it through `bossFor`'s `prefer`.
+    expect(duelCandidates(viewOf(offered), home)).not.toContain(POWER.id);
     expect(duelStakes(viewOf(offered), home, POWER.id).length)
       .toBeGreaterThan(0);
   });
@@ -132,5 +136,48 @@ describe("the last act is fought off the map", () => {
     // player standing on thirteen lands with the power untouched has not won.
     const after = wrap(atTheLastAct());
     expect(after.phase).toBe("playing");
+  });
+});
+
+describe("it raids before it can be fought", () => {
+  /** A board on act 2's exit: the power is summoned an act early, so it is
+   *  standing - and raiding - before anything offers it as a fight. */
+  function anActEarly(): GameState {
+    return wrap({ ...atTheLastAct(), act: 2 });
+  }
+
+  it("stands on the map an act before the one it is fought in", () => {
+    const after = anActEarly();
+    expect(after.foreign).toEqual([POWER.id]);
+    // And the act it turned up in still closes on a NEIGHBOUR: a power that
+    // arrived in the same breath as the modal asking you to fight it would be
+    // an announcement rather than a threat.
+    if (after.gauntlet.kind !== "rest") throw new Error("expected a rest");
+    expect(after.gauntlet.boss).not.toBe(POWER.id);
+  });
+
+  it("takes no ground until it IS the fight", () => {
+    // It musters far above any land on the map, so a power free to conquer
+    // through the act before its own would eat the coast while the player was
+    // fighting somebody else. It raids; it does not settle.
+    let g = anActEarly();
+    const landing = POWER.landings.find((l) => g.factionIds.includes(l));
+    if (landing === undefined) throw new Error("no landing on this map");
+    g = {
+      ...g,
+      defense: { ...g.defense, [landing]: 0 },
+      marches: {
+        "9": {
+          id: 9, actor: POWER.id, from: POWER.id, to: landing, cardId: "raid",
+          damage: 5, holdsArmy: true, declared: g.turn - 1, expiry: g.turn,
+        },
+      },
+    };
+    const seat = g.players.findIndex((p) => p.factionId === POWER.id);
+    const landed = beginTurn({ ...g, current: seat }, seededRng(6));
+    // The arrow lands and is accounted for; the land does not change hands.
+    expect(landed.overlords.get(landing)).toBeUndefined();
+    expect(landed.incorporated[landing]).not.toBe(POWER.id);
+    expect(landed.log.map((e) => e.type)).toContain("march-resolved");
   });
 });
