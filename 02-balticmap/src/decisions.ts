@@ -8,7 +8,9 @@
  */
 import { aiTakeTurn } from "./ai";
 import type { Rng } from "./cards";
-import { advance, keepPlaying, surrender, type GameState } from "./game";
+import {
+  advance, declineDuel, keepPlaying, pickDuel, surrender, type GameState,
+} from "./game";
 import type { HarvestChoice } from "./harvest";
 import {
   applyNetAction, validateAction, validateRules, type NetAction,
@@ -107,6 +109,14 @@ export type Decision =
    *  against a moved board landed on the wrong conquest or on none. */
   | { kind: "transfer"; from: string; to: string; amount: number }
   | { kind: "surrender" }
+  /** Which bordering realm the run duels next, or `null` for none of them.
+   *
+   *  ONE kind and not two, because it is one question with one answer -
+   *  "which fight, or no fight" - asked once, on one modal, with one way out.
+   *  Split into `pick-duel` and `decline-duel` the table would let a screen
+   *  route the two differently, and the answer that got dropped would be the
+   *  one the player reaches for when the whole offer is worth ignoring. */
+  | { kind: "pick-duel"; enemyId: string | null }
   /** Its own kind and not a variant of anything: it is the one decision taken
    *  after an ending rather than in play, and the only one that puts a phase
    *  BACK. */
@@ -170,6 +180,22 @@ export const DECISION_ROUTES: {
       "host's seat: a second person conceding would be conceding somebody " +
       "else's game. Their way out is closing the tab.",
     apply: (state) => surrender(state),
+  },
+  "pick-duel": {
+    // `action` and not `repaint`. The pick locks the screen while it stands,
+    // so answering it is what hands the board back - and the seat on turn may
+    // be an AI's, whose turn the boot path or an earlier stage left open. A
+    // repaint would hand back a board with nobody to move it, the same trap
+    // `keep-playing` records below.
+    settle: "action",
+    hostOnly:
+      "The run has ONE gauntlet, and its two sides are the host's realm and " +
+      "the enemy's - `humanFactionOf` is seat 0, the same seat `phase` and " +
+      "`winSizeFor` speak for. Two people cannot be in different duels, so " +
+      "the second person is never shown this question rather than being " +
+      "shown one whose answer has nowhere to go.",
+    apply: (state, _rng, d) =>
+      d.enemyId === null ? declineDuel(state) : pickDuel(state, d.enemyId),
   },
   "keep-playing": {
     // `action` and not `repaint`, and this is load-bearing rather than tidy.

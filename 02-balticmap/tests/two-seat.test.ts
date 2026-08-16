@@ -372,7 +372,7 @@ describe("what only the host answers", () => {
     const named: Record<DecisionKind, true> = {
       play: true, harvest: true, discard: true,
       "end-turn": true, transfer: true, surrender: true,
-      "keep-playing": true,
+      "pick-duel": true, "keep-playing": true,
     };
     expect(Object.keys(DECISION_ROUTES).sort()).toEqual(
       Object.keys(named).sort(),

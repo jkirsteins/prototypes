@@ -92,3 +92,56 @@ describe("commitDecision - the conquest transfer", () => {
     expect(applied).toHaveLength(0);
   });
 });
+
+describe("commitDecision - the duel pick", () => {
+  /** The offer a fresh deal opens on. `pickFaction` reaches the first round
+   *  wrap, which is what fills it. */
+  const offerOf = (g: GameState): string[] =>
+    g.gauntlet.kind === "picking" ? g.gauntlet.candidates : [];
+
+  it("opens a duel against a land the offer holds", () => {
+    const state = freshGame();
+    const enemy = offerOf(state)[0];
+    expect(enemy).toBeDefined();
+    const { deps, applied, sent } = soloDeps(state);
+    const result = commitDecision(deps, { kind: "pick-duel", enemyId: enemy });
+    expect(result).toEqual({ outcome: "applied", settle: "action" });
+    expect(applied[0].gauntlet).toMatchObject({ kind: "duel", enemy });
+    // Host-only: nothing crosses the wire, and the sentence saying why is the
+    // route's own.
+    expect(sent).toHaveLength(0);
+  });
+
+  it("takes declining as an answer, on the same kind", () => {
+    // One kind, one question. Split in two, a screen could route the answer
+    // the player reaches for when the whole offer is worth ignoring
+    // differently from the one that picks a fight.
+    const { deps, applied } = soloDeps(freshGame());
+    const result = commitDecision(deps, { kind: "pick-duel", enemyId: null });
+    expect(result).toEqual({ outcome: "applied", settle: "action" });
+    expect(applied[0].gauntlet).toEqual({ kind: "world-tick" });
+  });
+
+  it("refuses a land the offer does not hold", () => {
+    // The engine returns its input, which is what `commitDecision` reads as
+    // refused - so a stale modal cannot scope the turn loop to a faction
+    // nobody may fight.
+    const { deps, applied } = soloDeps(freshGame());
+    const result = commitDecision(deps, { kind: "pick-duel", enemyId: "alpha" });
+    expect(result.outcome).toBe("refused");
+    expect(applied).toHaveLength(0);
+  });
+
+  it("is refused outright on a guest, which is never shown it", () => {
+    const state = freshGame();
+    const enemy = offerOf(state)[0];
+    const { deps, applied, sent } = soloDeps(state);
+    const result = commitDecision(
+      { ...deps, role: "guest" }, { kind: "pick-duel", enemyId: enemy },
+    );
+    expect(result.outcome).toBe("refused");
+    expect(result).toMatchObject({ reason: expect.stringMatching(/gauntlet/) });
+    expect(applied).toHaveLength(0);
+    expect(sent).toHaveLength(0);
+  });
+});

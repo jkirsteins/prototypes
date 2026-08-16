@@ -303,6 +303,18 @@ export interface Hud {
     },
     hooks: { onConfirm(amount: number): void },
   ): void;
+  /** The gauntlet's pick: which bordering realm the run duels next, one row
+   *  per candidate with what beating it pays. `reward` is prose the caller
+   *  built from `rewardFor`, so the offer and the cashing quote one function.
+   *
+   *  There is no cancel. Declining is `onDecline` on the shared button - a
+   *  real answer that costs a world tick - and an empty `candidates` is a
+   *  legitimate offer, not a bug: the modal says so and the button is still
+   *  the way on. */
+  showDuelOffer(
+    offer: { candidates: { factionId: string; reward: string }[] },
+    hooks: { onPick(factionId: string): void; onDecline(): void },
+  ): void;
   /** Asks how hard to raid: how much defense comes out of the land or lands
    *  the arrows set out from. One slider whatever the card, because Great raid
    *  spends ONE pool divided between its fan - `lands` is that fan in
@@ -1393,6 +1405,19 @@ export function createHud(
   let harvestOnCancel: (() => void) | null = null;
   harvestCancel.addEventListener("click", () => harvestOnCancel?.());
 
+  /** The one button every question on this overlay shares, wired and LABELLED
+   *  together.
+   *
+   *  Together because the four questions do not mean the same thing by it: a
+   *  harvest backs out of playing the card, a conquest sends no defenders, and
+   *  a duel pick declines the whole offer. The word on the button is part of
+   *  the answer, and set anywhere but here it would survive into the next
+   *  question that replaces this one without hiding the overlay first. */
+  function armCancel(label: string, onCancel: (() => void) | null): void {
+    harvestCancel.textContent = label;
+    harvestOnCancel = onCancel;
+  }
+
   /** Escape backs out of the harvest offer, the same answer its Cancel button
    *  gives. Held here so it can be taken off again: a listener that outlived
    *  its overlay would answer for whatever came next, and main.ts's own Escape
@@ -1418,7 +1443,7 @@ export function createHud(
   function hideHarvestUi(): void {
     harvestOverlay.classList.add("hidden");
     releaseHarvestEscape();
-    harvestOnCancel = null;
+    armCancel("Cancel", null);
     // Same hygiene as dismissSummary: a close with the cursor on a name must
     // not strand its tip or its map halo.
     cb.onHideTip?.();
@@ -1503,10 +1528,10 @@ export function createHud(
     hooks: { onConfirm(amount: number): void },
   ): void {
     harvestTitle.textContent = "Send defenders with the conquest?";
-    // No cancel: the land is already taken, and the only question is how many
-    // defenders march over. Answering 0 is a real answer, so backing out and
-    // the Confirm button lead to the same place.
-    harvestOnCancel = () => hooks.onConfirm(0);
+    // No backing out: the land is already taken, and the only question is how
+    // many defenders march over. Answering 0 is a real answer, so the shared
+    // button and the Confirm button lead to the same place.
+    armCancel("Cancel", () => hooks.onConfirm(0));
     // This overlay takes no key of its own, so any Escape armed for a harvest
     // offer goes with the offer it belonged to rather than answering here.
     releaseHarvestEscape();
@@ -1568,6 +1593,58 @@ export function createHud(
     harvestOverlay.classList.remove("hidden");
   }
 
+  /** The gauntlet's own question: which bordering realm the run duels next.
+   *
+   *  Dumb render, the harvest offer's rule - what a candidate is worth is
+   *  `rewardFor` in src/gauntlet.ts, and this prints the sentence it was
+   *  handed. Every faction here is a `faction()` segment, so pointing at a
+   *  name lights that realm on the map behind the modal, which is the whole
+   *  reason a border offer is readable at all.
+   *
+   *  Declining is the shared button, labelled for what it does rather than
+   *  "Cancel": there is nothing to back out OF, and it costs the same world
+   *  tick a finished duel costs. It arms no Escape - a key press that spends a
+   *  round of everybody else's growth is not a key press. */
+  function showDuelOffer(
+    offer: { candidates: { factionId: string; reward: string }[] },
+    hooks: { onPick(factionId: string): void; onDecline(): void },
+  ): void {
+    harvestTitle.textContent = "Which realm next?";
+    armCancel("Let the world turn", hooks.onDecline);
+    releaseHarvestEscape();
+
+    const rows = offer.candidates.map(({ factionId, reward }) => {
+      const btn = document.createElement("button");
+      btn.className = "harvest-option";
+      const label = document.createElement("div");
+      label.className = "harvest-option-label";
+      label.append(
+        document.createTextNode("Duel "),
+        renderSegments([faction(factionId)], richTextHooks),
+      );
+      const text = document.createElement("div");
+      text.className = "harvest-option-text";
+      text.textContent = `Win it and: ${reward}`;
+      btn.append(label, text);
+      btn.addEventListener("click", () => hooks.onPick(factionId));
+      return btn;
+    });
+
+    // A realm with no bordering land it may fight still needs a way forward,
+    // and the note is it: the button below is not a refusal of anything, it is
+    // the only move on the board.
+    const note = document.createElement("div");
+    note.className = "duel-note";
+    note.textContent = offer.candidates.length === 0
+      ? "No realm you border can be fought. Letting the world turn is the " +
+        "only way on: every realm takes a turn, and a fresh offer comes round."
+      : "The border is not a list. Letting the world turn declines all of " +
+        "them - every realm takes a turn, and a fresh offer comes round.";
+
+    harvestOptions.replaceChildren(...rows, note);
+    harvestOverlay.classList.remove("hidden");
+  }
+
   function showSpendOffer(
     offer: {
       cardId: string; to: string; min: number; max: number;
@@ -1577,7 +1654,7 @@ export function createHud(
     hooks: { onConfirm(total: number): void; onCancel(): void },
   ): void {
     harvestTitle.textContent = "How hard?";
-    harvestOnCancel = hooks.onCancel;
+    armCancel("Cancel", hooks.onCancel);
     armHarvestEscape(hooks.onCancel);
 
     const line = document.createElement("div");
@@ -1663,7 +1740,7 @@ export function createHud(
       onCancel(): void;
     },
   ): void {
-    harvestOnCancel = hooks.onCancel;
+    armCancel("Cancel", hooks.onCancel);
     armHarvestEscape(hooks.onCancel);
 
     /** One option button: a heading and a line saying what it does. */
@@ -3303,6 +3380,7 @@ export function createHud(
       }
     },
     showHarvestOffer,
+    showDuelOffer,
     revealGainedCards,
     showSpendOffer,
     showTransferOffer,

@@ -3253,3 +3253,66 @@ describe("hand tips", () => {
     expect(tip.textContent).toContain(CARDS.raid.text);
   });
 });
+
+describe("the duel offer", () => {
+  const playing = () => newPlaying();
+
+  it("names each candidate as a segment and quotes what beating it pays", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onPick = vi.fn();
+    hud.showDuelOffer(
+      {
+        candidates: [
+          { factionId: "beta", reward: "3 wealth for the treasury." },
+          { factionId: "gamma", reward: "Your home land grows by 1." },
+        ],
+      },
+      { onPick, onDecline: vi.fn() },
+    );
+    expect(q(container, ".harvest-overlay").classList.contains("hidden"))
+      .toBe(false);
+    const rows = [...container.querySelectorAll(".harvest-option")];
+    expect(rows).toHaveLength(2);
+    // A name the player can point at, never baked text: pointing at it lights
+    // that realm on the map behind the modal, which is how a border offer is
+    // read at all.
+    expect(rows[0].querySelector(".rt-faction")).not.toBeNull();
+    expect(rows[0].textContent).toContain("3 wealth for the treasury.");
+    (rows[1] as HTMLButtonElement).click();
+    expect(onPick).toHaveBeenCalledWith("gamma");
+  });
+
+  it("says what declining does, on the button and beside it", () => {
+    const { container, hud } = setup();
+    hud.update(playing());
+    const onDecline = vi.fn();
+    hud.showDuelOffer(
+      { candidates: [{ factionId: "beta", reward: "3 wealth." }] },
+      { onPick: vi.fn(), onDecline },
+    );
+    // Not "Cancel": there is nothing to back out of, and the answer costs a
+    // world tick.
+    const out = [...container.querySelectorAll(".harvest-overlay button")]
+      .find((b) => b.textContent?.trim() === "Let the world turn");
+    expect(out).toBeDefined();
+    expect(q(container, ".duel-note").textContent).toContain("takes a turn");
+    (out as HTMLButtonElement).click();
+    expect(onDecline).toHaveBeenCalled();
+  });
+
+  it("gives a realm with nothing to fight a way forward", () => {
+    // An empty offer is legitimate - a realm can hold every land it borders -
+    // and a modal listing nothing with no way out would be a dead run.
+    const { container, hud } = setup();
+    hud.update(playing());
+    hud.showDuelOffer({ candidates: [] }, { onPick: vi.fn(), onDecline: vi.fn() });
+    expect(container.querySelectorAll(".harvest-option")).toHaveLength(0);
+    expect(q(container, ".duel-note").textContent)
+      .toContain("No realm you border can be fought");
+    expect(
+      [...container.querySelectorAll(".harvest-overlay button")]
+        .some((b) => b.textContent?.trim() === "Let the world turn"),
+    ).toBe(true);
+  });
+});

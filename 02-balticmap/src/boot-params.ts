@@ -1,8 +1,8 @@
 import { CARDS, type Rng, type Strategy } from "./cards";
 import { REGIONS, type RegionId } from "./regions";
 import {
-  advance, chooseBuild, chooseRules, isHumanTurn, pickFaction, startGame,
-  TURNIP_HARVEST_THRESHOLD, viewOf,
+  advance, chooseBuild, chooseRules, declineDuel, isHumanTurn, pickDuel,
+  pickFaction, startGame, TURNIP_HARVEST_THRESHOLD, viewOf,
   type GameState,
 } from "./game";
 import { aiTakeTurn } from "./ai";
@@ -72,6 +72,16 @@ export interface BootParams {
    *  axes and options are dropped by `mergeRules`, so a URL from before an
    *  axis existed - or after one is removed - still boots. */
   rules: RuleSelections | null;
+  /** The gauntlet's pick, answered on the way in: a faction id opens a duel
+   *  against it, the literal `none` declines the offer, and null leaves the
+   *  run standing on its question the way a fresh deal does.
+   *
+   *  It exists because `picking` LOCKS the screen - `localPickPending` in
+   *  src/main.ts - so without it every browser check would open on the same
+   *  modal and no URL could reach the board behind it. Answered through the
+   *  real `pickDuel` / `declineDuel`, so an id the offer does not hold is
+   *  dropped rather than scoping the loop to a land nobody may fight. */
+  duel: string | null;
   /** `region=iberia` - which map the booted page plays on; seeds the booted
    *  page's region preference the way `rules=` seeds the rules. An unknown
    *  value drops to null rather than a default, since main.ts must tell "no
@@ -204,7 +214,7 @@ function parseRules(raw: string): RuleSelections {
 const BOOT_KEYS = [
   "seed", "build", "screen", "faction", "hand", "turns", "defense", "disease",
   "leadership", "armies", "settlements", "march", "realm", "turnips", "wealth",
-  "popups", "rules", "region",
+  "popups", "rules", "region", "duel",
 ];
 
 /** Null when the URL names no boot param at all, which is the ordinary case:
@@ -258,6 +268,7 @@ export function parseBootParams(search: string): BootParams | null {
       popups === null ? null : !["off", "false", "0"].includes(popups.trim()),
     rules: rules === null ? null : parseRules(rules),
     region: region !== null && region in REGIONS ? (region as RegionId) : null,
+    duel: q.get("duel"),
   };
 }
 
@@ -407,6 +418,13 @@ export function applyBootParams(
       if (take.includes(owner)) incorporated[land] = me;
     }
     g = { ...g, overlords, incorporated };
+  }
+  // The pick, answered before the marches for the ordinary reason overrides
+  // run in this order: `duel=` is about the run's shape and an arrow is about
+  // the board, and the shape does not read the board. Through the real
+  // decision's two engine calls, so a stale or fabricated id changes nothing.
+  if (params.duel !== null) {
+    g = params.duel === "none" ? declineDuel(g) : pickDuel(g, params.duel);
   }
   // A booted march is declared through the same rules a played one is: the
   // source must be in the actor's realm with an army free and within marching

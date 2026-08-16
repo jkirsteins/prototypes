@@ -16,8 +16,10 @@ import {
   type GameEvent, type GameState,
 } from "./game";
 import {
-  actionBlock as gateBlock, shouldReask, type PlayerAction, type ScreenFacts,
+  actionBlock as gateBlock, shouldAskPick, shouldReask,
+  type PlayerAction, type ScreenFacts,
 } from "./gates";
+import { rewardFor, rewardLine } from "./gauntlet";
 import { fullRealmOf, isUnheld, realmOf, realmRootOf } from "./relations";
 import { playsTurns } from "./passives";
 import { hasRuler, rulerNameOf } from "./rulers";
@@ -586,6 +588,7 @@ function screenFacts(): ScreenFacts {
     busy: screenBusy(),
     harvestOpen: pendingHarvest !== null,
     transferOwed: liveTransferPending(),
+    pickOwed: localPickPending(),
     localTurn: isLocalTurn(),
   };
 }
@@ -637,17 +640,68 @@ function refreshWhenSettled(): void {
  *  The rule itself is `shouldReask` in src/gates.ts, where it can be tested;
  *  this is the wiring that reads the screen for it. */
 function reaskOwedQuestions(): void {
-  const owed = shouldReask(game(), {
+  const facts = {
     // `pendingHarvest` folds in here: a harvest offer is the overlay too, and
     // one that is mid-flight has not put its own element up yet.
     overlayOpen: hud.overlayOpen() || pendingHarvest !== null,
     awaitingWire,
     transferOwed: liveTransferPending(),
-  });
-  if (!owed) return;
-  // No stage is holding this one, so it owes nobody a release - the same
-  // shape, and the same reason, as the boot tail's call.
-  askTransfer(() => {});
+    pickOwed: localPickPending(),
+  };
+  if (shouldReask(game(), facts)) {
+    // No stage is holding this one, so it owes nobody a release - the same
+    // shape, and the same reason, as the boot tail's call.
+    askTransfer(() => {});
+    return;
+  }
+  // The duel pick, second, because `shouldAskPick` stands down for a
+  // conquest: that question is about the board just shown and holds a stage
+  // open, this one is about the round after next, and the two share one
+  // overlay. Unlike the conquest this is not a reconciliation - the pick has
+  // no one-shot route to lose, so this is simply where a `picking` board puts
+  // its question on screen.
+  if (shouldAskPick(game(), facts)) askDuelPick();
+}
+
+/** Puts the gauntlet's offer to the player: which bordering realm the run
+ *  duels next, or none of them.
+ *
+ *  It holds nothing open and releases nothing. The pick is a STATE the engine
+ *  carries until it is answered - `picking` leaves the world unscoped rather
+ *  than blocking, per src/gauntlet.ts - so what holds the screen is
+ *  `localPickPending` inside the action gate, and what takes the modal down is
+ *  the answer moving the gauntlet off `picking`.
+ *
+ *  Both repaints are owed by hand, for the reason every derived lock owes
+ *  them: nothing repaints when the gate opens or closes on its own, so the
+ *  paint that drew the hand greyed would be the one left on screen. */
+function askDuelPick(): void {
+  const g = game();
+  if (g.gauntlet.kind !== "picking") return;
+  const v = viewOf(g);
+  hud.showDuelOffer(
+    {
+      candidates: g.gauntlet.candidates.map((factionId) => ({
+        factionId,
+        // `rewardFor` and not a second table: this is the promise, and the
+        // wrap that pays it reads the same function on the same land.
+        reward: rewardLine(rewardFor(v, factionId)),
+      })),
+    },
+    {
+      onPick(factionId) {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-duel", enemyId: factionId });
+      },
+      onDecline() {
+        hud.hideHarvestUi();
+        decide({ kind: "pick-duel", enemyId: null });
+      },
+    },
+  );
+  // On the way IN, because the gate has answered "locked" since the board
+  // reached `picking` and nothing has repainted the hand under it since.
+  refresh();
 }
 
 /** The seat this screen plays. 0 for solo and host; the guest learns its
@@ -813,6 +867,25 @@ function owedTransfer(): { from: string; to: string } | null {
  *  same question the modal is raised on. */
 function liveTransferPending(): boolean {
   return owedTransfer() !== null;
+}
+
+/** Whether the run is between duels and THIS screen is the one that answers
+ *  which fight comes next.
+ *
+ *  `decidedHere` and not a role test written out here: the pick is host-only
+ *  in `DECISION_ROUTES` because the run holds one gauntlet, so the table that
+ *  routes the answer is what decides who is shown the question. Spelled any
+ *  other way, a guest would be locked out of its own turn waiting on a modal
+ *  it is never shown.
+ *
+ *  One predicate, read by the lock and by the raise, so the two cannot
+ *  disagree about whether a pick is owed. */
+function localPickPending(): boolean {
+  return (
+    game().phase === "playing" &&
+    game().gauntlet.kind === "picking" &&
+    decidedHere("pick-duel", net.role)
+  );
 }
 
 /** Conquests this screen has given up asking about.
@@ -4585,5 +4658,10 @@ if (boot !== null) {
   // board to move defenders on, and the question would be a slider reading
   // `0 of 0` over the postmortem raised one line above - the overlay it sits
   // on outranks the result screen.
-  if (game().phase === "playing") askTransfer(() => {});
+  //
+  // The gauntlet's own question rides the same call, as the conquest's
+  // release: a booted board is in `picking` from turn 1, and the two share one
+  // overlay, so the pick has to wait for whatever the conquest is doing rather
+  // than replacing it.
+  if (game().phase === "playing") askTransfer(reaskOwedQuestions);
 }

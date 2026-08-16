@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&defense=ravalans:1&march=harjuans>ravalans&hand=raid,grow-crops"}
+// @vitest-environment-options {"url": "http://localhost/?seed=1&faction=ravalans&armies=ravalans:3&defense=ravalans:1&duel=harjuans&march=harjuans>ravalans&hand=raid,grow-crops"}
 /** The one interaction that plays a card without ever arming one: a click on
  *  an arrow already answerable (`armArrowAsCounter`, wired from
  *  `renderMarchArrows` in src/main.ts) goes straight to `decide({kind:

@@ -108,7 +108,7 @@ describe("parseBootParams", () => {
       seed: 7, build: null, screen: null, faction: null, hand: null, turns: 0,
       defense: {}, disease: {}, leadership: {}, armies: {}, settlements: {},
       marches: [], realm: null, turnips: null, wealth: null, popups: null,
-      rules: null, region: null,
+      rules: null, region: null, duel: null,
     });
   });
 
@@ -590,6 +590,32 @@ describe("applyBootParams", () => {
       // Under the threshold, which is what the parse clamps to.
       const g = boot("?faction=beta&turnips=1");
       expect(g.turnips.beta).toBe(1);
+    });
+  });
+
+  describe("?duel", () => {
+    it("leaves the run standing on its question when unnamed", () => {
+      // The default a fresh deal reaches, and the state every browser check
+      // opens on unless the URL says otherwise.
+      expect(boot("?faction=beta").gauntlet.kind).toBe("picking");
+    });
+
+    it("opens a duel against a land the offer holds", () => {
+      const g = boot("?faction=beta&duel=alpha");
+      expect(g.gauntlet).toMatchObject({ kind: "duel", enemy: "alpha" });
+    });
+
+    it("takes `none` as declining the whole offer", () => {
+      expect(boot("?faction=beta&duel=none").gauntlet)
+        .toEqual({ kind: "world-tick" });
+    });
+
+    it("drops a clause naming a land the offer does not hold", () => {
+      // Through the real `pickDuel`, so a URL cannot scope the turn loop to a
+      // faction nobody may fight - the same rule `march=` keeps. delta is two
+      // hops down the line from beta and out of reach.
+      expect(boot("?faction=beta&duel=delta").gauntlet.kind).toBe("picking");
+      expect(boot("?faction=beta&duel=nobody").gauntlet.kind).toBe("picking");
     });
   });
 });
