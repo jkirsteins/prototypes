@@ -15,7 +15,7 @@ import { CARDS, isTributeCard, startingDeck, type Rng } from "../src/cards";
 import {
   DEFAULT_DEFENSE_MAX, INDEPENDENCE_GATE, LAND_GROWTH, SUBJUGATION_GATE,
   FORTIFY_HEAL, HARVEST_FEAST_HEAL, HILLFORT_HEAL, STRONG_BONUS,
-  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, turnipThresholdFor,
+  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, independenceGateOpen, turnipThresholdFor,
   WAR_COUNCIL_LEADERSHIP,
 } from "../src/defense";
 import {
@@ -3025,9 +3025,13 @@ describe("the defense transfer", () => {
     // Deterministic - no rng - so an AI seat's conquest replays identically.
     const g = { ...playingSix(), defense: { alpha: 0, beta: 41 } };
     expect(autoTransfer(g, "beta", "alpha")).toBe(20);
-    // And still clamped by the destination's room.
-    const tight = { ...g, defense: { alpha: FIXTURE_MAX - 3, beta: 41 } };
-    expect(autoTransfer(tight, "beta", "alpha")).toBe(3);
+    // And never past the destination's own independence line. That cap sits
+    // under the destination's ceiling at every gate share below 1, so it is
+    // the clamp that binds here and the room clamp never gets to speak.
+    const near = { ...g, defense: { alpha: INDEPENDENCE_LINE - 3, beta: 41 } };
+    expect(autoTransfer(near, "beta", "alpha")).toBe(2);
+    const already = { ...g, defense: { alpha: INDEPENDENCE_LINE, beta: 41 } };
+    expect(autoTransfer(already, "beta", "alpha")).toBe(0);
   });
 
   it("moves it on the spot for an AI capture, with no question left over", () => {
@@ -3054,6 +3058,38 @@ describe("the defense transfer", () => {
     expect(after.pendingTransfers).toEqual({});
     expect(after.defense[raider]).toBe(20);
     expect(after.defense[target]).toBe(20);
+  });
+
+  it("leaves an AI's new vassal below its own independence gate", () => {
+    // A small polygon is where the automatic half bites: half of a healthy
+    // raider is more than a 2-defense land's whole gate, so the garrison the
+    // taker is forced to send would win the land its freedom at its very
+    // first turn start. Asserted against `independenceGateOpen` rather than
+    // against a number, so the threshold can move without rotting this.
+    const base = playingSix();
+    const raider = base.factionIds.find(
+      (f) => f !== "beta" && hasRuler(base.rulers, f),
+    )!;
+    const target = base.factionIds.find((f) => f !== "beta" && f !== raider)!;
+    const g: GameState = {
+      ...base,
+      current: base.players.findIndex((p) => p.factionId === raider),
+      defenseMax: { ...base.defenseMax, [target]: 2 },
+      defense: { [target]: 0, [raider]: 40 },
+      marches: {
+        "1": {
+          id: 1, actor: raider, from: raider, to: target, cardId: "raid",
+          damage: 1, holdsArmy: true, expiry: base.turn,
+        },
+      },
+    };
+    const after = beginTurn(g, rng());
+    expect(after.overlords.get(target)).toBe(raider);
+    const view = { defense: after.defense, defenseMax: after.defenseMax };
+    expect(independenceGateOpen(view, target)).toBe(false);
+    // And it is a garrison rather than nothing: the cap trims the transfer,
+    // it does not refuse it.
+    expect(after.defense[target]).toBe(1);
   });
 
   it("asks EVERY person, not only the seat the phase speaks for", () => {

@@ -331,13 +331,21 @@ export const COMBAT_RULES: CombatRules = {
   spentArrival: "spent",
 };
 
+/** The defense a land needs to stand at before it wins its freedom, ceiled so
+ *  the line is a whole number the badge can print. Its own function because
+ *  two different questions ask it: whether the gate stands open right now, and
+ *  how much a garrison may safely be - and a second spelling of the
+ *  arithmetic is how those two come to disagree. */
+export function independenceGateLine(
+  view: DefenseView, factionId: string,
+): number {
+  return Math.ceil(INDEPENDENCE_GATE * defenseMaxOf(view, factionId));
+}
+
 export function independenceGateOpen(
   view: DefenseView, factionId: string,
 ): boolean {
-  return (
-    defenseOf(view, factionId) >=
-    Math.ceil(INDEPENDENCE_GATE * defenseMaxOf(view, factionId))
-  );
+  return defenseOf(view, factionId) >= independenceGateLine(view, factionId);
 }
 
 /** The three bands the map badge colours: at or above the independence line,

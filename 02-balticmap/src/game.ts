@@ -12,7 +12,8 @@ import { activeRegion } from "./regions";
 import {
   addDisease, applyDamage, applyHeal, capturesOnArrival, clearDiseaseOf,
   DEFAULT_DEFENSE_MAX,
-  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateOpen,
+  defenseMaxOf, defenseOf, HARVEST_FEAST_HEAL, independenceGateLine,
+  independenceGateOpen,
   MIN_RAID_SPEND,
   PLAGUE_DAMAGE_PER_STACK, LAND_GROWTH, SINGLE_LAND_HEAL,
   transferAllDiseaseTo, turnipThresholdFor, WAR_COUNCIL_LEADERSHIP,
@@ -641,15 +642,36 @@ export function transferLimit(
 
 /** What a seat nobody can ask moves into a land it has just taken: half of
  *  what the origin holds, which leaves the origin able to defend itself and
- *  gives the new holding something to stand on. Deterministic - no rng, so an
- *  AI seat's conquest replays identically. */
+ *  gives the new holding something to stand on - but never enough to stand it
+ *  back up ON its own independence line. Deterministic - no rng, so an AI
+ *  seat's conquest replays identically.
+ *
+ *  The cap is the whole reason this is not a plain half. A conquest heals the
+ *  garrison into the taken land, and the land's first `beginTurn` reads
+ *  `independenceGateOpen` before anything else: a garrison at or above the
+ *  line hands the new vassal its freedom at the first opportunity it gets, so
+ *  the taker would be arming the escape it just prevented. The polygons this
+ *  bites are the small ones - on a land whose ceiling is 2 the line is 2, and
+ *  half of any healthy raider clears it - which is why the cap is derived from
+ *  the destination's own line (`independenceGateLine`) rather than written as
+ *  a number.
+ *
+ *  A PERSON is never capped here, because a person is not forced: the modal
+ *  raised by `pendingTransfers` is the same question asked out loud, 0 is
+ *  already one of its answers, and choosing to over-garrison a vassal is a
+ *  play a player may want to make. This removes the asymmetry rather than
+ *  adding a rule. */
 export function autoTransfer(
   state: GameState, from: string, to: string,
 ): number {
-  const held = defenseOf(
-    { defense: state.defense, defenseMax: state.defenseMax }, from,
+  const v = { defense: state.defense, defenseMax: state.defenseMax };
+  const held = defenseOf(v, from);
+  const underGate = Math.max(
+    0, independenceGateLine(v, to) - 1 - defenseOf(v, to),
   );
-  return Math.min(Math.floor(held / 2), transferLimit(state, from, to));
+  return Math.min(
+    Math.floor(held / 2), transferLimit(state, from, to), underGate,
+  );
 }
 
 /** Moves defense points between two lands and clears that faction's pending

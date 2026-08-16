@@ -13,7 +13,7 @@ import {
   type TargetEligibility,
 } from "./playability";
 import {
-  capturesOnArrival, defenseMaxOf, defenseOf, INDEPENDENCE_GATE,
+  capturesOnArrival, defenseMaxOf, defenseOf, independenceGateLine,
   SINGLE_LAND_HEAL,
 } from "./defense";
 import {
@@ -423,7 +423,7 @@ export function defenseBreakdown(
   ];
   if (isVassalHome) {
     rows.push({
-      amount: `${Math.ceil(INDEPENDENCE_GATE * max)}`,
+      amount: `${independenceGateLine(view, polygon)}`,
       text: "or more regains independence at their turn",
     });
   }

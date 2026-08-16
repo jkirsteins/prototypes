@@ -2,8 +2,8 @@ import { CARDS, isTributeCard, type Rng } from "./cards";
 import { fullRealmOf, incorporatedRealmOf, realmOf } from "./relations";
 import {
   capturesOnArrival, defenseMaxOf, defenseOf, HILLFORT_HEAL,
-  independenceGateOpen,
-  INDEPENDENCE_GATE, MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
+  independenceGateLine, independenceGateOpen,
+  MIN_RAID_SPEND, PLAGUE_DAMAGE_PER_STACK, SUBJUGATION_GATE,
   WAR_COUNCIL_LEADERSHIP,
 } from "./defense";
 import {
@@ -160,8 +160,7 @@ function vassalNearingEscape(
   return members
     .filter(
       (m) =>
-        defenseOf(v, m) + HILLFORT_HEAL >=
-        Math.ceil(INDEPENDENCE_GATE * defenseMaxOf(v, m)),
+        defenseOf(v, m) + HILLFORT_HEAL >= independenceGateLine(v, m),
     )
     .sort(
       (a, b) => state.factionIds.indexOf(a) - state.factionIds.indexOf(b),
