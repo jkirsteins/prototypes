@@ -164,9 +164,9 @@ export function createTooltip(container: HTMLElement): Tooltip {
     // Parked at the left edge, never under the pointer and never on the right.
     // A tip that follows the cursor sits on top of the very land being pointed
     // at - unreadable while aiming, because the arrow's head and the numbers
-    // deciding where to send it are the same few pixels. The right side is the
-    // scoreboard's and the activity log's, and a tip that crossed to it to
-    // dodge the cursor covered both.
+    // deciding where to send it are the same few pixels. The right side is
+    // the activity log's, and a tip that crossed to it to dodge the cursor
+    // covered it.
     //
     // Vertically it is fixed, because a tip that also moved up and down would
     // still be chasing - except under a pinned panel, which is the same dark

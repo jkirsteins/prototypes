@@ -254,8 +254,8 @@ export const MAX_HAND = 7;
  *  able to play.
  *
  *  Lands are the FULL realm - vassals of vassals, and each member's
- *  annexations - because this is a number the player can check against the map
- *  and against the scoreboard beside it.
+ *  annexations - because this is a number the player can check against the
+ *  map itself.
  *
  *  It is a refill TARGET, not a cap. Nothing discards down to it, so a realm
  *  that shrinks keeps the cards it is holding and simply draws nothing until it
@@ -715,8 +715,8 @@ export function outbreakPolygons(
 }
 
 /** Lands the actor's FULL realm must hold before Incorporate is legal.
- *  `held` is `fullRealmOf` - the scoreboard count, per the realm rule - so
- *  the gate line and the score cannot disagree. */
+ *  `held` is `fullRealmOf` - the win condition's count, per the realm rule -
+ *  so the gate line and the score cannot disagree. */
 export function incorporateRealmGate(
   view: RulesView,
   actorFactionId: string,

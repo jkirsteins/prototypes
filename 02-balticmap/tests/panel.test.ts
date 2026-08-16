@@ -46,8 +46,8 @@ describe("tooltip", () => {
   });
 
   it("parks at the left edge, wherever the cursor is", () => {
-    // The right side belongs to the scoreboard and the activity log. A tip
-    // that crossed over to dodge the cursor covered both, so it does not.
+    // The right side belongs to the activity log. A tip that crossed over to
+    // dodge the cursor covered it, so it does not.
     const container = document.createElement("div");
     const tooltip = createTooltip(container);
     const el = container.querySelector(".tooltip") as HTMLElement;

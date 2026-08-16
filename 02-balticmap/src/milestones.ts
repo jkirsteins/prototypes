@@ -4,7 +4,7 @@
  *  A table, like `PASSIVES` and `CARDS`, and for the same reason: a milestone
  *  is a row plus the one question it asks of the state, and the drawer renders
  *  whatever the table holds. Nothing here decides who wins - the milestones
- *  are a second scoreboard beside the land count, and what points buy is a
+ *  are a second measure beside the land count, and what points buy is a
  *  later decision.
  *
  *  Progress is read off the state, never accumulated into a store. Some of

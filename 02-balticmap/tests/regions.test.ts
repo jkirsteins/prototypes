@@ -174,8 +174,8 @@ describe("a region that opens with realms", () => {
       "urgellians": "barcelonans",
     });
     // Oviedo's four counties under one crown, which is the whole point of the
-    // table - and `fullRealmOf` is what the scoreboard and the win condition
-    // will count, so it is what this asserts.
+    // table - and `fullRealmOf` is what the win condition will count, so it
+    // is what this asserts.
     expect(fullRealmOf("asturians", g.overlords, g.incorporated).size).toBe(5);
   });
 

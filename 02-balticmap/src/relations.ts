@@ -18,9 +18,10 @@ export type Incorporated = Record<string, string>;
  *  frees its vassals, so the direct holding is what turns permanent).
  *
  *  Everything that scales with "the realm" - the win condition, reach, the
- *  scoreboard, the ownership shading - uses `fullRealmOf`, which walks chains
- *  of vassalage to any depth. Picking this one there is what put a land
- *  inside the player's own outline that the scoreboard refused to count. */
+ *  hand limit, the postmortem, the ownership shading - uses `fullRealmOf`,
+ *  which walks chains of vassalage to any depth. Picking this one there is
+ *  what put a land inside the player's own outline that the run's own score
+ *  refused to count. */
 export function realmOf(
   factionId: string,
   overlords: Overlords,
@@ -81,8 +82,8 @@ export function isUnheld(
 
 /** EVERY land under one root: vassals of vassals to any depth, plus each
  *  member's own incorporated lands. This is the answer to "how much of the
- *  map is theirs" - the scoreboard, the win condition, the postmortem, the
- *  ownership shading and the hover halo all count it. `incorporated` itself
+ *  map is theirs" - the win condition, the postmortem, the ownership
+ *  shading and the hover halo all count it. `incorporated` itself
  *  stays flat (incorporate re-parents annexations to the actor), so only the
  *  vassal edges recurse. */
 export function fullRealmOf(

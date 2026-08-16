@@ -277,7 +277,7 @@ export interface GameState {
    *  answering it the same way.
    *
    *  On the state and not in src/main.ts because a guest holds a replica, and
-   *  its scoreboard must quote the bar the host's win condition is actually
+   *  its postmortem must quote the bar the host's win condition is actually
    *  applying.
    *
    *  One-way. Nothing clears it: the bar it raised is the run's now, and a
@@ -492,9 +492,11 @@ export function humanFactionOf(
 
 /** Lands this faction's realm must hold to end the run.
  *
- *  The bar, stated once: the win condition, the scoreboard and the concede
- *  line all read it, so the number the player is shown and the number the
- *  engine applies cannot drift.
+ *  The bar, stated once: the win condition and the postmortem's concede line
+ *  both read it, so the number the player is shown and the number the engine
+ *  applies cannot drift. There is no live table of it any more - the run is a
+ *  sequence of duels, not a race everybody is visibly running - so the
+ *  postmortem is now the only surface that quotes it.
  *
  *  The whole map is the HUMAN'S OWN bar. Every rival's stays at the opening
  *  half, so a rival can still unify at 13 of 26 and end a play-on run in
@@ -502,7 +504,7 @@ export function humanFactionOf(
  *  than a formality.
  *
  *  It derives the human from the board rather than taking one, because the
- *  one caller that would get it wrong is the scoreboard: `renderScoreboard`
+ *  one caller that would get it wrong is the postmortem: its concede line
  *  reads its human from `localPlayerId`, which on a GUEST screen is the
  *  guest's seat and not the seat the raised bar belongs to. */
 export function winSizeFor(

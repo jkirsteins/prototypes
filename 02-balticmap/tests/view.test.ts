@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   clampView, frameRectOf, holderOf, leadClass, panBy,
   politicalFactionForPolygon, realmHoldingLine, relationshipLine,
-  standingChangeText, standingsFor,
+  standingChangeText,
   viewBoundsOf, visibleRectOf,
   withArticle,
   zoomAt, DEFAULT_RING, MAX_ZOOM,
@@ -542,9 +542,9 @@ describe("realmHoldingLine", () => {
 
   it("names every land under it, both kinds and to any depth", () => {
     // `fullRealmOf`, not `realmOf`: the picker is answering "how much of the
-    // map comes with this", which is the count the scoreboard and the win
-    // condition will apply - so a vassal's vassal and a vassal's annexation
-    // both belong in the sentence.
+    // map comes with this", which is the count the win condition will apply
+    // - so a vassal's vassal and a vassal's annexation both belong in the
+    // sentence.
     expect(holds("lietuva", [["zemgale", "lietuva"]], { kursa: "lietuva" }))
       .toBe("Brings with it KURSA and ZEMGALE");
     expect(
@@ -555,120 +555,3 @@ describe("realmHoldingLine", () => {
 
 // The direction-picking cases that lived here as `barFor` moved to
 // tests/playability.test.ts with `subjugationRaceFor`, which owns that rule now.
-
-describe("standingsFor", () => {
-  // `acting`, not `factionIds`: five seats act now, not twenty-six factions,
-  // so every acting faction gets a row - there is no top-N cut and no bolted-on
-  // row for a human who falls outside it, per the doc comment on the source.
-  const base = {
-    acting: ["a", "b", "c"],
-    incorporated: {} as Record<string, string>,
-    needed: () => 15,
-  };
-
-  it("ranks every acting faction, biggest realm first", () => {
-    const rows = standingsFor({
-      ...base,
-      acting: ["a", "b", "c", "d", "e"],
-      humanFactionId: "a",
-      realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
-    });
-    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b", "c", "e"]);
-    expect(rows[0]).toMatchObject({
-      factionId: "a", lands: 14, needed: 15, percent: 93, isHuman: true,
-    });
-  });
-
-  it("ranks everyone when only two contenders act", () => {
-    const rows = standingsFor({
-      ...base,
-      acting: ["a", "b"],
-      humanFactionId: "a",
-      realmSize: (f) => ({ a: 4, b: 2 })[f] ?? 0,
-    });
-    expect(rows.map((r) => r.factionId)).toEqual(["a", "b"]);
-  });
-
-  it("flags the human wherever their realm ranks, not only near the top", () => {
-    const rows = standingsFor({
-      ...base,
-      acting: ["a", "b", "c", "d", "e"],
-      humanFactionId: "e",
-      realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
-    });
-    expect(rows.map((r) => r.factionId)).toEqual(["a", "d", "b", "c", "e"]);
-    expect(rows.slice(0, 4).every((r) => !r.isHuman)).toBe(true);
-    expect(rows[4]).toMatchObject({ factionId: "e", lands: 1, isHuman: true });
-  });
-
-  it("lists every acting faction exactly once, the human included", () => {
-    const rows = standingsFor({
-      ...base,
-      acting: ["a", "b", "c", "d", "e"],
-      humanFactionId: "b",
-      realmSize: (f) => ({ a: 14, b: 9, c: 2, d: 11, e: 1 })[f] ?? 0,
-    });
-    expect(rows).toHaveLength(5);
-    expect(rows.filter((r) => r.isHuman)).toHaveLength(1);
-  });
-
-  it("never ranks an incorporated faction", () => {
-    // `a` is the biggest realm but has been absorbed, so it cannot win.
-    const rows = standingsFor({
-      ...base,
-      incorporated: { a: "b" },
-      humanFactionId: "c",
-      realmSize: (f) => ({ a: 14, b: 9, c: 2 })[f] ?? 0,
-    });
-    expect(rows.map((r) => r.factionId)).not.toContain("a");
-    expect(rows[0].factionId).toBe("b");
-  });
-
-  it("caps the percentage at 100 rather than reporting 106%", () => {
-    const rows = standingsFor({
-      ...base,
-      humanFactionId: "a",
-      realmSize: () => 16,
-    });
-    expect(rows[0].percent).toBe(100);
-  });
-
-  it("breaks land-count ties stably, so the board does not reshuffle", () => {
-    const args = {
-      ...base,
-      acting: ["a", "b", "c", "d"],
-      humanFactionId: "c",
-      realmSize: (f: string) => ({ a: 9, b: 9, c: 2, d: 9 })[f] ?? 0,
-    };
-    expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
-    expect(standingsFor(args).map((r) => r.factionId)).toEqual(["a", "b", "d", "c"]);
-  });
-
-  it("gives each faction its own bar, so one row can be held to a harder one", () => {
-    // What a run played on looks like on the scoreboard: the player is out
-    // for the whole map while every rival still needs half, and the row that
-    // was at 100% drops back rather than staying pinned there.
-    const rows = standingsFor({
-      ...base,
-      humanFactionId: "a",
-      realmSize: (f) => ({ a: 15, b: 6, c: 3 })[f] ?? 0,
-      needed: (f) => (f === "a" ? 30 : 15),
-    });
-    expect(rows.map((r) => [r.factionId, r.lands, r.needed, r.percent])).toEqual([
-      ["a", 15, 30, 50],
-      ["b", 6, 15, 40],
-      ["c", 3, 15, 20],
-    ]);
-  });
-
-  it("returns nothing when every faction has been absorbed", () => {
-    expect(
-      standingsFor({
-        ...base,
-        incorporated: { a: "x", b: "x", c: "x" },
-        humanFactionId: "a",
-        realmSize: () => 1,
-      }),
-    ).toEqual([]);
-  });
-});

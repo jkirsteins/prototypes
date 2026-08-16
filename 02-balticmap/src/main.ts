@@ -177,7 +177,7 @@ const storage: MetaStorage = ((): MetaStorage => {
  *  Session storage rather than nothing at all, because it survives a reload of
  *  the same tab: a guest that refreshes mid-game rejoins under the name the
  *  host has been labelling that seat with all along, instead of silently
- *  becoming somebody else in the log and the scoreboard.
+ *  becoming somebody else in the log.
  *
  *  A booted page gets memory storage, like everything else it touches. */
 const netStorage: MetaStorage = ((): MetaStorage => {
@@ -787,8 +787,9 @@ function netStarted(): boolean {
 
 /** The display name of the OTHER human behind this faction, or null when
  *  nobody is - every AI seat, and every seat in a solo game. Written once
- *  and read by both surfaces that show it, the scoreboard row (through the
- *  hud callback) and the map hover, so the two cannot disagree.
+ *  and read by both surfaces that show it, every faction name the HUD
+ *  renders (through the hud callback, appended by `renderSegments`) and the
+ *  map hover, so the two cannot disagree.
  *
  *  Plain text, deliberately: a player's name is neither a card name nor a
  *  faction name, so there is nothing here for the rich-text rule to point
@@ -1153,7 +1154,7 @@ function arrowInkFor(factionId: string): string {
 function applyOwnership(): void {
   const human = localHuman();
   const humanOverlord = human ? game().overlords.get(human.factionId) : undefined;
-  // `fullRealmOf`, the same count the scoreboard and the win condition apply. A
+  // `fullRealmOf`, the same count the win condition applies. A
   // land a vassal annexed already sits inside the realm outline and wears the
   // stripes; shading it as somebody else's left one land of your own total
   // greyed out and outside the halo.
@@ -3578,7 +3579,7 @@ function updateWaitingStatus(): void {
     game().phase === "playing" && controllerOf(game().current) === "remote";
   if (remote && net.role === "host") {
     // The faction alone: the name beside it comes from `playerNameOf`, the
-    // same hook that names it in the log and the scoreboard.
+    // same hook that names it in the log.
     hud.setWaiting(game().players[game().current].factionId);
     return;
   }

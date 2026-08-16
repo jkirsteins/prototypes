@@ -2467,29 +2467,6 @@ svg.map.pinning .realm-hover-halo {
   pointer-events: auto;
 }
 
-/* Victory scoreboard: top right, at most two rows. Matches .status-bar's card
-   treatment so the two read as one HUD layer rather than two designs. */
-.scoreboard {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  background: #fff;
-  border: 1px solid #d0d0d0;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  padding: 8px 12px;
-  font-size: 13px;
-  color: #3f3428;
-  z-index: 6;
-}
-
-.scoreboard.hidden {
-  display: none;
-}
-
 /* The pinned land, down the left where nothing else lives. Light, unlike the
    dark floating tooltip: this one is READ rather than glanced at, and it sits
    over the map for as long as the pin holds. */
@@ -2679,41 +2656,6 @@ svg.map.pinning .realm-hover-halo {
    own first line is not either, and the two are the same box. */
 .pinned-tip .tooltip-line:first-child {
   opacity: 0.75;
-}
-
-.sb-row {
-  display: grid;
-  /* fixed lands/percent columns so the two rows' numbers line up under each
-     other however long the faction name is */
-  grid-template-columns: 1fr auto 40px;
-  align-items: baseline;
-  gap: 10px;
-  white-space: nowrap;
-}
-
-.sb-who {
-  font-weight: 600;
-}
-
-.sb-row.sb-you .sb-who {
-  color: #2f6f4f;
-}
-
-.sb-lands {
-  font-size: 12px;
-  color: #6b6152;
-}
-
-.sb-pct {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Spans all three columns: a standing-rule footnote, not a fourth number. */
-.sb-passive {
-  grid-column: 1 / -1;
-  font-size: 11px;
-  color: #6b6152;
 }
 
 /* Top left, which is the only free corner: Discard holds the bottom left, Deck

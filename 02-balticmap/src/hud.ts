@@ -30,7 +30,7 @@ import {
 import { fillTooltipLines, type TooltipLine } from "./panel";
 import { memoryStorage, type MetaStorage } from "./meta";
 import { formatElapsed } from "./run-clock";
-import { standingChangeText, standingsFor } from "./view";
+import { standingChangeText } from "./view";
 import { hasRuler, rulerNameOf } from "./rulers";
 import {
   card, cardName, cardTextSegments, faction, factionIds, keywordBlock,
@@ -105,7 +105,7 @@ export interface HudCallbacks {
   onHighlightFaction?(factionId: string | null): void;
   /** The shared, coordinate-driven map tooltip - used to explain a card or
    *  name a faction hovered inline in prose (the log, the round summary,
-   *  the scoreboard). Absent where there is no map. */
+   *  the postmortem). Absent where there is no map. */
   onShowTip?(lines: TooltipLine[], clientX: number, clientY: number): void;
   onHideTip?(): void;
   /** The player id of the seat this screen belongs to. Absent means 1
@@ -116,8 +116,9 @@ export interface HudCallbacks {
    *  the start snapshot, after createHud has run. */
   localPlayerId?(): number;
   /** The display name of the human behind this faction, or null. Drawn
-   *  beside the faction in the scoreboard. Plain text, not a segment -
-   *  the rich-text rule covers card and faction names only. */
+   *  beside every faction name in the HUD, by `renderSegments` itself. Plain
+   *  text, not a segment - the rich-text rule covers card and faction names
+   *  only. */
   playerNameOf?(factionId: string): string | null;
   /** Plays one sound now, if the player's ears are on. Absent in tests and
    *  anywhere else without an audio engine; every call site is optional. */
@@ -1101,10 +1102,6 @@ export function createHud(
     pmReturn.classList.toggle("hidden", !aside);
   }
 
-  // Top-right scoreboard: who is closest to ending the run, and where you sit.
-  const scoreboard = document.createElement("div");
-  scoreboard.className = "scoreboard hidden";
-
   // The pinned land, down the left. What the floating tooltip says about a
   // land, held still so it can be READ - and, because it holds still, pointed
   // at: the faction and status names in it are nodes with their own tips,
@@ -2079,7 +2076,7 @@ export function createHud(
   );
 
   container.append(
-    menu, postmortem, pmReturn, status, scoreboard, leftColumn, endTurnBtn,
+    menu, postmortem, pmReturn, status, leftColumn, endTurnBtn,
     deckPile.root, discardPile.root, hand, logPanel, noticeOverlay,
     harvestOverlay,
   );
@@ -2960,53 +2957,6 @@ export function createHud(
     }
   }
 
-  function renderScoreboard(state: GameState): void {
-    const human = humanPlayer(state);
-    const rows = standingsFor({
-      // One row per faction with a LEADER, in seat order. A land nobody leads
-      // is ground, not a contender - and if a card ever seats a chief on one,
-      // it joins the board the same turn it joins the game.
-      acting: state.players
-        .map((pl) => pl.factionId)
-        .filter((f) => hasRuler(state.rulers, f)),
-      humanFactionId: human?.factionId,
-      // `fullRealmOf`, the same count the win condition applies: a land a vassal
-      // annexed already sits inside its lord's outline on the map, so a
-      // scoreboard that walked one level was quoting a smaller realm than the
-      // one the player could see.
-      realmSize: (f) => fullRealmOf(f, state.overlords, state.incorporated).size,
-      incorporated: state.incorporated,
-      // Per faction, because a player holding out for the whole map is
-      // ranked here against rivals who still need only half.
-      needed: (f) => winSizeFor(state, f),
-    });
-    scoreboard.replaceChildren(
-      ...rows.map((r) => {
-        const row = document.createElement("div");
-        row.className = "sb-row";
-        row.classList.toggle("sb-you", r.isHuman);
-        const who = document.createElement("span");
-        who.className = "sb-who";
-        if (r.isHuman) who.textContent = "You";
-        else {
-          // The "(Bela)" beside the name comes from `renderSegments` itself
-          // now - every faction name in the HUD carries it, not just this row
-          // - so there is deliberately nothing to append here. A second append
-          // would read "Curonians (Bela) (Bela)".
-          who.replaceChildren(renderSegments([faction(r.factionId)], richTextHooks));
-        }
-        const lands = document.createElement("span");
-        lands.className = "sb-lands";
-        lands.textContent = `${r.lands}/${r.needed} lands`;
-        const pct = document.createElement("span");
-        pct.className = "sb-pct";
-        pct.textContent = `${r.percent}%`;
-        row.append(who, lands, pct);
-        return row;
-      }),
-    );
-  }
-
   /** The milestones table, for whichever faction the player is looking at:
    *  the highlighted one - a name hovered in prose, a land hovered or pinned -
    *  and otherwise your own. That is the whole interaction the drawer has:
@@ -3267,7 +3217,6 @@ export function createHud(
         // was meant to reveal.
         setPostmortemAside(false);
       }
-      scoreboard.classList.toggle("hidden", state.phase !== "playing");
       milestonesBtn.classList.toggle("hidden", state.phase !== "playing");
       // Phase only: `.open` is what the button drives, and having the two
       // decide visibility together is what hid a drawer somebody had opened.
@@ -3317,7 +3266,6 @@ export function createHud(
         renderPile(deckPile, human.deck.length);
         renderPile(discardPile, human.discard.length);
         renderHand(state);
-        renderScoreboard(state);
         renderMilestones(state);
         const fresh = renderLog(state, animate);
         if (animate) {

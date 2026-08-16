@@ -57,55 +57,6 @@ export function frameRectOf(map: { width: number; height: number }): View {
   return { x: -rw, y: -rh, w: map.width + 2 * rw, h: map.height + 2 * rh };
 }
 
-/** One row of the victory scoreboard. */
-export interface StandingRow {
-  factionId: string;
-  lands: number;
-  needed: number;
-  /** Whole percent of the way to victory, floored, capped at 100. */
-  percent: number;
-  isHuman: boolean;
-}
-
-/** The scoreboard: one row per faction that ACTS, best realm first.
- *
- *  Every player fits now - five of them, not twenty-six factions - so there is
- *  no top-N cut and no separate row for a human who fell outside it. A land
- *  that takes no turns gets no row: it is ground to be taken, not a
- *  contender, and twenty-one rows of 1/13 would bury the five that matter.
- *
- *  Only factions that could actually win are ranked, which is the same test
- *  the victory check applies - not incorporated. A vassal stays in the
- *  ranking because the rules let one win.
- *
- *  Ties on land count resolve by seat order: `acting` arrives in seat order
- *  and `sort` is stable, so equal realms keep a fixed order and the board does
- *  not reshuffle itself from one turn to the next. */
-export function standingsFor(args: {
-  acting: string[];
-  humanFactionId: string | undefined;
-  realmSize(factionId: string): number;
-  incorporated: Incorporated;
-  /** Per faction, and shaped like `realmSize` beside it for the same reason:
-   *  one number cannot serve a board where a player holding out for the whole
-   *  map is ranked against rivals who still need only half. */
-  needed(factionId: string): number;
-}): StandingRow[] {
-  const { acting, humanFactionId, realmSize, incorporated, needed } = args;
-  const pct = (lands: number, bar: number): number =>
-    Math.min(100, Math.floor((lands / bar) * 100));
-  return acting
-    .filter((f) => !(f in incorporated))
-    .sort((a, b) => realmSize(b) - realmSize(a))
-    .map((factionId) => ({
-      factionId,
-      lands: realmSize(factionId),
-      needed: needed(factionId),
-      percent: pct(realmSize(factionId), needed(factionId)),
-      isHuman: factionId === humanFactionId,
-    }));
-}
-
 export function politicalFactionForPolygon(
   polygonFactionId: string,
   incorporated: Incorporated,
@@ -128,8 +79,8 @@ function andFactions(ids: string[]): Segment[] {
  *  anyone in the pyramid has annexed. Null when it holds nothing.
  *
  *  `fullRealmOf`, because this answers "how much of the map comes with it",
- *  which is the `fullRealmOf` question the AGENTS.md rule names: the scoreboard
- *  and the win condition will count exactly this set.
+ *  which is the `fullRealmOf` question the AGENTS.md rule names: the win
+ *  condition will count exactly this set.
  *
  *  For the faction picker, where a region may open with realms already standing
  *  and nothing else on that screen says so - the ownership fills, the union

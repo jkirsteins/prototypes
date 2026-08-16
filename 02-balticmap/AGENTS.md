@@ -839,7 +839,7 @@ as `2 * lands / 3` so no float lands on a game rule.
 It lives beside `wealthIncomeFor` and `freeArmiesFor` because it is the same
 kind of number - what the realm is worth at one of the game's dials - and it
 counts `fullRealmOf`, per the realm-sizes rule below: this is a number the
-player can read off the scoreboard one chip over.
+player can check against the map itself.
 
 Three things about it are load-bearing:
 
@@ -876,14 +876,17 @@ the offer is not made twice.
 - **`winSizeFor` is the bar, and it is the only one.** `victoryRealmSize` is
   where every faction STARTS, and nothing outside `winSizeFor` may call it - a
   second caller is a second bar, and the two disagree the moment somebody
-  plays on. The win condition, the scoreboard and the concede line all read
+  plays on. The win condition and the postmortem's concede line both read
   `winSizeFor`, so the number the player is shown and the number the engine
-  applies cannot drift. It derives the human from the board rather than taking
-  one, because the caller that would get that wrong is the scoreboard: its
-  human is `localPlayerId`, which on a GUEST screen is the guest's seat and not
-  the seat the raised bar belongs to.
+  applies cannot drift. There is no LIVE table of it any more - the standings
+  panel is gone with the race it described - so the postmortem is the one
+  surface that quotes the bar, and the player meets it at the end rather than
+  watching it approach. It derives the human from the board rather than taking
+  one, because the caller that would get that wrong is that postmortem line:
+  its human is `localPlayerId`, which on a GUEST screen is the guest's seat and
+  not the seat the raised bar belongs to.
 - **`GameState.playingOn` is state, not a screen flag**, because a guest holds
-  a replica and its scoreboard has to quote the bar the host's engine is
+  a replica and its postmortem has to quote the bar the host's engine is
   applying. A boolean and not a seventh `GamePhase`: the phase genuinely is
   "playing" again, and a second playing-phase would have to be answered by
   every reader of `phase` in the app, all of them the same way. One-way -
@@ -1376,15 +1379,15 @@ interchangeable:
 - `fullRealmOf` is **every land under F**: chains of vassalage walked to any
   depth - vassals may Subjugate, so a vassal can have vassals - plus each
   member's own annexations. This is the answer to "how much of the map is
-  theirs", so it is what the scoreboard, the win condition, the postmortem,
-  the ownership shading and the hover halo count. It is also what every rule
+  theirs", so it is what the win condition, the postmortem, the ownership
+  shading and the hover halo count. It is also what every rule
   that scales with "the realm" uses: `reachOf`, `borderPolygonsOf` and
   `handLimitFor` in `src/playability.ts` - taking a lord
   takes its whole pyramid, and a grand-vassal's border is the pyramid's border.
 
 The flat version shipped and rotted exactly where you would expect. At turn 35
-the scoreboard read `You 3/15 lands` while four polygons sat inside the player's
-realm. The fourth was Jersika, annexed by the Eastern Aukštaitians, who were the
+the standings panel - since removed, but the rule it broke is untouched - read
+`You 3/15 lands` while four polygons sat inside the player's realm. The fourth was Jersika, annexed by the Eastern Aukštaitians, who were the
 player's vassal. Four things drew it as theirs - the union outline and its seam
 removal, the hover halo, the vassal stripes in their own colour, and the hover
 line "Incorporated into Eastern Aukštaitians, itself your vassal" - while the

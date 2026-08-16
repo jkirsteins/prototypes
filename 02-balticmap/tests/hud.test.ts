@@ -164,7 +164,7 @@ const FIXTURE_TURNIP_THRESHOLD = turnipThresholdFor(FIXTURE_MAX);
 
 /** The human is beta everywhere in this file. Every faction acts: these tests
  *  are about what the HUD says, and a quiet rival would stop appearing in the
- *  scoreboard and the log without the test saying so. */
+ *  log without the test saying so. */
 function newPlaying(factionIds = FACTIONS): GameState {
   const g = pickFaction(
     chooseBuild(
@@ -2702,7 +2702,7 @@ describe("localPlayerId", () => {
 
   // Every faction name the HUD renders is a segment, and the segment renderer
   // is where the controlling player's name is appended - so the log, the round
-  // summary, the postmortem and the scoreboard all carry it from one wiring.
+  // summary and the postmortem all carry it from one wiring.
   // The log is checked here because it is the surface the requirement named:
   // "Raid played against you by Osilians (Bela)".
   it("names the human behind a faction wherever the faction is named", () => {
@@ -3060,64 +3060,6 @@ describe("the turnip bar chip and the harvest offer", () => {
     hud.update(newGame(FACTIONS));
     expect(q(container, ".harvest-overlay").classList.contains("hidden"))
       .toBe(true);
-  });
-});
-
-describe("scoreboard", () => {
-  const playing = () => newPlaying();
-
-  it("is hidden outside play", () => {
-    const { container, hud } = setup();
-    hud.update(newGame(FACTIONS));
-    expect(q(container, ".scoreboard").classList.contains("hidden")).toBe(true);
-  });
-
-  it("names the frontrunner and the human's own standing", () => {
-    const { container, hud } = setup();
-    // alpha absorbs gamma: 2 lands of the 2 needed on a 3-faction map.
-    const g = { ...playing(), incorporated: { gamma: "alpha" } };
-    hud.update(g);
-    const rows = [...container.querySelectorAll(".sb-row")];
-    expect(rows).toHaveLength(2);
-    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("Alpha");
-    expect(rows[0].querySelector(".sb-lands")!.textContent).toBe("2/2 lands");
-    expect(rows[0].querySelector(".sb-pct")!.textContent).toBe("100%");
-    // The human's own row is labelled "You", never by faction name.
-    expect(rows[1].querySelector(".sb-who")!.textContent).toBe("You");
-    expect(rows[1].classList.contains("sb-you")).toBe(true);
-    // The passive-rate column retired with the Might bar.
-    expect(container.querySelector(".sb-passive")).toBeNull();
-  });
-
-  it("puts the human at the top when they lead, without a duplicate row", () => {
-    const { container, hud } = setup();
-    const g = { ...playing(), incorporated: { gamma: "beta" } };
-    hud.update(g);
-    const rows = [...container.querySelectorAll(".sb-row")];
-    // gamma is absorbed, so only alpha and beta are still contenders.
-    expect(rows).toHaveLength(2);
-    expect(rows[0].querySelector(".sb-who")!.textContent).toBe("You");
-    expect(rows.filter((r) => r.classList.contains("sb-you"))).toHaveLength(1);
-  });
-
-  it("counts a land your vassal annexed, which the map already draws as yours", () => {
-    // The reported bug, at the scale it was seen: you -> a vassal -> a land the
-    // vassal had annexed. That land carries your stripes, sits inside your realm
-    // outline and hovers as "itself your vassal", so a score that walked one
-    // level was quoting a smaller realm than the player could see.
-    // Six factions so the win target is 3 and the count is legible: victory
-    // is half the map, so a smaller roster would put the target under the
-    // three lands this fixture is about.
-    const { container, hud } = setup();
-    const g = newPlaying([...FACTIONS, "delta", "epsilon", "zeta"]);
-    hud.update({
-      ...g,
-      overlords: new Map([["gamma", "beta"]]),
-      incorporated: { alpha: "gamma" },
-    });
-    const you = q(container, ".sb-row.sb-you");
-    // beta + gamma + alpha. One level out stops at 2.
-    expect(you.querySelector(".sb-lands")!.textContent).toBe("3/3 lands");
   });
 });
 

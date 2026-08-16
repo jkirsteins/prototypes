@@ -370,7 +370,7 @@ export function renderSegments(segs: Segment[], hooks: RichTextHooks): DocumentF
     frag.appendChild(span);
     // "Curonians (Bela)" - who is behind that faction, wherever its name is
     // rendered. Here, at the one place a faction segment becomes a node, so
-    // the round summary, the activity log, the postmortem, the scoreboard and
+    // the round summary, the activity log, the postmortem and
     // any inline prose all get it from one decision rather than each
     // remembering to ask. Outside the span, so the hoverable name is still
     // exactly the faction's own.

@@ -386,7 +386,7 @@ export function applyBootParams(
   // The realm, before the marches for the same reason the armies are: an
   // arrow declared below may set out from a land this just took.
   //
-  // ANNEXED and not sworn, because the two differ on the scoreboard's other
+  // ANNEXED and not sworn, because the two differ on the turn order's
   // side: an annexed people is out of the run, while a vassal is a seat that
   // wakes up whenever its lord duels. `realm=25` is meant to be a check that
   // runs, not twenty-four AI turns a round the moment a duel opens.
