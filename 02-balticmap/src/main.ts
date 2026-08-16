@@ -2006,6 +2006,13 @@ function paintArrows(): void {
       fill: against || ours ? undefined : arrowInkFor(m.actor),
       label: `${m.damage} STR`,
       chip: order.get(key),
+      // When, as against who gets there first. The ordinal beside it is a
+      // race between the arrows at one land; this is the one fact an arrow
+      // standing alone on a border cannot otherwise tell the player, now that
+      // an army takes a turn for every land it crosses. Rounds, the same clock
+      // `March.expiry` is stated in - so the reading is the one the store
+      // holds rather than a second derivation of it.
+      arrivesIn: m.expiry - game().turn,
       dataset: {
         actor: m.actor, target: m.to,
         // The two ENDS, which is what the hover lights. Not the same question

@@ -447,6 +447,40 @@ describe("renderArrowScene", () => {
     expect([...drawn.keys()]).toEqual(["m2"]);
   });
 
+  it("says when an arrow lands, and only where that is not tomorrow", () => {
+    // Every arrow used to land next turn, so "lands in 1" is the reading a
+    // player already has and printing it everywhere would bury the one arrow
+    // that is genuinely days away.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      { ...march("soon", "a", "b", 1), arrivesIn: 1 },
+      { ...march("far", "b", "a", 1), arrivesIn: 3 },
+    ], ctx);
+    const chip = (id: string): string | null =>
+      drawn.get(id)?.querySelector(".march-order-text")?.textContent ?? null;
+    expect(chip("soon")).toBeNull();
+    expect(chip("far")).toBe("lands in 3");
+  });
+
+  it("keeps the landing order and the arrival on ONE chip behind the tail", () => {
+    // Two badges behind the tail collide on any border carrying three arrows,
+    // which is the reason the ordinal is not on the shaft to begin with. And
+    // nothing about the arrival may reach the shaft: the shaft carries exactly
+    // one number, which is what makes the bare "1 STR" form readable.
+    const host = document.createElementNS(NS, "g") as SVGGElement;
+    const drawn = renderArrowScene(host, [
+      {
+        ...march("m1", "a", "b", 1),
+        chip: { order: 2, clash: false }, arrivesIn: 3,
+      },
+    ], ctx);
+    const g = drawn.get("m1")!;
+    expect(g.querySelectorAll(".march-order")).toHaveLength(1);
+    expect(g.querySelector(".march-order-text")?.textContent)
+      .toBe("2nd - lands in 3");
+    expect(g.querySelector(".march-strength")?.textContent).toBe("1 STR");
+  });
+
   it("dresses a brand new arrow with the emphasis that decides how loud it is", () => {
     // The class has to be on the element the render that CREATES it, because
     // the enter fade rises to the opacity that element has once it is in the

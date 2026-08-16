@@ -383,6 +383,16 @@ export interface ArrowSpec {
    *  ground. */
   labelAt?: number;
   chip?: { order: number; clash: boolean };
+  /** Turns until this arrow lands, printed on the chip behind the tail.
+   *
+   *  Left off below `MIN_SHOWN_ARRIVAL`. An army now takes a turn for every
+   *  land it crosses, so an arrow standing on a border says nothing about when
+   *  it gets there and a three-turn march looks exactly like tomorrow's raid.
+   *
+   *  On the CHIP and never on the shaft: the shaft carries exactly one number
+   *  - see `BARE_NUMBER_WIDTH` - and a second one on it turns the bare "1 STR"
+   *  form back into a guess. */
+  arrivesIn?: number;
   /** A claim already answered, drawn faded. */
   doomed?: boolean;
   /** How loud this arrow is drawn, decided by `emphasisFor` from what the
@@ -426,6 +436,12 @@ const CLAIM_LABEL_STATION = 1.18;
  *  chip sits behind the tail: the shaft carries exactly one number, so there
  *  is nothing for a bare number to be confused with. */
 const BARE_NUMBER_WIDTH = 24;
+
+/** The soonest arrival worth printing. Landing next turn is what an arrow used
+ *  to mean and is still what most of them mean, so "lands in 1" on every arrow
+ *  on the board would be noise over the one case the player has to notice: an
+ *  army that is not there yet. */
+const MIN_SHOWN_ARRIVAL = 2;
 
 /** How long an arrow takes to arrive, to leave, and to cross to a new lane.
  *
@@ -859,7 +875,8 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
     if (text.textContent !== words) text.textContent = words;
   }
 
-  if (spec.chip !== undefined) {
+  const chipLabel = chipTextFor(spec);
+  if (chipLabel !== null) {
     // Behind the tail, outside the block. On the shaft the chips collide as
     // soon as a border carries three arrows, and a chip over the head reads
     // as part of the arrowhead.
@@ -867,8 +884,7 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
       lane.ax, lane.ay, lane.bx, lane.by,
       -0.18 - (lane.index % LABEL_STATIONS.length) * 0.14,
     );
-    const label = spec.chip.clash
-      ? `${ordinal(spec.chip.order)} - clash` : ordinal(spec.chip.order);
+    const label = chipLabel;
     const width = 12 + label.length * 5.6;
     const chip = ensure(g, used++, "g");
     setAttr(chip, "class", "march-order");
@@ -897,6 +913,27 @@ function dressArrow(g: SVGGElement, spec: ArrowSpec, lane: Lane): boolean {
   setAttr(g, "class", classes.join(" "));
   applyDataset(g, spec.dataset ?? {});
   return true;
+}
+
+/** Everything the chip behind the tail says, or null where it would say
+ *  nothing: where this arrow comes in the race for its target, whether it is
+ *  locked in a clash, and how far off its own arrival is.
+ *
+ *  One chip carrying all of it rather than a second badge beside it. They sit
+ *  behind the tail, outside the block, and two of them there would collide on
+ *  any border carrying three arrows - which is the reason the ordinal is not
+ *  on the shaft in the first place. Every number here is spelled with a word
+ *  next to it, so nothing on the chip can be read as a strength. */
+function chipTextFor(spec: ArrowSpec): string | null {
+  const parts: string[] = [];
+  if (spec.chip !== undefined) {
+    parts.push(spec.chip.clash
+      ? `${ordinal(spec.chip.order)} - clash` : ordinal(spec.chip.order));
+  }
+  if (spec.arrivesIn !== undefined && spec.arrivesIn >= MIN_SHOWN_ARRIVAL) {
+    parts.push(`lands in ${spec.arrivesIn}`);
+  }
+  return parts.length === 0 ? null : parts.join(" - ");
 }
 
 /** "1st", "2nd", "3rd", "4th" - the landing order in words, so the number can
