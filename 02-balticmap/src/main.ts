@@ -100,6 +100,7 @@ import {
   holderOf, politicalFactionForPolygon, realmHoldingLine, relationshipLine,
 } from "./view";
 import { defenseMaxOf as mapDefenseMax, factionAdjacencyOf, siteCapsOf, siteListsOf } from "./adjacency";
+import { mapInkBoxes } from "./map-detail";
 import "./style.css";
 
 const app = document.getElementById("app")!;
@@ -1786,7 +1787,9 @@ const sceneCtx: SceneCtx = {
   crossingFor,
   freeAnchor: (from) =>
     townsByFaction.get(from)?.[0] ?? regionCenter(from) ?? null,
-  keepOut: () => badgeBoxes,
+  // The badges AND the map's own words. Both are ink the map has already put
+  // down; the chip is the one thing in the scene free to step around them.
+  keepOut: () => [...badgeBoxes, ...mapInkBoxes(svg)],
 };
 
 /** How many turns until this faction acts again, from where the round stands.

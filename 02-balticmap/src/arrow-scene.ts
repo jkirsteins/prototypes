@@ -270,6 +270,14 @@ export interface ArrowKindDef {
    *  size and colour are part of what the arrow IS, and a literal at the draw
    *  site answers for one kind and silently mis-styles the next one added. */
   labelClass: string;
+  /** The font-size `labelClass` is declared at in style.css, in map units.
+   *  Here because the scene has to know how much room a label takes BEFORE it
+   *  is in the tree - a chip is placed against every label in the scene, and
+   *  the shaft the label sits on is laid out in the same pass - and reading it
+   *  back would mean a `getBBox` per arrow per paint on elements that may not
+   *  be attached yet. `tests/arrow-scene.test.ts` holds it to the stylesheet,
+   *  the way the detail ladder's sizes are held to theirs. */
+  labelPx: number;
   /** Why this kind is drawn the way it is. */
   why: string;
 }
@@ -279,18 +287,22 @@ export interface ArrowKindDef {
 export const ARROW_KINDS: Record<ArrowKind, ArrowKindDef> = {
   march: {
     shape: "spear", className: "march-arrow", labelClass: "march-strength",
+    labelPx: 13,
     why: "An army in flight. The widest thing on its border if it is the strongest.",
   },
   claim: {
     shape: "demand", className: "claim-arrow", labelClass: "claim-label",
+    labelPx: 12,
     why: "Nobody is marching, so it is dashed with a ring for a head - but it is a real declared thing on the board, so it takes a lane like everything else.",
   },
   aim: {
     shape: "spear", className: "aim-arrow", labelClass: "march-strength",
+    labelPx: 13,
     why: "The arrow a play would declare, at the width it will really have: it is packed into its border's block with the arrows already crossing it, so the preview IS the board the play is about to make. Laid out on its own it took the whole block and was drawn over the raid it was answering, which is the commonest aim there is.",
   },
   ghost: {
     shape: "spear", className: "clash-flash", labelClass: "clash-label",
+    labelPx: 22,
     why: "What a march left on the border it crossed, standing for the length of the beat that explains it. Keyed by the landing rather than by any march - a clash retires two arrows and leaves a force that is neither of them - and packed in the same block as the arrows still crossing that border, so it takes a lane beside them instead of being drawn over them.",
   },
 };
@@ -568,7 +580,12 @@ export function renderArrowScene(
   const entered: HeldArrow[] = [];
   // Read once for the whole render, like the width scale above it: every
   // chip in one scene dodges the same board.
-  const keepOut = ctx.keepOut?.() ?? [];
+  //
+  // COPIED, because the scene goes on adding to it: the caller's boxes are the
+  // map's ink, and this list ends up holding the scene's own as well - every
+  // arrow's strength label, and each chip already placed. Pushing into the
+  // caller's own array would grow it by a scene's worth of boxes per paint.
+  const keepOut: Rect[] = [...(ctx.keepOut?.() ?? [])];
   const draw = (spec: ArrowSpec, lane: Lane): void => {
     // One arrow per key, and the FIRST spec wins. A key names an element, so a
     // second spec claiming one already drawn this render would hand back an
@@ -614,13 +631,16 @@ export function renderArrowScene(
   const unit = unitWidthFor(crossings.map(({ group, cross }) => ({
     span: cross.span, strengths: group.map((s) => s.strength),
   })));
+  const placements: { spec: ArrowSpec; lane: Lane }[] = [];
   for (const { group, cross, a } of crossings) {
     const lanes = layoutLanes(
       cross,
       group.map((s) => ({ strength: s.strength, forward: s.from === a })),
       unit,
     );
-    for (const lane of lanes) draw(group[lane.index], lane);
+    for (const lane of lanes) {
+      placements.push({ spec: group[lane.index], lane });
+    }
   }
   for (const spec of free) {
     // `at` and `freeAnchor` are read the same way whether the caller aimed a
@@ -632,11 +652,26 @@ export function renderArrowScene(
     // At the render's own scale, like every arrow that DID find a border: a
     // drag over open map is the same play at the same strength, and a fixed
     // width here would have the preview change size the moment it found one.
-    draw(spec, {
-      index: 0, width: laneWidthFor(spec.strength, unit),
-      ax: start.x, ay: start.y, bx: end.x, by: end.y,
+    placements.push({
+      spec,
+      lane: {
+        index: 0, width: laneWidthFor(spec.strength, unit),
+        ax: start.x, ay: start.y, bx: end.x, by: end.y,
+      },
     });
   }
+  // Every lane is known before any chip is placed, which is the whole reason
+  // the layout is settled first: an arrow's strength sits ON its shaft and may
+  // not be moved for anything, so it is a keep-out box for every chip in the
+  // scene - including its own arrow's, which is far enough down the shaft that
+  // the box never reaches it. Two arrows crossing DIFFERENT borders can print
+  // their strengths within a few units of each other, and the chip that lands
+  // between them is the one thing here that is free to step aside.
+  for (const { spec, lane } of placements) {
+    const box = labelBoxOf(spec, lane);
+    if (box !== null) keepOut.push(box);
+  }
+  for (const { spec, lane } of placements) draw(spec, lane);
   for (const [key, held] of [...scene.held]) {
     if (drawn.has(key)) continue;
     // Dropped AT ONCE, before the fade is even started: the key is free the
@@ -657,7 +692,7 @@ export function renderArrowScene(
  *  the stylesheet gives it once it is in the tree. */
 function place(
   scene: Scene, host: SVGGElement, spec: ArrowSpec, lane: Lane,
-  keepOut: readonly Rect[],
+  keepOut: Rect[],
 ): HeldArrow | null {
   const held = scene.held.get(spec.id);
   let kept: HeldArrow | null = null;
@@ -866,7 +901,7 @@ function applyDataset(g: SVGGElement, data: Record<string, string>): void {
  *  standing there for twenty renders. False where the geometry is degenerate,
  *  and then nothing has been touched. */
 function dressArrow(
-  g: SVGGElement, spec: ArrowSpec, lane: Lane, keepOut: readonly Rect[],
+  g: SVGGElement, spec: ArrowSpec, lane: Lane, keepOut: Rect[],
 ): boolean {
   const def = ARROW_KINDS[spec.kind];
   let used = 0;
@@ -895,22 +930,13 @@ function dressArrow(
   }
 
   if (spec.label !== undefined) {
-    const station = spec.kind === "claim"
-      // The one label that is a word rather than a number, and wider than the
-      // arrow it belongs to: past the head, in the land being demanded.
-      ? CLAIM_LABEL_STATION
-      : LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
-    const at = pointAlong(
-      lane.ax, lane.ay, lane.bx, lane.by, spec.labelAt ?? station,
-    );
+    const at = labelStationOf(spec, lane);
     const text = ensure(g, used++, "text");
     setAttrs(text, { x: at.x, y: at.y });
     setAttr(text, "class", def.labelClass);
     if (spec.kind !== "claim") setAttr(text, "dominant-baseline", "middle");
     else dropAttr(text, "dominant-baseline");
-    const words = spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
-      ? spec.label.replace(/ STR$/, "")
-      : spec.label;
+    const words = labelWordsOf(spec, lane);
     if (text.textContent !== words) text.textContent = words;
   }
 
@@ -934,6 +960,11 @@ function dressArrow(
     setAttr(text, "class", "march-order-text");
     if (text.textContent !== label) text.textContent = label;
     trim(chip, 2);
+    // The chip this arrow just took is ink too, so the next arrow's chip steps
+    // around it. Order-dependent and therefore declaration order, which is the
+    // order lanes are already packed in: the first chip on a border keeps the
+    // station it always had, and it is the later ones that give way.
+    keepOut.push(box);
   }
   trim(g, used);
 
@@ -971,6 +1002,51 @@ const CHIP_DODGE_TRIES = 4;
 /** The box the chip occupies, centred on `at`. */
 function chipBox(at: Pt, width: number): Rect {
   return { x: at.x - width / 2, y: at.y - 9, w: width, h: CHIP_H };
+}
+
+/** How wide one character of a label is, as a share of its font size. Taken
+ *  from the chip's own numbers - `CHIP_CHAR / 10px` - because both are the
+ *  same bold condensed face at different sizes, and the chip's width estimate
+ *  is the box that is DRAWN, so it has been read against the real text on
+ *  screen for as long as the chip has existed. */
+const LABEL_CHAR_RATIO = CHIP_CHAR / 10;
+
+/** Where a label sits along its shaft. One reader for the box the layout
+ *  reserves and for the text that is actually drawn, so the two cannot name
+ *  different points. */
+function labelStationOf(spec: ArrowSpec, lane: Lane): Pt {
+  const station = spec.kind === "claim"
+    // The one label that is a word rather than a number, and wider than the
+    // arrow it belongs to: past the head, in the land being demanded.
+    ? CLAIM_LABEL_STATION
+    : LABEL_STATIONS[lane.index % LABEL_STATIONS.length];
+  return pointAlong(
+    lane.ax, lane.ay, lane.bx, lane.by, spec.labelAt ?? station,
+  );
+}
+
+/** What the label READS at this width - the bare number on a narrow lane, the
+ *  full "N STR" on a wide one. Shared for the same reason as the station: a
+ *  keep-out box measured off "2 STR" around text that says "2" is a box that
+ *  reserves ground nothing is standing on. */
+function labelWordsOf(spec: ArrowSpec, lane: Lane): string {
+  const label = spec.label ?? "";
+  return spec.kind !== "claim" && lane.width < BARE_NUMBER_WIDTH
+    ? label.replace(/ STR$/, "")
+    : label;
+}
+
+/** The ground an arrow's own strength label stands on, or null where it has
+ *  none. An estimate, and that is enough: this box only ranks candidate chip
+ *  stations against each other, and the stations are 15 units apart. */
+function labelBoxOf(spec: ArrowSpec, lane: Lane): Rect | null {
+  if (spec.label === undefined) return null;
+  const words = labelWordsOf(spec, lane);
+  if (words === "") return null;
+  const px = ARROW_KINDS[spec.kind].labelPx;
+  const w = words.length * px * LABEL_CHAR_RATIO;
+  const at = labelStationOf(spec, lane);
+  return { x: at.x - w / 2, y: at.y - px / 2, w, h: px };
 }
 
 /** Where the chip stands: behind the tail on the lane's own axis, stepped
