@@ -1016,6 +1016,11 @@ export type CardBlockReason =
    *  `repeatGroup`). Says nothing about this card: it is the turn that is out,
    *  not the card that is illegal. */
   | { code: "turn-spent" }
+  /** Nobody sits in this faction's chair. A land with no chief is normally a
+   *  land that takes no turn, so this was unreachable prose - until two
+   *  seats started acting without one: a person whose ruler was assassinated
+   *  with no successor, and a duel enemy, which fights chief or no chief. */
+  | { code: "no-ruler" }
   | { code: "no-target" }
   | { code: "unavailable" };
 
@@ -1041,6 +1046,17 @@ export function cardBlockReason(
   // used to be here on the grounds that a 0-reading play was a wasted turn
   // rather than an illegal one; it is a targeted heal now and falls through
   // to the ordinary no-target rule with the rest of them.
+  // A card whose effect is about the ruler needs one sitting there. Asked of
+  // `CardDef.needsRuler` rather than by name, so the rule is in the wire
+  // fingerprint with every other legality dial. `playCard` reads the actor's
+  // ruler through `rulerOf`, which THROWS on a vacant chair, so this is
+  // legality and not flavour: a leaderless seat that takes a turn - a person
+  // whose ruler was assassinated with no successor, or a duel enemy fighting
+  // without one - would otherwise crash the run on a card its own hand called
+  // playable.
+  if (card.needsRuler === true && view.leaders[factionId] !== true) {
+    return { code: "no-ruler" };
+  }
   if (
     cardId === "grow-crops" || cardId === "favourable-omens" ||
     cardId === "miasma" || cardId === "war-council" ||

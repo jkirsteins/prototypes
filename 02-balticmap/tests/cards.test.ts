@@ -26,7 +26,7 @@ describe("cards", () => {
     const expectProps = (
       id: string, name: string, targeted: boolean, secret: boolean,
       maxPerDeck: number | null, deckBuildable: boolean, forced: boolean,
-      text: string, wealthCost?: number,
+      text: string, wealthCost?: number, needsRuler?: boolean,
     ) => {
       LISTED.push(id);
       const {
@@ -35,6 +35,7 @@ describe("cards", () => {
       expect(rest).toEqual({
         id, name, targeted, secret, maxPerDeck, deckBuildable, forced, text,
         ...(wealthCost !== undefined ? { wealthCost } : {}),
+        ...(needsRuler !== undefined ? { needsRuler } : {}),
       });
     };
     expectProps(
@@ -63,6 +64,10 @@ describe("cards", () => {
       "war-council", "War council", false, false, null, true, false,
       "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - " +
         "what their leadership is worth is up to what they can do with it.",
+      // The one card that needs a chief in the chair: its effect is about
+      // the ruler, and a leaderless seat that takes a turn is a real state
+      // now (a duel enemy, an assassinated person with no successor).
+      undefined, true,
     );
     expectProps(
       "strong-raid", "Strong raid", true, false, null, true, false,
@@ -666,8 +671,8 @@ describe("the wire's card fingerprint", () => {
     const behaviour = Object.entries(CARD_FIELD_KIND)
       .filter(([, kind]) => kind === "behaviour").map(([f]) => f).sort();
     expect(behaviour).toEqual([
-      "deckBuildable", "forced", "id", "keywords", "maxPerDeck", "secret",
-      "targeted", "wealthCost",
+      "deckBuildable", "forced", "id", "keywords", "maxPerDeck", "needsRuler",
+      "secret", "targeted", "wealthCost",
     ]);
   });
 

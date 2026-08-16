@@ -78,6 +78,21 @@ export interface CardDef {
    *  `playCard` deducts it at the moment of play, unconditionally. The costed
    *  set is pinned to a literal in tests/cards.test.ts. */
   wealthCost?: number;
+  /** Whether a chief has to be sitting in the actor's chair for this to be
+   *  legal. Absent = no.
+   *
+   *  Data rather than a branch naming a card, for the reason `wealthCost` is:
+   *  a legality dial has to reach `cardRulesHash`, or two deploys shake hands
+   *  and then disagree about which of the player's cards is playable. It is
+   *  read once, by `cardBlockReason` in src/playability.ts.
+   *
+   *  Only a card whose EFFECT is about the ruler needs it, and there is
+   *  exactly one: `playCard` reads the actor's ruler through `rulerOf`, which
+   *  throws on a vacant chair. It was unreachable prose while a leaderless
+   *  land took no turn, and stopped being when two of them started acting - a
+   *  person whose ruler was assassinated with no successor, and a duel enemy,
+   *  which fights chief or no chief. */
+  needsRuler?: boolean;
   /** The keywords this card carries - the names of the CLASSES of cards it
    *  belongs to. What each class means is the keyword's business, not the
    *  card's: see `KEYWORDS`. A card says which classes it is in and nothing
@@ -109,7 +124,7 @@ export const CARDS: Record<string, CardDef> = {
     textSegments: [t("Every land of yours bordering one land raids it, one army each, spending defense you divide between them. They are all neighbours, so unlike a "), card("raid"), t(" every arrow lands next turn, answered separately.")] },
   "favourable-omens": { id: "favourable-omens", name: "Favourable omens", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your next raid or fortify card counts double. Stacks.",
     textSegments: [t("Your next "), keyword("raid"), t(" or "), keyword("fortify"), t(" card counts double. Stacks.")] },
-  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
+  "war-council": { id: "war-council", name: "War council", targeted: false, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, needsRuler: true, rarity: "common", text: "Your ruler gains 1 leadership. Stacks. Lost when the ruler dies - what their leadership is worth is up to what they can do with it." },
   "strong-raid": { id: "strong-raid", name: "Strong raid", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["raid", "hostile"], text: "Send an army at a land your realm can reach, out of any land of yours up to three away, spending as much of the source land's defense as you like. It marches a turn for every land it crosses and lands for what you spent, less any counter-raid." },
   "strong-fortify": { id: "strong-fortify", name: "Strong fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 3 defense to one of your lands." },
   "fortify": { id: "fortify", name: "Fortify", targeted: true, secret: false, maxPerDeck: null, deckBuildable: true, forced: false, rarity: "common", keywords: ["fortify"], text: "Restore 2 defense to one of your lands." },
@@ -505,6 +520,7 @@ export const CARD_FIELD_KIND: Record<keyof Required<CardDef>, "behaviour" | "pro
   deckBuildable: "behaviour",
   forced: "behaviour",
   wealthCost: "behaviour",
+  needsRuler: "behaviour",
   keywords: "behaviour",
   name: "prose",
   text: "prose",

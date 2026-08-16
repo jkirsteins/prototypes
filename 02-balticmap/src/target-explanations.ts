@@ -561,6 +561,8 @@ export function cardBlockLine(reason: CardBlockReason): string {
       // in the hand, and this line is read on the greyed-out ones. A class,
       // not a copy - a Raid may be followed by a Strong raid.
       return "Only another card of the kind you played may follow.";
+    case "no-ruler":
+      return "Nobody leads your people - there is no council to hold.";
     case "no-target":
       return "Nothing in reach is a legal target.";
     case "unavailable":

@@ -17,7 +17,7 @@ import {
   type RulesView,
 } from "../src/playability";
 import { OPENING_HAND } from "../src/game";
-import { TRIBUTE_CARDS } from "../src/cards";
+import { CARDS, TRIBUTE_CARDS } from "../src/cards";
 import { RAID_LEADERSHIP } from "../src/abilities";
 import { SUBJUGATION_GATE } from "../src/defense";
 
@@ -684,6 +684,23 @@ describe("cardBlockReason", () => {
       const sub = view({ overlords: new Map([["beta", "alpha"]]) });
       expect(cardBlockReason(sub, "beta", id), id).toBeNull();
     }
+  });
+
+  it("refuses a war council to a seat with nobody in the chair", () => {
+    // `playCard` reads the actor's ruler through `rulerOf`, which throws on a
+    // vacant chair. It was unreachable prose while every leaderless land took
+    // no turn - a duel enemy fights chief or no chief now, and it crashed the
+    // run on a card its own hand called playable.
+    const vacant = view({ leaders: {} });
+    expect(cardBlockReason(vacant, "beta", "war-council"))
+      .toEqual({ code: "no-ruler" });
+    // Nothing else in the always-legal set cares who is sitting there.
+    for (const id of ["grow-crops", "favourable-omens", "miasma"]) {
+      expect(cardBlockReason(vacant, "beta", id), id).toBeNull();
+    }
+    // The rule is `CardDef.needsRuler` and not the card's name, so it is in
+    // the wire fingerprint with every other legality dial.
+    expect(CARDS["war-council"].needsRuler).toBe(true);
   });
 
   it("tribute needs an overlord and is legal only as a vassal", () => {
