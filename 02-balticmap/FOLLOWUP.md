@@ -524,3 +524,44 @@ of lands now hold a chief and take turns. What is not verified:
   but it reads differently now that the round is thirteen seconds rather than
   two: the player is watching the longest round of the gauntlet with nothing on
   screen naming it.
+
+## A vassal never leaves, 2026-08-16
+
+Independence is gone in both halves, a vassal takes a turn only while its
+lord's realm is duelling, and downward aggression went with the gate that
+justified it. What is not verified:
+
+- **Balance was deliberately not run.** No `npm run balance`, no
+  `npm run test:all`. Three of the levers this change moves are exactly what
+  that suite measures: an AI's conquest now garrisons a plain half rather than
+  one under a line, a lord no longer spends plays beating its own vassals down,
+  and a realm never comes apart on its own. The stalemate number, the play
+  share per card and the targeting bias are all stale until somebody runs it.
+- **Nobody has played a run to a victory at this rule set.** The browser pass
+  won one duel with its reward paid, lost another, watched world ticks and
+  duel rounds side by side, and confirmed a vassal's turns follow its lord's
+  fights - it did not reach turn 60, a victory or a defeat. A realm that only
+  grows is the shape this change creates and nothing has watched a big one.
+- **The duel round is now the loop's slowest stage, and that is not new but it
+  reads differently.** Measured on the dev server, seed 2 at turn 17 with five
+  vassals under the player: world rounds 7.1 and 11.5 seconds (8 seats, all of
+  them realm roots), duel rounds 21.6, 19.9 and 39.2 seconds (4 to 6 seats, all
+  of them the player's own vassals or the enemy). A duel round is slower on
+  FEWER seats because every one of them is in a realm the screen has a line to,
+  so every move earns a beat. Vassals always acted in duels, so this change did
+  not make it worse - but it did take the cheap seats out of the world tick and
+  leave the expensive ones where they were, so the duel is now what a player
+  waits on. Nobody has decided whether 39 seconds is too long.
+- **The world-tick saving is real but front-loaded against nothing.** Same
+  eight-round protocol as the entry above (seed 11, `rules=turn:unlimited`,
+  declining every offer, from turn 1): 5.4, 7.1, 8.8, 10.6, 10.6, 14.0, 19.1,
+  24.3 seconds, median 10.6s against the 13.5s recorded above, worst case
+  unchanged at about 24s. The worst case does not move because it is measured
+  at turns 1-8, when almost nobody is anybody's vassal yet. Over whole runs the
+  seats a world tick wakes fall from a median of 23 to 16 - a 31.8% cut,
+  measured in node over 830 world ticks across 156 runs - so the saving is a
+  mid-game one and the first rounds of a run feel the same.
+- **Iberia was not played.** Nothing here is region-specific, and no browser
+  pass was made on that map - which is the one that opens with lands already
+  sworn, i.e. with vassals from turn 1 who now take no turn until their lord
+  duels.
