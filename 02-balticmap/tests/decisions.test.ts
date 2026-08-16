@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  chooseBuild, newGame, pickFaction, startGame, type GameState,
+  chooseBuild, humanFactionOf, newGame, pickFaction, startGame,
+  type GameState,
 } from "../src/game";
 import { commitDecision, type DecisionDeps } from "../src/decisions";
 import { seededRng } from "../src/rng";
@@ -104,13 +105,19 @@ describe("commitDecision - the duel pick", () => {
     const enemy = offerOf(state)[0];
     expect(enemy).toBeDefined();
     const { deps, applied, sent } = soloDeps(state);
-    // A fresh deal is a one-land realm, which stakes nothing - see `pickDuel`.
+    // A fresh deal is a one-land realm, and it stakes that land: losing your
+    // home is vassalage rather than the end of the run, and a duel with
+    // nothing on the table could only ever be won - see `pickDuel`. The seat
+    // is `humanFactionOf` and not `players[0]`, because that is the seat the
+    // gauntlet speaks for.
+    const home = humanFactionOf(state) as string;
     const result = commitDecision(
-      deps, { kind: "pick-duel", enemyId: enemy, stakeId: null },
+      deps, { kind: "pick-duel", enemyId: enemy, stakeId: home },
     );
     expect(result).toEqual({ outcome: "applied", settle: "action" });
-    expect(applied[0].gauntlet)
-      .toMatchObject({ kind: "duel", enemy, staked: null, decided: null, boss: false });
+    expect(applied[0].gauntlet).toMatchObject({
+      kind: "duel", enemy, staked: home, decided: null, boss: false,
+    });
     // Host-only: nothing crosses the wire, and the sentence saying why is the
     // route's own.
     expect(sent).toHaveLength(0);
@@ -137,7 +144,7 @@ describe("commitDecision - the duel pick", () => {
     // nobody may fight.
     const { deps, applied } = soloDeps(freshGame());
     const result = commitDecision(
-      deps, { kind: "pick-duel", enemyId: "alpha", stakeId: null },
+      deps, { kind: "pick-duel", enemyId: "alpha", stakeId: "alpha" },
     );
     expect(result.outcome).toBe("refused");
     expect(applied).toHaveLength(0);

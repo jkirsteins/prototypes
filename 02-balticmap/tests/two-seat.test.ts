@@ -477,7 +477,7 @@ describe("the deal seats the guest as a person", () => {
     const duelling = {
       ...state,
       gauntlet: {
-        kind: "duel" as const, enemy, staked: null, decided: null, boss: false
+        kind: "duel" as const, enemy, staked: "beta", decided: null, boss: false
       },
     };
     expect(takesNoTurn(duelling, guestFaction)).toBe(false);

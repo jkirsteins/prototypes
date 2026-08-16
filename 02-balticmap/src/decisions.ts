@@ -123,8 +123,8 @@ export type Decision =
    *  `stakeId` rides the same decision rather than taking a kind of its own,
    *  the way a raid's `spend` rides its `play`: the amount and the target are
    *  settled before anything is committed, so they are part of one answer and
-   *  the router does not learn a second thing. It is `null` when the offer was
-   *  declined, and `null` for a realm holding one land - see `pickDuel`. */
+   *  the router does not learn a second thing. It is `null` only when the
+   *  offer was DECLINED - every duel that opens is staked. */
   | { kind: "pick-duel"; enemyId: string | null; stakeId: string | null }
   /** Which boon the player takes at the rest before an act's boss.
    *
@@ -211,7 +211,7 @@ export const DECISION_ROUTES: {
       "the second person is never shown this question rather than being " +
       "shown one whose answer has nowhere to go.",
     apply: (state, _rng, d) =>
-      d.enemyId === null
+      d.enemyId === null || d.stakeId === null
         ? declineDuel(state)
         : pickDuel(state, d.enemyId, d.stakeId),
   },

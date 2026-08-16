@@ -15,8 +15,8 @@ import {
 import { axesOf } from "./marches";
 import { damageAfterTerrain, hasPassive } from "./passives";
 import {
-  discardCard, endTurn, playCard, repeatOnlyOf, turnOpen, viewOf,
-  type GameState,
+  discardCard, endTurn, humanFactionOf, playCard, repeatOnlyOf, turnOpen,
+  viewOf, type GameState,
 } from "./game";
 
 export type AiAction =
@@ -141,6 +141,41 @@ export const TRAVEL_DISCOUNT = 0.6;
  *  and both branches that score a raid target read one of the two. */
 function travelFactor(hops: number): number {
   return TRAVEL_DISCOUNT ** Math.max(0, hops - 1);
+}
+
+/** How much a target is worth for BEING the duel's enemy.
+ *
+ *  Large enough to outrank the pyramid sizes it competes with - a realm of
+ *  twenty-six lands cannot put more than that many under one root - so a seat
+ *  fighting a duel goes for the land that ends it rather than for whichever
+ *  neighbour happens to score best. Not infinite: a duel enemy nothing can
+ *  reach must still sort behind a target something can, and `travelFactor`
+ *  multiplies this the same way it multiplies every other worth. */
+const DUEL_FOCUS = 64;
+
+/** The land this actor should be trying to take to END the duel, or null.
+ *
+ *  Only the enemy's OWN polygon, and only for a seat on the player's side.
+ *  That is the whole rule: `duelDecidedBy` settles a duel on exactly two
+ *  lands, so a policy that scored the enemy's vassals alongside it would be
+ *  scoring lands that move the board and do not end the fight.
+ *
+ *  It exists because the cycle stalled without it. Measured on a seeded
+ *  44-turn run: the opening duel was still running when the game was won, no
+ *  duel had EVER settled, and the reason was that the policy had no notion of
+ *  one - it took thirteen lands while never once aiming at the one land that
+ *  would have closed the fight it was in.
+ *
+ *  Read on the acting seat rather than on the human's, because a lord's
+ *  vassals fight its duels: `fullRealmOf` is the side, the same set
+ *  `duelStanding` scopes the turn loop with. */
+function duelFocusOf(state: GameState, actor: string): string | null {
+  const g = state.gauntlet;
+  if (g.kind !== "duel") return null;
+  const home = humanFactionOf(state);
+  if (home === null) return null;
+  const mine = fullRealmOf(home, state.overlords, state.incorporated);
+  return mine.has(actor) ? g.enemy : null;
 }
 
 /** Turns before a blow at this polygon would land: the walk of the arrow the
@@ -310,6 +345,15 @@ function isFrontier(
  *  then send an arrow too small to take it - the AI choosing a conquest and
  *  declining to pay for it in the same turn.
  *
+ *  **The duel arm exists because the frontier arm stalls the run.** A duel
+ *  enemy is by construction a land on the frontier, so every raid at it came
+ *  out at `MIN_RAID_SPEND` - one point a turn, at a land that heals - and the
+ *  fight never resolved. Measured on a seeded 89-turn run: the enemy was a
+ *  legal target on 82 of 88 duelling turns, and exactly one duel settled in
+ *  the whole game. Committing at the one land that can END the fight is the
+ *  same judgement the conquest arm makes one line up, and it costs the same
+ *  thing: the source stands soft, on the map, for anyone to read.
+ *
  *  The `POLICY_COVERAGE` entries for all three raid cards name this rule; it
  *  is one function over the class rather than three copies keyed by card id. */
 function raidSpendFor(
@@ -402,8 +446,14 @@ export function chooseAction(state: GameState): AiAction {
   const walkIn = marchPick(idxOf);
   if (walkIn !== undefined) {
     const realm = fullRealmOf(p.factionId, state.overlords, state.incorporated);
+    // The land that would END the duel this seat is in, if it is in one. It is
+    // added to the pyramid size rather than sorted ahead of it, so a duel
+    // enemy three hops off still loses to one next door - the walk discounts
+    // both the same way.
+    const focus = duelFocusOf(state, p.factionId);
     const worth = (t: string): number =>
-      fullRealmOf(t, state.overlords, state.incorporated).size *
+      (fullRealmOf(t, state.overlords, state.incorporated).size +
+        (t === focus ? DUEL_FOCUS : 0)) *
       travelFactor(turnsToLand(state, v, p.factionId, t));
     // Per target, because a raid's damage is now the ceiling of whichever of
     // OUR lands borders that one - two neighbours are two different numbers.
@@ -768,6 +818,20 @@ function warpathDecisive(
   const restive = vassalNearingEscape(state, v, actor);
   if (raid !== undefined && restive !== undefined && raidTargets.includes(restive)) {
     return raidAt(state, v, actor, raid, pick!.id, restive);
+  }
+
+  // 6W-1b: the duel. Step 2A already walks into a duel enemy this card
+  // overwhelms; what this covers is the enemy it does NOT - softening the one
+  // land that can end the fight, rather than opening a gate somewhere else
+  // that settles nothing. Without it the policy took thirteen lands over a
+  // 44-turn run and never once aimed at the land that would have closed the
+  // duel it was in, so no duel ever settled and the cycle stalled at the first
+  // one. Below the vassal branch on purpose: a vassal at its gate is a land
+  // about to leave the realm, and losing it mid-duel is worse than a turn not
+  // spent on the enemy.
+  const focus = duelFocusOf(state, actor);
+  if (raid !== undefined && focus !== null && raidTargets.includes(focus)) {
+    return raidAt(state, v, actor, raid, pick!.id, focus);
   }
 
   // Per target, and a ceiling: what the hardest arrow the realm could throw

@@ -13,7 +13,7 @@ import {
   attackDamageFor, marchHopsTo, marchSourcesAgainst, marchTargetsFrom,
   spendCeilingOn,
 } from "./playability";
-import { fullRealmOf, realmRootOf } from "./relations";
+import { realmRootOf } from "./relations";
 import { rulerOf } from "./rulers";
 import { mergeRules, type RuleSelections } from "./rules";
 
@@ -444,16 +444,15 @@ export function applyBootParams(
       // running duel. `null` on a one-land realm, which is the one board
       // `pickDuel` requires it of.
       const home = humanFactionOf(g);
-      const alone =
-        home !== null &&
-        fullRealmOf(home, g.overlords, g.incorporated).size <= 1;
       const legal =
         home === null ? [] : duelStakes(viewOf(g), home, params.duel);
       const named =
         params.stake !== null && legal.includes(params.stake)
           ? params.stake
-          : legal[0] ?? null;
-      g = pickDuel(g, params.duel, alone ? null : named);
+          : legal[0];
+      // No legal stake is no duel, and the clause drops the way every other
+      // unreachable clause in this file does.
+      if (named !== undefined) g = pickDuel(g, params.duel, named);
     }
   }
   // A booted march is declared through the same rules a played one is: the

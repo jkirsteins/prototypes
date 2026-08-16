@@ -15,6 +15,7 @@ import {
   damageAfterTerrain, PASSIVES, stripOnCapture,
 } from "../src/passives";
 import { naiveHumanTurn, runGame, SIM_FACTION_IDS } from "../src/sim";
+import { aiTakeTurn } from "../src/ai";
 import { hasRuler } from "../src/rulers";
 import type { Rng } from "../src/cards";
 
@@ -231,7 +232,7 @@ describe("a duel scopes the turn loop", () => {
     const g = playing();
     const [enemy, third] = ruledRivals(g);
     const duel = withGauntlet(g, {
-      kind: "duel", enemy, staked: null, decided: null, boss: false
+      kind: "duel", enemy, staked: "beta", decided: null, boss: false
     });
     expect(takesNoTurn(duel, "beta")).toBe(false); // the person
     expect(takesNoTurn(duel, enemy)).toBe(false); // the other side
@@ -251,7 +252,7 @@ describe("a duel scopes the turn loop", () => {
     overlords.set(third, enemy);
     const duel = withGauntlet(
       { ...g, overlords },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     // fullRealmOf and not realmOf: taking a lord takes its pyramid, so the
     // pyramid is what fights.
@@ -262,7 +263,7 @@ describe("a duel scopes the turn loop", () => {
       takesNoTurn(
         withGauntlet(
           { ...g, overlords: mine },
-          { kind: "duel", enemy, staked: null, decided: null, boss: false},
+          { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
         ),
         third,
       ),
@@ -282,7 +283,7 @@ describe("a duel scopes the turn loop", () => {
     // At its ceiling, so the gate stands open.
     const duel = withGauntlet(
       { ...g, overlords },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     expect(escapesVassalage(duel, third)).toBe(true);
     expect(takesNoTurn(duel, third)).toBe(true);
@@ -302,7 +303,7 @@ describe("a duel scopes the turn loop", () => {
     const [enemy, third] = ruledRivals(g);
     const duel = withGauntlet(
       { ...g, humanSeats: [0, seatOf(g, third)] },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     expect(takesNoTurn(duel, third)).toBe(false);
   });
@@ -312,7 +313,7 @@ describe("a duel scopes the turn loop", () => {
     const [enemy, third] = ruledRivals(g);
     const duel = withGauntlet(
       { ...g, incorporated: { [enemy]: third } },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     expect(takesNoTurn(duel, enemy)).toBe(true);
   });
@@ -321,7 +322,7 @@ describe("a duel scopes the turn loop", () => {
     const g = playing();
     const [enemy] = ruledRivals(g);
     const duel = withGauntlet(g, {
-      kind: "duel", enemy, staked: null, decided: null, boss: false
+      kind: "duel", enemy, staked: "beta", decided: null, boss: false
     });
     expect(new Set(actedIn(duel))).toEqual(new Set(["beta", enemy]));
   });
@@ -331,7 +332,7 @@ describe("a duel scopes the turn loop", () => {
     const [enemy, third] = ruledRivals(g);
     expect(
       outsideTheDuel(
-        { kind: "duel", enemy, staked: null, decided: null, boss: false}, null, third,
+        { kind: "duel", enemy, staked: "beta", decided: null, boss: false}, null, third,
         g.overlords, g.incorporated,
       ),
     ).toBe(false);
@@ -346,9 +347,9 @@ describe("answering the pick", () => {
     const [enemy] = ruledRivals(g);
     // A fresh deal is a ONE-LAND realm, so it stakes nothing: there is nothing
     // to bet that is not the run itself.
-    const after = pickDuel(g, enemy, null);
+    const after = pickDuel(g, enemy, "beta");
     expect(after.gauntlet).toEqual({
-      kind: "duel", enemy, staked: null, decided: null, boss: false
+      kind: "duel", enemy, staked: "beta", decided: null, boss: false
     });
   });
 
@@ -363,16 +364,16 @@ describe("answering the pick", () => {
       .toEqual({ kind: "duel", enemy, staked: third, decided: null, boss: false });
   });
 
-  it("refuses a stake outside the realm, and one owed but not named", () => {
-    // The stake is the losing condition, so a duel opened without one - on a
-    // realm that has something to bet - would be a fight that cannot be lost.
+  it("refuses a stake outside the realm", () => {
+    // The stake is the losing condition, so one the player does not hold would
+    // be a fight that cannot be lost.
     const g0 = playing();
     const [enemy, third] = ruledRivals(g0);
     const overlords = new Map(g0.overlords);
     overlords.set(third, "beta");
     const g = { ...g0, overlords };
     expect(pickDuel(g, enemy, enemy)).toBe(g);
-    expect(pickDuel(g, enemy, null)).toBe(g);
+    expect(pickDuel(g, enemy, "nobody")).toBe(g);
   });
 
   it("refuses anything the offer does not hold", () => {
@@ -380,13 +381,13 @@ describe("answering the pick", () => {
     // stale modal or a wire message cannot scope the loop to a land the
     // player may not fight.
     const g = playing();
-    expect(pickDuel(g, "beta", null)).toBe(g);
-    expect(pickDuel(g, "nobody", null)).toBe(g);
+    expect(pickDuel(g, "beta", "beta")).toBe(g);
+    expect(pickDuel(g, "nobody", "beta")).toBe(g);
     const [enemy, third] = ruledRivals(g);
     const duel = withGauntlet(g, {
-      kind: "duel", enemy, staked: null, decided: null, boss: false
+      kind: "duel", enemy, staked: "beta", decided: null, boss: false
     });
-    expect(pickDuel(duel, third, null)).toBe(duel);
+    expect(pickDuel(duel, third, "beta")).toBe(duel);
   });
 
   it("takes declining as an answer, and spends the round on the world", () => {
@@ -430,7 +431,7 @@ describe("the cycle turns at the round wrap", () => {
     // was chosen to carry instead of a timer.
     const g = playing();
     let duel = withGauntlet(g, {
-      kind: "duel", enemy: "gamma", staked: null, decided: null, boss: false
+      kind: "duel", enemy: "gamma", staked: "beta", decided: null, boss: false
     });
     for (let i = 0; i < 25; i++) {
       duel = wrap(duel);
@@ -441,7 +442,7 @@ describe("the cycle turns at the round wrap", () => {
   it("retires a duel the moment one is recorded as decided", () => {
     const g = playing();
     const duel = withGauntlet(g, {
-      kind: "duel", enemy: "gamma", staked: null, decided: "won", boss: false
+      kind: "duel", enemy: "gamma", staked: "beta", decided: "won", boss: false
     });
     // The wrap is one turn on, and the tick it opens is over by the wrap
     // after that: one whole unscoped round, which is what a retiring duel has
@@ -455,7 +456,7 @@ describe("the cycle turns at the round wrap", () => {
     const [enemy] = ruledRivals(g0);
     const g = withGauntlet(
       { ...g0, defense: { [enemy]: 0 } },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     const declared = playCard(
       withHand(g, 0, ["raid"]), 0, rng(), enemy, { sourceId: "beta" },
@@ -477,7 +478,7 @@ describe("the cycle turns at the round wrap", () => {
     overlords.set(third, enemy);
     const g = withGauntlet(
       { ...g0, overlords, defense: { [third]: 0 } },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false },
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false },
     );
     const landed = beginTurn(
       {
@@ -553,7 +554,7 @@ describe("the cycle turns at the round wrap", () => {
     const [enemy, third] = ruledRivals(g0);
     const g = withGauntlet(
       { ...g0, defense: { [third]: 0 } },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     const landed = beginTurn(
       {
@@ -606,7 +607,7 @@ describe("a duel cannot hang the run", () => {
     const [enemy, third] = ruledRivals(g0);
     const g = withGauntlet(
       { ...g0, incorporated: { [enemy]: third } },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false },
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false },
     );
     expect(actedIn(g)).toEqual(["beta"]);
     const after = nextRound(g);
@@ -637,7 +638,7 @@ describe("a duel cannot hang the run", () => {
     const [enemy, third] = ruledRivals(g0);
     const g = withGauntlet(
       { ...g0, incorporated: { [enemy]: third } },
-      { kind: "duel", enemy, staked: null, decided: "won", boss: false },
+      { kind: "duel", enemy, staked: "beta", decided: "won", boss: false },
     );
     const after = nextRound(g);
     expect(after.log.filter((e) => e.type === "duel-won")).toHaveLength(1);
@@ -697,7 +698,7 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
         ...g0, defense: { [enemy]: 0, beta: 10 }, marches: {}, passives: {},
         ...over(enemy),
       },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     const declared = playCard(
       withHand(g, 0, ["raid"]), 0, rng(), enemy, { sourceId: "beta" },
@@ -754,7 +755,7 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     // move between the two named lands and neither side takes anything.
     const g = withGauntlet(
       { ...playing(), incorporated: { gamma: "delta" } },
-      { kind: "duel", enemy: "gamma", staked: null, decided: null, boss: false },
+      { kind: "duel", enemy: "gamma", staked: "beta", decided: null, boss: false },
     );
     const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
     expect(after.gauntlet)
@@ -801,7 +802,7 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     // was the next offer appearing a turn later.
     const g = withGauntlet(
       { ...playing(), incorporated: { gamma: "delta" } },
-      { kind: "duel", enemy: "gamma", staked: null, decided: null, boss: false },
+      { kind: "duel", enemy: "gamma", staked: "beta", decided: null, boss: false },
     );
     const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
     expect(endings(after).map((e) => e.type)).toEqual(["duel-void"]);
@@ -850,7 +851,7 @@ describe("a won duel cashes its reward, and a lost one pays nothing", () => {
     const [enemy, third] = ruledRivals(g0);
     const g = withGauntlet(
       { ...g0, defense: { [third]: 0, beta: 10 } },
-      { kind: "duel", enemy, staked: null, decided: null, boss: false },
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false },
     );
     const declared = playCard(
       withHand(g, 0, ["raid"]), 0, rng(), third, { sourceId: "beta" },
@@ -872,7 +873,7 @@ describe("a duel enemy fights, chief or no chief", () => {
   }
 
   const duelWith = (g: GameState, enemy: string): GameState =>
-    withGauntlet(g, { kind: "duel", enemy, staked: null, decided: null, boss: false});
+    withGauntlet(g, { kind: "duel", enemy, staked: "beta", decided: null, boss: false});
 
   it("sits the enemy down at the table with an empty chair", () => {
     const g = playing();
@@ -906,7 +907,7 @@ describe("a duel enemy fights, chief or no chief", () => {
     const enemy = chiefless(g0);
     const after = beat(
       g0, enemy,
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     // A people who follow nobody are taken outright: annexed, not sworn, so
     // there is no independence gate for them to walk back out through.
@@ -928,7 +929,7 @@ describe("a duel enemy fights, chief or no chief", () => {
     const enemy = chiefless(g0);
     const after = beat(
       g0, enemy,
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     expect(after.gauntlet)
       .toEqual({ kind: "world-tick", until: g0.turn + 2 });
@@ -953,7 +954,7 @@ describe("a duel enemy fights, chief or no chief", () => {
     const [enemy] = ruledRivals(g0);
     const after = beat(
       g0, enemy,
-      { kind: "duel", enemy, staked: null, decided: null, boss: false},
+      { kind: "duel", enemy, staked: "beta", decided: null, boss: false},
     );
     expect(after.overlords.get(enemy)).toBe("beta");
     expect(after.incorporated[enemy]).toBeUndefined();
@@ -978,6 +979,82 @@ describe("the balance suite plays the loop", () => {
       },
     });
     expect(seen).toContain("duel");
+  });
+
+  it("walks a whole run through its acts, rest and boss included", () => {
+    // The end-to-end check the pieces cannot make on their own: acts, the
+    // prophecy, the rest, the elevation and the boss duel wired together and
+    // driven by the REAL `runGame` rather than by a fixture that stages each
+    // state by hand.
+    //
+    // Read through the human-turn hook, because a summary says nothing about
+    // the shape of the run - what is being asserted is that a run passes
+    // through every stage of the cycle rather than skipping one.
+    const kinds = new Set<string>();
+    const acts = new Set<number>();
+    let elevated = false;
+    const summary = runGame({
+      seed: 3,
+      humanFaction: SIM_FACTION_IDS[0],
+      turnCap: 150,
+      humanTurn: (s, r) => {
+        kinds.add(s.gauntlet.kind);
+        acts.add(s.act);
+        if (
+          Object.values(s.passives).some(
+            (ids) => ids.includes("regional-leader"),
+          )
+        ) elevated = true;
+        return aiTakeTurn(s, r);
+      },
+    });
+    // Every stage of the cycle the hook can SEE, in one run. A `rest` is
+    // deliberately not among them: `runGame` answers the offer at the top of
+    // its loop, so a rest is entered and answered between two human turns and
+    // the hook never observes one. What proves it happened is the log, which
+    // the next test reads.
+    expect(kinds).toContain("picking");
+    expect(kinds).toContain("duel");
+    expect(kinds).toContain("world-tick");
+    // Acts I and II both reached, which means a boss was summoned, elevated
+    // and BEATEN - nothing else moves the act.
+    expect(Math.max(...acts)).toBeGreaterThanOrEqual(2);
+    expect(elevated).toBe(true);
+    // Whether runs still END is deliberately NOT asserted here. The duel
+    // clock's removal is exactly the thing that put it at risk, and one seed
+    // is the wrong instrument for it - `npm run sweep` measures the unresolved
+    // share over dozens of runs, which is the number that would move.
+    expect(summary.turns).toBeGreaterThan(0);
+  });
+
+  it("writes a prophecy and a boon for every boss it summons", () => {
+    // The prophecy is the whole of "unmissable". A run that summoned a boss
+    // and announced nothing would be a boss the player walked into - and a
+    // RETRY is a fresh summon, so a lost boss duel is announced again rather
+    // than the next attempt arriving silently.
+    let last: GameState | null = null;
+    runGame({
+      seed: 3,
+      humanFaction: SIM_FACTION_IDS[0],
+      turnCap: 150,
+      humanTurn: (s, r) => {
+        last = s;
+        return aiTakeTurn(s, r);
+      },
+    });
+    const end = last as GameState | null;
+    if (end === null) throw new Error("the run never reached a human turn");
+    const foretold = end.log.filter((e) => e.type === "boss-foretold");
+    const taken = end.log.filter((e) => e.type === "boon-taken");
+    expect(foretold.length).toBeGreaterThan(0);
+    // One boon per prophecy: the rest is answered exactly once each time, and
+    // never skipped.
+    expect(taken).toHaveLength(foretold.length);
+    // Each names the act it closes, and they never go backwards - the act is a
+    // high-water mark, so a prophecy for act 1 after one for act 2 would mean
+    // the run had walked its own progress back.
+    const acts = foretold.map((e) => e.amount ?? 0);
+    expect([...acts].sort((a, b) => a - b)).toEqual(acts);
   });
 });
 
@@ -1076,7 +1153,7 @@ describe("the run is three acts, and each closes with a boss", () => {
       ...g0,
       defense: { ...g0.defense, [boss]: 0 },
       gauntlet: {
-        kind: "duel" as const, enemy: boss, staked: null, decided: null,
+        kind: "duel" as const, enemy: boss, staked: "beta", decided: null,
         boss: true,
       },
     };
@@ -1093,7 +1170,7 @@ describe("the run is three acts, and each closes with a boss", () => {
     // act holds and the boss is summoned again at the next wrap.
     const g = withGauntlet(
       { ...realmOf(playing(), 2), incorporated: { gamma: "delta" } },
-      { kind: "duel", enemy: "gamma", staked: null, decided: null, boss: true },
+      { kind: "duel", enemy: "gamma", staked: "beta", decided: null, boss: true },
     );
     const after = beginTurn({ ...g, current: 0, turn: g.turn + 1 }, rng());
     expect(after.act).toBe(1);

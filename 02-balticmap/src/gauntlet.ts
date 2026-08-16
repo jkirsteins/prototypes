@@ -123,10 +123,16 @@ export type Gauntlet =
    *  race between two named polygons rather than an open war, so it converges
    *  on a fact about the board instead of on a number running out.
    *
-   *  `staked` is the land the player put up when they answered the offer, and
-   *  `null` for a realm that held exactly one land at the time - there is
-   *  nothing to bet there that is not the run itself, and a rule that bets the
-   *  run on turn 1 is a rule that ends runs on turn 1.
+   *  `staked` is the land the player put up when they answered the offer.
+   *  ALWAYS a land, including on the one-land realm a run opens with: it was
+   *  nullable first, on the reasoning that a realm holding only its home has
+   *  nothing to bet that is not the run itself, and that was wrong twice over.
+   *  Losing your home is VASSALAGE and not defeat - the existing ladder, with
+   *  the independence gate as the way back - so the bet was never the run. And
+   *  a duel with nothing staked can only be won, so the first duel of every
+   *  run had one ending: measured on a real 44-turn run, the opening duel was
+   *  still running at the end, no duel had ever settled, and the whole cycle
+   *  had stalled while the land count won the game anyway.
    *
    *  `decided` is written by `duelDecidedBy` at the moment the ground moves,
    *  and read at the round wrap. A field rather than a log walk because the
@@ -137,7 +143,7 @@ export type Gauntlet =
   | {
       kind: "duel";
       enemy: string;
-      staked: string | null;
+      staked: string;
       decided: DuelOutcome | null;
       /** Whether this is the fight that closes the act. A boss duel pays the
        *  act forward when it is won, and losing one ends the run - see
@@ -373,9 +379,7 @@ export function duelDecidedBy(
   const mine = fullRealmOf(human, overlords, incorporated);
   const theirs = fullRealmOf(g.enemy, overlords, incorporated);
   if (land === g.enemy && mine.has(taker)) return { ...g, decided: "won" };
-  if (g.staked !== null && land === g.staked && theirs.has(taker)) {
-    return { ...g, decided: "lost" };
-  }
+  if (land === g.staked && theirs.has(taker)) return { ...g, decided: "lost" };
   return g;
 }
 
@@ -405,7 +409,6 @@ export function duelVoided(
 ): boolean {
   if (g.kind !== "duel" || human === null || g.decided !== null) return false;
   if (incorporated[g.enemy] !== undefined) return true;
-  if (g.staked === null) return false;
   return !fullRealmOf(human, overlords, incorporated).has(g.staked);
 }
 

@@ -713,15 +713,15 @@ function askDuelPick(): void {
         // their turn may have moved it since the offer was computed at a wrap.
         const stakes =
           home === null ? [] : duelStakes(viewOf(game()), home, factionId);
-        // A realm with one thing to bet is not asked which - see `pickDuel`.
-        // The question is about the REALM's size, not the length of this list:
-        // a wide realm with one land near the enemy still has to bet it.
-        const alone =
-          home !== null &&
-          fullRealmOf(home, game().overlords, game().incorporated).size <= 1;
-        if (alone || stakes.length === 0) {
+        // One legal stake is not a question. Every duel is staked - a realm
+        // holding only its home bets that, because losing it is vassalage and
+        // not the end of the run - but a modal with one row and no alternative
+        // is a click that teaches nothing, so it is answered here.
+        if (stakes.length <= 1) {
           hud.hideHarvestUi();
-          decide({ kind: "pick-duel", enemyId: factionId, stakeId: null });
+          decide({
+            kind: "pick-duel", enemyId: factionId, stakeId: stakes[0] ?? null,
+          });
           return;
         }
         askDuelStake(factionId, stakes);

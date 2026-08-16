@@ -208,8 +208,7 @@ function newSimGame(): GameState {
  *  The STAKE is the same rule one level down: the first land `duelStakes`
  *  lists, which is map order again. A sim that staked its weakest land - or
  *  its strongest - would be a second opinion about how to bet, measured as if
- *  it were the game's own tempo. `null` where the realm holds one land, which
- *  is what `pickDuel` requires of that board.
+ *  it were the game's own tempo.
  *
  *  `duelCandidates` is already in map order, so this is deterministic and a
  *  seeded run replays. It draws no rng, which is what keeps a run comparable
@@ -230,10 +229,10 @@ function answerTheOffer(state: GameState, rng: Rng): GameState {
   if (first === undefined) return declineDuel(state);
   const home = humanFactionOf(state);
   if (home === null) return state;
-  const alone =
-    fullRealmOf(home, state.overlords, state.incorporated).size <= 1;
   const [stake] = duelStakes(viewOf(state), home, first);
-  return pickDuel(state, first, alone ? null : stake ?? null);
+  // No legal stake is no legal duel: `pickDuel` would refuse it anyway, and a
+  // decline spends the world tick that keeps the run moving.
+  return stake === undefined ? declineDuel(state) : pickDuel(state, first, stake);
 }
 
 /** Plays one complete headless game. Throws rather than spinning if a turn

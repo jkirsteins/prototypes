@@ -478,6 +478,30 @@ export const TURNIP_HARVEST_THRESHOLD = turnipThresholdFor(DEFAULT_DEFENSE_MAX);
 /** Further settlements a land gets in a world nobody handed a map to. */
 export const DEFAULT_SITE_CAP = 3;
 
+/** What a round of a running duel costs BOTH of the lands it is about.
+ *
+ *  Pressure, and deliberately not a clock. `DUEL_TURNS` was removed because a
+ *  duel should end on a fact about the board rather than on a number running
+ *  out - and a duel that ends on nothing at all is the stalemate that number
+ *  existed to prevent. This is the answer the plan named in advance: a fight
+ *  neither side can move begins to wear the ground it is fought over, so the
+ *  board itself converges on an answer.
+ *
+ *  Both ends, never one. A drain that only bled the stake would be a timer
+ *  wearing the player's colours, and the player would be counting rounds again
+ *  - which is the thing the clock's removal was for. Wearing both means the
+ *  side that is AHEAD wins a long duel, which is what a siege should decide.
+ *
+ *  One point a round, so it is slow enough that a duel is still won by playing
+ *  rather than by waiting, and steady enough that no duel runs forever.
+ *  Measured before it existed: over three seeds a run settled one duel in
+ *  eighty-nine turns and never closed an act.
+ *
+ *  It is logged as `levied`, the line that already means "this land lost
+ *  defense to something other than an attack", so it walks the same standings
+ *  every other score does and needs no table entry of its own. */
+export const DUEL_ATTRITION = 1;
+
 /** The OPENING bar: half the roster, rounded up. Derived rather than hardcoded
  *  so it cannot rot when the map changes.
  *
@@ -1802,6 +1826,35 @@ export function beginTurn(state: GameState, rng: Rng): GameState {
         }
       }
     }
+    // A duel wears the ground it is fought over. Both of the two lands the
+    // fight is ABOUT, and nothing else: this is what makes a duel converge now
+    // that there is no clock, and a drain that bled one side would be a timer
+    // in the player's colours. It runs on the gauntlet as it stands AFTER the
+    // wrap, so a duel that has just retired costs nothing more.
+    //
+    // Before the wild-lands heal below, so a land that is both wild and under
+    // siege nets out the way the log reads it rather than mending the point it
+    // has just lost inside one batch.
+    if (gauntlet.kind === "duel") {
+      for (const land of [gauntlet.staked, gauntlet.enemy]) {
+        const before = defenseOf({ defense, defenseMax }, land);
+        if (before <= 0) continue;
+        defense = applyDamage(
+          { defense, defenseMax }, land, DUEL_ATTRITION,
+        );
+        const moved = before - defenseOf({ defense, defenseMax }, land);
+        if (moved <= 0) continue;
+        // The land's OWN seat owns the line, the same turn-start-clock
+        // convention the wild-lands heal below keeps: charging both to the
+        // human would tag the enemy's loss `.log-mine` and put it through
+        // every filter as something the player did.
+        const owner = players.find((pl) => pl.factionId === land);
+        events.push({
+          turn: state.turn, playerId: owner?.id ?? p.id, type: "levied",
+          targetFactionId: land, amount: moved,
+        });
+      }
+    }
     // A land that was hit THIS round does not also grow back in it. The heal
     // ran after the marches landed, so a raid arriving on a wild land could be
     // undone in the same batch: the log said the raid landed for 1 and the
@@ -2393,33 +2446,25 @@ export function keepPlaying(state: GameState): GameState {
  *  at a wrap and a stake is about the player's own realm, which their own turn
  *  may have changed since.
  *
- *  **A realm holding one land stakes nothing**, and passes `null`. There is
- *  nothing to bet there that is not the run itself, and a rule that bets the
- *  run on turn 1 is a rule that ends runs on turn 1. Such a duel can be won
- *  and cannot be lost; it still ends, because winning it is a capture like any
- *  other.
+ *  **Every duel is staked, including the first one of a run.** It was optional
+ *  on a one-land realm first, and that was wrong twice over: losing your home
+ *  is vassalage rather than defeat, so the bet was never the run; and a duel
+ *  with nothing staked can only be WON, which left the opening duel of every
+ *  run with one ending. Measured on a real 44-turn run, that duel was still
+ *  going at the end and no duel had ever settled.
  *
  *  It moves the gauntlet and nothing else. The duel takes effect from the next
  *  seat onward - the turn it was answered in is the player's own, and taking
  *  it off them would be answering a question by skipping the asker. */
 export function pickDuel(
-  state: GameState, enemyId: string, stakeId: string | null = null,
+  state: GameState, enemyId: string, stakeId: string,
 ): GameState {
   if (state.phase !== "playing") return state;
   if (state.gauntlet.kind !== "picking") return state;
   if (!state.gauntlet.candidates.includes(enemyId)) return state;
   const home = humanFactionOf(state);
   if (home === null) return state;
-  // The realm's SIZE and not the length of the legal list, because they answer
-  // different questions: a wide realm with one land near the enemy still has
-  // something to bet, and must bet it. `null` is the one-land board alone.
-  const alone =
-    fullRealmOf(home, state.overlords, state.incorporated).size <= 1;
-  if (stakeId === null) {
-    if (!alone) return state;
-  } else if (!duelStakes(viewOf(state), home, enemyId).includes(stakeId)) {
-    return state;
-  }
+  if (!duelStakes(viewOf(state), home, enemyId).includes(stakeId)) return state;
   return {
     ...state,
     gauntlet: {

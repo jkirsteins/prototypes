@@ -2819,16 +2819,21 @@ describe("the duel chip", () => {
     ).toEqual(["Gamma", "Beta"]);
   });
 
-  it("names the enemy alone when the realm staked nothing", () => {
-    // A one-land realm has nothing to bet that is not the run itself, so the
-    // chip must not print a dangling "staking" with no land after it.
+  it("names a boss duel's stake the same way as any other", () => {
+    // Every duel is staked, the opening one included - so the chip has one
+    // shape and not two, and there is no dangling "staking" with no land
+    // after it to guard against.
     const { container, hud } = setup();
     const g = newPlaying();
     hud.update({
       ...g, turn: 8,
-      gauntlet: { kind: "duel", enemy: "gamma", staked: null, decided: null, boss: false },
+      gauntlet: {
+        kind: "duel", enemy: "gamma", staked: "beta", decided: null,
+        boss: true,
+      },
     });
-    expect(q(container, ".status-duel").textContent).toBe("Duel Gamma");
+    expect(q(container, ".status-duel").textContent)
+      .toBe("Duel Gamma - staking Beta");
   });
 
   it("hides itself when the run is between duels", () => {
