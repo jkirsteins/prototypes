@@ -286,3 +286,31 @@ What the browser FOUND, and none of it is above:
 The ranked recommendation from the playtest: **an event at the wrap that
 retires a duel un-won**, with a notice in the same shape as the win, plus a HUD
 chip naming the enemy and the turns left. Then the chip/badge collision.
+
+## After the two fixes (silent duel endings, chip under the badge)
+
+Both are fixed and both were checked in a headed Chrome over CDP against the
+dev server. What is NOT verified, and what a later pass should pick up:
+
+- **The `duel-lost` ending has never been seen on a screen.** It is covered by
+  `tests/gauntlet.test.ts` ("says so when the ENEMY is the one who took a
+  land"), and it shares its notice, beat and log machinery with the lapse that
+  WAS driven in a browser - but nobody has watched one land. It is awkward to
+  boot: a duel enemy that can take a land off you needs a ruler, and the
+  bordering candidate on the seeds tried (`seed=7`, Selonians against
+  Jersikans) carries `keeps-to-itself`, so its arrow breaks a land without
+  taking it. `Raid out of Jersikans reaches Selonians` on a land at 0 defense
+  is that rule, working as written.
+- **The beat is not eyeballed either.** `PRESENTATION_RULES` frames both new
+  endings, so each takes the camera, the glow and a label, and the tables are
+  exhaustive - but the browser pass caught the modal and the log line, not the
+  label that runs before them.
+- **The chip dodges BADGES and nothing else.** `SceneCtx.keepOut` is fed the
+  threat badges alone. Land names, river labels and another arrow's own chip
+  are not keep-out boxes, and a chip can still land on one. The badges were
+  what the playtest measured; the rest is unmeasured rather than ruled out.
+- **A chip with nowhere clear to go keeps its least-covered station.** With
+  four sideways steps either way there is 60 units of room on each side, which
+  clears every badge on both maps from a chip centred on one - but a board that
+  crowded it further would degrade to "least bad" rather than to "clear", and
+  nothing says so on screen.
