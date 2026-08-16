@@ -516,3 +516,54 @@ waking anybody and the acting map would never grow. If a later playtest says
 the split reads as two rules rather than one, the fix is to make absorption
 universal and give section C a different way to wake the map, not to widen this
 one quietly.
+
+---
+
+## F. A vassal fights its lord's fights, and never leaves
+
+Two rules are deleted and one is added, and they are one idea: a vassal is part
+of a realm rather than a seat with a life of its own.
+
+- **Vassal independence is gone.** No gate, no escape, no recovering your
+  freedom by healing past a threshold. A land that has been taken stays taken.
+- **A vassal takes a turn only while its side is duelling.** Its lord is one of
+  the two sides, or it does nothing - it sits out the world tick along with the
+  rest of the map.
+
+### What this undoes, deliberately
+
+**The `autoTransfer` cap goes with it.** That cap - an AI taker garrisoning to
+one under the new vassal's independence gate - existed for exactly one reason:
+an AI arming its conquest past the gate was paying for its own vassal's escape,
+which measured as a median vassalage of four turns. With no gate there is
+nothing to stay under, so a conquest moves a proper garrison again and the
+question the cap answered stops being a question.
+
+**Everything that read the gate has to go or change.** It is not one predicate:
+the AI's own healing branch, the hover, the block reasons and the target
+explanations all quote it. A gate that no longer exists must not survive as a
+number the player is still shown.
+
+### Why this is a simplification and not a loss
+
+The refactor spec predicted vassalage would become the game's central tension,
+and the playtest measured what that actually felt like: 34 independences
+against 65 submissions in 43 turns, no realm holding, one AI reaching 76% of
+the win bar and falling back to 23% uncontested. A bloc that comes apart while
+you watch is not tension, it is churn - and the churn was loudest in the half
+of the game the player was not even looking at.
+
+Confining a vassal's turns to its lord's duels also does something the world
+tick needed: the tick measured a median of 13.5 seconds and up to 24 once the
+map was woken, and most of that was seats with no bearing on the player's
+fight. A vassal that only fights its lord's fights is a vassal whose turn the
+player has a reason to watch.
+
+### What stays
+
+Taking a land still seats a chief on it (section C), and that chief still
+brings its own people's build. The difference is what the chief is FOR: it is
+who leads that land's deck when the realm goes to war, not somebody biding
+their time. A chiefless land taken in a duel is still absorbed rather than
+sworn (the section above), and that distinction still means something - an
+absorbed land is not a member of the bloc at all.
