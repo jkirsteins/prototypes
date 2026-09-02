@@ -3,6 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { causeFrom, feltTemperature, stepPlayer, walkSpeed } from "../src/sim/player";
+import { regionState } from "../src/sim/regionstate";
 
 describe("player physiology", () => {
   it("regenerates when fed, warm and idle", () => {
@@ -45,8 +46,8 @@ describe("player physiology", () => {
   it("a fire and a cabin at camp make the difference", () => {
     const { state, world } = newGame(1);
     const bare = feltTemperature(state, world, -20);
-    state.regions[state.player.region].fire.lit = true;
-    state.regions[state.player.region].structures.cabin = true;
+    regionState(state, world, state.player.region).fire.lit = true;
+    regionState(state, world, state.player.region).structures.cabin = true;
     expect(feltTemperature(state, world, -20)).toBeCloseTo(bare + 30, 5);
     // Out at the forest the fire and roof do not reach you.
     placeAtSpot(state, world, state.player.region, "forest");
@@ -59,7 +60,7 @@ describe("player physiology", () => {
     for (let m = 0; m < 30; m++) stepPlayer(state, world, 5, 1);
     expect(state.player.wetness).toBeCloseTo(60, 0);
     state.weather.precip = "none";
-    state.regions[state.player.region].fire.lit = true;
+    regionState(state, world, state.player.region).fire.lit = true;
     for (let m = 0; m < 40; m++) stepPlayer(state, world, 5, 1);
     expect(state.player.wetness).toBe(0);
   });

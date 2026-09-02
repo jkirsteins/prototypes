@@ -1,7 +1,14 @@
+/**
+ * The map is a viewport of 72 by 36 glyphs centred on the player. At zoom 0
+ * a glyph is one cell; at coarser zooms a glyph is a block of cells drawn as
+ * its commonest ground. Regions never visited are fog; regions only seen from
+ * next door are dim. The player never pans; the world moves under them.
+ */
 import type { Calendar } from "../sim/calendar";
 import { cellOf } from "../sim/position";
+import { discovery, SEEN, VISITED } from "../sim/regionstate";
 import type { GameState, Terrain } from "../sim/types";
-import type { World } from "../world/gen";
+import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 
 const GLYPH: Record<Terrain, string> = {
@@ -9,61 +16,175 @@ const GLYPH: Record<Terrain, string> = {
 };
 
 export const SNOW_SHOWN_CM = 5;
+export const VIEW_W = 72;
+export const VIEW_H = 36;
+/** Cells per glyph at each zoom level. */
+export const ZOOMS = [1, 3, 9, 40];
+/** Priority when a block's ground is tied: what the eye should see first. */
+const TIE_ORDER: Terrain[] = ["water", "fell", "rock", "spruce", "pine", "birch", "bog", "meadow"];
+
+export function zoomLabel(zoom: number): string {
+  const km = ZOOMS[zoom] * 0.3;
+  return km < 1 ? `${Math.round(km * 1000)} m per glyph` : `${km.toFixed(1)} km per glyph`;
+}
+
+/** Top-left cell of the viewport, so the player sits in the middle glyph. */
+export function viewOrigin(state: GameState, world: World, zoom: number): { x0: number; y0: number } {
+  const z = ZOOMS[zoom];
+  const px = Math.floor(state.player.x);
+  const py = Math.floor(state.player.y);
+  const spanX = VIEW_W * z;
+  const spanY = VIEW_H * z;
+  let x0 = px - Math.floor(spanX / 2);
+  let y0 = py - Math.floor(spanY / 2);
+  x0 = Math.max(0, Math.min(world.w - spanX, x0));
+  y0 = Math.max(0, Math.min(world.h - spanY, y0));
+  // A world smaller than the view at this zoom sits at the top left.
+  if (spanX > world.w) x0 = 0;
+  if (spanY > world.h) y0 = 0;
+  return { x0, y0 };
+}
+
+/** The commonest ground in a block, sampled on a 3 by 3 pattern for big blocks. */
+function blockTerrain(world: World, x0: number, y0: number, z: number): Terrain {
+  if (z === 1) return terrainPeek(world, x0, y0);
+  const counts = new Map<Terrain, number>();
+  const step = Math.max(1, Math.floor(z / 3));
+  for (let j = step >> 1; j < z; j += step) {
+    for (let i = step >> 1; i < z; i += step) {
+      const t = terrainPeek(world, x0 + i, y0 + j);
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+  let best: Terrain = "water";
+  let bestN = -1;
+  for (const t of TIE_ORDER) {
+    const n = counts.get(t) ?? 0;
+    if (n > bestN) {
+      bestN = n;
+      best = t;
+    }
+  }
+  return best;
+}
 
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
-  const marks = state.regions.map((r) => `${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? "F" : ""}`).join(",");
+  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? "F" : ""}`).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
-  return `${cellOf(state, world)}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}`;
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const z = ZOOMS[ui.zoom];
+  const cell = cellOf(state, world);
+  return `${ui.zoom}|${x0}|${y0}|${z > 1 ? cell : cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
   const cur = state.player.region;
   const sel = ui.selected;
   const snow = state.weather.snowCm > SNOW_SHOWN_CM;
+  const z = ZOOMS[ui.zoom];
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const playerCell = cellOf(state, world);
+  const toGlyph = (cell: number): number => {
+    const c = cellAt(world, cell);
+    const gx = Math.floor((c.x - x0) / z);
+    const gy = Math.floor((c.y - y0) / z);
+    if (gx < 0 || gy < 0 || gx >= VIEW_W || gy >= VIEW_H) return -1;
+    return gy * VIEW_W + gx;
+  };
+
   const markerAt = new Map<number, { glyph: string; cls: string }>();
-  world.regions.forEach((_r, id) => {
-    const st = state.regions[id];
+  for (const [idText, st] of Object.entries(state.regions)) {
+    const id = Number(idText);
+    if (discovery(state, id) !== VISITED) continue;
     let m: { glyph: string; cls: string } | null = null;
     if (st.fire.lit) m = { glyph: "F", cls: "mk-fire" };
     else if (st.structures.cabin || st.structures.leanTo) m = { glyph: "H", cls: "mk-shelter" };
-    if (m) markerAt.set(st.campCell, m);
-  });
-  markerAt.set(playerCell, { glyph: "@", cls: "mk-player" });
-  const routeCells = new Set(state.route?.path ?? []);
-  const pileCells = new Set(Object.keys(state.piles).map(Number));
+    if (m) {
+      const g = toGlyph(st.campCell);
+      if (g >= 0) markerAt.set(g, m);
+    }
+  }
+  const playerGlyph = toGlyph(playerCell);
+  markerAt.set(playerGlyph, { glyph: "@", cls: "mk-player" });
+  const routeGlyphs = new Set<number>();
+  for (const c of state.route?.path ?? []) {
+    const g = toGlyph(c);
+    if (g >= 0) routeGlyphs.add(g);
+  }
+  const pileGlyphs = new Set<number>();
+  for (const k of Object.keys(state.piles)) {
+    const g = toGlyph(Number(k));
+    if (g >= 0) pileGlyphs.add(g);
+  }
 
-  const { w, h, cells } = world;
+  // Region per glyph, from the block's centre cell, then borders between glyphs.
+  const regions = new Int32Array(VIEW_W * VIEW_H);
+  const terrains: Terrain[] = new Array(VIEW_W * VIEW_H);
+  for (let gy = 0; gy < VIEW_H; gy++) {
+    for (let gx = 0; gx < VIEW_W; gx++) {
+      const cx = x0 + gx * z;
+      const cy = y0 + gy * z;
+      const i = gy * VIEW_W + gx;
+      const inside = cx < world.w && cy < world.h;
+      regions[i] = inside ? regionPeek(world, cx + (z >> 1), cy + (z >> 1)) : -1;
+      // Fog needs no ground; skip the sampling where nothing is known.
+      terrains[i] = inside && discovery(state, regions[i]) > 0 ? blockTerrain(world, cx, cy, z) : "water";
+    }
+  }
+  const drawBorders = z <= 3;
+
   const parts: string[] = [];
+  parts.push(`<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+ closer</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === ZOOMS.length - 1 ? "disabled" : ""} title="Farther (minus key)">- farther</button><span class="dim">${zoomLabel(ui.zoom)}, ${(VIEW_W * z * 0.3).toFixed(0)} by ${(VIEW_H * z * 0.3).toFixed(0)} km on screen, centred on you</span></div>`);
   parts.push(`<div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}">`);
-  for (let i = 0; i < cells.length; i++) {
-    const c = cells[i];
-    const cls = [`c t-${c.terrain}`];
-    const reg = c.region;
-    if (c.x > 0 && cells[i - 1].region !== reg) cls.push("bl");
-    if (c.x < w - 1 && cells[i + 1].region !== reg) cls.push("br");
-    if (c.y > 0 && cells[i - w].region !== reg) cls.push("bt");
-    if (c.y < h - 1 && cells[i + w].region !== reg) cls.push("bb");
-    if (reg === cur) cls.push("cur");
-    if (sel !== null && reg === sel) cls.push("sel");
-    if (routeCells.has(i)) cls.push("rt");
-    let glyph = GLYPH[c.terrain];
-    if (snow && c.terrain === "meadow") glyph = "*";
+  for (let i = 0; i < VIEW_W * VIEW_H; i++) {
+    const gx = i % VIEW_W;
+    const gy = Math.floor(i / VIEW_W);
+    const reg = regions[i];
+    const seen = reg >= 0 ? discovery(state, reg) : 0;
+    const cls = ["c"];
+    let glyph = " ";
+    let title = "";
+    if (reg < 0) {
+      cls.push("void");
+    } else if (seen === 0) {
+      cls.push("fog");
+      title = "unknown ground";
+    } else {
+      const t = terrains[i];
+      cls.push(`t-${t}`);
+      if (seen === SEEN) cls.push("dim");
+      if (drawBorders) {
+        if (gx > 0 && regions[i - 1] !== reg) cls.push("bl");
+        if (gx < VIEW_W - 1 && regions[i + 1] !== reg) cls.push("br");
+        if (gy > 0 && regions[i - VIEW_W] !== reg) cls.push("bt");
+        if (gy < VIEW_H - 1 && regions[i + VIEW_W] !== reg) cls.push("bb");
+      }
+      if (reg === cur) cls.push("cur");
+      if (sel !== null && reg === sel) cls.push("sel");
+      if (routeGlyphs.has(i)) cls.push("rt");
+      glyph = GLYPH[t];
+      if (snow && t === "meadow") glyph = "*";
+      // Only regions already built get named; building one here would fill its chunks for a tooltip.
+      title = seen === VISITED ? (world.regions.get(reg)?.name ?? "known country") : "seen from a distance";
+      if (pileGlyphs.has(i)) {
+        cls.push("pl");
+        title += ", something lies here";
+      }
+    }
     const m = markerAt.get(i);
     if (m) {
       cls.push("mk", m.cls);
       glyph = m.glyph;
-    } else if (pileCells.has(i)) {
-      cls.push("pl");
+      if (m.cls === "mk-player") title = `you, ${title}`;
     }
-    const title = `${world.regions[reg].name}${pileCells.has(i) ? ", something lies here" : ""}`;
-    parts.push(`<span class="${cls.join(" ")}" data-act="select" data-r="${reg}" data-cell="${i}" title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
+    parts.push(`<span class="${cls.join(" ")}"${act} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
   parts.push("</div>");
   parts.push(
-    `<div class="legend"><span>~ water</span><span>A spruce</span><span>T pine</span><span>Y birch</span><span>. meadow</span><span>" bog</span><span>n rock</span><span>^ fell</span><span class="accent">@ you</span><span>H shelter</span><span>F fire</span><span class="pl-key">underlined: something lies there</span><span>click a region for its card</span></div>`,
+    `<div class="legend"><span>~ water</span><span>A spruce</span><span>T pine</span><span>Y birch</span><span>. meadow</span><span>" bog</span><span>n rock</span><span>^ fell</span><span class="accent">@ you</span><span>H shelter</span><span>F fire</span><span class="pl-key">underlined: something lies there</span><span class="fog-key">dark: never been there</span></div>`,
   );
   return parts.join("");
 }

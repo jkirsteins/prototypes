@@ -1,6 +1,7 @@
 import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
+import { cellAt } from "../world/gen";
 import { cellOf } from "./position";
 import {
   type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
@@ -125,7 +126,7 @@ export function pilesIn(state: GameState, world: World, region: number): { cell:
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];
-    if (inv && !isEmpty(inv) && world.cells[cell].region === region) out.push({ cell, inv });
+    if (inv && !isEmpty(inv) && cellAt(world, cell).region === region) out.push({ cell, inv });
   }
   return out;
 }

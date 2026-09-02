@@ -1,11 +1,13 @@
 /**
  * Routes over the cell grid. A* with 4-connected steps and terrain costs, so
  * a route walks around the lake and across the bog only when it must. Water
- * is impassable. Results are cached per (from, to) for the life of a world.
+ * is impassable. The search is confined to a box around the two ends with a
+ * margin, which keeps a region hop to a few thousand cells on a world of
+ * millions. Results are cached per (from, to) for the life of a world.
  */
 import type { Terrain } from "../sim/types";
 import { CELL_KM } from "../units";
-import type { World } from "./gen";
+import { terrainOf, type World } from "./cells";
 
 /** Walking speed on this ground relative to open forest. */
 export const TERRAIN_SPEED: Record<Terrain, number> = {
@@ -16,11 +18,15 @@ export function passable(t: Terrain): boolean {
   return TERRAIN_SPEED[t] > 0;
 }
 
+/** Cells of slack around the endpoints' bounding box. */
+export const ROUTE_MARGIN = 40;
+
 const caches = new WeakMap<World, Map<string, number[] | null>>();
 
 /**
  * Cells to step through from `from` to `to`, excluding `from` and including
- * `to`, or null when no land route exists. An empty array means already there.
+ * `to`, or null when no land route exists within the search box. An empty
+ * array means already there.
  */
 export function findRoute(world: World, from: number, to: number): number[] | null {
   if (from === to) return [];
@@ -40,55 +46,96 @@ export function findRoute(world: World, from: number, to: number): number[] | nu
 }
 
 function astar(world: World, from: number, to: number): number[] | null {
-  const { w, h, cells } = world;
-  const n = w * h;
-  if (!passable(cells[to].terrain)) return null;
-  const tx = to % w;
-  const ty = Math.floor(to / w);
+  const W = world.w;
+  const fx = from % W;
+  const fy = Math.floor(from / W);
+  const tx = to % W;
+  const ty = Math.floor(to / W);
+  if (!passable(terrainOf(world, tx, ty))) return null;
+  // The search box.
+  const x0 = Math.max(0, Math.min(fx, tx) - ROUTE_MARGIN);
+  const y0 = Math.max(0, Math.min(fy, ty) - ROUTE_MARGIN);
+  const x1 = Math.min(world.w - 1, Math.max(fx, tx) + ROUTE_MARGIN);
+  const y1 = Math.min(world.h - 1, Math.max(fy, ty) + ROUTE_MARGIN);
+  const bw = x1 - x0 + 1;
+  const bh = y1 - y0 + 1;
+  const n = bw * bh;
+  const local = (x: number, y: number) => (y - y0) * bw + (x - x0);
+  const start = local(fx, fy);
+  const goal = local(tx, ty);
+  const speed = new Float32Array(n);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) speed[local(x, y)] = TERRAIN_SPEED[terrainOf(world, x, y)];
+
   const g = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
+  const f = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
   const parent = new Int32Array(n).fill(-1);
   const closed = new Uint8Array(n);
-  const open: number[] = [from];
-  const f = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
-  g[from] = 0;
-  f[from] = heuristic(from % w, Math.floor(from / w), tx, ty);
-  while (open.length) {
-    // Smallest f; the grid is small enough that a scan beats a heap's bookkeeping.
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) if (f[open[i]] < f[open[bi]]) bi = i;
-    const cur = open[bi];
-    open[bi] = open[open.length - 1];
-    open.pop();
-    if (cur === to) break;
+  const inOpen = new Uint8Array(n);
+  // Binary heap on f.
+  const heap: number[] = [];
+  const push = (i: number) => {
+    heap.push(i);
+    let k = heap.length - 1;
+    while (k > 0) {
+      const p = (k - 1) >> 1;
+      if (f[heap[p]] <= f[heap[k]]) break;
+      [heap[p], heap[k]] = [heap[k], heap[p]];
+      k = p;
+    }
+  };
+  const pop = (): number => {
+    const top = heap[0];
+    const last = heap.pop()!;
+    if (heap.length) {
+      heap[0] = last;
+      let k = 0;
+      for (;;) {
+        const l = 2 * k + 1;
+        const r = l + 1;
+        let m = k;
+        if (l < heap.length && f[heap[l]] < f[heap[m]]) m = l;
+        if (r < heap.length && f[heap[r]] < f[heap[m]]) m = r;
+        if (m === k) break;
+        [heap[m], heap[k]] = [heap[k], heap[m]];
+        k = m;
+      }
+    }
+    return top;
+  };
+  const heuristic = (i: number) => (Math.abs((i % bw) - (goal % bw)) + Math.abs(Math.floor(i / bw) - Math.floor(goal / bw))) / 1.1;
+
+  g[start] = 0;
+  f[start] = heuristic(start);
+  push(start);
+  inOpen[start] = 1;
+  while (heap.length) {
+    const cur = pop();
+    inOpen[cur] = 0;
+    if (cur === goal) break;
+    if (closed[cur]) continue;
     closed[cur] = 1;
-    const cx = cur % w;
-    const cy = Math.floor(cur / w);
-    const nbs = [cx > 0 ? cur - 1 : -1, cx < w - 1 ? cur + 1 : -1, cy > 0 ? cur - w : -1, cy < h - 1 ? cur + w : -1];
+    const cx = cur % bw;
+    const cy = Math.floor(cur / bw);
+    const nbs = [cx > 0 ? cur - 1 : -1, cx < bw - 1 ? cur + 1 : -1, cy > 0 ? cur - bw : -1, cy < bh - 1 ? cur + bw : -1];
     for (const nb of nbs) {
-      if (nb < 0 || closed[nb]) continue;
-      const t = cells[nb].terrain;
-      if (!passable(t)) continue;
-      // Cost of a step is the time it takes: distance over speed, averaged over both cells.
-      const speed = (TERRAIN_SPEED[t] + TERRAIN_SPEED[cells[cur].terrain]) / 2;
-      const ng = g[cur] + 1 / speed;
+      if (nb < 0 || closed[nb] || speed[nb] <= 0) continue;
+      const ng = g[cur] + 1 / ((speed[nb] + speed[cur]) / 2);
       if (ng < g[nb]) {
         g[nb] = ng;
         parent[nb] = cur;
-        f[nb] = ng + heuristic(nb % w, Math.floor(nb / w), tx, ty);
-        if (!open.includes(nb)) open.push(nb);
+        f[nb] = ng + heuristic(nb);
+        if (!inOpen[nb]) {
+          push(nb);
+          inOpen[nb] = 1;
+        }
       }
     }
   }
-  if (parent[to] === -1) return null;
+  if (parent[goal] === -1) return null;
   const path: number[] = [];
-  for (let c = to; c !== from; c = parent[c]) path.push(c);
+  for (let c = goal; c !== start; c = parent[c]) path.push((Math.floor(c / bw) + y0) * W + ((c % bw) + x0));
   path.reverse();
   return path;
-}
-
-function heuristic(x: number, y: number, tx: number, ty: number): number {
-  // Manhattan steps at the best speed on the map.
-  return (Math.abs(x - tx) + Math.abs(y - ty)) / 1.1;
 }
 
 /** Kilometres along a route of cells. */
@@ -100,7 +147,7 @@ export function routeKm(path: number[]): number {
 export function routeMinutes(world: World, path: number[], baseKmh: number): number {
   let minutes = 0;
   for (const c of path) {
-    const v = baseKmh * TERRAIN_SPEED[world.cells[c].terrain];
+    const v = baseKmh * TERRAIN_SPEED[terrainOf(world, c % world.w, Math.floor(c / world.w))];
     minutes += (CELL_KM / Math.max(0.05, v)) * 60;
   }
   return minutes;

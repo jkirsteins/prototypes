@@ -46,8 +46,9 @@ These are the remaining judgement calls and the first things to revisit:
 - **Calendar.** Realistic. The run starts on 1 April at 08:00 in a
   snow-melt spring. Seasons follow the months: spring March to May, summer June
   to August, autumn September to November, winter December to February.
-- **Map scale.** A 72 x 36 grid of 300 m cells, so the world is 21.6 x 10.8
-  km and each of its roughly 16 regions is a few kilometres across.
+- **Map scale.** 300 m cells over a 540 by 390 km world shaped like the far
+  north, generated lazily; regions are about 4 km across and there are some
+  12,000 of them, most never seen.
 - **Weights and logistics.** Felled logs lie where they fall. Every spot in a
   region has a pile and the player carries a pack. Building at a camp uses
   the camp pile plus the pack, so what you cut in the forest has to be
@@ -95,14 +96,23 @@ as per-minute rates so the step size does not change the odds.
 
 ## World
 
-### Cells
+### The world
 
-A 72 x 36 grid, 300 m per cell. Each cell has elevation `e` and moisture `m`
-from seeded fractal value noise, then a terrain, tested top to bottom:
+The world is the far north of Norway, Sweden and Finland in shape and size:
+1,800 by 1,300 cells of 300 m, about 540 by 390 km. Nothing is generated up
+front. Terrain is a pure function of seed and coordinates, cached in 64 by
+64 cell chunks the first time anything looks at them, so a new game and a
+load are instant and only the country the player has touched exists in
+memory.
+
+Geography: a coast to the north and west with a fjord-cut edge from two
+scales of noise; a fell spine running southwest to northeast inland; low
+lake-and-bog country to the east and south. Elevation `e` and moisture `m`
+then pick a terrain, tested top to bottom:
 
 | terrain | glyph | colour      | rule                                  |
 |---------|-------|-------------|---------------------------------------|
-| water   | `~`   | blue        | `e < 0.31`, or the top 3 rows (sea)   |
+| water   | `~`   | blue        | sea, or `e < 0.31` (a lake)           |
 | fell    | `^`   | grey        | `e > 0.84`                            |
 | rock    | `n`   | dark grey   | `e > 0.76`                            |
 | bog     | `"`   | teal-green  | `m > 0.62 and e < 0.5`                |
@@ -111,38 +121,63 @@ from seeded fractal value noise, then a terrain, tested top to bottom:
 | birch   | `Y`   | light green | `e < 0.5`                             |
 | meadow  | `.`   | pale green  | otherwise                             |
 
-Elevation is stretched around 0.52 by 1.4 before the tests and pulled down
-toward the top edge so the sea lies north. Typical shares: water 18 to 35
-percent, forest 45 to 55, bog 4 to 8, rock and fell 7 to 12.
+Typical shares over the whole world: water 25 to 30 percent, forest 45 to
+50, bog 8 to 10, rock and fell 8 to 10. `scripts/mapstats.ts` prints a
+downsampled view of a seed.
 
 When snow depth is above 5 cm every land glyph is drawn in whitened colours
 and meadow becomes `*`.
 
 ### Regions
 
-About 16 seed points on a jittered 6 x 3 lattice (a seed that lands on water
-is nudged to the nearest land cell); each cell joins its nearest seed.
-Regions are the unit of play. Per region, from its cells:
+Regions come from a lattice, not a global pass. One seed point sits in each
+14 by 14 cell lattice square, jittered by a hash of the world seed and its
+lattice coordinates, and a cell belongs to the nearest of the nine seeds
+around it. So any cell knows its region with no Voronoi over the map, and a
+region's id is its lattice index (about 129 by 93 of them, some 12,000).
+Regions are about 4 km across.
 
-- Fractions `forest` (spruce + pine + birch), `spruce`, `pine`, `birch`,
-  `meadow`, `bog`, `rock` (rock + fell), `water`.
-- `wood`: standing trees worth felling. A hectare of boreal forest holds
-  hundreds of stems, so this is not a scarcity number; it is
-  `forest * cells * 60` and drops by 1 per tree, regrowing 0.5 per forest
-  cell per year.
-- Animal capacities, from boreal densities (roe deer 2 to 5 per km2, moose
-  0.5 to 1 per km2, mountain hare 5 to 20 per km2, grouse 10 to 30 per km2)
-  times the region area in km2 (`cells * 0.09`):
-  hare `area * (4 + 16 * (meadow + birch))`, grouse `area * (8 + 20 * (pine + spruce))`,
-  deer `area * 5 * forest`, elk `area * (0.3 + 0.8 * (spruce + bog))`,
-  fish `area * 60 * water` (fish as catchable kilograms rather than heads is
-  out of scope; each fish is a 0.7 kg average).
-  Starting populations are 70 percent of capacity.
-- `name` from a syllable generator (Kald-, Gran-, Myr-, Bjørk- as Bjork-,
-  -vik, -tjern, -heia, -mo, -skog).
-- Neighbours: regions sharing a 4-connected cell edge.
+A region's definition is computed the first time it is asked for, by
+scanning the cells within one lattice step of its square: fractions
+`forest` (spruce + pine + birch), `spruce`, `pine`, `birch`, `meadow`, `bog`,
+`rock` (rock + fell), `water`; `wood` as `forest * cells * 60`; animal
+capacities from boreal densities times area in km2 (`cells * 0.09`): hare
+`area * (4 + 16 * (meadow + birch))`, grouse `area * (8 + 20 * (pine + spruce))`,
+deer `area * 5 * forest`, elk `area * (0.3 + 0.8 * (spruce + bog))`, fish
+`area * 60 * water`; a name from the syllable generator seeded by the id;
+neighbours as the regions sharing a 4-connected edge, with seed-to-seed
+distance times 1.25 for migration weights.
 
-The start region is the most central region with `forest >= 0.4`.
+Region state (animals, camp, structures, piles' host) is created the first
+time a region is entered, migrated into or looked at, at 70 percent of
+capacity. Only touched regions are simulated each day, and animals migrate
+only between touched regions; untouched country sits at its starting
+numbers, which is what it would settle to anyway.
+
+The run starts in the forested country south of the fells: the first lattice
+square spiralling out from an anchor at 58 percent of the width and 72
+percent of the height whose region is at least 45 percent forest, has 120
+land cells, under 15 percent water and at least three spots.
+
+### Fog of war
+
+`state.discovered` maps region id to 1 (seen) or 2 (visited). Entering a
+region marks it visited and its neighbours seen. Undiscovered regions draw
+as dark fog with no glyphs and cannot be clicked or travelled to; seen
+regions draw dimmed; visited regions draw fully with their name. The set is
+saved with the run.
+
+### Viewport and zoom
+
+The map panel is always 72 by 36 glyphs centred on the player; there is no
+panning. Zoom levels are 1, 3, 9 and 40 cells per glyph: 300 m (22 by 11 km
+on screen), 900 m (65 by 32 km), 2.7 km (194 by 97 km) and 12 km (the whole
+north). Two buttons and the plus and minus keys step between them. A coarse
+glyph shows the commonest ground among a 3 by 3 sample of its block, ties
+going to water, fell, rock, then forest so coasts and mountains stay
+legible; region borders are drawn at the two closest zooms. The coarse map
+peeks at terrain without filling chunks and never builds a region just to
+name it, so every level renders in a few milliseconds.
 
 ### Position
 

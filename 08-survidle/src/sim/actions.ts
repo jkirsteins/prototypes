@@ -8,6 +8,7 @@ import type { World } from "../world/gen";
 import { feedFire } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { atCamp } from "./position";
+import { regionState } from "./regionstate";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, RACK_MAX_KG } from "./items";
 import { log } from "./log";
 import type { GameState, ItemId } from "./types";
@@ -45,7 +46,7 @@ export function autoEat(state: GameState, world: World, rng: Rng): void {
 export function addFirewood(state: GameState, world: World, kg: number): number {
   const p = state.player;
   if (!atCamp(state, world)) return 0;
-  const st = state.regions[p.region];
+  const st = regionState(state, world, p.region);
   if (!st.fire.lit) return 0;
   return feedFire(state, world, p.region, kg);
 }
@@ -53,7 +54,7 @@ export function addFirewood(state: GameState, world: World, kg: number): number 
 /** Hangs raw meat on the rack at this camp. Returns kg hung. */
 export function loadRack(state: GameState, world: World): number {
   const p = state.player;
-  const st = state.regions[p.region];
+  const st = regionState(state, world, p.region);
   if (!atCamp(state, world) || !st.structures.dryingRack) return 0;
   const invs = [p.pack, herePile(state, world)];
   const room = RACK_MAX_KG - st.rack.kg;

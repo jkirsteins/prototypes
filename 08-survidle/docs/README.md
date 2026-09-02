@@ -21,9 +21,15 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 
 - **One task at a time**, with a progress bar. Most tasks have a `loop`
   button that repeats them until they cannot continue.
-- **You are a point on the map.** The ASCII map is split into regions by
-  blue borders; your region is outlined in yellow and `@` is your actual
-  cell. What you can do depends on the ground under foot: fell trees and hunt
+- **A big north.** The world is about 540 by 390 km, the shape of the far
+  north: sea and fjords to the northwest, a fell spine inland, lakes and bog
+  to the east. It is generated as you touch it, so loading is instant.
+  Regions are about 4 km across; country you have never entered is fog, and
+  the next valley over is dimly seen. The map is always centred on you;
+  zoom with the two buttons or the plus and minus keys, from 300 m per
+  glyph to the whole north on one screen.
+- **You are a point on the map.** Regions are split by blue borders; your
+  region is outlined in yellow and `@` is your actual cell. What you can do depends on the ground under foot: fell trees and hunt
   in forest, gather stone on rock, fish beside water, hares and berries on
   bog or meadow, and camp things at camp. Named spots (forest, outcrop,
   shore, heath) are waypoints with walk buttons; routes go around lakes and
@@ -72,8 +78,8 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
     npm test
     npm run build
 
-`scripts/mapstats.ts` prints terrain shares and an ASCII dump for a few
-seeds: `npx vite-node scripts/mapstats.ts`.
+`scripts/mapstats.ts` prints a downsampled view of the whole world and its
+terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 
 ## Where the numbers live
 
@@ -81,4 +87,5 @@ seeds: `npx vite-node scripts/mapstats.ts`.
 - `src/sim/items.ts`: weights, foods, recipes, structures, animals.
 - `src/sim/player.ts`: kcal burn, warmth balance, energy, wetness, health.
 - `src/sim/weather.ts`: the temperature curve, precipitation, snow.
-- `src/world/gen.ts`: terrain thresholds, region capacities, spot distances.
+- `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
+- `src/world/gen.ts`: region stats, capacities, spots, the start.

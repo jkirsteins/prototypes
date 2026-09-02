@@ -9,10 +9,10 @@ import type { TaskGroup } from "../src/sim/tasks";
 import { SPECIES } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
-import { mapHtml, mapKey } from "../src/ui/map";
+import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
 import { actionsHtml, deathHtml, inventoryHtml, regionHtml, statsHtml, taskHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { neighbours } from "../src/world/gen";
+import { cellAt, neighbours, regionAt } from "../src/world/gen";
 
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
@@ -40,8 +40,8 @@ describe("reachability: everything in the catalogue has a button", () => {
     for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "rest", "sleep", "haul"]) {
       expect(html).toContain(`data-opt="${id}:`);
     }
-    for (const nb of world.regions[state.player.region].neighbours) expect(html).toContain(`data-opt="travel:region:${nb.id}"`);
-    for (const s of world.regions[state.player.region].spots) {
+    for (const nb of regionAt(world, state.player.region).neighbours) expect(html).toContain(`data-opt="travel:region:${nb.id}"`);
+    for (const s of regionAt(world, state.player.region).spots) {
       if (s.id !== "camp") expect(html).toContain(`data-opt="walk:spot:${s.id}"`);
     }
   });
@@ -69,11 +69,11 @@ describe("panels", () => {
     const ui = newUiState();
     setPanel("map", mapHtml(world, state, ui, cal));
     const cells = document.querySelectorAll("#map .c");
-    expect(cells.length).toBe(world.w * world.h);
+    expect(cells.length).toBe(VIEW_W * VIEW_H);
     expect(document.querySelectorAll("#map .c.bl, #map .c.br, #map .c.bt, #map .c.bb").length).toBeGreaterThan(50);
-    const player = document.querySelector("#map .mk-player")!;
-    expect(player.getAttribute("data-cell")).toBe(String(cellOf(state, world)));
-    expect(document.querySelectorAll(`#map .c.cur`).length).toBe(world.regions[state.player.region].cells.length);
+    expect(document.querySelectorAll("#map .mk-player").length).toBe(1);
+    expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(100);
+    expect(document.querySelectorAll("#map .c.cur").length).toBeGreaterThan(50);
   });
 
   it("marks the route while walking and cells with something lying on them", () => {
@@ -87,11 +87,11 @@ describe("panels", () => {
     expect(document.querySelectorAll("#map .c.rt").length).toBe(state.route!.path.length);
     addItem(herePile(state, world), "stone", 2);
     setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(0); // the player stands on it, so the @ wins
-    const nb = neighbours(world, cellOf(state, world)).find((c) => world.cells[c].terrain !== "water")!;
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    const nb = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, nb);
     setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    expect(document.querySelectorAll("#map .c.pl:not(.mk)").length).toBe(1);
   });
 
   it("bars follow the state", () => {
@@ -102,7 +102,7 @@ describe("panels", () => {
     state.player.health = 42;
     state.task = { id: "rest", progress: 30, duration: 60, repeat: false };
     setPanel("task", taskHtml(state, world, cal));
-    updateBars(state);
+    updateBars(state, world);
     expect(document.querySelector<HTMLElement>("#bar-health")!.style.width).toBe("42.0%");
     expect(document.querySelector("#val-health")!.textContent).toBe("42");
     expect(document.querySelector<HTMLElement>("#bar-task")!.style.width).toBe("50.0%");
@@ -112,14 +112,14 @@ describe("panels", () => {
   it("region card shows the travel button for another region, and the spots and loose piles for here", () => {
     const { state, world } = newGame(21);
     const cal = calendar(0);
-    const nb = world.regions[state.player.region].neighbours[0].id;
+    const nb = regionAt(world, state.player.region).neighbours[0].id;
     setPanel("region", regionHtml(state, world, cal, { ...newUiState(), selected: nb }));
     expect(document.querySelector(`#region [data-act="task"][data-id="travel"][data-arg="region:${nb}"]`)).not.toBeNull();
     setPanel("region", regionHtml(state, world, cal, newUiState()));
     expect(document.querySelector(`#region [data-act="task"][data-id="walk"][data-arg="spot:forest"]`)).not.toBeNull();
     expect(document.querySelector("#region")!.textContent).toContain("you are at camp");
     // Drop something on a bare cell nearby and it is listed with a walk button.
-    const loose = neighbours(world, cellOf(state, world)).find((c) => world.cells[c].terrain !== "water")!;
+    const loose = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, loose);
     addItem(herePile(state, world), "log", 2);
     placeAtSpot(state, world, state.player.region, "camp");

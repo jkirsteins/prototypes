@@ -4,8 +4,9 @@
  * UI never shows coordinates; it shows what these functions say.
  */
 import { CELL_KM } from "../units";
-import { type Cell, neighbours, type RegionDef, type World } from "../world/gen";
+import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
+import { enterRegion, regionState } from "./regionstate";
 import type { GameState, SpotId, Terrain } from "./types";
 
 export function cellIndex(world: World, x: number, y: number): number {
@@ -28,18 +29,25 @@ export function placeAt(state: GameState, world: World, idx: number): void {
   const c = cellCenter(world, idx);
   state.player.x = c.x;
   state.player.y = c.y;
-  state.player.region = world.cells[idx].region;
+  setRegion(state, world, regionOf(world, idx % world.w, Math.floor(idx / world.w)));
+}
+
+/** Records a change of region, discovering it on first entry. */
+export function setRegion(state: GameState, world: World, id: number): void {
+  if (id < 0) return;
+  state.player.region = id;
+  if (state.discovered[id] !== 2) enterRegion(state, world, id);
 }
 
 /** Puts the player at a named spot of a region, for setup and tests. */
 export function placeAtSpot(state: GameState, world: World, region: number, spot: SpotId): void {
-  const s = world.regions[region].spots.find((x) => x.id === spot);
+  const s = regionAt(world, region).spots.find((x) => x.id === spot);
   if (!s) throw new Error(`region ${region} has no ${spot}`);
   placeAt(state, world, s.cell);
 }
 
 export function hereCell(state: GameState, world: World): Cell {
-  return world.cells[cellOf(state, world)];
+  return cellAt(world, cellOf(state, world));
 }
 
 export function hereTerrain(state: GameState, world: World): Terrain {
@@ -49,12 +57,12 @@ export function hereTerrain(state: GameState, world: World): Terrain {
 /** The named spot whose cell the player stands on, if any. */
 export function spotHere(state: GameState, world: World): SpotId | null {
   const idx = cellOf(state, world);
-  const r = world.regions[state.player.region];
+  const r = regionAt(world, state.player.region);
   return r.spots.find((s) => s.cell === idx)?.id ?? null;
 }
 
 export function atCamp(state: GameState, world: World): boolean {
-  return cellOf(state, world) === state.regions[state.player.region].campCell;
+  return cellOf(state, world) === regionState(state, world, state.player.region).campCell;
 }
 
 export function inForest(state: GameState, world: World): boolean {
@@ -73,7 +81,7 @@ export function onHeath(state: GameState, world: World): boolean {
 }
 
 export function byWater(state: GameState, world: World): boolean {
-  return neighbours(world, cellOf(state, world)).some((n) => world.cells[n].terrain === "water");
+  return neighbours(world, cellOf(state, world)).some((n) => cellAt(world, n).terrain === "water");
 }
 
 /** Route length in km from the player to a cell, or null if unreachable. */
@@ -101,7 +109,7 @@ const GROUND: Record<Terrain, string> = {
 
 /** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
 export function describeWhere(state: GameState, world: World): string {
-  const r: RegionDef = world.regions[state.player.region];
+  const r: RegionDef = regionAt(world, state.player.region);
   if (state.route?.path.length) {
     return `on the way to ${state.route.label}, ${routeKm(state.route.path).toFixed(1)} km to go`;
   }

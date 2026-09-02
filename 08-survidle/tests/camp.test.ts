@@ -6,11 +6,13 @@ import { dailyCamp, stepCamp } from "../src/sim/camp";
 import { hourlyEvents } from "../src/sim/events";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { regionState } from "../src/sim/regionstate";
+import { regionAt } from "../src/world/gen";
 
 describe("camp", () => {
   it("burns 3 kg of firewood an hour and feeds itself from camp while you are there", () => {
     const { state, world } = newGame(2);
-    const st = state.regions[state.player.region];
+    const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 6;
@@ -27,7 +29,7 @@ describe("camp", () => {
 
   it("dries 3 kg of raw meat into 1 kg over two dry days", () => {
     const { state, world } = newGame(2);
-    const st = state.regions[state.player.region];
+    const st = regionState(state, world, state.player.region);
     st.structures.dryingRack = true;
     addItem(state.player.pack, "rawMeat", 3);
     expect(loadRack(state, world)).toBeCloseTo(3);
@@ -39,8 +41,8 @@ describe("camp", () => {
   it("snares catch hares where hares are, and a fox takes old catches", () => {
     const { state, world } = newGame(2);
     const rng = new Rng(4);
-    const r = world.regions.find((x) => x.capacity.hare > 5)!;
-    const st = state.regions[r.id];
+    const r = regionAt(world, state.player.region).capacity.hare > 5 ? regionAt(world, state.player.region) : regionAt(world, regionAt(world, state.player.region).neighbours.find((nb) => regionAt(world, nb.id).capacity.hare > 5)!.id);
+    const st = regionState(state, world, r.id);
     st.structures.snares = 5;
     st.pop.hare = r.capacity.hare;
     let caught = 0;
@@ -84,7 +86,7 @@ describe("camp", () => {
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBeGreaterThan(5);
-    state.regions[state.player.region].structures.leanTo = true;
+    regionState(state, world, state.player.region).structures.leanTo = true;
     hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;

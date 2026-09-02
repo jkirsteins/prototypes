@@ -166,7 +166,10 @@ export interface GameState {
   minute: number;
   rng: number;
   player: Player;
-  regions: RegionState[];
+  /** State of every region touched so far, by region id. */
+  regions: Record<number, RegionState>;
+  /** Fog of war: 1 seen from next door, 2 visited. Absent means unknown. */
+  discovered: Record<number, 1 | 2>;
   weather: Weather;
   task: Task | null;
   log: LogEntry[];

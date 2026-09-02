@@ -1,28 +1,14 @@
 import { derive } from "../rng";
-import { generateWorld, type World } from "../world/gen";
+import { generateWorld, regionAt, type World } from "../world/gen";
 import { addItem, emptyInventory } from "./inventory";
 import { log } from "./log";
-import { type GameState, type RegionState, SPECIES, type Species } from "./types";
-
-export function newRegionState(world: World, id: number): RegionState {
-  const r = world.regions[id];
-  const pop = {} as Record<Species, number>;
-  for (const s of SPECIES) pop[s] = r.capacity[s] * 0.7;
-  return {
-    wood: r.wood0,
-    pop,
-    campCell: r.campCell,
-    structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0 },
-    build: {},
-    fire: { lit: false, fuelKg: 0 },
-    rack: { kg: 0, dried: 0 },
-    snareCatch: { count: 0, age: 0 },
-  };
-}
+import { enterRegion } from "./regionstate";
+import type { GameState } from "./types";
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
 export function newGame(seed: number): { state: GameState; world: World } {
   const world = generateWorld(seed);
+  const start = regionAt(world, world.start);
   const pack = emptyInventory();
   addItem(pack, "driedMeat", 1);
   const state: GameState = {
@@ -30,8 +16,8 @@ export function newGame(seed: number): { state: GameState; world: World } {
     minute: 0,
     rng: derive(seed, 99),
     player: {
-      x: (world.regions[world.start].campCell % world.w) + 0.5,
-      y: Math.floor(world.regions[world.start].campCell / world.w) + 0.5,
+      x: (start.campCell % world.w) + 0.5,
+      y: Math.floor(start.campCell / world.w) + 0.5,
       region: world.start,
       health: 100,
       kcal: 5000,
@@ -51,7 +37,8 @@ export function newGame(seed: number): { state: GameState; world: World } {
       autoEat: true,
       autoFeed: true,
     },
-    regions: world.regions.map((r) => newRegionState(world, r.id)),
+    regions: {},
+    discovered: {},
     weather: { precip: "none", clear: true, offset: 0, snowCm: 3, rolledDay: 0 },
     task: null,
     log: [],
@@ -64,6 +51,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
     route: null,
     plan: null,
   };
-  log(state, `1 April. Snow still lies in the shade at ${world.regions[world.start].name}. You have an axe, wool on your back and a kilo of dried meat.`);
+  enterRegion(state, world, world.start);
+  log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
   return { state, world };
 }

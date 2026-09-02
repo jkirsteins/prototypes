@@ -7,17 +7,17 @@ export const SAVE_KEY = "survidle.save";
 /** Away longer than this is simulated as this. */
 export const MAX_OFFLINE_SECONDS = 24 * 3600;
 
-export interface SaveFile { version: 2; savedAt: number; state: GameState }
+export interface SaveFile { version: 3; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 2, savedAt: now, state };
+  const file: SaveFile = { version: 3, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as SaveFile;
-    if (file?.version !== 2 || !file.state || typeof file.savedAt !== "number") return null;
+    if (file?.version !== 3 || !file.state || typeof file.savedAt !== "number") return null;
     return file;
   } catch {
     return null;

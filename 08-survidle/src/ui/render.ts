@@ -9,10 +9,12 @@ export interface UiState {
   /** Log lines produced while the tab was closed, until dismissed. */
   away: LogEntry[] | null;
   confirmAbandon: boolean;
+  /** Index into ZOOMS: 0 is one cell per glyph. */
+  zoom: number;
 }
 
 export function newUiState(): UiState {
-  return { tab: "gather", selected: null, away: null, confirmAbandon: false };
+  return { tab: "gather", selected: null, away: null, confirmAbandon: false, zoom: 0 };
 }
 
 const last = new Map<string, string>();

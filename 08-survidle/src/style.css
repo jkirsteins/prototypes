@@ -129,6 +129,12 @@ small, .dim { color: var(--dim); }
   filter: brightness(var(--bright)) saturate(var(--sat));
   transition: filter 0.5s linear;
 }
+/* Fog of war and the edge of the world. */
+.grid .c.fog { color: transparent; background: #070910; }
+.grid .c.void { color: transparent; background: #030407; }
+.grid .c.dim { opacity: 0.45; }
+.maptools { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.legend .fog-key { color: #4a5160; }
 /* Where you are walking, and where things lie. */
 .grid .c.rt { background: rgba(230, 194, 41, 0.22); }
 .grid .c.pl { text-decoration: underline; text-decoration-color: #e6c229; text-underline-offset: 2px; }

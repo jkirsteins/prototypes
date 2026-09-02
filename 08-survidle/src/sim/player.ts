@@ -6,6 +6,7 @@ import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
 import { atCamp } from "./position";
+import { regionState } from "./regionstate";
 import type { DeathCause, GameState, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { DEEP_SNOW_CM } from "./weather";
 
@@ -38,7 +39,7 @@ export function shelterBonus(r: RegionState): number {
 
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
 export function sheltered(state: GameState, world: World): boolean {
-  const r = state.regions[state.player.region];
+  const r = regionState(state, world, state.player.region);
   return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo);
 }
 
@@ -50,7 +51,7 @@ export function insulation(state: GameState): number {
 
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
-  const r = state.regions[p.region];
+  const r = regionState(state, world, p.region);
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   let felt = ambient + insulation(state);
@@ -109,7 +110,7 @@ export function warmthTarget(felt: number): number {
  */
 export function stepPlayer(state: GameState, world: World, ambient: number, dt: number): Drains {
   const p = state.player;
-  const r = state.regions[p.region];
+  const r = regionState(state, world, p.region);
   const w = state.weather;
   const felt = feltTemperature(state, world, ambient);
   const a = activityOf(state.task);

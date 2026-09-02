@@ -5,11 +5,12 @@ import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, TOOLS } from "../sim/items";
 import { feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
+import { regionState } from "../sim/regionstate";
 import { availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs } from "../sim/tasks";
 import { type GameState, type ItemId, type LogEntry, SPECIES } from "../sim/types";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
-import type { World } from "../world/gen";
+import { regionAt, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
@@ -78,10 +79,10 @@ ${snow}
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const p = state.player;
   const id = ui.selected ?? p.region;
-  const r = world.regions[id];
-  const st = state.regions[id];
+  const r = regionAt(world, id);
+  const st = regionState(state, world, id);
   const here = id === p.region;
-  const nb = world.regions[p.region].neighbours.find((n) => n.id === id);
+  const nb = regionAt(world, p.region).neighbours.find((n) => n.id === id);
   const f = r.frac;
   const pct = (v: number) => `${Math.round(v * 100)}%`;
   const terrain = [
@@ -123,7 +124,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.cabin) built.push("log cabin");
   if (st.structures.dryingRack) built.push("drying rack");
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
-  const unfinished = Object.entries(st.build).filter(([, v]) => (v ?? 0) > 0).map(([k]) => `${k} in progress`);
+  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
   const fire = st.structures.firePit
     ? `<div>fire: ${st.fire.lit ? "<span class=\"good\">burning</span>" : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
     : "";
@@ -206,7 +207,7 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
         return `<button class="mini" data-act="eat" data-food="${f}">eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}</small></button>`;
       })
       .join(" ");
-    const st = state.regions[p.region];
+    const st = regionState(state, world, p.region);
     const wood = invs.reduce((a, inv) => a + qty(inv, "firewood"), 0);
     const fire = st.fire.lit && camp
       ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
@@ -263,7 +264,7 @@ export function deathHtml(state: GameState, world: World, cal: Calendar): string
   const s = state.stats;
   return `<div class="box">
 <h1>Dead</h1>
-<p>${cause} ${fmtDate(cal)}, day ${cal.day} of the run, at ${esc(world.regions[state.player.region].name)}.</p>
+<p>${cause} ${fmtDate(cal)}, day ${cal.day} of the run, at ${esc(regionAt(world, state.player.region).name)}.</p>
 <p>${s.trees} trees felled. ${s.animals} animals taken. ${s.structures} things built. ${s.km.toFixed(1)} km walked.</p>
 <p class="dim">The save is gone. There is no coming back from this one.</p>
 <button class="act" data-act="restart">Begin again, somewhere new</button>

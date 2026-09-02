@@ -1,14 +1,33 @@
-/** Prints terrain shares and an ASCII dump of a few seeds, for tuning the generator. Run: npx vite-node scripts/mapstats.ts */
-import { generateWorld, MAP_W, TERRAINS } from "../src/world/gen";
+/**
+ * Prints a downsampled ASCII view of the whole world plus terrain shares, for
+ * tuning the geography. Samples points rather than generating chunks, so it
+ * is fast. Run: npx vite-node scripts/mapstats.ts [seed]
+ */
+import { generateWorld, regionAt, TERRAINS, WORLD_H, WORLD_W } from "../src/world/gen";
+import { terrainAt } from "../src/world/terrain";
 
 const GLYPH: Record<string, string> = { water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: "." };
-for (const seed of [42, 1, 7, 123]) {
-  const w = generateWorld(seed);
-  const counts: Record<string, number> = {};
-  for (const c of w.cells) counts[c.terrain] = (counts[c.terrain] ?? 0) + 1;
-  const line = TERRAINS.map((t) => `${t} ${((100 * (counts[t] ?? 0)) / w.cells.length).toFixed(0)}%`).join("  ");
-  console.log(`seed ${seed}: ${line}; regions ${w.regions.length}, start ${w.regions[w.start].name} forest ${(w.regions[w.start].forest * 100).toFixed(0)}% rock ${(w.regions[w.start].rock * 100).toFixed(0)}%`);
-  if (seed === 42) {
-    for (let y = 0; y < w.h; y++) console.log(w.cells.slice(y * MAP_W, (y + 1) * MAP_W).map((c) => GLYPH[c.terrain]).join(""));
+const seed = Number(process.argv[2] ?? 42);
+const cols = 120;
+const step = WORLD_W / cols;
+const rows = Math.round(WORLD_H / step / 2); // glyphs are taller than wide
+const counts: Record<string, number> = {};
+let n = 0;
+const t0 = performance.now();
+for (let r = 0; r < rows; r++) {
+  let line = "";
+  for (let c = 0; c < cols; c++) {
+    const x = Math.floor((c + 0.5) * step);
+    const y = Math.floor((r + 0.5) * (WORLD_H / rows));
+    const t = terrainAt(seed, x, y);
+    counts[t] = (counts[t] ?? 0) + 1;
+    n++;
+    line += GLYPH[t];
   }
+  console.log(line);
 }
+console.log(`seed ${seed}: ${TERRAINS.map((t) => `${t} ${((100 * (counts[t] ?? 0)) / n).toFixed(0)}%`).join("  ")}  (${(performance.now() - t0).toFixed(0)} ms for ${n} samples)`);
+const t1 = performance.now();
+const world = generateWorld(seed);
+const start = regionAt(world, world.start);
+console.log(`start ${start.name} at lattice ${world.start}: forest ${(start.forest * 100).toFixed(0)}% water ${(start.frac.water * 100).toFixed(0)}% cells ${start.cells.length} spots ${start.spots.map((s) => `${s.id} ${s.km}`).join(", ")} neighbours ${start.neighbours.length}; world+start in ${(performance.now() - t1).toFixed(0)} ms`);

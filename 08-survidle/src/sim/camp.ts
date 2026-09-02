@@ -1,5 +1,5 @@
 import type { Rng } from "../rng";
-import type { World } from "../world/gen";
+import { cellAt, regionAt, type World } from "../world/gen";
 import { regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
@@ -9,24 +9,26 @@ import {
 } from "./items";
 import { log } from "./log";
 import { atCamp } from "./position";
+import { regionState, touchedRegions } from "./regionstate";
 import { type GameState, PERISHABLES } from "./types";
 
 /** Fires, racks and rot, every minute, everywhere. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number): void {
   const p = state.player;
-  for (const r of world.regions) {
-    const st = state.regions[r.id];
-    const mine = r.id === p.region;
+  for (const id of touchedRegions(state)) {
+    const st = state.regions[id];
+    const mine = id === p.region;
+    const name = () => regionAt(world, id).name;
 
     if (st.fire.lit) {
       st.fire.fuelKg -= (FIRE_BURN_KG_PER_HOUR / 60) * dt;
       if (st.fire.fuelKg <= FIRE_LOW_KG && mine && atCamp(state, world) && p.autoFeed) {
-        feedFire(state, world, r.id, FIRE_MAX_KG - st.fire.fuelKg);
+        feedFire(state, world, id, FIRE_MAX_KG - st.fire.fuelKg);
       }
       if (st.fire.fuelKg <= 0) {
         st.fire.fuelKg = 0;
         st.fire.lit = false;
-        log(state, mine ? "The fire has gone out." : `The fire at ${r.name} has gone out.`, "bad");
+        log(state, mine ? "The fire has gone out." : `The fire at ${name()} has gone out.`, "bad");
       }
     }
 
@@ -35,7 +37,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
       if (st.rack.dried >= RACK_DRY_MINUTES) {
         const dried = st.rack.kg / 3;
         addItem(pile(state, st.campCell), "driedMeat", dried);
-        log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${r.name}.`, "good");
+        log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${name()}.`, "good");
         st.rack.kg = 0;
         st.rack.dried = 0;
       }
@@ -46,8 +48,8 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     const cell = Number(k);
     const inv = state.piles[cell];
     if (!inv) continue;
-    const region = world.cells[cell].region;
-    reportSpoil(state, ageStacks(inv, dt, ambient), region === p.region ? "" : ` at ${world.regions[region].name}`);
+    const region = cellAt(world, cell).region;
+    reportSpoil(state, ageStacks(inv, dt, ambient), region === p.region ? "" : ` at ${regionAt(world, region).name}`);
   }
   reportSpoil(state, ageStacks(p.pack, dt, ambient), " in your pack");
   tidyPiles(state);
@@ -61,8 +63,8 @@ function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where
 }
 
 /** Puts up to `wantKg` of firewood on the fire from pack and camp pile. Returns kg added. */
-export function feedFire(state: GameState, _world: World, region: number, wantKg: number): number {
-  const st = state.regions[region];
+export function feedFire(state: GameState, world: World, region: number, wantKg: number): number {
+  const st = regionState(state, world, region);
   const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - st.fire.fuelKg));
   let added = 0;
   for (const inv of [state.player.pack, pile(state, st.campCell)]) {
@@ -73,14 +75,15 @@ export function feedFire(state: GameState, _world: World, region: number, wantKg
   return added;
 }
 
-export function firewoodAt(state: GameState, region: number): number {
-  return qty(state.player.pack, "firewood") + qty(pile(state, state.regions[region].campCell), "firewood");
+export function firewoodAt(state: GameState, world: World, region: number): number {
+  return qty(state.player.pack, "firewood") + qty(pile(state, regionState(state, world, region).campCell), "firewood");
 }
 
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
 export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng): void {
-  for (const r of world.regions) {
-    const st = state.regions[r.id];
+  for (const id of touchedRegions(state)) {
+    const r = regionAt(world, id);
+    const st = state.regions[id];
     if (st.snareCatch.count > 0) {
       st.snareCatch.age += 1440;
       if (st.snareCatch.age > SNARE_CATCH_MAX_AGE) {
@@ -90,7 +93,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       }
     }
     if (st.structures.snares > 0) {
-      const d = regionDensity(state, world, r.id, "hare", cal);
+      const d = regionDensity(state, world, id, "hare", cal);
       for (let i = 0; i < st.structures.snares; i++) {
         if (st.pop.hare >= 1 && rng.chance(0.3 * d)) {
           st.pop.hare -= 1;

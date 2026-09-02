@@ -4,6 +4,8 @@ import { dailyAnimals, densityLabel } from "../src/sim/animals";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { SPECIES } from "../src/sim/types";
+import { regionState } from "../src/sim/regionstate";
+import { regionAt } from "../src/world/gen";
 
 describe("animals", () => {
   it("labels density in words", () => {
@@ -17,7 +19,9 @@ describe("animals", () => {
   it("conserves land animals under migration and grows toward capacity in summer", () => {
     const { state, world } = newGame(5);
     const rng = new Rng(1);
-    const total = (s: (typeof SPECIES)[number]) => state.regions.reduce((a, r) => a + r.pop[s], 0);
+    const total = (s: (typeof SPECIES)[number]) => Object.values(state.regions).reduce((a, r) => a + r.pop[s], 0);
+    // Touch the neighbours so there is somewhere to migrate to.
+    for (const nb of regionAt(world, state.player.region).neighbours) regionState(state, world, nb.id);
     const before = total("hare");
     const beforeDeer = total("deer");
     // Skip growth by doing one day in November.
@@ -34,11 +38,13 @@ describe("animals", () => {
     const { state, world } = newGame(5);
     const rng = new Rng(2);
     for (let d = 0; d < 120; d++) dailyAnimals(state, world, calendar(1440 * d), rng);
-    for (const r of world.regions) {
-      for (const s of SPECIES) expect(state.regions[r.id].pop[s]).toBeLessThanOrEqual(r.capacity[s] * 1.05 + 1);
+    for (const id of Object.keys(state.regions).map(Number)) {
+      const r = regionAt(world, id);
+      for (const s of SPECIES) expect(regionState(state, world, id).pop[s]).toBeLessThanOrEqual(r.capacity[s] * 1.05 + 1);
     }
-    const deerBefore = state.regions.reduce((a, r) => a + r.pop.deer, 0);
+    const sumDeer = () => Object.values(state.regions).reduce((a, r) => a + r.pop.deer, 0);
+    const deerBefore = sumDeer();
     for (let d = 260; d < 300; d++) dailyAnimals(state, world, calendar(1440 * d), rng);
-    expect(state.regions.reduce((a, r) => a + r.pop.deer, 0)).toBeLessThan(deerBefore);
+    expect(sumDeer()).toBeLessThan(deerBefore);
   });
 });

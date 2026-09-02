@@ -11,7 +11,7 @@ import type { GameState, ItemId, TaskId } from "./sim/types";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
-import { mapHtml, mapKey } from "./ui/map";
+import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
   actionsHtml, awayHtml, clockHtml, deathHtml, gearHtml, inventoryHtml, logHtml,
   regionHtml, statsHtml, taskHtml,
@@ -77,7 +77,7 @@ function render() {
   setPanel("actions", actionsHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
-  updateBars(state);
+  updateBars(state, world);
   updateSky(state, cal, ambient);
 
   const overlay = document.getElementById("overlay")!;
@@ -131,6 +131,9 @@ function onClick(ev: Event) {
       break;
     case "tab":
       ui.tab = target.dataset.tab as TaskGroup;
+      break;
+    case "zoom":
+      zoomBy(target.dataset.dir === "in" ? -1 : 1);
       break;
     case "select": {
       const r = Number(target.dataset.r);
@@ -187,8 +190,18 @@ function onClick(ev: Event) {
   render();
 }
 
+function zoomBy(delta: number) {
+  ui.zoom = Math.max(0, Math.min(ZOOMS.length - 1, ui.zoom + delta));
+}
+
 boot();
 document.addEventListener("click", onClick);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "+" || ev.key === "=") zoomBy(-1);
+  else if (ev.key === "-" || ev.key === "_") zoomBy(1);
+  else return;
+  render();
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") saveGame(state);
 });
