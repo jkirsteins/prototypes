@@ -14,7 +14,7 @@ import {
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
-import { oddsFactor, train, wearFactor } from "./skills";
+import { craftSuccess, injuryChance, oddsFactor, spoiledNeeds, train, wearFactor } from "./skills";
 import {
   atCamp, byWater, cellCenter, cellIndex, cellOf, hereTerrain, inForest, onHeath, onRock,
   placeAt, setRegion, spotHere, SPOT_WORDS, straightKm,
@@ -605,7 +605,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (def.bone) produce(state, world, "bone", def.bone);
         if (def.sinew) produce(state, world, "sinew", def.sinew);
         log(state, `A ${def.name}. ${def.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
-        if (def.injury && rng.chance(def.injury)) {
+        const injury = injuryChance(state, s);
+        if (injury > 0 && rng.chance(injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);
           log(state, "It did not go down easily. You are hurt.", "bad");
@@ -642,6 +643,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const rec = RECIPES[rid];
       if (!canConsume(invs, rec.needs)) {
         log(state, `The ${rec.name} is left unfinished: the materials are gone.`, "bad");
+        return;
+      }
+      if (!rng.chance(craftSuccess(state, rid))) {
+        const lost = spoiledNeeds(rec.needs);
+        consume(invs, lost);
+        if (rec.tool) wearTool(p, rec.tool, wearFactor(state, world, "craft", rid));
+        log(state, `The ${rec.name} is spoiled: ${needsList(lost)} wasted.`, "bad");
         return;
       }
       consume(invs, rec.needs);

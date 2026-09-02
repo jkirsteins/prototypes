@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
-import { addItem, tool } from "../src/sim/inventory";
+import { addItem, hasTool, qty, tool } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { deserialize, serialize } from "../src/sim/save";
 import {
-  gap, level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills,
-  poolCapacity, SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor,
+  craftSuccess, gap, injuryChance, level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel,
+  masteryMinutes, newSkills, poolCapacity, SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor,
 } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -208,5 +208,34 @@ describe("soft gates", () => {
     expect(speedFactor(state, world, "build", "cabin")).toBeCloseTo(1.03 / 1.3 ** 6, 6);
     state.skills.building.xp = levelMinutes(10);
     expect(speedFactor(state, world, "build", "cabin")).toBeCloseTo(1.09, 6);
+  });
+});
+
+describe("backfire under level", () => {
+  it("elk at Hunting 1 hurts you 85% of the time; deer at Hunting 2, 20%", () => {
+    const { state } = newGame(3);
+    expect(injuryChance(state, "elk")).toBeCloseTo(0.85, 9);
+    state.skills.hunting.xp = levelMinutes(2);
+    expect(injuryChance(state, "deer")).toBeCloseTo(0.2, 9);
+    state.skills.hunting.xp = levelMinutes(8);
+    expect(injuryChance(state, "elk")).toBeCloseTo(0.15, 9);
+    expect(injuryChance(state, "hare")).toBe(0);
+  });
+
+  it("a bow at Crafting 1 comes out one time in 16; a failure spoils half the materials", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    expect(craftSuccess(state, "bow")).toBeCloseTo(1 / 16, 9);
+    state.player.tools.push({ id: "knife", durability: 100 });
+    addItem(state.player.pack, "log", 1);
+    addItem(state.player.pack, "cordage", 3);
+    startTask(state, world, cal, "craft", "bow");
+    // Seed 1's first roll in run() is above 1/16, so this attempt fails.
+    run(g, 400);
+    expect(state.task).toBeNull();
+    expect(hasTool(state.player, "bow")).toBe(false);
+    expect(qty(state.player.pack, "log")).toBe(0);
+    expect(qty(state.player.pack, "cordage")).toBe(2);
+    expect(state.log.some((e) => e.text.startsWith("The bow is spoiled"))).toBe(true);
   });
 });

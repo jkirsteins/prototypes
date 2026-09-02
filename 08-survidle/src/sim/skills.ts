@@ -4,9 +4,9 @@
  * hours. What a level buys is what practice buys: speed, odds, less waste.
  */
 import type { World } from "../world/gen";
-import { RECIPE_IDS, STRUCTURE_IDS } from "./items";
+import { ANIMALS, KG_ITEMS, RECIPE_IDS, STRUCTURE_IDS, type Need } from "./items";
 import { hereTerrain } from "./position";
-import type { GameState, SkillId, SkillState, TaskId } from "./types";
+import type { GameState, RecipeId, SkillId, SkillState, Species, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
@@ -118,6 +118,21 @@ export function gap(state: GameState, key: string): number {
   const rec = RECOMMENDED[key];
   if (!rec) return 0;
   return Math.max(0, rec.level - skillLevel(state, rec.skill));
+}
+
+/** Chance the animal hurts you: its own, plus ten points per level short. */
+export function injuryChance(state: GameState, species: Species): number {
+  return Math.min(1, ANIMALS[species].injury + 0.1 * gap(state, `hunt:${species}`));
+}
+
+/** Chance a piece comes out: halved per level short of the recommendation. */
+export function craftSuccess(state: GameState, recipe: RecipeId): number {
+  return 0.5 ** gap(state, `craft:${recipe}`);
+}
+
+/** Half of each need, for a spoiled attempt: counts rounded up, kilograms exact. */
+export function spoiledNeeds(needs: Need[]): Need[] {
+  return needs.map((n) => ({ ...n, qty: KG_ITEMS.has(n.item) ? n.qty / 2 : Math.ceil(n.qty / 2) }));
 }
 
 function skillBonus(state: GameState, skill: SkillId): number {

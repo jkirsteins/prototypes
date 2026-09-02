@@ -8,6 +8,7 @@ import { placeAtSpot } from "../src/sim/position";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
+import { levelMinutes } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { gearHtml, regionHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
@@ -115,6 +116,8 @@ describe("bough bed and blanket in play", () => {
     expect(o.ok).toBe(true);
     expect(o.duration).toBe(240);
     const before = carried(state.player);
+    // At Crafting 6, the recommended level, the piece always comes out; this test is about the recipe, not the odds.
+    state.skills.crafting.xp = levelMinutes(6);
     startTask(state, world, cal, "craft", "hideBlanket");
     done(g);
     expect(state.player.clothing.some((g) => g.id === "hideBlanket")).toBe(true);
