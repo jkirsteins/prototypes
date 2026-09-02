@@ -7,7 +7,7 @@ import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
 import { log } from "./log";
 import { causeFrom, die, stepPlayer } from "./player";
-import { runPlan, startTask, stepTask } from "./tasks";
+import { beginTask, runPlan, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { ambientTemperature, stepWeather } from "./weather";
 
@@ -46,7 +46,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   stepTask(state, world, cal, rng, dt);
   if (!state.task) runPlan(state, world, cal);
   // A body left idle and spent lies down on its own.
-  if (!state.task && state.player.energy < EXHAUSTED && startTask(state, world, cal, "sleep")) {
+  if (!state.task && state.player.energy < EXHAUSTED && beginTask(state, world, cal, "sleep")) {
     log(state, "Too tired to stand, you sleep where you are.");
   }
   stepCamp(state, world, ambient, dt);

@@ -4,7 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot, spotHere } from "../src/sim/position";
-import { availableTasks, check, runPlan, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { availableTasks, beginTask, check, runPlan, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { regionState } from "../src/sim/regionstate";
@@ -263,5 +263,34 @@ describe("tasks", () => {
     stopTask(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     expect(check(state, world, cal, "chop", undefined, forest.cell).resume).toBeCloseTo(0.5, 2);
+  });
+
+  it("beginTask leaves an intent in place; startTask and stopTask clear it", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const intent = { task: "chop" as const, cell: cellOf(state, world), campCell: regionState(state, world, state.player.region).campCell, until: { kind: "forever" as const }, deliver: "leave" as const, done: 0, step: "", need: null };
+    state.intent = { ...intent };
+    expect(beginTask(state, world, cal, "chop")).toBe(true);
+    expect(state.intent).not.toBeNull();
+    done(g);
+    expect(state.intent!.done).toBe(1);
+    expect(startTask(state, world, cal, "sticks")).toBe(true);
+    expect(state.intent).toBeNull();
+    state.intent = { ...intent };
+    stopTask(state, world);
+    expect(state.intent).toBeNull();
+    expect(state.task).toBeNull();
+  });
+
+  it("night is not a task you can start; a sleep under a night intent counts as its completion", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    expect(startTask(state, world, cal, "night")).toBe(false);
+    state.intent = { task: "night", cell: cellOf(state, world), campCell: cellOf(state, world), until: { kind: "once" }, deliver: "leave", done: 0, step: "", need: "sleep" };
+    expect(beginTask(state, world, cal, "sleep")).toBe(true);
+    done(g);
+    expect(state.intent!.done).toBe(1);
+    expect(state.intent!.need).toBeNull();
   });
 });

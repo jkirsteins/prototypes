@@ -385,12 +385,23 @@ function withProgression(state: GameState, world: World, o: TaskOption): TaskOpt
   return out;
 }
 
+/** Starts a task by hand. Whatever intent was running is over; the task set aside keeps its share. */
 export function startTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false): boolean {
+  if (!beginTask(state, world, cal, id, arg, repeat)) return false;
+  state.intent = null;
+  return true;
+}
+
+/**
+ * Starts a task without touching the intent: what the runner calls for each
+ * of its steps. Whatever was under way is set aside first, with its share done kept.
+ */
+export function beginTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false): boolean {
   if (state.dead) return false;
+  if (id === "night") return false;
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
-  // Whatever was under way is set aside first, with its share done kept.
-  stopTask(state, world);
+  setAside(state, world);
   if (id === "haul") return startHaul(state, world, cal);
   if (id === "build" && !(regionState(state, world, state.player.region).build[arg as StructureId] ?? 0)) {
     // Materials are committed when the work starts, and stay laid out if you stop.
@@ -491,12 +502,18 @@ function loadPack(state: GameState, world: World): void {
   }
 }
 
+/** Stops by hand: the intent is over and the task is set aside with its share kept. */
+export function stopTask(state: GameState, world: World): void {
+  state.intent = null;
+  setAside(state, world);
+}
+
 /**
  * Sets the current task aside. Work keeps its share where it belongs; a walk
  * simply ends where you stand; a plan is dropped, since it restarts from
  * anywhere. Rest and sleep keep nothing.
  */
-export function stopTask(state: GameState, world: World): void {
+export function setAside(state: GameState, world: World): void {
   state.plan = null;
   const t = state.task;
   if (!t) return;
@@ -545,6 +562,12 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const arg = t.arg;
   const repeat = t.repeat;
   state.task = null;
+  const it = state.intent;
+  if (it) {
+    if (it.task === id && (it.arg ?? "") === (arg ?? "")) it.done++;
+    else if (it.task === "night" && id === "sleep") it.done++;
+    if (id === "sleep" && it.need === "sleep") it.need = null;
+  }
   complete(state, world, cal, rng, id, arg);
   if (repeat && !state.dead) {
     const o = check(state, world, cal, id, arg);
