@@ -101,6 +101,62 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   }
 }
 
+/** Recommended levels. Under them the odds are punished; over them nothing extra. */
+export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
+  "hunt:deer": { skill: "hunting", level: 4 },
+  "hunt:elk": { skill: "hunting", level: 8 },
+  "craft:bow": { skill: "crafting", level: 5 },
+  "craft:hideBlanket": { skill: "crafting", level: 6 },
+  "craft:hideCoat": { skill: "crafting", level: 8 },
+  "craft:hideTrousers": { skill: "crafting", level: 8 },
+  "craft:hideBoots": { skill: "crafting", level: 8 },
+  "build:cabin": { skill: "building", level: 10 },
+};
+
+/** Levels short of the recommendation for a mastery key; 0 when there is none or you are there. */
+export function gap(state: GameState, key: string): number {
+  const rec = RECOMMENDED[key];
+  if (!rec) return 0;
+  return Math.max(0, rec.level - skillLevel(state, rec.skill));
+}
+
+function skillBonus(state: GameState, skill: SkillId): number {
+  return 0.01 * (skillLevel(state, skill) - 1);
+}
+
+/** Work pace multiplier for a task: skill, mastery, pool, and the build slowdown under level. */
+export function speedFactor(state: GameState, world: World, id: TaskId, arg?: string): number {
+  const skill = skillOf(id, arg);
+  if (!skill) return 1;
+  const key = masteryKey(state, world, id, arg);
+  let f = 1 + skillBonus(state, skill);
+  if (key) f *= 1 + 0.0025 * (masteryOf(state, skill, key) - 1);
+  const share = poolShare(state, skill);
+  if (share >= 0.5) f *= 1.1;
+  else if (share >= 0.1) f *= 1.05;
+  if (id === "build" && key) f /= 1.3 ** gap(state, key);
+  return f;
+}
+
+/** Tool wear multiplier for a task: Crafting's level, and the pool's 25% and 95% perks. */
+export function wearFactor(state: GameState, world: World, id: TaskId, arg?: string): number {
+  const skill = skillOf(id, arg);
+  if (!skill) return 1;
+  let f = skill === "crafting" ? 1 - skillBonus(state, skill) : 1;
+  const share = poolShare(state, skill);
+  if (share >= 0.95) f = 0;
+  else if (share >= 0.25) f *= 0.5;
+  void world;
+  return f;
+}
+
+/** Odds multiplier for a hunt or a cast: the skill's level, halved per level short of the recommendation. */
+export function oddsFactor(state: GameState, species: string): number {
+  const skill: SkillId = species === "fish" ? "fishing" : "hunting";
+  const key = species === "fish" ? "fish" : `hunt:${species}`;
+  return (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
+}
+
 /** One minute at the current task: skill, mastery and pool each gain it. Called from stepTask. */
 export function train(state: GameState, world: World, dt: number): void {
   const t = state.task;

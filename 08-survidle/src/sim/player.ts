@@ -7,6 +7,7 @@ import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
 import { atCamp } from "./position";
 import { regionState } from "./regionstate";
+import { speedFactor } from "./skills";
 import type { DeathCause, GameState, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { DEEP_SNOW_CM } from "./weather";
 
@@ -80,12 +81,14 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   return felt;
 }
 
-/** Work goes slower when exhausted or hurt. */
-export function workSpeed(state: GameState): number {
+/** Work goes slower when exhausted or hurt, and faster with practice. */
+export function workSpeed(state: GameState, world: World): number {
   const p = state.player;
   let f = 1;
   if (p.energy < 20) f *= 0.5;
   if (p.injured > 0) f *= 0.7;
+  const t = state.task;
+  if (t) f *= speedFactor(state, world, t.id, t.arg);
   return f;
 }
 

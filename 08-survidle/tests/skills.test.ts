@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { newGame } from "../src/sim/newgame";
+import { addItem, tool } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { deserialize, serialize } from "../src/sim/save";
 import {
-  level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills,
-  poolCapacity, SKILL_IDS, skillOf, skillLevel,
+  gap, level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills,
+  poolCapacity, SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor,
 } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { workSpeed } from "../src/sim/player";
+import { regionDensity } from "../src/sim/animals";
 
 describe("skill curves", () => {
   it("skill level is hours squared: 1 at 0, 2 at 2 h, 10 at 162 h, capped at 50", () => {
@@ -125,5 +128,85 @@ describe("training", () => {
     startTask(state, world, cal, "fish");
     run(g, 5);
     expect(state.skills.fishing.pool).toBe(6000);
+  });
+});
+
+describe("effects", () => {
+  it("Woodcraft 11 fells 10% faster than Woodcraft 1", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
+    const slow = workSpeed(state, world);
+    state.skills.woodcraft.xp = levelMinutes(11);
+    expect(workSpeed(state, world)).toBeCloseTo(slow * 1.1, 6);
+  });
+
+  it("Hunting 11 has 10% better odds; Fishing reads its own skill", () => {
+    const { state, world } = newGame(3);
+    const d = regionDensity(state, world, state.player.region, "hare", cal);
+    const base = huntOdds(state, world, cal, d, "hare");
+    state.skills.hunting.xp = levelMinutes(11);
+    expect(huntOdds(state, world, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
+    const df = regionDensity(state, world, state.player.region, "fish", cal);
+    const fish = huntOdds(state, world, cal, df, "fish");
+    state.skills.fishing.xp = levelMinutes(11);
+    expect(huntOdds(state, world, cal, df, "fish")).toBeCloseTo(fish * 1.1, 6);
+  });
+
+  it("Crafting 11 wears the needle 10% less", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    state.player.tools.push({ id: "needle", durability: 100 });
+    addItem(state.player.pack, "hide", 2);
+    for (const g2 of state.player.clothing) g2.durability = 50;
+    state.skills.crafting.xp = levelMinutes(11);
+    startTask(state, world, cal, "repair");
+    run(g, 400);
+    expect(state.task).toBeNull();
+    // Mending wears the needle by 2 at Crafting 1; 1.8 here.
+    expect(tool(state.player, "needle")!.durability).toBeCloseTo(98.2, 6);
+  });
+
+  it("mastery adds a quarter percent per level on that action alone", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const key = masteryKey(state, world, "chop")!;
+    state.skills.woodcraft.mastery[key] = masteryMinutes(41);
+    expect(speedFactor(state, world, "chop")).toBeCloseTo(1.1, 6);
+    expect(speedFactor(state, world, "sticks")).toBeCloseTo(1, 6);
+  });
+
+  it("pool checkpoints: 10% gives x1.05, 50% replaces it with x1.10, 25% halves wear, 95% ends it", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const cap = poolCapacity("woodcraft");
+    state.skills.woodcraft.pool = cap * 0.1;
+    expect(speedFactor(state, world, "chop")).toBeCloseTo(1.05, 6);
+    state.skills.woodcraft.pool = cap * 0.5;
+    expect(speedFactor(state, world, "chop")).toBeCloseTo(1.1, 6);
+    state.skills.woodcraft.pool = cap * 0.25;
+    expect(wearFactor(state, world, "chop")).toBeCloseTo(0.5, 6);
+    state.skills.woodcraft.pool = cap * 0.95;
+    expect(wearFactor(state, world, "chop")).toBe(0);
+  });
+});
+
+describe("soft gates", () => {
+  it("elk at Hunting 1 is one try in 128 of the base odds", () => {
+    const { state, world } = newGame(3);
+    expect(gap(state, "hunt:elk")).toBe(7);
+    const d = regionDensity(state, world, state.player.region, "elk", cal);
+    state.skills.hunting.xp = levelMinutes(8);
+    const atLevel = huntOdds(state, world, cal, d, "elk");
+    state.skills.hunting.xp = 0;
+    expect(huntOdds(state, world, cal, d, "elk")).toBeCloseTo((atLevel / 1.07) / 128, 9);
+  });
+
+  it("a cabin at Building 4 goes at 1 / 1.3^6 of the pace", () => {
+    const { state, world } = newGame(3);
+    state.skills.building.xp = levelMinutes(4);
+    expect(speedFactor(state, world, "build", "cabin")).toBeCloseTo(1.03 / 1.3 ** 6, 6);
+    state.skills.building.xp = levelMinutes(10);
+    expect(speedFactor(state, world, "build", "cabin")).toBeCloseTo(1.09, 6);
   });
 });
