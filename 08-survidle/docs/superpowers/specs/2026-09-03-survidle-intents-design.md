@@ -59,6 +59,8 @@ export interface Intent {
   done: number;
   /** What the runner is doing right now, for the Doing panel. */
   step: string;
+  /** The body need being served, so a need with an exit above its entry holds between the two. */
+  need: "sleep" | "cold" | "hungry" | null;
 }
 
 // GameState
@@ -166,7 +168,8 @@ order and the first that holds wins.
 ### 3.1 Sleep
 
 Holds when `energy <= 20`, or when it is night (`cal.isNight`) and
-`energy < 60`. Ends when a `sleep` task completes.
+`energy < 60`, and keeps holding (`need === "sleep"`) until a `sleep` task
+completes, whichever way it was started.
 
 Steps, each taken only when the previous does not apply:
 
@@ -197,8 +200,8 @@ with those minutes kept, as any manual stop-and-resume does today.
 
 ### 3.2 Cold
 
-Holds when `warmth < 30`. Ends when `warmth >= 45`, or when the sleep need
-takes over. The exit is set at 45 rather than higher because the warmth a
+Holds when `warmth < 30`, and keeps holding (`need === "cold"`) until
+`warmth >= 45` or the sleep need takes over. The exit is set at 45 rather than higher because the warmth a
 body settles at beside a winter fire can sit in the fifties; an exit it
 never reaches would rest forever. Steps 1 to 5 are the same as sleep's (walk to camp, pit, split,
 light); step 6 is `rest` (step "warming up by the fire", or "resting to warm
@@ -243,7 +246,8 @@ A **load is ready** when `deliver === "camp"` and either the pack plus the
 pile at the work cell weigh at least `PACK_HARD_KG`, or the work is over
 (`until` met or the work is blocked) and there is something left to carry:
 the pile at the work cell is not empty, or the pack holds any of the work's
-yield (the item in section 1.2's table; for hunt also hide, bone and sinew).
+yield (the item in section 1.2's table; for chop also sticks; for hunt also
+hide, bone and sinew; for haul, anything at all).
 
 A **haul leg** is: at the work cell, `loadPack` (heaviest first, to the hard
 limit, as today); walk to `campCell`; drop everything from the pack onto the
@@ -257,6 +261,10 @@ and the pack is emptied onto the camp pile, which is where a player wants
 things. Tools and clothing are not in the pack and stay on the body.
 
 ### 4.2 Rule order
+
+Legality (rule 5's `check`) is evaluated at the work cell wherever the
+player stands (section 6), so a blocked intent ends where it is instead of
+walking back to find out.
 
 1. **Until met.** If a load is ready, take the next step of the haul leg.
    Otherwise end the intent: log "`<label>`: done." as `good`, clear
@@ -333,16 +341,20 @@ the player is at the cell, stays.
 
 ## 6. Legality shown on the button
 
-`intentOption(state, world, cal, task, arg, where)` returns a `TaskOption`
-for the button: `check` evaluated as if standing at the resolved cell. It is
-`checkFresh` with the ground and camp tests satisfied by construction, so
-the only reasons left are the real ones (tools, materials, populations,
-seasons). Its `duration` is the work's duration for one completion, and the
+`check` and `checkFresh` take an optional trailing `at` cell, defaulting to
+the cell under foot; ground, camp and reach are judged at that cell. The
+position predicates in `position.ts` get cell-based forms (`forestCell`,
+`rockCell`, `heathCell`, `watersideCell`) that the player-based ones call.
+`intentOption(state, world, cal, task, arg, where)` is `check` at the
+resolved cell, so the only reasons left on a button are the real ones
+(tools, materials, populations, seasons). Its `duration` is the work's duration for one completion, and the
 button shows it in both clocks as today: "1 h (1 min)". A walk is not added
 to that time; the Doing panel's step bar shows each walk as it happens.
 
-`check`, `checkFresh`, `startTask`, `stepTask`, `complete` and `stopTask`
-keep their signatures. `availableTasks` keeps producing the raw list for the
+`startTask`, `stepTask`, `complete` and `stopTask` keep their signatures.
+`startTask` splits into `beginTask`, which starts a task without touching
+the intent and is what the runner calls, and `startTask`, which is
+`beginTask` followed by clearing the intent, for the advanced list. `availableTasks` keeps producing the raw list for the
 advanced toggle unchanged.
 
 ## 7. The UI
