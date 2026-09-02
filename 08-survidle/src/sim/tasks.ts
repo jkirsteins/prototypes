@@ -14,6 +14,7 @@ import {
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
+import { train } from "./skills";
 import {
   atCamp, byWater, cellCenter, cellIndex, cellOf, hereTerrain, inForest, onHeath, onRock,
   placeAt, setRegion, spotHere, SPOT_WORDS, straightKm,
@@ -492,6 +493,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     return;
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state) : 1;
+  train(state, world, dt);
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
 

@@ -7,6 +7,7 @@ import type { World } from "../world/gen";
 import { RECIPE_IDS, STRUCTURE_IDS } from "./items";
 import { hereTerrain } from "./position";
 import type { GameState, SkillId, SkillState, TaskId } from "./types";
+import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
 
@@ -98,4 +99,21 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "cook": return `cook:${arg ?? "rawMeat"}`;
     default: return null;
   }
+}
+
+/** One minute at the current task: skill, mastery and pool each gain it. Called from stepTask. */
+export function train(state: GameState, world: World, dt: number): void {
+  const t = state.task;
+  if (!t) return;
+  const skill = skillOf(t.id, t.arg);
+  if (!skill) return;
+  const key = masteryKey(state, world, t.id, t.arg);
+  if (!key) return;
+  const s = state.skills[skill];
+  const before = level(s.xp);
+  s.xp += dt;
+  const after = level(s.xp);
+  if (after > before) log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
+  s.mastery[key] = (s.mastery[key] ?? 0) + dt;
+  s.pool = Math.min(poolCapacity(skill), s.pool + dt);
 }
