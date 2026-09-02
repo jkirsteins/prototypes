@@ -1,0 +1,202 @@
+import { PACK_COMFORTABLE_KG } from "../units";
+import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
+import {
+  type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
+  type Player, type SpotId, type ToolId,
+} from "./types";
+
+export function emptyInventory(): Inventory {
+  return { items: {}, stacks: {} };
+}
+
+function isPerishable(item: ItemId): item is PerishableId {
+  return (PERISHABLES as string[]).includes(item);
+}
+
+export function qty(inv: Inventory, item: ItemId): number {
+  if (isPerishable(item)) {
+    let sum = 0;
+    for (const s of inv.stacks[item] ?? []) sum += s.kg;
+    return sum;
+  }
+  return inv.items[item] ?? 0;
+}
+
+export function weight(inv: Inventory): number {
+  let kg = 0;
+  for (const k of Object.keys(inv.items) as ItemId[]) kg += (inv.items[k] ?? 0) * ITEM_KG[k];
+  for (const p of PERISHABLES) kg += qty(inv, p);
+  return kg;
+}
+
+/** Weight of everything the player carries: pack, tools and worn clothing. */
+export function carried(p: Player): number {
+  let kg = weight(p.pack);
+  for (const t of p.tools) kg += TOOLS[t.id].kg;
+  for (const g of p.clothing) kg += CLOTHING[g.id].kg;
+  return kg;
+}
+
+export function addItem(inv: Inventory, item: ItemId, n: number): void {
+  if (n <= 0) return;
+  if (isPerishable(item)) {
+    let stacks = inv.stacks[item];
+    if (!stacks) {
+      stacks = [];
+      inv.stacks[item] = stacks;
+    }
+    const fresh = stacks.find((s) => s.age === 0);
+    if (fresh) fresh.kg += n;
+    else stacks.push({ kg: n, age: 0 });
+    return;
+  }
+  inv.items[item] = (inv.items[item] ?? 0) + n;
+}
+
+/** Removes up to n, oldest first for perishables. Returns what was actually removed. */
+export function removeItem(inv: Inventory, item: ItemId, n: number): number {
+  if (n <= 0) return 0;
+  if (isPerishable(item)) {
+    const stacks = inv.stacks[item] ?? [];
+    let left = n;
+    while (left > 1e-9 && stacks.length) {
+      const s = stacks[0];
+      const take = Math.min(s.kg, left);
+      s.kg -= take;
+      left -= take;
+      if (s.kg <= 1e-9) stacks.shift();
+    }
+    return n - left;
+  }
+  const have = inv.items[item] ?? 0;
+  const take = Math.min(have, n);
+  if (take >= have) delete inv.items[item];
+  else inv.items[item] = have - take;
+  return take;
+}
+
+export function isEmpty(inv: Inventory): boolean {
+  return weight(inv) <= 1e-9;
+}
+
+/** Every item id present, counts first then perishables, stable order. */
+export function listItems(inv: Inventory): { item: ItemId; qty: number }[] {
+  const out: { item: ItemId; qty: number }[] = [];
+  for (const k of Object.keys(ITEM_KG) as ItemId[]) {
+    const q = qty(inv, k);
+    if (q > 1e-9) out.push({ item: k, qty: q });
+  }
+  return out;
+}
+
+/** The pile at a spot, created on first use. */
+export function pile(state: GameState, region: number, spot: SpotId): Inventory {
+  const r = state.regions[region];
+  let inv = r.piles[spot];
+  if (!inv) {
+    inv = emptyInventory();
+    r.piles[spot] = inv;
+  }
+  return inv;
+}
+
+/** The pile under the player's feet. */
+export function herePile(state: GameState): Inventory {
+  return pile(state, state.player.region, state.player.spot);
+}
+
+/** Pack plus the pile the player stands on: what a task may consume. */
+export function reach(state: GameState): Inventory[] {
+  return [state.player.pack, herePile(state)];
+}
+
+export function totalQty(invs: Inventory[], item: ItemId): number {
+  let n = 0;
+  for (const inv of invs) n += qty(inv, item);
+  return n;
+}
+
+/** Which item satisfies a need: the primary, else the substitute, else null. */
+export function resolveNeed(invs: Inventory[], need: Need): ItemId | null {
+  if (totalQty(invs, need.item) >= need.qty - 1e-9) return need.item;
+  if (need.alt && totalQty(invs, need.alt) >= need.qty - 1e-9) return need.alt;
+  return null;
+}
+
+export function canConsume(invs: Inventory[], needs: Need[]): boolean {
+  return needs.every((n) => resolveNeed(invs, n) !== null);
+}
+
+/** Takes the needs out of the inventories, pack first. Caller checks canConsume. */
+export function consume(invs: Inventory[], needs: Need[]): void {
+  for (const need of needs) {
+    const item = resolveNeed(invs, need) ?? need.item;
+    let left = need.qty;
+    for (const inv of invs) {
+      if (left <= 1e-9) break;
+      left -= removeItem(inv, item, left);
+    }
+  }
+}
+
+/**
+ * Where something just made goes: the pack while it is under the comfortable
+ * limit, otherwise the ground. Logs are never pocketed.
+ */
+export function produce(state: GameState, item: ItemId, n: number): "pack" | "pile" {
+  const p = state.player;
+  const addedKg = n * ITEM_KG[item];
+  if (item !== "log" && weight(p.pack) + addedKg <= PACK_COMFORTABLE_KG + 1e-9) {
+    addItem(p.pack, item, n);
+    return "pack";
+  }
+  addItem(herePile(state), item, n);
+  return "pile";
+}
+
+/** Moves up to n of an item between inventories. Returns what moved. */
+export function transfer(from: Inventory, to: Inventory, item: ItemId, n: number): number {
+  const moved = removeItem(from, item, n);
+  addItem(to, item, moved);
+  return moved;
+}
+
+/** Ages perishable stacks by dt minutes when it is warm, and throws away what has gone off. Returns kg lost per item. */
+export function ageStacks(inv: Inventory, dt: number, ambient: number): Partial<Record<PerishableId, number>> {
+  const lost: Partial<Record<PerishableId, number>> = {};
+  if (ambient <= 0) return lost;
+  for (const p of PERISHABLES) {
+    const stacks = inv.stacks[p];
+    if (!stacks?.length) continue;
+    const limit = SPOIL_HOURS[p] * 60;
+    for (const s of stacks) s.age += dt;
+    const keep = stacks.filter((s) => s.age < limit);
+    if (keep.length !== stacks.length) {
+      let gone = 0;
+      for (const s of stacks) if (s.age >= limit) gone += s.kg;
+      lost[p] = gone;
+      inv.stacks[p] = keep;
+    }
+  }
+  return lost;
+}
+
+export function tool(p: Player, id: ToolId) {
+  return p.tools.find((t) => t.id === id);
+}
+
+export function hasTool(p: Player, id: ToolId): boolean {
+  return tool(p, id) !== undefined;
+}
+
+/** Wears a tool by n points; returns true if it broke. */
+export function wearTool(p: Player, id: ToolId, n: number): boolean {
+  const t = tool(p, id);
+  if (!t) return false;
+  t.durability -= n;
+  if (t.durability <= 0) {
+    p.tools = p.tools.filter((x) => x !== t);
+    return true;
+  }
+  return false;
+}

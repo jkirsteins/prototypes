@@ -1,0 +1,215 @@
+
+import { PACK_COMFORTABLE_KG, PACK_HARD_KG, clamp } from "../units";
+import type { Calendar } from "./calendar";
+import { carried } from "./inventory";
+import { CLOTHING, KCAL_FULL } from "./items";
+import { log } from "./log";
+import type { DeathCause, GameState, RegionState, Task, TaskId, Weather } from "./types";
+import { DEEP_SNOW_CM } from "./weather";
+
+/** Tasks done at camp, by the fire and under the roof. */
+const CAMP_TASKS = new Set<TaskId>(["rest", "sleep", "craft", "cook", "split", "repair", "build", "light", "sharpen"]);
+
+export type Activity = "sleep" | "rest" | "light" | "walk" | "heavy";
+
+export function activityOf(task: Task | null): Activity {
+  if (!task) return "rest";
+  switch (task.id) {
+    case "sleep": return "sleep";
+    case "rest": case "craft": case "cook": case "repair": case "sharpen": case "light": return "rest";
+    case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": return "light";
+    case "travel": case "walk": case "haul": return "walk";
+    case "chop": case "split": case "build": return "heavy";
+  }
+}
+
+export function isCampTask(task: Task | null): boolean {
+  return !task || CAMP_TASKS.has(task.id);
+}
+
+export function atCamp(state: GameState): boolean {
+  return state.player.spot === "camp";
+}
+
+/** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
+export function shelterBonus(r: RegionState): number {
+  if (r.structures.cabin) return 15;
+  if (r.structures.leanTo) return 5;
+  return 0;
+}
+
+/** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
+export function sheltered(state: GameState): boolean {
+  const r = state.regions[state.player.region];
+  return atCamp(state) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo);
+}
+
+export function insulation(state: GameState): number {
+  let sum = 0;
+  for (const g of state.player.clothing) sum += CLOTHING[g.id].insulation * clamp(g.durability, 0, 100) / 100;
+  return sum;
+}
+
+export function feltTemperature(state: GameState, ambient: number): number {
+  const p = state.player;
+  const r = state.regions[p.region];
+  const camp = atCamp(state);
+  const campTask = isCampTask(state.task);
+  let felt = ambient + insulation(state);
+  if (r.fire.lit && camp) felt += campTask ? 15 : 7;
+  if (camp && campTask) felt += shelterBonus(r);
+  const a = activityOf(state.task);
+  felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
+  felt -= 0.15 * p.wetness;
+  return felt;
+}
+
+/** Work goes slower when exhausted or hurt. */
+export function workSpeed(state: GameState): number {
+  const p = state.player;
+  let f = 1;
+  if (p.energy < 20) f *= 0.5;
+  if (p.injured > 0) f *= 0.7;
+  return f;
+}
+
+/** Walking speed in km/h on this ground, right now, with this load. */
+export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, bog: boolean, loadKg = carried(state.player)): number {
+  let v = 3.0;
+  if (bog) v *= 0.7;
+  if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
+  if (cal.isNight) v *= 0.75;
+  if (loadKg > PACK_HARD_KG) v *= 0.6;
+  else if (loadKg > PACK_COMFORTABLE_KG) v *= 0.8;
+  if (state.player.energy < 20) v *= 0.7;
+  return v;
+}
+
+const KCAL_PER_HOUR: Record<Activity, number> = { sleep: 70, rest: 100, light: 200, walk: 300, heavy: 400 };
+
+export interface Drains { starve: number; cold: number; sick: number }
+
+/** Felt temperature at which a clothed body at rest holds half its warmth. */
+export const COMFORT_C = 5;
+/** Share of the gap to the target closed per minute. */
+export const WARMTH_RATE = 0.012;
+/** Snow on wool never gets you wetter than damp. */
+export const SNOW_DAMP_MAX = 30;
+
+/** The warmth a body settles at for a felt temperature: 50 at comfort, 100 ten degrees above, 0 ten below. */
+export function warmthTarget(felt: number): number {
+  return clamp(50 + (felt - COMFORT_C) * 5, 0, 100);
+}
+
+/**
+ * One step of the body: kcal, warmth, energy, wetness, clothing wear, health.
+ * dt is at most one minute. Returns the health drains so a death can be named.
+ */
+export function stepPlayer(state: GameState, ambient: number, dt: number): Drains {
+  const p = state.player;
+  const r = state.regions[p.region];
+  const w = state.weather;
+  const felt = feltTemperature(state, ambient);
+  const a = activityOf(state.task);
+  const camp = atCamp(state);
+  const campTask = isCampTask(state.task);
+  const roof = sheltered(state);
+  const cabin = roof && r.structures.cabin;
+  const h = dt / 60;
+
+  // Kilocalories.
+  let burn = KCAL_PER_HOUR[a];
+  if (a === "walk" && carried(p) > PACK_COMFORTABLE_KG) burn = 350;
+  if (felt < 0) burn *= 1.3;
+  if (p.sick > 0) burn *= 1.2;
+  p.kcal = clamp(p.kcal - burn * h, 0, KCAL_FULL);
+
+  // Warmth settles toward the level the felt temperature can hold, with a
+  // time constant of about an hour and a half: a body in balance, not a leak.
+  const target = warmthTarget(felt);
+  p.warmth = clamp(p.warmth + (target - p.warmth) * WARMTH_RATE * dt, 0, 100);
+
+  // Energy.
+  // A working day of ten hours plus six awake costs about what eight hours of sleep restores.
+  const energyRate = a === "sleep" ? 12.5 : a === "rest" && state.task?.id === "rest" ? 6 : a === "rest" ? -4 : -8;
+  p.energy = clamp(p.energy + energyRate * h, 0, 100);
+
+  // Wetness.
+  const raining = w.precip !== "none";
+  if (raining && !cabin) {
+    let wet = w.precip === "heavy" ? 2 : 1;
+    if (roof) wet *= 0.5;
+    // Snow brushes off; it dampens rather than soaks.
+    const cap = ambient <= 0 ? SNOW_DAMP_MAX : 100;
+    if (ambient <= 0) wet *= 0.25;
+    p.wetness = clamp(p.wetness + wet * dt, 0, Math.max(p.wetness, cap));
+  } else {
+    const dry = r.fire.lit && camp && campTask ? 1.5 : roof ? 0.5 : raining ? 0 : 0.3;
+    p.wetness = clamp(p.wetness - dry * dt, 0, 100);
+  }
+
+  // Clothing wears when worn outdoors.
+  if (!roof) {
+    const wear = (raining ? 1.0 : 0.5) * h;
+    for (const g of p.clothing) g.durability = clamp(g.durability - wear, 0, 100);
+  }
+
+  // Statuses tick down.
+  if (p.sick > 0) p.sick = Math.max(0, p.sick - dt);
+  if (p.injured > 0) p.injured = Math.max(0, p.injured - dt);
+
+  // Health.
+  const drains: Drains = { starve: 0, cold: 0, sick: 0 };
+  if (p.kcal <= 0) drains.starve = 2 * h;
+  if (p.warmth < 20) drains.cold = 6 * h;
+  if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
+  const total = drains.starve + drains.cold + drains.sick;
+  if (total > 0) {
+    p.health = clamp(p.health - total, 0, 100);
+  } else if (p.kcal > 1500 && p.warmth > 40 && p.sick === 0) {
+    p.health = clamp(p.health + 1 * h, 0, 100);
+  }
+
+  // Milestone warnings, once per crossing.
+  warn(state, "kcal", p.kcal <= 1200, "You are starving.");
+  warn(state, "warm", p.warmth < 30, "You are shivering hard. Find warmth.");
+  warn(state, "wet", p.wetness >= 60, "You are soaked through.");
+  warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");
+
+  return drains;
+}
+
+const warned = new WeakMap<GameState, Set<string>>();
+function warn(state: GameState, key: string, active: boolean, text: string) {
+  let set = warned.get(state);
+  if (!set) {
+    set = new Set();
+    warned.set(state, set);
+  }
+  if (active && !set.has(key)) {
+    set.add(key);
+    log(state, text, "bad");
+  } else if (!active && set.has(key)) {
+    set.delete(key);
+  }
+}
+
+/** Names the death from the drains that killed. */
+export function causeFrom(d: Drains): DeathCause {
+  if (d.cold >= d.starve && d.cold >= d.sick) return "froze";
+  if (d.starve >= d.sick) return "starved";
+  return "sickness";
+}
+
+export function die(state: GameState, cause: DeathCause): void {
+  if (state.dead) return;
+  state.dead = { cause, minute: state.minute };
+  state.task = null;
+  const text = {
+    starved: "You starved.",
+    froze: "The cold took you.",
+    wolves: "The wolves finished it.",
+    sickness: "The fever won.",
+  }[cause];
+  log(state, text, "bad");
+}
