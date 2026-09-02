@@ -328,4 +328,14 @@ describe("pool yield perks", () => {
     expect(Math.round(3 * yieldFactor(state, "foraging"))).toBe(5);
     expect(1 * yieldFactor(state, "foraging")).toBe(1.5);
   });
+
+  it("Foraging and Fishing trade the wear perk for yield: full pool means normal wear, not zero", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.skills.fishing.pool = poolCapacity("fishing");
+    expect(wearFactor(state, world, "fish")).toBe(1);
+    state.skills.woodcraft.pool = poolCapacity("woodcraft");
+    expect(wearFactor(state, world, "chop")).toBe(0);
+  });
 });

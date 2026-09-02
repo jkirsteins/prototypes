@@ -64,7 +64,7 @@ export function poolShare(state: GameState, skill: SkillId): number {
   return state.skills[skill].pool / poolCapacity(skill);
 }
 
-/** Foraging and Fishing have no tool to spare, so their pool perks are yield. */
+/** Foraging and Fishing take their pool perks as yield instead of tool wear. */
 export function yieldFactor(state: GameState, skill: SkillId): number {
   if (skill !== "foraging" && skill !== "fishing") return 1;
   const share = poolShare(state, skill);
@@ -232,9 +232,11 @@ export function wearFactor(state: GameState, world: World, id: TaskId, arg?: str
   const skill = skillOf(id, arg);
   if (!skill) return 1;
   let f = skill === "crafting" ? 1 - skillBonus(state, skill) : 1;
-  const share = poolShare(state, skill);
-  if (share >= 0.95) f = 0;
-  else if (share >= 0.25) f *= 0.5;
+  if (skill !== "fishing" && skill !== "foraging") {
+    const share = poolShare(state, skill);
+    if (share >= 0.95) f = 0;
+    else if (share >= 0.25) f *= 0.5;
+  }
   if (id === "chop" && masteryOf(state, skill, masteryKey(state, world, id)!) >= 50) f = 0;
   return f;
 }
