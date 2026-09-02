@@ -65,23 +65,40 @@ export function atCamp(state: GameState, world: World): boolean {
   return cellOf(state, world) === regionState(state, world, state.player.region).campCell;
 }
 
-export function inForest(state: GameState, world: World): boolean {
-  const t = hereTerrain(state, world);
+export function forestCell(world: World, idx: number): boolean {
+  const t = cellAt(world, idx).terrain;
   return t === "spruce" || t === "pine" || t === "birch";
 }
 
-export function onRock(state: GameState, world: World): boolean {
-  const t = hereTerrain(state, world);
+export function rockCell(world: World, idx: number): boolean {
+  const t = cellAt(world, idx).terrain;
   return t === "rock" || t === "fell";
 }
 
-export function onHeath(state: GameState, world: World): boolean {
-  const t = hereTerrain(state, world);
+export function heathCell(world: World, idx: number): boolean {
+  const t = cellAt(world, idx).terrain;
   return t === "bog" || t === "meadow";
 }
 
+/** A cell with water next to it: where you can fish. */
+export function watersideCell(world: World, idx: number): boolean {
+  return neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water");
+}
+
+export function inForest(state: GameState, world: World): boolean {
+  return forestCell(world, cellOf(state, world));
+}
+
+export function onRock(state: GameState, world: World): boolean {
+  return rockCell(world, cellOf(state, world));
+}
+
+export function onHeath(state: GameState, world: World): boolean {
+  return heathCell(world, cellOf(state, world));
+}
+
 export function byWater(state: GameState, world: World): boolean {
-  return neighbours(world, cellOf(state, world)).some((n) => cellAt(world, n).terrain === "water");
+  return watersideCell(world, cellOf(state, world));
 }
 
 /** Route length in km from the player to a cell, or null if unreachable. */

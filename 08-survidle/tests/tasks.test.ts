@@ -240,4 +240,28 @@ describe("tasks", () => {
       expect(ids.has(id as never)).toBe(true);
     }
   });
+
+  it("legality can be judged at a cell you do not stand on", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const r = regionAt(world, state.player.region);
+    const forest = spotOf(r, "forest")!;
+    placeAtSpot(state, world, state.player.region, "heath");
+    // From heath, felling is illegal here but legal at the forest.
+    expect(check(state, world, cal, "chop").ok).toBe(false);
+    const there = check(state, world, cal, "chop", undefined, forest.cell);
+    expect(there.ok).toBe(true);
+    expect(there.duration).toBeGreaterThan(0);
+    // Splitting reads the pile at that cell, not the one under foot.
+    addItem(pile(state, forest.cell), "log", 1);
+    expect(check(state, world, cal, "split").ok).toBe(false);
+    expect(check(state, world, cal, "split", undefined, forest.cell).ok).toBe(true);
+    // A share set aside at that cell shows up from anywhere.
+    placeAt(state, world, forest.cell);
+    startTask(state, world, cal, "chop");
+    run(g, 30);
+    stopTask(state, world);
+    placeAtSpot(state, world, state.player.region, "camp");
+    expect(check(state, world, cal, "chop", undefined, forest.cell).resume).toBeCloseTo(0.5, 2);
+  });
 });

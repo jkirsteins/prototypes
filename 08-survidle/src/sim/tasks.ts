@@ -20,8 +20,8 @@ import {
   skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
 import {
-  atCamp, byWater, cellCenter, cellIndex, cellOf, hereTerrain, inForest, onHeath, onRock,
-  placeAt, setRegion, spotHere, SPOT_WORDS, straightKm,
+  atCamp, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
+  placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
 import { discovery, regionState } from "./regionstate";
 import {
@@ -61,15 +61,15 @@ const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light"]);
 
 /** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
-export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
+export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string, at = cellOf(state, world)): string | null {
   const a = arg ?? "";
-  if (LOCATED.has(id)) return `${id}:${a}@${cellOf(state, world)}`;
+  if (LOCATED.has(id)) return `${id}:${a}@${at}`;
   if (CARRIED.has(id)) return `${id}:${a}`;
   return null;
 }
 
-export function pausedFraction(state: GameState, world: World, id: TaskId, arg?: string): number {
-  const key = pauseKey(state, world, id, arg);
+export function pausedFraction(state: GameState, world: World, id: TaskId, arg?: string, at = cellOf(state, world)): number {
+  const key = pauseKey(state, world, id, arg, at);
   return key ? (state.paused[key]?.fraction ?? 0) : 0;
 }
 
@@ -130,21 +130,24 @@ export function whereIs(state: GameState, world: World, cell: number): string {
 /**
  * The one place a task's legality and duration are decided. availableTasks
  * and startTask both go through it so the button and the click agree.
+ * `at` judges the task at another cell of this region, for an intent that
+ * has not walked there yet; ground, camp and reach are all taken there.
  */
-export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string): TaskOption {
-  const o = checkFresh(state, world, cal, id, arg);
-  const fraction = pausedFraction(state, world, id, arg);
+export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
+  const o = checkFresh(state, world, cal, id, arg, at);
+  const fraction = pausedFraction(state, world, id, arg, at);
   if (fraction > 0 && o.ok) return { ...o, resume: fraction, duration: o.duration * (1 - fraction) };
   if (fraction > 0) return { ...o, resume: fraction };
   return o;
 }
 
-function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string): TaskOption {
+export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
   const p = state.player;
   const r = regionAt(world, p.region);
   const st = regionState(state, world, p.region);
-  const invs = reach(state, world);
-  const camp = atCamp(state, world);
+  const invs = [p.pack, pile(state, at)];
+  const camp = at === st.campCell;
+  const terrain = cellAt(world, at).terrain;
   const opt = (partial: Partial<TaskOption> & { label: string; group: TaskGroup }): TaskOption => ({
     id, arg, detail: "", duration: 0, ok: true, why: "", repeatable: false, ...partial,
   });
@@ -158,20 +161,20 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
 
   switch (id) {
     case "chop": {
-      const o = ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: hereTerrain(state, world) === "spruce" ? 50 : 60, repeatable: true }));
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: terrain === "spruce" ? 50 : 60, repeatable: true }));
       if (!o.ok) return o;
       if (!hasTool(p, "axe")) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
     case "sticks":
-      return ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Gather sticks", detail: "6 sticks", duration: 20, repeatable: true }));
+      return ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather sticks", detail: "6 sticks", duration: 20, repeatable: true }));
     case "bark":
-      return ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Strip bark", detail: "4 bark, for cordage", duration: 20, repeatable: true }));
+      return ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Strip bark", detail: "4 bark, for cordage", duration: 20, repeatable: true }));
     case "stone":
-      return ground(onRock(state, world), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
+      return ground(rockCell(world, at), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
     case "berries": {
-      const o = ground(onHeath(state, world), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(1 * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
+      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(1 * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
       return o;
@@ -186,7 +189,7 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const s = arg as Species;
       const def: SpeciesDef = ANIMALS[s];
       const d = regionDensity(state, world, p.region, s, cal);
-      const onGround = def.spot === "heath" ? onHeath(state, world) : inForest(state, world);
+      const onGround = def.spot === "heath" ? heathCell(world, at) : forestCell(world, at);
       const x = huntExtras(state, s);
       const o = ground(onGround, def.spot, def.spot === "heath" ? "heath" : "forest", opt({
         group: "hunt", label: `Hunt ${def.name}`, duration: def.minutes, repeatable: true,
@@ -202,7 +205,7 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const def = ANIMALS.fish;
       const d = regionDensity(state, world, p.region, "fish", cal);
       const kg = fishKg(state) * yieldFactor(state, "fishing");
-      const o = ground(byWater(state, world), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, cal, d, "fish"))}` }));
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, cal, d, "fish"))}` }));
       if (!o.ok) return o;
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
       if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
@@ -247,7 +250,7 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const done = st.build[sid] ?? 0;
       const o = opt({ group: "build", label: def.name, detail: `${needsList(def.needs)}; ${def.desc}`, duration: Math.max(1, def.minutes - done) });
       if (sid === "snare") {
-        const o2 = ground(onHeath(state, world), "heath", "heath", o);
+        const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;
         if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: "five snares is enough here" };
         if (!canConsume(invs, def.needs)) return { ...o2, ok: false, why: "needs a snare" };
@@ -286,11 +289,11 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       return o2;
     }
     case "haul": {
-      const here = cellOf(state, world);
+      const here = at;
       const campCell = st.campCell;
       const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: true });
       if (here === campCell) return { ...o, ok: false, why: "you are at camp" };
-      const kg = weight(herePile(state, world));
+      const kg = weight(pile(state, at));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
       const route = findRoute(world, here, campCell);
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
