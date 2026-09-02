@@ -18,6 +18,8 @@ export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as SaveFile;
     if (file?.version !== 1 || !file.state || typeof file.savedAt !== "number") return null;
+    // Saves from before tasks could be set aside.
+    file.state.paused ??= {};
     return file;
   } catch {
     return null;

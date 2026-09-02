@@ -237,6 +237,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .mini:disabled { color: #5d6570; cursor: default; border-color: var(--line); }
 
 #task .head { display: flex; justify-content: space-between; align-items: baseline; }
+#task .aside { margin-top: 8px; border-top: 1px dotted var(--line); padding-top: 6px; }
+#task .paused { padding: 2px 0; }
 
 /* Inventory */
 .inv { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }

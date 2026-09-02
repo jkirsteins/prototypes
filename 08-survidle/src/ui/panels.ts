@@ -4,7 +4,7 @@ import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { herePile, listItems, qty, weight } from "../sim/inventory";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, TOOLS } from "../sim/items";
 import { feltTemperature, insulation } from "../sim/player";
-import { availableTasks, check, SPOT_NAMES, type TaskGroup, type TaskOption, walkKm } from "../sim/tasks";
+import { availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, walkKm } from "../sim/tasks";
 import { type GameState, type ItemId, type LogEntry, SPECIES } from "../sim/types";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
@@ -138,12 +138,25 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
-  if (!t) return `<h2>Doing</h2><div class="dim">Nothing. Pick something below.</div>`;
+  const aside = pausedList(state, world, cal);
+  const asideHtml = aside.length
+    ? `<div class="aside"><small>Set aside</small>${aside
+        .map(({ task, option, here }) => {
+          const pct = Math.round(task.fraction * 100);
+          const note = !here || !option.ok ? ` <small>${esc(option.why)}</small>` : "";
+          const btn = option.ok
+            ? ` <button class="mini" data-act="task" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}">resume</button>`
+            : "";
+          return `<div class="paused">${esc(option.label)} <b>${pct}%</b>${note}${btn}</div>`;
+        })
+        .join("")}</div>`
+    : "";
+  if (!t) return `<h2>Doing</h2><div class="dim">Nothing. Pick something below.</div>${asideHtml}`;
   const opts = availableTasks(state, world, cal);
   const label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
   return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</h2>
-<div class="head"><b>${esc(label)}</b><button class="mini" data-act="stop">stop</button></div>
-<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
+<div class="head"><b>${esc(label)}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>
+<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>${asideHtml}`;
 }
 
 const GROUPS: { id: TaskGroup; label: string }[] = [
@@ -156,7 +169,7 @@ function optHtml(o: TaskOption): string {
   if (!o.ok) {
     return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small></span></div>`;
   }
-  const time = `${fmtDuration(o.duration)} (${fmtReal(o.duration)})`;
+  const time = `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}`;
   const rep = o.repeatable
     ? `<button class="rep" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}" data-repeat="1" title="Keep doing it until it cannot continue">loop</button>`
     : "";

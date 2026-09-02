@@ -72,6 +72,20 @@ export interface Task {
   repeat: boolean;
 }
 
+/**
+ * Work set aside with its share done. A felled-halfway tree stays halfway
+ * at its forest; a half-made knife travels in your hands. The key says which.
+ */
+export interface PausedTask {
+  id: TaskId;
+  arg?: string;
+  /** Share of the work done, 0..1. */
+  fraction: number;
+  /** Where it was set aside, for the list on screen. */
+  region: number;
+  spot: SpotId;
+}
+
 export interface RegionState {
   /** Standing trees worth felling. */
   wood: number;
@@ -137,4 +151,6 @@ export interface GameState {
   /** The last game hour and day index that had their periodic roll. */
   lastHour: number;
   lastDay: number;
+  /** Tasks set aside, by pauseKey. */
+  paused: Record<string, PausedTask>;
 }

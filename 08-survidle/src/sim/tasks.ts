@@ -14,7 +14,7 @@ import {
 import { log } from "./log";
 import { walkSpeed, workSpeed } from "./player";
 import {
-  type GameState, type RecipeId, SPECIES, SPOTS, type Species, type SpotId,
+  type GameState, type PausedTask, type RecipeId, SPECIES, SPOTS, type Species, type SpotId,
   type StructureId, type TaskId,
 } from "./types";
 import { DEEP_SNOW_CM } from "./weather";
@@ -34,11 +34,31 @@ export interface TaskOption {
   /** Why it cannot start, when it cannot. */
   why: string;
   repeatable: boolean;
+  /** Share already done and waiting to be resumed, when there is one. */
+  resume?: number;
 }
 
 export const SPOT_NAMES: Record<SpotId, string> = {
   camp: "camp", forest: "the forest", outcrop: "the outcrop", shore: "the shore", heath: "the heath",
 };
+
+/** Work that stays where it was left: the half-felled tree is at that forest. */
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "haul", "walk", "travel"]);
+/** Work you carry in your hands wherever you go. */
+const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light"]);
+
+/** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
+export function pauseKey(state: GameState, id: TaskId, arg?: string): string | null {
+  const a = arg ?? "";
+  if (LOCATED.has(id)) return `${id}:${a}@${state.player.region}:${state.player.spot}`;
+  if (CARRIED.has(id)) return `${id}:${a}`;
+  return null;
+}
+
+export function pausedFraction(state: GameState, id: TaskId, arg?: string): number {
+  const key = pauseKey(state, id, arg);
+  return key ? (state.paused[key]?.fraction ?? 0) : 0;
+}
 
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
@@ -62,6 +82,14 @@ function needsList(needs: { item: string; qty: number; alt?: string }[]): string
  * and startTask both go through it so the button and the click agree.
  */
 export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string): TaskOption {
+  const o = checkFresh(state, world, cal, id, arg);
+  const fraction = pausedFraction(state, id, arg);
+  if (fraction > 0 && o.ok) return { ...o, resume: fraction, duration: o.duration * (1 - fraction) };
+  if (fraction > 0) return { ...o, resume: fraction };
+  return o;
+}
+
+function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string): TaskOption {
   const p = state.player;
   const r = world.regions[p.region];
   const st = state.regions[p.region];
@@ -272,25 +300,49 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
   if (state.dead) return false;
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
-  // Whatever was under way is set down first, so a half-built wall stays built.
+  // Whatever was under way is set aside first, with its share done kept.
   stopTask(state);
   if (id === "build" && !(state.regions[state.player.region].build[arg as StructureId] ?? 0)) {
     // Materials are committed when the work starts, and stay laid out if you stop.
     consume(reach(state), STRUCTURES[arg as StructureId].needs);
     if (arg !== "snare") state.regions[state.player.region].build[arg as StructureId] = 0.001;
   }
-  state.task = { id, arg, progress: 0, duration: o.duration, repeat: repeat && o.repeatable };
+  // Pick up where this task was left, if it was.
+  const key = pauseKey(state, id, arg);
+  const fresh = checkFresh(state, world, cal, id, arg);
+  const fraction = key ? (state.paused[key]?.fraction ?? 0) : 0;
+  if (key) delete state.paused[key];
+  state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable };
   return true;
 }
 
+/** Sets the current task aside. Its share done is kept where it belongs; rest and sleep keep nothing. */
 export function stopTask(state: GameState): void {
   const t = state.task;
-  if (t?.id === "build" && t.arg !== "snare") {
+  if (!t) return;
+  if (t.id === "build" && t.arg !== "snare") {
     const st = state.regions[state.player.region];
     const sid = t.arg as StructureId;
     st.build[sid] = (st.build[sid] ?? 0) + t.progress;
+  } else {
+    const key = pauseKey(state, t.id, t.arg);
+    const fraction = t.duration > 0 ? Math.min(0.999, t.progress / t.duration) : 0;
+    if (key && fraction > 0.005) {
+      state.paused[key] = { id: t.id, arg: t.arg, fraction, region: state.player.region, spot: state.player.spot };
+    }
   }
   state.task = null;
+}
+
+/** Everything set aside, with whether it can be picked up from where the player stands. */
+export function pausedList(state: GameState, world: World, cal: Calendar): { key: string; task: PausedTask; option: TaskOption; here: boolean }[] {
+  return Object.entries(state.paused).map(([key, task]) => {
+    const here = CARRIED.has(task.id) || (task.region === state.player.region && task.spot === state.player.spot);
+    const option = here
+      ? check(state, world, cal, task.id, task.arg)
+      : { ...checkFresh(state, world, cal, task.id, task.arg), ok: false, why: `at ${SPOT_NAMES[task.spot]}, ${world.regions[task.region].name}` };
+    return { key, task, option, here };
+  });
 }
 
 /** Advances the current task by dt minutes and applies its effect when it completes. */

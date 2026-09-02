@@ -58,6 +58,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
     stats: { trees: 0, animals: 0, structures: 0, km: 0 },
     lastHour: 0,
     lastDay: 0,
+    paused: {},
   };
   log(state, `1 April. Snow still lies in the shade at ${world.regions[world.start].name}. You have an axe, wool on your back and a kilo of dried meat.`);
   return { state, world };

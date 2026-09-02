@@ -313,6 +313,28 @@ restores 30.
 ## Tasks
 
 One task at a time, with `progress`, `duration` (minutes) and `repeat`.
+
+### Setting work aside
+
+Stopping a task, or starting another, never loses what was done. The share
+done is kept in `state.paused` under a key that says where the work is:
+
+- **Located** work stays where it was left, keyed by task, argument, region
+  and spot: felling, gathering, hunting, fishing, splitting, cooking, hauling
+  and walking. A tree felled halfway is still half-felled at that forest and
+  nowhere else.
+- **Carried** work travels with the player, keyed by task and argument:
+  crafting, mending, sharpening, lighting. The half-made knife is in your
+  hands wherever you go.
+- **Building** keeps its minutes per region as before, with the materials
+  already laid out.
+- **Rest and sleep** keep nothing; their length is recomputed each time.
+
+Starting a task with a share set aside resumes from that share: the button
+says "50% already done" and the duration shown is what remains. The Doing
+panel lists everything set aside, with a resume button when it can be picked
+up from where you stand and the place it waits otherwise. Shares under half
+a percent are dropped.
 Duration is divided by the work-speed factor (energy, injury). A repeating
 task restarts if its inputs still hold. Durations are what the work takes a
 competent person:
