@@ -52,6 +52,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
     piles: {},
     route: null,
     plan: null,
+    intent: null,
   };
   enterRegion(state, world, world.start);
   log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);

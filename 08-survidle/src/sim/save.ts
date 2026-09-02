@@ -33,6 +33,9 @@ export function deserialize(text: string): SaveFile | null {
  */
 function fillDefaults(state: GameState): void {
   state.skills ??= newSkills();
+  state.intent ??= null;
+  // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
+  delete (state as unknown as Record<string, unknown>).plan;
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
     st.boughBedAge ??= 0;

@@ -298,6 +298,8 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5));
       return { ...o, duration: loaded + empty, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
+    case "night":
+      return opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 });
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
     case "sleep": {
@@ -752,6 +754,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "haul":
+    case "night":
     case "travel":
     case "walk":
     case "rest":

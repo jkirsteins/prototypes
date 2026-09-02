@@ -61,7 +61,7 @@ export const SPOTS: SpotId[] = ["camp", "forest", "outcrop", "shore", "heath"];
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build"
-  | "light" | "travel" | "walk" | "haul" | "rest" | "sleep";
+  | "light" | "travel" | "walk" | "haul" | "night" | "rest" | "sleep";
 
 export interface Task {
   id: TaskId;
@@ -107,6 +107,37 @@ export interface Plan {
   loop: PlanStep[] | null;
   /** For a looping haul: the pile that must still hold something. */
   sourceCell: number | null;
+}
+
+/** When an intent is finished with. */
+export type Until =
+  | { kind: "once" }
+  | { kind: "times"; n: number }
+  | { kind: "campHas"; item: ItemId; qty: number }
+  | { kind: "forever" };
+
+/** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
+export type BodyNeed = "sleep" | "cold" | "hungry";
+
+/**
+ * What the player set out to do. The runner re-reads the world every minute
+ * and starts one ordinary task at a time; nothing else is planned ahead.
+ */
+export interface Intent {
+  /** The work underneath, in the terms startTask speaks. */
+  task: TaskId;
+  arg?: string;
+  /** The cell the work is done in, resolved once when the intent starts. */
+  cell: number;
+  /** The home camp: where "bring it to camp" delivers. Fixed at start. */
+  campCell: number;
+  until: Until;
+  deliver: "leave" | "camp";
+  /** Completions of the work so far. */
+  done: number;
+  /** What the runner is doing right now, for the Doing panel. */
+  step: string;
+  need: BodyNeed | null;
 }
 
 export interface RegionState {
@@ -201,4 +232,5 @@ export interface GameState {
   piles: Record<number, Inventory>;
   route: Route | null;
   plan: Plan | null;
+  intent: Intent | null;
 }

@@ -55,7 +55,9 @@ describe("save", () => {
     const file = deserialize(serialize(state, 1234));
     expect(file).not.toBeNull();
     expect(file!.savedAt).toBe(1234);
-    expect(file!.state).toEqual(JSON.parse(JSON.stringify(state)));
+    const expected = JSON.parse(JSON.stringify(state));
+    delete (expected as unknown as Record<string, unknown>).plan;
+    expect(file!.state).toEqual(expected);
   });
 
   it("stores, loads, and removes the save on death", () => {
