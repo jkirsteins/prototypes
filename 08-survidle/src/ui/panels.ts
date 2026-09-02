@@ -207,8 +207,7 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   const opts = availableTasks(state, world, cal);
   let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
   if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
-  if (state.plan) label = `${state.plan.name}: ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
-  return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : state.plan ? " <span class=\"r\">until the pile is bare</span>" : ""}</h2>
+  return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</h2>
 <div class="head"><b>${esc(label)}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>
 <div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>${asideHtml}`;
 }

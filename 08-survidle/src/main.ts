@@ -3,8 +3,10 @@ import { Rng } from "./rng";
 import { addFirewood, drop, dropAll, eat, loadRack, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar } from "./sim/calendar";
+import { startIntent } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { newGame } from "./sim/newgame";
+import { cellOf } from "./sim/position";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
@@ -124,9 +126,15 @@ function onClick(ev: Event) {
   const cal = calendar(state.minute);
   const rng = new Rng(state.rng);
   switch (act) {
-    case "task":
-      startTask(state, world, cal, target.dataset.id as TaskId, target.dataset.arg || undefined, target.dataset.repeat === "1");
+    case "task": {
+      const id = target.dataset.id as TaskId;
+      if (id === "haul" || id === "night") {
+        startIntent(state, world, cal, rng, { task: id, until: { kind: "once" }, deliver: "camp", where: { cell: cellOf(state, world) } });
+      } else {
+        startTask(state, world, cal, id, target.dataset.arg || undefined, target.dataset.repeat === "1");
+      }
       break;
+    }
     case "stop":
       stopTask(state, world);
       break;

@@ -51,7 +51,6 @@ export function newGame(seed: number): { state: GameState; world: World } {
     paused: {},
     piles: {},
     route: null,
-    plan: null,
     intent: null,
   };
   enterRegion(state, world, world.start);

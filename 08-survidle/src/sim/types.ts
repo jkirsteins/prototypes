@@ -94,21 +94,6 @@ export interface Route {
   label: string;
 }
 
-export type PlanStep =
-  | { kind: "load"; cell: number }
-  | { kind: "walk"; cell: number; label: string }
-  | { kind: "drop" };
-
-/** A compound action, run one step at a time as the task slot frees up. */
-export interface Plan {
-  name: string;
-  steps: PlanStep[];
-  /** Steps to requeue when the list runs out, while `until` still holds. */
-  loop: PlanStep[] | null;
-  /** For a looping haul: the pile that must still hold something. */
-  sourceCell: number | null;
-}
-
 /** When an intent is finished with. */
 export type Until =
   | { kind: "once" }
@@ -231,6 +216,5 @@ export interface GameState {
   /** What lies on the ground, by cell index. */
   piles: Record<number, Inventory>;
   route: Route | null;
-  plan: Plan | null;
   intent: Intent | null;
 }

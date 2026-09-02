@@ -5,9 +5,10 @@ import { dailyAnimals } from "./animals";
 import { calendar } from "./calendar";
 import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
+import { runIntent } from "./intent";
 import { log } from "./log";
 import { causeFrom, die, stepPlayer } from "./player";
-import { beginTask, runPlan, stepTask } from "./tasks";
+import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { ambientTemperature, stepWeather } from "./weather";
 
@@ -44,7 +45,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
 
   stepTask(state, world, cal, rng, dt);
-  if (!state.task) runPlan(state, world, cal);
+  runIntent(state, world, cal, rng);
   // A body left idle and spent lies down on its own.
   if (!state.task && state.player.energy < EXHAUSTED && beginTask(state, world, cal, "sleep")) {
     log(state, "Too tired to stand, you sleep where you are.");

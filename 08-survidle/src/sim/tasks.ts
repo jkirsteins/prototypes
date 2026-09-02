@@ -5,7 +5,7 @@ import { findRoute, routeKm, routeMinutes } from "../world/route";
 import { regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import {
-  canConsume, consume, hasTool, herePile, isEmpty, listItems, pile, produce, qty, reach,
+  canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, tool, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
@@ -25,7 +25,7 @@ import {
 } from "./position";
 import { discovery, regionState } from "./regionstate";
 import {
-  type GameState, type PausedTask, type PlanStep, type RecipeId, SPECIES, type Species,
+  type GameState, type PausedTask, type RecipeId, SPECIES, type Species,
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { DEEP_SNOW_CM } from "./weather";
@@ -366,7 +366,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
 }
 
 /** Adds what practice says about an option: its mastery, and the level it is meant for. */
-function withProgression(state: GameState, world: World, o: TaskOption): TaskOption {
+export function withProgression(state: GameState, world: World, o: TaskOption): TaskOption {
   const skill = skillOf(o.id, o.arg);
   const key = skill ? masteryKey(state, world, o.id, o.arg) : null;
   if (!skill || !key) return o;
@@ -399,10 +399,10 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
 export function beginTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false): boolean {
   if (state.dead) return false;
   if (id === "night") return false;
+  if (id === "haul") return false;
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   setAside(state, world);
-  if (id === "haul") return startHaul(state, world, cal);
   if (id === "build" && !(regionState(state, world, state.player.region).build[arg as StructureId] ?? 0)) {
     // Materials are committed when the work starts, and stay laid out if you stop.
     consume(reach(state, world), STRUCTURES[arg as StructureId].needs);
@@ -424,70 +424,8 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   return true;
 }
 
-/**
- * Hauling is a plan, not a task: load up here, walk to camp, drop, walk
- * back, again while the pile holds anything. Each leg is an ordinary walk,
- * so stopping leaves you where you are, loaded, and the plan can be started
- * again from either end.
- */
-function startHaul(state: GameState, world: World, cal: Calendar): boolean {
-  const here = cellOf(state, world);
-  const campCell = regionState(state, world, state.player.region).campCell;
-  const steps: PlanStep[] = [
-    { kind: "load", cell: here },
-    { kind: "walk", cell: campCell, label: "camp" },
-    { kind: "drop" },
-    { kind: "walk", cell: here, label: whereIs(state, world, here) },
-  ];
-  state.plan = { name: "Haul to camp", steps: [...steps], loop: steps, sourceCell: here };
-  runPlan(state, world, cal);
-  return state.task !== null;
-}
-
-/** Takes the next step of the plan when nothing is under way. Called every minute by advance. */
-export function runPlan(state: GameState, world: World, cal: Calendar): void {
-  const plan = state.plan;
-  if (!plan || state.task || state.dead) return;
-  for (let guard = 0; guard < 8 && !state.task; guard++) {
-    if (!plan.steps.length) {
-      const more = plan.loop && plan.sourceCell !== null && !isEmpty(pile(state, plan.sourceCell));
-      if (!more) {
-        log(state, `${plan.name}: done.`, "good");
-        state.plan = null;
-        return;
-      }
-      plan.steps = [...plan.loop!];
-    }
-    const step = plan.steps.shift()!;
-    if (step.kind === "load") {
-      if (cellOf(state, world) !== step.cell) {
-        // Not where the pile is: walk there first.
-        plan.steps.unshift(step);
-        plan.steps.unshift({ kind: "walk", cell: step.cell, label: whereIs(state, world, step.cell) });
-        continue;
-      }
-      loadPack(state, world);
-    } else if (step.kind === "drop") {
-      const from = state.player.pack;
-      const to = herePile(state, world);
-      for (const { item, qty: q } of listItems(from)) transfer(from, to, item, q);
-    } else {
-      if (cellOf(state, world) === step.cell) continue;
-      const o = checkFresh(state, world, cal, "walk", `cell:${step.cell}`);
-      if (!o.ok) {
-        log(state, `${plan.name}: ${o.why}. You stop.`, "bad");
-        state.plan = null;
-        return;
-      }
-      const path = findRoute(world, cellOf(state, world), step.cell) ?? [];
-      state.route = { target: step.cell, path, label: step.label };
-      state.task = { id: "walk", arg: `cell:${step.cell}`, progress: 0, duration: o.duration, repeat: false };
-    }
-  }
-}
-
 /** Fills the pack to the hard limit from the pile here, heaviest things first. */
-function loadPack(state: GameState, world: World): void {
+export function loadPack(state: GameState, world: World): void {
   const from = herePile(state, world);
   const pack = state.player.pack;
   let room = PACK_HARD_KG - weight(pack);
@@ -510,11 +448,9 @@ export function stopTask(state: GameState, world: World): void {
 
 /**
  * Sets the current task aside. Work keeps its share where it belongs; a walk
- * simply ends where you stand; a plan is dropped, since it restarts from
- * anywhere. Rest and sleep keep nothing.
+ * simply ends where you stand. Rest and sleep keep nothing.
  */
 export function setAside(state: GameState, world: World): void {
-  state.plan = null;
   const t = state.task;
   if (!t) return;
   if (t.id === "build" && t.arg !== "snare") {
