@@ -57,9 +57,10 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(html).toMatch(/Gather stone.*(rock|outcrop)/s);
   });
   it("every option that trains carries a mastery bar; a hunt under level carries the warning", () => {
-    expect(html).toMatch(/data-opt="chop:"[^]*?bar mastery/);
-    expect(html).not.toMatch(/data-opt="walk:spot:forest"[^]*?bar mastery[^]*?data-opt="haul/);
-    expect(html).toMatch(/data-opt="hunt:elk"[^]*?<small class="warn">Hunting 8<\/small>/);
+    document.body.innerHTML = html;
+    expect(document.querySelector('[data-opt="chop:"] .bar.mastery')).not.toBeNull();
+    expect(document.querySelector('[data-opt="walk:spot:forest"] .bar.mastery')).toBeNull();
+    expect(document.querySelector('[data-opt="hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8");
   });
 });
 

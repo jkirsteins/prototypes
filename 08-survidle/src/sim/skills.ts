@@ -199,6 +199,11 @@ export function injuryChance(state: GameState, species: Species): number {
   return Math.min(1, base * huntExtras(state, species).injuryFactor);
 }
 
+/** Chance the gap alone turns on you, on every attempt whether or not the animal is taken. */
+export function gapInjury(state: GameState, species: Species): number {
+  return Math.min(1, 0.1 * gap(state, `hunt:${species}`)) * huntExtras(state, species).injuryFactor;
+}
+
 /** Chance a piece comes out: halved per level short of the recommendation. */
 export function craftSuccess(state: GameState, recipe: RecipeId): number {
   return 0.5 ** gap(state, `craft:${recipe}`);

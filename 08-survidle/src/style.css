@@ -104,6 +104,7 @@ small, .dim { color: var(--dim); }
 .bar.pool .fill { background: #8a6a2f; }
 .bar.pool i { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
 .bar.pool .lbl { font-size: 9px; line-height: 8px; }
+button.act small.rec, span.act small.rec, .opt.off span.act small.rec { display: inline; margin-left: 6px; }
 button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color: var(--bad); display: inline; margin-left: 6px; }
 
 .statuses { margin: 6px 0; min-height: 1.4em; }

@@ -4,13 +4,13 @@ import { addItem, hasTool, qty, tool } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { deserialize, serialize } from "../src/sim/save";
 import {
-  chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, huntExtras, injuryChance, level,
-  levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
-  SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor, yieldFactor,
+  chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, gapInjury, huntExtras, injuryChance,
+  level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
+  RECOMMENDED, SKILL_IDS, skillOf, skillLevel, speedFactor, spoiledNeeds, wearFactor, yieldFactor,
 } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { availableTasks, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { availableTasks, check, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
 
@@ -40,6 +40,12 @@ describe("skill curves", () => {
     expect(MASTERY_KEYS.crafting).toContain("craft:hideBlanket");
     expect(MASTERY_KEYS.building).toContain("build:boughBed");
     expect(MASTERY_KEYS.building).not.toContain("build:snare");
+  });
+
+  it("every EXTRAS and RECOMMENDED key names an action a skill actually owns", () => {
+    const allKeys = SKILL_IDS.flatMap((id) => MASTERY_KEYS[id]);
+    for (const key of Object.keys(EXTRAS)) expect(allKeys).toContain(key);
+    for (const key of Object.keys(RECOMMENDED)) expect(allKeys).toContain(key);
   });
 });
 
@@ -145,13 +151,13 @@ describe("effects", () => {
   it("Hunting 11 has 10% better odds; Fishing reads its own skill", () => {
     const { state, world } = newGame(3);
     const d = regionDensity(state, world, state.player.region, "hare", cal);
-    const base = huntOdds(state, world, cal, d, "hare");
+    const base = huntOdds(state, cal, d, "hare");
     state.skills.hunting.xp = levelMinutes(11);
-    expect(huntOdds(state, world, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
+    expect(huntOdds(state, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
     const df = regionDensity(state, world, state.player.region, "fish", cal);
-    const fish = huntOdds(state, world, cal, df, "fish");
+    const fish = huntOdds(state, cal, df, "fish");
     state.skills.fishing.xp = levelMinutes(11);
-    expect(huntOdds(state, world, cal, df, "fish")).toBeCloseTo(fish * 1.1, 6);
+    expect(huntOdds(state, cal, df, "fish")).toBeCloseTo(fish * 1.1, 6);
   });
 
   it("Crafting 11 wears the needle 10% less", () => {
@@ -198,9 +204,9 @@ describe("soft gates", () => {
     expect(gap(state, "hunt:elk")).toBe(7);
     const d = regionDensity(state, world, state.player.region, "elk", cal);
     state.skills.hunting.xp = levelMinutes(8);
-    const atLevel = huntOdds(state, world, cal, d, "elk");
+    const atLevel = huntOdds(state, cal, d, "elk");
     state.skills.hunting.xp = 0;
-    expect(huntOdds(state, world, cal, d, "elk")).toBeCloseTo((atLevel / 1.07) / 128, 9);
+    expect(huntOdds(state, cal, d, "elk")).toBeCloseTo((atLevel / 1.07) / 128, 9);
   });
 
   it("a cabin at Building 4 goes at 1 / 1.3^6 of the pace", () => {
@@ -209,6 +215,31 @@ describe("soft gates", () => {
     expect(speedFactor(state, world, "build", "cabin")).toBeCloseTo(1.03 / 1.3 ** 6, 6);
     state.skills.building.xp = levelMinutes(10);
     expect(speedFactor(state, world, "build", "cabin")).toBeCloseTo(1.09, 6);
+  });
+});
+
+describe("the button text agrees with the sim", () => {
+  it("chop, stone and hunt details follow mastery and pool the same way completion does", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const key = masteryKey(state, world, "chop")!;
+    state.skills.woodcraft.mastery[key] = masteryMinutes(20);
+    const chop = availableTasks(state, world, cal).find((o) => o.id === "chop")!;
+    expect(chop.detail).toContain("5 sticks");
+
+    state.skills.foraging.pool = poolCapacity("foraging");
+    const stone = availableTasks(state, world, cal).find((o) => o.id === "stone")!;
+    expect(stone.detail).toContain("5 stone");
+
+    state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(20);
+    const hare = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "hare")!;
+    expect(hare.detail).toContain("0.3 kg hide");
+  });
+
+  it("odds that round to nothing but are not zero read \"under 1%\", not \"about 0%\"", () => {
+    const { state, world } = newGame(3);
+    const elk = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!;
+    expect(elk.detail).toContain("under 1%");
   });
 });
 
@@ -221,6 +252,17 @@ describe("backfire under level", () => {
     state.skills.hunting.xp = levelMinutes(8);
     expect(injuryChance(state, "elk")).toBeCloseTo(0.15, 9);
     expect(injuryChance(state, "hare")).toBe(0);
+  });
+
+  it("the gap alone hurts you on every attempt, not just a successful one: elk 70% at Hunting 1, none at Hunting 8", () => {
+    const { state } = newGame(3);
+    expect(gapInjury(state, "elk")).toBeCloseTo(0.7, 9);
+    expect(gapInjury(state, "hare")).toBe(0);
+    state.skills.hunting.xp = levelMinutes(8);
+    expect(gapInjury(state, "elk")).toBe(0);
+    state.skills.hunting.xp = 0;
+    state.skills.hunting.mastery["hunt:elk"] = masteryMinutes(50);
+    expect(gapInjury(state, "elk")).toBeCloseTo(0.35, 9);
   });
 
   it("a bow at Crafting 1 comes out one time in 16; a failure spoils half the materials", () => {
@@ -238,6 +280,12 @@ describe("backfire under level", () => {
     expect(qty(state.player.pack, "log")).toBe(0);
     expect(qty(state.player.pack, "cordage")).toBe(2);
     expect(state.log.some((e) => e.text.startsWith("The bow is spoiled"))).toBe(true);
+  });
+
+  it("a spoiled attempt keeps kilogram needs exact and rounds counts up", () => {
+    expect(spoiledNeeds([{ item: "hide", qty: 4 }, { item: "sinew", qty: 2 }])).toEqual([
+      { item: "hide", qty: 2 }, { item: "sinew", qty: 1 },
+    ]);
   });
 });
 
@@ -322,11 +370,31 @@ describe("pool yield perks", () => {
     expect(yieldFactor(state, "woodcraft")).toBe(1);
   });
 
-  it("stone at a full pool is 5 per gather instead of 3, berries 1.5 kg instead of 1", () => {
-    const { state } = newGame(3);
+  it("stone at a full pool is 5 per gather, taken from a real gather rather than the formula alone", () => {
+    // No seed's start region ever has an outcrop: findStart requires forest >= 0.45,
+    // which leaves no room for rock. Seed 4's world has one two lattice cells over,
+    // at region 2405 - reached directly, the way tests place the player anywhere.
+    const g = newGame(4);
+    const { state, world } = g;
+    placeAtSpot(state, world, 2405, "outcrop");
     state.skills.foraging.pool = poolCapacity("foraging");
-    expect(Math.round(3 * yieldFactor(state, "foraging"))).toBe(5);
-    expect(1 * yieldFactor(state, "foraging")).toBe(1.5);
+    expect(startTask(state, world, cal, "stone")).toBe(true);
+    run(g, 30);
+    expect(qty(state.player.pack, "stone")).toBe(5);
+  });
+
+  it("fish at a full pool and mastery 1 catches 0.7 * 1.5 kg", () => {
+    const g = newGame(4);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "shore");
+    state.player.tools.push({ id: "fishingSpear", durability: 100 });
+    state.skills.fishing.pool = poolCapacity("fishing");
+    expect(startTask(state, world, cal, "fish")).toBe(true);
+    run(g, 60);
+    // Seed 1's roll in run() misses this cast, so the catch fails and there is
+    // nothing in the pack to weigh; assert on the button's figure instead.
+    expect(qty(state.player.pack, "fish")).toBe(0);
+    expect(check(state, world, cal, "fish").detail).toContain("1.0 kg per catch");
   });
 
   it("Foraging and Fishing trade the wear perk for yield: full pool means normal wear, not zero", () => {
@@ -356,7 +424,7 @@ describe("options carry progression", () => {
     const { state, world } = newGame(3);
     const elk = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!;
     expect(elk.recommended).toEqual({ text: "Hunting 8", under: true });
-    expect(elk.detail).toContain("Hunting 8");
+    expect(elk.detail).not.toContain("Hunting 8");
     const cabin = availableTasks(state, world, cal).find((o) => o.id === "build" && o.arg === "cabin")!;
     expect(cabin.detail).toContain("at Building 1 this takes 10.6x as long");
     state.player.tools.push({ id: "knife", durability: 100 });

@@ -97,9 +97,15 @@ recommendation is where the penalty stops.
 
 ### 2.2 What a gap does
 
-- **Hunting and fishing.** Odds x `0.5^gap`; injury chance + `0.10 * gap`.
-  Elk at Hunting 1 is about one try in 128 with an 85% chance of the injury
-  status. Deer at Hunting 2 is a quarter of the odds and a 20% injury.
+- **Hunting and fishing.** Odds x `0.5^gap`. The gap's own share of the
+  injury chance, `0.10 * gap` halved by mastery 50 the same as the animal's
+  own chance, rolls on every attempt, success or not; the animal's own
+  injury chance rolls only when it is taken, on top of the gap's share for
+  that attempt. Elk at Hunting 1 is about one try in 128, with an 85% chance
+  of the injury status when it is taken and a 70% chance from the gap alone
+  on every try regardless. Deer at Hunting 2 is a quarter of the odds and a
+  20% injury when taken. So seven levels short of elk you are hurt seven
+  tries in ten whether or not you see the animal.
 - **Crafting.** The piece comes out with chance `0.5^gap`, rolled at
   completion. On failure half of each material is lost (counts rounded up,
   kilograms exact), the time is spent, and the log says

@@ -15,7 +15,7 @@ import {
 import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
 import {
-  chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, huntExtras, injuryChance, MASTERY_CAP,
+  chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
   masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
   skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
@@ -158,7 +158,7 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
 
   switch (id) {
     case "chop": {
-      const o = ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: "4 logs and 4 sticks left on the ground", duration: hereTerrain(state, world) === "spruce" ? 50 : 60, repeatable: true }));
+      const o = ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: hereTerrain(state, world) === "spruce" ? 50 : 60, repeatable: true }));
       if (!o.ok) return o;
       if (!hasTool(p, "axe")) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
@@ -169,9 +169,9 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
     case "bark":
       return ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Strip bark", detail: "4 bark, for cordage", duration: 20, repeatable: true }));
     case "stone":
-      return ground(onRock(state, world), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: "3 stone", duration: 30, repeatable: true }));
+      return ground(onRock(state, world), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
     case "berries": {
-      const o = ground(onHeath(state, world), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: "1 kg berries, mid-July to mid-October", duration: 60, repeatable: true }));
+      const o = ground(onHeath(state, world), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(1 * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
       return o;
@@ -187,9 +187,10 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const def: SpeciesDef = ANIMALS[s];
       const d = regionDensity(state, world, p.region, s, cal);
       const onGround = def.spot === "heath" ? onHeath(state, world) : inForest(state, world);
+      const x = huntExtras(state, s);
       const o = ground(onGround, def.spot, def.spot === "heath" ? "heath" : "forest", opt({
         group: "hunt", label: `Hunt ${def.name}`, duration: def.minutes, repeatable: true,
-        detail: `${def.meatKg} kg meat${def.hideKg ? `, ${def.hideKg} kg hide` : ""}${def.bone ? `, ${def.bone} bone` : ""}${def.sinew ? `, ${def.sinew} sinew` : ""}; about ${Math.round(huntOdds(state, world, cal, d, s) * 100)}% per try`,
+        detail: `${def.meatKg} kg meat${x.hideKg ? `, ${x.hideKg} kg hide` : ""}${x.bone ? `, ${x.bone} bone` : ""}${x.sinew ? `, ${x.sinew} sinew` : ""}; ${oddsText(huntOdds(state, cal, d, s))}`,
       }));
       if (!o.ok) return o;
       if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
@@ -201,7 +202,7 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const def = ANIMALS.fish;
       const d = regionDensity(state, world, p.region, "fish", cal);
       const kg = fishKg(state) * yieldFactor(state, "fishing");
-      const o = ground(byWater(state, world), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; about ${Math.round(huntOdds(state, world, cal, d, "fish") * 100)}% per try` }));
+      const o = ground(byWater(state, world), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, cal, d, "fish"))}` }));
       if (!o.ok) return o;
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
       if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
@@ -321,14 +322,19 @@ export function bedText(state: GameState, world: World): string {
   return `${on}, ${under}${fire}`;
 }
 
-export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
+export function huntOdds(state: GameState, cal: Calendar, density: number, species: Species): number {
   const def = ANIMALS[species];
   let odds = density * def.odds * oddsFactor(state, species);
   if (state.weather.snowCm > DEEP_SNOW_CM) odds *= 0.75;
   if (cal.isNight) odds *= 0.7;
   if (state.weather.precip !== "none") odds *= 0.85;
-  void world;
   return Math.min(0.95, odds);
+}
+
+/** "about N% per try", or "under 1%" when the odds round to nothing but are not actually zero. */
+function oddsText(odds: number): string {
+  const pct = Math.round(odds * 100);
+  return pct === 0 && odds > 0 ? "under 1% per try" : `about ${pct}% per try`;
 }
 
 /** Every task the UI should show from where the player stands, legal or not. */
@@ -367,10 +373,10 @@ function withProgression(state: GameState, world: World, o: TaskOption): TaskOpt
   if (!rec) return out;
   const g = gap(state, key);
   out.recommended = { text: `${SKILL_NAMES[rec.skill]} ${rec.level}`, under: g > 0 };
-  const parts = [out.recommended.text];
+  const parts: string[] = [];
   if (g > 0 && o.id === "craft") parts.push(`${Math.round(craftSuccess(state, o.arg as RecipeId) * 100)}% chance it comes out`);
   if (g > 0 && o.id === "build") parts.push(`at ${SKILL_NAMES.building} ${skillLevel(state, "building")} this takes ${(1.3 ** g).toFixed(1)}x as long`);
-  out.detail = out.detail ? `${out.detail}; ${parts.join("; ")}` : parts.join("; ");
+  if (parts.length) out.detail = out.detail ? `${out.detail}; ${parts.join("; ")}` : parts.join("; ");
   return out;
 }
 
@@ -628,7 +634,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const def = ANIMALS[s];
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) log(state, "The bow snaps.", "bad");
-      if (rng.chance(huntOdds(state, world, cal, d, s))) {
+      if (rng.chance(huntOdds(state, cal, d, s))) {
         st.pop[s] = Math.max(0, st.pop[s] - 1);
         state.stats.animals++;
         const where = produce(state, world, "rawMeat", def.meatKg);
@@ -644,6 +650,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
           log(state, "It did not go down easily. You are hurt.", "bad");
         }
       } else {
+        const hurt = gapInjury(state, s);
+        if (hurt > 0 && rng.chance(hurt)) {
+          p.injured = Math.max(p.injured, 24 * 60);
+          p.health = Math.max(1, p.health - 15);
+          log(state, `The ${def.name} turns on you. You are hurt.`, "bad");
+        }
         if (rng.chance(0.5)) {
           removeItem(p.pack, "arrow", 1);
           log(state, `No ${def.name} today, and an arrow lost in the brush.`);
@@ -654,7 +666,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "fish": {
       const d = regionDensity(state, world, p.region, "fish", cal);
       if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish"))) log(state, "The spear shaft splits.", "bad");
-      if (rng.chance(huntOdds(state, world, cal, d, "fish"))) {
+      if (rng.chance(huntOdds(state, cal, d, "fish"))) {
         st.pop.fish = Math.max(0, st.pop.fish - 1);
         state.stats.animals++;
         const kg = fishKg(state) * yieldFactor(state, "fishing");
@@ -678,7 +690,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         log(state, `The ${rec.name} is left unfinished: the materials are gone.`, "bad");
         return;
       }
-      if (!rng.chance(craftSuccess(state, rid))) {
+      const success = craftSuccess(state, rid);
+      if (success < 1 && !rng.chance(success)) {
         const lost = spoiledNeeds(needs);
         consume(invs, lost);
         if (rec.tool) wearTool(p, rec.tool, wearFactor(state, world, "craft", rid));
