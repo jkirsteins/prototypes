@@ -64,6 +64,13 @@ export function poolShare(state: GameState, skill: SkillId): number {
   return state.skills[skill].pool / poolCapacity(skill);
 }
 
+/** Foraging and Fishing have no tool to spare, so their pool perks are yield. */
+export function yieldFactor(state: GameState, skill: SkillId): number {
+  if (skill !== "foraging" && skill !== "fishing") return 1;
+  const share = poolShare(state, skill);
+  return share >= 0.95 ? 1.5 : share >= 0.25 ? 1.2 : 1;
+}
+
 export function skillLevel(state: GameState, skill: SkillId): number {
   return level(state.skills[skill].xp);
 }

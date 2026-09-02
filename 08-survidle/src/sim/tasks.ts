@@ -16,7 +16,7 @@ import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, huntExtras, injuryChance, oddsFactor,
-  spoiledNeeds, train, wearFactor,
+  spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
 import {
   atCamp, byWater, cellCenter, cellIndex, cellOf, hereTerrain, inForest, onHeath, onRock,
@@ -195,7 +195,8 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
     case "fish": {
       const def = ANIMALS.fish;
       const d = regionDensity(state, world, p.region, "fish", cal);
-      const o = ground(byWater(state, world), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${fishKg(state).toFixed(1)} kg per catch; about ${Math.round(huntOdds(state, world, cal, d, "fish") * 100)}% per try` }));
+      const kg = fishKg(state) * yieldFactor(state, "fishing");
+      const o = ground(byWater(state, world), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; about ${Math.round(huntOdds(state, world, cal, d, "fish") * 100)}% per try` }));
       if (!o.ok) return o;
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
       if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
@@ -584,14 +585,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "sticks": produce(state, world, "stick", 6); return;
     case "bark": produce(state, world, "bark", 4); return;
     case "stone": {
-      produce(state, world, "stone", 3);
+      produce(state, world, "stone", Math.round(3 * yieldFactor(state, "foraging")));
       if (rng.chance(0.1)) {
         produce(state, world, "stone", 1);
         log(state, "A good sharp flint among the stones.", "good");
       }
       return;
     }
-    case "berries": produce(state, world, "berries", 1); return;
+    case "berries": produce(state, world, "berries", 1 * yieldFactor(state, "foraging")); return;
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
       produce(state, world, "firewood", ITEM_KG.log);
@@ -631,7 +632,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, world, cal, d, "fish"))) {
         st.pop.fish = Math.max(0, st.pop.fish - 1);
         state.stats.animals++;
-        const kg = fishKg(state);
+        const kg = fishKg(state) * yieldFactor(state, "fishing");
         produce(state, world, "fish", kg);
         log(state, `A fish, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");

@@ -6,7 +6,7 @@ import { deserialize, serialize } from "../src/sim/save";
 import {
   chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, huntExtras, injuryChance, level,
   levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
-  SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor,
+  SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor, yieldFactor,
 } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -307,5 +307,25 @@ describe("mastery extras", () => {
     startTask(state, world, cal, "chop");
     run(g, 2);
     expect(state.log.some((e) => e.text.includes("mastery 20") && e.text.includes(EXTRAS["chop:spruce"].at20))).toBe(true);
+  });
+});
+
+describe("pool yield perks", () => {
+  it("Foraging and Fishing get x1.2 at 25% and x1.5 at 95%; other skills stay at 1", () => {
+    const { state } = newGame(3);
+    expect(yieldFactor(state, "foraging")).toBe(1);
+    state.skills.foraging.pool = poolCapacity("foraging") * 0.25;
+    expect(yieldFactor(state, "foraging")).toBe(1.2);
+    state.skills.foraging.pool = poolCapacity("foraging") * 0.95;
+    expect(yieldFactor(state, "foraging")).toBe(1.5);
+    state.skills.woodcraft.pool = poolCapacity("woodcraft");
+    expect(yieldFactor(state, "woodcraft")).toBe(1);
+  });
+
+  it("stone at a full pool is 5 per gather instead of 3, berries 1.5 kg instead of 1", () => {
+    const { state } = newGame(3);
+    state.skills.foraging.pool = poolCapacity("foraging");
+    expect(Math.round(3 * yieldFactor(state, "foraging"))).toBe(5);
+    expect(1 * yieldFactor(state, "foraging")).toBe(1.5);
   });
 });
