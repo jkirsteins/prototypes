@@ -6,8 +6,9 @@ import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, TOOLS } fr
 import { feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
 import { regionState } from "../sim/regionstate";
+import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
 import { availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs } from "../sim/tasks";
-import { type GameState, type ItemId, type LogEntry, SPECIES } from "../sim/types";
+import { type GameState, type ItemId, type LogEntry, type SkillId, SPECIES } from "../sim/types";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
@@ -24,6 +25,17 @@ function durBar(v: number): string {
 
 function masteryBar(m: { level: number; share: number }): string {
   return `<div class="bar mastery" title="mastery ${m.level}"><div class="fill" style="width:${Math.round(m.share * 100)}%"></div><span class="lbl"><span>mastery ${m.level}</span></span></div>`;
+}
+
+/** What the pool is giving right now, in words. */
+function poolPerks(share: number, skill: SkillId): string[] {
+  const out: string[] = [];
+  if (share >= 0.5) out.push("10% faster");
+  else if (share >= 0.1) out.push("5% faster");
+  const yieldSkill = skill === "foraging" || skill === "fishing";
+  if (share >= 0.95) out.push(yieldSkill ? "half again the yield" : "no tool wear");
+  else if (share >= 0.25) out.push(yieldSkill ? "a fifth more yield" : "half the tool wear");
+  return out;
 }
 
 export function statsHtml(state: GameState, world: World, cal: Calendar, ambient: number, ui: UiState): string {
@@ -68,6 +80,24 @@ export function gearHtml(state: GameState): string {
     ? p.tools.map((t) => `<div>${TOOLS[t.id].name} <small>${Math.round(t.durability)}%</small>${durBar(t.durability)}</div>`).join("")
     : "<div class=\"dim\">no tools</div>";
   return `<h2>Worn <span class="r">+${insulation(state).toFixed(1)} C</span></h2>${clothes}<h2 style="margin-top:10px">Tools</h2>${tools}`;
+}
+
+export function skillsHtml(state: GameState): string {
+  const rows = SKILL_IDS.map((id) => {
+    const s = state.skills[id];
+    const l = level(s.xp);
+    const next = l >= SKILL_CAP ? null : levelMinutes(l + 1);
+    const from = levelMinutes(l);
+    const share = next ? (s.xp - from) / (next - from) : 1;
+    const toNext = next ? `${fmtDuration(next - s.xp)} to ${l + 1}` : "at the cap";
+    const pool = poolShare(state, id);
+    const perks = poolPerks(pool, id);
+    return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}</span></div>
+<div class="bar dur"><div class="fill" style="width:${Math.round(share * 100)}%"></div></div>
+<div class="bar pool"><div class="fill" style="width:${Math.round(pool * 100)}%"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
+${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}</div>`;
+  });
+  return `<h2>Skills</h2>${rows.join("")}`;
 }
 
 export function clockHtml(state: GameState, cal: Calendar, ambient: number): string {
@@ -269,6 +299,11 @@ export function logHtml(state: GameState): string {
     .join("")}</div>`;
 }
 
+function bestSkill(state: GameState): string {
+  const best = SKILL_IDS.map((id) => ({ id, l: skillLevel(state, id) })).sort((a, b) => b.l - a.l)[0];
+  return `Best skill: ${SKILL_NAMES[best.id]} ${best.l}.`;
+}
+
 export function deathHtml(state: GameState, world: World, cal: Calendar): string {
   const d = state.dead!;
   const cause = { starved: "You starved.", froze: "You froze.", wolves: "The wolves had you.", sickness: "The fever took you." }[d.cause];
@@ -277,6 +312,7 @@ export function deathHtml(state: GameState, world: World, cal: Calendar): string
 <h1>Dead</h1>
 <p>${cause} ${fmtDate(cal)}, day ${cal.day} of the run, at ${esc(regionAt(world, state.player.region).name)}.</p>
 <p>${s.trees} trees felled. ${s.animals} animals taken. ${s.structures} things built. ${s.km.toFixed(1)} km walked.</p>
+<p>${bestSkill(state)}</p>
 <p class="dim">The save is gone. There is no coming back from this one.</p>
 <button class="act" data-act="restart">Begin again, somewhere new</button>
 </div>`;

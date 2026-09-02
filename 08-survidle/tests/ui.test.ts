@@ -4,13 +4,14 @@ import { addItem, herePile } from "../src/sim/inventory";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
 import { SPECIES } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
-import { actionsHtml, deathHtml, inventoryHtml, regionHtml, statsHtml, taskHtml } from "../src/ui/panels";
+import { actionsHtml, deathHtml, inventoryHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 
@@ -147,5 +148,28 @@ describe("panels", () => {
     setPanel("overlay", deathHtml(state, world, calendar(5000)));
     expect(document.querySelector("#overlay")!.textContent).toContain("You froze");
     expect(document.querySelector(`#overlay [data-act="restart"]`)).not.toBeNull();
+  });
+
+  it("skills panel lists six rows with level, hours to next, pool share and active perks", () => {
+    const { state } = newGame(21);
+    state.skills.woodcraft.xp = levelMinutes(7) + 60;
+    state.skills.woodcraft.pool = poolCapacity("woodcraft") * 0.3;
+    const h = skillsHtml(state);
+    expect(h).toContain("Woodcraft");
+    expect(h).toContain("Fishing");
+    expect((h.match(/class="skill"/g) ?? []).length).toBe(6);
+    // Level 8 needs 98 h; level 7 had 72; one hour in, 25 h to go.
+    expect(h).toContain("25 h to 8");
+    expect(h).toContain("pool 30%");
+    expect(h).toContain("half the tool wear");
+    expect(h).toContain("5% faster");
+  });
+
+  it("death screen names the best skill", () => {
+    const { state, world } = newGame(21);
+    state.skills.hunting.xp = levelMinutes(12);
+    state.dead = { cause: "froze", minute: state.minute };
+    setPanel("overlay", deathHtml(state, world, calendar(state.minute)));
+    expect(document.querySelector("#overlay")!.textContent).toContain("Hunting 12");
   });
 });

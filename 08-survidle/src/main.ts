@@ -14,7 +14,7 @@ import { updateBars } from "./ui/bars";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
   actionsHtml, awayHtml, clockHtml, deathHtml, gearHtml, inventoryHtml, logHtml,
-  regionHtml, statsHtml, taskHtml,
+  regionHtml, skillsHtml, statsHtml, taskHtml,
 } from "./ui/panels";
 import { newUiState, resetPanels, setPanel } from "./ui/render";
 import { updateSky } from "./ui/sky";
@@ -66,6 +66,7 @@ function render() {
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("gear", gearHtml(state));
+  setPanel("skills", skillsHtml(state));
   setPanel("clock", clockHtml(state, cal, ambient));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
