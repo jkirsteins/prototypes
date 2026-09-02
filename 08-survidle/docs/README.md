@@ -61,6 +61,16 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   3 kg in the pack and gives +8 C asleep or resting anywhere. The sleep
   button says what you lie on and under: "on bare ground, in the open" or
   "on a bough bed, under your blanket and the roof, by the fire".
+- **Skills.** Every minute at a task is a minute of practice in one of six
+  skills (Woodcraft, Foraging, Hunting, Fishing, Crafting, Building) and in
+  that action's mastery. A level is hours behind the tool: 2 h to level 2,
+  162 h to 10, 722 h to 20. Each level is 1% faster, and 1% better odds for
+  hunting and fishing, 1% less tool wear for crafting. Mastery adds a
+  quarter percent per level on that one action, with a concrete extra at
+  20 and 50. Every mastery minute also fills the skill's pool; at 10, 25,
+  50 and 95 percent it gives skill-wide perks. Gates are soft: a button
+  says "Hunting 8" and stays live, but under it the odds halve per level
+  short and an elk can hurt you; a craft under level can spoil the piece.
 - **Away.** Close the tab and the world keeps going. On return the elapsed
   time is simulated, up to 24 real hours (60 game days), and a panel tells
   you what happened. You can die while away.
@@ -95,3 +105,4 @@ terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 - `src/sim/weather.ts`: the temperature curve, precipitation, snow.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
+- `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.

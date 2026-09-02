@@ -5,6 +5,8 @@ spirit of Melvor Idle: one active task at a time, a progress bar for everything,
 the simulation keeps running while the tab is closed, and the only goal is to
 survive as many days as possible. Death is permanent; the save is deleted.
 
+Skills, mastery and pools are specified in `2026-09-02-survidle-skills-design.md`.
+
 ## The one scale
 
 Every in-game quantity is a real-world quantity - kilometres, kilograms,
