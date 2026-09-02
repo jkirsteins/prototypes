@@ -41,16 +41,18 @@ export interface Tool { id: ToolId; durability: number }
 
 export type ClothingId =
   | "woolCoat" | "woolTrousers" | "leatherBoots" | "woolHat"
-  | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens";
-export type ClothingSlot = "coat" | "trousers" | "boots" | "hat" | "mittens";
+  | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
+  | "hideBlanket";
+export type ClothingSlot = "coat" | "trousers" | "boots" | "hat" | "mittens" | "blanket";
 export interface Garment { id: ClothingId; durability: number }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare";
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed";
 
 export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
   | "snare" | "needle" | "axe"
-  | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens";
+  | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
+  | "hideBlanket";
 
 /** Where inside a region the player stands. Every region has a camp. */
 export type SpotId = "camp" | "forest" | "outcrop" | "shore" | "heath";
@@ -113,7 +115,9 @@ export interface RegionState {
   pop: Record<Species, number>;
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number };
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean };
+  /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
+  boughBedAge: number;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
   fire: { lit: boolean; fuelKg: number };

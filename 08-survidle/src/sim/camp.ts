@@ -4,7 +4,7 @@ import { regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
 import {
-  FIRE_BURN_KG_PER_HOUR, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
+  BOUGH_BED_DAYS, FIRE_BURN_KG_PER_HOUR, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
   SNARE_CATCH_MAX_AGE,
 } from "./items";
 import { log } from "./log";
@@ -99,6 +99,14 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           st.pop.hare -= 1;
           st.snareCatch.count += 1;
         }
+      }
+    }
+    if (st.structures.boughBed) {
+      st.boughBedAge += 1440;
+      if (st.boughBedAge >= BOUGH_BED_DAYS * 1440) {
+        st.structures.boughBed = false;
+        st.boughBedAge = 0;
+        log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
       }
     }
     const forestCells = r.forest * r.cells.length;

@@ -291,9 +291,22 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       // Until dawn or until rested, whichever is later; no one sleeps round the clock.
       const toRested = ((100 - p.energy) / 12.5) * 60;
       const minutes = Math.min(600, Math.max(60, minutesUntilDawn(state.minute), toRested));
-      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${camp ? "by the fire, under the roof if you have one" : "on the ground, in the open"}`, duration: minutes });
+      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${bedText(state, world)}`, duration: minutes });
     }
   }
+}
+
+/** What you would lie on and under if you slept here now: "on a bough bed, under your blanket and the roof, by the fire". */
+export function bedText(state: GameState, world: World): string {
+  const st = regionState(state, world, state.player.region);
+  const camp = atCamp(state, world);
+  const bed = camp && st.structures.boughBed;
+  const roof = camp && (st.structures.cabin || st.structures.leanTo);
+  const blanket = state.player.clothing.some((g) => CLOTHING[g.id].slot === "blanket");
+  const on = bed ? "on a bough bed" : "on bare ground";
+  const under = blanket && roof ? "under your blanket and the roof" : blanket ? "under your blanket" : roof ? "under the roof" : "in the open";
+  const fire = camp && st.fire.lit ? ", by the fire" : "";
+  return `${on}, ${under}${fire}`;
 }
 
 export function huntOdds(state: GameState, cal: Calendar, density: number, def: SpeciesDef): number {
@@ -666,6 +679,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       } else {
         st.structures[sid] = true;
         delete st.build[sid];
+        if (sid === "boughBed") st.boughBedAge = 0;
       }
       state.stats.structures++;
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");

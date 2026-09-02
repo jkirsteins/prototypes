@@ -49,7 +49,11 @@ export const TOOLS: Record<ToolId, { name: string; kg: number }> = {
   needle: { name: "bone needle", kg: 0.01 },
 };
 
-export const CLOTHING: Record<ClothingId, { name: string; slot: ClothingSlot; insulation: number; kg: number }> = {
+/**
+ * `insulation` is worn all day; `sleep` counts only while asleep or resting,
+ * for what you wrap round yourself when you lie down.
+ */
+export const CLOTHING: Record<ClothingId, { name: string; slot: ClothingSlot; insulation: number; sleep?: number; kg: number }> = {
   woolCoat: { name: "wool coat", slot: "coat", insulation: 8, kg: 1.5 },
   woolTrousers: { name: "wool trousers", slot: "trousers", insulation: 4, kg: 0.8 },
   leatherBoots: { name: "leather boots", slot: "boots", insulation: 3, kg: 1.2 },
@@ -59,6 +63,7 @@ export const CLOTHING: Record<ClothingId, { name: string; slot: ClothingSlot; in
   hideBoots: { name: "hide boots", slot: "boots", insulation: 4, kg: 1.4 },
   furHat: { name: "fur hat", slot: "hat", insulation: 3, kg: 0.4 },
   furMittens: { name: "fur mittens", slot: "mittens", insulation: 2, kg: 0.3 },
+  hideBlanket: { name: "hide blanket", slot: "blanket", insulation: 0, sleep: 8, kg: 3 },
 };
 
 export interface Need { item: ItemId; qty: number; /** an acceptable substitute */ alt?: ItemId }
@@ -86,6 +91,7 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   hideBoots: { name: "hide boots", needs: [{ item: "hide", qty: 2 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 240, out: { clothing: "hideBoots" } },
   furHat: { name: "fur hat", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furHat" } },
   furMittens: { name: "fur mittens", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furMittens" } },
+  hideBlanket: { name: "hide blanket", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 240, out: { clothing: "hideBlanket" } },
 };
 export const RECIPE_IDS = Object.keys(RECIPES) as RecipeId[];
 
@@ -97,9 +103,12 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   cabin: { name: "log cabin", needs: [{ item: "log", qty: 40 }, { item: "stone", qty: 12 }, { item: "cordage", qty: 8 }], minutes: 3600, desc: "Walls and a roof. Warm, dry, and a long job." },
   dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 6 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps." },
   snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
+  boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat in a fortnight." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
 export const MAX_SNARES = 5;
+/** Days a bough bed stays springy before it has to be laid again. */
+export const BOUGH_BED_DAYS = 14;
 
 export interface SpeciesDef {
   name: string;

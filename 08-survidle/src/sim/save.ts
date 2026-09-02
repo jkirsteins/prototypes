@@ -18,9 +18,22 @@ export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as SaveFile;
     if (file?.version !== 3 || !file.state || typeof file.savedAt !== "number") return null;
+    fillDefaults(file.state);
     return file;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Fields added since a save was written get their starting values, so a
+ * run in progress survives a new structure the same way it survives a new
+ * region: by not having it yet.
+ */
+function fillDefaults(state: GameState): void {
+  for (const st of Object.values(state.regions)) {
+    st.structures.boughBed ??= false;
+    st.boughBedAge ??= 0;
   }
 }
 

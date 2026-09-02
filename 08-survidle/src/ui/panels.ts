@@ -54,7 +54,11 @@ ${bar("wet", "wet", "Wet")}
 export function gearHtml(state: GameState): string {
   const p = state.player;
   const clothes = p.clothing
-    .map((g) => `<div>${CLOTHING[g.id].name} <small>+${CLOTHING[g.id].insulation} C, ${Math.round(g.durability)}%</small>${durBar(g.durability)}</div>`)
+    .map((g) => {
+      const def = CLOTHING[g.id];
+      const warmth = def.sleep ? `+${def.sleep} C asleep` : `+${def.insulation} C`;
+      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${durBar(g.durability)}</div>`;
+    })
     .join("");
   const tools = p.tools.length
     ? p.tools.map((t) => `<div>${TOOLS[t.id].name} <small>${Math.round(t.durability)}%</small>${durBar(t.durability)}</div>`).join("")
@@ -123,6 +127,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.leanTo) built.push("lean-to");
   if (st.structures.cabin) built.push("log cabin");
   if (st.structures.dryingRack) built.push("drying rack");
+  if (st.structures.boughBed) built.push("bough bed");
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
   const fire = st.structures.firePit

@@ -309,6 +309,11 @@ shelter + activity - 0.15 * wetness.
   tasks in that region.
 - Shelter: lean-to +5 and halves wetting; cabin +15 and blocks precipitation;
   camp tasks only.
+- Bedding: a hide blanket +8 while asleep or resting, anywhere, scaled by
+  its durability; a bough bed +4 while asleep at the camp it is laid at.
+  Most heat lost in a night goes into the ground, so a bed and a blanket
+  turn a January night in a lean-to by the fire from marginal to fine, and
+  a night in the open with a blanket is survivable in autumn, not in winter.
 - Activity: chop, gather, build +6; walk +4; hunt, fish +2.
 
 ### Energy (fatigue)
@@ -424,7 +429,7 @@ competent person:
 | light fire      | fire pit, fire drill, 1 kg firewood   | 10                | fire lit with 1 kg fuel                                             |
 | travel to R     | R adjacent                            | distance / speed  | player region = R; snares checked on arrival                         |
 | rest            | anywhere                              | 60, repeat        | energy +6 per hour                                                  |
-| sleep           | anywhere, better in shelter           | until dawn or rested, 10 h at most | energy +12.5 per hour                              |
+| sleep           | anywhere, better in shelter; the button says what you lie on and under: "on a bough bed, under your blanket and the roof, by the fire" | until dawn or rested, 10 h at most | energy +12.5 per hour                              |
 
 Hunt odds are multiplied by 0.75 in deep snow, 0.7 at night, 0.85 in rain.
 Hunting removes the animal from the region population on success. Meat that
@@ -449,6 +454,11 @@ several trips.
 | hide boots    | 2 kg hide, 1 sinew                       | needle | 240     |
 | fur hat       | 1 kg hide, 1 sinew                       | needle | 120     |
 | fur mittens   | 1 kg hide, 1 sinew                       | needle | 120     |
+| hide blanket  | 4 kg hide, 2 sinew                       | needle | 240     |
+
+The hide blanket is a garment in its own slot, 3 kg, with no worn insulation:
+it gives +8 C while asleep or resting, wherever you are, and wears only then.
+Mending covers it like any other piece.
 
 ### Structures (per region)
 
@@ -459,6 +469,7 @@ several trips.
 | cabin        | 40 logs, 12 stone, 8 cordage        | 60    | shelter +15, blocks precipitation; supersedes the lean-to  |
 | drying rack  | 6 sticks, 2 cordage                 | 1     | holds 6 kg raw meat; dries 3 kg to 1 kg per 48 dry hours, even while away |
 | snare (x5)   | 1 snare item                        | 0.1   | each day at 04:00 catches a hare with p = 0.3 * hare density; an uncollected catch is lost after 2 days |
+| bough bed    | 12 sticks                           | 0.5   | +4 C while asleep at this camp; goes flat after 14 days and has to be laid again |
 
 A fire burns 3 kg of firewood per hour and holds at most 36 kg (12 hours).
 `autoFeed` (default on) adds firewood from pack and camp pile when the fire drops

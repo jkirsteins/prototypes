@@ -49,6 +49,21 @@ export function insulation(state: GameState): number {
   return sum;
 }
 
+/** True while lying or sitting still: the time bedding is in use. */
+export function bedded(task: Task | null): boolean {
+  return task?.id === "sleep" || task?.id === "rest";
+}
+
+/** What a blanket adds while you lie under it, scaled by its wear. */
+export function beddingInsulation(state: GameState): number {
+  let sum = 0;
+  for (const g of state.player.clothing) sum += (CLOTHING[g.id].sleep ?? 0) * clamp(g.durability, 0, 100) / 100;
+  return sum;
+}
+
+/** Degrees the bed under you gives while you sleep on it; a bed is laid at camp. */
+export const BOUGH_BED_C = 4;
+
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
@@ -57,6 +72,8 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   let felt = ambient + insulation(state);
   if (r.fire.lit && camp) felt += campTask ? 15 : 7;
   if (camp && campTask) felt += shelterBonus(r);
+  if (bedded(state.task)) felt += beddingInsulation(state);
+  if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
@@ -151,10 +168,14 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
     p.wetness = clamp(p.wetness - dry * dt, 0, 100);
   }
 
-  // Clothing wears when worn outdoors.
+  // Clothing wears when worn outdoors; bedding only while it is out of the pack.
   if (!roof) {
     const wear = (raining ? 1.0 : 0.5) * h;
-    for (const g of p.clothing) g.durability = clamp(g.durability - wear, 0, 100);
+    const inUse = bedded(state.task);
+    for (const g of p.clothing) {
+      if (CLOTHING[g.id].slot === "blanket" && !inUse) continue;
+      g.durability = clamp(g.durability - wear, 0, 100);
+    }
   }
 
   // Statuses tick down.

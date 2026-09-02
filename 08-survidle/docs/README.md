@@ -55,6 +55,12 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   then a cabin (40 logs, 60 hours); drying rack (3 kg raw to 1 kg that
   keeps); snares on the heath. Auto-eat and auto-feed keep you alive while
   the tab is closed, as long as the food and firewood are there.
+- **Bedding.** Most of a night's heat goes into the ground. A bough bed (12
+  sticks, half an hour) gives +4 C asleep at that camp and goes flat after
+  a fortnight. A hide blanket (4 kg hide, 2 sinew, a needle, 4 hours) is
+  3 kg in the pack and gives +8 C asleep or resting anywhere. The sleep
+  button says what you lie on and under: "on bare ground, in the open" or
+  "on a bough bed, under your blanket and the roof, by the fire".
 - **Away.** Close the tab and the world keeps going. On return the elapsed
   time is simulated, up to 24 real hours (60 game days), and a panel tells
   you what happened. You can die while away.
