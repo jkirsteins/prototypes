@@ -97,7 +97,7 @@ small, .dim { color: var(--dim); }
 .bar.mastery { height: 10px; margin: 4px 0 0; }
 .bar.mastery .fill { background: #4b6a8f; }
 .bar.mastery .lbl { font-size: 9px; line-height: 8px; }
-.warn { color: var(--bad); margin-left: 6px; display: inline; }
+button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color: var(--bad); display: inline; margin-left: 6px; }
 
 .statuses { margin: 6px 0; min-height: 1.4em; }
 .tag {
