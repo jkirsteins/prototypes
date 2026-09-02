@@ -21,16 +21,25 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 
 - **One task at a time**, with a progress bar. Most tasks have a `loop`
   button that repeats them until they cannot continue.
-- **Regions and spots.** The ASCII map is split into regions by blue borders;
-  your region is outlined in yellow with `@` at its camp. Inside a region you
-  walk between camp, forest, outcrop, shore and heath. Chopping happens in the
-  forest, stone at the outcrop, fish at the shore, hares and berries on the
-  heath, everything else at camp.
+- **You are a point on the map.** The ASCII map is split into regions by
+  blue borders; your region is outlined in yellow and `@` is your actual
+  cell. What you can do depends on the ground under foot: fell trees and hunt
+  in forest, gather stone on rock, fish beside water, hares and berries on
+  bog or meadow, and camp things at camp. Named spots (forest, outcrop,
+  shore, heath) are waypoints with walk buttons; routes go around lakes and
+  across bog only when they must, and the remaining route is highlighted
+  while you walk. Stop a walk and you stand where you are.
+- **Stopping never loses work.** Felling, gathering, crafting and the rest
+  keep their share done, listed under "Set aside" with a resume button, or
+  the place to walk back to. Walking keeps nothing because your position is
+  the progress.
 - **Carrying matters.** Your pack is comfortable to 25 kg and impossible past
   35. Logs weigh 20 kg and never go in the pack: they lie where they fell.
   Everything you make or kill that does not fit lands on the pile under your
-  feet. "Haul to camp" moves 35 kg a trip. Building uses the camp pile plus
-  your pack.
+  feet, and cells with something on them are underlined on the map. "Haul
+  to camp" is a plan: load 35 kg, walk to camp, drop, walk back, repeat
+  while the pile has anything; stop anywhere and carry on later. Building
+  uses the camp pile plus your pack.
 - **Body.** Food is a kilocalorie reserve. Warmth settles toward what your
   felt temperature can hold: ambient, plus clothing, fire and shelter at
   camp, plus activity, minus wetness. Below 20 warmth you lose health fast.

@@ -144,51 +144,78 @@ Regions are the unit of play. Per region, from its cells:
 
 The start region is the most central region with `forest >= 0.4`.
 
+### Position
+
+The player stands at a point on the map, `(x, y)` in cell units. The cell
+under foot decides the region, so during travel you are always in exactly
+one region and its weather, animals and wolves apply. The UI never shows
+coordinates. It says "at camp", "in the spruce, 0.4 km from camp", "on the
+way to Stensund, 2.1 km to go".
+
+What you can do is decided by the ground under and around you: fell trees,
+gather sticks and bark, and hunt grouse, deer and elk on a forest cell;
+gather stone on rock or fell; pick berries, hunt hare and set snares on bog
+or meadow; fish on a land cell beside water. Camp is one cell, the land cell
+nearest the region's centroid: building, fire, cooking, the shelter bonus
+and auto-feeding happen there. Crafting, mending, splitting, resting and
+sleeping work anywhere.
+
 ### Spots inside a region
 
-Work happens at places, not in a region as a whole. Every region has a
-`camp` spot at its centroid and, where the terrain exists, a `forest`,
-an `outcrop` (rock), a `shore` (water) and a `heath` (bog and meadow). Each
-spot has a distance from camp in km that shrinks as its terrain gets more
-common in the region:
+Spots are named waypoints, not the only places work happens. Every region
+has `camp` and, where the ground exists, `forest`, `outcrop` (rock), `shore`
+(land beside water) and `heath` (bog or meadow). Each is a real cell of that
+ground, chosen so its route from camp is nearest a target length that grows
+as the ground gets rarer in the region:
 
     forest  0.3 + 0.9 * (1 - forest)      outcrop 0.4 + 1.2 * (1 - rock)
     shore   0.3 + 1.0 * (1 - water)       heath   0.3 + 1.0 * (1 - bog - meadow)
 
-Walking between two spots goes via camp unless one of them is camp, at
-the travel speed below. Chopping, sticks and bark happen at the forest;
-stone at the outcrop; fishing at the shore; berries and hare at the heath;
-grouse, deer and elk at the forest; building, fire, cooking, sleeping and
-the shelter bonus at camp. Crafting and splitting work anywhere the inputs
-are.
+### Routes and walking
 
-Each spot has a **pile**. Produced things go into the pack while it is under
-25 kg, otherwise onto the pile of the spot the player stands on; logs always
-go to the pile. Consuming tasks draw from the pack plus the pile under the
-player's feet. **Haul to camp** is a repeatable task at any non-camp spot:
-each cycle loads the pack to 35 kg from the pile, walks to camp, drops it
-all on the camp pile and walks back. Its cycle time is the round trip at
-the loaded speed. A cabin's 40 logs is 40 such cycles, which is exactly the
-problem a cart later solves.
+A walk has a target cell and a route: A* over the grid, 4-connected, each
+step costing distance over the speed of the ground, water impassable. Ground
+speeds relative to open forest: meadow 1.1, spruce, pine and birch 1.0,
+rock 0.75, bog 0.7, fell 0.5. Routes are cached per pair of cells for the
+life of a world and handed out as copies.
 
-### Travel
+Each minute the player moves along the route at the current speed:
 
-Distance between two adjacent regions is the centroid distance in cells times
-0.3 km times 1.25 for the wandering a real path does. Walking speed:
+| condition               | effect on speed        |
+|-------------------------|------------------------|
+| base, open forest       | 3.0 km/h               |
+| ground under foot       | the factor above       |
+| snow depth above 30 cm  | x0.5                   |
+| night                   | x0.75                  |
+| pack over 25 kg         | x0.8; over 35 kg x0.6  |
+| energy below 20         | x0.7                   |
 
-| condition                         | km/h                       |
-|-----------------------------------|----------------------------|
-| base, off-trail forest            | 3.0                        |
-| more than half bog on either side | x0.7                       |
-| snow depth above 30 cm            | x0.5                       |
-| night                             | x0.75                      |
-| pack over 25 kg                   | x0.8; over 35 kg x0.6      |
-| energy below 20                   | x0.7                       |
+The button shows the route length and the time at the current base speed;
+the bar shows minutes passed and what the rest would take now. Stopping a
+walk leaves the player where they are with whatever is on their back;
+there is no percentage to keep, and the next walk starts from there. Travel
+to another region is a walk to that region's camp; any region with a land
+route can be reached, neighbours or not. Arriving at a heath collects the
+snares there. The map draws the remaining route as highlighted cells.
 
-Travel is a task whose duration is `distance / speed`, so a typical 4 km hop
-takes 80 game minutes. Leaving from a spot other than camp adds that spot's
-distance; arrival is always at the destination's camp. The travel list shows
-km, game time and real seconds.
+### Piles
+
+Anything set down lies on the cell it was set down on. Produced things go
+into the pack while it is under 25 kg, otherwise onto the pile under the
+player's feet; logs always go to the ground. Consuming tasks draw from the
+pack plus that pile. Cells with something on them are underlined on the
+map, and the region card lists piles away from the named spots with their
+weight and a walk button. Empty piles are swept.
+
+### Hauling is a plan
+
+**Haul to camp** is a plan, not a task: load the pack to 35 kg from the
+pile here, walk to camp, drop everything, walk back, and again while the
+pile holds anything. Each leg is an ordinary walk. Stopping leaves the
+player where they stand, loaded, and drops the plan, which restarts from
+either end. `state.plan` holds the queued steps; the task engine takes the
+next step whenever the task slot is free. A cabin's 40 logs is 40 such
+trips, which is exactly the problem a cart later solves.
 
 ### Animals
 
@@ -319,10 +346,12 @@ One task at a time, with `progress`, `duration` (minutes) and `repeat`.
 Stopping a task, or starting another, never loses what was done. The share
 done is kept in `state.paused` under a key that says where the work is:
 
-- **Located** work stays where it was left, keyed by task, argument, region
-  and spot: felling, gathering, hunting, fishing, splitting, cooking, hauling
-  and walking. A tree felled halfway is still half-felled at that forest and
-  nowhere else.
+- **Located** work stays where it was left, keyed by task, argument and
+  cell: felling, gathering, hunting, fishing, splitting and cooking. A tree
+  felled halfway is still half-felled in that 300 m cell of forest and
+  nowhere else; the set-aside list names the place so you can walk back.
+- **Walking and hauling** keep nothing here because they need nothing: your
+  position is the progress. See Routes and walking.
 - **Carried** work travels with the player, keyed by task and argument:
   crafting, mending, sharpening, lighting. The half-made knife is in your
   hands wherever you go.

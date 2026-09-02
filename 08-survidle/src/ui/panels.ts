@@ -1,14 +1,15 @@
 import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
-import { herePile, listItems, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, TOOLS } from "../sim/items";
 import { feltTemperature, insulation } from "../sim/player";
-import { availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, walkKm } from "../sim/tasks";
+import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
+import { availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs } from "../sim/tasks";
 import { type GameState, type ItemId, type LogEntry, SPECIES } from "../sim/types";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
-import { spotKm, type World } from "../world/gen";
+import type { World } from "../world/gen";
 import { esc, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
@@ -20,9 +21,9 @@ function durBar(v: number): string {
   return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`;
 }
 
-export function statsHtml(state: GameState, cal: Calendar, ambient: number, ui: UiState): string {
+export function statsHtml(state: GameState, world: World, cal: Calendar, ambient: number, ui: UiState): string {
   const p = state.player;
-  const felt = feltTemperature(state, ambient);
+  const felt = feltTemperature(state, world, ambient);
   const tags: string[] = [];
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
@@ -88,22 +89,32 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
   ].join(", ");
   const animals = SPECIES.map((s) => `${ANIMALS[s].name}: <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`).join(", ");
+  const myCell = cellOf(state, world);
   const spots = r.spots
     .map((s) => {
-      const pileKg = st.piles[s.id] ? weight(st.piles[s.id]!) : 0;
-      const isHere = here && p.spot === s.id;
+      const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
       const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
       if (!here) {
         return `<div>${SPOT_NAMES[s.id]} <small>${[s.id === "camp" ? "" : `${fmtKm(s.km)} from camp`, lying].filter(Boolean).join(", ")}</small></div>`;
       }
-      if (isHere) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
-      // Distance and time from where the player stands, not from camp.
-      const walk = check(state, world, cal, "walk", s.id);
-      const km = walkKm(r, p.spot, s.id);
+      if (s.cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
+      // Distance and time from where the player stands, along the route.
+      const walk = check(state, world, cal, "walk", `spot:${s.id}`);
+      const km = kmBetween(world, myCell, s.cell);
       const btn = walk.ok
-        ? ` <button class="mini" data-act="task" data-id="walk" data-arg="${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
+        ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : ` <small>${esc(walk.why)}</small>`;
-      return `<div>${SPOT_NAMES[s.id]} <small>${[`${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}</div>`;
+      return `<div>${SPOT_NAMES[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}</div>`;
+    })
+    .join("");
+  // Things lying about this region away from the named spots.
+  const spotCells = new Set(r.spots.map((s) => s.cell));
+  const loose = pilesIn(state, world, id)
+    .filter((x) => !spotCells.has(x.cell) && x.cell !== myCell)
+    .map((x) => {
+      const walk = here ? check(state, world, cal, "walk", `cell:${x.cell}`) : null;
+      const btn = walk?.ok ? ` <button class="mini" data-act="task" data-id="walk" data-arg="cell:${x.cell}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>` : "";
+      return `<div>${fmtKg(weight(x.inv))} lying at ${esc(whereIs(state, world, x.cell))}${btn}</div>`;
     })
     .join("");
   const built: string[] = [];
@@ -120,18 +131,19 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${RACK_MAX_KG} kg max)</small></div>`
     : "";
   let travel = "";
-  if (!here && nb) {
-    travel = `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="${id}">Go to ${esc(r.name)} <small>${fmtKm(nb.km + spotKm(world.regions[p.region], p.spot))} from where you stand</small></button></div>`;
-  } else if (!here) {
-    travel = `<div class="dim" style="margin-top:6px">Not next to ${esc(world.regions[p.region].name)}. Travel region by region.</div>`;
+  if (!here) {
+    const go = check(state, world, cal, "travel", `region:${id}`);
+    travel = go.ok
+      ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button></div>`
+      : `<div class="dim" style="margin-top:6px">${esc(go.why)}</div>`;
   }
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
-<div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are at ${SPOT_NAMES[p.spot]}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
+<div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
 <dl class="kv">
 <dt>land</dt><dd>${terrain}</dd>
 <dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
 <dt>animals</dt><dd>${animals}</dd>
-<dt>places</dt><dd class="spots">${spots}</dd>
+<dt>places</dt><dd class="spots">${spots}${loose}</dd>
 <dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}</dd>
 </dl>${travel}`;
 }
@@ -153,8 +165,10 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
     : "";
   if (!t) return `<h2>Doing</h2><div class="dim">Nothing. Pick something below.</div>${asideHtml}`;
   const opts = availableTasks(state, world, cal);
-  const label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
-  return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</h2>
+  let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+  if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
+  if (state.plan) label = `${state.plan.name}: ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+  return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : state.plan ? " <span class=\"r\">until the pile is bare</span>" : ""}</h2>
 <div class="head"><b>${esc(label)}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>
 <div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>${asideHtml}`;
 }
@@ -182,7 +196,8 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
   let instant = "";
   if (ui.tab === "camp") {
     const p = state.player;
-    const invs = [p.pack, herePile(state)];
+    const invs = [p.pack, herePile(state, world)];
+    const camp = spotHere(state, world) === "camp";
     const foods = (Object.keys(FOODS) as FoodId[])
       .map((f) => {
         const have = invs.reduce((a, inv) => a + qty(inv, f), 0);
@@ -193,11 +208,11 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
       .join(" ");
     const st = state.regions[p.region];
     const wood = invs.reduce((a, inv) => a + qty(inv, "firewood"), 0);
-    const fire = st.fire.lit && p.spot === "camp"
+    const fire = st.fire.lit && camp
       ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
       : "";
     const raw = invs.reduce((a, inv) => a + qty(inv, "rawMeat"), 0);
-    const rack = st.structures.dryingRack && p.spot === "camp"
+    const rack = st.structures.dryingRack && camp
       ? `<button class="mini" data-act="rack" ${raw <= 0 || st.rack.kg >= RACK_MAX_KG ? "disabled" : ""}>hang raw meat to dry <small>${fmtKg(Math.min(raw, RACK_MAX_KG - st.rack.kg))}</small></button>`
       : "";
     instant = `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${rack}</div>`;
@@ -220,11 +235,11 @@ export function inventoryHtml(state: GameState, world: World): string {
   const p = state.player;
   const kg = weight(p.pack);
   const over = kg > PACK_HARD_KG ? "bad" : kg > PACK_COMFORTABLE_KG ? "accent" : "";
-  const here = herePile(state);
+  const here = herePile(state, world);
   return `<h2>Pack <span class="r ${over}">${fmtKg(kg)} of ${PACK_COMFORTABLE_KG} kg comfortable, ${PACK_HARD_KG} kg max</span></h2>
 ${invRows(listItems(p.pack), "drop")}
 ${listItems(p.pack).length ? `<div style="margin-top:4px"><button class="mini" data-act="drop-all">drop everything here</button></div>` : ""}
-<h2 style="margin-top:10px">On the ground at ${SPOT_NAMES[p.spot]}, ${esc(world.regions[p.region].name)} <span class="r">${fmtKg(weight(here))}</span></h2>
+<h2 style="margin-top:10px">On the ground here, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
 ${invRows(listItems(here), "take")}`;
 }
 

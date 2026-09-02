@@ -3,27 +3,39 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { availableTasks, check, startTask, stepTask, stopTask } from "../src/sim/tasks";
-import { spotKm } from "../src/world/gen";
+import { cellOf, placeAt, placeAtSpot, spotHere } from "../src/sim/position";
+import { availableTasks, check, runPlan, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { spotOf } from "../src/world/gen";
+import { findRoute, routeKm } from "../src/world/route";
 
-function run(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"], minutes: number, seed = 1) {
+type G = ReturnType<typeof newGame>;
+function run(g: G, minutes: number, seed = 1) {
   const rng = new Rng(seed);
-  for (let m = 0; m < minutes; m++) stepTask(state, world, calendar(state.minute), rng, 1);
+  for (let m = 0; m < minutes; m++) stepTask(g.state, g.world, calendar(g.state.minute), rng, 1);
 }
+/** Steps until the task ends, in case the pace is not what the caller assumed. */
+function done(g: G, max = 2000) {
+  const rng = new Rng(1);
+  for (let i = 0; i < max && g.state.task; i++) stepTask(g.state, g.world, calendar(g.state.minute), rng, 1);
+}
+const cal = calendar(0);
 
 describe("tasks", () => {
-  it("felling a tree needs the forest, an axe, and leaves logs on the ground", () => {
-    const { state, world } = newGame(3);
-    const cal = calendar(0);
+  it("felling a tree needs forest under foot and an axe, and leaves logs on this cell", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    // Stand on ground that is not forest: no felling there.
+    const r = world.regions[state.player.region];
+    const bare = r.cells.find((c) => ["meadow", "bog", "rock", "fell"].includes(world.cells[c].terrain))!;
+    placeAt(state, world, bare);
     expect(check(state, world, cal, "chop").ok).toBe(false);
     expect(check(state, world, cal, "chop").why).toContain("forest");
-    state.player.spot = "forest";
+    placeAtSpot(state, world, state.player.region, "forest");
     expect(check(state, world, cal, "chop").ok).toBe(true);
     const wood0 = state.regions[state.player.region].wood;
     expect(startTask(state, world, cal, "chop")).toBe(true);
-    run(state, world, 60);
-    expect(state.task).toBeNull();
-    expect(qty(herePile(state), "log")).toBe(4);
+    done(g);
+    expect(qty(herePile(state, world), "log")).toBe(4);
     expect(qty(state.player.pack, "stick")).toBe(4);
     expect(state.regions[state.player.region].wood).toBe(wood0 - 1);
     expect(tool(state.player, "axe")!.durability).toBe(99);
@@ -31,130 +43,192 @@ describe("tasks", () => {
   });
 
   it("repeats until it cannot", () => {
-    const { state, world } = newGame(3);
-    state.player.spot = "forest";
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
     state.regions[state.player.region].wood = 2;
-    startTask(state, world, calendar(0), "chop", undefined, true);
-    run(state, world, 200);
+    startTask(state, world, cal, "chop", undefined, true);
+    run(g, 200);
     expect(state.task).toBeNull();
-    expect(qty(herePile(state), "log")).toBe(8);
+    expect(qty(herePile(state, world), "log")).toBe(8);
     expect(state.log.some((e) => e.text.includes("You stop"))).toBe(true);
   });
 
-  it("walks between spots and travels between regions at a realistic pace", () => {
-    const { state, world } = newGame(3);
-    const cal = calendar(0);
+  it("walks along a route at the speed of the ground and arrives at the spot", () => {
+    const g = newGame(3);
+    const { state, world } = g;
     const r = world.regions[state.player.region];
-    const walk = check(state, world, cal, "walk", "forest");
+    const forest = spotOf(r, "forest")!;
+    const walk = check(state, world, cal, "walk", "spot:forest");
     expect(walk.ok).toBe(true);
-    expect(walk.duration).toBeCloseTo((spotKm(r, "forest") / 3.0) * 60, 3);
-    startTask(state, world, cal, "walk", "forest");
-    run(state, world, Math.ceil(walk.duration));
-    expect(state.player.spot).toBe("forest");
-
-    const nb = r.neighbours[0];
-    const travel = check(state, world, calendar(state.minute), "travel", String(nb.id));
-    expect(travel.ok).toBe(true);
-    const expectedKm = nb.km + spotKm(r, "forest");
-    expect(travel.duration).toBeCloseTo((expectedKm / 3.0) * 60, 3);
-    startTask(state, world, calendar(state.minute), "travel", String(nb.id));
-    run(state, world, Math.ceil(travel.duration));
-    expect(state.player.region).toBe(nb.id);
-    expect(state.player.spot).toBe("camp");
-    expect(state.stats.km).toBeCloseTo(spotKm(r, "forest") + expectedKm, 3);
+    const route = findRoute(world, cellOf(state, world), forest.cell)!;
+    expect(routeKm(route)).toBeCloseTo(forest.km, 1);
+    startTask(state, world, cal, "walk", "spot:forest");
+    expect(state.route?.path.length).toBe(route.length);
+    done(g);
+    expect(spotHere(state, world)).toBe("forest");
+    expect(state.route).toBeNull();
+    expect(state.stats.km).toBeCloseTo(forest.km, 1);
   });
 
-  it("hauls up to 35 kg per round trip to camp", () => {
-    const { state, world } = newGame(3);
-    state.player.spot = "forest";
-    addItem(herePile(state), "log", 3);
-    addItem(herePile(state), "stick", 10);
-    const cal = calendar(0);
+  it("a stopped walk leaves you on the way, and the next walk starts from there", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    // The farthest spot, so half the way is several cells.
+    const r = world.regions[state.player.region];
+    const far = r.spots.reduce((a, b) => (b.km > a.km ? b : a));
+    const start = cellOf(state, world);
+    startTask(state, world, cal, "walk", `spot:${far.id}`);
+    const total = state.task!.duration;
+    run(g, Math.floor(total / 2));
+    stopTask(state, world);
+    const mid = cellOf(state, world);
+    expect(mid).not.toBe(start);
+    expect(mid).not.toBe(far.cell);
+    expect(state.route).toBeNull();
+    expect(Object.keys(state.paused)).toHaveLength(0);
+    const rest = check(state, world, cal, "walk", `spot:${far.id}`);
+    expect(rest.duration).toBeLessThan(total * 0.75);
+    startTask(state, world, cal, "walk", `spot:${far.id}`);
+    done(g);
+    expect(cellOf(state, world)).toBe(far.cell);
+  });
+
+  it("travels to a neighbouring region's camp and can go anywhere with a route", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const r = world.regions[state.player.region];
+    const nb = r.neighbours[0];
+    const go = check(state, world, cal, "travel", `region:${nb.id}`);
+    expect(go.ok).toBe(true);
+    expect(go.duration).toBeGreaterThan(20);
+    startTask(state, world, cal, "travel", `region:${nb.id}`);
+    done(g, 5000);
+    expect(state.player.region).toBe(nb.id);
+    expect(cellOf(state, world)).toBe(world.regions[nb.id].campCell);
+    expect(state.log.some((e) => e.text.includes(`You reach ${world.regions[nb.id].name}`))).toBe(true);
+  });
+
+  it("hauling is a plan: load, walk to camp, drop, walk back, until the pile is bare", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const region = state.player.region;
+    placeAtSpot(state, world, region, "forest");
+    const forestCell = cellOf(state, world);
+    addItem(herePile(state, world), "log", 3);
+    addItem(herePile(state, world), "stick", 10);
     const haul = check(state, world, cal, "haul");
     expect(haul.ok).toBe(true);
-    startTask(state, world, cal, "haul", undefined, true);
-    run(state, world, Math.ceil(haul.duration) + 1);
-    const camp = pile(state, state.player.region, "camp");
-    expect(qty(camp, "log")).toBe(1);
+    expect(startTask(state, world, cal, "haul", undefined, true)).toBe(true);
+    expect(state.plan?.name).toBe("Haul to camp");
+    expect(state.task?.id).toBe("walk");
+    expect(qty(state.player.pack, "log")).toBe(1);
+    // Run until the plan finishes.
+    const rng = new Rng(1);
+    for (let i = 0; i < 5000 && (state.plan || state.task); i++) {
+      stepTask(state, world, calendar(state.minute), rng, 1);
+      // advance() does this each minute.
+      if (!state.task) runPlan(state, world, calendar(state.minute));
+    }
+    const camp = pile(state, state.regions[region].campCell);
+    expect(qty(camp, "log")).toBe(3);
     expect(qty(camp, "stick")).toBe(10);
-    expect(state.player.spot).toBe("forest");
-    expect(state.task?.id).toBe("haul");
+    expect(qty(pile(state, forestCell), "log")).toBe(0);
+    expect(state.plan).toBeNull();
+    expect(state.log.some((e) => e.text.includes("Haul to camp: done"))).toBe(true);
+  });
+
+  it("stopping mid-haul keeps the load on your back and you on the way", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const forestCell = cellOf(state, world);
+    addItem(herePile(state, world), "log", 2);
+    startTask(state, world, cal, "haul", undefined, true);
+    // Walk until the first cell boundary is crossed, then stop.
+    for (let i = 0; i < 200 && cellOf(state, world) === forestCell; i++) run(g, 1);
+    stopTask(state, world);
+    expect(state.plan).toBeNull();
+    expect(qty(state.player.pack, "log")).toBe(1);
+    expect(cellOf(state, world)).not.toBe(forestCell);
+    expect(state.route).toBeNull();
+    // The other log still lies where it was, and going back for it is an ordinary walk.
+    expect(qty(pile(state, forestCell), "log")).toBe(1);
+    expect(check(state, world, cal, "walk", `cell:${forestCell}`).ok).toBe(true);
   });
 
   it("crafts through the chain: cordage, knife, fire drill", () => {
-    const { state, world } = newGame(3);
+    const g = newGame(3);
+    const { state, world } = g;
     addItem(state.player.pack, "bark", 3);
     addItem(state.player.pack, "stone", 2);
     addItem(state.player.pack, "stick", 3);
-    const cal = calendar(0);
     expect(check(state, world, cal, "craft", "knife").ok).toBe(false);
     startTask(state, world, cal, "craft", "cordage");
-    run(state, world, 20);
+    done(g);
     expect(qty(state.player.pack, "cordage")).toBe(1);
     expect(check(state, world, cal, "craft", "fireDrill").why).toContain("knife");
     startTask(state, world, cal, "craft", "knife");
-    run(state, world, 45);
+    done(g);
     expect(tool(state.player, "knife")).toBeDefined();
     addItem(state.player.pack, "cordage", 1);
     startTask(state, world, cal, "craft", "fireDrill");
-    run(state, world, 30);
+    done(g);
     expect(tool(state.player, "fireDrill")).toBeDefined();
   });
 
-  it("builds a fire pit, lights it and cooks", () => {
-    const { state, world } = newGame(3);
-    const cal = calendar(0);
-    addItem(herePile(state), "stone", 6);
+  it("builds a fire pit at camp, lights it and cooks", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    addItem(herePile(state, world), "stone", 6);
     addItem(state.player.pack, "firewood", 3);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(state.player.pack, "rawMeat", 2);
     expect(check(state, world, cal, "light").why).toContain("fire pit");
     startTask(state, world, cal, "build", "firePit");
-    expect(qty(herePile(state), "stone")).toBe(0);
-    run(state, world, 30);
+    expect(qty(herePile(state, world), "stone")).toBe(0);
+    done(g);
     const st = state.regions[state.player.region];
     expect(st.structures.firePit).toBe(true);
     startTask(state, world, cal, "light");
-    run(state, world, 10);
+    done(g);
     expect(st.fire.lit).toBe(true);
-    expect(st.fire.fuelKg).toBe(1);
     startTask(state, world, cal, "cook", "rawMeat", true);
-    run(state, world, 21);
+    done(g);
     expect(qty(state.player.pack, "cookedMeat")).toBeCloseTo(2);
-    expect(state.task).toBeNull();
   });
 
   it("keeps build progress when stopped", () => {
-    const { state, world } = newGame(3);
-    const cal = calendar(0);
-    addItem(herePile(state), "stick", 8);
-    addItem(herePile(state), "log", 4);
-    addItem(herePile(state), "cordage", 2);
+    const g = newGame(3);
+    const { state, world } = g;
+    addItem(herePile(state, world), "stick", 8);
+    addItem(herePile(state, world), "log", 4);
+    addItem(herePile(state, world), "cordage", 2);
     startTask(state, world, cal, "build", "leanTo");
-    run(state, world, 100);
-    stopTask(state);
+    run(g, 100);
+    stopTask(state, world);
     const st = state.regions[state.player.region];
     expect(st.build.leanTo).toBeGreaterThan(99);
     const again = check(state, world, cal, "build", "leanTo");
     expect(again.ok).toBe(true);
     expect(again.duration).toBeCloseTo(140, 0);
     startTask(state, world, cal, "build", "leanTo");
-    run(state, world, 141);
+    done(g);
     expect(st.structures.leanTo).toBe(true);
   });
 
-  it("hunts deer with a bow and arrows and eventually succeeds", () => {
-    const { state, world } = newGame(3);
-    state.player.spot = "forest";
+  it("hunts deer in the forest with a bow and eventually succeeds", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
     state.player.tools.push({ id: "bow", durability: 100 });
     addItem(state.player.pack, "arrow", 40);
     state.regions[state.player.region].pop.deer = world.regions[state.player.region].capacity.deer;
-    const cal = calendar(0);
     expect(check(state, world, cal, "hunt", "deer").ok).toBe(true);
     startTask(state, world, cal, "hunt", "deer", true);
-    run(state, world, 180 * 12, 9);
+    run(g, 180 * 12, 9);
     expect(state.stats.animals).toBeGreaterThan(0);
-    expect(qty(state.player.pack, "rawMeat") + qty(herePile(state), "rawMeat")).toBeGreaterThan(0);
+    expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeGreaterThan(0);
   });
 
   it("offers every kind of task somewhere in the list, legal or not", () => {

@@ -64,10 +64,10 @@ function render() {
   if (ui.selected === state.player.region) ui.selected = null;
   const cal = calendar(state.minute);
   const ambient = ambientTemperature(cal, state.weather);
-  setPanel("stats", statsHtml(state, cal, ambient, ui));
+  setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("gear", gearHtml(state));
   setPanel("clock", clockHtml(state, cal, ambient));
-  const key = mapKey(state, ui, cal);
+  const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
     setPanel("map", mapHtml(world, state, ui, cal));
@@ -127,7 +127,7 @@ function onClick(ev: Event) {
       startTask(state, world, cal, target.dataset.id as TaskId, target.dataset.arg || undefined, target.dataset.repeat === "1");
       break;
     case "stop":
-      stopTask(state);
+      stopTask(state, world);
       break;
     case "tab":
       ui.tab = target.dataset.tab as TaskGroup;
@@ -138,24 +138,24 @@ function onClick(ev: Event) {
       break;
     }
     case "eat":
-      eat(state, target.dataset.food as FoodId, rng);
+      eat(state, world, target.dataset.food as FoodId, rng);
       break;
     case "feed":
       addFirewood(state, world, 36);
       break;
     case "rack":
-      loadRack(state);
+      loadRack(state, world);
       break;
     case "take":
     case "drop": {
       const item = target.dataset.item as ItemId;
       const n = target.dataset.n === "all" ? Number.POSITIVE_INFINITY : Number(target.dataset.n);
-      if (act === "take") take(state, item, n);
-      else drop(state, item, n);
+      if (act === "take") take(state, world, item, n);
+      else drop(state, world, item, n);
       break;
     }
     case "drop-all":
-      dropAll(state);
+      dropAll(state, world);
       break;
     case "toggle-eat":
       state.player.autoEat = !state.player.autoEat;

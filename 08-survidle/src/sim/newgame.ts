@@ -11,7 +11,7 @@ export function newRegionState(world: World, id: number): RegionState {
   return {
     wood: r.wood0,
     pop,
-    piles: {},
+    campCell: r.campCell,
     structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0 },
     build: {},
     fire: { lit: false, fuelKg: 0 },
@@ -30,8 +30,9 @@ export function newGame(seed: number): { state: GameState; world: World } {
     minute: 0,
     rng: derive(seed, 99),
     player: {
+      x: (world.regions[world.start].campCell % world.w) + 0.5,
+      y: Math.floor(world.regions[world.start].campCell / world.w) + 0.5,
       region: world.start,
-      spot: "camp",
       health: 100,
       kcal: 5000,
       warmth: 80,
@@ -59,6 +60,9 @@ export function newGame(seed: number): { state: GameState; world: World } {
     lastHour: 0,
     lastDay: 0,
     paused: {},
+    piles: {},
+    route: null,
+    plan: null,
   };
   log(state, `1 April. Snow still lies in the shade at ${world.regions[world.start].name}. You have an axe, wool on your back and a kilo of dried meat.`);
   return { state, world };

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { placeAtSpot } from "../src/sim/position";
 import type { Weather } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
 import { clockHtml, regionHtml } from "../src/ui/panels";
@@ -102,14 +103,14 @@ describe("sky in the page", () => {
 
   it("spot distances are from where you stand, with the walking time on the button", () => {
     const { state, world } = newGame(21);
-    state.player.spot = "forest";
+    placeAtSpot(state, world, state.player.region, "forest");
     const cal = at(13);
     setPanel("region", regionHtml(state, world, cal, newUiState()));
     const text = document.querySelector("#region")!.textContent!;
     expect(text).toContain("you are here");
     expect(text).toContain("from here");
-    expect(text).not.toContain("from camp");
-    const walk = document.querySelector('#region [data-id="walk"][data-arg="camp"]')!;
+    expect(text).toContain("you are at the forest");
+    const walk = document.querySelector('#region [data-id="walk"][data-arg="spot:camp"]')!;
     expect(walk.textContent).toMatch(/walk \(\d+ min, \d+ s\)/);
   });
 });

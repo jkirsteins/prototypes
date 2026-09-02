@@ -7,7 +7,7 @@ import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
 import { log } from "./log";
 import { causeFrom, die, stepPlayer } from "./player";
-import { startTask, stepTask } from "./tasks";
+import { runPlan, startTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { ambientTemperature, stepWeather } from "./weather";
 
@@ -44,18 +44,19 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
 
   stepTask(state, world, cal, rng, dt);
+  if (!state.task) runPlan(state, world, cal);
   // A body left idle and spent lies down on its own.
   if (!state.task && state.player.energy < EXHAUSTED && startTask(state, world, cal, "sleep")) {
     log(state, "Too tired to stand, you sleep where you are.");
   }
   stepCamp(state, world, ambient, dt);
-  const drains = stepPlayer(state, ambient, dt);
-  autoEat(state, rng);
+  const drains = stepPlayer(state, world, ambient, dt);
+  autoEat(state, world, rng);
 
   const hour = Math.floor(state.minute / 60);
   if (hour > state.lastHour) {
     state.lastHour = hour;
-    hourlyEvents(state, cal, rng);
+    hourlyEvents(state, world, cal, rng);
   }
   if (cal.dayIndex > state.lastDay && cal.hour >= DAILY_HOUR) {
     state.lastDay = cal.dayIndex;

@@ -14,11 +14,11 @@ describe("camp", () => {
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 6;
-    addItem(pile(state, state.player.region, "camp"), "firewood", 10);
+    addItem(pile(state, st.campCell), "firewood", 10);
     for (let m = 0; m < 65; m++) stepCamp(state, world, 5, 1);
     expect(st.fire.lit).toBe(true);
     // 6 kg minus 3 kg burnt, then topped up from the pile when it dropped to 3 kg.
-    expect(qty(pile(state, state.player.region, "camp"), "firewood")).toBeLessThan(10);
+    expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
     state.player.autoFeed = false;
     for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1);
     expect(st.fire.lit).toBe(false);
@@ -30,10 +30,10 @@ describe("camp", () => {
     const st = state.regions[state.player.region];
     st.structures.dryingRack = true;
     addItem(state.player.pack, "rawMeat", 3);
-    expect(loadRack(state)).toBeCloseTo(3);
+    expect(loadRack(state, world)).toBeCloseTo(3);
     for (let m = 0; m < 48 * 60; m++) stepCamp(state, world, -5, 1);
     expect(st.rack.kg).toBe(0);
-    expect(qty(pile(state, state.player.region, "camp"), "driedMeat")).toBeCloseTo(1);
+    expect(qty(pile(state, st.campCell), "driedMeat")).toBeCloseTo(1);
   });
 
   it("snares catch hares where hares are, and a fox takes old catches", () => {
@@ -58,29 +58,29 @@ describe("camp", () => {
   });
 
   it("eats a portion and auto-eats when low, keeping raw meat off the menu", () => {
-    const { state } = newGame(2);
+    const { state, world } = newGame(2);
     const rng = new Rng(1);
     state.player.kcal = 1000;
     state.player.pack = { items: {}, stacks: {} };
     addItem(state.player.pack, "rawMeat", 1);
-    autoEat(state, rng);
+    autoEat(state, world, rng);
     expect(state.player.kcal).toBe(1000);
     addItem(state.player.pack, "cookedMeat", 1);
-    autoEat(state, rng);
+    autoEat(state, world, rng);
     expect(state.player.kcal).toBeCloseTo(1450);
     expect(qty(state.player.pack, "cookedMeat")).toBeCloseTo(0.7);
     addItem(state.player.pack, "driedMeat", 1);
-    expect(eat(state, "driedMeat", rng)).toBe(true);
+    expect(eat(state, world, "driedMeat", rng)).toBe(true);
     expect(state.player.kcal).toBeCloseTo(1450 + 0.15 * 3500);
   });
 
   it("wolves come only at night outside shelter", () => {
-    const { state } = newGame(2);
+    const { state, world } = newGame(2);
     const rng = new Rng(11);
     let hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;
-      hourlyEvents(state, calendar(16 * 60), rng);
+      hourlyEvents(state, world, calendar(16 * 60), rng);
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBeGreaterThan(5);
@@ -88,7 +88,7 @@ describe("camp", () => {
     hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;
-      hourlyEvents(state, calendar(16 * 60), rng);
+      hourlyEvents(state, world, calendar(16 * 60), rng);
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBe(0);

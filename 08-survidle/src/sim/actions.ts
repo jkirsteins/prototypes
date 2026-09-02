@@ -6,16 +6,17 @@ import type { Rng } from "../rng";
 import { PACK_HARD_KG } from "../units";
 import type { World } from "../world/gen";
 import { feedFire } from "./camp";
-import { herePile, pile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
+import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
+import { atCamp } from "./position";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, RACK_MAX_KG } from "./items";
 import { log } from "./log";
 import type { GameState, ItemId } from "./types";
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
-export function eat(state: GameState, food: FoodId, rng: Rng): boolean {
+export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boolean {
   const p = state.player;
   const def = FOODS[food];
-  const invs = [p.pack, herePile(state)];
+  const invs = [p.pack, herePile(state, world)];
   const have = totalQty(invs, food);
   if (have <= 1e-9) return false;
   const kg = Math.min(def.portionKg, have);
@@ -33,28 +34,28 @@ export function eat(state: GameState, food: FoodId, rng: Rng): boolean {
 }
 
 /** Eats the least valuable safe food when the reserve runs low. */
-export function autoEat(state: GameState, rng: Rng): void {
+export function autoEat(state: GameState, world: World, rng: Rng): void {
   const p = state.player;
   if (!p.autoEat || p.kcal >= 1800) return;
   for (const food of AUTO_EAT_ORDER) {
-    if (eat(state, food, rng)) return;
+    if (eat(state, world, food, rng)) return;
   }
 }
 
 export function addFirewood(state: GameState, world: World, kg: number): number {
   const p = state.player;
-  if (p.spot !== "camp") return 0;
+  if (!atCamp(state, world)) return 0;
   const st = state.regions[p.region];
   if (!st.fire.lit) return 0;
   return feedFire(state, world, p.region, kg);
 }
 
 /** Hangs raw meat on the rack at this camp. Returns kg hung. */
-export function loadRack(state: GameState): number {
+export function loadRack(state: GameState, world: World): number {
   const p = state.player;
   const st = state.regions[p.region];
-  if (p.spot !== "camp" || !st.structures.dryingRack) return 0;
-  const invs = [p.pack, herePile(state)];
+  if (!atCamp(state, world) || !st.structures.dryingRack) return 0;
+  const invs = [p.pack, herePile(state, world)];
   const room = RACK_MAX_KG - st.rack.kg;
   const kg = Math.min(room, totalQty(invs, "rawMeat"));
   if (kg <= 1e-9) return 0;
@@ -68,9 +69,9 @@ export function loadRack(state: GameState): number {
 }
 
 /** Picks n of an item off the ground into the pack, as far as the hard limit allows. */
-export function take(state: GameState, item: ItemId, n: number): number {
+export function take(state: GameState, world: World, item: ItemId, n: number): number {
   const p = state.player;
-  const from = herePile(state);
+  const from = herePile(state, world);
   const room = PACK_HARD_KG - weight(p.pack);
   const unit = ITEM_KG[item];
   const max = unit >= 1 ? Math.floor(room / unit + 1e-9) : room / unit;
@@ -79,14 +80,14 @@ export function take(state: GameState, item: ItemId, n: number): number {
   return transfer(from, p.pack, item, want);
 }
 
-export function drop(state: GameState, item: ItemId, n: number): number {
+export function drop(state: GameState, world: World, item: ItemId, n: number): number {
   const p = state.player;
-  return transfer(p.pack, pile(state, p.region, p.spot), item, Math.min(n, qty(p.pack, item)));
+  return transfer(p.pack, herePile(state, world), item, Math.min(n, qty(p.pack, item)));
 }
 
-export function dropAll(state: GameState): void {
+export function dropAll(state: GameState, world: World): void {
   const p = state.player;
-  const to = pile(state, p.region, p.spot);
+  const to = herePile(state, world);
   for (const k of Object.keys(ITEM_KG) as ItemId[]) {
     const q = qty(p.pack, k);
     if (q > 0) transfer(p.pack, to, k, q);

@@ -1,10 +1,11 @@
 import type { Rng } from "../rng";
-import { PACK_HARD_KG } from "../units";
-import { hasSpot, spotKm, type World } from "../world/gen";
+import { CELL_KM, PACK_HARD_KG } from "../units";
+import { hasSpot, spotOf, type World } from "../world/gen";
+import { findRoute, routeKm, routeMinutes } from "../world/route";
 import { regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import {
-  canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
+  canConsume, consume, hasTool, herePile, isEmpty, listItems, pile, produce, qty, reach,
   removeItem, tool, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
@@ -12,10 +13,14 @@ import {
   STRUCTURE_IDS, type SpeciesDef,
 } from "./items";
 import { log } from "./log";
-import { walkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
 import {
-  type GameState, type PausedTask, type RecipeId, SPECIES, SPOTS, type Species, type SpotId,
-  type StructureId, type TaskId,
+  atCamp, byWater, cellCenter, cellIndex, cellOf, hereTerrain, inForest, onHeath, onRock,
+  placeAt, spotHere, SPOT_WORDS, straightKm,
+} from "./position";
+import {
+  type GameState, type PausedTask, type PlanStep, type RecipeId, SPECIES, type Species,
+  type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { DEEP_SNOW_CM } from "./weather";
 
@@ -38,25 +43,23 @@ export interface TaskOption {
   resume?: number;
 }
 
-export const SPOT_NAMES: Record<SpotId, string> = {
-  camp: "camp", forest: "the forest", outcrop: "the outcrop", shore: "the shore", heath: "the heath",
-};
+export const SPOT_NAMES = SPOT_WORDS;
 
-/** Work that stays where it was left: the half-felled tree is at that forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "haul", "walk", "travel"]);
+/** Work that stays where it was left: the half-felled tree is in that cell of forest. */
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light"]);
 
 /** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
-export function pauseKey(state: GameState, id: TaskId, arg?: string): string | null {
+export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
   const a = arg ?? "";
-  if (LOCATED.has(id)) return `${id}:${a}@${state.player.region}:${state.player.spot}`;
+  if (LOCATED.has(id)) return `${id}:${a}@${cellOf(state, world)}`;
   if (CARRIED.has(id)) return `${id}:${a}`;
   return null;
 }
 
-export function pausedFraction(state: GameState, id: TaskId, arg?: string): number {
-  const key = pauseKey(state, id, arg);
+export function pausedFraction(state: GameState, world: World, id: TaskId, arg?: string): number {
+  const key = pauseKey(state, world, id, arg);
   return key ? (state.paused[key]?.fraction ?? 0) : 0;
 }
 
@@ -78,12 +81,49 @@ function needsList(needs: { item: string; qty: number; alt?: string }[]): string
 }
 
 /**
+ * A walk's argument names its target: a spot of the current region, a
+ * region's camp, or a bare cell (for things lying about and work set aside).
+ */
+export function walkTarget(state: GameState, world: World, arg: string): { cell: number; label: string } | null {
+  const [kind, val] = arg.split(":");
+  if (kind === "spot") {
+    const s = spotOf(world.regions[state.player.region], val as SpotId);
+    return s ? { cell: s.cell, label: SPOT_WORDS[val as SpotId] } : null;
+  }
+  if (kind === "region") {
+    const r = world.regions[Number(val)];
+    return r ? { cell: r.campCell, label: r.name } : null;
+  }
+  if (kind === "cell") {
+    const cell = Number(val);
+    if (!Number.isInteger(cell) || cell < 0 || cell >= world.cells.length) return null;
+    return { cell, label: whereIs(state, world, cell) };
+  }
+  return null;
+}
+
+/** "the forest", "camp in Stensund", "a spot 0.4 km east": how a cell is named to the player. */
+export function whereIs(state: GameState, world: World, cell: number): string {
+  const region = world.cells[cell].region;
+  const r = world.regions[region];
+  const spot = r.spots.find((s) => s.cell === cell);
+  const inRegion = region === state.player.region ? "" : ` in ${r.name}`;
+  if (spot) return `${SPOT_WORDS[spot.id]}${inRegion}`;
+  const here = cellCenter(world, cellOf(state, world));
+  const there = cellCenter(world, cell);
+  const dx = there.x - here.x;
+  const dy = there.y - here.y;
+  const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "east" : "west") : dy > 0 ? "south" : "north";
+  return `a spot ${straightKm(world, cellOf(state, world), cell).toFixed(1)} km ${dir}${inRegion}`;
+}
+
+/**
  * The one place a task's legality and duration are decided. availableTasks
  * and startTask both go through it so the button and the click agree.
  */
 export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string): TaskOption {
   const o = checkFresh(state, world, cal, id, arg);
-  const fraction = pausedFraction(state, id, arg);
+  const fraction = pausedFraction(state, world, id, arg);
   if (fraction > 0 && o.ok) return { ...o, resume: fraction, duration: o.duration * (1 - fraction) };
   if (fraction > 0) return { ...o, resume: fraction };
   return o;
@@ -93,33 +133,35 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
   const p = state.player;
   const r = world.regions[p.region];
   const st = state.regions[p.region];
-  const here = p.spot;
-  const invs = reach(state);
+  const invs = reach(state, world);
+  const camp = atCamp(state, world);
   const opt = (partial: Partial<TaskOption> & { label: string; group: TaskGroup }): TaskOption => ({
     id, arg, detail: "", duration: 0, ok: true, why: "", repeatable: false, ...partial,
   });
-  const at = (spot: SpotId, o: TaskOption): TaskOption => {
-    if (!hasSpot(r, spot)) return { ...o, ok: false, why: `${r.name} has no ${SPOT_NAMES[spot].replace("the ", "")}` };
-    if (here !== spot) return { ...o, ok: false, why: `walk to ${SPOT_NAMES[spot]}` };
-    return o;
+  /** Ground the task needs under foot, with the spot to walk to when it is not. */
+  const ground = (ok: boolean, spot: SpotId, what: string, o: TaskOption): TaskOption => {
+    if (ok) return o;
+    if (!hasSpot(r, spot)) return { ...o, ok: false, why: `no ${what} in ${r.name}` };
+    return { ...o, ok: false, why: `stand ${what === "water" ? "by" : "in"} the ${what}; walk to ${SPOT_WORDS[spot]}` };
   };
+  const needCamp = (o: TaskOption): TaskOption => (camp ? o : { ...o, ok: false, why: "walk to camp" });
 
   switch (id) {
     case "chop": {
-      const o = at("forest", opt({ group: "gather", label: "Fell a tree", detail: "4 logs and 4 sticks left on the ground", duration: r.frac.spruce > 0.4 ? 50 : 60, repeatable: true }));
+      const o = ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: "4 logs and 4 sticks left on the ground", duration: hereTerrain(state, world) === "spruce" ? 50 : 60, repeatable: true }));
       if (!o.ok) return o;
       if (!hasTool(p, "axe")) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
     case "sticks":
-      return at("forest", opt({ group: "gather", label: "Gather sticks", detail: "6 sticks", duration: 20, repeatable: true }));
+      return ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Gather sticks", detail: "6 sticks", duration: 20, repeatable: true }));
     case "bark":
-      return at("forest", opt({ group: "gather", label: "Strip bark", detail: "4 bark, for cordage", duration: 20, repeatable: true }));
+      return ground(inForest(state, world), "forest", "forest", opt({ group: "gather", label: "Strip bark", detail: "4 bark, for cordage", duration: 20, repeatable: true }));
     case "stone":
-      return at("outcrop", opt({ group: "gather", label: "Gather stone", detail: "3 stone", duration: 30, repeatable: true }));
+      return ground(onRock(state, world), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: "3 stone", duration: 30, repeatable: true }));
     case "berries": {
-      const o = at("heath", opt({ group: "gather", label: "Pick berries", detail: "1 kg berries, mid-July to mid-October", duration: 60, repeatable: true }));
+      const o = ground(onHeath(state, world), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: "1 kg berries, mid-July to mid-October", duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
       return o;
@@ -134,7 +176,8 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const s = arg as Species;
       const def: SpeciesDef = ANIMALS[s];
       const d = regionDensity(state, world, p.region, s, cal);
-      const o = at(def.spot, opt({
+      const onGround = def.spot === "heath" ? onHeath(state, world) : inForest(state, world);
+      const o = ground(onGround, def.spot, def.spot === "heath" ? "heath" : "forest", opt({
         group: "hunt", label: `Hunt ${def.name}`, duration: def.minutes, repeatable: true,
         detail: `${def.meatKg} kg meat${def.hideKg ? `, ${def.hideKg} kg hide` : ""}${def.bone ? `, ${def.bone} bone` : ""}${def.sinew ? `, ${def.sinew} sinew` : ""}; about ${Math.round(huntOdds(state, cal, d, def) * 100)}% per try`,
       }));
@@ -147,7 +190,7 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
     case "fish": {
       const def = ANIMALS.fish;
       const d = regionDensity(state, world, p.region, "fish", cal);
-      const o = at("shore", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `0.7 kg per catch; about ${Math.round(huntOdds(state, cal, d, def) * 100)}% per try` }));
+      const o = ground(byWater(state, world), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `0.7 kg per catch; about ${Math.round(huntOdds(state, cal, d, def) * 100)}% per try` }));
       if (!o.ok) return o;
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
       if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
@@ -156,8 +199,8 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
     case "cook": {
       const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
       const kg = Math.min(1, totalQty(invs, food));
-      const o = opt({ group: "camp", label: `Cook ${ITEM_NAMES[food]}`, detail: "1 kg at a time over the fire", duration: Math.max(1, 10 * kg), repeatable: true });
-      if (here !== "camp") return { ...o, ok: false, why: "walk to camp" };
+      const o = needCamp(opt({ group: "camp", label: `Cook ${ITEM_NAMES[food]}`, detail: "1 kg at a time over the fire", duration: Math.max(1, 10 * kg), repeatable: true }));
+      if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
       if (kg <= 0) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
       return o;
@@ -190,13 +233,13 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       const done = st.build[sid] ?? 0;
       const o = opt({ group: "build", label: def.name, detail: `${needsList(def.needs)}; ${def.desc}`, duration: Math.max(1, def.minutes - done) });
       if (sid === "snare") {
-        const o2 = at("heath", o);
+        const o2 = ground(onHeath(state, world), "heath", "heath", o);
         if (!o2.ok) return o2;
         if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: "five snares is enough here" };
         if (!canConsume(invs, def.needs)) return { ...o2, ok: false, why: "needs a snare" };
         return o2;
       }
-      if (here !== "camp") return { ...o, ok: false, why: "walk to camp" };
+      if (!camp) return { ...o, ok: false, why: "walk to camp" };
       if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
       if (sid === "cabin" && !st.structures.firePit) return { ...o, ok: false, why: "build the fire pit first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% built; materials already laid out` };
@@ -204,49 +247,41 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       return o;
     }
     case "light": {
-      const o = opt({ group: "camp", label: "Light the fire", detail: "fire drill and 1 kg firewood", duration: 10 });
-      if (here !== "camp") return { ...o, ok: false, why: "walk to camp" };
+      const o = needCamp(opt({ group: "camp", label: "Light the fire", detail: "fire drill and 1 kg firewood", duration: 10 }));
+      if (!o.ok) return o;
       if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire pit" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!hasTool(p, "fireDrill")) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }
-    case "travel": {
-      const to = Number(arg);
-      const nb = r.neighbours.find((n) => n.id === to);
-      const dest = world.regions[to];
-      const o = opt({ group: "move", label: `Go to ${dest?.name ?? "?"}`, detail: "" });
-      if (!nb) return { ...o, ok: false, why: "not next to here" };
-      const km = nb.km + spotKm(r, here);
-      const bog = r.frac.bog > 0.5 || dest.frac.bog > 0.5;
-      const v = walkSpeed(state, cal, state.weather, bog);
-      const minutes = (km / v) * 60;
-      const o2 = { ...o, duration: minutes, detail: `${km.toFixed(1)} km at ${v.toFixed(1)} km/h` };
-      if (weight(p.pack) > PACK_HARD_KG) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
-      return o2;
-    }
+    case "travel":
     case "walk": {
-      const to = arg as SpotId;
-      const o = opt({ group: "move", label: `Walk to ${SPOT_NAMES[to]}`, detail: "" });
-      if (!hasSpot(r, to)) return { ...o, ok: false, why: "no such place here" };
-      if (to === here) return { ...o, ok: false, why: "you are here" };
-      const km = walkKm(r, here, to);
-      const v = walkSpeed(state, cal, state.weather, r.frac.bog > 0.5);
-      const o2 = { ...o, duration: (km / v) * 60, detail: `${km.toFixed(1)} km at ${v.toFixed(1)} km/h` };
+      const target = walkTarget(state, world, arg ?? "");
+      const o = opt({ group: "move", label: id === "travel" ? `Go to ${target?.label ?? "?"}` : `Walk to ${target?.label ?? "?"}`, detail: "" });
+      if (!target) return { ...o, ok: false, why: "no such place" };
+      const from = cellOf(state, world);
+      if (target.cell === from) return { ...o, ok: false, why: "you are here" };
+      const route = findRoute(world, from, target.cell);
+      if (!route) return { ...o, ok: false, why: "no way there on foot" };
+      const v = baseWalkSpeed(state, cal, state.weather);
+      const minutes = routeMinutes(world, route, v);
+      const o2 = { ...o, duration: minutes, detail: `${routeKm(route).toFixed(1)} km on foot` };
       if (weight(p.pack) > PACK_HARD_KG) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
       return o2;
     }
     case "haul": {
+      const here = cellOf(state, world);
+      const campCell = st.campCell;
       const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: true });
-      if (here === "camp") return { ...o, ok: false, why: "you are at camp" };
-      const kg = weight(herePile(state));
+      if (here === campCell) return { ...o, ok: false, why: "you are at camp" };
+      const kg = weight(herePile(state, world));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
-      const km = spotKm(r, here);
-      const loaded = walkSpeed(state, cal, state.weather, r.frac.bog > 0.5, PACK_HARD_KG + 5);
-      const empty = walkSpeed(state, cal, state.weather, r.frac.bog > 0.5, 5);
-      const minutes = (km / loaded + km / empty) * 60;
-      return { ...o, duration: minutes, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${km.toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here` };
+      const route = findRoute(world, here, campCell);
+      if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
+      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, PACK_HARD_KG + 5));
+      const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5));
+      return { ...o, duration: loaded + empty, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
@@ -254,16 +289,9 @@ function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, a
       // Until dawn or until rested, whichever is later; no one sleeps round the clock.
       const toRested = ((100 - p.energy) / 12.5) * 60;
       const minutes = Math.min(600, Math.max(60, minutesUntilDawn(state.minute), toRested));
-      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${here === "camp" ? "by the fire, under the roof if you have one" : "on the ground, in the open"}`, duration: minutes });
+      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${camp ? "by the fire, under the roof if you have one" : "on the ground, in the open"}`, duration: minutes });
     }
   }
-}
-
-/** Distance between two spots, via camp unless one of them is camp. */
-export function walkKm(r: World["regions"][number], from: SpotId, to: SpotId): number {
-  if (from === "camp") return spotKm(r, to);
-  if (to === "camp") return spotKm(r, from);
-  return spotKm(r, from) + spotKm(r, to);
 }
 
 export function huntOdds(state: GameState, cal: Calendar, density: number, def: SpeciesDef): number {
@@ -274,10 +302,11 @@ export function huntOdds(state: GameState, cal: Calendar, density: number, def: 
   return Math.min(0.95, odds);
 }
 
-/** Every task the UI should show for the current spot, legal or not. */
+/** Every task the UI should show from where the player stands, legal or not. */
 export function availableTasks(state: GameState, world: World, cal: Calendar): TaskOption[] {
   const out: TaskOption[] = [];
   const r = world.regions[state.player.region];
+  const here = cellOf(state, world);
   for (const id of ["chop", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
   for (const s of SPECIES) out.push(s === "fish" ? check(state, world, cal, "fish") : check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "cook", "rawMeat"));
@@ -290,9 +319,9 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "sleep"));
   for (const id of RECIPE_IDS) out.push(check(state, world, cal, "craft", id));
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
-  for (const s of SPOTS) if (hasSpot(r, s) && s !== state.player.spot) out.push(check(state, world, cal, "walk", s));
+  for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
   out.push(check(state, world, cal, "haul"));
-  for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", String(nb.id)));
+  for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
   return out;
 }
 
@@ -301,14 +330,22 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   // Whatever was under way is set aside first, with its share done kept.
-  stopTask(state);
+  stopTask(state, world);
+  if (id === "haul") return startHaul(state, world, cal);
   if (id === "build" && !(state.regions[state.player.region].build[arg as StructureId] ?? 0)) {
     // Materials are committed when the work starts, and stay laid out if you stop.
-    consume(reach(state), STRUCTURES[arg as StructureId].needs);
+    consume(reach(state, world), STRUCTURES[arg as StructureId].needs);
     if (arg !== "snare") state.regions[state.player.region].build[arg as StructureId] = 0.001;
   }
+  if (id === "walk" || id === "travel") {
+    const target = walkTarget(state, world, arg ?? "")!;
+    const path = findRoute(world, cellOf(state, world), target.cell) ?? [];
+    state.route = { target: target.cell, path, label: target.label };
+    state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
+    return true;
+  }
   // Pick up where this task was left, if it was.
-  const key = pauseKey(state, id, arg);
+  const key = pauseKey(state, world, id, arg);
   const fresh = checkFresh(state, world, cal, id, arg);
   const fraction = key ? (state.paused[key]?.fraction ?? 0) : 0;
   if (key) delete state.paused[key];
@@ -316,19 +353,104 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
   return true;
 }
 
-/** Sets the current task aside. Its share done is kept where it belongs; rest and sleep keep nothing. */
-export function stopTask(state: GameState): void {
+/**
+ * Hauling is a plan, not a task: load up here, walk to camp, drop, walk
+ * back, again while the pile holds anything. Each leg is an ordinary walk,
+ * so stopping leaves you where you are, loaded, and the plan can be started
+ * again from either end.
+ */
+function startHaul(state: GameState, world: World, cal: Calendar): boolean {
+  const here = cellOf(state, world);
+  const campCell = state.regions[state.player.region].campCell;
+  const steps: PlanStep[] = [
+    { kind: "load", cell: here },
+    { kind: "walk", cell: campCell, label: "camp" },
+    { kind: "drop" },
+    { kind: "walk", cell: here, label: whereIs(state, world, here) },
+  ];
+  state.plan = { name: "Haul to camp", steps: [...steps], loop: steps, sourceCell: here };
+  runPlan(state, world, cal);
+  return state.task !== null;
+}
+
+/** Takes the next step of the plan when nothing is under way. Called every minute by advance. */
+export function runPlan(state: GameState, world: World, cal: Calendar): void {
+  const plan = state.plan;
+  if (!plan || state.task || state.dead) return;
+  for (let guard = 0; guard < 8 && !state.task; guard++) {
+    if (!plan.steps.length) {
+      const more = plan.loop && plan.sourceCell !== null && !isEmpty(pile(state, plan.sourceCell));
+      if (!more) {
+        log(state, `${plan.name}: done.`, "good");
+        state.plan = null;
+        return;
+      }
+      plan.steps = [...plan.loop!];
+    }
+    const step = plan.steps.shift()!;
+    if (step.kind === "load") {
+      if (cellOf(state, world) !== step.cell) {
+        // Not where the pile is: walk there first.
+        plan.steps.unshift(step);
+        plan.steps.unshift({ kind: "walk", cell: step.cell, label: whereIs(state, world, step.cell) });
+        continue;
+      }
+      loadPack(state, world);
+    } else if (step.kind === "drop") {
+      const from = state.player.pack;
+      const to = herePile(state, world);
+      for (const { item, qty: q } of listItems(from)) transfer(from, to, item, q);
+    } else {
+      if (cellOf(state, world) === step.cell) continue;
+      const o = checkFresh(state, world, cal, "walk", `cell:${step.cell}`);
+      if (!o.ok) {
+        log(state, `${plan.name}: ${o.why}. You stop.`, "bad");
+        state.plan = null;
+        return;
+      }
+      const path = findRoute(world, cellOf(state, world), step.cell) ?? [];
+      state.route = { target: step.cell, path, label: step.label };
+      state.task = { id: "walk", arg: `cell:${step.cell}`, progress: 0, duration: o.duration, repeat: false };
+    }
+  }
+}
+
+/** Fills the pack to the hard limit from the pile here, heaviest things first. */
+function loadPack(state: GameState, world: World): void {
+  const from = herePile(state, world);
+  const pack = state.player.pack;
+  let room = PACK_HARD_KG - weight(pack);
+  const items = listItems(from).sort((a, b) => ITEM_KG[b.item] - ITEM_KG[a.item]);
+  for (const { item, qty: have } of items) {
+    if (room <= 1e-9) break;
+    const unit = ITEM_KG[item];
+    const n = unit >= 1 ? Math.min(have, Math.floor(room / unit + 1e-9)) : Math.min(have, room / unit);
+    if (n <= 0) continue;
+    transfer(from, pack, item, n);
+    room -= n * unit;
+  }
+}
+
+/**
+ * Sets the current task aside. Work keeps its share where it belongs; a walk
+ * simply ends where you stand; a plan is dropped, since it restarts from
+ * anywhere. Rest and sleep keep nothing.
+ */
+export function stopTask(state: GameState, world: World): void {
+  state.plan = null;
   const t = state.task;
   if (!t) return;
   if (t.id === "build" && t.arg !== "snare") {
     const st = state.regions[state.player.region];
     const sid = t.arg as StructureId;
     st.build[sid] = (st.build[sid] ?? 0) + t.progress;
+  } else if (t.id === "walk" || t.id === "travel") {
+    state.route = null;
   } else {
-    const key = pauseKey(state, t.id, t.arg);
+    const key = pauseKey(state, world, t.id, t.arg);
     const fraction = t.duration > 0 ? Math.min(0.999, t.progress / t.duration) : 0;
     if (key && fraction > 0.005) {
-      state.paused[key] = { id: t.id, arg: t.arg, fraction, region: state.player.region, spot: state.player.spot };
+      state.paused[key] = { id: t.id, arg: t.arg, fraction, cell: LOCATED.has(t.id) ? cellOf(state, world) : -1 };
     }
   }
   state.task = null;
@@ -336,12 +458,13 @@ export function stopTask(state: GameState): void {
 
 /** Everything set aside, with whether it can be picked up from where the player stands. */
 export function pausedList(state: GameState, world: World, cal: Calendar): { key: string; task: PausedTask; option: TaskOption; here: boolean }[] {
+  const here = cellOf(state, world);
   return Object.entries(state.paused).map(([key, task]) => {
-    const here = CARRIED.has(task.id) || (task.region === state.player.region && task.spot === state.player.spot);
-    const option = here
+    const isHere = task.cell < 0 || task.cell === here;
+    const option = isHere
       ? check(state, world, cal, task.id, task.arg)
-      : { ...checkFresh(state, world, cal, task.id, task.arg), ok: false, why: `at ${SPOT_NAMES[task.spot]}, ${world.regions[task.region].name}` };
-    return { key, task, option, here };
+      : { ...checkFresh(state, world, cal, task.id, task.arg), ok: false, why: `at ${whereIs(state, world, task.cell)}` };
+    return { key, task, option, here: isHere };
   });
 }
 
@@ -349,6 +472,10 @@ export function pausedList(state: GameState, world: World, cal: Calendar): { key
 export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task;
   if (!t || state.dead) return;
+  if (t.id === "walk" || t.id === "travel") {
+    stepWalk(state, world, cal, dt);
+    return;
+  }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state) : 1;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
@@ -365,16 +492,62 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
 }
 
+/**
+ * Moves the player along the route at the speed of the ground under foot.
+ * The bar shows minutes: what has passed, and what the rest would take now.
+ */
+function stepWalk(state: GameState, world: World, cal: Calendar, dt: number): void {
+  const t = state.task!;
+  const route = state.route;
+  if (!route) {
+    state.task = null;
+    return;
+  }
+  const p = state.player;
+  let km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world)) / 60) * dt;
+  while (km > 1e-9 && route.path.length) {
+    const next = cellCenter(world, route.path[0]);
+    const dx = next.x - p.x;
+    const dy = next.y - p.y;
+    const distKm = Math.hypot(dx, dy) * CELL_KM;
+    if (km >= distKm) {
+      p.x = next.x;
+      p.y = next.y;
+      p.region = world.cells[route.path[0]].region;
+      route.path.shift();
+      km -= distKm;
+      state.stats.km += distKm;
+    } else {
+      const f = km / distKm;
+      p.x += dx * f;
+      p.y += dy * f;
+      p.region = world.cells[cellIndex(world, p.x, p.y)].region;
+      state.stats.km += km;
+      km = 0;
+    }
+  }
+  t.progress += dt;
+  t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather));
+  if (!route.path.length) {
+    const label = route.label;
+    const wasTravel = t.id === "travel";
+    state.route = null;
+    state.task = null;
+    placeAt(state, world, cellOf(state, world));
+    if (wasTravel) log(state, `You reach ${label}.`);
+    if (spotHere(state, world) === "heath") collectSnares(state, world);
+  }
+}
+
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
   const p = state.player;
-  const r = world.regions[p.region];
   const st = state.regions[p.region];
-  const invs = reach(state);
+  const invs = reach(state, world);
   switch (id) {
     case "chop": {
       st.wood -= 1;
-      produce(state, "log", 4);
-      produce(state, "stick", 4);
+      produce(state, world, "log", 4);
+      produce(state, world, "stick", 4);
       state.stats.trees++;
       if (wearTool(p, "axe", 1)) log(state, "The axe head splits on the last stroke. It is done for.", "bad");
       if (rng.chance(0.01)) {
@@ -384,20 +557,20 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       }
       return;
     }
-    case "sticks": produce(state, "stick", 6); return;
-    case "bark": produce(state, "bark", 4); return;
+    case "sticks": produce(state, world, "stick", 6); return;
+    case "bark": produce(state, world, "bark", 4); return;
     case "stone": {
-      produce(state, "stone", 3);
+      produce(state, world, "stone", 3);
       if (rng.chance(0.1)) {
-        produce(state, "stone", 1);
+        produce(state, world, "stone", 1);
         log(state, "A good sharp flint among the stones.", "good");
       }
       return;
     }
-    case "berries": produce(state, "berries", 1); return;
+    case "berries": produce(state, world, "berries", 1); return;
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
-      produce(state, "firewood", ITEM_KG.log);
+      produce(state, world, "firewood", ITEM_KG.log);
       return;
     }
     case "hunt": {
@@ -408,10 +581,10 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, cal, d, def))) {
         st.pop[s] = Math.max(0, st.pop[s] - 1);
         state.stats.animals++;
-        const where = produce(state, "rawMeat", def.meatKg);
-        if (def.hideKg) produce(state, "hide", def.hideKg);
-        if (def.bone) produce(state, "bone", def.bone);
-        if (def.sinew) produce(state, "sinew", def.sinew);
+        const where = produce(state, world, "rawMeat", def.meatKg);
+        if (def.hideKg) produce(state, world, "hide", def.hideKg);
+        if (def.bone) produce(state, world, "bone", def.bone);
+        if (def.sinew) produce(state, world, "sinew", def.sinew);
         log(state, `A ${def.name}. ${def.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
         if (def.injury && rng.chance(def.injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
@@ -433,7 +606,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, cal, d, def))) {
         st.pop.fish = Math.max(0, st.pop.fish - 1);
         state.stats.animals++;
-        produce(state, "fish", def.meatKg);
+        produce(state, world, "fish", def.meatKg);
         log(state, "A fish, 0.7 kg.", "good");
       } else log(state, "Nothing bites.");
       return;
@@ -442,7 +615,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
       const kg = Math.min(1, totalQty(invs, food));
       consume(invs, [{ item: food, qty: kg }]);
-      produce(state, food === "rawMeat" ? "cookedMeat" : "cookedFish", kg);
+      produce(state, world, food === "rawMeat" ? "cookedMeat" : "cookedFish", kg);
       return;
     }
     case "craft": {
@@ -465,7 +638,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         p.clothing.push({ id: rec.out.clothing, durability: 100 });
         log(state, `You put on the ${rec.name}${old ? ` and leave the ${CLOTHING[old.id].name} behind` : ""}.`, "good");
       } else if (rec.out.item) {
-        produce(state, rec.out.item, rec.out.qty ?? 1);
+        produce(state, world, rec.out.item, rec.out.qty ?? 1);
       }
       return;
     }
@@ -504,39 +677,9 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       log(state, "Smoke, then flame. The fire is lit.", "good");
       return;
     }
-    case "travel": {
-      const to = Number(arg);
-      const nb = r.neighbours.find((n) => n.id === to);
-      state.stats.km += (nb?.km ?? 0) + spotKm(r, p.spot);
-      p.region = to;
-      p.spot = "camp";
-      log(state, `You reach ${world.regions[to].name}.`);
-      collectSnares(state, world);
-      return;
-    }
-    case "walk": {
-      state.stats.km += walkKm(r, p.spot, arg as SpotId);
-      p.spot = arg as SpotId;
-      if (p.spot === "heath") collectSnares(state, world);
-      return;
-    }
-    case "haul": {
-      const from = herePile(state);
-      const camp = pile(state, p.region, "camp");
-      let room = PACK_HARD_KG;
-      // Heaviest things first: logs, then whatever else is lying about.
-      const items = listItems(from).sort((a, b) => ITEM_KG[b.item] - ITEM_KG[a.item]);
-      for (const { item, qty: have } of items) {
-        if (room <= 1e-9) break;
-        const unit = ITEM_KG[item];
-        const n = unit >= 1 ? Math.min(have, Math.floor(room / unit + 1e-9)) : Math.min(have, room / unit);
-        if (n <= 0) continue;
-        transfer(from, camp, item, n);
-        room -= n * unit;
-      }
-      state.stats.km += 2 * spotKm(r, p.spot);
-      return;
-    }
+    case "haul":
+    case "travel":
+    case "walk":
     case "rest":
     case "sleep":
       return;
@@ -547,18 +690,18 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
 function collectSnares(state: GameState, world: World): void {
   const p = state.player;
   const st = state.regions[p.region];
-  if (p.spot !== "heath" || st.snareCatch.count <= 0) return;
+  if (st.snareCatch.count <= 0) return;
   const n = st.snareCatch.count;
   st.snareCatch.count = 0;
   st.snareCatch.age = 0;
-  produce(state, "rawMeat", ANIMALS.hare.meatKg * n);
-  produce(state, "hide", ANIMALS.hare.hideKg * n);
-  produce(state, "bone", n);
+  produce(state, world, "rawMeat", ANIMALS.hare.meatKg * n);
+  produce(state, world, "hide", ANIMALS.hare.hideKg * n);
+  produce(state, world, "bone", n);
   state.stats.animals += n;
   log(state, `${n} hare${n > 1 ? "s" : ""} in the snares at ${world.regions[p.region].name}.`, "good");
 }
 
 /** kg of a given item within reach, for labels. */
-export function inReach(state: GameState, item: keyof typeof ITEM_KG): number {
-  return qty(state.player.pack, item) + qty(herePile(state), item);
+export function inReach(state: GameState, world: World, item: keyof typeof ITEM_KG): number {
+  return qty(state.player.pack, item) + qty(herePile(state, world), item);
 }

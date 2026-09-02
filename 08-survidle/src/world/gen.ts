@@ -3,6 +3,7 @@ import { CELL_KM, PATH_FACTOR } from "../units";
 import { SPECIES, type Species, type SpotId, type Terrain } from "../sim/types";
 import { regionName } from "./names";
 import { fbm } from "./noise";
+import { findRoute, passable, routeKm } from "./route";
 
 export const MAP_W = 72;
 export const MAP_H = 36;
@@ -10,7 +11,8 @@ const SEA_ROWS = 3;
 
 export interface Cell { x: number; y: number; e: number; m: number; terrain: Terrain; region: number }
 
-export interface Spot { id: SpotId; km: number }
+/** A named place to walk to: its cell and the route length from camp. */
+export interface Spot { id: SpotId; km: number; cell: number }
 
 export interface RegionDef {
   id: number;
@@ -31,6 +33,8 @@ export interface RegionDef {
   capacity: Record<Species, number>;
   neighbours: { id: number; km: number }[];
   spots: Spot[];
+  /** The land cell nearest the centroid: camp. */
+  campCell: number;
 }
 
 export interface World {
@@ -128,18 +132,16 @@ export function generateWorld(seed: number): World {
       fish: area * 60 * frac.water,
     };
     for (const s of SPECIES) if (capacity[s] < 0.5) capacity[s] = 0;
-    const spots: Spot[] = [{ id: "camp", km: 0 }];
-    if (forest > 0.02) spots.push({ id: "forest", km: round1(0.3 + 0.9 * (1 - forest)) });
-    if (rock > 0.02) spots.push({ id: "outcrop", km: round1(0.4 + 1.2 * (1 - rock)) });
-    if (frac.water > 0.02) spots.push({ id: "shore", km: round1(0.3 + 1.0 * (1 - frac.water)) });
-    if (frac.bog + frac.meadow > 0.02) spots.push({ id: "heath", km: round1(0.3 + 1.0 * (1 - frac.bog - frac.meadow)) });
+    const cx = sx / n;
+    const cy = sy / n;
+    const campCell = nearestCell(mine, cx, cy, (c) => passable(c.terrain));
     return {
       id,
       name: "",
       cells: mine.map((c) => c.y * MAP_W + c.x),
       landCells,
-      cx: sx / n,
-      cy: sy / n,
+      cx,
+      cy,
       area,
       frac,
       forest,
@@ -147,13 +149,18 @@ export function generateWorld(seed: number): World {
       wood0: Math.round(forest * mine.length * 60),
       capacity,
       neighbours: [],
-      spots,
+      spots: [],
+      campCell,
     };
   });
 
   for (const r of regions) {
     r.name = regionName(rng, { water: r.frac.water, rock: r.rock, bog: r.frac.bog, forest: r.forest }, taken);
   }
+
+  // Spots need routes, and routes need the whole map, so they come last.
+  const world: World = { seed, w: MAP_W, h: MAP_H, cells, regions, start: 0 };
+  for (const r of regions) r.spots = placeSpots(world, r);
 
   // Neighbours share a 4-connected edge.
   const adj = regions.map(() => new Set<number>());
@@ -186,7 +193,74 @@ export function generateWorld(seed: number): World {
     start = regions.reduce((a, b) => (b.forest > a.forest ? b : a)).id;
   }
 
-  return { seed, w: MAP_W, h: MAP_H, cells, regions, start };
+  world.start = start;
+  return world;
+}
+
+type Pick = (c: Cell) => boolean;
+const IS_FOREST: Pick = (c) => c.terrain === "spruce" || c.terrain === "pine" || c.terrain === "birch";
+const IS_ROCK: Pick = (c) => c.terrain === "rock" || c.terrain === "fell";
+const IS_HEATH: Pick = (c) => c.terrain === "bog" || c.terrain === "meadow";
+/** Fishing happens from land beside water. */
+const isShore = (world: World) => (c: Cell) =>
+  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => world.cells[n].terrain === "water");
+
+/**
+ * Camp sits at the centroid. Each other spot is the matching cell in the
+ * region whose walk from camp is nearest a target length that grows as the
+ * terrain gets rarer: the forest is close in a forest region, the outcrop
+ * far when rock is scarce.
+ */
+function placeSpots(world: World, r: RegionDef): Spot[] {
+  const spots: Spot[] = [{ id: "camp", km: 0, cell: r.campCell }];
+  const wants: { id: SpotId; pick: Pick; km: number; share: number }[] = [
+    { id: "forest", pick: IS_FOREST, km: 0.3 + 0.9 * (1 - r.forest), share: r.forest },
+    { id: "outcrop", pick: IS_ROCK, km: 0.4 + 1.2 * (1 - r.rock), share: r.rock },
+    { id: "shore", pick: isShore(world), km: 0.3 + 1.0 * (1 - r.frac.water), share: r.frac.water },
+    { id: "heath", pick: IS_HEATH, km: 0.3 + 1.0 * (1 - r.frac.bog - r.frac.meadow), share: r.frac.bog + r.frac.meadow },
+  ];
+  for (const want of wants) {
+    if (want.share <= 0.02) continue;
+    let best: { cell: number; km: number } | null = null;
+    for (const idx of r.cells) {
+      const c = world.cells[idx];
+      if (!want.pick(c) || idx === r.campCell) continue;
+      // Straight-line first to keep the candidate set small, then the real route.
+      const straight = Math.hypot(c.x - world.cells[r.campCell].x, c.y - world.cells[r.campCell].y) * CELL_KM;
+      if (Math.abs(straight - want.km) > 0.6 && best) continue;
+      const route = findRoute(world, r.campCell, idx);
+      if (!route) continue;
+      const km = routeKm(route);
+      if (!best || Math.abs(km - want.km) < Math.abs(best.km - want.km)) best = { cell: idx, km };
+    }
+    if (best) spots.push({ id: want.id, km: round1(best.km), cell: best.cell });
+  }
+  return spots;
+}
+
+export function neighbours(world: World, idx: number): number[] {
+  const x = idx % world.w;
+  const y = Math.floor(idx / world.w);
+  const out: number[] = [];
+  if (x > 0) out.push(idx - 1);
+  if (x < world.w - 1) out.push(idx + 1);
+  if (y > 0) out.push(idx - world.w);
+  if (y < world.h - 1) out.push(idx + world.w);
+  return out;
+}
+
+function nearestCell(mine: Cell[], cx: number, cy: number, ok: Pick): number {
+  let best = mine[0];
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const c of mine) {
+    if (!ok(c)) continue;
+    const d = (c.x - cx) ** 2 + (c.y - cy) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best.y * MAP_W + best.x;
 }
 
 function link(adj: Set<number>[], a: number, b: number) {
@@ -215,8 +289,8 @@ function nearestLand(cells: Cell[], x: number, y: number): { x: number; y: numbe
   return { x, y };
 }
 
-export function spotKm(region: RegionDef, spot: SpotId): number {
-  return region.spots.find((s) => s.id === spot)?.km ?? 0;
+export function spotOf(region: RegionDef, spot: SpotId): Spot | undefined {
+  return region.spots.find((s) => s.id === spot);
 }
 
 export function hasSpot(region: RegionDef, spot: SpotId): boolean {

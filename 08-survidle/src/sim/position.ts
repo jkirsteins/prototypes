@@ -1,0 +1,118 @@
+/**
+ * Where the player is, in cells, and what that means: which region, which
+ * named spot if any, what ground is under foot, and how far camp is. The
+ * UI never shows coordinates; it shows what these functions say.
+ */
+import { CELL_KM } from "../units";
+import { type Cell, neighbours, type RegionDef, type World } from "../world/gen";
+import { findRoute, routeKm } from "../world/route";
+import type { GameState, SpotId, Terrain } from "./types";
+
+export function cellIndex(world: World, x: number, y: number): number {
+  const cx = Math.min(world.w - 1, Math.max(0, Math.floor(x)));
+  const cy = Math.min(world.h - 1, Math.max(0, Math.floor(y)));
+  return cy * world.w + cx;
+}
+
+/** The cell under the player's feet. */
+export function cellOf(state: GameState, world: World): number {
+  return cellIndex(world, state.player.x, state.player.y);
+}
+
+export function cellCenter(world: World, idx: number): { x: number; y: number } {
+  return { x: (idx % world.w) + 0.5, y: Math.floor(idx / world.w) + 0.5 };
+}
+
+/** Puts the player in the middle of a cell and updates the region. */
+export function placeAt(state: GameState, world: World, idx: number): void {
+  const c = cellCenter(world, idx);
+  state.player.x = c.x;
+  state.player.y = c.y;
+  state.player.region = world.cells[idx].region;
+}
+
+/** Puts the player at a named spot of a region, for setup and tests. */
+export function placeAtSpot(state: GameState, world: World, region: number, spot: SpotId): void {
+  const s = world.regions[region].spots.find((x) => x.id === spot);
+  if (!s) throw new Error(`region ${region} has no ${spot}`);
+  placeAt(state, world, s.cell);
+}
+
+export function hereCell(state: GameState, world: World): Cell {
+  return world.cells[cellOf(state, world)];
+}
+
+export function hereTerrain(state: GameState, world: World): Terrain {
+  return hereCell(state, world).terrain;
+}
+
+/** The named spot whose cell the player stands on, if any. */
+export function spotHere(state: GameState, world: World): SpotId | null {
+  const idx = cellOf(state, world);
+  const r = world.regions[state.player.region];
+  return r.spots.find((s) => s.cell === idx)?.id ?? null;
+}
+
+export function atCamp(state: GameState, world: World): boolean {
+  return cellOf(state, world) === state.regions[state.player.region].campCell;
+}
+
+export function inForest(state: GameState, world: World): boolean {
+  const t = hereTerrain(state, world);
+  return t === "spruce" || t === "pine" || t === "birch";
+}
+
+export function onRock(state: GameState, world: World): boolean {
+  const t = hereTerrain(state, world);
+  return t === "rock" || t === "fell";
+}
+
+export function onHeath(state: GameState, world: World): boolean {
+  const t = hereTerrain(state, world);
+  return t === "bog" || t === "meadow";
+}
+
+export function byWater(state: GameState, world: World): boolean {
+  return neighbours(world, cellOf(state, world)).some((n) => world.cells[n].terrain === "water");
+}
+
+/** Route length in km from the player to a cell, or null if unreachable. */
+export function kmTo(state: GameState, world: World, idx: number): number | null {
+  const route = findRoute(world, cellOf(state, world), idx);
+  return route ? routeKm(route) : null;
+}
+
+export function kmBetween(world: World, a: number, b: number): number | null {
+  const route = findRoute(world, a, b);
+  return route ? routeKm(route) : null;
+}
+
+/** Straight-line km, for descriptions where a route is not needed. */
+export function straightKm(world: World, a: number, b: number): number {
+  const pa = cellCenter(world, a);
+  const pb = cellCenter(world, b);
+  return Math.hypot(pa.x - pb.x, pa.y - pb.y) * CELL_KM;
+}
+
+const GROUND: Record<Terrain, string> = {
+  water: "in the water", fell: "up on the fell", rock: "on the rocks", bog: "on the bog",
+  spruce: "in the spruce", pine: "among the pines", birch: "among the birches", meadow: "on open ground",
+};
+
+/** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
+export function describeWhere(state: GameState, world: World): string {
+  const r: RegionDef = world.regions[state.player.region];
+  if (state.route?.path.length) {
+    return `on the way to ${state.route.label}, ${routeKm(state.route.path).toFixed(1)} km to go`;
+  }
+  const spot = spotHere(state, world);
+  if (spot === "camp") return "at camp";
+  const km = kmBetween(world, cellOf(state, world), r.campCell);
+  const dist = km === null ? "" : `, ${km.toFixed(1)} km from camp`;
+  if (spot) return `at ${SPOT_WORDS[spot]}${dist}`;
+  return `${GROUND[hereTerrain(state, world)]}${dist}`;
+}
+
+export const SPOT_WORDS: Record<SpotId, string> = {
+  camp: "camp", forest: "the forest", outcrop: "the outcrop", shore: "the shore", heath: "the heath",
+};

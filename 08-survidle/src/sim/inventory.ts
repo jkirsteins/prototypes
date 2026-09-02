@@ -1,8 +1,10 @@
 import { PACK_COMFORTABLE_KG } from "../units";
+import type { World } from "../world/gen";
 import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
+import { cellOf } from "./position";
 import {
   type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
-  type Player, type SpotId, type ToolId,
+  type Player, type ToolId,
 } from "./types";
 
 export function emptyInventory(): Inventory {
@@ -89,25 +91,43 @@ export function listItems(inv: Inventory): { item: ItemId; qty: number }[] {
   return out;
 }
 
-/** The pile at a spot, created on first use. */
-export function pile(state: GameState, region: number, spot: SpotId): Inventory {
-  const r = state.regions[region];
-  let inv = r.piles[spot];
+/** The pile on a cell, created on first use. Empty piles are swept by tidyPiles. */
+export function pile(state: GameState, cell: number): Inventory {
+  let inv = state.piles[cell];
   if (!inv) {
     inv = emptyInventory();
-    r.piles[spot] = inv;
+    state.piles[cell] = inv;
   }
   return inv;
 }
 
 /** The pile under the player's feet. */
-export function herePile(state: GameState): Inventory {
-  return pile(state, state.player.region, state.player.spot);
+export function herePile(state: GameState, world: World): Inventory {
+  return pile(state, cellOf(state, world));
 }
 
 /** Pack plus the pile the player stands on: what a task may consume. */
-export function reach(state: GameState): Inventory[] {
-  return [state.player.pack, herePile(state)];
+export function reach(state: GameState, world: World): Inventory[] {
+  return [state.player.pack, herePile(state, world)];
+}
+
+/** Drops empty piles so the map does not mark bare ground. */
+export function tidyPiles(state: GameState): void {
+  for (const k of Object.keys(state.piles)) {
+    const inv = state.piles[Number(k)];
+    if (inv && isEmpty(inv)) delete state.piles[Number(k)];
+  }
+}
+
+/** Cells in a region that have something lying on them. */
+export function pilesIn(state: GameState, world: World, region: number): { cell: number; inv: Inventory }[] {
+  const out: { cell: number; inv: Inventory }[] = [];
+  for (const k of Object.keys(state.piles)) {
+    const cell = Number(k);
+    const inv = state.piles[cell];
+    if (inv && !isEmpty(inv) && world.cells[cell].region === region) out.push({ cell, inv });
+  }
+  return out;
 }
 
 export function totalQty(invs: Inventory[], item: ItemId): number {
@@ -143,14 +163,14 @@ export function consume(invs: Inventory[], needs: Need[]): void {
  * Where something just made goes: the pack while it is under the comfortable
  * limit, otherwise the ground. Logs are never pocketed.
  */
-export function produce(state: GameState, item: ItemId, n: number): "pack" | "pile" {
+export function produce(state: GameState, world: World, item: ItemId, n: number): "pack" | "pile" {
   const p = state.player;
   const addedKg = n * ITEM_KG[item];
   if (item !== "log" && weight(p.pack) + addedKg <= PACK_COMFORTABLE_KG + 1e-9) {
     addItem(p.pack, item, n);
     return "pack";
   }
-  addItem(herePile(state), item, n);
+  addItem(herePile(state, world), item, n);
   return "pile";
 }
 

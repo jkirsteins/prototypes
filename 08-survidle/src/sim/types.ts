@@ -81,17 +81,38 @@ export interface PausedTask {
   arg?: string;
   /** Share of the work done, 0..1. */
   fraction: number;
-  /** Where it was set aside, for the list on screen. */
-  region: number;
-  spot: SpotId;
+  /** The cell it was set aside in; -1 for carried work. */
+  cell: number;
+}
+
+/** A walk under way: the cells still to step through, and what it is for. */
+export interface Route {
+  target: number;
+  path: number[];
+  label: string;
+}
+
+export type PlanStep =
+  | { kind: "load"; cell: number }
+  | { kind: "walk"; cell: number; label: string }
+  | { kind: "drop" };
+
+/** A compound action, run one step at a time as the task slot frees up. */
+export interface Plan {
+  name: string;
+  steps: PlanStep[];
+  /** Steps to requeue when the list runs out, while `until` still holds. */
+  loop: PlanStep[] | null;
+  /** For a looping haul: the pile that must still hold something. */
+  sourceCell: number | null;
 }
 
 export interface RegionState {
   /** Standing trees worth felling. */
   wood: number;
   pop: Record<Species, number>;
-  /** What lies on the ground at each spot. */
-  piles: Partial<Record<SpotId, Inventory>>;
+  /** The cell the camp, fire and shelter stand on. */
+  campCell: number;
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number };
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
@@ -103,8 +124,11 @@ export interface RegionState {
 }
 
 export interface Player {
+  /** Position in cell units; the cell under foot is floor(x), floor(y). */
+  x: number;
+  y: number;
+  /** The region of the cell under foot, kept current by every move. */
   region: number;
-  spot: SpotId;
   health: number;
   /** Kilocalorie reserve, 0..6000. */
   kcal: number;
@@ -153,4 +177,8 @@ export interface GameState {
   lastDay: number;
   /** Tasks set aside, by pauseKey. */
   paused: Record<string, PausedTask>;
+  /** What lies on the ground, by cell index. */
+  piles: Record<number, Inventory>;
+  route: Route | null;
+  plan: Plan | null;
 }

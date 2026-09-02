@@ -44,15 +44,25 @@ describe("world generation", () => {
     expect(kinds.size).toBeGreaterThanOrEqual(5);
   });
 
-  it("names regions uniquely and sizes spots by terrain share", () => {
+  it("names regions uniquely and puts every spot on a real cell of the right ground", () => {
     const names = new Set(world.regions.map((r) => r.name));
     expect(names.size).toBe(world.regions.length);
     for (const r of world.regions) {
+      expect(world.cells[r.campCell].terrain).not.toBe("water");
+      expect(world.cells[r.campCell].region).toBe(r.id);
       for (const s of r.spots) {
-        if (s.id === "camp") expect(s.km).toBe(0);
-        else {
+        const t = world.cells[s.cell].terrain;
+        expect(world.cells[s.cell].region).toBe(r.id);
+        if (s.id === "camp") {
+          expect(s.km).toBe(0);
+          expect(s.cell).toBe(r.campCell);
+        } else {
           expect(s.km).toBeGreaterThanOrEqual(0.3);
-          expect(s.km).toBeLessThanOrEqual(1.6);
+          expect(s.km).toBeLessThanOrEqual(3);
+          if (s.id === "forest") expect(["spruce", "pine", "birch"]).toContain(t);
+          if (s.id === "outcrop") expect(["rock", "fell"]).toContain(t);
+          if (s.id === "heath") expect(["bog", "meadow"]).toContain(t);
+          if (s.id === "shore") expect(t).not.toBe("water");
         }
       }
       expect(r.area).toBeCloseTo(r.cells.length * 0.09, 5);

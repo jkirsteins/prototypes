@@ -1,10 +1,12 @@
-
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG, clamp } from "../units";
+import type { World } from "../world/gen";
+import { TERRAIN_SPEED } from "../world/route";
 import type { Calendar } from "./calendar";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
-import type { DeathCause, GameState, RegionState, Task, TaskId, Weather } from "./types";
+import { atCamp } from "./position";
+import type { DeathCause, GameState, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { DEEP_SNOW_CM } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
@@ -27,10 +29,6 @@ export function isCampTask(task: Task | null): boolean {
   return !task || CAMP_TASKS.has(task.id);
 }
 
-export function atCamp(state: GameState): boolean {
-  return state.player.spot === "camp";
-}
-
 /** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
 export function shelterBonus(r: RegionState): number {
   if (r.structures.cabin) return 15;
@@ -39,9 +37,9 @@ export function shelterBonus(r: RegionState): number {
 }
 
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
-export function sheltered(state: GameState): boolean {
+export function sheltered(state: GameState, world: World): boolean {
   const r = state.regions[state.player.region];
-  return atCamp(state) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo);
+  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo);
 }
 
 export function insulation(state: GameState): number {
@@ -50,10 +48,10 @@ export function insulation(state: GameState): number {
   return sum;
 }
 
-export function feltTemperature(state: GameState, ambient: number): number {
+export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = state.regions[p.region];
-  const camp = atCamp(state);
+  const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   let felt = ambient + insulation(state);
   if (r.fire.lit && camp) felt += campTask ? 15 : 7;
@@ -73,16 +71,20 @@ export function workSpeed(state: GameState): number {
   return f;
 }
 
-/** Walking speed in km/h on this ground, right now, with this load. */
-export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, bog: boolean, loadKg = carried(state.player)): number {
+/** Base walking speed in km/h before the ground: open forest, this weather, this load, this body. */
+export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather, loadKg = carried(state.player)): number {
   let v = 3.0;
-  if (bog) v *= 0.7;
   if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
   if (cal.isNight) v *= 0.75;
   if (loadKg > PACK_HARD_KG) v *= 0.6;
   else if (loadKg > PACK_COMFORTABLE_KG) v *= 0.8;
   if (state.player.energy < 20) v *= 0.7;
   return v;
+}
+
+/** Walking speed in km/h on this ground, right now, with this load. */
+export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, terrain: Terrain, loadKg = carried(state.player)): number {
+  return baseWalkSpeed(state, cal, weather, loadKg) * TERRAIN_SPEED[terrain];
 }
 
 const KCAL_PER_HOUR: Record<Activity, number> = { sleep: 70, rest: 100, light: 200, walk: 300, heavy: 400 };
@@ -105,15 +107,15 @@ export function warmthTarget(felt: number): number {
  * One step of the body: kcal, warmth, energy, wetness, clothing wear, health.
  * dt is at most one minute. Returns the health drains so a death can be named.
  */
-export function stepPlayer(state: GameState, ambient: number, dt: number): Drains {
+export function stepPlayer(state: GameState, world: World, ambient: number, dt: number): Drains {
   const p = state.player;
   const r = state.regions[p.region];
   const w = state.weather;
-  const felt = feltTemperature(state, ambient);
+  const felt = feltTemperature(state, world, ambient);
   const a = activityOf(state.task);
-  const camp = atCamp(state);
+  const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
-  const roof = sheltered(state);
+  const roof = sheltered(state, world);
   const cabin = roof && r.structures.cabin;
   const h = dt / 60;
 

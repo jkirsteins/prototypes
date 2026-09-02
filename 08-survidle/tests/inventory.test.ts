@@ -38,26 +38,26 @@ describe("inventory", () => {
   });
 
   it("routes produce to the pack until it is comfortable, and logs to the ground", () => {
-    const { state } = newGame(1);
-    expect(produce(state, "log", 1)).toBe("pile");
-    expect(qty(herePile(state), "log")).toBe(1);
-    expect(produce(state, "stick", 6)).toBe("pack");
-    expect(produce(state, "rawMeat", 30)).toBe("pile");
+    const { state, world } = newGame(1);
+    expect(produce(state, world, "log", 1)).toBe("pile");
+    expect(qty(herePile(state, world), "log")).toBe(1);
+    expect(produce(state, world, "stick", 6)).toBe("pack");
+    expect(produce(state, world, "rawMeat", 30)).toBe("pile");
     expect(qty(state.player.pack, "rawMeat")).toBe(0);
   });
 
   it("consumes from pack and pile together, with substitutes", () => {
-    const { state } = newGame(1);
+    const { state, world } = newGame(1);
     addItem(state.player.pack, "stone", 1);
-    addItem(herePile(state), "stone", 2);
-    addItem(herePile(state), "cordage", 1);
+    addItem(herePile(state, world), "stone", 2);
+    addItem(herePile(state, world), "cordage", 1);
     const needs = [{ item: "stone" as const, qty: 3 }, { item: "sinew" as const, qty: 1, alt: "cordage" as const }];
-    const invs = [state.player.pack, herePile(state)];
+    const invs = [state.player.pack, herePile(state, world)];
     expect(canConsume(invs, needs)).toBe(true);
     consume(invs, needs);
     expect(qty(state.player.pack, "stone")).toBe(0);
-    expect(qty(herePile(state), "stone")).toBe(0);
-    expect(qty(herePile(state), "cordage")).toBe(0);
+    expect(qty(herePile(state, world), "stone")).toBe(0);
+    expect(qty(herePile(state, world), "cordage")).toBe(0);
     expect(canConsume(invs, needs)).toBe(false);
   });
 });

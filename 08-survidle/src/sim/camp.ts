@@ -2,14 +2,14 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem } from "./inventory";
+import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
 import {
   FIRE_BURN_KG_PER_HOUR, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
   SNARE_CATCH_MAX_AGE,
 } from "./items";
 import { log } from "./log";
-import { atCamp } from "./player";
-import { type GameState, PERISHABLES, type SpotId } from "./types";
+import { atCamp } from "./position";
+import { type GameState, PERISHABLES } from "./types";
 
 /** Fires, racks and rot, every minute, everywhere. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number): void {
@@ -20,7 +20,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
 
     if (st.fire.lit) {
       st.fire.fuelKg -= (FIRE_BURN_KG_PER_HOUR / 60) * dt;
-      if (st.fire.fuelKg <= FIRE_LOW_KG && mine && atCamp(state) && p.autoFeed) {
+      if (st.fire.fuelKg <= FIRE_LOW_KG && mine && atCamp(state, world) && p.autoFeed) {
         feedFire(state, world, r.id, FIRE_MAX_KG - st.fire.fuelKg);
       }
       if (st.fire.fuelKg <= 0) {
@@ -34,19 +34,23 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
       if (state.weather.precip === "none") st.rack.dried += dt;
       if (st.rack.dried >= RACK_DRY_MINUTES) {
         const dried = st.rack.kg / 3;
-        addItem(pile(state, r.id, "camp"), "driedMeat", dried);
+        addItem(pile(state, st.campCell), "driedMeat", dried);
         log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${r.name}.`, "good");
         st.rack.kg = 0;
         st.rack.dried = 0;
       }
     }
 
-    for (const spot of Object.keys(st.piles) as SpotId[]) {
-      const inv = st.piles[spot];
-      if (inv) reportSpoil(state, ageStacks(inv, dt, ambient), mine ? "" : ` at ${r.name}`);
-    }
+  }
+  for (const k of Object.keys(state.piles)) {
+    const cell = Number(k);
+    const inv = state.piles[cell];
+    if (!inv) continue;
+    const region = world.cells[cell].region;
+    reportSpoil(state, ageStacks(inv, dt, ambient), region === p.region ? "" : ` at ${world.regions[region].name}`);
   }
   reportSpoil(state, ageStacks(p.pack, dt, ambient), " in your pack");
+  tidyPiles(state);
 }
 
 function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where: string) {
@@ -61,7 +65,7 @@ export function feedFire(state: GameState, _world: World, region: number, wantKg
   const st = state.regions[region];
   const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - st.fire.fuelKg));
   let added = 0;
-  for (const inv of [state.player.pack, pile(state, region, "camp")]) {
+  for (const inv of [state.player.pack, pile(state, st.campCell)]) {
     if (added >= room - 1e-9) break;
     added += removeItem(inv, "firewood", room - added);
   }
@@ -70,7 +74,7 @@ export function feedFire(state: GameState, _world: World, region: number, wantKg
 }
 
 export function firewoodAt(state: GameState, region: number): number {
-  return qty(state.player.pack, "firewood") + qty(pile(state, region, "camp"), "firewood");
+  return qty(state.player.pack, "firewood") + qty(pile(state, state.regions[region].campCell), "firewood");
 }
 
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
