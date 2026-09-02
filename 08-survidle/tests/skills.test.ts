@@ -4,8 +4,9 @@ import { addItem, hasTool, qty, tool } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { deserialize, serialize } from "../src/sim/save";
 import {
-  craftSuccess, gap, injuryChance, level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel,
-  masteryMinutes, newSkills, poolCapacity, SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor,
+  chopSticks, craftSuccess, effectiveNeeds, EXTRAS, fishKg, gap, huntExtras, injuryChance, level,
+  levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
+  SKILL_IDS, skillOf, skillLevel, speedFactor, wearFactor,
 } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
@@ -237,5 +238,74 @@ describe("backfire under level", () => {
     expect(qty(state.player.pack, "log")).toBe(0);
     expect(qty(state.player.pack, "cordage")).toBe(2);
     expect(state.log.some((e) => e.text.startsWith("The bow is spoiled"))).toBe(true);
+  });
+});
+
+describe("mastery extras", () => {
+  it("spruce felling at mastery 20 gives a fifth stick; at 50 the axe keeps its edge on spruce", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const key = masteryKey(state, world, "chop")!;
+    expect(chopSticks(state, world)).toBe(4);
+    state.skills.woodcraft.mastery[key] = masteryMinutes(20);
+    expect(chopSticks(state, world)).toBe(5);
+    expect(wearFactor(state, world, "chop")).toBe(1);
+    state.skills.woodcraft.mastery[key] = masteryMinutes(50);
+    expect(wearFactor(state, world, "chop")).toBe(0);
+    startTask(state, world, cal, "chop");
+    run(g, 200);
+    expect(qty(state.player.pack, "stick")).toBe(5);
+  });
+
+  it("a hare at mastery 20 keeps its hide whole; at 50 a bone more", () => {
+    const { state } = newGame(3);
+    expect(huntExtras(state, "hare")).toEqual({ hideKg: 0.2, bone: 1, sinew: 0, injuryFactor: 1 });
+    state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(20);
+    expect(huntExtras(state, "hare").hideKg).toBe(0.3);
+    state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(50);
+    expect(huntExtras(state, "hare").bone).toBe(2);
+  });
+
+  it("deer and elk: a sinew more at 20, half the injury at 50", () => {
+    const { state } = newGame(3);
+    state.skills.hunting.xp = levelMinutes(8);
+    state.skills.hunting.mastery["hunt:elk"] = masteryMinutes(20);
+    expect(huntExtras(state, "elk").sinew).toBe(7);
+    state.skills.hunting.mastery["hunt:elk"] = masteryMinutes(50);
+    expect(injuryChance(state, "elk")).toBeCloseTo(0.075, 9);
+  });
+
+  it("fish: 0.9 kg per catch at 20, 1.2 at 50", () => {
+    const { state } = newGame(3);
+    expect(fishKg(state)).toBeCloseTo(0.7, 9);
+    state.skills.fishing.mastery.fish = masteryMinutes(20);
+    expect(fishKg(state)).toBeCloseTo(0.9, 9);
+    state.skills.fishing.mastery.fish = masteryMinutes(50);
+    expect(fishKg(state)).toBeCloseTo(1.2, 9);
+  });
+
+  it("hide and fur recipes: one sinew fewer at 20, a tenth less hide at 50", () => {
+    const { state } = newGame(3);
+    expect(effectiveNeeds(state, "hideCoat")).toEqual([{ item: "hide", qty: 6 }, { item: "sinew", qty: 2 }]);
+    state.skills.crafting.mastery["craft:hideCoat"] = masteryMinutes(20);
+    expect(effectiveNeeds(state, "hideCoat")).toEqual([{ item: "hide", qty: 6 }, { item: "sinew", qty: 1 }]);
+    state.skills.crafting.mastery["craft:hideCoat"] = masteryMinutes(50);
+    expect(effectiveNeeds(state, "hideCoat")).toEqual([{ item: "hide", qty: 5.5 }, { item: "sinew", qty: 1 }]);
+    state.skills.crafting.mastery["craft:furHat"] = masteryMinutes(20);
+    // A need that drops to zero is left out rather than listed as 0.
+    expect(effectiveNeeds(state, "furHat")).toEqual([{ item: "hide", qty: 1 }]);
+    expect(effectiveNeeds(state, "cordage")).toEqual([{ item: "bark", qty: 3 }]);
+  });
+
+  it("crossing 20 logs the extra", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const key = masteryKey(state, world, "chop")!;
+    state.skills.woodcraft.mastery[key] = masteryMinutes(20) - 1;
+    startTask(state, world, cal, "chop");
+    run(g, 2);
+    expect(state.log.some((e) => e.text.includes("mastery 20") && e.text.includes(EXTRAS["chop:spruce"].at20))).toBe(true);
   });
 });

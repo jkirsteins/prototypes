@@ -4,9 +4,9 @@
  * hours. What a level buys is what practice buys: speed, odds, less waste.
  */
 import type { World } from "../world/gen";
-import { ANIMALS, KG_ITEMS, RECIPE_IDS, STRUCTURE_IDS, type Need } from "./items";
+import { ANIMALS, ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
 import { hereTerrain } from "./position";
-import type { GameState, RecipeId, SkillId, SkillState, Species, TaskId } from "./types";
+import type { GameState, ItemId, RecipeId, SkillId, SkillState, Species, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
@@ -120,9 +120,76 @@ export function gap(state: GameState, key: string): number {
   return Math.max(0, rec.level - skillLevel(state, rec.skill));
 }
 
-/** Chance the animal hurts you: its own, plus ten points per level short. */
+/** The concrete extras, at mastery 20 and 50, by key; a key not here is speed only. */
+export const EXTRAS: Record<string, { at20: string; at50: string }> = {
+  "chop:spruce": { at20: "an extra stick per tree", at50: "the axe keeps its edge on spruce" },
+  "chop:pine": { at20: "an extra stick per tree", at50: "the axe keeps its edge on pine" },
+  "chop:birch": { at20: "an extra stick per tree", at50: "the axe keeps its edge on birch" },
+  "hunt:hare": { at20: "the hide comes off whole, 0.3 kg", at50: "a bone more" },
+  "hunt:deer": { at20: "a sinew more", at50: "half the chance of a hurt" },
+  "hunt:elk": { at20: "a sinew more", at50: "half the chance of a hurt" },
+  fish: { at20: "0.9 kg per catch", at50: "1.2 kg per catch" },
+  "craft:hideCoat": { at20: "one sinew fewer", at50: "a tenth less hide" },
+  "craft:hideTrousers": { at20: "one sinew fewer", at50: "a tenth less hide" },
+  "craft:hideBoots": { at20: "one sinew fewer", at50: "a tenth less hide" },
+  "craft:hideBlanket": { at20: "one sinew fewer", at50: "a tenth less hide" },
+  "craft:furHat": { at20: "one sinew fewer", at50: "a tenth less hide" },
+  "craft:furMittens": { at20: "one sinew fewer", at50: "a tenth less hide" },
+};
+
+/** A readable name for a mastery key, for log lines: "Spruce felling", "Elk hunting", "Hide coat". */
+export function keyName(key: string): string {
+  const [kind, arg] = key.split(":");
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  if (kind === "chop") return `${cap(arg)} felling`;
+  if (kind === "hunt") return `${cap(ANIMALS[arg as Species].name)} hunting`;
+  if (kind === "craft") return cap(RECIPES[arg as RecipeId].name);
+  if (kind === "build") return cap(STRUCTURES[arg as StructureId].name);
+  if (kind === "cook") return `Cooking ${ITEM_NAMES[arg as ItemId]}`;
+  return cap(kind);
+}
+
+export function chopSticks(state: GameState, world: World): number {
+  return 4 + (masteryOf(state, "woodcraft", masteryKey(state, world, "chop")!) >= 20 ? 1 : 0);
+}
+
+export function huntExtras(state: GameState, species: Species): { hideKg: number; bone: number; sinew: number; injuryFactor: number } {
+  const def = ANIMALS[species];
+  const m = masteryOf(state, "hunting", `hunt:${species}`);
+  const out = { hideKg: def.hideKg, bone: def.bone, sinew: def.sinew, injuryFactor: 1 };
+  if (species === "hare") {
+    if (m >= 20) out.hideKg = 0.3;
+    if (m >= 50) out.bone += 1;
+  } else if (species === "deer" || species === "elk") {
+    if (m >= 20) out.sinew += 1;
+    if (m >= 50) out.injuryFactor = 0.5;
+  }
+  return out;
+}
+
+export function fishKg(state: GameState): number {
+  const m = masteryOf(state, "fishing", "fish");
+  return ANIMALS.fish.meatKg + (m >= 50 ? 0.5 : m >= 20 ? 0.2 : 0);
+}
+
+/** A recipe's needs after mastery: hide and fur pieces want one sinew fewer at 20 and a tenth less hide at 50. */
+export function effectiveNeeds(state: GameState, recipe: RecipeId): Need[] {
+  const rec = RECIPES[recipe];
+  if (!EXTRAS[`craft:${recipe}`]) return rec.needs;
+  const m = masteryOf(state, "crafting", `craft:${recipe}`);
+  return rec.needs
+    .map((n) => {
+      if (n.item === "sinew" && m >= 20) return { ...n, qty: n.qty - 1 };
+      if (n.item === "hide" && m >= 50) return { ...n, qty: Math.round((n.qty * 0.9) * 2) / 2 };
+      return n;
+    })
+    .filter((n) => n.qty > 0);
+}
+
+/** Chance the animal hurts you: its own, plus ten points per level short, halved by mastery 50 on deer and elk. */
 export function injuryChance(state: GameState, species: Species): number {
-  return Math.min(1, ANIMALS[species].injury + 0.1 * gap(state, `hunt:${species}`));
+  const base = ANIMALS[species].injury + 0.1 * gap(state, `hunt:${species}`);
+  return Math.min(1, base * huntExtras(state, species).injuryFactor);
 }
 
 /** Chance a piece comes out: halved per level short of the recommendation. */
@@ -153,7 +220,7 @@ export function speedFactor(state: GameState, world: World, id: TaskId, arg?: st
   return f;
 }
 
-/** Tool wear multiplier for a task: Crafting's level, and the pool's 25% and 95% perks. */
+/** Tool wear multiplier for a task: Crafting's level, the pool's 25% and 95% perks, and mastery 50 sparing the axe on a mastered tree kind. */
 export function wearFactor(state: GameState, world: World, id: TaskId, arg?: string): number {
   const skill = skillOf(id, arg);
   if (!skill) return 1;
@@ -161,7 +228,7 @@ export function wearFactor(state: GameState, world: World, id: TaskId, arg?: str
   const share = poolShare(state, skill);
   if (share >= 0.95) f = 0;
   else if (share >= 0.25) f *= 0.5;
-  void world;
+  if (id === "chop" && masteryOf(state, skill, masteryKey(state, world, id)!) >= 50) f = 0;
   return f;
 }
 
@@ -185,6 +252,13 @@ export function train(state: GameState, world: World, dt: number): void {
   s.xp += dt;
   const after = level(s.xp);
   if (after > before) log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
+  const mBefore = masteryLevel(s.mastery[key] ?? 0);
   s.mastery[key] = (s.mastery[key] ?? 0) + dt;
+  const mAfter = masteryLevel(s.mastery[key]);
+  const extra = EXTRAS[key];
+  if (extra) {
+    if (mBefore < 20 && mAfter >= 20) log(state, `${keyName(key)} mastery 20: ${extra.at20}.`, "good");
+    if (mBefore < 50 && mAfter >= 50) log(state, `${keyName(key)} mastery 50: ${extra.at50}.`, "good");
+  }
   s.pool = Math.min(poolCapacity(skill), s.pool + dt);
 }
