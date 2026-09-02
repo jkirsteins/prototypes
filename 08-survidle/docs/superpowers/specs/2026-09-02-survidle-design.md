@@ -412,7 +412,15 @@ Dark, monospace, three columns:
    statuses, worn clothing with durability bars, tools with durability,
    auto-eat and auto-feed toggles.
 2. **Centre - World.** Clock line (day N, date and season, HH:MM, ambient C,
-   weather, snow depth, sun or moon), the ASCII map with region borders,
+   weather, snow depth) beside a sky strip: a horizon with an arc that the
+   sun crosses from sunrise on the left to sunset on the right, and the moon
+   crosses through the night, the strip's own sky colour moving through
+   dawn, day, golden hour, dusk and night. The same clock lights the map:
+   brightness, saturation and a coloured tint interpolated across those
+   phases (night blue at 0.45 brightness, dawn orange, golden hour amber,
+   dusk purple), with overcast greying, rain darkening blue-grey and snow
+   whitening on top, and faint animated streaks while it rains or snows.
+   Then the ASCII map with region borders,
    `@` at the player's region centroid, `H` for shelters and `F` for a lit
    fire; the current region card (name, area km2, terrain mix, animals, wood,
    structures with fire fuel and rack progress) and the travel list of

@@ -4,12 +4,13 @@ import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { herePile, listItems, qty, weight } from "../sim/inventory";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, TOOLS } from "../sim/items";
 import { feltTemperature, insulation } from "../sim/player";
-import { availableTasks, SPOT_NAMES, type TaskGroup, type TaskOption } from "../sim/tasks";
+import { availableTasks, check, SPOT_NAMES, type TaskGroup, type TaskOption, walkKm } from "../sim/tasks";
 import { type GameState, type ItemId, type LogEntry, SPECIES } from "../sim/types";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { spotKm, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
+import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
   return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div><span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
@@ -62,7 +63,7 @@ export function gearHtml(state: GameState): string {
 export function clockHtml(state: GameState, cal: Calendar, ambient: number): string {
   const sun = cal.isNight ? "night" : "day";
   const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
-  return `<div class="line">
+  return `<div class="clockrow"><div class="line">
 <span class="big">Day ${cal.day}</span>
 <span>${fmtDate(cal)}, ${cal.season}</span>
 <span class="big">${fmtClock(cal.hour)}</span>
@@ -70,7 +71,7 @@ export function clockHtml(state: GameState, cal: Calendar, ambient: number): str
 <span class="${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C, ${weatherLabel(state.weather, ambient)}</span>
 ${snow}
 <span class="dim">1 s = ${GAME_MINUTES_PER_REAL_SECOND} game min</span>
-</div>`;
+</div>${skyHtml()}</div>`;
 }
 
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
@@ -91,10 +92,18 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     .map((s) => {
       const pileKg = st.piles[s.id] ? weight(st.piles[s.id]!) : 0;
       const isHere = here && p.spot === s.id;
-      const btn = here && !isHere
-        ? ` <button class="mini" data-act="task" data-id="walk" data-arg="${s.id}">walk</button>`
-        : "";
-      return `<div>${isHere ? "<b>@</b> " : ""}${SPOT_NAMES[s.id]} <small>${fmtKm(s.km)} from camp${pileKg > 0 ? `, ${fmtKg(pileKg)} lying there` : ""}</small>${btn}</div>`;
+      const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
+      if (!here) {
+        return `<div>${SPOT_NAMES[s.id]} <small>${[s.id === "camp" ? "" : `${fmtKm(s.km)} from camp`, lying].filter(Boolean).join(", ")}</small></div>`;
+      }
+      if (isHere) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
+      // Distance and time from where the player stands, not from camp.
+      const walk = check(state, world, cal, "walk", s.id);
+      const km = walkKm(r, p.spot, s.id);
+      const btn = walk.ok
+        ? ` <button class="mini" data-act="task" data-id="walk" data-arg="${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
+        : ` <small>${esc(walk.why)}</small>`;
+      return `<div>${SPOT_NAMES[s.id]} <small>${[`${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}</div>`;
     })
     .join("");
   const built: string[] = [];

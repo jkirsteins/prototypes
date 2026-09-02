@@ -17,6 +17,7 @@ import {
   regionHtml, statsHtml, taskHtml,
 } from "./ui/panels";
 import { newUiState, resetPanels, setPanel } from "./ui/render";
+import { updateSky } from "./ui/sky";
 import { generateWorld, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
@@ -77,6 +78,7 @@ function render() {
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
   updateBars(state);
+  updateSky(state, cal, ambient);
 
   const overlay = document.getElementById("overlay")!;
   if (state.dead) {
