@@ -18,8 +18,8 @@ const GLYPH: Record<Terrain, string> = {
 export const SNOW_SHOWN_CM = 5;
 export const VIEW_W = 72;
 export const VIEW_H = 36;
-/** Cells per glyph at each zoom level. */
-export const ZOOMS = [1, 3, 9, 40];
+/** Cells per glyph at each zoom level; the last is the smallest that fits the whole world on screen. */
+export const ZOOMS = [1, 3, 9, Math.max(Math.ceil(1800 / VIEW_W), Math.ceil(1300 / VIEW_H))];
 /** Priority when a block's ground is tied: what the eye should see first. */
 const TIE_ORDER: Terrain[] = ["water", "fell", "rock", "spruce", "pine", "birch", "bog", "meadow"];
 
@@ -37,23 +37,37 @@ export function viewOrigin(state: GameState, world: World, zoom: number): { x0: 
   const spanY = VIEW_H * z;
   let x0 = px - Math.floor(spanX / 2);
   let y0 = py - Math.floor(spanY / 2);
-  x0 = Math.max(0, Math.min(world.w - spanX, x0));
-  y0 = Math.max(0, Math.min(world.h - spanY, y0));
-  // A world smaller than the view at this zoom sits at the top left.
-  if (spanX > world.w) x0 = 0;
-  if (spanY > world.h) y0 = 0;
+  // Clamp to the world's edge, or centre a world smaller than the view; the
+  // origin may then be negative and the glyphs outside the world are void.
+  x0 = spanX >= world.w ? -Math.floor((spanX - world.w) / 2 / z) * z : Math.max(0, Math.min(world.w - spanX, x0));
+  y0 = spanY >= world.h ? -Math.floor((spanY - world.h) / 2 / z) * z : Math.max(0, Math.min(world.h - spanY, y0));
   return { x0, y0 };
 }
 
-/** The commonest ground in a block, sampled on a 3 by 3 pattern for big blocks. */
-function blockTerrain(world: World, x0: number, y0: number, z: number): Terrain {
-  if (z === 1) return terrainPeek(world, x0, y0);
+interface Block { terrain: Terrain; region: number; seen: 0 | 1 | 2 }
+
+/**
+ * What a glyph shows for its block: the commonest ground among a 3 by 3
+ * sample, the region at the centre, and the best discovery level of any
+ * sampled region, so a block you stand in is never fog.
+ */
+function blockInfo(state: GameState, world: World, x0: number, y0: number, z: number): Block {
+  if (z === 1) {
+    const region = regionPeek(world, x0, y0);
+    return { terrain: terrainPeek(world, x0, y0), region, seen: discovery(state, region) };
+  }
   const counts = new Map<Terrain, number>();
   const step = Math.max(1, Math.floor(z / 3));
+  let seen: 0 | 1 | 2 = 0;
   for (let j = step >> 1; j < z; j += step) {
     for (let i = step >> 1; i < z; i += step) {
-      const t = terrainPeek(world, x0 + i, y0 + j);
-      counts.set(t, (counts.get(t) ?? 0) + 1);
+      const reg = regionPeek(world, x0 + i, y0 + j);
+      const d = discovery(state, reg);
+      if (d > seen) seen = d;
+      if (d > 0) {
+        const t = terrainPeek(world, x0 + i, y0 + j);
+        counts.set(t, (counts.get(t) ?? 0) + 1);
+      }
     }
   }
   let best: Terrain = "water";
@@ -65,7 +79,7 @@ function blockTerrain(world: World, x0: number, y0: number, z: number): Terrain 
       best = t;
     }
   }
-  return best;
+  return { terrain: best, region: regionPeek(world, x0 + (z >> 1), y0 + (z >> 1)), seen };
 }
 
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
@@ -119,18 +133,25 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (g >= 0) pileGlyphs.add(g);
   }
 
-  // Region per glyph, from the block's centre cell, then borders between glyphs.
+  // Region, ground and discovery per glyph, then borders between glyphs.
   const regions = new Int32Array(VIEW_W * VIEW_H);
   const terrains: Terrain[] = new Array(VIEW_W * VIEW_H);
+  const seenAt = new Uint8Array(VIEW_W * VIEW_H);
   for (let gy = 0; gy < VIEW_H; gy++) {
     for (let gx = 0; gx < VIEW_W; gx++) {
       const cx = x0 + gx * z;
       const cy = y0 + gy * z;
       const i = gy * VIEW_W + gx;
-      const inside = cx < world.w && cy < world.h;
-      regions[i] = inside ? regionPeek(world, cx + (z >> 1), cy + (z >> 1)) : -1;
-      // Fog needs no ground; skip the sampling where nothing is known.
-      terrains[i] = inside && discovery(state, regions[i]) > 0 ? blockTerrain(world, cx, cy, z) : "water";
+      const inside = cx >= 0 && cy >= 0 && cx < world.w && cy < world.h;
+      if (!inside) {
+        regions[i] = -1;
+        terrains[i] = "water";
+        continue;
+      }
+      const b = blockInfo(state, world, cx, cy, z);
+      regions[i] = b.region;
+      terrains[i] = b.terrain;
+      seenAt[i] = b.seen;
     }
   }
   const drawBorders = z <= 3;
@@ -142,7 +163,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const gx = i % VIEW_W;
     const gy = Math.floor(i / VIEW_W);
     const reg = regions[i];
-    const seen = reg >= 0 ? discovery(state, reg) : 0;
+    const seen = reg >= 0 ? seenAt[i] : 0;
     const cls = ["c"];
     let glyph = " ";
     let title = "";

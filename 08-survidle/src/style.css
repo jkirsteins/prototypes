@@ -114,7 +114,7 @@ small, .dim { color: var(--dim); }
 .sky circle, .sky stop { transition: cx 0.3s linear, cy 0.3s linear, opacity 0.5s, stop-color 0.5s; }
 
 /* Map */
-#map { padding: 8px; overflow-x: auto; }
+#map { padding: 8px; overflow: hidden; }
 .grid {
   --bright: 1; --sat: 1; --tint: rgb(0, 0, 0); --tint-a: 0;
   position: relative;
@@ -129,9 +129,10 @@ small, .dim { color: var(--dim); }
   filter: brightness(var(--bright)) saturate(var(--sat));
   transition: filter 0.5s linear;
 }
-/* Fog of war and the edge of the world. */
-.grid .c.fog { color: transparent; background: #070910; }
-.grid .c.void { color: transparent; background: #030407; }
+/* Fog of war and the edge of the world: fog has a grain so the world's extent reads against the void. */
+.grid .c.fog { color: #141a26; background: #0a0e17; }
+.grid .c.fog::before { content: "\00b7"; }
+.grid .c.void { color: transparent; background: #05070c; }
 .grid .c.dim { opacity: 0.45; }
 .maptools { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .legend .fog-key { color: #4a5160; }
