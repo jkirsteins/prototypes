@@ -3,6 +3,7 @@ import { generateWorld, regionAt, type World } from "../world/gen";
 import { addItem, emptyInventory } from "./inventory";
 import { log } from "./log";
 import { enterRegion } from "./regionstate";
+import { newSkills } from "./skills";
 import type { GameState } from "./types";
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
@@ -44,6 +45,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
     log: [],
     dead: null,
     stats: { trees: 0, animals: 0, structures: 0, km: 0 },
+    skills: newSkills(),
     lastHour: 0,
     lastDay: 0,
     paused: {},

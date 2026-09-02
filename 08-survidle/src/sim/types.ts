@@ -165,6 +165,18 @@ export type DeathCause = "starved" | "froze" | "wolves" | "sickness";
 
 export interface RunStats { trees: number; animals: number; structures: number; km: number }
 
+export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building";
+
+/** Practice, in minutes. A level is a count of hours behind the tool. */
+export interface SkillState {
+  /** Minutes of work at the skill's tasks. */
+  xp: number;
+  /** Minutes of work per mastery key ("chop:spruce", "hunt:elk", "craft:bow"). */
+  mastery: Record<string, number>;
+  /** Minutes in the mastery pool, capped at the skill's capacity. */
+  pool: number;
+}
+
 export interface GameState {
   seed: number;
   minute: number;
@@ -179,6 +191,7 @@ export interface GameState {
   log: LogEntry[];
   dead: { cause: DeathCause; minute: number } | null;
   stats: RunStats;
+  skills: Record<SkillId, SkillState>;
   /** The last game hour and day index that had their periodic roll. */
   lastHour: number;
   lastDay: number;

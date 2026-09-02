@@ -1,6 +1,7 @@
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import type { World } from "../world/gen";
 import { advance } from "./advance";
+import { newSkills } from "./skills";
 import type { GameState, LogEntry } from "./types";
 
 export const SAVE_KEY = "survidle.save";
@@ -31,6 +32,7 @@ export function deserialize(text: string): SaveFile | null {
  * region: by not having it yet.
  */
 function fillDefaults(state: GameState): void {
+  state.skills ??= newSkills();
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
     st.boughBedAge ??= 0;
