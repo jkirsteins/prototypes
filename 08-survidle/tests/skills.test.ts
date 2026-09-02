@@ -10,7 +10,7 @@ import {
 } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { availableTasks, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
 
@@ -337,5 +337,33 @@ describe("pool yield perks", () => {
     expect(wearFactor(state, world, "fish")).toBe(1);
     state.skills.woodcraft.pool = poolCapacity("woodcraft");
     expect(wearFactor(state, world, "chop")).toBe(0);
+  });
+});
+
+describe("options carry progression", () => {
+  it("every trainable option has a mastery level and share; walks have none", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.skills.woodcraft.mastery[masteryKey(state, world, "chop")!] = masteryMinutes(3) + 7;
+    const opts = availableTasks(state, world, cal);
+    const chop = opts.find((o) => o.id === "chop")!;
+    expect(chop.mastery!.level).toBe(3);
+    expect(chop.mastery!.share).toBeCloseTo(7 / (masteryMinutes(4) - masteryMinutes(3)), 9);
+    expect(opts.find((o) => o.id === "walk")!.mastery).toBeUndefined();
+  });
+
+  it("a recommendation reads on the button, and says when you are under it", () => {
+    const { state, world } = newGame(3);
+    const elk = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!;
+    expect(elk.recommended).toEqual({ text: "Hunting 8", under: true });
+    expect(elk.detail).toContain("Hunting 8");
+    const cabin = availableTasks(state, world, cal).find((o) => o.id === "build" && o.arg === "cabin")!;
+    expect(cabin.detail).toContain("at Building 1 this takes 10.6x as long");
+    state.player.tools.push({ id: "knife", durability: 100 });
+    const bow = availableTasks(state, world, cal).find((o) => o.id === "craft" && o.arg === "bow")!;
+    expect(bow.detail).toContain("6% chance it comes out");
+    state.skills.hunting.xp = levelMinutes(8);
+    expect(availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!.recommended!.under).toBe(false);
+    expect(availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "hare")!.recommended).toBeUndefined();
   });
 });

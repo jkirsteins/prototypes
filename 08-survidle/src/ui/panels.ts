@@ -22,6 +22,10 @@ function durBar(v: number): string {
   return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`;
 }
 
+function masteryBar(m: { level: number; share: number }): string {
+  return `<div class="bar mastery" title="mastery ${m.level}"><div class="fill" style="width:${Math.round(m.share * 100)}%"></div><span class="lbl"><span>mastery ${m.level}</span></span></div>`;
+}
+
 export function statsHtml(state: GameState, world: World, cal: Calendar, ambient: number, ui: UiState): string {
   const p = state.player;
   const felt = feltTemperature(state, world, ambient);
@@ -186,14 +190,16 @@ const GROUPS: { id: TaskGroup; label: string }[] = [
 
 function optHtml(o: TaskOption): string {
   const arg = o.arg ?? "";
+  const rec = o.recommended?.under ? `<small class="warn">${esc(o.recommended.text)}</small>` : "";
+  const bar = o.mastery ? masteryBar(o.mastery) : "";
   if (!o.ok) {
-    return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small></span></div>`;
+    return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</span></div>`;
   }
   const time = `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}`;
   const rep = o.repeatable
     ? `<button class="rep" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}" data-repeat="1" title="Keep doing it until it cannot continue">loop</button>`
     : "";
-  return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}<small>${time}${o.detail ? `; ${esc(o.detail)}` : ""}</small></button>${rep}</div>`;
+  return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${time}${o.detail ? `; ${esc(o.detail)}` : ""}</small>${bar}</button>${rep}</div>`;
 }
 
 export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {

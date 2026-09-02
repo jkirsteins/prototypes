@@ -15,8 +15,9 @@ import {
 import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
 import {
-  chopSticks, craftSuccess, effectiveNeeds, fishKg, huntExtras, injuryChance, oddsFactor,
-  spoiledNeeds, train, wearFactor, yieldFactor,
+  chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, huntExtras, injuryChance, MASTERY_CAP,
+  masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
+  skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
 import {
   atCamp, byWater, cellCenter, cellIndex, cellOf, hereTerrain, inForest, onHeath, onRock,
@@ -46,6 +47,10 @@ export interface TaskOption {
   repeatable: boolean;
   /** Share already done and waiting to be resumed, when there is one. */
   resume?: number;
+  /** Mastery of this action, and the share of the way to the next mastery level. */
+  mastery?: { level: number; share: number };
+  /** The recommended level, and whether you are under it. */
+  recommended?: { text: string; under: boolean };
 }
 
 export const SPOT_NAMES = SPOT_WORDS;
@@ -346,6 +351,26 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
   out.push(check(state, world, cal, "haul"));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
+  return out.map((o) => withProgression(state, world, o));
+}
+
+/** Adds what practice says about an option: its mastery, and the level it is meant for. */
+function withProgression(state: GameState, world: World, o: TaskOption): TaskOption {
+  const skill = skillOf(o.id, o.arg);
+  const key = skill ? masteryKey(state, world, o.id, o.arg) : null;
+  if (!skill || !key) return o;
+  const minutes = state.skills[skill].mastery[key] ?? 0;
+  const m = masteryLevel(minutes);
+  const span = masteryMinutes(m + 1) - masteryMinutes(m);
+  const out: TaskOption = { ...o, mastery: { level: m, share: m >= MASTERY_CAP ? 1 : (minutes - masteryMinutes(m)) / span } };
+  const rec = RECOMMENDED[key];
+  if (!rec) return out;
+  const g = gap(state, key);
+  out.recommended = { text: `${SKILL_NAMES[rec.skill]} ${rec.level}`, under: g > 0 };
+  const parts = [out.recommended.text];
+  if (g > 0 && o.id === "craft") parts.push(`${Math.round(craftSuccess(state, o.arg as RecipeId) * 100)}% chance it comes out`);
+  if (g > 0 && o.id === "build") parts.push(`at ${SKILL_NAMES.building} ${skillLevel(state, "building")} this takes ${(1.3 ** g).toFixed(1)}x as long`);
+  out.detail = out.detail ? `${out.detail}; ${parts.join("; ")}` : parts.join("; ");
   return out;
 }
 

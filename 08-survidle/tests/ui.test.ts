@@ -55,6 +55,11 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(html).toMatch(/Fell a tree.*forest/s);
     expect(html).toMatch(/Gather stone.*(rock|outcrop)/s);
   });
+  it("every option that trains carries a mastery bar; a hunt under level carries the warning", () => {
+    expect(html).toMatch(/data-opt="chop:"[^]*?bar mastery/);
+    expect(html).not.toMatch(/data-opt="walk:spot:forest"[^]*?bar mastery[^]*?data-opt="haul/);
+    expect(html).toMatch(/data-opt="hunt:elk"[^]*?<small class="warn">Hunting 8<\/small>/);
+  });
 });
 
 describe("panels", () => {

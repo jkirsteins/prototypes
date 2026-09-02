@@ -94,6 +94,10 @@ small, .dim { color: var(--dim); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
 .bar.low .fill { background: var(--bad); }
+.bar.mastery { height: 10px; margin: 4px 0 0; }
+.bar.mastery .fill { background: #4b6a8f; }
+.bar.mastery .lbl { font-size: 9px; line-height: 8px; }
+.warn { color: var(--bad); margin-left: 6px; display: inline; }
 
 .statuses { margin: 6px 0; min-height: 1.4em; }
 .tag {
