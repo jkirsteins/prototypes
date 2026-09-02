@@ -40,7 +40,7 @@ const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "repair", "sharpen
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
-const UNCHECKED = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
+const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
   chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath", fish: "shore",
@@ -126,12 +126,12 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   if (state.dead || req.task === "walk" || req.task === "travel") return false;
   const { cell, note } = resolveCell(state, world, req.task, req.arg, req.where);
   if (!UNCHECKED.has(req.task) && !check(state, world, cal, req.task, req.arg, cell).ok) return false;
-  if (req.task === "haul" && isEmpty(pile(state, cell))) return false;
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
     ? item ? { kind: "campHas", item, qty: req.until.qty } : { kind: "once" }
     : req.until;
-  let deliver = req.deliver;
+  // A leave-it intent can never meet "camp has N"; the promise is about the camp pile.
+  let deliver = req.until.kind === "campHas" ? "camp" : req.deliver;
   if (req.task === "haul") {
     until = { kind: "once" };
     deliver = "camp";
@@ -142,9 +142,11 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   state.intent = {
     task: req.task, arg: req.arg, cell,
     campCell: regionState(state, world, state.player.region).campCell,
-    until, deliver, done: 0, step: note || "setting out", need: null,
+    until, deliver, done: 0, step: "setting out", need: null,
   };
   runIntent(state, world, cal, rng);
+  // The note (a chosen spot that did not suit) belongs on the first step, not "setting out".
+  if (note && state.intent) state.intent.step = `${note}; ${state.intent.step}`;
   return true;
 }
 
@@ -161,7 +163,7 @@ function labelOf(state: GameState, world: World, cal: Calendar, it: Intent): str
 export function intentSentence(state: GameState, world: World, cal: Calendar, it: Intent): string {
   const parts = [labelOf(state, world, cal, it)];
   const u = it.until;
-  if (u.kind === "times") parts.push(`${u.n} times, ${it.done} done`);
+  if (u.kind === "times") parts.push(`${it.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(u.item, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
   if (it.deliver === "camp" && it.task !== "haul") parts.push("bringing it to camp");
@@ -188,9 +190,15 @@ function packCarries(state: GameState, it: Intent): boolean {
   return items.some((i) => qty(pack, i) > 1e-9);
 }
 
-/** Something is owed to camp: on the ground at the work cell, or on your back. Work done at camp itself owes nothing; it already landed there. */
+/**
+ * Something is owed to camp: on the ground at the work cell, or on your back.
+ * Work done at camp itself never owes the ground there - it already landed
+ * in the camp pile - but the pack can still hold something unrelated that
+ * arrived with the player and is still owed a drop.
+ */
 function deliveryPending(state: GameState, it: Intent): boolean {
-  if (it.deliver !== "camp" || it.cell === it.campCell) return false;
+  if (it.deliver !== "camp") return false;
+  if (it.cell === it.campCell) return packCarries(state, it);
   return !isEmpty(pile(state, it.cell)) || packCarries(state, it);
 }
 
@@ -232,7 +240,8 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
 function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome {
   const here = cellOf(state, world);
   const pack = state.player.pack;
-  if (here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < PACK_HARD_KG - 1e-9) {
+  // The work cell and the camp pile are the same pile when they are the same cell: nothing to load.
+  if (it.cell !== it.campCell && here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < PACK_HARD_KG - 1e-9) {
     const before = weight(pack);
     loadPack(state, world);
     if (weight(pack) > before + 1e-9) {
@@ -240,7 +249,8 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
       return "again";
     }
   }
-  if (packCarries(state, it)) {
+  // At camp, whatever is on the back comes off, yield or not - it is not going back out.
+  if (packCarries(state, it) || (here === it.campCell && !isEmpty(pack))) {
     if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with the load");
     dropEverything(state, world);
     it.step = "unloading at camp";

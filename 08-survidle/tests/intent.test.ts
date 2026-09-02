@@ -77,6 +77,9 @@ describe("where the work is done", () => {
     const res = resolveCell(state, world, "chop", undefined, "outcrop");
     expect(res.cell).toBe(spotOf(r, "forest")!.cell);
     expect(res.note).toContain("the forest");
+    // The note reaches the player: it prefixes the first real step, not just the placeholder.
+    expect(startIntent(state, world, cal, rng(), req("chop", { where: "heath" }))).toBe(true);
+    expect(state.intent?.step).toContain("does not suit");
   });
 
   it("camp-bound work resolves to camp; crafting stays where the materials are", () => {
@@ -141,7 +144,7 @@ describe("the work tier", () => {
     const g = newGame(3);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
-    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "times", n: 2 }, deliver: "camp" }));
+    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "times", n: 2 }, deliver: "camp", where: "forest" }));
     expect(until(g, () => state.intent === null, 6000)).toBe(true);
     expect(qty(pile(state, camp), "log")).toBe(8);
     expect(state.stats.trees).toBe(2);
@@ -152,8 +155,10 @@ describe("the work tier", () => {
     const g = newGame(3);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
-    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "campHas", qty: 5 }, deliver: "camp" }));
+    // deliver defaults to "leave" here, but "until camp has N" forces it to "camp": the promise cannot be kept otherwise.
+    startIntent(state, world, cal, rng(), req("chop", { until: { kind: "campHas", qty: 5 }, where: "forest" }));
     expect(state.intent?.until).toEqual({ kind: "campHas", item: "log", qty: 5 });
+    expect(state.intent?.deliver).toBe("camp");
     expect(until(g, () => state.intent === null, 8000)).toBe(true);
     expect(qty(pile(state, camp), "log")).toBeGreaterThanOrEqual(5);
     expect(state.stats.trees).toBe(2);
@@ -170,7 +175,7 @@ describe("the work tier", () => {
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }));
     expect(intentSentence(state, world, cal, state.intent!)).toBe("Fell a tree, until camp has 40 logs, bringing it to camp");
     startIntent(state, world, cal, rng(), req("sticks", { until: { kind: "times", n: 5 } }));
-    expect(intentSentence(state, world, cal, state.intent!)).toBe("Gather sticks, 5 times, 0 done");
+    expect(intentSentence(state, world, cal, state.intent!)).toBe("Gather sticks, 0 of 5 done");
     startIntent(state, world, cal, rng(), req("bark", { until: { kind: "forever" } }));
     expect(intentSentence(state, world, cal, state.intent!)).toBe("Strip bark, forever");
   });
@@ -214,6 +219,12 @@ describe("the haul intent", () => {
 
   it("an empty pile is nothing to haul", () => {
     const { state, world } = newGame(3);
+    expect(startIntent(state, world, cal, rng(), req("haul"))).toBe(false);
+  });
+
+  it("refuses to start at camp even with something to haul", () => {
+    const { state, world } = newGame(3);
+    addItem(herePile(state, world), "log", 1);
     expect(startIntent(state, world, cal, rng(), req("haul"))).toBe(false);
   });
 });

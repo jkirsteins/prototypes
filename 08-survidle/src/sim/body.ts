@@ -1,4 +1,4 @@
-// Stub until the body tier lands (task 5 replaces this file).
+// Stub until the body tier lands.
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
