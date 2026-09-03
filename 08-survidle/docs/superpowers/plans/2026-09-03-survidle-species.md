@@ -60,7 +60,7 @@
 - Test: `tests/species.test.ts`
 
 **Interfaces:**
-- Produces: `SPECIES_DEFS: Record<Species, SpeciesDef>`, `SPECIES_IDS: Species[]`, `type Species`, `type Habitat`, `isFish(s)`, `isHunted(s)`, `isVoiceOnly(s)`, `huntedLand(): Species[]`, `fishSpecies(): Species[]`, `waterOf(s): "lake" | "sea" | null`, `seasonFactor(def, month): number`, `extrasClass(s): "fur" | "big" | "bird" | "fish" | null`, `monthName(m: number): string`.
+- Produces: `SPECIES_DEFS: Record<Species, SpeciesDef>`, `SPECIES_IDS: Species[]`, `type Species`, `type Habitat`, `awayWord(def): "gone" | "denned"`, the `fat` item and food, `isFish(s)`, `isHunted(s)`, `isVoiceOnly(s)`, `huntedLand(): Species[]`, `fishSpecies(): Species[]`, `waterOf(s): "lake" | "sea" | null`, `seasonFactor(def, month): number`, `extrasClass(s): "fur" | "big" | "bird" | "fish" | null`, `monthName(m: number): string`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -69,9 +69,9 @@
 ```ts
 import { describe, expect, it } from "vitest";
 import {
-  extrasClass, fishSpecies, huntedLand, isFish, isHunted, isVoiceOnly, seasonFactor, SPECIES_DEFS, SPECIES_IDS, waterOf,
+  awayWord, extrasClass, fishSpecies, huntedLand, isFish, isHunted, isVoiceOnly, seasonFactor, SPECIES_DEFS, SPECIES_IDS, waterOf,
 } from "../src/sim/species";
-import { ITEM_KG, KG_ITEMS, RECIPES } from "../src/sim/items";
+import { AUTO_EAT_ORDER, FOODS, ITEM_KG, KG_ITEMS, RECIPES } from "../src/sim/items";
 import { monthName } from "../src/sim/calendar";
 
 describe("the species catalogue", () => {
@@ -151,9 +151,16 @@ describe("the species catalogue", () => {
     expect(extrasClass("loon")).toBeNull();
   });
 
-  it("fur is a kilogram item and the fur pieces take it, hide as the alt", () => {
+  it("fur and fat are kilogram items, fat is a rich food kept for last, and the fur pieces take fur with hide as the alt", () => {
     expect(ITEM_KG.fur).toBe(1);
     expect(KG_ITEMS.has("fur")).toBe(true);
+    expect(ITEM_KG.fat).toBe(1);
+    expect(KG_ITEMS.has("fat")).toBe(true);
+    expect(FOODS.fat).toEqual({ kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 });
+    expect(AUTO_EAT_ORDER.at(-1)).toBe("fat");
+    expect(SPECIES_DEFS.bear.yields?.fatKg).toBe(10);
+    expect(awayWord(SPECIES_DEFS.bear)).toBe("denned");
+    expect(awayWord(SPECIES_DEFS.mallard)).toBe("gone");
     expect(RECIPES.furHat.needs).toEqual([{ item: "fur", qty: 1, alt: "hide" }, { item: "sinew", qty: 1 }]);
     expect(RECIPES.furMittens.needs[0]).toEqual({ item: "fur", qty: 1, alt: "hide" });
     expect(RECIPES.hideBlanket.needs[0]).toEqual({ item: "hide", qty: 4, alt: "fur" });
@@ -178,7 +185,7 @@ In `src/sim/types.ts`, the `KgItem` union gains `"fur"`:
 
 ```ts
 export type KgItem =
-  | "firewood" | "hide" | "fur" | "rawMeat" | "cookedMeat" | "driedMeat"
+  | "firewood" | "hide" | "fur" | "fat" | "rawMeat" | "cookedMeat" | "driedMeat"
   | "fish" | "cookedFish" | "berries" | "wetFirewood";
 ```
 
@@ -188,16 +195,31 @@ In `src/sim/items.ts`:
 export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4,
-  firewood: 1, hide: 1, fur: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
+  firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
 };
 
 export const KG_ITEMS = new Set<ItemId>([
-  "firewood", "hide", "fur", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
+  "firewood", "hide", "fur", "fat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
 ]);
 ```
 
-Add `fur: "fur",` after `hide: "hide",` in `ITEM_NAMES`. Change the three recipes:
+Add `fur: "fur", fat: "fat",` after `hide: "hide",` in `ITEM_NAMES`. Fat is a food, the richest there is, kept for last:
+
+```ts
+export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
+export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number }> = {
+  rawMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0.25 },
+  cookedMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0 },
+  driedMeat: { kcalPerKg: 3500, portionKg: 0.15, sickChance: 0 },
+  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0 },
+  berries: { kcalPerKg: 500, portionKg: 0.2, sickChance: 0 },
+  fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 },
+};
+export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
+```
+
+Check `grep -n "FoodId\|FOODS" src` for exhaustive switches or lists over foods (the inventory panel's eat buttons, `eat` in actions.ts) and make sure a `fat` stack in the pack gets an eat button like the others; it is not a perishable, so it lives in `items`, not `stacks`. Change the three recipes:
 
 ```ts
   furHat: { name: "fur hat", needs: [{ item: "fur", qty: 1, alt: "hide" }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furHat" } },
@@ -242,8 +264,8 @@ export type WaterKind = "lake" | "sea";
 
 export type SeasonRule =
   | { kind: "resident"; /** capacity factor December to February */ winter?: number }
-  /** Present from the arrive month to the month before leave, 0-based; absent otherwise. */
-  | { kind: "migrant"; arrive: number; leave: number };
+  /** Present from the arrive month to the month before leave, 0-based; absent otherwise. away is how the absence reads: gone south, or denned. */
+  | { kind: "migrant"; arrive: number; leave: number; away?: "gone" | "denned" };
 
 export interface Call {
   /** Slot in the audio manifest. */
@@ -278,12 +300,12 @@ export interface SpeciesDef {
     /** Odds factor at night; 0.7 when absent. */
     night?: number;
   };
-  yields?: { meatKg: number; hideKg?: number; furKg?: number; bone?: number; sinew?: number };
+  yields?: { meatKg: number; hideKg?: number; furKg?: number; fatKg?: number; bone?: number; sinew?: number };
   calls?: Call[];
 }
 
 const resident = (winter?: number): SeasonRule => (winter === undefined ? { kind: "resident" } : { kind: "resident", winter });
-const migrant = (arrive: number, leave: number): SeasonRule => ({ kind: "migrant", arrive, leave });
+const migrant = (arrive: number, leave: number, away?: "denned"): SeasonRule => (away ? { kind: "migrant", arrive, leave, away } : { kind: "migrant", arrive, leave });
 const fish = (name: string, lake: number | null, sea: number | null, range: number, odds: number, meatKg: number, extra: Partial<SpeciesDef> & { level?: number; night?: number } = {}): SpeciesDef => ({
   name, kind: "fish",
   habitat: { ...(lake !== null ? { lake } : {}), ...(sea !== null ? { sea } : {}) },
@@ -304,22 +326,22 @@ export const SPECIES_DEFS = {
     hunt: { spot: "heath", minutes: 150, odds: 0.3, injury: 0, level: 3 }, yields: { meatKg: 3, furKg: 1, bone: 2, sinew: 1 },
     calls: [{ sound: "fox", when: "night", months: [11, 1], weight: 2 }] },
   beaver: { name: "beaver", kind: "mammal", habitat: { lake: 4 }, needs: ["birch", "meadow"], range: 0.5, season: resident(), growth: 0.001,
-    hunt: { spot: "shore", minutes: 150, odds: 0.4, injury: 0, level: 3 }, yields: { meatKg: 10, furKg: 1.5, bone: 2, sinew: 1 } },
+    hunt: { spot: "shore", minutes: 150, odds: 0.4, injury: 0, level: 3 }, yields: { meatKg: 10, furKg: 1.5, fatKg: 2, bone: 2, sinew: 1 } },
   deer: { name: "roe deer", kind: "mammal", habitat: { birch: 6, meadow: 5, pine: 3, spruce: 2 }, range: 0.7, season: resident(0.6), growth: 0.0012,
-    hunt: { spot: "forest", minutes: 180, odds: 0.45, injury: 0, level: 4 }, yields: { meatKg: 12, hideKg: 3, bone: 4, sinew: 3 } },
+    hunt: { spot: "forest", minutes: 180, odds: 0.45, injury: 0, level: 4 }, yields: { meatKg: 12, hideKg: 3, fatKg: 1, bone: 4, sinew: 3 } },
   reindeer: { name: "wild reindeer", kind: "mammal", habitat: { fell: 3, rock: 2, bog: 1.5, pine: 1 }, range: 0.6, season: resident(), growth: 0.0008,
-    hunt: { spot: "outcrop", minutes: 200, odds: 0.4, injury: 0.05, level: 6 }, yields: { meatKg: 40, hideKg: 5, bone: 5, sinew: 4 } },
+    hunt: { spot: "outcrop", minutes: 200, odds: 0.4, injury: 0.05, level: 6 }, yields: { meatKg: 40, hideKg: 5, fatKg: 4, bone: 5, sinew: 4 } },
   elk: { name: "elk", kind: "mammal", habitat: { spruce: 1.0, bog: 0.8, birch: 0.5, pine: 0.3 }, range: 0.8, season: resident(0.6), growth: 0.0006,
-    hunt: { spot: "forest", minutes: 240, odds: 0.3, injury: 0.15, level: 8 }, yields: { meatKg: 150, hideKg: 20, bone: 8, sinew: 6 },
+    hunt: { spot: "forest", minutes: 240, odds: 0.3, injury: 0.15, level: 8 }, yields: { meatKg: 150, hideKg: 20, fatKg: 8, bone: 8, sinew: 6 },
     calls: [{ sound: "elk", when: "dusk", months: [8, 9], weight: 2 }, { sound: "elk", when: "night", months: [8, 9], weight: 2 }] },
   wolf: { name: "wolf", kind: "mammal", habitat: { spruce: 0.08, pine: 0.06, bog: 0.05, birch: 0.04, fell: 0.02 }, range: 0.35, season: resident(), growth: 0.0005,
-    hunt: { spot: "forest", minutes: 240, odds: 0.25, injury: 0.35, level: 12 }, yields: { meatKg: 25, furKg: 3, bone: 6, sinew: 4 },
+    hunt: { spot: "forest", minutes: 240, odds: 0.25, injury: 0.35, level: 12 }, yields: { meatKg: 25, furKg: 3, fatKg: 1, bone: 6, sinew: 4 },
     calls: [{ sound: "wolf", when: "night", weight: 1 }] },
   wolverine: { name: "wolverine", kind: "mammal", habitat: { fell: 0.03, spruce: 0.03, rock: 0.02, bog: 0.02 }, range: 0.4, season: resident(), growth: 0.0005,
     hunt: { spot: "outcrop", minutes: 240, odds: 0.2, injury: 0, level: 10 }, yields: { meatKg: 8, furKg: 1.5, bone: 3, sinew: 2 } },
   // Denned November to March: absent the way a migrant is, and the same rule says so.
-  bear: { name: "brown bear", kind: "mammal", habitat: { spruce: 0.15, pine: 0.1, bog: 0.1, birch: 0.08 }, range: 0.5, season: migrant(3, 10), growth: 0.0006,
-    hunt: { spot: "forest", minutes: 300, odds: 0.25, injury: 0.5, level: 15 }, yields: { meatKg: 80, furKg: 8, bone: 8, sinew: 5 } },
+  bear: { name: "brown bear", kind: "mammal", habitat: { spruce: 0.15, pine: 0.1, bog: 0.1, birch: 0.08 }, range: 0.5, season: migrant(3, 10, "denned"), growth: 0.0006,
+    hunt: { spot: "forest", minutes: 300, odds: 0.25, injury: 0.5, level: 15 }, yields: { meatKg: 80, furKg: 8, fatKg: 10, bone: 8, sinew: 5 } },
 
   // Game birds, all taken with the bow.
   willowGrouse: { name: "willow grouse", kind: "bird", habitat: { bog: 12, birch: 8, meadow: 4, fell: 2 }, range: 0.9, season: resident(), growth: 0.005,
@@ -409,6 +431,11 @@ export function waterOf(s: Species): WaterKind | null {
   if (h.lake !== undefined) return "lake";
   if (h.sea !== undefined) return "sea";
   return null;
+}
+
+/** How a migrant's absence reads on the region card: "gone until April" or "denned until April". */
+export function awayWord(def: SpeciesDef): "gone" | "denned" {
+  return def.season.kind === "migrant" ? (def.season.away ?? "gone") : "gone";
 }
 
 /** Capacity factor for a month: a resident's winter thinning, a migrant's absence. */
@@ -984,10 +1011,10 @@ and delete the `fish` entry.
 `huntExtras`:
 
 ```ts
-export function huntExtras(state: GameState, species: Species): { meatKg: number; hideKg: number; furKg: number; bone: number; sinew: number; injuryFactor: number } {
+export function huntExtras(state: GameState, species: Species): { meatKg: number; hideKg: number; furKg: number; fatKg: number; bone: number; sinew: number; injuryFactor: number } {
   const y = SPECIES_DEFS[species].yields ?? { meatKg: 0 };
   const m = masteryOf(state, "hunting", `hunt:${species}`);
-  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1 };
+  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg: y.fatKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1 };
   if (species === "hare") {
     if (m >= 20) out.furKg = 0.3;
     if (m >= 50) out.bone += 1;
@@ -1050,6 +1077,7 @@ function huntDetail(state: GameState, s: Species, odds: number): string {
   const parts = [`${x.meatKg} kg meat`];
   if (x.hideKg) parts.push(`${x.hideKg} kg hide`);
   if (x.furKg) parts.push(`${x.furKg} kg fur`);
+  if (x.fatKg) parts.push(`${x.fatKg} kg fat`);
   if (x.bone) parts.push(`${x.bone} bone`);
   if (x.sinew) parts.push(`${x.sinew} sinew`);
   return `${parts.join(", ")}; ${oddsText(odds)}`;
@@ -1112,7 +1140,7 @@ export function huntOdds(state: GameState, cal: Calendar, density: number, speci
 
 (`r` is already `regionAt(world, state.player.region)` there.)
 
-`complete`, `hunt` case: replace `ANIMALS[s]` with `SPECIES_DEFS[s]`, `st.pop[s] = Math.max(0, st.pop[s] - 1)` with `st.pop[s] = Math.max(0, popOf(st, s) - 1)`, `def.meatKg` with `x.meatKg` (compute `const x = huntExtras(state, s)` before `produce`), and after the hide line add `if (x.furKg) produce(state, world, "fur", x.furKg);`. The log line uses `x.meatKg`.
+`complete`, `hunt` case: replace `ANIMALS[s]` with `SPECIES_DEFS[s]`, `st.pop[s] = Math.max(0, st.pop[s] - 1)` with `st.pop[s] = Math.max(0, popOf(st, s) - 1)`, `def.meatKg` with `x.meatKg` (compute `const x = huntExtras(state, s)` before `produce`), and after the hide line add `if (x.furKg) produce(state, world, "fur", x.furKg);` and `if (x.fatKg) produce(state, world, "fat", x.fatKg);`. The log line uses `x.meatKg`.
 
 `complete`, `fish` case:
 
@@ -1143,7 +1171,7 @@ Replace the `ANIMALS` import with `import { type Species, SPECIES_DEFS, waterOf 
 
 `suits(world, cell, ground)` gains the species: change the signature to `suits(world: World, cell: number, ground: SpotId, water: "lake" | "sea" | null)` and the shore case to `return watersideCell(world, cell, water ?? "any");`. Every caller passes `waterOf(arg as Species)` when the task is `hunt` or `fish`, else `null`. Read the callers (`resolveCell` and whatever else uses `suits`) and thread the argument through.
 
-`yieldItems`: `if (task === "hunt") return ["rawMeat", "hide", "fur", "bone", "sinew"];`.
+`yieldItems`: `if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];`.
 
 `GERUND`: `hunt: (arg) => \`hunting ${SPECIES_DEFS[arg as Species].name}\`, fish: (arg) => \`fishing for ${SPECIES_DEFS[arg as Species].name}\`,`.
 
@@ -1553,11 +1581,11 @@ for (const s of fishSpecies()) EXTRAS[`fish:${s}`] = CLASS_EXTRAS.fish;
 
 ```ts
 export function huntExtras(state: GameState, species: Species): {
-  meatKg: number; hideKg: number; furKg: number; bone: number; sinew: number; injuryFactor: number; oddsFactor: number; arrowLoss: number;
+  meatKg: number; hideKg: number; furKg: number; fatKg: number; bone: number; sinew: number; injuryFactor: number; oddsFactor: number; arrowLoss: number;
 } {
   const y = SPECIES_DEFS[species].yields ?? { meatKg: 0 };
   const m = masteryOf(state, "hunting", `hunt:${species}`);
-  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1, oddsFactor: 1, arrowLoss: 0.5 };
+  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg: y.fatKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1, oddsFactor: 1, arrowLoss: 0.5 };
   switch (extrasClass(species)) {
     case "fur":
       if (m >= 20) out.furKg = Math.round(out.furKg * 1.5 * 100) / 100;
@@ -1840,6 +1868,7 @@ it("lists the roster in Game, Birds, Fish and Heard lines, only species that liv
   for (const s of speciesHere(r)) expect(html).toContain(SPECIES_DEFS[s].name);
   for (const s of Object.keys(SPECIES_DEFS) as Species[]) if (!r.capacity[s]) expect(html).not.toContain(`${SPECIES_DEFS[s].name}`);
   if (r.capacity.mallard) expect(html).toContain("mallard gone until April");
+  if (r.capacity.bear) expect(html).toContain("brown bear denned until April");
   if (r.capacity.loon) expect(html).toContain("loon (from May)");
   if (r.capacity.hare) {
     regionState(state, world, id).pop.hare = 0;
@@ -1859,14 +1888,14 @@ Expected: FAIL: `rosterHtml` not exported.
 In `src/ui/panels.ts`:
 
 ```ts
-import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
+import { awayWord, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { monthName } from "../sim/calendar";
 
 /** "mallard gone until April" for a migrant out of season, otherwise the density in words. */
 function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
   const def = SPECIES_DEFS[s];
   if (def.season.kind === "migrant" && (cal.month < def.season.arrive || cal.month >= def.season.leave)) {
-    return isVoiceOnly(s) ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} gone until ${monthName(def.season.arrive)}`;
+    return isVoiceOnly(s) ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} ${awayWord(def)} until ${monthName(def.season.arrive)}`;
   }
   if (isVoiceOnly(s)) return def.name;
   return `${def.name} <b>${densityLabel(regionDensity(state, world, id, s, cal, state.weather.iceCm))}</b>`;

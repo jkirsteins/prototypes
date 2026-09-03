@@ -82,10 +82,13 @@ export interface SpeciesDef {
     /** Odds factor at night; 0.7 when absent. */
     night?: number;
   };
-  yields?: { meatKg: number; hideKg?: number; furKg?: number; bone?: number; sinew?: number };
+  yields?: { meatKg: number; hideKg?: number; furKg?: number; fatKg?: number; bone?: number; sinew?: number };
   calls?: Call[];
 }
 ```
+
+A migrant rule may say how its absence reads: `away: "gone" | "denned"`,
+"gone" when absent, so the bear's row says "denned until April".
 
 `hunt.spot` is `forest`, `heath`, `outcrop` or `shore`; a fish's is always
 `shore` and its habitat says which water. The `spot` decides which ground
@@ -102,13 +105,18 @@ Mammals. Fur-bearers yield fur; deer and bigger yield hide.
 | hare | mountain hare | meadow 20, birch 16, bog 8, pine 4, fell 3 | 1.0 | resident | heath, 90, 0.6, 0 | meat 1.2, fur 0.2, bone 1 |
 | squirrel | red squirrel | spruce 12, pine 10, birch 4 | 0.9 | resident | forest, 60, 0.5, 0 | meat 0.2, fur 0.1 |
 | fox | red fox | meadow 1.5, birch 1.2, pine 1, spruce 1, bog 0.8, rock 0.5, fell 0.3 | 0.95 | resident | heath, 150, 0.3, 0, level 3 | meat 3, fur 1, bone 2, sinew 1 |
-| beaver | beaver | lake 4 (only where birch or meadow is also present, see 2.1) | 0.5 | resident | shore, 150, 0.4, 0, level 3 | meat 10, fur 1.5, bone 2, sinew 1 |
-| deer | roe deer | birch 6, meadow 5, pine 3, spruce 2 | 0.7 | resident, winter 0.6 | forest, 180, 0.45, 0, level 4 | meat 12, hide 3, bone 4, sinew 3 |
-| reindeer | wild reindeer | fell 3, rock 2, bog 1.5, pine 1 | 0.6 | resident | outcrop, 200, 0.4, 0.05, level 6 | meat 40, hide 5, bone 5, sinew 4 |
-| elk | elk | spruce 1.0, bog 0.8, birch 0.5, pine 0.3 | 0.8 | resident, winter 0.6 | forest, 240, 0.3, 0.15, level 8 | meat 150, hide 20, bone 8, sinew 6 |
-| wolf | wolf | spruce 0.08, pine 0.06, bog 0.05, birch 0.04, fell 0.02 | 0.35 | resident | forest, 240, 0.25, 0.35, level 12 | meat 25, fur 3, bone 6, sinew 4 |
+| beaver | beaver | lake 4 (only where birch or meadow is also present, see 2.1) | 0.5 | resident | shore, 150, 0.4, 0, level 3 | meat 10, fur 1.5, fat 2, bone 2, sinew 1 |
+| deer | roe deer | birch 6, meadow 5, pine 3, spruce 2 | 0.7 | resident, winter 0.6 | forest, 180, 0.45, 0, level 4 | meat 12, hide 3, fat 1, bone 4, sinew 3 |
+| reindeer | wild reindeer | fell 3, rock 2, bog 1.5, pine 1 | 0.6 | resident | outcrop, 200, 0.4, 0.05, level 6 | meat 40, hide 5, fat 4, bone 5, sinew 4 |
+| elk | elk | spruce 1.0, bog 0.8, birch 0.5, pine 0.3 | 0.8 | resident, winter 0.6 | forest, 240, 0.3, 0.15, level 8 | meat 150, hide 20, fat 8, bone 8, sinew 6 |
+| wolf | wolf | spruce 0.08, pine 0.06, bog 0.05, birch 0.04, fell 0.02 | 0.35 | resident | forest, 240, 0.25, 0.35, level 12 | meat 25, fur 3, fat 1, bone 6, sinew 4 |
 | wolverine | wolverine | fell 0.03, spruce 0.03, rock 0.02, bog 0.02 | 0.4 | resident | outcrop, 240, 0.2, 0, level 10 | meat 8, fur 1.5, bone 3, sinew 2 |
-| bear | brown bear | spruce 0.15, pine 0.1, bog 0.1, birch 0.08 | 0.5 | denned November to March (the migrant rule, April to October) | forest, 300, 0.25, 0.5, level 15 | meat 80, fur 8, bone 8, sinew 5 |
+| bear | brown bear | spruce 0.15, pine 0.1, bog 0.1, birch 0.08 | 0.5 | denned November to March (the migrant rule, April to October) | forest, 300, 0.25, 0.5, level 15 | meat 80, fur 8, fat 10, bone 8, sinew 5 |
+
+Fat is in kilograms like meat, and the roadmap's calorie rule holds: it
+is a food at 9000 kcal per kilogram, a 0.1 kg portion, never sickening,
+last in the auto-eat order so it is kept. It does not spoil. E's tanning
+and 3's tallow light take it from here.
 
 Bear and wolverine are populations that do nothing yet: they are hunted,
 listed and counted so that the roadmap's sub-project 4 has them to make
@@ -173,9 +181,9 @@ growth as today (hare 0.006, deer 0.0012, elk 0.0006); squirrel 0.006, fox
 0.002, beaver 0.001, reindeer 0.0008, wolf 0.0005. Birds 0.005. Voice-only
 species use growth 0.005 and are never reduced, so they sit at capacity.
 
-### 1.2 Fur
+### 1.2 Fur and fat
 
-A new kilogram item `fur` (1 kg per unit, name "fur"). Fur-bearers yield
+Two new kilogram items, `fur` and `fat` (1 kg per unit). Fur-bearers yield
 fur where they yielded hide. The fur hat and fur mittens need `fur` with
 `hide` as the alt; the hide blanket needs `hide` with `fur` as the alt. The
 `Need.alt` field already exists and `consume` already honours it. Hide
