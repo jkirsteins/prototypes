@@ -8,11 +8,11 @@ import type { Calendar } from "../sim/calendar";
 import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
 import { discovery, SEEN, VISITED } from "../sim/regionstate";
-import type { GameState, Terrain } from "../sim/types";
+import type { GameState, RegionState, Terrain } from "../sim/types";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 
-const GLYPH: Record<Terrain, string> = {
+export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
 };
 
@@ -83,14 +83,25 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
   return { terrain: best, region: regionPeek(world, x0 + (z >> 1), y0 + (z >> 1)), seen };
 }
 
+/** Every visited region's camp, so a fire cannot glow on the map without its marker or the reverse. */
+function visitedCamps(state: GameState): { id: number; st: RegionState; cell: number }[] {
+  const out: { id: number; st: RegionState; cell: number }[] = [];
+  for (const [idText, st] of Object.entries(state.regions)) {
+    const id = Number(idText);
+    if (discovery(state, id) !== VISITED) continue;
+    out.push({ id, st, cell: st.campCell });
+  }
+  return out;
+}
+
 export interface LightSource { cell: number; reach: number }
 
 /** Where light is on the map tonight: every visited camp's lit fire, two rings when it is well fed, one when low. */
 export function lightSources(state: GameState, world: World): LightSource[] {
   const out: LightSource[] = [];
-  for (const [idText, st] of Object.entries(state.regions)) {
-    if (!st.fire.lit || discovery(state, Number(idText)) !== VISITED) continue;
-    out.push({ cell: st.campCell, reach: st.fire.fuelKg >= FIRE_LOW_KG ? 2 : 1 });
+  for (const { st, cell } of visitedCamps(state)) {
+    if (!st.fire.lit) continue;
+    out.push({ cell, reach: st.fire.fuelKg >= FIRE_LOW_KG ? 2 : 1 });
   }
   if (state.player.torch.lit) out.push({ cell: cellOf(state, world), reach: 1 });
   return out;
@@ -115,7 +126,7 @@ export function litRings(sources: LightSource[], toGlyph: (cell: number) => numb
     for (let dy = -reach; dy <= reach; dy++) {
       for (let dx = -reach; dx <= reach; dx++) {
         const d = Math.max(Math.abs(dx), Math.abs(dy));
-        if (d === 2 && Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
+        if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
         const x = gx + dx;
         const y = gy + dy;
         if (x < 0 || y < 0 || x >= VIEW_W || y >= VIEW_H) continue;
@@ -139,9 +150,8 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
-  const z = ZOOMS[ui.zoom];
   const cell = cellOf(state, world);
-  return `${ui.zoom}|${x0}|${y0}|${z > 1 ? cell : cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${state.player.torch.lit ? "T" : ""}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${state.player.torch.lit ? "T" : ""}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
@@ -160,14 +170,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   };
 
   const markerAt = new Map<number, { glyph: string; cls: string }>();
-  for (const [idText, st] of Object.entries(state.regions)) {
-    const id = Number(idText);
-    if (discovery(state, id) !== VISITED) continue;
+  for (const { st, cell } of visitedCamps(state)) {
     let m: { glyph: string; cls: string } | null = null;
     if (st.fire.lit) m = { glyph: "F", cls: "mk-fire" };
     else if (st.structures.cabin || st.structures.leanTo) m = { glyph: "H", cls: "mk-shelter" };
     if (m) {
-      const g = toGlyph(st.campCell);
+      const g = toGlyph(cell);
       if (g >= 0) markerAt.set(g, m);
     }
   }

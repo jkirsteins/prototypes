@@ -42,9 +42,10 @@ void keep their own backgrounds, dim stays an opacity.
 Three highlights are painted as backgrounds today and would erase the
 terrain colour: the current region (`.cur`, white at 7%), the selected
 region (`.sel`, accent at 18%) and the route (`.rt`, accent at 22%). Each
-becomes an inset box-shadow of the same colour and alpha, large enough to
-fill the 11 by 14 px cell (`inset 0 0 0 20px`), so it composites over the
-terrain. The border colours for region edges are untouched.
+becomes an inset box-shadow (`inset 0 0 0 20px`) plus a 1px inset outline
+of the same colour, since the cell's transparent border would otherwise
+show a seam; together they cover the 11 by 14 px cell and composite over
+the terrain. The border colours for region edges are untouched.
 
 ### 1.3 Test
 
@@ -87,10 +88,10 @@ map key. Dawn and dusk stay unlit; the sky's own tint covers them.
 
 `mapHtml` computes the lit cells from the sources and adds one of the
 classes `lit-0`, `lit-1`, `lit-2` to the cell's span. Every lit cell also
-gets an inline `style="--fd:<seconds>"`, a negative animation delay between
-0 and 1.1 s taken from a hash of the cell index, so the rings flicker
-unevenly and the same cell flickers the same way after a re-render. The
-source cell keeps its marker (`F` for a fire, `@` when you stand on it or
+gets an inline `style="--fd:<seconds>"`, a negative animation delay
+between 0 and 1.1 s taken from a hash of the glyph index, so neighbouring
+flames are out of step and a re-render at the same view gives the same
+pattern. The source cell keeps its marker (`F` for a fire, `@` when you stand on it or
 carry the torch); the marker's background takes the flame animation.
 
 The map key gains, per region, whether the fire is low (`f` beside `F`),
@@ -108,17 +109,20 @@ with the rest. The darkening moves off the filter:
   whole grid, black, `opacity: calc(1 - var(--bright))`, no pointer
   events. `filter: brightness()` is removed; `saturate(var(--sat))` stays,
   since a desaturated orange still reads as fire.
-- Lit cells and markers are `position: relative; z-index: 1`, above the
-  shade and the tint. Markers already are; the glow joins them. So a lit
-  cell shows its own colours at night, and everything else is shaded and
-  tinted as before. A cell that is dim (seen from afar) keeps its opacity.
+- The source cell and the markers are positioned with a z-index above the
+  shade and the tint (markers were already above the tint, and were
+  dimmed only by the old brightness filter, so they now read bright at
+  night by design). Ring cells stay under the shade; each ring cell's
+  `::after` overlay is what rises above it, so the ring reads as light on
+  dark ground rather than a square of daylight. A cell that is dim (seen
+  from afar) keeps its opacity.
 
 Colours, applied only under `.grid.night`:
 
 | class   | background                                   | glyph colour |
 |---------|----------------------------------------------|--------------|
 | `lit-0` | animates between #ff7a1a and #ffb84d         | white (the marker's) |
-| `lit-1` | rgba(255, 140, 40, a), a animating 0.35..0.55 | #ffd9a0, firelit |
+| `lit-1` | rgba(255, 140, 40, a), a animating 0.35..0.55 | the terrain's own, seen through the overlay |
 | `lit-2` | rgba(255, 120, 30, a), a animating 0.12..0.22 | the terrain's own |
 
 One keyframe animation, `flicker`, 1.1 s, `alternate`, `ease-in-out`,

@@ -4,7 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { mapHtml, mapKey } from "../src/ui/map";
+import { GLYPH, mapHtml, mapKey } from "../src/ui/map";
 import { newUiState, setPanel, resetPanels } from "../src/ui/render";
 import { updateSky } from "../src/ui/sky";
 
@@ -15,7 +15,9 @@ describe("terrain colour", () => {
   };
 
   it("every terrain glyph sits on a dark background of its own hue", () => {
-    for (const [t, bg] of Object.entries(backgrounds)) {
+    for (const t of Object.keys(GLYPH)) {
+      const bg = backgrounds[t];
+      if (bg === undefined) throw new Error(`no expected background for terrain ${t}`);
       expect(rule(`.grid .c.t-${t}`)).toContain(`background: ${bg}`);
     }
   });
@@ -24,6 +26,7 @@ describe("terrain colour", () => {
     for (const sel of [".grid .c.cur", ".grid .c.sel", ".grid .c.rt"]) {
       const body = rule(sel);
       expect(body).toContain("box-shadow: inset 0 0 0 20px");
+      expect(body).toContain("outline-offset: -1px");
       expect(body).not.toContain("background");
     }
   });
@@ -115,7 +118,7 @@ describe("firelight", () => {
 
   it("the flicker rules and the delay are what the stylesheet expects", () => {
     expect(rule(".grid.night .c.lit-0")).toContain("animation: flicker");
-    expect(rule(".grid .c.lit-1::after, .grid .c.lit-2::after")).toContain("z-index: 2");
+    expect(rule(".grid.night .c.lit-1::after, .grid.night .c.lit-2::after")).toContain("z-index: 2");
     expect(css).toContain("@keyframes flicker");
     expect(rule(".grid.night .c.mk-fire")).toContain("animation: flicker");
   });
