@@ -14,7 +14,7 @@ export interface UiState {
   /** Index into ZOOMS: 0 is one cell per glyph. */
   zoom: number;
   /** The settings strip: what the next intent clicked will do. */
-  until: "once" | "times" | "campHas" | "forever";
+  until: "once" | "times" | "campHas" | "keep" | "forever";
   n: number;
   deliver: "leave" | "camp";
   where: "nearest" | SpotId;

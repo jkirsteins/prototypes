@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
+import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { addOrder, moveOrder } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
@@ -339,5 +341,67 @@ describe("the Do panel", () => {
     // The finish handler's own logic when the button carries no cell: where "nearest".
     expect(startIntent(state, world, calendar(0), new Rng(1), { task: "light", until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
     expect(state.intent?.cell).toBe(camp);
+  });
+});
+
+describe("the Orders panel", () => {
+  it("the strip offers keep, and a blocked row is still a button", () => {
+    const { state, world } = newGame(3);
+    const ui = { ...newUiState(), until: "keep" as const, n: 40 };
+    const html = doHtml(state, world, calendar(0), ui);
+    expect(html).toContain('data-k="until" data-v="keep"');
+    expect(html).toContain("keep camp at 40 kg firewood");
+    // Split needs logs this camp has none of: dim, with the reason, and still clickable.
+    expect(html).toMatch(/class="opt off" data-opt="intent:split:"><button class="act" data-act="intent" data-id="split"/);
+    expect(html).toContain("no logs here");
+  });
+
+  it("lists the orders in rank order with their state, counters and buttons", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    placeAtSpot(state, world, state.player.region, "camp");
+    addItem(pile(state, st.campCell), "log", 6);
+    addItem(pile(state, st.campCell), "firewood", 60);
+    const keep = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
+    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 3);
+    const cal = calendar(state.minute);
+    let html = taskHtml(state, world, cal);
+    expect(html).toContain("<h2>Orders</h2>");
+    expect(html.indexOf(`data-id="${keep.id}"`)).toBeLessThan(html.indexOf(`data-id="${cabin.id}"`));
+    expect(html).toContain("met");
+    expect(html).toContain("missing materials at camp");
+    expect(html).toContain("gathering sticks");
+    expect(html).toContain('id="bar-task"');
+    expect(html.split('id="bar-task"').length).toBe(2);
+    expect(html).toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
+    expect(html).toContain(`data-act="order-down" data-id="${grind.id}" disabled`);
+    expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
+    expect(html).not.toContain('data-act="stop"');
+    // Counters appear once the work has completed.
+    for (let i = 0; i < 400 && grind.done === 0; i++) advance(state, world, 1);
+    html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toMatch(new RegExp(`${grind.done} bundle`));
+    // Moving the cabin up shows in the next render.
+    moveOrder(state, world, cabin.id, -1);
+    html = taskHtml(state, world, calendar(state.minute));
+    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${keep.id}"`));
+  });
+
+  it("shows the wait with the rest bar when nothing can run", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    placeAtSpot(state, world, state.player.region, "camp");
+    addItem(pile(state, st.campCell), "firewood", 60);
+    addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
+    advance(state, world, 2);
+    const html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toContain("Waiting at camp");
+    expect(html).toContain('id="bar-task"');
   });
 });

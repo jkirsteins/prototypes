@@ -286,6 +286,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .opt { display: flex; gap: 4px; margin: 4px 0; align-items: stretch; }
 .opt.off span.act { color: var(--dim); cursor: default; background: transparent; }
 .opt.off span.act small { color: #5d6570; }
+.opt.off button.act { color: var(--dim); background: transparent; }
+.opt.off button.act small { color: #5d6570; }
 .opt .rep {
   background: #181e27; color: var(--dim);
   border: 1px solid var(--line); font: inherit; cursor: pointer;
@@ -305,6 +307,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
 #task .head { display: flex; justify-content: space-between; align-items: baseline; }
 #task .aside { margin-top: 8px; border-top: 1px dotted var(--line); padding-top: 6px; }
 #task .paused { padding: 2px 0; }
+#task .order { padding: 4px 0; border-top: 1px dotted var(--line); }
+#task .order:first-of-type { border-top: 0; }
+#task .order.live { border-left: 2px solid var(--accent); padding-left: 6px; }
+#task .order .head { gap: 6px; }
+#task .order .ctl { white-space: nowrap; }
 
 /* Inventory */
 .inv { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }

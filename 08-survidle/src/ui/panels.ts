@@ -6,7 +6,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
-import { countWord } from "../sim/orders";
+import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { regionState } from "../sim/regionstate";
@@ -233,9 +233,31 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 </dl>${travel}`;
 }
 
+const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
+
+/** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
+function ordersHtml(state: GameState, world: World, cal: Calendar): string {
+  const orders = ordersHere(state, world);
+  const it = state.intent;
+  const waiting = it?.task === "wait"
+    ? `<div class="step">Waiting at camp: ${esc(it.step)}</div>${state.task ? TASK_BAR : ""}`
+    : "";
+  const rows = orders.map((o, i) => {
+    const live = it?.orderId === o.id;
+    const counts = o.done > 0 ? ` <small>${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}</small>` : "";
+    const second = live
+      ? `<div class="step">${esc(it!.step)}</div>${state.task ? TASK_BAR : ""}`
+      : `<div class="step">${esc(o.skipped || (orderMet(state, world, o, false) ? "met" : "waiting"))}</div>`;
+    const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
+    return `<div class="order${live ? " live" : ""}"><div class="head"><b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${btns}</div>${second}</div>`;
+  }).join("");
+  return `${waiting}${rows}`;
+}
+
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
   const it = state.intent;
+  const orders = ordersHere(state, world);
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
@@ -253,19 +275,22 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
         })
         .join("")}</div>`
     : "";
-  const bar = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
-  if (it) {
-    return `<h2>Doing</h2>
-<div class="head"><b>${esc(intentSentence(state, world, cal, it))}</b><button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button></div>
-<div class="step">${esc(it.step)}</div>${t ? bar : ""}${asideHtml}`;
+  // A scheduled intent is drawn as its row; a manual one, or a raw task, as a head of its own.
+  const scheduled = it !== null && (it.task === "wait" || orders.some((o) => o.id === it.orderId));
+  let head = "";
+  if (it && !scheduled) {
+    head = `<div class="head"><b>${esc(intentSentence(state, world, cal, it))}</b><button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button></div>
+<div class="step">${esc(it.step)}</div>${t ? TASK_BAR : ""}`;
+  } else if (!it && t) {
+    const opts = availableTasks(state, world, cal);
+    let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+    if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
+    head = `<div class="head"><b>${esc(label)}${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>${TASK_BAR}`;
+  } else if (!it && !orders.length) {
+    head = `<div class="dim">Nothing. Pick something below.</div>`;
   }
-  if (!t) return `<h2>Doing</h2><div class="dim">Nothing. Pick something below.</div>${asideHtml}`;
-  const opts = availableTasks(state, world, cal);
-  let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
-  if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
-  return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</h2>
-<div class="head"><b>${esc(label)}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>
-${bar}${asideHtml}`;
+  const list = orders.length ? ordersHtml(state, world, cal) : "";
+  return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${head}${list}${asideHtml}`;
 }
 
 const GROUPS: { id: TaskGroup; label: string }[] = [
@@ -351,8 +376,10 @@ function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string
   const item = yieldItem(id, arg);
   if (ui.until === "times") parts.push(`${ui.n} times`);
   else if (ui.until === "campHas") parts.push(item ? `until camp has ${itemLabel(item, ui.n)}` : "once");
+  else if (ui.until === "keep") parts.push(item ? `keep camp at ${itemLabel(item, ui.n)}` : "once");
   else if (ui.until === "forever") parts.push("forever");
-  if (ui.deliver === "camp" || ui.until === "campHas") parts.push("bringing it to camp");
+  if (item && (ui.deliver === "camp" || ui.until === "campHas" || ui.until === "keep")) parts.push("bringing it to camp");
+  else if (!item && ui.deliver === "camp") parts.push("bringing it to camp");
   if (ui.where !== "nearest") parts.push(`at ${SPOT_NAMES[ui.where]}`);
   return parts.join(", ");
 }
@@ -363,7 +390,7 @@ function intentRowHtml(o: TaskOption, extra: string): string {
   const bar = o.mastery ? masteryBar(o.mastery) : "";
   const detail = [o.detail, extra].filter(Boolean).join("; ");
   if (!o.ok) {
-    return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(o.why)}${detail ? ` - ${esc(detail)}` : ""}</small>${bar}</span></div>`;
+    return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${detail ? ` - ${esc(detail)}` : ""}</small>${bar}</button></div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   const line = [time, detail].filter(Boolean).join("; ");
@@ -379,7 +406,7 @@ function stripHtml(state: GameState, world: World, ui: UiState): string {
     return b("where", s.id, `${SPOT_NAMES[s.id]}${km === null ? "" : ` <small>${fmtKm(km)}</small>`}`, ui.where === s.id);
   }).join("");
   return `<div class="strip">
-<div><small>do it</small>${b("until", "once", "once", ui.until === "once")}${b("until", "times", "N times", ui.until === "times")}${b("until", "campHas", "until camp has N", ui.until === "campHas")}${b("until", "forever", "forever", ui.until === "forever")}<input class="n" type="number" min="1" data-strip-n value="${ui.n}"></div>
+<div><small>do it</small>${b("until", "once", "once", ui.until === "once")}${b("until", "times", "N times", ui.until === "times")}${b("until", "campHas", "until camp has N", ui.until === "campHas")}${b("until", "keep", "keep camp at N", ui.until === "keep")}${b("until", "forever", "forever", ui.until === "forever")}<input class="n" type="number" min="1" data-strip-n value="${ui.n}"></div>
 <div><small>bring it</small>${b("deliver", "leave", "leave it", ui.deliver === "leave")}${b("deliver", "camp", "to camp", ui.deliver === "camp")}</div>
 <div><small>where</small>${b("where", "nearest", "nearest", ui.where === "nearest")}${spots}</div>
 </div>`;

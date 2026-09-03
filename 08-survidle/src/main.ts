@@ -3,15 +3,15 @@ import { Rng } from "./rng";
 import { addFirewood, drop, dropAll, eat, loadRack, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar } from "./sim/calendar";
-import { intentOption, startIntent, type Where } from "./sim/intent";
+import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
-import { log } from "./sim/log";
 import { newGame } from "./sim/newgame";
+import { addOrder, moveOrder, removeOrder } from "./sim/orders";
 import { feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
-import type { GameState, ItemId, TaskId } from "./sim/types";
+import type { GameState, ItemId, OrderKind, TaskId, UntilChoice } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
@@ -205,10 +205,12 @@ function onClick(ev: Event) {
       lastReal = performance.now();
       break;
     case "intent": {
-      const until = ui.until === "times" ? { kind: "times" as const, n: ui.n }
-        : ui.until === "campHas" ? { kind: "campHas" as const, qty: ui.n }
-        : { kind: ui.until };
-      startIntent(state, world, cal, rng, { task: target.dataset.id as TaskId, arg: target.dataset.arg || undefined, until, deliver: ui.deliver, where: ui.where });
+      const kind: OrderKind = ui.until === "keep" ? "keep" : ui.until === "forever" ? "grind" : "job";
+      const until: UntilChoice = ui.until === "times" ? { kind: "times", n: ui.n }
+        : ui.until === "campHas" || ui.until === "keep" ? { kind: "campHas", qty: ui.n }
+        : ui.until === "forever" ? { kind: "forever" }
+        : { kind: "once" };
+      addOrder(state, world, { task: target.dataset.id as TaskId, arg: target.dataset.arg || undefined, until, deliver: ui.deliver, where: ui.where }, kind);
       break;
     }
     case "strip": {
@@ -228,12 +230,18 @@ function onClick(ev: Event) {
       // Located work names its cell; carried work has none, so it resolves through
       // "nearest" - camp for camp-bound work, wherever the player stands for craft.
       const where: Where = target.dataset.cell !== undefined ? { cell: Number(target.dataset.cell) } : "nearest";
-      if (!startIntent(state, world, cal, rng, { task: id, arg, until: { kind: "once" }, deliver: "leave", where })) {
-        const o = intentOption(state, world, cal, id, arg, where);
-        log(state, `${o.label}: ${o.why}.`);
-      }
+      addOrder(state, world, { task: id, arg, until: { kind: "once" }, deliver: "leave", where }, "job");
       break;
     }
+    case "order-up":
+      moveOrder(state, world, Number(target.dataset.id), -1);
+      break;
+    case "order-down":
+      moveOrder(state, world, Number(target.dataset.id), 1);
+      break;
+    case "order-remove":
+      removeOrder(state, world, Number(target.dataset.id));
+      break;
   }
   state.rng = rng.s;
   saveGame(state);
