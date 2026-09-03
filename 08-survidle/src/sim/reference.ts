@@ -9,7 +9,7 @@
 import type { World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar } from "./calendar";
-import { listItems, pile } from "./inventory";
+import { addItem, freshTool, listItems, pile } from "./inventory";
 import { TOOLS } from "./items";
 import { newGame } from "./newgame";
 import { addOrder } from "./orders";
@@ -76,8 +76,28 @@ export const REFERENCE_SEEDS = [17, 19, 42, 79];
 export const DECEMBER_DAY = 245;
 const CHECKPOINT_DAYS = [30, 90, DECEMBER_DAY];
 
-export function setUpReference(seed: number): { state: GameState; world: World } {
+/**
+ * The audit's kitted camp (spec 8, "Decisions confirmed with the author"): the
+ * true arrival kit plus every tool and structure the from-scratch list spends
+ * its first days building. A flag on the script, not a second gate - it asks
+ * whether the seven fixes let an already-established camp hold, separately
+ * from whether the from-scratch list can bootstrap one in time.
+ */
+function kitOut(state: GameState, world: World): void {
+  const p = state.player;
+  const st = regionState(state, world, p.region);
+  for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
+  addItem(p.pack, "arrow", 10);
+  addItem(p.pack, "driedMeat", 5);
+  const camp = pile(state, st.campCell);
+  addItem(camp, "barkBucket", 2);
+  addItem(camp, "firewood", 20);
+  st.structures.firePit = true;
+}
+
+export function setUpReference(seed: number, kitted = false): { state: GameState; world: World } {
   const g = newGame(seed);
+  if (kitted) kitOut(g.state, g.world);
   for (const o of REFERENCE_ORDERS) addOrder(g.state, g.world, o.req, o.kind);
   return g;
 }
@@ -103,8 +123,8 @@ function checkpoint(state: GameState, world: World, day: number): ReferenceRepor
 }
 
 /** Runs the set-up a day at a time for `days` days or until death, whichever is first. */
-export function runReference(seed: number, days: number): ReferenceReport {
-  const { state, world } = setUpReference(seed);
+export function runReference(seed: number, days: number, kitted = false): ReferenceReport {
+  const { state, world } = setUpReference(seed, kitted);
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
   for (let d = 1; d <= days && !state.dead; d++) {

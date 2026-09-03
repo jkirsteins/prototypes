@@ -217,7 +217,7 @@ export function toolNear(p: Player, id: ToolId, invs: Inventory[]): boolean {
 }
 
 /** A fresh tool: full durability, and a vessel starts empty and thawed. */
-function freshTool(id: ToolId): Tool {
+export function freshTool(id: ToolId): Tool {
   return TOOLS[id].litres !== undefined ? { id, durability: 100, litres: 0, frozen: false } : { id, durability: 100 };
 }
 
