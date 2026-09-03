@@ -22,6 +22,16 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 ## The eight sub-projects, in order
 
+The numbers below are names, not the sequence; they stay put so specs can
+cite them while sections are still being written. The build order is:
+1 (in build), then A standing orders, then 2 rivers, 3 camp, 4 animals,
+5 injury and the body model, 7 wind, 8 forest fire, and 6 territory last,
+with B the risk forecast as soon after A as the runner is stable and C
+the skill tiers alongside 3. Fire comes after 5 because its burns are
+wounds in that model and after 7 because it cannot spread without wind;
+it comes before 6 because the burn's regrowth clock is the first of the
+regrowth clocks Territory generalises.
+
 ### 1. Body and elements
 
 Specced and in build: `2026-09-03-survidle-body-and-elements-design.md`.
@@ -214,8 +224,7 @@ wound calls for it.
 
 **Sources of wounds.** The axe (1 to 3 percent per tree, worse spent), the
 hunt that turns on you (the elk already does), the fall on the fell and
-the fall through ice (sub-project 2), burns from a fire tended tired, and
-bites from sub-project 4's animals. Each names a part by where it lands:
+the fall through ice (sub-project 2), burns from a fire tended tired and from 8's forest fire, and bites from sub-project 4's animals. Each names a part by where it lands:
 the axe takes shins and feet, the elk takes torsos and legs, the ice takes
 the whole body cold and the feet first.
 
@@ -377,11 +386,7 @@ The one threat that changes the map. Its inputs all exist: a dry-day count
 on the weather, storms, a camp fire that can already walk off camp, a torch
 that burns for an hour and cannot be put out, populations per region, and
 wind and thunderstorms from 7. What it needs that does not exist is a
-real dryness number and a way for a cell's ground to change. It is
-numbered last so nothing above renumbers, but its slot is between 4 and
-6: after 4, since a fire is what makes the animals move, and before 6,
-because the burn's regrowth clock is the first of the regrowth clocks
-that Territory generalises. Sub-project 1's camp-fire spread (its section 3.3, a one-shot
+real dryness number and a way for a cell's ground to change. Its place in the build order is after 4, 5 and 7 and before 6 (see the order above): a fire is what makes the animals move, its burns are wounds in 5's body model, and it needs 7's wind. Sub-project 1's camp-fire spread (its section 3.3, a one-shot
 loss of 10 to 30 wood and the lean-to) becomes one of this sub-project's
 ignitions: the fire starts at the camp cell and what burns is what the
 fire reaches.
@@ -435,8 +440,7 @@ where it gutters out: on a fuel cell in fire season it takes 1 time in
 player can put out a fire only in its first minutes and only where it
 started: "Beat it out" on the cell, 30 minutes with a spruce bough, two
 times in three at dry and one in three at tinder, a few points of health
-in burns each try; ten litres from a bucket on the camp cell within ten
-minutes is certain. Past one cell it is a forest fire and nobody stops it.
+in burns each try; ten litres of water on the camp cell within ten minutes is certain, which is more than any vessel holds (a bucket 2 litres, a waterskin 3), so in practice it means 3's water storage at camp, a trough or a filled barrel kept for the purpose. Past one cell it is a forest fire and nobody stops it.
 
 **Spread.** An active fire is a set of burning cells, each with its
 ignition minute, stepped every 10 game minutes. A burning cell tries to
@@ -473,15 +477,13 @@ cells' share, less the pines that stood. Hare and grouse on the burnt
 cells mostly die; deer and elk mostly run, so the region loses a small
 share to the fire and the rest of the burnt share moves to touched
 neighbours at once instead of waiting for the daily migration. Fish are
-untouched. On a burning cell you lose 25 health a minute: four minutes.
+untouched. On a burning cell you lose 25 health a minute: four minutes, and every minute there adds a burn wound in 5's body model to an exposed part (hands and face first, then whatever the clothing does not cover), so a survivor carries the fire for weeks; "burned" is the death cause when the body gives out on the cell or to the wounds after.
 Smoke downwind is never deadly outdoors; it halves work and hunting odds
 and brings visibility to 200 m through the fog mechanism. The runner
 keeps its rule and plans nothing around a fire, but a body flinches from
 flame the way it shelters from a storm: awake, with fire on a neighbour
 cell, you step to the nearest cell that cannot burn, which the intent
-reports as "fled the fire"; a walk routes around burning cells; asleep,
-the smoke wakes you two times in three, and the third time is the death
-cause "burned". A fire that comes through while you are away is a line in
+reports as "fled the fire"; a walk routes around burning cells; asleep, the smoke wakes you two times in three, and the third time is the death cause "burned". These are runner behaviours of the storm kind, what a body does without being told: flinch, route around, wake; none of them plans, and the third time still kills, which keeps the rule that being away carries the full risk. A fire that comes through while you are away is a line in
 the away report and a cause in the risk forecast, which is where a dry
 July gets its honest number.
 
@@ -590,7 +592,7 @@ the current state in a worker, several times with different dice, and the
 deaths counted. Shown as a small table per horizon: tonight, a week, a
 month, each a percentage, with the top cause of death among the runs that
 died ("cold, night 4"). A month is long, and the month number is the one
-that says what to build next. The forecast reads the orders list, so it
+that says what to build next. The forecast runs the game's own `advance`, with the runner's needs, gates and stickiness exactly as the live game has them, never a model of them; a change to the runner changes the forecast by construction, and the spec should make that a test. The forecast reads the orders list, so it
 answers "will this set-up hold", and it is recomputed when the list, the
 stocks or the season change. The sim steps in game minutes and is
 deterministic per seed; a month is 43,200 steps per run. The spec settles
