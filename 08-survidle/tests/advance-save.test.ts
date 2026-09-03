@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { newGame } from "../src/sim/newgame";
+import { fillPopulations } from "../src/sim/regionstate";
 import { catchUp, deserialize, loadGame, MAX_OFFLINE_SECONDS, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
+import { regionAt, speciesHere } from "../src/world/gen";
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -135,6 +137,39 @@ describe("save", () => {
       expect(state.task).toBeNull();
       expect(state.stats.animals).toBe(0);
     }
+  });
+
+  it("a save from the five-animal world loads with its roster filled and its dead keys gone", () => {
+    const { state, world } = newGame(5);
+    const id = state.player.region;
+    const st = state.regions[id];
+    (st as unknown as { pop: Record<string, number> }).pop = { hare: 10, grouse: 20, deer: 3, elk: 1, fish: 40 };
+    state.task = { id: "fish", progress: 0, duration: 60, repeat: false };
+    state.paused["hunt:grouse@123"] = { id: "hunt", arg: "grouse", fraction: 0.5, cell: 123 };
+    const file = deserialize(serialize(state))!;
+    fillPopulations(file.state, world);
+    const pop = file.state.regions[id].pop as Record<string, number | undefined>;
+    expect(pop.grouse).toBeUndefined();
+    expect(pop.fish).toBeUndefined();
+    if (regionAt(world, id).capacity.hare) expect(pop.hare).toBe(10);
+    for (const s of speciesHere(regionAt(world, id))) expect(pop[s]).toBeGreaterThan(0);
+    expect(file.state.task).toMatchObject({ id: "fish", arg: "any" });
+    expect(file.state.paused["hunt:grouse@123"].arg).toBe("willowGrouse");
+  });
+
+  it("a standing order saved against the old grouse or the bare fish keeps working after load", () => {
+    const { state } = newGame(5);
+    const id = state.player.region;
+    const st = state.regions[id];
+    st.orders = [
+      { id: 1, kind: "grind", req: { task: "fish", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, done: 0, minutes: 0, skipped: "" },
+      { id: 2, kind: "job", req: { task: "hunt", arg: "grouse", until: { kind: "once" }, deliver: "camp", where: "nearest" }, done: 0, minutes: 0, skipped: "" },
+    ];
+    st.nextOrderId = 3;
+    const file = deserialize(serialize(state))!;
+    const orders = file.state.regions[id].orders;
+    expect(orders[0].req.arg).toBe("any");
+    expect(orders[1].req.arg).toBe("willowGrouse");
   });
 
   it("rejects garbage", () => {

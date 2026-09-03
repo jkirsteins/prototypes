@@ -44,6 +44,24 @@ function fillDefaults(state: GameState): void {
   }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
+  // The one-species fish and the one grouse became a roster: a fish task with no
+  // species fishes for anything, and the old grouse is the willow grouse.
+  const renameArg = (t: { id: TaskId; arg?: string } | null | undefined) => {
+    if (!t) return;
+    if (t.id === "fish" && !t.arg) t.arg = "any";
+    if (t.id === "hunt" && t.arg === "grouse") t.arg = "willowGrouse";
+  };
+  renameArg(state.task);
+  if (state.intent && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
+  if (state.intent && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
+  for (const p of Object.values(state.paused)) renameArg(p);
+  // An order's click carries the same task/arg shape under different field names.
+  for (const st of Object.values(state.regions)) {
+    for (const o of st.orders ?? []) {
+      if (o.req.task === "fish" && !o.req.arg) o.req.arg = "any";
+      if (o.req.task === "hunt" && o.req.arg === "grouse") o.req.arg = "willowGrouse";
+    }
+  }
   const p = state.player;
   p.torch ??= { lit: false, minutes: 0 };
   p.water ??= 2.5;
