@@ -3,9 +3,60 @@
 Survidle should be as hard as the north is. Being away must be riskier than
 playing by hand, never safer: the intent runner carries out what you asked
 and adds no safety nets. What makes it hard in real life applies here too.
-This roadmap names the work in eight sub-projects, each with its own spec,
-plan and build, in the order they should land. Each spec lives beside this
-file as `2026-MM-DD-survidle-<name>-design.md`.
+The hardness is a means. The goal, stated in the next section, is that
+players come back: to the tab several times a day, and to the game after
+every death. This roadmap names the work in eight sub-projects, each with
+its own spec, plan and build, in the order they should land, and the
+lettered items under "The idle loop" that make it a game people return
+to. Each spec lives beside this file as
+`2026-MM-DD-survidle-<name>-design.md`.
+
+## What we are optimising for
+
+Retention. Every item below is judged by one question: does it give a
+player a reason to open the tab again, or to start again after a death?
+Realism is how the game earns that, not the aim in itself; a sub-project
+that adds truth and no reason to return waits behind one that does.
+
+What retention means here is fixed by the scale. A game day is 24 real
+minutes, a year is about 6 real days, and the away cap is 60 game days.
+So the natural unit is a week-long run with several check-ins a day, and
+the two loops that carry it are:
+
+- **The check-in loop.** Every return must show three things: what
+  happened (the away report, built), a decision to make (B's forecast,
+  which turns "food for 4 days, water for 1, storm on Thursday" into a
+  change to one standing order), and visible progress since last time
+  (stocks, skills, a season nearer).
+- **The survivor loop.** Every survivor dies. What they built, walked and
+  saw stays in the world for the next one. A longer life is the score
+  and the achievement; the world remembering it is the reason to start
+  again. This is item F below.
+
+The contract is Don't Starve's and The Long Dark's, not Melvor Idle's.
+Melvor's number never goes down and its player never loses, and that is
+the opposite of the feeling wanted here: punishing, with a sense of
+accomplishment as runs grow longer, and never a set-up that holds
+forever. Loop Hero is the nearest structural match: an expedition ends,
+what came home builds the camp, the camp persists. What Survidle keeps
+from Melvor is the in-run part, the skill ladder, mastery and pools,
+and standing orders. The unproven combination is brutal plus idle:
+nobody has shown players accepting death while the tab is closed. That
+is why B is not optional and why every away death has to be one the
+forecast showed. Punishing is the aim; unfair is the failure mode.
+
+Targets, to calibrate rather than to hit exactly:
+
+- A first run dies inside 20 days. A player who has learned the loop
+  reaches winter (about day 245) in one run in five. A full year is the
+  achievement of the first weeks of play. Two full years is exceptional,
+  and no set-up ever shows a month forecast of zero after its first
+  winter.
+- A competent set-up (the reference player in F) reaches 1 December on
+  four seeds before any content that only matters in winter is built.
+- Something new to read in the log every game day, and a season
+  threshold to prepare for every 30 to 45 game days: berries, the rut,
+  first frost, lake freeze, first snow, the dark, the cold snap, ice-out.
 
 ## What kills you today
 
@@ -32,9 +83,11 @@ branches everything after it drives. So: 1 (built), A standing orders
 (built), then D, then the baseline (the section of that name under the
 idle loop: water at camp, the thirst priority, arrows in the pack, wet
 wood, the rack as a task, tool keeps, and a start with a shore and rock),
-then B the risk forecast with the away cap as its horizon, then the first
-producers and stocks (C's basket trap, and 3's water storage and cellar,
-pulled out of their items), then E hides and clothing, then the rest of 3
+then B the risk forecast with the away cap as its horizon, then F the
+survivor loop (a run that ends is the first thing a returning player
+needs, and the cellar is what its decay rules make worth building), then
+the first producers and stocks (C's basket trap, and 3's water storage
+and cellar, pulled out of their items), then E hides and clothing, then the rest of 3
 camp (siting, the shelter ladder, the buildings) with the rest of C
 alongside, then 4 animals, 5 injury and the body model, 7 wind, 8 forest
 fire, and 6 territory last. 2 rivers is flavour and has no slot: it lands
@@ -661,11 +714,13 @@ and the scar the next morning with the elk tracks on it a year later.
 ## The idle loop
 
 The eight above make the north dangerous. The lettered ones below make
-Survidle an idle game in the sense of Melvor Idle and A Dark Room: you set up a system, you
-leave, and you come back to gains and a readout of how well the system
-held. They run beside the eight, not after them; the first is built, and
-everything that follows is played through it. Every "away" carries a risk
-of dying. The point is that the risk is legible and the set-up lowers it.
+Survidle an idle game in the sense of Melvor Idle and A Dark Room: you set
+up a system, you leave, and you come back to gains and a readout of how
+well the system held. They run beside the eight, not after them; the
+first is built, and everything that follows is played through it. Every
+"away" carries a risk of dying. The point is that the risk is legible and
+the set-up lowers it. F is the one that is not an idle mechanic at all:
+it is what happens when the set-up fails, and why the player starts again.
 
 ### A. Standing orders
 
@@ -976,6 +1031,114 @@ rule that a full tailored set, a cabin and a fire hold warmth at -30 C
 and a wrapped set does not; and whether the starting kit gets a rawhide
 or a scrap of tanned hide so the first mend does not wait on a deer.
 
+### F. The survivor loop
+
+Not specced. The high-level guidance is here so the spec has something
+to argue with; the numbers are first targets, not rulings.
+
+**The world persists; the person does not.** Death stays permanent and
+still deletes the survivor: skills, pack, body, everything that was in
+them. The world is saved instead of the person. The next survivor is set
+down in the same world the following 1 April and finds what the last one
+left. There is no rescue, no walking out and no voluntary end: a run ends
+when the survivor dies, and the design has to make sure they do. Rogue
+Legacy is the shape, with the land as the castle.
+
+**The ramp.** A ramp is what rises inside one run until it kills. Without
+one a stable camp is stable forever, and the game's promise is that no
+set-up holds forever. Realism hands over the ramps; none is an abstract
+difficulty number:
+
+- The metal axe you arrived with is the best tool you will ever hold,
+  and it wears out. Everything made after it is stone, bone and wood and
+  worse. A's headless runs already die of this at day 67 to 86; that is
+  the clock, not a bug. Tool keeps in the baseline let the camp replace a
+  tool, never match the first one.
+- The body accumulates what does not heal: 5's permanent damage, a
+  frostbitten toe, a badly set bone, and a survivor who is slower each
+  year. Skills rise a percent a level; the body should lose faster than
+  that once the first winter is behind it.
+- The land near camp empties. Trees within haul are cut, the game is
+  hunted out (D's populations, 6's regrowth clocks), and every year the
+  walk is longer. Wolves fed on carcasses grow in number.
+- Winter, every year, and the second one with a worse axe and an older
+  body.
+
+The test of the ramp is B's forecast: a month number that reads zero for
+a camp in its second year means the ramp is missing, and that is a
+balance bug to fix before content.
+
+**The ratchet.** A ratchet is what the next survivor starts with that the
+last one did not. It must never be power: no skills carry, no pack, no
+kit beyond the standard one. What carries is the world and knowledge of
+it, and every rung of it is derived from play, never from a discrete
+action the player takes for the heir. There is no "write in the journal"
+button.
+
+- **The journal** is the log the game already writes. A survivor who
+  lived three days leaves three days; one who lived a season leaves
+  where the elk were in October and the night the wolves came. The heir
+  reads it at the start.
+- **The map.** Cells the last survivor touched stay dim for the heir
+  instead of black. Where they walked is where the map is.
+- **Trails.** Traffic wears a path: a route walked twenty times hauling
+  logs becomes a trail cell the router prefers and the heir can follow.
+  Hauling already walks the same route repeatedly, so this costs nothing
+  to earn.
+- **Caches and structures.** What was at camp when the survivor died,
+  minus decay. The stockpile was for their own winter; it is the heir's
+  by accident.
+- **Cumulative days survived**, across all survivors, is the one
+  threshold currency, and it is also the score. It buys the single gift
+  the world cannot explain: how close to the best camp the heir is set
+  down. First targets: under 30 cumulative days, at the landing with the
+  journal only; to 100, the map; to 250, the trails; past a year of
+  cumulative living, set down at camp. A chain of three survivors dead by
+  day 5 has earned nothing; one survivor who lived 200 days has earned
+  most of it. Content the player is meant to meet only on a later run is
+  gated this way, softly, by calibration: it needs a cabin already
+  standing, a journal that names the place, a trail that reaches it, or
+  more labour than one life gives (cabin, then cellar, then smokehouse,
+  then a second camp). Never by a run counter.
+
+**Decay between survivors** is where the balance lives and where the
+roof and the cellar earn their place. The gap is months, so decay is per
+month elapsed and the away catch-up already knows how to run it. First
+rulings for the spec to strike: a cabin stands for decades; a lean-to
+falls in a season; a rack rots in a season; dried meat in the open is
+gone in a month and dried meat in the cellar keeps; a tool rusts to a
+wear penalty and is still a tool; the fire pit stays; a trail fades in
+two years unwalked; the dim map never fades, since it is knowledge; the
+journal is forever.
+
+**Where the heir is set down.** If the landing is fixed and the survivor
+camps at it, the placement ladder is skipped. Either the landing moves
+(the boat puts you ashore where the ice allows, so the drop point is
+random along the coast) or the good land is deliberately not at the
+coast, so camping at the landing is a bad camp. The second is more
+honest and the terrain already reads that way: shore, then bog, then the
+forest and rock a camp wants. The spec settles it.
+
+**Search.** A cabin in fog is a real find. The vision ring, per-cell fog
+and named spots exist; what is missing is a "search this region"
+standing order that sweeps until a structure cell enters the ring. A
+chimney does not glow, so the old camp is found by walking, by the
+journal's direction, or by the trail.
+
+**The reference player.** The ramp and the ratchet are calibrated by
+headless runs, the way the baseline was found: a scripted set-up that a
+competent player would make, run on four seeds, and its day of death and
+cause reported. Its pass criterion moves with the roadmap: reaches
+1 December before winter content, dies in year two after the ramp lands,
+and never reads a zero month forecast. It is the test that keeps "no
+set-up holds forever" true as content is added under it.
+
+**What this asks of the sub-projects around it.** 3's siting and cellar
+decide what a camp leaves behind; 5's permanent damage is a ramp; 6's
+regrowth clocks are the decay clocks with the sign flipped; B's forecast
+is how the ramp is measured; the save (`src/sim/save.ts`) stops being a
+save of the person and becomes a save of the world with a person in it.
+
 ## Rules that hold across all eight
 
 - Every quantity stays real: litres, kilocalories, degrees, minutes,
@@ -987,3 +1150,8 @@ or a scrap of tanned hide so the first mend does not wait on a deer.
   it out and report. The player prepares, or does not.
 - Each sub-project ships with the browser pass that shows a run through
   its new danger, not only its tests.
+- Every death is the end of a survivor, never of the world. Nothing a
+  sub-project adds may make a set-up hold forever, and nothing may carry
+  power from one survivor to the next.
+- A sub-project that adds truth and no reason to come back waits behind
+  one that does.
