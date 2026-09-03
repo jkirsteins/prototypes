@@ -185,6 +185,12 @@ describe("tasks", () => {
     expect(qty(state.player.pack, "rawMeat") + qty(herePile(state, world), "rawMeat")).toBeGreaterThan(0);
   });
 
+  it("haul is not repeatable: nothing in the advanced list offers it a loop button", () => {
+    const { state, world } = newGame(3);
+    addItem(herePile(state, world), "log", 1);
+    expect(check(state, world, cal, "haul").repeatable).toBe(false);
+  });
+
   it("offers every kind of task somewhere in the list, legal or not", () => {
     const { state, world } = newGame(3);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));

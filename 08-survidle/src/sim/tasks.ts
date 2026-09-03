@@ -291,7 +291,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "haul": {
       const here = at;
       const campCell = st.campCell;
-      const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: true });
+      // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
+      const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false });
       if (here === campCell) return { ...o, ok: false, why: "you are at camp" };
       const kg = weight(pile(state, at));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };

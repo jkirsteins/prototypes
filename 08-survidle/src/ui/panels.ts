@@ -194,7 +194,6 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
   const it = state.intent;
-  const here = cellOf(state, world);
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
@@ -204,8 +203,10 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
           const resume = option.ok
             ? ` <button class="mini" data-act="task" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}">resume</button>`
             : "";
-          const cell = task.cell < 0 ? here : task.cell;
-          const finish = ` <button class="mini" data-act="finish" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}" data-cell="${cell}" title="Go there if need be and finish it">finish</button>`;
+          // Located work names its cell; carried work (light, repair, sharpen, craft) carries none,
+          // so main.ts resolves it through "nearest" instead - camp for camp-bound work, here for craft.
+          const cellAttr = task.cell >= 0 ? ` data-cell="${task.cell}"` : "";
+          const finish = ` <button class="mini" data-act="finish" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}"${cellAttr} title="Go there if need be and finish it">finish</button>`;
           return `<div class="paused">${esc(option.label)} <b>${pct}%</b>${note}${resume}${finish}</div>`;
         })
         .join("")}</div>`
@@ -245,7 +246,7 @@ function optHtml(o: TaskOption): string {
 }
 
 /** The eat / add firewood / hang raw meat buttons, shown whenever they apply, wherever the player stands. */
-export function instantHtml(state: GameState, world: World): string {
+function instantHtml(state: GameState, world: World): string {
   const p = state.player;
   const invs = [p.pack, herePile(state, world)];
   const camp = spotHere(state, world) === "camp";
@@ -284,14 +285,21 @@ export const INTENT_GROUPS: { label: string; items: { id: TaskId; arg?: string }
   { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
 ];
 
-/** What the strip would add to a plain click, in words; empty for once, leave it, nearest. */
+/**
+ * What the strip would add to a plain click, in words; empty for once, leave
+ * it, nearest. Mirrors startIntent's own coercions, so the row never
+ * promises what the click would not actually do: night ignores the strip
+ * entirely (forced to once, leave it), and camp has always delivers to camp
+ * whatever the strip's own "bring it" choice says.
+ */
 function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string {
+  if (id === "night") return "";
   const parts: string[] = [];
   const item = yieldItem(id, arg);
   if (ui.until === "times") parts.push(`${ui.n} times`);
   else if (ui.until === "campHas") parts.push(item ? `until camp has ${itemLabel(item, ui.n)}` : "once");
   else if (ui.until === "forever") parts.push("forever");
-  if (ui.deliver === "camp") parts.push("bringing it to camp");
+  if (ui.deliver === "camp" || ui.until === "campHas") parts.push("bringing it to camp");
   if (ui.where !== "nearest") parts.push(`at ${SPOT_NAMES[ui.where]}`);
   return parts.join(", ");
 }

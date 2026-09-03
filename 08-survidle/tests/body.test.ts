@@ -20,12 +20,12 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   return pred();
 }
 /** A forever felling from camp, with the camp cell to hand. Seed 17: bog camp, forest 0.6 km away. */
-function felling(seed = 17) {
+function felling(seed = 17, deliver: "leave" | "camp" = "leave") {
   const g = newGame(seed);
   const { state, world } = g;
   const camp = regionState(state, world, state.player.region).campCell;
   addItem(state.player.pack, "driedMeat", 2);
-  startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
+  startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" });
   return { g, state, world, camp };
 }
 
@@ -189,6 +189,26 @@ describe("the body tier", () => {
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the
     // minute a tree comes down is counted by train and not by the trace: one minute per tree of slack.
     expect(Math.abs(state.skills.woodcraft.xp - seen.get("chop@away")!)).toBeLessThanOrEqual(state.stats.trees + 1);
+  });
+
+  it("a working day with deliver camp: logs pile up at camp, the pack clears after each delivery, and sleep still happens at camp", () => {
+    // Seed 19: meadow camp, forest 0.6 km away.
+    const { state, world, camp } = felling(19, "camp");
+    let clearedAfterDelivery = false;
+    let sleptAtCamp = false;
+    let lastCampLogs = qty(pile(state, camp), "log");
+    for (let m = 0; m < 1440 * 1.5; m++) {
+      advance(state, world, 1);
+      const campLogs = qty(pile(state, camp), "log");
+      // Whenever the camp pile just grew, the load that grew it should already be off the back.
+      if (campLogs > lastCampLogs && qty(state.player.pack, "log") === 0) clearedAfterDelivery = true;
+      lastCampLogs = campLogs;
+      if (state.task?.id === "sleep" && cellOf(state, world) === camp) sleptAtCamp = true;
+    }
+    expect(state.dead).toBeNull();
+    expect(qty(pile(state, camp), "log")).toBeGreaterThan(8);
+    expect(clearedAfterDelivery).toBe(true);
+    expect(sleptAtCamp).toBe(true);
   });
 
   it("a cabin build is set aside for the night and picked up with its minutes kept", () => {

@@ -115,10 +115,28 @@ export function resolveCell(state: GameState, world: World, task: TaskId, arg: s
   return { cell: s ? s.cell : here, note };
 }
 
+/**
+ * A build blocked at its own cell for want of materials gets one allowance:
+ * something it needs sits elsewhere in the region and can be walked to. The
+ * one place this is decided, so intentOption and startIntent never disagree
+ * about whether the button may be pressed.
+ */
+function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined): { ok: boolean; detail: string } {
+  if (task !== "build" || arg === "snare") return { ok: false, detail: "" };
+  const sid = arg as StructureId;
+  const campCell = regionState(state, world, state.player.region).campCell;
+  if (!canFetch(state, world, sid, campCell)) return { ok: false, detail: "" };
+  const { missing, sources } = fetchSources(state, world, sid, campCell, cellOf(state, world));
+  return { ok: true, detail: `fetching ${itemLabel(missing[0].item, missing[0].qty)} from ${whereIs(state, world, sources[0].cell)} first` };
+}
+
 /** The button: legality judged where the work would be done, so ground is never the reason. */
 export function intentOption(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): TaskOption {
   const { cell } = resolveCell(state, world, task, arg, where);
-  return check(state, world, cal, task, arg, cell);
+  const o = check(state, world, cal, task, arg, cell);
+  if (o.ok) return o;
+  const fa = fetchAllowance(state, world, task, arg);
+  return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail } : o;
 }
 
 /** Sets out. False when the work could not start at its place; the button already said why. */
@@ -127,7 +145,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const { cell, note } = resolveCell(state, world, req.task, req.arg, req.where);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
-    if (!o.ok && !(req.task === "build" && req.arg !== "snare" && canFetch(state, world, req.arg as StructureId, regionState(state, world, state.player.region).campCell))) return false;
+    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg).ok) return false;
   }
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
@@ -139,7 +157,11 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
     until = { kind: "once" };
     deliver = "camp";
   }
-  if (req.task === "night") until = { kind: "once" };
+  // A night out is one sleep, not a promise to keep bringing anything anywhere.
+  if (req.task === "night") {
+    until = { kind: "once" };
+    deliver = "leave";
+  }
   // Whatever was under way, by hand or by intent, is set aside with its share kept.
   stopTask(state, world);
   state.intent = {
@@ -264,20 +286,34 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   return walkTo(state, world, cal, it, it.campCell, " with the load");
 }
 
-interface FetchSources {
+interface FetchNeed {
   /** Needs of the build that neither the pack nor the camp pile can meet. */
   missing: Need[];
   /** An inventory holds something the build is missing. */
   wanted: (inv: Inventory) => boolean;
+}
+
+interface FetchSources extends FetchNeed {
   /** This region's non-camp piles that hold something missing, reachable from `from`, nearest first. */
   sources: { cell: number; inv: Inventory; km: number }[];
 }
 
-/** What a build still needs and where in the region it might be found, from one shared cell so canFetch and fetchStep never disagree. */
-function fetchSources(state: GameState, world: World, sid: StructureId, campCell: number, from: number): FetchSources {
+/** What a build still needs, whatever the pack and the camp pile between them cannot cover. */
+function fetchMissing(state: GameState, sid: StructureId, campCell: number): FetchNeed {
   const campInvs = [state.player.pack, pile(state, campCell)];
   const missing = STRUCTURES[sid].needs.filter((n) => resolveNeed(campInvs, n) === null);
   const wanted = (inv: Inventory) => missing.some((n) => qty(inv, n.item) > 1e-9 || (n.alt !== undefined && qty(inv, n.alt) > 1e-9));
+  return { missing, wanted };
+}
+
+/**
+ * What a build still needs and where in the region it might be found, from
+ * one shared cell so canFetch and fetchStep never disagree. Scans every pile
+ * in the region, so callers that only need `missing` (the carrying leg of a
+ * fetch, already bound for camp) call fetchMissing instead.
+ */
+function fetchSources(state: GameState, world: World, sid: StructureId, campCell: number, from: number): FetchSources {
+  const { missing, wanted } = fetchMissing(state, sid, campCell);
   const sources = pilesIn(state, world, state.player.region)
     .filter((x) => x.cell !== campCell && wanted(x.inv))
     .map((x) => ({ ...x, km: kmBetween(world, from, x.cell) }))
@@ -292,7 +328,7 @@ function canFetch(state: GameState, world: World, sid: StructureId, campCell: nu
   return missing.length > 0 && sources.length > 0;
 }
 
-/** Moves the missing materials of a build from this region's piles to camp, one load at a time. Undefined when there is nothing to fetch. */
+/** Moves the missing materials of a build from this region's piles to camp, one load at a time. "none" when there is nothing left to fetch, or nothing to be gained by trying. */
 function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome | "none" {
   const sid = it.arg as StructureId;
   const st = regionState(state, world, state.player.region);
@@ -301,17 +337,20 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   const campInvs = [p.pack, pile(state, it.campCell)];
   if (canConsume(campInvs, STRUCTURES[sid].needs)) return "none";
   const here = cellOf(state, world);
-  const { missing, wanted, sources } = fetchSources(state, world, sid, it.campCell, here);
+  const { missing, wanted } = fetchMissing(state, sid, it.campCell);
   if (wanted(p.pack)) {
     if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with materials");
     dropEverything(state, world);
     it.step = "laying out materials at camp";
     return "again";
   }
+  // The route-filtered source list scans every pile in the region; only worth it once carrying is ruled out.
+  const { sources } = fetchSources(state, world, sid, it.campCell, here);
   if (!sources.length) return "none";
   const src = sources[0];
   if (here !== src.cell) return walkTo(state, world, cal, it, src.cell, " for materials");
   // The missing things first, then whatever else fits.
+  const before = weight(p.pack);
   let room = PACK_HARD_KG - weight(p.pack);
   for (const n of missing) {
     for (const item of [n.item, n.alt].filter((x): x is ItemId => x !== undefined)) {
@@ -326,6 +365,8 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
     }
   }
   loadPack(state, world);
+  // Nothing fit: standing here again next minute would not change that either. Let rule 5 end it with the real reason.
+  if (weight(p.pack) <= before + 1e-9) return "none";
   it.step = "loading materials";
   return "again";
 }
@@ -365,6 +406,15 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
     const f = fetchStep(state, world, cal, it);
     if (f !== "none") return f;
   }
+  // A camp-bound delivery already standing at camp: whatever produce() left on the
+  // back (it favours the pack over the ground when there is room) goes onto the
+  // camp pile at once, so campHas can see it and nothing is ever carried back out.
+  // Idempotent: once the pack holds none of the yield this does not fire again.
+  if (it.deliver === "camp" && here === it.campCell && packCarries(state, it)) {
+    dropEverything(state, world);
+    it.step = "unloading at camp";
+    return "again";
+  }
   const o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
   const met = untilMet(state, it);
   if (met || (o && !o.ok)) {
@@ -392,7 +442,7 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   const need = currentNeed(state, world, cal, it);
   it.need = need;
   if (need) {
-    const s = bodyStep(state, world, cal, rng, need);
+    const s = bodyStep(state, world, cal, rng, it, need);
     if (s) {
       if (!isRunning(state, s)) takeStep(state, world, cal, s);
       return;

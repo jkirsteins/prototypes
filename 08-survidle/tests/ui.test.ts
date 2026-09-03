@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { addItem, herePile } from "../src/sim/inventory";
+import { addItem, herePile, pile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
@@ -14,8 +15,8 @@ import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
 import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
-import { newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { commitStripN, newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { cellAt, neighbours, regionAt, spotOf } from "../src/world/gen";
 
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
@@ -175,6 +176,30 @@ describe("panels", () => {
     setPanel("overlay", deathHtml(state, world, calendar(state.minute)));
     expect(document.querySelector("#overlay")!.textContent).toContain("Hunting 12");
   });
+
+  it("commitStripN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its strip field has focus", () => {
+    const ui = newUiState();
+    commitStripN(ui, "7");
+    expect(ui.n).toBe(7);
+    commitStripN(ui, ""); // a cleared field
+    expect(ui.n).toBe(1);
+    commitStripN(ui, "0");
+    expect(ui.n).toBe(1);
+    commitStripN(ui, "3.6");
+    expect(ui.n).toBe(4);
+
+    document.body.innerHTML = `<div id="actions"></div>`;
+    expect(setPanel("actions", `<input data-strip-n value="5">`)).toBe(true);
+    const field = document.querySelector<HTMLInputElement>("[data-strip-n]")!;
+    field.focus();
+    expect(document.activeElement).toBe(field);
+    // A redraw carrying different html is refused outright while the field is focused, and the DOM is left alone.
+    expect(setPanel("actions", "<p>a different render</p>")).toBe(false);
+    expect(document.querySelector("[data-strip-n]")).not.toBeNull();
+    field.blur();
+    expect(setPanel("actions", "<p>a different render</p>")).toBe(true);
+    expect(document.querySelector("[data-strip-n]")).toBeNull();
+  });
 });
 
 describe("the Do panel", () => {
@@ -212,6 +237,35 @@ describe("the Do panel", () => {
     expect(html).toContain(actionsHtml(state, world, cal, ui, false));
   });
 
+  it("night's row carries no strip sentence, unlike every other intent under the same strip", () => {
+    const ui = { ...newUiState(), until: "forever" as const, deliver: "camp" as const };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toMatch(/data-opt="intent:chop:".*forever, bringing it to camp/s);
+    const nightRow = html.match(/<div class="opt"[^>]*data-opt="intent:night:"[\s\S]*?<\/div>/)?.[0] ?? "";
+    expect(nightRow).not.toBe("");
+    expect(nightRow).not.toContain("forever");
+    expect(nightRow).not.toContain("bringing it to camp");
+  });
+
+  it("until camp has N always says bringing it to camp, even when the strip's own bring-it choice is leave it", () => {
+    const ui = { ...newUiState(), until: "campHas" as const, deliver: "leave" as const, n: 20 };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toMatch(/data-opt="intent:chop:".*until camp has 20 logs.*bringing it to camp/s);
+  });
+
+  it("a build blocked only by materials elsewhere in the region is not greyed out, and names what it would fetch", () => {
+    // Fetch fixture: sticks and cordage already at camp, the missing logs sitting at the forest.
+    const g = newGame(3);
+    const camp = regionState(g.state, g.world, g.state.player.region).campCell;
+    const r = regionAt(g.world, g.state.player.region);
+    const forest = spotOf(r, "forest")!.cell;
+    addItem(pile(g.state, camp), "stick", 8);
+    addItem(pile(g.state, camp), "cordage", 2);
+    addItem(pile(g.state, forest), "log", 4);
+    const html = doHtml(g.state, g.world, calendar(g.state.minute), newUiState());
+    expect(html).toContain('data-act="intent" data-id="build" data-arg="leanTo"');
+  });
+
   it("the Doing panel reads the intent as a sentence with its step, and set-aside work can be finished from anywhere", () => {
     const g = newGame(21);
     const rng = new Rng(1);
@@ -230,6 +284,28 @@ describe("the Do panel", () => {
     placeAtSpot(g.state, g.world, g.state.player.region, "camp");
     html = taskHtml(g.state, g.world, calendar(0));
     expect(html).toContain('data-act="finish" data-id="chop"');
+    expect(html).toMatch(/data-act="finish" data-id="chop"[^>]*data-cell="\d+"/);
     expect(html).not.toContain('>resume<');
+  });
+
+  it("carried work's finish button names no cell, so it resolves through nearest and still reaches camp", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const camp = regionState(state, world, state.player.region).campCell;
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, camp), "firewood", 2);
+    // Paused partway through, at camp; light is carried work, so its paused entry carries no cell.
+    startTask(state, world, calendar(0), "light");
+    stepTask(state, world, calendar(0), new Rng(1), 3);
+    stopTask(state, world);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const html = taskHtml(state, world, calendar(0));
+    expect(html).toContain('data-act="finish" data-id="light"');
+    expect(html).not.toMatch(/data-act="finish" data-id="light"[^>]*data-cell=/);
+    // The finish handler's own logic when the button carries no cell: where "nearest".
+    expect(startIntent(state, world, calendar(0), new Rng(1), { task: "light", until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
+    expect(state.intent?.cell).toBe(camp);
   });
 });

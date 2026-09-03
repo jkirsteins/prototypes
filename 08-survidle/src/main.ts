@@ -3,8 +3,9 @@ import { Rng } from "./rng";
 import { addFirewood, drop, dropAll, eat, loadRack, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar } from "./sim/calendar";
-import { startIntent } from "./sim/intent";
+import { intentOption, startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
+import { log } from "./sim/log";
 import { newGame } from "./sim/newgame";
 import { cellOf } from "./sim/position";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
@@ -18,7 +19,7 @@ import {
   awayHtml, clockHtml, deathHtml, doHtml, gearHtml, inventoryHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml,
 } from "./ui/panels";
-import { newUiState, resetPanels, setPanel, type UiState } from "./ui/render";
+import { commitStripN, newUiState, resetPanels, setPanel, type UiState } from "./ui/render";
 import { updateSky } from "./ui/sky";
 import { generateWorld, type World } from "./world/gen";
 
@@ -211,9 +212,18 @@ function onClick(ev: Event) {
     case "advanced":
       ui.advanced = !ui.advanced;
       break;
-    case "finish":
-      startIntent(state, world, cal, rng, { task: target.dataset.id as TaskId, arg: target.dataset.arg || undefined, until: { kind: "once" }, deliver: "leave", where: { cell: Number(target.dataset.cell) } });
+    case "finish": {
+      const id = target.dataset.id as TaskId;
+      const arg = target.dataset.arg || undefined;
+      // Located work names its cell; carried work has none, so it resolves through
+      // "nearest" - camp for camp-bound work, wherever the player stands for craft.
+      const where: Where = target.dataset.cell !== undefined ? { cell: Number(target.dataset.cell) } : "nearest";
+      if (!startIntent(state, world, cal, rng, { task: id, arg, until: { kind: "once" }, deliver: "leave", where })) {
+        const o = intentOption(state, world, cal, id, arg, where);
+        log(state, `${o.label}: ${o.why}.`);
+      }
       break;
+    }
   }
   state.rng = rng.s;
   saveGame(state);
@@ -232,10 +242,21 @@ document.addEventListener("keydown", (ev) => {
   else return;
   render();
 });
+// Committed on every keystroke so the field is never a stroke behind; no render()
+// here, since setPanel already refuses to redraw the panel while this field has
+// focus (a redraw between keystrokes is what used to eat the field's focus).
+document.addEventListener("input", (ev) => {
+  const el = ev.target as HTMLInputElement;
+  if (!el.matches("[data-strip-n]")) return;
+  commitStripN(ui, el.value);
+});
 document.addEventListener("change", (ev) => {
   const el = ev.target as HTMLInputElement;
   if (!el.matches("[data-strip-n]")) return;
-  ui.n = Math.max(1, Math.round(Number(el.value) || 1));
+  commitStripN(ui, el.value);
+  // A blank field commits to 1 already; force the box to show it, since a
+  // render that produces the same html as before is one setPanel skips.
+  el.value = String(ui.n);
   render();
 });
 document.addEventListener("visibilitychange", () => {

@@ -321,7 +321,10 @@ log line says exactly that.
   the player can say "turn in" without choosing a bed step by step.
 
 `rest` and `sleep` as intents are the raw tasks with `until: once`, kept so
-the intents list has them; the body tier never triggers for them.
+the intents list has them. A `sleep` or `rest` intent is subject to the body
+tier like any other: clicking Sleep away from camp still walks to camp first
+when camp is near enough to be worth it, the same as sleep reached through
+any other intent's own sleep need.
 
 ## 5. Starting and stopping
 
@@ -339,10 +342,14 @@ task and an intent are never live together.
 
 A stopped intent keeps its work's share in `state.paused` under the same
 keys as today. The Set aside list gains a **finish** button on every entry,
-wherever the player stands: it starts an intent for that task with `cell`
-set to the entry's cell (or the cell under foot for carried work), `until:
-once`, `deliver: leave`. The existing **resume** button, offered only when
-the player is at the cell, stays.
+wherever the player stands: it starts an intent for that task with `until:
+once`, `deliver: leave`, and `where` set to the entry's cell for located
+work or `"nearest"` for carried work (light, repair, sharpen, craft) - which
+`resolveCell` then routes to camp for camp-bound work or the cell under foot
+for craft, so a click never fails silently on a cell the work was never
+going to use. When it still cannot start, the click logs `intentOption`'s
+own reason at that same `where`. The existing **resume** button, offered
+only when the player is at the cell, stays.
 
 ## 6. Legality shown on the button
 

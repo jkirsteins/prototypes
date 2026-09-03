@@ -42,9 +42,9 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
 }
 
 /** The step a need calls for, or null when there is nothing to start for it. */
-export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, need: BodyNeed): Step | null {
-  if (need === "hungry") return hungryStep(state, world, cal, rng);
-  return campStep(state, world, cal, need);
+export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: Intent, need: BodyNeed): Step | null {
+  if (need === "hungry") return hungryStep(state, world, cal, rng, it);
+  return campStep(state, world, cal, it, need);
 }
 
 /**
@@ -82,11 +82,10 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
 }
 
 /** Walk to this region's camp, make a fire if the means are here, then sleep or rest. */
-function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" | "cold"): Step {
+function campStep(state: GameState, world: World, cal: Calendar, it: Intent, need: "sleep" | "cold"): Step {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const here = cellOf(state, world);
-  const it = state.intent!;
   if (here !== st.campCell) {
     const why = need === "sleep" ? " for the night" : " to warm up";
     if (check(state, world, cal, "walk", `cell:${st.campCell}`).ok) return walkStep(state, world, st.campCell, why);
@@ -107,8 +106,7 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
 }
 
 /** Eat what is in reach; else go where the food is; else nothing. */
-function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng): Step | null {
-  const it = state.intent!;
+function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: Intent): Step | null {
   for (const food of AUTO_EAT_ORDER) {
     if (eat(state, world, food, rng)) return null;
   }
@@ -121,7 +119,9 @@ function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng): St
 
 /**
  * Lunch for the day: at the home camp, pocket safe food from the pile up to
- * PROVISION_KG in the pack, never past the comfortable load.
+ * PROVISION_KG in the pack, never past the comfortable load. `want` and `kg`
+ * below read `qty` as kilos directly: every item in PROVISIONS has
+ * ITEM_KG === 1, so a count and its weight are the same number.
  */
 export function provision(state: GameState, world: World): void {
   const it = state.intent;
