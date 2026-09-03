@@ -151,14 +151,16 @@ crossable ice with `=` in place of `~`, thin ice dim and safe ice bright.
 `Garment.wet`, 0 to 100. Rain and snowfall wet the outer layer first: coat,
 hat, boots, mittens take the full rate; trousers half; the blanket only
 while in use (`bedded`). Rates per minute in the open: light rain 1, heavy
-2, snowfall a quarter of rain and capped at `SNOW_DAMP_MAX`; under a roof
-half; in a cabin none. Wet garments dry:
+2, snowfall a quarter of rain and capped at `SNOW_DAMP_MAX`; under a
+lean-to, in a cabin or by the fire none. Wet garments dry:
 
-| where                                      | points/hour |
-|--------------------------------------------|-------------|
-| by a lit fire at camp, camp task           | 20          |
-| under a roof, or dry clear weather in the open | 5       |
-| rain or snowfall, no roof                  | 0           |
+| where                                                  | points/hour |
+|---------------------------------------------------------|-------------|
+| by a lit fire at camp, camp task, whatever the weather   | 20          |
+| in a cabin, whatever the weather                         | 5           |
+| under a lean-to, dry weather, or the open, dry weather   | 5           |
+| under a lean-to, rain or snowfall                        | 0           |
+| rain or snowfall in the open                             | 0           |
 
 `insulation()` scales each garment: wool keeps `1 - 0.5 * wet/100`, hide
 `1 - 0.67 * wet/100`, the blanket is unaffected in the pack. The body's
