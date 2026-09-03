@@ -38,14 +38,29 @@ export function stepWater(state: GameState, felt: number, dt: number): number {
   return p.water <= 0 ? (THIRST_DRAIN_PER_HOUR / 60) * dt : 0;
 }
 
-/** Open water under foot: a waterside cell with the shore not iced over. */
+/** The hole at this cell is open: cut today and not yet skinned over by the dawn tick. */
+export function iceHoleOpen(state: GameState, cell: number): boolean {
+  const st = state.regions[state.player.region];
+  return st?.iceHole?.cell === cell;
+}
+
+/** Open water under foot: a waterside cell with the shore not iced over, or an ice hole cut here. */
 export function waterSource(state: GameState, world: World): boolean {
-  return watersideCell(world, cellOf(state, world)) && state.weather.iceCm < ICE_SHORE_CM;
+  const cell = cellOf(state, world);
+  if (!watersideCell(world, cell)) return false;
+  return state.weather.iceCm < ICE_SHORE_CM || iceHoleOpen(state, cell);
 }
 
 export function vesselLitres(p: Player): number {
   let l = 0;
   for (const t of p.tools) if (!t.frozen) l += t.litres ?? 0;
+  return l;
+}
+
+/** Litres every vessel in hand could hold, filled or not. */
+export function vesselLitresCapacity(p: Player): number {
+  let l = 0;
+  for (const t of p.tools) l += TOOLS[t.id].litres ?? 0;
   return l;
 }
 

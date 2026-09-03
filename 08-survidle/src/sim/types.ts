@@ -67,7 +67,7 @@ export const SPOTS: SpotId[] = ["camp", "forest", "outcrop", "shore", "heath"];
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build"
-  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors"
+  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep";
 
 export interface Task {
@@ -205,6 +205,8 @@ export interface RegionState {
   /** This camp's ranked orders, top first. */
   orders: Order[];
   nextOrderId: number;
+  /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
+  iceHole: { cell: number; minute: number } | null;
 }
 
 export interface Player {

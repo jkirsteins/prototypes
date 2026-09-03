@@ -16,6 +16,7 @@ import { cellOf, SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
 import { check } from "./tasks";
 import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId } from "./types";
+import { campWaterCapacity } from "./water";
 
 /** The list of the region under foot. */
 export function ordersHere(state: GameState, world: World): Order[] {
@@ -142,6 +143,15 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
     if (orderMet(state, world, o, o.id === liveId)) {
       markSkipped(state, world, cal, o, "");
       continue;
+    }
+    const keep = keepTarget(o);
+    if (keep?.item === "water") {
+      const camp = pile(state, regionState(state, world, state.player.region).campCell);
+      const cap = campWaterCapacity(camp);
+      if (cap < keep.qty && qty(camp, "water") + qty(camp, "ice") >= cap - 1e-9) {
+        markSkipped(state, world, cal, o, `camp holds ${cap % 1 === 0 ? cap : cap.toFixed(1)} litres; more vessels at camp would hold more`);
+        continue;
+      }
     }
     const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
     if (!opt.ok) {

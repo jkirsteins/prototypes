@@ -107,6 +107,7 @@ function fillDefaults(state: GameState): void {
     st.logsWet ??= 1440;
     st.orders ??= [];
     st.nextOrderId ??= 1;
+    st.iceHole ??= null;
   }
 }
 

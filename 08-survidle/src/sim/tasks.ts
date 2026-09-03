@@ -31,7 +31,7 @@ import type {
   GameState, IceMode, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
 } from "./types";
-import { campPileHere, WATER_FULL } from "./water";
+import { campPileHere, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitresCapacity, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -60,7 +60,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightIndoors", "lightTorch"]);
 
@@ -80,7 +80,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch",
+  "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch", "fill", "iceHole",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -92,6 +92,8 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "craft": return RECIPES[arg as RecipeId]?.tool ?? null;
     case "repair": return "needle";
     case "light": case "lightIndoors": return "fireDrill";
+    case "fill": return "barkBucket";
+    case "iceHole": return "axe";
     default: return null;
   }
 }
@@ -282,6 +284,25 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = opt({ group: "camp", label: "Split a log", detail: "one log into 20 kg of firewood", duration: 15, repeatable: true });
       if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
+      return o;
+    }
+    case "fill": {
+      const holds = vesselLitresCapacity(p) + totalQty(invs, "barkBucket") * TOOLS.barkBucket.litres! + totalQty(invs, "waterskin") * TOOLS.waterskin.litres!;
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Fill vessels", detail: "every vessel in hand, from open water", duration: 5, repeatable: true }));
+      if (!o.ok) return o;
+      if (holds <= 0) return { ...o, ok: false, why: "needs a vessel" };
+      if (state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at)) {
+        if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "iced over; needs an axe for an ice hole" };
+        return { ...o, detail: `${o.detail}; opens an ice hole first`, duration: 25 };
+      }
+      return o;
+    }
+    case "iceHole": {
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Open an ice hole", detail: "20 minutes with the axe; skins over by morning", duration: 20 }));
+      if (!o.ok) return o;
+      if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
+      if (iceHoleOpen(state, at)) return { ...o, ok: false, why: "already open here" };
+      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       return o;
     }
     case "hunt": {
@@ -556,6 +577,8 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "repair"));
   out.push(check(state, world, cal, "rest"));
   out.push(check(state, world, cal, "sleep"));
+  out.push(check(state, world, cal, "fill"));
+  out.push(check(state, world, cal, "iceHole"));
   for (const id of RECIPE_IDS) out.push(check(state, world, cal, "craft", id));
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
   for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
@@ -603,7 +626,11 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   const need = toolFor(id, arg);
-  if (need && !hasTool(state.player, need)) takeUp(state, world, need);
+  if (need && !hasTool(state.player, need)) {
+    if (id === "fill") {
+      if (vesselLitresCapacity(state.player) <= 0 && !takeUp(state, world, "barkBucket")) takeUp(state, world, "waterskin");
+    } else takeUp(state, world, need);
+  }
   setAside(state, world);
   let any = false;
   if ((id === "hunt" || id === "fish") && arg === "any") {
@@ -1069,6 +1096,17 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         removeItem(camp, "ice", ice);
         addItem(camp, "water", ice);
       }
+      return;
+    }
+    case "fill": {
+      const added = fillVessels(state, world);
+      if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
+      return;
+    }
+    case "iceHole": {
+      wearTool(state, "axe", wearFactor(state, world, "chop"));
+      st.iceHole = { cell: cellOf(state, world), minute: state.minute };
+      log(state, "You cut a hole in the ice.");
       return;
     }
     case "haul":

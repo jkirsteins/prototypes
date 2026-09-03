@@ -19,7 +19,7 @@ import { regionState } from "./regionstate";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
-import { pourVessels } from "./water";
+import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres, waterSource } from "./water";
 import { candidateWeight, check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
@@ -36,6 +36,7 @@ const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
   chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
+  fill: "shore", iceHole: "shore",
 };
 
 /** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
@@ -71,6 +72,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "fish": return "fish";
     case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
+    case "fill": return "water";
     default: return null;
   }
 }
@@ -80,6 +82,8 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "haul") return "all";
   if (task === "chop") return ["log", "stick"];
   if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];
+  // A fill's litres never sit in the pack as an item; packCarries reads the vessels instead.
+  if (task === "fill") return ["water"];
   const one = yieldItem(task, arg);
   return one ? [one] : [];
 }
@@ -131,6 +135,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     return { cell: canConsume(reach(state, world), needs) ? here : st.campCell, note: "" };
   }
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
+  if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
   const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
@@ -245,6 +250,7 @@ function untilMet(state: GameState, it: Intent): boolean {
 
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
 function packCarries(state: GameState, it: Intent): boolean {
+  if (it.task === "fill") return vesselLitres(state.player) > 0 && campWaterRoom(pile(state, it.campCell)) > 0;
   const pack = state.player.pack;
   if (weight(pack) >= PACK_HARD_KG - 1e-9) return true;
   const items = yieldItems(it.task, it.arg);
@@ -435,6 +441,8 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   lightTorch: () => "lighting a torch",
   rest: () => "resting",
   sleep: () => "sleeping",
+  fill: () => "filling vessels",
+  iceHole: () => "cutting an ice hole",
 };
 
 /** The work step's text, with the place named when it is not where the camp pile sits. */
@@ -474,6 +482,11 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
+  // A fill on a frozen shore cuts its hole first; the fill follows next minute.
+  if (it.task === "fill" && !waterSource(state, world) && check(state, world, cal, "iceHole").ok) {
+    takeStep(state, world, cal, { id: "iceHole", step: "cutting an ice hole" }, rng);
+    return undefined;
+  }
   if (it.task === "night") return undefined;
   // Waiting rests by day; by night it sleeps outright, or a running rest keeps
   // raising energy and the sleep need's night clause (night and energy under

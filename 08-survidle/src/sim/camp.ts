@@ -156,6 +156,10 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
       }
     }
+    if (st.iceHole) {
+      st.iceHole = null;
+      if (id === state.player.region) log(state, "The ice hole has skinned over.");
+    }
     const forestCells = r.forest * r.cells.length;
     st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);
   }

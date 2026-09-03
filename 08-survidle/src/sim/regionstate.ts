@@ -32,6 +32,7 @@ export function newRegionState(world: World, id: number): RegionState {
     logsWet: 1440,
     orders: [],
     nextOrderId: 1,
+    iceHole: null,
   };
 }
 
