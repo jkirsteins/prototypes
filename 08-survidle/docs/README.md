@@ -63,6 +63,15 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   walk back, and the rest when the work is over; "Haul to camp" under
   advanced does the same for whatever lies where you stand. Building uses
   the camp pile plus your pack.
+- **Species.** About thirty animals live in the north, each with a range:
+  capercaillie in some old spruce country and not all of it, ptarmigan and
+  reindeer on the fell, eider and cod on the coast, perch and pike in the
+  lakes, wolves in patches of forest where the nights are dangerous. The
+  region card lists what lives here. Hunt or fish for a chosen species,
+  or for anything, and what you meet is drawn by how many are about. Each
+  species has its own mastery, yields and recommended level; fur-bearers
+  give fur, deer and bigger give hide, and big animals give fat, the
+  richest food there is.
 - **Body.** Food is a kilocalorie reserve. Warmth settles toward what your
   felt temperature can hold: ambient, plus clothing, fire and shelter at
   camp, plus activity, minus wetness. Below 20 warmth you lose health fast.
@@ -113,7 +122,8 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   were gone and what any of them is blocked on. You can die while away.
 - **Winter** is December to February at 62 N: about five hours of light,
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
-  Deer and elk thin out. You need hide clothing, a cabin, and a wood pile.
+  Deer and elk thin out, the ducks and geese are gone south, and the lakes'
+  birds leave with the ice. You need hide clothing, a cabin, and a wood pile.
 
 ## Debug URL parameters
 
@@ -137,7 +147,9 @@ terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 ## Where the numbers live
 
 - `src/units.ts`: the time scale and pack limits.
-- `src/sim/items.ts`: weights, foods, recipes, structures, animals.
+- `src/sim/items.ts`: weights, foods, recipes, structures.
+- `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls.
+- `src/world/wildlife.ts`: how a region's habitat and a species' range become a capacity.
 - `src/sim/player.ts`: kcal burn, warmth balance, energy, wetness, health.
 - `src/sim/body.ts`: when an intent sleeps, warms up, eats and provisions.
 - `src/sim/weather.ts`: the temperature curve, precipitation, snow.

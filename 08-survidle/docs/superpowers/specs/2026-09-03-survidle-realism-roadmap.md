@@ -13,8 +13,8 @@ file as `2026-MM-DD-survidle-<name>-design.md`.
   -3 C costs 30 to 55 warmth. This is the killer that actually kills.
 - Starvation: 6000 kcal full, 100 to 400 an hour burned, and only 2 health
   an hour once empty, so it is slow.
-- Wolves: one percent per night hour outside shelter, twice that in winter.
-  D makes that the local wolf density: no wolves, quiet nights.
+- Wolves: two percent per night hour outside shelter at full local wolf
+  density, twice that in winter; no wolves, quiet nights.
 - Fever: rare, four times likelier soaked and cold, slow unless untreated.
 
 What is already hard and stays: fishing barely breaks even on calories, a
@@ -808,18 +808,20 @@ content tiers. Soft gates throughout, never "locked":
 
 ### D. Species and sound
 
-Specced and planned: `2026-09-03-survidle-species-and-sound-design.md`,
-plans `2026-09-03-survidle-species.md` and `2026-09-03-survidle-sound.md`.
-About thirty species in one catalogue, each with a habitat, a range that
-does not cover every suitable region, a season, yields and calls; wolves,
-bear and wolverine as populations; hunt or fish for a chosen species or
-for whatever is about; fur as its own item. Then the sound of the place:
-beds for the ground, water, weather and hearth, calls from the species
-here at their hours, footsteps and the axe, one-shot cues that 7's
-thunder and 8's crackle plug into. It is here beside the idle loop because
-the roster is what B's forecast and A's orders hunt, and it lands right
-after A because it rewrites the hunt and fish branches that A's runner
-drives.
+Specced: `2026-09-03-survidle-species-and-sound-design.md`, plans
+`2026-09-03-survidle-species.md` and `2026-09-03-survidle-sound.md`. The
+species half is built (this branch): about thirty species in one
+catalogue, each with a habitat, a range that does not cover every
+suitable region, a season, yields and calls; wolves, bear and wolverine
+as populations; hunt or fish for a chosen species or for whatever is
+about; fur as its own item. Later: snares that take grouse, bear and
+wolverine that act (4), seals on the coast, grayling and salmon with the
+rivers. The sound half is next: beds for the ground, water, weather and
+hearth, calls from the species here at their hours, footsteps and the
+axe, one-shot cues that 7's thunder and 8's crackle plug into. It is here
+beside the idle loop because the roster is what B's forecast and A's
+orders hunt, and it lands right after A because it rewrites the hunt and
+fish branches that A's runner drives.
 
 ### E. Hides and clothing
 
