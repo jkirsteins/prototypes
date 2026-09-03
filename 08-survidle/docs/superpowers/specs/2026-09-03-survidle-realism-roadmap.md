@@ -329,6 +329,40 @@ that starts fires. This is the storm that makes wind direction visible in
 play, since the gust front and the smoke that follows both have a side.
 The odds are 8's to set; the event is this sub-project's.
 
+**Showing it.** A thunderstorm is the most visible weather the game
+will have and it should look and sound like one, not like a dark rain.
+Worth considering:
+
+- Before it: the light goes wrong in the hour of warning. The map's
+  lighting already tints by phase and rain; a thunderstorm gets its own
+  phase, darker than overcast at noon with a bruised olive-violet cast,
+  and the sky strip shows the anvil, a dark band across the top with the
+  horizon still lit beneath it, which is what an approaching cell looks
+  like. The sun disc goes behind it.
+- The gust front: the rain overlay's angle follows the wind direction
+  instead of the fixed slant it has now, and thickens at the front. The
+  clock line's wind reading jumps.
+- Lightning: a whole-map flash of about 100 ms, brightness up and the tint
+  to white for two frames then decaying, sometimes a double. At night the
+  flash lifts the night shade for that instant, so a storm is the one time
+  you see the country beyond the firelight: the lake, the fell, the
+  neighbour's black burn scar. A bolt on the sky strip for a frame. The
+  struck cell flares for a second, and if it took, the smoulder that
+  follows is 8's. Honour reduced-motion: a flash becomes a dim pulse.
+- Sound: the species-and-sound spec has a cue system and buses but is not
+  built; it gains `thunder` and `gust` cues. Thunder is a one-shot on the
+  action bus so it plays with ambience off, in near and far variants
+  round-robin, delayed after the flash by the strike's distance so a far
+  storm is heard before it is seen coming. The delay has to be in real
+  seconds while the clock runs a game minute a second, so it reads as a
+  distance cue rather than a physical one: settle that in the spec. Wind
+  itself is a loop by speed, which the spec's "open" ambience already
+  doubles in a storm and can now grade.
+- The log: "The sky has gone the colour of a bruise." an hour out,
+  "Thunder over the fells." at the first strike, "Lightning struck the
+  pine ridge to the north." when a strike lands in view, so the fire that
+  flares two days later has a cause the player read.
+
 **What to settle in the spec.** Whether wind is one value for the world
 like the rest of the weather or shaped by the ground (a fell top is
 always windier than a valley floor, which the elevation every cell has
