@@ -3,8 +3,9 @@ import { regionAt, speciesHere, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
-import { isVoiceOnly, type Species, SPECIES_DEFS } from "./species";
+import { isVoiceOnly, seasonFactor, type Species, SPECIES_DEFS } from "./species";
 import type { GameState, RegionState } from "./types";
+import { ICE_THIN_CM } from "./weather";
 
 const MIGRATION = 0.03;
 /** Species whose comings and goings near the player are worth a log line. */
@@ -27,16 +28,16 @@ export function popOf(st: RegionState, s: Species): number {
   return st.pop[s] ?? 0;
 }
 
-/** Capacity as it stands this season: winter thins the browsers, migrants are away. */
-export function seasonalCapacity(world: World, region: number, s: Species, cal: Calendar): number {
+/** Capacity as it stands this season: winter thins the browsers, migrants are away, lake birds leave a frozen lake. */
+export function seasonalCapacity(world: World, region: number, s: Species, cal: Calendar, iceCm = 0): number {
   const k = regionAt(world, region).capacity[s] ?? 0;
-  const r = SPECIES_DEFS[s].season;
-  if (r.kind === "resident") return cal.season === "winter" ? k * (r.winter ?? 1) : k;
-  return cal.month >= r.arrive && cal.month < r.leave ? k : 0;
+  const def = SPECIES_DEFS[s];
+  if (def.kind === "bird" && def.habitat.lake !== undefined && iceCm >= ICE_THIN_CM) return 0;
+  return k * seasonFactor(def, cal.month);
 }
 
 export function regionDensity(state: GameState, world: World, region: number, s: Species, cal: Calendar): number {
-  return density(popOf(regionState(state, world, region), s), seasonalCapacity(world, region, s, cal));
+  return density(popOf(regionState(state, world, region), s), seasonalCapacity(world, region, s, cal, state.weather.iceCm));
 }
 
 /** Runs once per game day at 04:00: growth, then migration. Logs notable movements near the player. */
@@ -52,7 +53,7 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     const st = state.regions[id];
     for (const s of speciesHere(r)) {
       const def = SPECIES_DEFS[s];
-      const k = seasonalCapacity(world, r.id, s, cal);
+      const k = seasonalCapacity(world, r.id, s, cal, state.weather.iceCm);
       const pop = popOf(st, s);
       if (isVoiceOnly(s)) {
         st.pop[s] = k;
@@ -83,18 +84,18 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
       if (SPECIES_DEFS[s].kind !== "mammal") continue;
       const n = popOf(st, s) * MIGRATION;
       if (n < 0.01) continue;
-      const weights = nbs.map((nb) => {
-        const k = seasonalCapacity(world, nb.id, s, cal);
-        return Math.max(0, k - popOf(state.regions[nb.id], s));
-      });
-      const total = weights.reduce((a, b) => a + b, 0);
-      if (total <= 0) continue;
+      // Only neighbours with room; a region that never holds the species has weight 0 and must not be a fallback.
+      const candidates = nbs
+        .map((nb) => ({ id: nb.id, weight: Math.max(0, seasonalCapacity(world, nb.id, s, cal, state.weather.iceCm) - popOf(state.regions[nb.id], s)) }))
+        .filter((c) => c.weight > 0);
+      if (!candidates.length) continue;
+      const total = candidates.reduce((a, c) => a + c.weight, 0);
       let pick = rng.next() * total;
-      let to = nbs[0].id;
-      for (let i = 0; i < weights.length; i++) {
-        pick -= weights[i];
+      let to = candidates[candidates.length - 1].id;
+      for (const c of candidates) {
+        pick -= c.weight;
         if (pick <= 0) {
-          to = nbs[i].id;
+          to = c.id;
           break;
         }
       }

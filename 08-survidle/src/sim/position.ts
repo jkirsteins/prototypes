@@ -83,10 +83,8 @@ export function heathCell(world: World, idx: number): boolean {
 
 /** Land beside water: any water, or only a lake or only the sea. */
 export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "any" = "any"): boolean {
-  return neighbours(world, idx).some((n) => {
-    const w = waterKindOf(world, n);
-    return w !== null && (kind === "any" || w === kind);
-  });
+  if (kind === "any") return neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water");
+  return neighbours(world, idx).some((n) => waterKindOf(world, n) === kind);
 }
 
 export function inForest(state: GameState, world: World): boolean {

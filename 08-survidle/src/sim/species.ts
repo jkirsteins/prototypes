@@ -138,7 +138,7 @@ const SPECIES_DEFS_RAW = {
   roach: fish("roach", 40, null, 0.6, 0.7, 0.2),
   pike: fish("pike", 8, null, 0.8, 0.35, 2.0, { level: 3 }),
   whitefish: fish("whitefish", 20, null, 0.6, 0.5, 0.6, { level: 2 }),
-  char: fish("arctic char", 15, null, 0.4, 0.45, 0.8, { level: 4, needs: ["fell", "rock"] }),
+  char: fish("arctic char", 15, null, 0.3, 0.45, 0.8, { level: 4 }),
   trout: fish("brown trout", 12, null, 0.5, 0.4, 0.7, { level: 3 }),
   burbot: fish("burbot", 10, null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5) }),
 

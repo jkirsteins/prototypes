@@ -164,7 +164,7 @@ Lake fish. Habitat `lake`; hunted from the shore of a lake.
 | roach | roach | 40 | 0.6 | resident | 0.7 | 0.2 |
 | pike | pike | 8 | 0.8 | resident | 0.35, level 3 | 2.0 |
 | whitefish | whitefish | 20 | 0.6 | resident | 0.5, level 2 | 0.6 |
-| char | arctic char | 15 (only where fell or rock is also present) | 0.4 | resident | 0.45, level 4 | 0.8 |
+| char | arctic char | 15 | 0.3 | resident | 0.45, level 4 | 0.8 |
 | trout | brown trout | 12 | 0.5 | resident | 0.4, level 3 | 0.7 |
 | burbot | burbot | 10 | 0.5 | resident, winter 1.5 | 0.4, level 2, night 1.3 | 1.2 |
 
@@ -213,8 +213,7 @@ share a roster. A species is densest in the heart of its range and thin at
 the edge. `speciesIndex` is the species' position in the catalogue's key
 order, which is therefore load-bearing: reordering the catalogue redraws
 every range. The beaver's `raw` is multiplied by `min(1, 4 * (frac.birch +
-frac.meadow))` and the char's by `min(1, 4 * (frac.fell + frac.rock))`, the
-"only where" conditions in the tables.
+frac.meadow))`, the "only where" condition in the table.
 
 `RegionDef.capacity` becomes `Partial<Record<Species, number>>`; absent
 means never here. `speciesHere(region)` lists the keys with capacity.
