@@ -1,7 +1,7 @@
 /**
  * Clothing that gets wet garment by garment. Rain finds the outer layer
- * first; a soaked coat is half a coat; nothing dries in the rain, little
- * dries in the open, and the fire dries everything.
+ * first; a soaked coat is half a coat. A fire or a roof wins over the rain
+ * and dries you instead; only rain in the open, with neither, wets you.
  */
 import { clamp } from "../units";
 import { CLOTHING } from "./items";
@@ -33,19 +33,18 @@ export function wetFactor(g: Garment): number {
   return 1 - loss * (garmentWet(g) / 100);
 }
 
-/** Wetting rate per minute for the outer layer in this exposure; zero when dry or indoors. */
+/** Wetting rate per minute for the outer layer out in the weather; zero by the fire, under a roof, in a cabin, or when dry. */
 function wetRate(x: Exposure): number {
-  if (!x.raining || x.cabin) return 0;
+  if (x.fireAtCamp || x.roof || x.cabin || !x.raining) return 0;
   let r = x.heavy ? 2 : 1;
   if (x.snowing) r *= 0.25;
-  if (x.roof) r *= 0.5;
   if (x.storm) r *= 2;
   return r;
 }
 
+/** Drying rate per minute: the fire wins over the rain, then a roof, then dry weather. */
 function dryRate(x: Exposure): number {
-  if (x.raining) return 0;
-  return x.fireAtCamp ? 20 / 60 : 5 / 60;
+  return x.fireAtCamp ? 20 / 60 : x.roof ? 5 / 60 : x.raining ? 0 : 5 / 60;
 }
 
 /** Wets or dries every garment for dt minutes. */

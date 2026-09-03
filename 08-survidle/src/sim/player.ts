@@ -182,24 +182,23 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.
-  const raining = w.precip !== "none";
-  if (raining && !cabin) {
-    let wet = w.precip === "heavy" ? 2 : 1;
-    if (roof) wet *= 0.5;
+  if (x.raining && !x.cabin) {
+    let wet = x.heavy ? 2 : 1;
+    if (x.roof) wet *= 0.5;
     // Snow brushes off; it dampens rather than soaks.
-    const cap = ambient <= 0 ? SNOW_DAMP_MAX : 100;
-    if (ambient <= 0) wet *= 0.25;
+    const cap = x.snowing ? SNOW_DAMP_MAX : 100;
+    if (x.snowing) wet *= 0.25;
     // A dry coat and trousers keep the rain off the skin; only a soaked layer lets it through.
     wet *= skinExposure(state);
     p.wetness = clamp(p.wetness + wet * dt, 0, Math.max(p.wetness, cap));
   } else {
-    const dry = r.fire.lit && camp && campTask ? 1.5 : roof ? 0.5 : raining ? 0 : 0.3;
+    const dry = x.fireAtCamp ? 1.5 : x.roof ? 0.5 : x.raining ? 0 : 0.3;
     p.wetness = clamp(p.wetness - dry * dt, 0, 100);
   }
 
   // Clothing wears when worn outdoors; bedding only while it is out of the pack.
   if (!roof) {
-    const wear = (raining ? 1.0 : 0.5) * h;
+    const wear = (x.raining ? 1.0 : 0.5) * h;
     const inUse = bedded(state.task);
     for (const g of p.clothing) {
       if (CLOTHING[g.id].slot === "blanket" && !inUse) continue;

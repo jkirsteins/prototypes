@@ -19,7 +19,7 @@ describe("wet clothing", () => {
     expect(insulation(state)).toBeLessThan(ins0);
   });
 
-  it("dries fastest by the fire, slowly under a roof or in dry weather, not at all in rain", () => {
+  it("dries fastest by the fire, slowly under a roof or in dry weather, not at all in rain in the open", () => {
     const { state } = newGame(1);
     for (const g of state.player.clothing) g.wet = 100;
     stepGarments(state, { ...dry, roof: true, fireAtCamp: true }, 60);
@@ -30,6 +30,13 @@ describe("wet clothing", () => {
     for (const g of state.player.clothing) g.wet = 100;
     stepGarments(state, { ...dry, raining: true }, 60);
     expect(garmentWet(state.player.clothing[0])).toBe(100);
+    // A fire, or even just a roof, wins over the rain: still net drying.
+    for (const g of state.player.clothing) g.wet = 100;
+    stepGarments(state, { ...dry, raining: true, fireAtCamp: true, roof: true }, 60);
+    expect(garmentWet(state.player.clothing[0])).toBeCloseTo(80, 6);
+    for (const g of state.player.clothing) g.wet = 100;
+    stepGarments(state, { ...dry, raining: true, roof: true }, 60);
+    expect(garmentWet(state.player.clothing[0])).toBeCloseTo(95, 6);
   });
 
   it("the skin stays dry under a dry coat, and wet gear wears half again as fast", () => {
