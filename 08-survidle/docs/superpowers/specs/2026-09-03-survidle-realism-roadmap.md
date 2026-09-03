@@ -78,19 +78,20 @@ The numbers below are names, not the sequence; they stay put so specs can
 cite them while sections are still being written. The build order is by
 reason to return, soonest first: what kills an away run soonest, then
 what makes the death worth coming back from, then what makes the next
-death fair, then content. So: 1 (built), A standing orders (built), D's
-species half (built), then the baseline (the section of that name under
-the idle loop: water at camp, the thirst priority, arrows in the pack,
-wet wood, the rack as a task, tool keeps, and a start with a shore and
-rock), then F's core (the world saved instead of the person, the journal,
-the dim map, cumulative days and placement, the season spine, the
-reference player; not its ramp), then B the risk forecast with the away
+death fair, then content. So: 1 (built), A standing orders (built), D
+species and sound (built), then the baseline (the section of that name
+under the idle loop: water at camp, the thirst priority, arrows in the
+pack, wet wood, the rack as a task, tool keeps, and a start with a shore
+and rock, with the reference player as its gate), then F's core (the
+world saved instead of the person, the journal, the dim map, cumulative
+days, the season spine; not its ramp, and not decay, trails, search or
+placement, which land with 3), then B the risk forecast with the away
 cap as its horizon, then the first producers and stocks (C's basket trap,
 and 3's water storage and cellar, pulled out of their items), then E
-hides and clothing with D's sound half beside it, then the rest of 3 camp
-(siting, the shelter ladder, the buildings) with the rest of C alongside,
-then 4 animals, 5 injury and the body model, 7 wind, 8 forest fire, and 6
-territory last. F's ramp is not one slot: its parts land inside C (the
+hides and clothing, then the rest of 3 camp (siting, the shelter ladder,
+the buildings) with the rest of C alongside and F's decay, trails, search
+and placement, then 4 animals, 5 injury and the body model, 7 wind with
+1's fog beside it, 8 forest fire, and 6 territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
 4 and 6 (depletion and fed wolves), each when its sub-project does, and
 the reference player says when the ramp is enough. 2 rivers is flavour
@@ -112,17 +113,16 @@ so death is the first thing a returning player meets, and today it is a
 deletion. F's core is the smaller build (a save shape, a log the game
 already writes, a fog level, a counter) and it turns that death into a
 chapter. B is the larger and riskier build (a worker running the real
-sim several times over) and its calibration wants F's reference player
-already in place. B is still what makes an away death fair, which is why
+sim several times over) and its calibration wants the reference player,
+which lands with the baseline, already in place. B is still what makes an away death fair, which is why
 it comes before any content: the trap and the cellar are the first things
 that yield while the player is gone, and they come after the death they
 can cause is a foreseeable one.
 
-Why D's sound half waits: the species half earned its early slot because
-the roster is what the orders hunt. Beds, calls and footsteps are truth
-with no reason to return, and the rule at the end of this file says that
-waits behind what has one. It lands beside E, when the content it
-decorates exists.
+Why D landed whole and early: the species half because the roster is
+what the orders hunt, and the sound half beside it because the cue sink
+reads the same roster. Nothing later waits on sound; 7's thunder and 8's
+crackle are cues its engine already takes.
 
 Why E and 3 come after: E comes straight after the producers because D's
 fur and fat are its inputs and because 5 (insects, burns on bare skin), 7
@@ -136,9 +136,10 @@ first of the regrowth clocks Territory generalises.
 
 Specced and in build: `2026-09-03-survidle-body-and-elements-design.md`.
 That spec holds water, ice, wet clothing and frostbite, wet wood, smoke,
-storms and exhaustion. Fog, described below, is not in it: it gets its
-own spec after 3, and a shore or a region edge is what you follow out of
-it until 2 adds a river bank.
+storms and exhaustion. Fog, described below, is not in it: it lands
+beside 7, whose wind is the missing half of its dissipation rule, and a
+shore or a region edge is what you follow out of it until 2 adds a river
+bank. Seeing through it and getting lost in it stay with 6.
 
 Thirst and water: a third reserve beside food and warmth, drunk at a shore
 or from melted snow at a fire, which costs fuel; stored water freezes.
@@ -526,8 +527,8 @@ Worth considering:
   neighbour's black burn scar. A bolt on the sky strip for a frame. The
   struck cell flares for a second, and if it took, the smoulder that
   follows is 8's. Honour reduced-motion: a flash becomes a dim pulse.
-- Sound: the species-and-sound spec has a cue system and buses but is not
-  built; it gains `thunder` and `gust` cues. Thunder is a one-shot on the
+- Sound: the cue system and buses are built; they gain `thunder` and
+  `gust` cues. Thunder is a one-shot on the
   action bus so it plays with ambience off, in near and far variants
   round-robin, delayed after the flash by the strike's distance so a far
   storm is heard before it is seen coming. The delay has to be in real
@@ -782,7 +783,11 @@ What the build taught, for the sub-projects after it:
 Seven fixes to rules that already exist, in the order they killed the
 headless runs of A's runner. None is a new system; each is a stock, a
 priority or a keep the loop needs before any content lands on it. They
-get one spec between them.
+get one spec between them, and F's reference player is that spec's gate:
+the scripted set-up on four seeds is what found these seven, its harness
+lived only in a session scratchpad, and it is rebuilt here as a script in
+the tree so that "reaches 1 December on four seeds" is a command, not a
+memory.
 
 - **Water at camp.** A shore ices over from 2 cm and snow is gone on
   many April days, so a region has days with no water at all; the fire
@@ -790,8 +795,9 @@ get one spec between them.
   thirsty need never lights a fire to melt snow, only uses one already
   lit. An ice hole at the shore, a water stock at camp that a keep can
   hold ("keep camp at 6 litres", the trough or filled bucket that 3's
-  storage grows into), and a thirsty step that lights the fire the way the
-  cold step does.
+  storage grows into; the spec fixes the minimal stock so 3 extends it
+  rather than rewriting it), and a thirsty step that lights the fire the
+  way the cold step does.
 - **Thirst before hunger.** `currentNeed` returns hungry before it looks
   at thirst, and a hunger with no food to answer it still wins, so the
   runner works on until thirst kills it with water in reach. A need with
@@ -884,22 +890,21 @@ content tiers. Soft gates throughout, never "locked":
 
 ### D. Species and sound
 
-Specced: `2026-09-03-survidle-species-and-sound-design.md`, plans
+Built: `2026-09-03-survidle-species-and-sound-design.md`, plans
 `2026-09-03-survidle-species.md` and `2026-09-03-survidle-sound.md`. The
-species half is built (this branch): about thirty species in one
-catalogue, each with a habitat, a range that does not cover every
-suitable region, a season, yields and calls; wolves, bear and wolverine
-as populations; hunt or fish for a chosen species or for whatever is
-about; fur as its own item. Later: snares that take grouse, bear and
-wolverine that act (4), seals on the coast, grayling and salmon with the
-rivers. The sound half waits for E: beds for the ground, water, weather
-and hearth, calls from the species here at their hours, footsteps and the
-axe, one-shot cues that 7's thunder and 8's crackle plug into. Sound is
-truth with no reason to return, so it lands when there is content to
-decorate. The species half is here beside the idle loop because the
-roster is what B's forecast and A's orders hunt, and it landed right
-after A because it rewrites the hunt and fish branches that A's runner
-drives.
+species half: about thirty species in one catalogue, each with a
+habitat, a range that does not cover every suitable region, a season,
+yields and calls; wolves, bear and wolverine as populations; hunt or
+fish for a chosen species or for whatever is about; fur as its own item.
+The sound half: beds for the ground, water, weather and hearth, calls
+from the species here at their hours, footsteps and the axe, and one-shot
+cues that 7's thunder and 8's crackle plug into; the recordings and
+their licences are in `public/audio/manifest.md`, and the ones marked for
+replacement are a loose end, not a slot. Later: snares that take grouse,
+bear and wolverine that act (4), seals on the coast, grayling and salmon
+with the rivers. D is here beside the idle loop because the roster is
+what B's forecast and A's orders hunt, and it landed right after A
+because it rewrites the hunt and fish branches that A's runner drives.
 
 ### E. Hides and clothing
 
@@ -1060,8 +1065,12 @@ Not specced. The high-level guidance is here so the spec has something
 to argue with; the numbers are first targets, not rulings. It builds in
 two parts: the core, which is one slot right after the baseline (the
 world saved instead of the person, the journal, the dim map, cumulative
-days and placement, the season spine, the reference player), and the
-ramp, whose parts land inside the sub-projects that own them.
+days, the season spine), and the ramp, whose parts land inside the
+sub-projects that own them. The core is a save shape, a log the game
+already writes, a fog level, a counter and a panel, and nothing else:
+decay, trails, search and placement below are F's but land with 3,
+because each needs a camp that can be sited, left and found. The
+reference player is F's instrument and lands with the baseline.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -1159,7 +1168,14 @@ camps at it, the placement ladder is skipped. Either the landing moves
 random along the coast) or the good land is deliberately not at the
 coast, so camping at the landing is a bad camp. The second is more
 honest and the terrain already reads that way: shore, then bog, then the
-forest and rock a camp wants. The spec settles it.
+forest and rock a camp wants. It also contradicts the baseline, which
+puts a shore and an outcrop at the start on purpose so the first camp
+can be idled, and it is hollow while camp is the region's centroid cell
+that nobody places: the heir set down in the start region is in reach of
+the old camp whatever the counter says. So placement waits for 3's
+siting, and the spec settles the landing then; until it does, cumulative
+days buy the journal, the map and the trails, and nothing about where you
+stand.
 
 **Search.** A cabin in fog is a real find. The vision ring, per-cell fog
 and named spots exist; what is missing is a "search this region"
@@ -1170,9 +1186,11 @@ journal's direction, or by the trail.
 **The reference player.** The ramp and the ratchet are calibrated by
 headless runs, the way the baseline was found: a scripted set-up that a
 competent player would make, run on four seeds, and its day of death and
-cause reported. Its pass criterion moves with the roadmap: reaches
-1 December before winter content, dies in year two after the ramp lands,
-and never reads a zero month forecast. It is the test that keeps "no
+cause reported. It is built with the baseline, as that spec's gate, and
+it is F's because F is what it measures from then on. Its pass criterion
+moves with the roadmap: reaches 1 December before winter content, dies
+in year two after the ramp lands, and never reads a zero month
+forecast. It is the test that keeps "no
 set-up holds forever" true as content is added under it.
 
 **What this asks of the sub-projects around it.** 3's siting and cellar
