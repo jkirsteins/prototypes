@@ -7,8 +7,8 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, orderMet } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { check } from "../src/sim/tasks";
-import { waterSource } from "../src/sim/water";
+import { beginTask, check } from "../src/sim/tasks";
+import { vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
 import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -101,6 +101,20 @@ describe("the fill task", () => {
     // The daily tick runs at 04:00; from 1 April 06:00 that is under a day away.
     expect(until(g, () => st.iceHole === null, 1500)).toBe(true);
     expect(state.log.some((l) => l.text === "The ice hole has skinned over.")).toBe(true);
+  });
+
+  it("a manual fill on a frozen shore cuts the hole itself, then fills the vessel", () => {
+    const { state, world } = waterCamp();
+    state.weather.iceCm = 10;
+    state.weather.snowCm = 0;
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    placeAt(state, world, shore.cell);
+    expect(beginTask(state, world, cal, "fill")).toBe(true);
+    expect(state.task?.duration).toBe(25);
+    advance(state, world, 25);
+    const st = regionState(state, world, state.player.region);
+    expect(st.iceHole?.cell).toBe(shore.cell);
+    expect(vesselLitres(state.player)).toBeCloseTo(vesselLitresCapacity(state.player), 5);
   });
 
   it("with no axe in reach a frozen shore blocks the fill and says so", () => {

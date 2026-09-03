@@ -32,7 +32,7 @@ import type {
   GameState, IceMode, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
 } from "./types";
-import { campPileHere, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitres, vesselLitresCapacity, WATER_FULL } from "./water";
+import { campPileHere, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -894,6 +894,16 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
   }
 }
 
+/** Cuts an ice hole here: takes up an axe from the pack or the pile underfoot if none is in hand, wears it, and opens the hole. Both complete("fill") on an iced shore and complete("iceHole") share this so the two never drift. */
+function cutIceHole(state: GameState, world: World): void {
+  const p = state.player;
+  const st = regionState(state, world, p.region);
+  if (!hasTool(p, "axe")) takeUp(state, world, "axe");
+  wearTool(state, "axe", wearFactor(state, world, "chop"));
+  st.iceHole = { cell: cellOf(state, world), minute: state.minute };
+  log(state, "You cut a hole in the ice.");
+}
+
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
@@ -1119,6 +1129,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "fill": {
+      if (!waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
       const added = fillVessels(state, world);
       if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
       return;
@@ -1129,9 +1140,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "iceHole": {
-      wearTool(state, "axe", wearFactor(state, world, "chop"));
-      st.iceHole = { cell: cellOf(state, world), minute: state.minute };
-      log(state, "You cut a hole in the ice.");
+      cutIceHole(state, world);
       return;
     }
     case "haul":
