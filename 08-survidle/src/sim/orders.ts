@@ -136,10 +136,20 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
  * instead of restarting every minute only to fail at the first step.
  */
 export function chooseOrder(state: GameState, world: World, cal: Calendar): Order | null {
-  const liveId = state.intent?.orderId ?? null;
+  const live = state.intent;
+  const liveId = live?.orderId ?? null;
   const here = cellOf(state, world);
   let chosen: Order | null = null;
   for (const o of ordersHere(state, world)) {
+    // The live order carrying a load home is still able to run: judging it
+    // afresh re-checks legality at the work cell (the shore), where the load
+    // just filled there reads as "the vessels are full" every trip, even
+    // though nothing is wrong - it is on its way to be poured.
+    if (o.id === liveId && live && deliveryPending(state, live)) {
+      o.skipped = "";
+      if (!chosen) chosen = o;
+      continue;
+    }
     if (orderMet(state, world, o, o.id === liveId)) {
       markSkipped(state, world, cal, o, "");
       continue;

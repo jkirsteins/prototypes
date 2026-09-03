@@ -64,6 +64,28 @@ describe("the fill task", () => {
     expect(qty(camp, "water")).toBeCloseTo(2, 5);
   });
 
+  it("a keep run to its first delivery never logs 'the vessels are full' while walking the load home", () => {
+    const { g, state, world, camp } = waterCamp();
+    const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(until(g, () => orderMet(state, world, o, true), 6000)).toBe(true);
+    expect(qty(camp, "water")).toBeCloseTo(2, 5);
+    expect(state.log.some((l) => l.text.includes("the vessels are full"))).toBe(false);
+  });
+
+  it("with a vessel in hand and none at camp, a full carried vessel reports the truer reason", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    addItem(state.player.pack, "barkBucket", 1);
+    takeUp(state, world, "barkBucket");
+    const bucket = state.player.tools.find((t) => t.id === "barkBucket")!;
+    bucket.litres = vesselLitresCapacity(state.player);
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    placeAt(state, world, shore.cell);
+    const o = check(state, world, cal, "fill");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("no vessel at camp to pour into");
+  });
+
   it("a keep past the camp's capacity is skipped with the reason, not looped", () => {
     const { state, world, camp } = waterCamp();
     addItem(camp, "water", 2);
