@@ -3,7 +3,7 @@
 Survidle should be as hard as the north is. Being away must be riskier than
 playing by hand, never safer: the intent runner carries out what you asked
 and adds no safety nets. What makes it hard in real life applies here too.
-This roadmap names the work in seven sub-projects, each with its own spec,
+This roadmap names the work in eight sub-projects, each with its own spec,
 plan and build, in the order they should land. Each spec lives beside this
 file as `2026-MM-DD-survidle-<name>-design.md`.
 
@@ -20,7 +20,7 @@ What is already hard and stays: fishing barely breaks even on calories, a
 bow needs cordage, a log, a knife and arrows need sinew from a kill, a deer
 is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
-## The seven sub-projects, in order
+## The eight sub-projects, in order
 
 ### 1. Body and elements
 
@@ -105,8 +105,8 @@ raised cache or cellar, storehouse, tool shed, palisade, a chimney or vent
 as part of a shelter, roofs with a snow load they can fail under, water
 storage. Bridges: a log bridge on a narrow segment, a longer one on a
 wider segment for more logs, more cordage and days of work, and a bridge
-the flood can take. Every building is an answer to a threat from 1, 2, 4
-or 7, and its cost is tuned against that threat.
+the flood can take. Every building is an answer to a threat from 1, 2, 4,
+7 or 8, and its cost is tuned against that threat.
 
 ### 4. Animals as agents
 
@@ -275,16 +275,79 @@ lodestone, cordage and a stick, a few minutes of work, kept as a tool. It
 does nothing by day in clear weather, when the sun steers you, and
 everything in fog, at night under overcast, and on a fell in cloud.
 
-### 7. Forest fire
+### 7. Wind and thunder
+
+There is no wind in the game. A storm is a window of heavy rain lasting 6
+to 18 hours with a flat -6 C felt-temperature penalty standing in for it,
+and there is no thunder or lightning anywhere. Two of the entries above
+already reach for wind (fog is torn off by it, Territory's wind damage)
+and fire cannot be built without it, so wind is its own small sub-project
+that lands before 8 and that 1's fog, 4's hunting and 6 draw on. The
+details are for its spec; this is what is worth considering.
+
+**The field.** A direction, one of eight points, and a speed in metres a
+second, rolled at dawn with the temperature anomaly and persisting from
+yesterday with drift, so a wind holds for days the way it does. Storms
+force a gale. The clock line reads it ("breeze from the SW", "gale from
+the N"), and it is the first weather the player can plan around by
+direction: which side of the lake to camp on, which way to approach the
+elk.
+
+**What it should touch, once it exists.**
+
+- Felt temperature: wind chill in place of the flat storm penalty. A gale
+  on a fell in January is -35 felt at -15 ambient, and a calm cold snap
+  in the valley at the same reading is survivable. This is the change that
+  will kill the most players and needs the most care.
+- Fog: radiation fog forms on still nights and a breeze tears it off; the
+  fog entry's dissipation rule gets its missing half.
+- Drying: wet garments and wet wood dry faster in wind, a multiplier on the
+  drying tables.
+- Hunting: animals smell you upwind, so odds depend on where you stand
+  relative to the wind and the animal. Most of real stalking, and a cheap,
+  honest rung for the hunting ladder.
+- Fire at camp: a gale eats fuel faster and throws sparks; fire in the
+  forest spreads downwind (sub-project 8).
+- Snow: drift, deep in the lee and blown clear on the tops, so deep snow
+  has a place rather than a depth.
+- Ice: wind delays freeze-up on open water, for the rivers work.
+- Buildings: Territory's wind damage and roof failures.
+- Work: `fish` and `chop` already refuse in a storm as "too rough"; the
+  wind speed is what should decide that, not the storm flag.
+- Sound, if ever: cues carry downwind and not up.
+
+**Thunderstorms.** Not the existing long storm. At 62 N inland a
+thunderstorm is a hot summer afternoon, June to August, one to three
+hours, ten to fifteen days a year: it rolls only on warm days, arrives
+with a gust front before the rain, drops heavy rain directly under it and
+dry lightning around its edges, and is gone by evening. "Thunder over the
+fells." Strikes land near the storm's path, not anywhere in the country;
+a strike on a forest or bog cell at tinder starts a smoulder that flares
+one to three days later if the ground stays dry, and dies if rain comes
+first. One thunderstorm in four is dry where you are, which is the one
+that starts fires. This is the storm that makes wind direction visible in
+play, since the gust front and the smoke that follows both have a side.
+The odds are 8's to set; the event is this sub-project's.
+
+**What to settle in the spec.** Whether wind is one value for the world
+like the rest of the weather or shaped by the ground (a fell top is
+always windier than a valley floor, which the elevation every cell has
+could give for free); whether the felt-temperature change ships with a
+warmer clothing rung so winter stays winnable; and how much of the list
+above ships with wind itself against being left as a field for the
+sub-projects that want it.
+
+### 8. Forest fire
 
 The one threat that changes the map. Its inputs all exist: a dry-day count
 on the weather, storms, a camp fire that can already walk off camp, a torch
-that burns for an hour and cannot be put out, populations per region. What
-it needs that does not exist is wind, a real dryness number, and a way for
-a cell's ground to change. It is numbered last so nothing above renumbers,
-but its slot is between 4 and 6: after 4, since a fire is what makes the
-animals move, and before 6, because the burn's regrowth clock is the first
-of the regrowth clocks that Territory generalises. Sub-project 1's camp-fire spread (its section 3.3, a one-shot
+that burns for an hour and cannot be put out, populations per region, and
+wind and thunderstorms from 7. What it needs that does not exist is a
+real dryness number and a way for a cell's ground to change. It is
+numbered last so nothing above renumbers, but its slot is between 4 and
+6: after 4, since a fire is what makes the animals move, and before 6,
+because the burn's regrowth clock is the first of the regrowth clocks
+that Territory generalises. Sub-project 1's camp-fire spread (its section 3.3, a one-shot
 loss of 10 to 30 wood and the lean-to) becomes one of this sub-project's
 ignitions: the fire starts at the camp cell and what burns is what the
 fire reaches.
@@ -311,7 +374,7 @@ standing pines by year five, and elk and hare come to the browse. People
 in this country burnt spruce forest on purpose for rye (svedjebruk, kaski);
 that is a later camp feature this leaves room for.
 
-**Dryness, wind, lightning.** `Weather.dryDays` becomes two buckets, both
+**Dryness and lightning.** `Weather.dryDays` becomes two buckets, both
 in millimetres of evaporation deficit, since the ground dries by
 temperature and sun and wets by rain, not by a day count:
 
@@ -321,17 +384,13 @@ temperature and sun and wets by rain, not by a day count:
 | peat | 0 to 200 mm | the same rate | the same | bog burns above 120: five or six dry weeks |
 
 The clock line reads "dry" and "tinder dry", the log warns once at each
-("The ground is tinder dry." moves to the second). Wind is a daily roll
-at dawn like the temperature anomaly: one of eight directions and a speed
-in metres a second, persisting from yesterday with drift; a storm forces
-a gale. Fog, snow load and wind damage in 6 want the same field. A storm
-in fire season is a thunderstorm: "Thunder over the fells." One
-thunderstorm in four is dry where you are. Each strikes a few cells in
-the simulated country; a strike on a forest or bog cell at tinder starts
-a smoulder that flares one to three days later if the litter is still at
-tinder, and dies if rain comes first. Odds set so that a player at one
-camp sees a lightning fire in the neighbourhood every few dry summers,
-not every year.
+("The ground is tinder dry." moves to the second). Wind and the
+thunderstorm are 7's; this sub-project sets the odds of a strike taking:
+a strike on a forest or bog cell at tinder starts a smoulder that flares
+one to three days later if the litter is still at tinder, and dies if
+rain comes first, and the odds are set so that a player at one camp sees
+a lightning fire in the neighbourhood every few dry summers, not every
+year.
 
 **Ignitions from the player.** The camp-fire rule stays (over 12 kg, no
 one at camp for 2 hours, dry ground, 2 percent an hour); at tinder any
@@ -471,10 +530,10 @@ and the scar the next morning with the elk tracks on it a year later.
 
 ## The idle loop
 
-The seven above make the north dangerous. These three make Survidle an idle
+The eight above make the north dangerous. These three make Survidle an idle
 game in the sense of Melvor Idle and A Dark Room: you set up a system, you
 leave, and you come back to gains and a readout of how well the system
-held. They run beside the seven, not after them; the first is specced and
+held. They run beside the eight, not after them; the first is specced and
 should land before sub-project 2, since everything that follows is played
 through it. Every "away" carries a risk of dying. The point is that the
 risk is legible and the set-up lowers it.
@@ -526,7 +585,7 @@ content tiers. Soft gates throughout, never "locked":
   (sub-project 3), listed here because it is what an idle stock looks like
   in this game: a hut that yields wood per hour does not exist.
 
-## Rules that hold across all seven
+## Rules that hold across all eight
 
 - Every quantity stays real: litres, kilocalories, degrees, minutes,
   kilometres, metres of visibility, cubic metres a second, centimetres of
