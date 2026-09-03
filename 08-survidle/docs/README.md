@@ -72,6 +72,14 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   species has its own mastery, yields and recommended level; fur-bearers
   give fur, deer and bigger give hide, and big animals give fat, the
   richest food there is.
+- **Sound.** The place has a voice: wind in the trees or over the fell,
+  water at the shore, rain, the fire at camp, footsteps on leaves, snow or
+  bog, the axe. The species that live here call at their hours and in
+  their seasons: loons on a June evening, cranes on the bog, wolves at
+  night by the moon. Click once to start it; the Sound control mutes,
+  sets the volume and turns the ambience off on its own. Recordings and
+  their licences are listed in `public/audio/manifest.md`; several are for
+  this prototype only and are marked for replacement.
 - **Body.** Food is a kilocalorie reserve. Warmth settles toward what your
   felt temperature can hold: ambient, plus clothing, fire and shelter at
   camp, plus activity, minus wetness. Below 20 warmth you lose health fast.
@@ -162,3 +170,4 @@ terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
+- `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
