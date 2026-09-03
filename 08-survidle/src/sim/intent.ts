@@ -11,12 +11,12 @@ import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, provision } from "./body";
 import type { Calendar } from "./calendar";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
-import { ANIMALS, ITEM_KG, type Need, RECIPES, STRUCTURES } from "./items";
+import { ANIMALS, ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
-import { check, loadPack, stopTask, type TaskOption } from "./tasks";
+import { check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, Inventory, ItemId, RecipeId, SpotId, Species, StructureId, TaskId, Until,
 } from "./types";
@@ -330,6 +330,32 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   return "again";
 }
 
+/** What each piece of work looks like while it is happening, in place of the button's label. */
+const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
+  chop: () => "felling a tree",
+  sticks: () => "gathering sticks",
+  bark: () => "stripping bark",
+  stone: () => "gathering stone",
+  berries: () => "picking berries",
+  split: () => "splitting a log",
+  hunt: (arg) => `hunting ${ANIMALS[arg as Species].name}`,
+  fish: () => "fishing",
+  cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
+  craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,
+  repair: () => "mending clothing",
+  sharpen: () => "sharpening the axe",
+  build: (arg) => `building the ${STRUCTURES[arg as StructureId].name}`,
+  light: () => "lighting the fire",
+  rest: () => "resting",
+  sleep: () => "sleeping",
+};
+
+/** The work step's text, with the place named when it is not where the camp pile sits. */
+function workGerund(state: GameState, world: World, it: Intent): string {
+  const g = GERUND[it.task]?.(it.arg) ?? it.task;
+  return it.cell === it.campCell ? g : `${g} at ${whereIs(state, world, it.cell)}`;
+}
+
 /** The work tier: one rule fires. "again" means an instant action was taken and the next decision can follow at once. */
 function workStep(state: GameState, world: World, cal: Calendar): Outcome {
   const it = state.intent!;
@@ -350,7 +376,7 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   if (it.task === "night") return undefined;
-  const step: Step = { id: it.task, arg: it.arg, step: o ? o.label.charAt(0).toLowerCase() + o.label.slice(1) : it.task === "rest" ? "resting" : "sleeping" };
+  const step: Step = { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
   if (!takeStep(state, world, cal, step)) endIntent(state, `${label}: cannot go on. You stop.`, "bad");
   return undefined;
 }

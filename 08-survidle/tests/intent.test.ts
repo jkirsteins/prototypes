@@ -111,7 +111,7 @@ describe("the work tier", () => {
     expect(state.task?.id).toBe("walk");
     expect(state.intent?.step).toContain("walking to the forest");
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    expect(state.intent?.step).toBe("fell a tree");
+    expect(state.intent?.step).toBe("felling a tree at the forest");
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
     expect(state.log.some((e) => e.text === "Fell a tree: done.")).toBe(true);
