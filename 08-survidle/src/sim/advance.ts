@@ -8,6 +8,7 @@ import { hourlyEvents } from "./events";
 import { iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
 import { log } from "./log";
+import { runOrders } from "./orders";
 import { causeFrom, die, feltTemperature, stepPlayer } from "./player";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
@@ -51,6 +52,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   }
 
   stepTask(state, world, cal, rng, dt);
+  runOrders(state, world, cal, rng);
   runIntent(state, world, cal, rng);
   // A body left idle and spent lies down on its own.
   if (!state.task && state.player.energy < EXHAUSTED && beginTask(state, world, cal, "sleep")) {

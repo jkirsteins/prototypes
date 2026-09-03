@@ -26,7 +26,7 @@ import {
 import { lightingInRain, SMOKE_COUGH, splitIsWet } from "./fire";
 import { discovery, regionState } from "./regionstate";
 import {
-  type GameState, type IceMode, type PausedTask, type RecipeId, SPECIES, type Species,
+  type GameState, type IceMode, type Order, type PausedTask, type RecipeId, SPECIES, type Species,
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
@@ -557,6 +557,14 @@ export function pausedList(state: GameState, world: World, cal: Calendar): { key
   });
 }
 
+/** The order the live intent serves, when it serves one and the task under way is its work. */
+function liveOrderFor(state: GameState, world: World, id: TaskId, arg?: string): Order | null {
+  const it = state.intent;
+  if (!it || it.orderId === null) return null;
+  if (it.task !== id || (it.arg ?? "") !== (arg ?? "")) return null;
+  return regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId) ?? null;
+}
+
 /** Advances the current task by dt minutes and applies its effect when it completes. */
 export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task;
@@ -567,6 +575,8 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
   train(state, world, dt);
+  const order = liveOrderFor(state, world, t.id, t.arg);
+  if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
 
@@ -576,8 +586,11 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   state.task = null;
   const it = state.intent;
   if (it) {
-    if (it.task === id && (it.arg ?? "") === (arg ?? "")) it.done++;
-    else if (it.task === "night" && id === "sleep") it.done++;
+    if (it.task === id && (it.arg ?? "") === (arg ?? "")) {
+      it.done++;
+      const o = liveOrderFor(state, world, id, arg);
+      if (o) o.done++;
+    } else if (it.task === "night" && id === "sleep") it.done++;
     if (id === "sleep" && it.need === "sleep") it.need = null;
     // A rest that barely warmed anyone is not worth repeating: give the need up until warmth
     // recovers some other way, rather than resting here forever for less than a point of gain.

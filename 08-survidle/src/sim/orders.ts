@@ -5,11 +5,13 @@
  * runner does everything else, exactly as when the player clicks an intent
  * by hand.
  */
+import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
-import { resolveCell, yieldItem } from "./intent";
+import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
+import { log } from "./log";
 import { SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
 import { check } from "./tasks";
@@ -119,4 +121,73 @@ export function countWord(task: TaskId, n: number): string {
   const w = COUNT_WORDS[task];
   if (!w) return "times";
   return n === 1 ? w[0] : w[1];
+}
+
+/** Sets the skip reason and logs it once when it changes from nothing to something. */
+function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string): void {
+  if (why && !o.skipped) log(state, `${orderSentence(state, world, cal, o)}: ${why}.`, "bad");
+  o.skipped = why;
+}
+
+/**
+ * The first order, top down, that is unmet and can start where its work
+ * would be done. Every order passed over is marked with its reason; the
+ * ones below the choice are left as they were.
+ */
+export function chooseOrder(state: GameState, world: World, cal: Calendar): Order | null {
+  const liveId = state.intent?.orderId ?? null;
+  for (const o of ordersHere(state, world)) {
+    if (orderMet(state, world, o, o.id === liveId)) {
+      markSkipped(state, world, cal, o, "");
+      continue;
+    }
+    const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
+    if (!opt.ok) {
+      markSkipped(state, world, cal, o, opt.why);
+      continue;
+    }
+    o.skipped = "";
+    return o;
+  }
+  return null;
+}
+
+const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
+
+/**
+ * Runs each minute with a free task slot. Met jobs drop off. Then the
+ * chosen order becomes the live intent: at once when nothing is owed to
+ * camp, after the delivery when something is. With orders but nothing to
+ * do, the runner waits at camp, where the nights are safe.
+ */
+export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+  if (state.dead || state.task) return;
+  const st = regionState(state, world, state.player.region);
+  if (!st.orders.length) return;
+  const live = state.intent;
+  for (const o of [...st.orders]) {
+    if (o.kind === "job" && orderMet(state, world, o, live?.orderId === o.id)) {
+      log(state, `${orderSentence(state, world, cal, o)}: done.`, "good");
+      removeOrder(state, world, o.id);
+    }
+  }
+  // A region with no orders left has no intent (spec 2.3): the removal loop above may
+  // have just emptied the list, and the live intent it was serving goes with it.
+  if (!st.orders.length) {
+    if (live) state.intent = null;
+    return;
+  }
+  const chosen = chooseOrder(state, world, cal);
+  if (chosen && live?.orderId === chosen.id) return;
+  if (!chosen && live?.task === "wait") return;
+  if (live && deliveryPending(state, live)) {
+    live.windDown = true;
+    return;
+  }
+  if (chosen) {
+    if (!startIntent(state, world, cal, rng, chosen.req, chosen.id)) markSkipped(state, world, cal, chosen, "cannot start");
+    return;
+  }
+  startIntent(state, world, cal, rng, WAIT);
+  log(state, "Nothing to do. You wait at camp.");
 }

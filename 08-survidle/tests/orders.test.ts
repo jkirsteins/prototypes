@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
+import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { startIntent } from "../src/sim/intent";
+import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
+import { cellOf, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { beginTask, check } from "../src/sim/tasks";
-import { addOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord } from "../src/sim/orders";
-import { addItem, pile } from "../src/sim/inventory";
+import { beginTask, check, stopTask } from "../src/sim/tasks";
+import {
+  addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord,
+} from "../src/sim/orders";
+import { addItem, pile, qty } from "../src/sim/inventory";
 
 const cal = calendar(0);
 
@@ -151,5 +155,135 @@ describe("what an order says", () => {
     expect(countWord("chop", 14)).toBe("trees");
     expect(countWord("split", 1)).toBe("log");
     expect(countWord("repair", 3)).toBe("times");
+  });
+});
+
+type G = ReturnType<typeof newGame>;
+/** Advances a minute at a time until the predicate holds or the budget runs out. */
+function until(g: G, pred: () => boolean, max = 3000): boolean {
+  for (let i = 0; i < max; i++) {
+    if (pred()) return true;
+    advance(g.state, g.world, 1);
+  }
+  return pred();
+}
+function req(task: IntentRequest["task"], extra: Partial<IntentRequest> = {}): IntentRequest {
+  return { task, until: { kind: "once" }, deliver: "leave", where: "nearest", ...extra };
+}
+/** A camp with a pit, an axe and a fire drill, standing at the camp cell. */
+function campWith(seed: number, camp: Partial<Record<"log" | "firewood" | "driedMeat" | "stick", number>>) {
+  const g = newGame(seed);
+  const { state, world } = g;
+  const st = regionState(state, world, state.player.region);
+  st.structures.firePit = true;
+  state.player.tools.push({ id: "fireDrill", durability: 100 });
+  placeAtSpot(state, world, state.player.region, "camp");
+  const p = pile(state, st.campCell);
+  for (const [item, n] of Object.entries(camp)) addItem(p, item as "log", n);
+  return g;
+}
+
+describe("the scheduler", () => {
+  it("takes the highest unmet order that can start, and marks the ones it passes over", () => {
+    const g = campWith(3, { log: 4, firewood: 10 });
+    const { state, world } = g;
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    const grind = addOrder(state, world, req("chop", { until: { kind: "forever" }, deliver: "camp" }), "grind");
+    expect(chooseOrder(state, world, cal)?.id).toBe(keep.id);
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(keep.id);
+    expect(state.task?.id).toBe("split");
+    expect(grind.skipped).toBe("");
+    // The keep filled: its intent ends, the grind takes over.
+    expect(until(g, () => state.intent?.orderId === grind.id)).toBe(true);
+    expect(qty(pile(state, regionState(state, world, state.player.region).campCell), "firewood")).toBeGreaterThanOrEqual(40);
+    expect(keep.done).toBeGreaterThanOrEqual(2);
+    expect(keep.minutes).toBeGreaterThan(0);
+  });
+
+  it("a blocked order is skipped with the button's reason, logged once, and the next order runs", () => {
+    const g = campWith(3, { firewood: 5 });
+    const { state, world } = g;
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    const sticks = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 1);
+    expect(keep.skipped).toBe("no logs here");
+    expect(state.intent?.orderId).toBe(sticks.id);
+    const line = "Split a log, keep camp at 40 kg firewood: no logs here.";
+    expect(state.log.filter((e) => e.text === line).length).toBe(1);
+    // Skipped again and again, but the line is written once until the reason changes.
+    expect(until(g, () => state.task === null)).toBe(true);
+    advance(state, world, 5);
+    expect(state.log.filter((e) => e.text === line).length).toBe(1);
+  });
+
+  it("never switches mid-task, and finishes a pending delivery before it does", () => {
+    const g = campWith(3, { firewood: 40 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    // Seed 3's camp sits on forest ground, so "nearest" would fell at camp itself; name the forest spot so a haul is really owed.
+    const grind = addOrder(state, world, req("chop", { until: { kind: "forever" }, deliver: "camp", where: "forest" }), "grind");
+    // The keep is met; the grind runs and fells a tree at the forest, off camp.
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    expect(state.intent?.orderId).toBe(grind.id);
+    const forest = state.intent!.cell;
+    expect(forest).not.toBe(st.campCell);
+    // Firewood vanishes mid-felling: the keep is unmet, but the tree is finished first.
+    pile(state, st.campCell).items.firewood = 0;
+    addItem(pile(state, st.campCell), "log", 2);
+    advance(state, world, 1);
+    expect(state.task?.id).toBe("chop");
+    expect(state.intent?.orderId).toBe(grind.id);
+    expect(until(g, () => state.task?.id !== "chop")).toBe(true);
+    // The felled logs lie at the forest: the grind winds down and hauls them home before the keep takes over.
+    expect(state.intent?.orderId).toBe(grind.id);
+    expect(state.intent?.windDown).toBe(true);
+    expect(until(g, () => state.intent?.orderId === keep.id, 6000)).toBe(true);
+    expect(qty(pile(state, forest), "log")).toBe(0);
+    expect(cellOf(state, world)).toBe(st.campCell);
+  });
+
+  it("a met job drops off with its done line; a keep stays", () => {
+    const g = campWith(3, { log: 2 });
+    const { state, world } = g;
+    const job = addOrder(state, world, req("split", { until: { kind: "times", n: 2 }, deliver: "camp" }), "job");
+    expect(until(g, () => ordersHere(state, world).length === 0)).toBe(true);
+    expect(job.done).toBe(2);
+    // orderSentence adds "bringing it to camp" for a non-keep order that delivers to camp (Task 2 behaviour).
+    expect(state.log.filter((e) => e.text === "Split a log, 2 of 2 done, bringing it to camp: done.").length).toBe(1);
+    expect(state.intent).toBeNull();
+  });
+
+  it("removing the live order ends its intent at the next free minute; reordering takes effect then too", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(a.id);
+    moveOrder(state, world, b.id, -1);
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(a.id);
+    expect(until(g, () => state.intent?.orderId === b.id)).toBe(true);
+    removeOrder(state, world, b.id);
+    expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
+  });
+
+  it("a manual intent is left alone while the region has no orders, and a raw task overrides the list until it ends", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    startIntent(state, world, cal, new Rng(1), req("sticks", { until: { kind: "forever" } }));
+    advance(state, world, 30);
+    expect(state.intent?.orderId).toBeNull();
+    expect(state.task?.id).toBe("sticks");
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
+    stopTask(state, world);
+    beginTask(state, world, cal, "rest");
+    advance(state, world, 30);
+    expect(state.intent).toBeNull();
+    expect(state.task?.id).toBe("rest");
+    expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
   });
 });

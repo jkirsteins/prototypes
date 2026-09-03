@@ -217,7 +217,7 @@ function packCarries(state: GameState, it: Intent): boolean {
  * in the camp pile - but the pack can still hold something unrelated that
  * arrived with the player and is still owed a drop.
  */
-function deliveryPending(state: GameState, it: Intent): boolean {
+export function deliveryPending(state: GameState, it: Intent): boolean {
   if (it.deliver !== "camp") return false;
   if (it.cell === it.campCell) return packCarries(state, it);
   return !isEmpty(pile(state, it.cell)) || packCarries(state, it);
@@ -415,10 +415,13 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
     return "again";
   }
   const o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
-  const met = untilMet(state, it);
+  const met = it.windDown || untilMet(state, it);
   if (met || (o && !o.ok)) {
     if (deliveryPending(state, it)) return deliveryStep(state, world, cal, it);
-    if (met) endIntent(state, `${label}: done.`, "good");
+    // An order's intent says nothing: the scheduler removes a met job with its
+    // done line and re-judges a blocked one, logging the reason once.
+    if (it.orderId !== null || it.windDown) state.intent = null;
+    else if (met) endIntent(state, `${label}: done.`, "good");
     else endIntent(state, `${label}: ${o!.why}. You stop.`, "bad");
     return undefined;
   }
