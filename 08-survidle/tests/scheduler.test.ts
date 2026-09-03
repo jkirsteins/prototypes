@@ -39,9 +39,11 @@ describe("scheduler", () => {
     expect(played.filter((p) => p.slot === "axe").length).toBe(2);
   });
 
-  it("plays calls at their rate, never two within four seconds, and none when not live", () => {
+  it("plays at most one call per burst, spaced four seconds apart, and none when not live", () => {
     const { engine, played, loops } = fakeEngine();
-    // random() = 0 makes every roll succeed: the four-second spacing is then the only limit.
+    // random() = 0 makes every open call's roll succeed and always resolves the
+    // same tie-break, so every burst plays exactly one call: the four-second
+    // gap between bursts is then the only limit on the total count.
     const s = createScheduler(engine, () => 0);
     const { state, world } = newGame(5);
     let id = -1;
@@ -50,13 +52,40 @@ describe("scheduler", () => {
     regionState(state, world, id).pop.raven = regionAt(world, id).capacity.raven;
     const noon = calendar(at(62, 12));
     for (let ms = 0; ms <= 20000; ms += 50) s.frame(state, world, noon, 10, ms, true);
-    const calls = played.filter((p) => p.slot === "raven");
-    expect(calls.length).toBeGreaterThanOrEqual(4);
-    expect(calls.length).toBeLessThanOrEqual(6);
+    expect(played.length).toBeGreaterThanOrEqual(4);
+    expect(played.length).toBeLessThanOrEqual(6);
     played.length = 0;
     for (let ms = 20000; ms <= 30000; ms += 50) s.frame(state, world, noon, 10, ms, false);
     expect(played).toHaveLength(0);
     expect(loops.at(-1)).toEqual({});
+  });
+
+  it("hears more than one species over many bursts, raven among them, never more than one call per burst", () => {
+    const { engine, played } = fakeEngine();
+    // A pinned random() always resolves the passing-set tie-break the same
+    // way, so fairness across species needs an actual spread of values.
+    // This tiny LCG stands in for that spread without touching Math.random.
+    function lcg(seed: number): () => number {
+      let x = seed >>> 0;
+      return () => {
+        x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+        return x / 4294967296;
+      };
+    }
+    const s = createScheduler(engine, lcg(1));
+    const { state, world } = newGame(5);
+    let id = -1;
+    for (let i = 0; i < LATTICE_W * LATTICE_H && id < 0; i++) if (regionAt(world, i).capacity.raven) id = i;
+    placeAt(state, world, regionAt(world, id).campCell);
+    regionState(state, world, id).pop.raven = regionAt(world, id).capacity.raven;
+    const noon = calendar(at(62, 12));
+    const durationMs = 600000;
+    for (let ms = 0; ms <= durationMs; ms += 250) s.frame(state, world, noon, 10, ms, true);
+    const calls = played.filter((p) => !p.slot.startsWith("step_") && p.slot !== "axe");
+    // At most one call per four-second burst, over the whole run.
+    expect(calls.length).toBeLessThanOrEqual(Math.floor(durationMs / 4000) + 1);
+    expect(calls.some((p) => p.slot === "raven")).toBe(true);
+    expect(new Set(calls.map((p) => p.slot)).size).toBeGreaterThan(1);
   });
 
   it("a call is rare when the roll is high, and cues go straight through", () => {

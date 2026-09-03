@@ -1,9 +1,10 @@
 /**
  * Turns the sim's answers into sound on the wall clock. Beds follow the
  * surroundings every frame; the task's loop keeps its own beat; calls are
- * rolled every quarter second against their rates, at most one every few
- * seconds, near or far at random. Randomness here is the caller's, so the
- * sim's seeded stream is never touched and tests can pin it.
+ * rolled every quarter second against their rates, but at most one call
+ * plays per burst and bursts are a few seconds apart, near or far at
+ * random. Randomness here is the caller's, so the sim's seeded stream is
+ * never touched and tests can pin it.
  */
 import type { Calendar } from "../sim/calendar";
 import type { Cue } from "../sim/cues";
@@ -55,15 +56,23 @@ export function createScheduler(engine: AudioEngine, random: () => number = Math
       if (nowMs - lastRoll < ROLL_MS) return;
       lastRoll = nowMs;
       if (nowMs - lastCall < CALL_GAP_MS) return;
-      for (const c of openCalls(state, world, cal)) {
-        // rate is per real minute; a quarter-second roll gets its share. Every
-        // call open right now gets its own roll, so more than one species can
-        // be heard in the same burst; the gap below keeps bursts a few
-        // seconds apart rather than a call landing every quarter second.
-        if (random() < (c.rate / 60) * (ROLL_MS / 1000)) {
-          lastCall = nowMs;
-          engine.play(c.slot, { gain: 0.3 + 0.7 * random(), pan: random() * 2 - 1 });
+      // Every open call gets its own roll against its rate (per real minute,
+      // scaled to this quarter second), but a burst is a single moment: more
+      // than one species can pass its roll here, and only one of them is
+      // actually heard. The one heard is picked from the passing set
+      // weighted by rate, so a common resident at full density is heard
+      // more often than a rare passer-by, matching the rates over many
+      // bursts rather than letting catalogue order decide.
+      const heard = openCalls(state, world, cal).filter((c) => random() < (c.rate / 60) * (ROLL_MS / 1000));
+      if (heard.length) {
+        let pick = random() * heard.reduce((sum, c) => sum + c.rate, 0);
+        let chosen = heard[heard.length - 1];
+        for (const c of heard) {
+          pick -= c.rate;
+          if (pick <= 0) { chosen = c; break; }
         }
+        lastCall = nowMs;
+        engine.play(chosen.slot, { gain: 0.3 + 0.7 * random(), pan: random() * 2 - 1 });
       }
     },
     cue(c) {
