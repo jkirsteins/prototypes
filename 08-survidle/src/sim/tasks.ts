@@ -338,6 +338,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "night":
       return opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 });
+    case "wait":
+      return opt({ group: "camp", label: "Wait at camp", detail: "rest at camp until there is something to do", duration: 0 });
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
     case "sleep": {
@@ -471,6 +473,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   if (state.dead) return false;
   if (id === "night") return false;
   if (id === "haul") return false;
+  if (id === "wait") return false;
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   setAside(state, world);
@@ -875,6 +878,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "haul":
     case "night":
+    case "wait":
     case "travel":
     case "walk":
     case "rest":

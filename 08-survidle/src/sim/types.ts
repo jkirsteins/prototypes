@@ -65,7 +65,7 @@ export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors"
-  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep";
+  | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep";
 
 export interface Task {
   id: TaskId;
@@ -109,6 +109,41 @@ export type Until =
   | { kind: "campHas"; item: ItemId; qty: number }
   | { kind: "forever" };
 
+/** Where an intent's work is done: the nearest suitable ground, a named spot, or one cell. */
+export type Where = "nearest" | SpotId | { cell: number };
+
+/** The strip's choice, before the yield item is filled in. */
+export type UntilChoice =
+  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" };
+
+/** A click on the Do panel, in the terms startIntent speaks. */
+export interface IntentRequest {
+  task: TaskId;
+  arg?: string;
+  until: UntilChoice;
+  deliver: "leave" | "camp";
+  where: Where;
+}
+
+/**
+ * A standing order keeps a stock (keep) or grinds forever (grind); a job
+ * finishes and drops off the list. All three rank together.
+ */
+export type OrderKind = "keep" | "grind" | "job";
+
+export interface Order {
+  /** Stable within the run; the live intent names its order by it. */
+  id: number;
+  kind: OrderKind;
+  /** The click, as the strip made it. Cells are resolved afresh at every start. */
+  req: IntentRequest;
+  /** Completions of the work and minutes spent in it, for the list and the away report. */
+  done: number;
+  minutes: number;
+  /** Why the scheduler last skipped it, or "" when it could run. */
+  skipped: string;
+}
+
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
 export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "home";
 
@@ -135,6 +170,10 @@ export interface Intent {
   restFromWarmth?: number;
   /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
   coldSpent?: boolean;
+  /** The order this intent serves, or null for one started by hand. */
+  orderId: number | null;
+  /** The scheduler has chosen another order: deliver what is owed, then end. */
+  windDown: boolean;
 }
 
 export interface RegionState {
@@ -157,6 +196,9 @@ export interface RegionState {
   smoke: number;
   /** Minutes since it last rained here; wood split while this is low comes out wet. */
   logsWet: number;
+  /** This camp's ranked orders, top first. */
+  orders: Order[];
+  nextOrderId: number;
 }
 
 export interface Player {

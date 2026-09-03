@@ -15,7 +15,7 @@ import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
-const CAMP_TASKS = new Set<TaskId>(["rest", "night", "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors"]);
+const CAMP_TASKS = new Set<TaskId>(["rest", "night", "wait", "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors"]);
 
 export type Activity = "sleep" | "rest" | "light" | "walk" | "heavy";
 
@@ -23,7 +23,7 @@ export function activityOf(task: Task | null): Activity {
   if (!task) return "rest";
   switch (task.id) {
     case "sleep": return "sleep";
-    case "rest": case "night": case "craft": case "cook": case "repair": case "sharpen": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": return "rest";
+    case "rest": case "night": case "wait": case "craft": case "cook": case "repair": case "sharpen": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": return "rest";
     case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": return "light";
     case "travel": case "walk": case "haul": return "walk";
     case "chop": case "split": case "build": return "heavy";

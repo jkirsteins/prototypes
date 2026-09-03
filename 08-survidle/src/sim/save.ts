@@ -35,6 +35,10 @@ export function deserialize(text: string): SaveFile | null {
 function fillDefaults(state: GameState): void {
   state.skills ??= newSkills();
   state.intent ??= null;
+  if (state.intent) {
+    state.intent.orderId ??= null;
+    state.intent.windDown ??= false;
+  }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
   const p = state.player;
@@ -70,6 +74,8 @@ function fillDefaults(state: GameState): void {
     st.fire.unattended ??= 0;
     st.smoke ??= 0;
     st.logsWet ??= 1440;
+    st.orders ??= [];
+    st.nextOrderId ??= 1;
   }
 }
 

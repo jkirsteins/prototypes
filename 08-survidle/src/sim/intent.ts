@@ -20,22 +20,10 @@ import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, Inventory, ItemId, RecipeId, SpotId, Species, StructureId, TaskId, Until,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, Species, StructureId, TaskId, Until, Where,
 } from "./types";
 
-export type Where = "nearest" | SpotId | { cell: number };
-
-/** The strip's choice, before the yield item is filled in. */
-export type UntilChoice =
-  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" };
-
-export interface IntentRequest {
-  task: TaskId;
-  arg?: string;
-  until: UntilChoice;
-  deliver: "leave" | "camp";
-  where: Where;
-}
+export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
 const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw"]);
@@ -148,7 +136,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 }
 
 /** Sets out. False when the work could not start at its place; the button already said why. */
-export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest): boolean {
+export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null): boolean {
   if (state.dead || req.task === "walk" || req.task === "travel") return false;
   const { cell, note } = resolveCell(state, world, req.task, req.arg, req.where);
   if (!UNCHECKED.has(req.task)) {
@@ -175,7 +163,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   state.intent = {
     task: req.task, arg: req.arg, cell,
     campCell: regionState(state, world, state.player.region).campCell,
-    until, deliver, done: 0, step: "setting out", need: null,
+    until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
   };
   runIntent(state, world, cal, rng);
   // The note (a chosen spot that did not suit) belongs on the first step, not "setting out".

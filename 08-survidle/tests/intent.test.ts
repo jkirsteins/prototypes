@@ -343,7 +343,7 @@ describe("a rest's gain, not just its completion, decides whether cold is spent"
     const camp = regionState(state, world, state.player.region).campCell;
     state.intent = {
       task: "chop", cell: camp, campCell: camp,
-      until: { kind: "forever" }, deliver: "leave", done: 0, step: "", need: "cold",
+      until: { kind: "forever" }, deliver: "leave", done: 0, step: "", need: "cold", orderId: null, windDown: false,
     };
     const it = state.intent;
     state.player.warmth = 20;

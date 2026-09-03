@@ -227,7 +227,7 @@ describe("tasks", () => {
     const g = newGame(3);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
-    const intent = { task: "chop" as const, cell: cellOf(state, world), campCell: regionState(state, world, state.player.region).campCell, until: { kind: "forever" as const }, deliver: "leave" as const, done: 0, step: "", need: null };
+    const intent = { task: "chop" as const, cell: cellOf(state, world), campCell: regionState(state, world, state.player.region).campCell, until: { kind: "forever" as const }, deliver: "leave" as const, done: 0, step: "", need: null, orderId: null, windDown: false };
     state.intent = { ...intent };
     expect(beginTask(state, world, cal, "chop")).toBe(true);
     expect(state.intent).not.toBeNull();
@@ -245,7 +245,7 @@ describe("tasks", () => {
     const g = newGame(3);
     const { state, world } = g;
     expect(startTask(state, world, cal, "night")).toBe(false);
-    state.intent = { task: "night", cell: cellOf(state, world), campCell: cellOf(state, world), until: { kind: "once" }, deliver: "leave", done: 0, step: "", need: "sleep" };
+    state.intent = { task: "night", cell: cellOf(state, world), campCell: cellOf(state, world), until: { kind: "once" }, deliver: "leave", done: 0, step: "", need: "sleep", orderId: null, windDown: false };
     expect(beginTask(state, world, cal, "sleep")).toBe(true);
     done(g);
     expect(state.intent!.done).toBe(1);
