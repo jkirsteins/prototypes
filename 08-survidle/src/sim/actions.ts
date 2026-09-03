@@ -69,8 +69,9 @@ export function loadRack(state: GameState, world: World): number {
   return kg;
 }
 
-/** Picks n of an item off the ground into the pack, as far as the hard limit allows. */
+/** Picks n of an item off the ground into the pack, as far as the hard limit allows. Water and ice live only in piles (spec 2.1) and are refused. */
 export function take(state: GameState, world: World, item: ItemId, n: number): number {
+  if (item === "water" || item === "ice") return 0;
   const p = state.player;
   const from = herePile(state, world);
   const room = PACK_HARD_KG - weight(p.pack);

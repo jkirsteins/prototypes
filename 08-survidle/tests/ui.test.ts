@@ -177,6 +177,15 @@ describe("panels", () => {
     expect(document.querySelector(`#inventory [data-act="drop"][data-item="driedMeat"]`)).not.toBeNull();
   });
 
+  it("water on the ground gets no take button: it is inert in the pack", () => {
+    const { state, world } = newGame(21);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(herePile(state, world), "water", 2);
+    setPanel("inventory", inventoryHtml(state, world));
+    expect(document.querySelector(`#inventory [data-act="take"][data-item="water"]`)).toBeNull();
+  });
+
   it("death screen names the cause and offers a restart", () => {
     const { state, world } = newGame(21);
     state.dead = { cause: "froze", minute: 5000 };

@@ -4,7 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { hourlyHazards } from "../src/sim/hazards";
 import { addItem, pile, produce, qty, takeUp } from "../src/sim/inventory";
-import { itemLabel } from "../src/sim/actions";
+import { itemLabel, take } from "../src/sim/actions";
 import { newGame } from "../src/sim/newgame";
 import { causeFrom, stepPlayer, workSpeed } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
@@ -219,5 +219,17 @@ describe("water at camp", () => {
   it("water is never pocketed: produce puts it on the ground", () => {
     const { state, world } = atCamp();
     expect(produce(state, world, "water", 1)).toBe("pile");
+  });
+
+  it("water and ice cannot be taken into the pack; they live only in piles", () => {
+    const { state, world, camp } = atCamp();
+    addItem(camp, "water", 2);
+    addItem(camp, "ice", 1);
+    expect(take(state, world, "water", 2)).toBe(0);
+    expect(take(state, world, "ice", 1)).toBe(0);
+    expect(qty(camp, "water")).toBe(2);
+    expect(qty(camp, "ice")).toBe(1);
+    expect(qty(state.player.pack, "water")).toBe(0);
+    expect(qty(state.player.pack, "ice")).toBe(0);
   });
 });

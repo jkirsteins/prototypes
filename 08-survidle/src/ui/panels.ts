@@ -462,9 +462,11 @@ export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiStat
   return `<h2>Do</h2>${stripHtml(state, world, ui)}${instantHtml(state, world)}${groups}${adv}`;
 }
 
+/** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */
 function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): string {
-  if (!items.length) return `<div class="dim">nothing</div>`;
-  return `<div class="inv">${items
+  const rows = act === "take" ? items.filter(({ item }) => item !== "water" && item !== "ice") : items;
+  if (!rows.length) return `<div class="dim">nothing</div>`;
+  return `<div class="inv">${rows
     .map(({ item, qty: q }) => {
       const one = KG_ITEMS.has(item) ? Math.min(q, 1) : 1;
       const oneLabel = KG_ITEMS.has(item) ? "1 kg" : "1";
