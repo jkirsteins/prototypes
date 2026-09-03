@@ -1,8 +1,9 @@
 import type { TaskGroup } from "../sim/tasks";
-import type { LogEntry } from "../sim/types";
+import type { LogEntry, SpotId } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
+  /** The raw list's tab, under the advanced toggle. */
   tab: TaskGroup;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
@@ -11,10 +12,19 @@ export interface UiState {
   confirmAbandon: boolean;
   /** Index into ZOOMS: 0 is one cell per glyph. */
   zoom: number;
+  /** The settings strip: what the next intent clicked will do. */
+  until: "once" | "times" | "campHas" | "forever";
+  n: number;
+  deliver: "leave" | "camp";
+  where: "nearest" | SpotId;
+  advanced: boolean;
 }
 
 export function newUiState(): UiState {
-  return { tab: "gather", selected: null, away: null, confirmAbandon: false, zoom: 0 };
+  return {
+    tab: "gather", selected: null, away: null, confirmAbandon: false, zoom: 0,
+    until: "once", n: 10, deliver: "leave", where: "nearest", advanced: false,
+  };
 }
 
 const last = new Map<string, string>();

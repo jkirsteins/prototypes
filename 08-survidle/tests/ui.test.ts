@@ -1,17 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile } from "../src/sim/inventory";
+import { startIntent } from "../src/sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
-import { startTask } from "../src/sim/tasks";
+import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
 import { SPECIES } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
-import { actionsHtml, deathHtml, inventoryHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
+import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 
@@ -172,5 +174,62 @@ describe("panels", () => {
     state.dead = { cause: "froze", minute: state.minute };
     setPanel("overlay", deathHtml(state, world, calendar(state.minute)));
     expect(document.querySelector("#overlay")!.textContent).toContain("Hunting 12");
+  });
+});
+
+describe("the Do panel", () => {
+  const { state, world } = newGame(21);
+  const cal = calendar(state.minute);
+
+  it("has a settings strip, the instant buttons, and one row per intent, judged at the work's place", () => {
+    const html = doHtml(state, world, cal, newUiState());
+    expect(html).toContain('data-act="strip" data-k="until" data-v="forever"');
+    expect(html).toContain('data-act="strip" data-k="deliver" data-v="camp"');
+    expect(html).toContain('data-act="strip" data-k="where" data-v="nearest"');
+    expect(html).toContain("data-strip-n");
+    expect(html).toContain('data-act="eat"');
+    // Felling is legal from camp because the intent walks to the forest itself.
+    expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
+    expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');
+    for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="intent:craft:${id}"`);
+    for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="intent:build:${id}"`);
+    for (const s of SPECIES) expect(html).toContain(s === "fish" ? 'data-opt="intent:fish:"' : `data-opt="intent:hunt:${s}"`);
+    for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
+      expect(html).toContain(`data-opt="intent:${id}:`);
+    }
+    expect(html).not.toContain('class="tabs"');
+    expect(html).toContain('data-act="advanced"');
+  });
+
+  it("the strip's choice shows on the row, and the raw list appears under the advanced toggle unchanged", () => {
+    // The Move tab is where the raw list keeps Haul and the spot walks.
+    const ui = { ...newUiState(), until: "forever" as const, deliver: "camp" as const, advanced: true, tab: "move" as const };
+    const html = doHtml(state, world, cal, ui);
+    expect(html).toMatch(/data-opt="intent:chop:".*forever, bringing it to camp/s);
+    expect(html).toContain('class="tabs"');
+    expect(html).toContain('data-opt="haul:"');
+    expect(html).toContain('data-opt="walk:spot:');
+    expect(html).toContain(actionsHtml(state, world, cal, ui, false));
+  });
+
+  it("the Doing panel reads the intent as a sentence with its step, and set-aside work can be finished from anywhere", () => {
+    const g = newGame(21);
+    const rng = new Rng(1);
+    // Seed 21's camp cell is itself forest ground; stand off it (the heath) so the intent really walks to the forest.
+    placeAtSpot(g.state, g.world, g.state.player.region, "heath");
+    startIntent(g.state, g.world, calendar(0), rng, { task: "chop", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" });
+    let html = taskHtml(g.state, g.world, calendar(0));
+    expect(html).toContain("Fell a tree, until camp has 40 logs, bringing it to camp");
+    expect(html).toContain("walking to the forest");
+    expect(html).toContain('data-act="stop"');
+    // A tree half felled, then the intent stopped from camp: the entry offers finish, not resume.
+    placeAtSpot(g.state, g.world, g.state.player.region, "forest");
+    startTask(g.state, g.world, calendar(0), "chop");
+    for (let i = 0; i < 30; i++) stepTask(g.state, g.world, calendar(0), rng, 1);
+    stopTask(g.state, g.world);
+    placeAtSpot(g.state, g.world, g.state.player.region, "camp");
+    html = taskHtml(g.state, g.world, calendar(0));
+    expect(html).toContain('data-act="finish" data-id="chop"');
+    expect(html).not.toContain('>resume<');
   });
 });

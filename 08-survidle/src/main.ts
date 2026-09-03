@@ -15,10 +15,10 @@ import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
-  actionsHtml, awayHtml, clockHtml, deathHtml, gearHtml, inventoryHtml, logHtml,
+  awayHtml, clockHtml, deathHtml, doHtml, gearHtml, inventoryHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml,
 } from "./ui/panels";
-import { newUiState, resetPanels, setPanel } from "./ui/render";
+import { newUiState, resetPanels, setPanel, type UiState } from "./ui/render";
 import { updateSky } from "./ui/sky";
 import { generateWorld, type World } from "./world/gen";
 
@@ -77,7 +77,7 @@ function render() {
   }
   setPanel("region", regionHtml(state, world, cal, ui));
   setPanel("task", taskHtml(state, world, cal));
-  setPanel("actions", actionsHtml(state, world, cal, ui));
+  setPanel("actions", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
   updateBars(state, world);
@@ -193,6 +193,27 @@ function onClick(ev: Event) {
       ui.away = null;
       lastReal = performance.now();
       break;
+    case "intent": {
+      const until = ui.until === "times" ? { kind: "times" as const, n: ui.n }
+        : ui.until === "campHas" ? { kind: "campHas" as const, qty: ui.n }
+        : { kind: ui.until };
+      startIntent(state, world, cal, rng, { task: target.dataset.id as TaskId, arg: target.dataset.arg || undefined, until, deliver: ui.deliver, where: ui.where });
+      break;
+    }
+    case "strip": {
+      const k = target.dataset.k as "until" | "deliver" | "where";
+      const v = target.dataset.v as string;
+      if (k === "until") ui.until = v as UiState["until"];
+      else if (k === "deliver") ui.deliver = v as UiState["deliver"];
+      else ui.where = v as UiState["where"];
+      break;
+    }
+    case "advanced":
+      ui.advanced = !ui.advanced;
+      break;
+    case "finish":
+      startIntent(state, world, cal, rng, { task: target.dataset.id as TaskId, arg: target.dataset.arg || undefined, until: { kind: "once" }, deliver: "leave", where: { cell: Number(target.dataset.cell) } });
+      break;
   }
   state.rng = rng.s;
   saveGame(state);
@@ -209,6 +230,12 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "+" || ev.key === "=") zoomBy(-1);
   else if (ev.key === "-" || ev.key === "_") zoomBy(1);
   else return;
+  render();
+});
+document.addEventListener("change", (ev) => {
+  const el = ev.target as HTMLInputElement;
+  if (!el.matches("[data-strip-n]")) return;
+  ui.n = Math.max(1, Math.round(Number(el.value) || 1));
   render();
 });
 document.addEventListener("visibilitychange", () => {

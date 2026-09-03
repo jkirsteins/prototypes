@@ -114,5 +114,6 @@ describe("set aside on screen", () => {
     setPanel("task", taskHtml(state, world, cal));
     expect(document.querySelector('#task [data-act="task"][data-id="chop"]')).toBeNull();
     expect(document.querySelector("#task")!.textContent).toContain("at the forest");
+    expect(document.querySelector("#task")!.innerHTML).toContain('data-act="finish"');
   });
 });

@@ -2,13 +2,16 @@ import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
-import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, TOOLS } from "../sim/items";
+import { intentOption, intentSentence, yieldItem } from "../sim/intent";
+import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
-import { availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs } from "../sim/tasks";
-import { type GameState, type ItemId, type LogEntry, type SkillId, SPECIES } from "../sim/types";
+import {
+  availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
+} from "../sim/tasks";
+import { type GameState, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
@@ -190,26 +193,36 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
+  const it = state.intent;
+  const here = cellOf(state, world);
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
-        .map(({ task, option, here }) => {
+        .map(({ task, option, here: isHere }) => {
           const pct = Math.round(task.fraction * 100);
-          const note = !here || !option.ok ? ` <small>${esc(option.why)}</small>` : "";
-          const btn = option.ok
+          const note = !isHere || !option.ok ? ` <small>${esc(option.why)}</small>` : "";
+          const resume = option.ok
             ? ` <button class="mini" data-act="task" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}">resume</button>`
             : "";
-          return `<div class="paused">${esc(option.label)} <b>${pct}%</b>${note}${btn}</div>`;
+          const cell = task.cell < 0 ? here : task.cell;
+          const finish = ` <button class="mini" data-act="finish" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}" data-cell="${cell}" title="Go there if need be and finish it">finish</button>`;
+          return `<div class="paused">${esc(option.label)} <b>${pct}%</b>${note}${resume}${finish}</div>`;
         })
         .join("")}</div>`
     : "";
+  const bar = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
+  if (it) {
+    return `<h2>Doing</h2>
+<div class="head"><b>${esc(intentSentence(state, world, cal, it))}</b><button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button></div>
+<div class="step">${esc(it.step)}</div>${t ? bar : ""}${asideHtml}`;
+  }
   if (!t) return `<h2>Doing</h2><div class="dim">Nothing. Pick something below.</div>${asideHtml}`;
   const opts = availableTasks(state, world, cal);
   let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
   if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
   return `<h2>Doing${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</h2>
 <div class="head"><b>${esc(label)}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>
-<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>${asideHtml}`;
+${bar}${asideHtml}`;
 }
 
 const GROUPS: { id: TaskGroup; label: string }[] = [
@@ -231,34 +244,93 @@ function optHtml(o: TaskOption): string {
   return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${time}${o.detail ? `; ${esc(o.detail)}` : ""}</small>${bar}</button>${rep}</div>`;
 }
 
-export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
+/** The eat / add firewood / hang raw meat buttons, shown whenever they apply, wherever the player stands. */
+export function instantHtml(state: GameState, world: World): string {
+  const p = state.player;
+  const invs = [p.pack, herePile(state, world)];
+  const camp = spotHere(state, world) === "camp";
+  const foods = (Object.keys(FOODS) as FoodId[])
+    .map((f) => {
+      const have = invs.reduce((a, inv) => a + qty(inv, f), 0);
+      if (have <= 1e-9) return "";
+      const def = FOODS[f];
+      return `<button class="mini" data-act="eat" data-food="${f}">eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}</small></button>`;
+    })
+    .join(" ");
+  const st = regionState(state, world, p.region);
+  const wood = invs.reduce((a, inv) => a + qty(inv, "firewood"), 0);
+  const fire = st.fire.lit && camp
+    ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
+    : "";
+  const raw = invs.reduce((a, inv) => a + qty(inv, "rawMeat"), 0);
+  const rack = st.structures.dryingRack && camp
+    ? `<button class="mini" data-act="rack" ${raw <= 0 || st.rack.kg >= RACK_MAX_KG ? "disabled" : ""}>hang raw meat to dry <small>${fmtKg(Math.min(raw, RACK_MAX_KG - st.rack.kg))}</small></button>`
+    : "";
+  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${rack}</div>`;
+}
+
+export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: UiState, instant = true): string {
   const tabs = GROUPS.map((g) => `<button class="${g.id === ui.tab ? "on" : ""}" data-act="tab" data-tab="${g.id}">${g.label}</button>`).join("");
   const opts = availableTasks(state, world, cal).filter((o) => o.group === ui.tab);
-  let instant = "";
-  if (ui.tab === "camp") {
-    const p = state.player;
-    const invs = [p.pack, herePile(state, world)];
-    const camp = spotHere(state, world) === "camp";
-    const foods = (Object.keys(FOODS) as FoodId[])
-      .map((f) => {
-        const have = invs.reduce((a, inv) => a + qty(inv, f), 0);
-        if (have <= 1e-9) return "";
-        const def = FOODS[f];
-        return `<button class="mini" data-act="eat" data-food="${f}">eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}</small></button>`;
-      })
-      .join(" ");
-    const st = regionState(state, world, p.region);
-    const wood = invs.reduce((a, inv) => a + qty(inv, "firewood"), 0);
-    const fire = st.fire.lit && camp
-      ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
-      : "";
-    const raw = invs.reduce((a, inv) => a + qty(inv, "rawMeat"), 0);
-    const rack = st.structures.dryingRack && camp
-      ? `<button class="mini" data-act="rack" ${raw <= 0 || st.rack.kg >= RACK_MAX_KG ? "disabled" : ""}>hang raw meat to dry <small>${fmtKg(Math.min(raw, RACK_MAX_KG - st.rack.kg))}</small></button>`
-      : "";
-    instant = `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${rack}</div>`;
+  const instantBtns = instant && ui.tab === "camp" ? instantHtml(state, world) : "";
+  return `<h2>Do</h2><div class="tabs">${tabs}</div>${instantBtns}${opts.map(optHtml).join("")}`;
+}
+
+export const INTENT_GROUPS: { label: string; items: { id: TaskId; arg?: string }[] }[] = [
+  { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
+  { label: "Hunt", items: [...SPECIES.filter((s) => s !== "fish").map((s) => ({ id: "hunt" as TaskId, arg: s })), { id: "fish" }] },
+  { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+  { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
+  { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
+];
+
+/** What the strip would add to a plain click, in words; empty for once, leave it, nearest. */
+function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string {
+  const parts: string[] = [];
+  const item = yieldItem(id, arg);
+  if (ui.until === "times") parts.push(`${ui.n} times`);
+  else if (ui.until === "campHas") parts.push(item ? `until camp has ${itemLabel(item, ui.n)}` : "once");
+  else if (ui.until === "forever") parts.push("forever");
+  if (ui.deliver === "camp") parts.push("bringing it to camp");
+  if (ui.where !== "nearest") parts.push(`at ${SPOT_NAMES[ui.where]}`);
+  return parts.join(", ");
+}
+
+function intentRowHtml(o: TaskOption, extra: string): string {
+  const arg = o.arg ?? "";
+  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
+  const bar = o.mastery ? masteryBar(o.mastery) : "";
+  const detail = [o.detail, extra].filter(Boolean).join("; ");
+  if (!o.ok) {
+    return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(o.why)}${detail ? ` - ${esc(detail)}` : ""}</small>${bar}</span></div>`;
   }
-  return `<h2>Do</h2><div class="tabs">${tabs}</div>${instant}${opts.map(optHtml).join("")}`;
+  const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
+  const line = [time, detail].filter(Boolean).join("; ");
+  return `<div class="opt" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button></div>`;
+}
+
+function stripHtml(state: GameState, world: World, ui: UiState): string {
+  const b = (k: string, v: string, label: string, on: boolean) => `<button class="mini${on ? " on" : ""}" data-act="strip" data-k="${k}" data-v="${v}">${label}</button>`;
+  const r = regionAt(world, state.player.region);
+  const here = cellOf(state, world);
+  const spots = r.spots.filter((s) => s.id !== "camp").map((s) => {
+    const km = kmBetween(world, here, s.cell);
+    return b("where", s.id, `${SPOT_NAMES[s.id]}${km === null ? "" : ` <small>${fmtKm(km)}</small>`}`, ui.where === s.id);
+  }).join("");
+  return `<div class="strip">
+<div><small>do it</small>${b("until", "once", "once", ui.until === "once")}${b("until", "times", "N times", ui.until === "times")}${b("until", "campHas", "until camp has N", ui.until === "campHas")}${b("until", "forever", "forever", ui.until === "forever")}<input class="n" type="number" min="1" data-strip-n value="${ui.n}"></div>
+<div><small>bring it</small>${b("deliver", "leave", "leave it", ui.deliver === "leave")}${b("deliver", "camp", "to camp", ui.deliver === "camp")}</div>
+<div><small>where</small>${b("where", "nearest", "nearest", ui.where === "nearest")}${spots}</div>
+</div>`;
+}
+
+export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
+  const groups = INTENT_GROUPS.map((g) => {
+    const rows = g.items.map(({ id, arg }) => intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, ui.where)), stripSentence(ui, id, arg))).join("");
+    return `<div class="grp"><small>${g.label}</small>${rows}</div>`;
+  }).join("");
+  const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
+  return `<h2>Do</h2>${stripHtml(state, world, ui)}${instantHtml(state, world)}${groups}${adv}`;
 }
 
 function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): string {

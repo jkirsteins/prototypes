@@ -230,6 +230,14 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 .tabs button.on { color: var(--accent); border-color: var(--accent); }
 
+.strip { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.strip > div { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.strip > div > small { color: var(--dim); width: 52px; }
+.strip .n { width: 52px; background: #181e27; color: var(--text); border: 1px solid var(--line); font: inherit; font-size: 12px; padding: 1px 4px; }
+.grp { margin-top: 8px; }
+.grp > small { color: var(--dim); display: block; margin-bottom: 2px; }
+#task .step { color: var(--dim); margin: 4px 0; }
+
 button.act, span.act {
   display: block; width: 100%;
   text-align: left;
