@@ -125,7 +125,10 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest): boolean {
   if (state.dead || req.task === "walk" || req.task === "travel") return false;
   const { cell, note } = resolveCell(state, world, req.task, req.arg, req.where);
-  if (!UNCHECKED.has(req.task) && !check(state, world, cal, req.task, req.arg, cell).ok) return false;
+  if (!UNCHECKED.has(req.task)) {
+    const o = check(state, world, cal, req.task, req.arg, cell);
+    if (!o.ok && !(req.task === "build" && req.arg !== "snare" && canFetch(state, world, req.arg as StructureId, regionState(state, world, state.player.region).campCell))) return false;
+  }
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
     ? item ? { kind: "campHas", item, qty: req.until.qty } : { kind: "once" }
@@ -259,6 +262,15 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, " for the rest");
   // At the pile with nothing loaded and nothing that counts: what is on your back is in the way. Take it to camp.
   return walkTo(state, world, cal, it, it.campCell, " with the load");
+}
+
+/** Some pile in this region, other than camp's, holds a material the build still lacks. */
+function canFetch(state: GameState, world: World, sid: StructureId, campCell: number): boolean {
+  const campInvs = [state.player.pack, pile(state, campCell)];
+  const missing = STRUCTURES[sid].needs.filter((n) => resolveNeed(campInvs, n) === null);
+  if (!missing.length) return false;
+  return pilesIn(state, world, state.player.region)
+    .some((x) => x.cell !== campCell && missing.some((n) => qty(x.inv, n.item) > 1e-9 || (n.alt !== undefined && qty(x.inv, n.alt) > 1e-9)));
 }
 
 /** Moves the missing materials of a build from this region's piles to camp, one load at a time. Undefined when there is nothing to fetch. */

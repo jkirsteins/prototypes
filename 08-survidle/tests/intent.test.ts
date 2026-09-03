@@ -179,6 +179,33 @@ describe("the work tier", () => {
     startIntent(state, world, cal, rng(), req("bark", { until: { kind: "forever" } }));
     expect(intentSentence(state, world, cal, state.intent!)).toBe("Strip bark, forever");
   });
+
+  it("a build fetches what is missing from this region's piles, one load at a time, then builds", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const region = state.player.region;
+    const camp = regionState(state, world, region).campCell;
+    const r = regionAt(world, region);
+    const forest = spotOf(r, "forest")!.cell;
+    addItem(pile(state, camp), "stick", 8);
+    addItem(pile(state, camp), "cordage", 2);
+    addItem(pile(state, forest), "log", 4);
+    addItem(state.player.pack, "driedMeat", 3);
+    expect(intentOption(state, world, cal, "build", "leanTo", "nearest").ok).toBe(false);
+    expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
+    expect(state.intent?.step).toContain("for materials");
+    expect(until(g, () => state.intent === null, 8000)).toBe(true);
+    expect(regionState(state, world, region).structures.leanTo).toBe(true);
+    expect(qty(pile(state, forest), "log")).toBe(0);
+    expect(state.log.some((e) => e.text === "lean-to: done.")).toBe(true);
+  });
+
+  it("a build with materials nowhere in the region does not start; the button already says why", () => {
+    const { state, world } = newGame(3);
+    expect(intentOption(state, world, cal, "build", "leanTo", "nearest").why).toBe("missing materials at camp");
+    expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
+    expect(state.intent).toBeNull();
+  });
 });
 
 describe("the haul intent", () => {
