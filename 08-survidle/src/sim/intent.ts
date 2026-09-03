@@ -26,11 +26,11 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw", "wait"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
-const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep"]);
+const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
   chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath", fish: "shore",
@@ -430,9 +430,11 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
-  // wait has no work step of its own; Task 4 gives it one. night's is the sleep the body tier starts.
-  if (it.task === "night" || it.task === "wait") return undefined;
-  const step: Step = { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
+  if (it.task === "night") return undefined;
+  // Waiting is resting at camp, started afresh each time the slot frees; the body tier does the rest.
+  const step: Step = it.task === "wait"
+    ? { id: "rest", step: "waiting at camp" }
+    : { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
   if (!takeStep(state, world, cal, step)) {
     if (it.orderId !== null) state.intent = null;
     else endIntent(state, `${label}: cannot go on. You stop.`, "bad");

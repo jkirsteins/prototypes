@@ -299,8 +299,8 @@ describe("the scheduler", () => {
     advance(state, world, 3);
     expect(state.intent?.task).toBe("wait");
     removeOrder(state, world, keep.id);
-    advance(state, world, 1);
-    expect(state.intent).toBeNull();
+    // The scheduler only runs once the rest step it is mid-way through frees the slot.
+    expect(until(g, () => state.intent === null)).toBe(true);
   });
 
   it("chooseOrder judges the walk to the work too, skipping a route it cannot take", () => {
@@ -341,5 +341,50 @@ describe("the scheduler", () => {
     expect(state.intent).toBeNull();
     expect(state.task?.id).toBe("rest");
     expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
+  });
+});
+
+describe("waiting at camp", () => {
+  it("with orders but nothing to do, the runner walks home, rests, and sleeps at camp with the fire lit", () => {
+    const g = campWith(3, { firewood: 60, driedMeat: 3 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    // Off camp, so the wait has to walk. A keep already met is the whole list.
+    placeAtSpot(state, world, state.player.region, "heath");
+    addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    advance(state, world, 1);
+    expect(state.intent?.task).toBe("wait");
+    expect(state.task?.id).toBe("walk");
+    expect(state.log.some((e) => e.text === "Nothing to do. You wait at camp.")).toBe(true);
+    expect(until(g, () => state.task?.id === "rest")).toBe(true);
+    expect(cellOf(state, world)).toBe(st.campCell);
+    expect(state.intent?.step).toBe("waiting at camp");
+    // A rest task alone never tires the body (it recovers energy); force the
+    // sleep need the way a spent day would, and it is served here, by a fire
+    // lit from the firewood already at camp.
+    state.player.energy = 20;
+    expect(until(g, () => state.task?.id === "sleep", 200)).toBe(true);
+    expect(cellOf(state, world)).toBe(st.campCell);
+    expect(st.fire.lit).toBe(true);
+    // The wait is not an order and the list still has the one keep.
+    expect(ordersHere(state, world).length).toBe(1);
+    expect(state.intent?.orderId).toBeNull();
+  });
+
+  it("a keep that becomes unmet takes over from the wait at once", () => {
+    const g = campWith(3, { firewood: 60, log: 3 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    advance(state, world, 2);
+    expect(state.intent?.task).toBe("wait");
+    pile(state, st.campCell).items.firewood = 10;
+    expect(until(g, () => state.intent?.orderId === keep.id, 120)).toBe(true);
+  });
+
+  it("a region with no orders has no intent of its own", () => {
+    const { state, world } = newGame(3);
+    advance(state, world, 10);
+    expect(state.intent).toBeNull();
   });
 });
