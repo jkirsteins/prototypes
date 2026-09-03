@@ -24,26 +24,31 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 ## The eight sub-projects, in order
 
 The numbers below are names, not the sequence; they stay put so specs can
-cite them while sections are still being written. The build order is:
-1 (in build), then A standing orders, then D species and sound, then E
-hides and clothing, then 2 rivers, 3 camp, 4 animals, 5 injury and the
-body model, 7 wind, 8 forest fire, and 6 territory last,
-with B the risk forecast as soon after A as the runner is stable and C
-the skill tiers alongside 3. E comes straight after D because D's fur and
-fat are its inputs and because 5 (insects, burns on bare skin), 7 (wind
-through a coat) and C (clothing tiers worth the level) all reach for a
-clothing model that 1 left thin. Fire comes after 5 because its burns are
-wounds in that model and after 7 because it cannot spread without wind;
-it comes before 6 because the burn's regrowth clock is the first of the
-regrowth clocks Territory generalises.
+cite them while sections are still being written. The build order is by
+impact on the idle loop, the thing that kills an away run soonest first:
+1 (in build), then A standing orders, then the baseline fixes A's build
+measured (water at camp, the thirst priority, arrows in the pack, wet
+wood, the rack as a task, tool keeps), then D species and sound, then E
+hides and clothing, then 3 camp with C the skill tiers alongside, then
+4 animals, 5 injury and the body model, 7 wind, 8 forest fire, and 6
+territory last, with B the risk forecast as soon after A as the runner
+is stable. 2 rivers is flavour and has no slot: it lands whenever there
+is room after 3, and when it does it plugs into the water features 1, C
+and 3 own rather than bringing its own. E comes straight after D because
+D's fur and fat are its inputs and because 5 (insects, burns on bare
+skin), 7 (wind through a coat) and C (clothing tiers worth the level)
+all reach for a clothing model that 1 left thin. Fire comes after 5
+because its burns are wounds in that model and after 7 because it cannot
+spread without wind; it comes before 6 because the burn's regrowth clock
+is the first of the regrowth clocks Territory generalises.
 
 ### 1. Body and elements
 
 Specced and in build: `2026-09-03-survidle-body-and-elements-design.md`.
-That spec holds water, ice (the base the rivers build on), wet clothing
-and frostbite, wet wood, smoke, storms and exhaustion. Fog, described
-below, is not in it: it gets its own spec after rivers, since a river bank
-is one of the things you follow out of it.
+That spec holds water, ice, wet clothing and frostbite, wet wood, smoke,
+storms and exhaustion. Fog, described below, is not in it: it gets its
+own spec after 3, and a shore or a region edge is what you follow out of
+it until 2 adds a river bank.
 
 Thirst and water: a third reserve beside food and warmth, drunk at a shore
 or from melted snow at a fire, which costs fuel; stored water freezes.
@@ -87,41 +92,54 @@ beneath it, and freezing fog rimes the trees white-blue. The clock line
 reads "fog, 200 m". Seeing through it, and getting lost in it, are
 sub-project 6.
 
-### 2. Rivers, ice and crossings
+### 2. Rivers (flavour, no slot)
 
-Rivers come from the elevation the world already has: water runs downhill
-off the fells, gathers, and reaches the lakes and the sea. Each river cell
-is a segment with a width and a flow in cubic metres per second, from how
-much land drains into it and from the season: the spring melt in May is
-the flood, late summer the low, winter the freeze.
+Rivers are kept for the look of the north, not for a threat or a stock:
+a line on the map from the elevation the world already has, water
+running off the fells to the lakes and the sea, blue in summer and white
+under ice. Nothing after this depends on them. Every job the rivers were
+once to do has an owner that does not need them: winter water is an ice
+hole at the shore and 3's storage; a fishing spot is any shore, and the
+passive tier of fishing is C's basket trap in lake shallows; the line to
+follow out of fog is a shore or a region edge.
 
-- A segment is a ford where it is shallow and slow. Crossing a ford costs
-  wet legs and time; above a threshold flow the crossing is refused, "the
-  river is too strong here". Rapids are never fordable and never freeze.
-- Ice grows by freezing degree-days and thins by thaw, the way ice does.
-  Sub-project 1 lands the base of this: one thickness for the world, thin
-  ice from 5 cm that can take you, safe ice from 15, the fall, and the
-  thaw that strands you (its spec, section 1.6). Rivers refine it per
-  water body: rapids that never freeze, rotten ice in the thaw, and the
-  fords and bridges that make a river more than a line on the map.
-- The trap comes for free. Cross a ford in September, rain for two days,
-  and the way back is gone until the water drops. Cross on ice in March
-  and the thaw strands you on the far side. The route planner already
-  answers "no way there on foot"; that answer now changes from week to
-  week, and the log says when a river you crossed has risen or opened.
-- Rivers give drinking water for thirst, fishing spots, and a bank to
-  follow out of fog. They are the reason 1 comes first and this comes
-  before the camp: everything after depends on where the water runs.
+What rivers must do when they land is integrate with those owners, never
+stand beside them:
+
+- **Water.** A river cell is a shore for drinking and filling. A rapid
+  never freezes, so a camp within reach of one has open water all
+  winter beside the ice hole; the runner's drink and fill branches treat
+  it as a shore with no ice.
+- **Ice.** 1 lands one thickness for the world; rivers refine it per
+  water body: rapids open, rotten ice in the thaw, and ice that forms
+  later on moving water, which is where 7's freeze-up delay applies.
+- **Fishing.** The weir is the river form of C's basket trap: stakes
+  across a shallow segment, the same order to empty it, the same ice that
+  takes it in November. D's catalogue keeps grayling and salmon back for
+  rivers, and the summer run up the fjord rivers is the seasonal event
+  the trap turns into a stock.
+- **Fog.** A river bank joins shore and region edge as a line with no
+  bearing error.
+- **Bridges.** A log bridge on a narrow segment, a longer one on a wider
+  segment for more logs, more cordage and days of work, and a bridge the
+  flood can take. Moved here from 3 because nothing else in 3 needs them.
+- **Crossings.** Each segment has a width and a flow that follows the
+  season, spring melt the flood and late summer the low. A ford costs wet
+  legs and time, above a threshold flow it is refused, and rapids are
+  never fordable. The trap comes for free: cross a ford in September,
+  two days of rain, and the way back is gone. The route planner's "no
+  way there on foot" answer then changes week to week, and the log says
+  so. This is the part that is simulation, and it is last inside the
+  item.
 
 ### 3. Camp build-out
 
 The cabin made properly expensive for one person. Woodshed, smokehouse,
 raised cache or cellar, storehouse, tool shed, palisade, a chimney or vent
 as part of a shelter, roofs with a snow load they can fail under, water
-storage. Bridges: a log bridge on a narrow segment, a longer one on a
-wider segment for more logs, more cordage and days of work, and a bridge
-the flood can take. Every building is an answer to a threat from 1, 2, 4,
-7 or 8, and its cost is tuned against that threat.
+storage. Every building is an answer to a threat from 1, 4, 7 or 8, and
+its cost is tuned against that threat. Water storage and the cellar are
+the two that answer what A's build measured, and they come first.
 
 ### 4. Animals as agents
 
@@ -131,6 +149,13 @@ pile and the shelter. Hunting genuinely poor without good tools.
 Populations per region already grow, thin and migrate; D gives every one
 of these animals a population with a range and a season, bear and
 wolverine included; this makes them act.
+
+The bear den is the one hunt with a season of its own. Bears den under
+boulders and overhangs on the fell side from November; the den is found
+by tracks in autumn and hunted in January with a spear, at a Hunting
+level the recommended-level rule makes honest, for a hundred kilos of
+meat, the fat E's tanning wants and a fur. A den missed in autumn is a
+bear beside your camp in April.
 
 ### 5. Injury, disease, insects, mind
 
@@ -231,7 +256,7 @@ wound calls for it.
 
 **Sources of wounds.** The axe (1 to 3 percent per tree, worse spent), the
 hunt that turns on you (the elk already does), the fall on the fell and
-the fall through ice (sub-project 2), burns from a fire tended tired and from 8's forest fire, and bites from sub-project 4's animals. Each names a part by where it lands:
+the fall through ice (sub-project 1), burns from a fire tended tired and from 8's forest fire, and bites from sub-project 4's animals. Each names a part by where it lands:
 the axe takes shins and feet, the elk takes torsos and legs, the ice takes
 the whole body cold and the feet first.
 
@@ -326,7 +351,8 @@ elk.
   forest spreads downwind (sub-project 8).
 - Snow: drift, deep in the lee and blown clear on the tops, so deep snow
   has a place rather than a depth.
-- Ice: wind delays freeze-up on open water, for the rivers work.
+- Ice: wind delays freeze-up on open water, which 2's moving water
+  refines per body when rivers land.
 - Buildings: Territory's wind damage and roof failures.
 - Work: `fish` and `chop` already refuse in a storm as "too rough"; the
   wind speed is what should decide that, not the storm flag.
@@ -603,8 +629,8 @@ What the build taught, for the sub-projects after it:
 
 - A set-up camp with no water in reach dies of thirst in about thirty
   hours whatever its orders say (seed 3's start does). B's "tonight"
-  number will show that before anything else, and 2's rivers and 3's
-  water storage are what answer it.
+  number will show that before anything else, and an ice hole at the
+  shore and 3's water storage are what answer it.
 - Orders belong to a camp. Nothing crosses a region: an order's cells are
   in the region it was given in, and travelling leaves the list behind
   until you return. 6's moving camp, and any "stock the winter camp from
@@ -642,6 +668,18 @@ content tiers. Soft gates throughout, never "locked":
   under it the felling is slow and blunts the axe. Per-species mastery
   already exists (`chop:spruce`, `chop:pine`, `chop:birch`); its extras at
   20 and 50 become the concrete rewards.
+- **Fishing by method.** The spear is the one method today, D's spec
+  says so, and fishing barely breaks even on calories. The rungs are
+  methods, not species: spear, then a basket trap, then a net. The trap
+  is stakes and cordage set in lake shallows, a Crafting task at a
+  recommended Fishing level; once set it catches while you are away at
+  an hourly rate keyed to Fishing level and season, and a standing order
+  "empty the trap, dry the fish" makes it a stock. It is the first food
+  producer a camp runs without you. It has upkeep the game already knows
+  how to charge: ice takes it in November, so it is rebuilt each spring,
+  and 4's animals raid it. Whitefish in the shallows in October is its
+  seasonal event; the salmon run waits for 2's weir, which is the river
+  form of the same trap.
 - **Hunting and crafting** already key per species and per recipe. They
   need more rungs, not a new mechanism: more animals with a real spread of
   yield and danger (D's roster, with a recommended level, yields and
