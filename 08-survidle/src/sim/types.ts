@@ -16,10 +16,11 @@ export type IceMode = "none" | "safe" | "thin";
 
 export type { Habitat, Species } from "./species";
 
-/** Items counted in pieces. */
+/** Items counted in pieces. A tool not in hand is one of these. */
 export type CountItem =
   | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew"
-  | "snare" | "arrow" | "torch";
+  | "snare" | "arrow" | "torch"
+  | ToolId;
 /** Items measured in kilograms. */
 export type KgItem =
   | "firewood" | "hide" | "fur" | "fat" | "rawMeat" | "cookedMeat" | "driedMeat"

@@ -2,10 +2,11 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
 import { cellAt } from "../world/gen";
+import { log } from "./log";
 import { cellOf } from "./position";
 import {
   type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
-  type Player, type ToolId,
+  type Player, type Tool, type ToolId,
 } from "./types";
 
 export function emptyInventory(): Inventory {
@@ -210,14 +211,43 @@ export function hasTool(p: Player, id: ToolId): boolean {
   return tool(p, id) !== undefined;
 }
 
-/** Wears a tool by n points; returns true if it broke. */
-export function wearTool(p: Player, id: ToolId, n: number): boolean {
-  const t = tool(p, id);
-  if (!t) return false;
-  t.durability -= n;
-  if (t.durability <= 0) {
-    p.tools = p.tools.filter((x) => x !== t);
+/** A tool in hand, or one lying in any of these inventories waiting to be taken up. */
+export function toolNear(p: Player, id: ToolId, invs: Inventory[]): boolean {
+  return hasTool(p, id) || totalQty(invs, id) > 0;
+}
+
+/** A fresh tool: full durability, and a vessel starts empty and thawed. */
+function freshTool(id: ToolId): Tool {
+  return TOOLS[id].litres !== undefined ? { id, durability: 100, litres: 0, frozen: false } : { id, durability: 100 };
+}
+
+/**
+ * Takes one of this tool out of the pack, else off the ground under foot,
+ * into the hands at full durability. False when there is none in reach. A
+ * tool in hand is never put down, so durability never lives in a pile.
+ */
+export function takeUp(state: GameState, world: World, id: ToolId): boolean {
+  const p = state.player;
+  for (const inv of [p.pack, herePile(state, world)]) {
+    if (removeItem(inv, id, 1) < 1) continue;
+    p.tools = p.tools.filter((t) => t.id !== id);
+    p.tools.push(freshTool(id));
     return true;
   }
   return false;
+}
+
+/** Wears a tool by n points; returns true if it broke. A spare in the pack is taken up in the same breath. */
+export function wearTool(state: GameState, id: ToolId, n: number): boolean {
+  const p = state.player;
+  const t = tool(p, id);
+  if (!t) return false;
+  t.durability -= n;
+  if (t.durability > 0) return false;
+  p.tools = p.tools.filter((x) => x !== t);
+  if (removeItem(p.pack, id, 1) >= 1) {
+    p.tools.push(freshTool(id));
+    log(state, `The ${TOOLS[id].name} has broken; you take up the spare.`);
+  }
+  return true;
 }

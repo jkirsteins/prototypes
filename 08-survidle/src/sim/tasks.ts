@@ -7,7 +7,7 @@ import { type Calendar, minutesUntilDawn } from "./calendar";
 import { cue } from "./cues";
 import {
   canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
-  removeItem, tool, totalQty, transfer, wearTool, weight,
+  removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
   CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RECIPES, RECIPE_IDS, STRUCTURES,
@@ -29,7 +29,7 @@ import { discovery, regionState } from "./regionstate";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
 import type {
   GameState, IceMode, Order, PausedTask, RecipeId,
-  SpotId, StructureId, TaskId,
+  SpotId, StructureId, TaskId, ToolId,
 } from "./types";
 import { WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
@@ -82,6 +82,19 @@ const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch",
 ]);
+
+/** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
+export function toolFor(id: TaskId, arg?: string): ToolId | null {
+  switch (id) {
+    case "chop": case "split": return "axe";
+    case "hunt": return "bow";
+    case "fish": return "fishingSpear";
+    case "craft": return RECIPES[arg as RecipeId]?.tool ?? null;
+    case "repair": return "needle";
+    case "light": case "lightIndoors": return "fireDrill";
+    default: return null;
+  }
+}
 
 /** Berries ripen mid-July and are gone by mid-October. */
 export function berrySeason(cal: Calendar): boolean {
@@ -249,7 +262,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: terrain === "spruce" ? 50 : 60, repeatable: true }));
       if (!o.ok) return o;
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
-      if (!hasTool(p, "axe")) return { ...o, ok: false, why: "needs an axe" };
+      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
@@ -267,7 +280,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "split": {
       const o = opt({ group: "camp", label: "Split a log", detail: "one log into 20 kg of firewood", duration: 15, repeatable: true });
-      if (!hasTool(p, "axe")) return { ...o, ok: false, why: "needs an axe" };
+      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
       return o;
     }
@@ -278,7 +291,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         const o = opt({ group: "hunt", label: "Hunt anything", duration: 120, repeatable: true, detail: `whatever is about; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` });
         // Ground, then tool, then animal. Kinds live here but none of them keeps to this ground: the forest is where a hunt starts.
         if (kinds.length && !c.length) return ground(false, "forest", "forest", o);
-        if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
+        if (!toolNear(p, "bow", invs)) return { ...o, ok: false, why: "needs a bow" };
         if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
         if (!kinds.length) return { ...o, ok: false, why: "nothing about" };
         return o;
@@ -292,7 +305,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         detail: huntDetail(state, s, huntOdds(state, world, cal, d, s)),
       }));
       if (!o.ok) return o;
-      if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
+      if (!toolNear(p, "bow", invs)) return { ...o, ok: false, why: "needs a bow" };
       if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
       // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
       const gone = absence(def, cal, state.weather.iceCm);
@@ -308,7 +321,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         const kinds = inRegion.filter((k) => watersideCell(world, at, waterOf(k) ?? "any"));
         const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
         if (!o.ok) return o;
-        if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
+        if (!toolNear(p, "fishingSpear", invs)) return { ...o, ok: false, why: "needs a fishing spear" };
         // Fish in the region but none in this water is the wrong water, not an empty one.
         if (!c.length) return { ...o, ok: false, why: !kinds.length && inRegion.length ? "nothing bites here" : "nothing about" };
         return o;
@@ -329,7 +342,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         return o;
       }
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
-      if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
+      if (!toolNear(p, "fishingSpear", invs)) return { ...o, ok: false, why: "needs a fishing spear" };
       const away = absence(def, cal, state.weather.iceCm);
       if (away) return { ...o, ok: false, why: away };
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
@@ -349,13 +362,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const rec = RECIPES[rid];
       const needs = effectiveNeeds(state, rid);
       const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${rec.tool === "needle" ? "needle" : rec.tool}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
-      if (rec.tool && !hasTool(p, rec.tool)) return { ...o, ok: false, why: `needs a ${rec.tool === "fishingSpear" ? "fishing spear" : rec.tool}` };
+      if (rec.tool && !toolNear(p, rec.tool, invs)) return { ...o, ok: false, why: `needs a ${rec.tool === "fishingSpear" ? "fishing spear" : rec.tool}` };
       if (!canConsume(invs, needs)) return { ...o, ok: false, why: "missing materials" };
       return o;
     }
     case "repair": {
       const o = opt({ group: "camp", label: "Mend clothing", detail: "0.5 kg hide; +40 wear on the most worn piece", duration: 30 });
-      if (!hasTool(p, "needle")) return { ...o, ok: false, why: "needs a bone needle" };
+      if (!toolNear(p, "needle", invs)) return { ...o, ok: false, why: "needs a bone needle" };
       if (totalQty(invs, "hide") < 0.5) return { ...o, ok: false, why: "needs 0.5 kg hide" };
       if (!p.clothing.some((g) => g.durability < 100)) return { ...o, ok: false, why: "nothing needs mending" };
       return o;
@@ -398,7 +411,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire pit" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!hasTool(p, "fireDrill")) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
@@ -483,7 +496,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!st.structures.cabin) return { ...o, ok: false, why: "needs a cabin" };
       if (st.structures.hearth) return { ...o, ok: false, why: "there is a hearth: light it there" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!hasTool(p, "fireDrill")) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }
@@ -589,6 +602,8 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   if (id === "wait") return false;
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
+  const need = toolFor(id, arg);
+  if (need && !hasTool(state.player, need)) takeUp(state, world, need);
   setAside(state, world);
   let any = false;
   if ((id === "hunt" || id === "fish") && arg === "any") {
@@ -843,7 +858,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "log", 4);
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
-      if (wearTool(p, "axe", wearFactor(state, world, "chop"))) {
+      if (wearTool(state, "axe", wearFactor(state, world, "chop"))) {
         cue("toolBreaks");
         log(state, "The axe head splits on the last stroke. It is done for.", "bad");
       }
@@ -877,7 +892,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       // A hunt saved against a species the catalogue no longer has finishes as nothing.
       if (!def?.hunt || isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
-      if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) {
+      if (wearTool(state, "bow", wearFactor(state, world, "hunt", s))) {
         cue("toolBreaks");
         log(state, "The bow snaps.", "bad");
       }
@@ -920,7 +935,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       // Likewise a cast saved before fishing named its fish.
       if (!def?.hunt || !isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
-      if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish", s))) {
+      if (wearTool(state, "fishingSpear", wearFactor(state, world, "fish", s))) {
         cue("toolBreaks");
         log(state, "The spear shaft splits.", "bad");
       }
@@ -953,31 +968,31 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (success < 1 && !rng.chance(success)) {
         const lost = spoiledNeeds(needs);
         consume(invs, lost);
-        if (rec.tool) wearTool(p, rec.tool, wearFactor(state, world, "craft", rid));
+        if (rec.tool) wearTool(state, rec.tool, wearFactor(state, world, "craft", rid));
         log(state, `The ${rec.name} is spoiled: ${needsList(lost)} wasted.`, "bad");
         return;
       }
       consume(invs, needs);
-      if (rec.tool) wearTool(p, rec.tool, wearFactor(state, world, "craft", rid));
-      if (rec.out.tool) {
-        p.tools = p.tools.filter((x) => x.id !== rec.out.tool);
-        const holds = TOOLS[rec.out.tool].litres;
-        p.tools.push(holds !== undefined ? { id: rec.out.tool, durability: 100, litres: 0, frozen: false } : { id: rec.out.tool, durability: 100 });
-        log(state, `You have a ${rec.name}.`, "good");
-      } else if (rec.out.clothing) {
+      if (rec.tool) wearTool(state, rec.tool, wearFactor(state, world, "craft", rid));
+      if (rec.out.clothing) {
         const slot = CLOTHING[rec.out.clothing].slot;
         const old = p.clothing.find((g) => CLOTHING[g.id].slot === slot);
         p.clothing = p.clothing.filter((g) => g !== old);
         p.clothing.push({ id: rec.out.clothing, durability: 100 });
         log(state, `You put on the ${rec.name}${old ? ` and leave the ${CLOTHING[old.id].name} behind` : ""}.`, "good");
       } else if (rec.out.item) {
-        produce(state, world, rec.out.item, rec.out.qty ?? 1);
+        const item = rec.out.item;
+        produce(state, world, item, rec.out.qty ?? 1);
+        if (item in TOOLS) {
+          if (hasTool(p, item as ToolId)) log(state, `You have a spare ${rec.name}.`, "good");
+          else if (takeUp(state, world, item as ToolId)) log(state, `You have a ${rec.name}.`, "good");
+        }
       }
       return;
     }
     case "repair": {
       consume(invs, [{ item: "hide", qty: 0.5 }]);
-      wearTool(p, "needle", 2 * wearFactor(state, world, "repair"));
+      wearTool(state, "needle", 2 * wearFactor(state, world, "repair"));
       const worst = p.clothing.reduce((a, b) => (b.durability < a.durability ? b : a));
       worst.durability = Math.min(100, worst.durability + 40);
       log(state, `The ${CLOTHING[worst.id].name} is patched.`, "good");
@@ -1006,7 +1021,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "light":
     case "lightIndoors": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
-      wearTool(p, "fireDrill", 2 * wearFactor(state, world, "light"));
+      wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"));
       const roof = st.structures.leanTo || st.structures.cabin;
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
       if (lr.failChance > 0 && rng.chance(lr.failChance)) {
@@ -1022,7 +1037,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "lightTorch": {
       consume(invs, [{ item: "torch", qty: 1 }]);
-      if (!(atCamp(state, world) && st.fire.lit)) wearTool(p, "fireDrill", wearFactor(state, world, "lightTorch"));
+      if (!(atCamp(state, world) && st.fire.lit)) wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"));
       p.torch = { lit: true, minutes: TORCH_BURN_MINUTES };
       cue("torchLit");
       log(state, "The torch catches.", "good");
