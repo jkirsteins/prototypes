@@ -22,10 +22,6 @@ export function ordersHere(state: GameState, world: World): Order[] {
   return regionState(state, world, state.player.region).orders;
 }
 
-export function orderById(state: GameState, world: World, id: number): Order | undefined {
-  return ordersHere(state, world).find((o) => o.id === id);
-}
-
 /** Appends. A keep or a camp-has without a countable yield is a once job; a grind is always forever. */
 export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind): Order {
   const st = regionState(state, world, state.player.region);
@@ -35,7 +31,8 @@ export function addOrder(state: GameState, world: World, req: IntentRequest, kin
     k = "job";
     r = { ...req, until: { kind: "once" } };
   }
-  if (kind === "grind") r = { ...req, until: { kind: "forever" } };
+  // Keyed on the converted kind: a fallback to "job" above must never be undone here.
+  if (k === "grind") r = { ...req, until: { kind: "forever" } };
   const o: Order = { id: st.nextOrderId++, kind: k, req: r, done: 0, minutes: 0, skipped: "" };
   st.orders.push(o);
   return o;
@@ -130,16 +127,17 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
 }
 
 /**
- * The first order, top down, that is unmet and can start where its work
- * would be done. Every order passed over is marked with its reason; the
- * ones below the choice are left as they were. The walk there is judged
- * too, so a route a storm or an overloaded pack has closed is skipped
- * with that reason instead of restarting every minute only to fail at
- * the first step.
+ * Every order, top down, is judged afresh: met, blocked, or able to run.
+ * The first able to run is returned, but the rows below it are judged too,
+ * so a blocked order never shows a reason left over from before something
+ * above it started running. The walk there is judged too, so a route a
+ * storm or an overloaded pack has closed is skipped with that reason
+ * instead of restarting every minute only to fail at the first step.
  */
 export function chooseOrder(state: GameState, world: World, cal: Calendar): Order | null {
   const liveId = state.intent?.orderId ?? null;
   const here = cellOf(state, world);
+  let chosen: Order | null = null;
   for (const o of ordersHere(state, world)) {
     if (orderMet(state, world, o, o.id === liveId)) {
       markSkipped(state, world, cal, o, "");
@@ -159,9 +157,9 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       }
     }
     o.skipped = "";
-    return o;
+    if (!chosen) chosen = o;
   }
-  return null;
+  return chosen;
 }
 
 const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
@@ -199,7 +197,8 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     return;
   }
   if (chosen) {
-    if (!startIntent(state, world, cal, rng, chosen.req, chosen.id)) markSkipped(state, world, cal, chosen, "cannot start");
+    // chooseOrder just ran the same check and walk check startIntent repeats, so this cannot fail.
+    startIntent(state, world, cal, rng, chosen.req, chosen.id);
     return;
   }
   startIntent(state, world, cal, rng, WAIT);

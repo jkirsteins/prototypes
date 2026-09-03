@@ -244,7 +244,7 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
-    const counts = o.done > 0 ? ` <small>${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}</small>` : "";
+    const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
     const second = live
       ? `<div class="step">${esc(it!.step)}</div>${state.task ? TASK_BAR : ""}`
       : `<div class="step">${esc(o.skipped || (orderMet(state, world, o, false) ? "met" : "waiting"))}</div>`;

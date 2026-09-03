@@ -218,6 +218,22 @@ describe("the scheduler", () => {
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
   });
 
+  it("a blocked order below the live one is judged too, not left with a stale reason", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const grind = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const cabin = addOrder(state, world, req("build", { arg: "cabin", until: { kind: "once" } }), "job");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(grind.id);
+    expect(cabin.skipped).toBe("missing materials at camp");
+    const line = "log cabin: missing materials at camp.";
+    expect(state.log.filter((e) => e.text === line).length).toBe(1);
+    // Judged again every free minute while the grind stays live, but logged only the once.
+    advance(state, world, 5);
+    expect(cabin.skipped).toBe("missing materials at camp");
+    expect(state.log.filter((e) => e.text === line).length).toBe(1);
+  });
+
   it("never switches mid-task, and finishes a pending delivery before it does", () => {
     const g = campWith(3, { firewood: 40 });
     const { state, world } = g;
@@ -253,6 +269,21 @@ describe("the scheduler", () => {
     expect(job.done).toBe(2);
     // orderSentence adds "bringing it to camp" for a non-keep order that delivers to camp (Task 2 behaviour).
     expect(state.log.filter((e) => e.text === "Split a log, 2 of 2 done, bringing it to camp: done.").length).toBe(1);
+    expect(state.intent).toBeNull();
+  });
+
+  it("a night job bumps the order's counter through the sleep alias and drops off", () => {
+    const g = campWith(3, { firewood: 30 });
+    const { state, world } = g;
+    const job = addOrder(state, world, req("night"), "job");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(job.id);
+    expect(until(g, () => state.intent === null, 1500)).toBe(true);
+    expect(ordersHere(state, world)).toEqual([]);
+    expect(job.done).toBe(1);
+    expect(state.log.filter((e) => e.text === "Camp for the night: done.").length).toBe(1);
+    // The list is empty, so nothing restarts it and no second sleep is ever started by the order.
+    advance(state, world, 30);
     expect(state.intent).toBeNull();
   });
 
@@ -398,6 +429,22 @@ describe("waiting at camp", () => {
     expect(until(g, () => calendar(state.minute).isNight && state.task?.id === "sleep", 1500)).toBe(true);
     expect(cellOf(state, world)).toBe(st.campCell);
     expect(state.intent?.task).toBe("wait");
+  });
+
+  it("a wait's night sleep is sticky, so hunger cannot preempt it mid-night", () => {
+    const g = campWith(3, { firewood: 60, driedMeat: 5 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    // Lit ahead of time so the sleep itself is what is under test, not fire-lighting.
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    // Already met: the wait starts at once, no order ever runs.
+    addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    expect(until(g, () => calendar(state.minute).isNight && state.task?.id === "sleep", 1500)).toBe(true);
+    // Under the hungry threshold, with food in reach to eat, the way a body-tier sleep is tested elsewhere.
+    state.player.kcal = 1000;
+    advance(state, world, 1);
+    expect(state.task?.id).toBe("sleep");
   });
 });
 

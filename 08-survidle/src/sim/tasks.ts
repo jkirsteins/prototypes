@@ -557,11 +557,16 @@ export function pausedList(state: GameState, world: World, cal: Calendar): { key
   });
 }
 
-/** The order the live intent serves, when it serves one and the task under way is its work. */
+/**
+ * The order the live intent serves, when it serves one and the task under
+ * way is its work - a night order's work is the sleep it starts, so that
+ * alias counts too, the same way it.done already treats them as one.
+ */
 function liveOrderFor(state: GameState, world: World, id: TaskId, arg?: string): Order | null {
   const it = state.intent;
   if (!it || it.orderId === null) return null;
-  if (it.task !== id || (it.arg ?? "") !== (arg ?? "")) return null;
+  const isWork = (it.task === id && (it.arg ?? "") === (arg ?? "")) || (it.task === "night" && id === "sleep");
+  if (!isWork) return null;
   return regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId) ?? null;
 }
 
@@ -589,7 +594,10 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     if (it.task === id && (it.arg ?? "") === (arg ?? "")) {
       it.done++;
       if (order) order.done++;
-    } else if (it.task === "night" && id === "sleep") it.done++;
+    } else if (it.task === "night" && id === "sleep") {
+      it.done++;
+      if (order) order.done++;
+    }
     if (id === "sleep" && it.need === "sleep") it.need = null;
     // A rest that barely warmed anyone is not worth repeating: give the need up until warmth
     // recovers some other way, rather than resting here forever for less than a point of gain.

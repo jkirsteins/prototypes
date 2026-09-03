@@ -392,6 +392,23 @@ describe("the Orders panel", () => {
     expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${keep.id}"`));
   });
 
+  it("a blocked order below the live one shows its own reason, not \"waiting\"", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    placeAtSpot(state, world, state.player.region, "camp");
+    addItem(pile(state, st.campCell), "log", 6);
+    const grind = addOrder(state, world, { task: "split", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(grind.id);
+    const html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toContain('<div class="step">missing materials at camp</div>');
+    expect(html).not.toContain('<div class="step">waiting</div>');
+    expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
+  });
+
   it("shows the wait with the rest bar when nothing can run", () => {
     const g = newGame(3);
     const { state, world } = g;

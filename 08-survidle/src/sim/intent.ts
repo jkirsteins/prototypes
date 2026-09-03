@@ -443,6 +443,9 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
   if (!takeStep(state, world, cal, step)) {
     if (it.orderId !== null) state.intent = null;
     else endIntent(state, `${label}: cannot go on. You stop.`, "bad");
+  } else if (it.task === "wait" && step.id === "sleep") {
+    // Sticky like a body-tier sleep, so a need such as hunger cannot preempt it mid-night.
+    it.need = "sleep";
   }
   return undefined;
 }
