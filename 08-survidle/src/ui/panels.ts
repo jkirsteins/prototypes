@@ -6,7 +6,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
-import { feltTemperature, insulation } from "../sim/player";
+import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
@@ -433,12 +433,9 @@ function bestSkill(state: GameState): string {
 
 export function deathHtml(state: GameState, world: World, cal: Calendar): string {
   const d = state.dead!;
-  const cause = {
-    starved: "You starved.", froze: "You froze.", wolves: "The wolves had you.", sickness: "The fever took you.",
-    thirst: "Thirst took you.", smoke: "The smoke took you in your sleep.", drowned: "The ice gave way. The lake kept you.",
-  }[d.cause];
+  const cause = DEATH_LINES[d.cause];
   const s = state.stats;
-  const story = state.log.filter((e) => e.minute <= d.minute && e.text !== cause).slice(-3);
+  const story = state.log.filter((e) => e.minute <= d.minute && e.text !== DEATH_LINES[d.cause]).slice(-3);
   return `<div class="box">
 <h1>Dead</h1>
 <p>${cause} ${fmtDate(cal)}, day ${cal.day} of the run, at ${esc(regionAt(world, state.player.region).name)}.</p>

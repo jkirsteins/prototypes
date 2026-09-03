@@ -291,18 +291,20 @@ export function causeFrom(d: Drains): DeathCause {
   return named[worst];
 }
 
+/** What the log says, and the death screen's cause paragraph, for each way to go: one table so the two always agree. */
+export const DEATH_LINES: Record<DeathCause, string> = {
+  starved: "You starved.",
+  froze: "The cold took you.",
+  wolves: "The wolves finished it.",
+  sickness: "The fever won.",
+  thirst: "Thirst took you.",
+  smoke: "The smoke took you in your sleep.",
+  drowned: "The ice gave way. The lake kept you.",
+};
+
 export function die(state: GameState, cause: DeathCause): void {
   if (state.dead) return;
   state.dead = { cause, minute: state.minute };
   state.task = null;
-  const text = {
-    starved: "You starved.",
-    froze: "The cold took you.",
-    wolves: "The wolves finished it.",
-    sickness: "The fever won.",
-    thirst: "Thirst took you.",
-    smoke: "The smoke took you in your sleep.",
-    drowned: "The ice gave way. The lake kept you.",
-  }[cause];
-  log(state, text, "bad");
+  log(state, DEATH_LINES[cause], "bad");
 }

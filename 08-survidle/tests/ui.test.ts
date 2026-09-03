@@ -150,7 +150,7 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     state.dead = { cause: "froze", minute: 5000 };
     setPanel("overlay", deathHtml(state, world, calendar(5000)));
-    expect(document.querySelector("#overlay")!.textContent).toContain("You froze");
+    expect(document.querySelector("#overlay")!.textContent).toContain("The cold took you");
     expect(document.querySelector(`#overlay [data-act="restart"]`)).not.toBeNull();
   });
 
@@ -186,6 +186,16 @@ describe("panels", () => {
     const html = deathHtml(state, world, calendar(301));
     expect(html).toContain("Thirst took you.");
     expect(html).toMatch(/You are thirsty\..*You are starving\..*The shore is iced over\./s);
+  });
+
+  it("a froze death excludes its own death line from the story, not just the cause paragraph", () => {
+    const { state, world } = newGame(3);
+    state.log.push({ minute: 250, text: "You are shivering hard. Find warmth.", kind: "bad" });
+    state.log.push({ minute: 300, text: "The cold took you.", kind: "bad" });
+    state.dead = { cause: "froze", minute: 300 };
+    const html = deathHtml(state, world, calendar(300));
+    expect(html).toContain("The cold took you.");
+    expect((html.match(/The cold took you\./g) ?? []).length).toBe(1);
   });
 
   it("commitStripN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its strip field has focus", () => {
