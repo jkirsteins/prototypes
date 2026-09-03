@@ -7,7 +7,7 @@ import { ambientTemperature } from "../src/sim/weather";
 import { clockHtml, regionHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { bodyPosition, lighting, phaseName, updateSky } from "../src/ui/sky";
+import { bodyPosition, lighting, phaseName, skyHtml, updateSky } from "../src/ui/sky";
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
@@ -32,6 +32,26 @@ describe("sky arc", () => {
     expect(early.body).toBe("moon");
     expect(late.body).toBe("moon");
     expect(early.x).toBeLessThan(late.x);
+  });
+
+  it("draws the moon's shadow to the left while waxing, to the right while waning, over it at new and clear of it at full", () => {
+    const { state } = newGame(1);
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml();
+    /** Shadow offset from the moon at 00:00 after run day d (the run starts at 08:00, so +16 h is midnight). */
+    const shadowX = (d: number) => {
+      updateSky(state, calendar(1440 * (d - 1) + 16 * 60), 0, root);
+      const moon = Number(root.querySelector("#sky-moon")!.getAttribute("cx"));
+      const shadow = Number(root.querySelector("#sky-moon-shadow")!.getAttribute("cx"));
+      return shadow - moon;
+    };
+    // Full on 3 April (run day 3): the shadow is a whole diameter aside.
+    expect(Math.abs(shadowX(3))).toBeGreaterThan(9);
+    // New about 18 April: the shadow sits on the moon.
+    expect(Math.abs(shadowX(18))).toBeLessThan(0.6);
+    // Waning a week after full: shadow right. Waxing a week before the next full (about 2 May): shadow left.
+    expect(shadowX(9)).toBeGreaterThan(4);
+    expect(shadowX(26)).toBeLessThan(-4);
   });
 });
 

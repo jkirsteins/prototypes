@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calendar, daylight, fmtDate, minutesUntilDawn } from "../src/sim/calendar";
+import { calendar, daylight, fmtDate, minutesUntilDawn, moonIllumination, moonPhase, SYNODIC_DAYS } from "../src/sim/calendar";
 
 describe("calendar", () => {
   it("starts on 1 April at 08:00 in spring", () => {
@@ -38,5 +38,22 @@ describe("calendar", () => {
     expect(then.hour).toBeCloseTo(then.sunrise, 1);
     expect(dawn).toBeGreaterThan(0);
     expect(dawn).toBeLessThan(1440);
+  });
+});
+
+describe("the moon", () => {
+  it("runs a synodic month, full on 3 April, dark at new", () => {
+    const day = (d: number) => 1440 * (d - 1) + 4 * 60;   // noon of run day d (the run starts at 08:00)
+    expect(moonPhase(day(3))).toBeCloseTo(0.5, 1);
+    expect(moonIllumination(day(3))).toBeGreaterThan(0.97);
+    expect(moonIllumination(day(3 + SYNODIC_DAYS / 2))).toBeLessThan(0.03);
+    expect(moonPhase(day(3 + SYNODIC_DAYS))).toBeCloseTo(0.5, 1);
+    for (let m = 0; m < 1440 * 60; m += 977) {
+      expect(moonPhase(m)).toBeGreaterThanOrEqual(0);
+      expect(moonPhase(m)).toBeLessThan(1);
+    }
+    const c = calendar(day(3));
+    expect(c.moon).toBeCloseTo(0.5, 1);
+    expect(c.moonLight).toBeGreaterThan(0.97);
   });
 });

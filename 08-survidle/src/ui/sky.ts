@@ -149,6 +149,7 @@ export function skyHtml(): string {
 <path d="${arc}" fill="none" stroke="rgba(255,255,255,0.18)" stroke-dasharray="2 3"/>
 <circle id="sky-sun" cx="${CX - ARC_R}" cy="${GROUND_Y}" r="6" fill="#ffd66b" stroke="#fff3c0" stroke-width="1"/>
 <circle id="sky-moon" cx="${CX - ARC_R}" cy="${GROUND_Y}" r="5" fill="#e8ecf5" opacity="0"/>
+<circle id="sky-moon-shadow" cx="${CX - ARC_R}" cy="${GROUND_Y}" r="5.4" fill="#4682d2" opacity="0"/>
 <rect x="0" y="${GROUND_Y}" width="${SKY_W}" height="${SKY_H - GROUND_Y}" fill="#0b1210"/>
 <path d="M 0 ${GROUND_Y} L 40 ${GROUND_Y - 6} L 44 ${GROUND_Y} L 90 ${GROUND_Y - 4} L 96 ${GROUND_Y} L 150 ${GROUND_Y - 7} L 156 ${GROUND_Y} L 210 ${GROUND_Y - 5} L 214 ${GROUND_Y} Z" fill="#0b1210"/>
 <text id="sky-label" x="${SKY_W - 4}" y="${SKY_H - 3}" text-anchor="end" font-size="8" fill="rgba(255,255,255,0.6)"></text>
@@ -171,6 +172,13 @@ export function updateSky(state: GameState, cal: Calendar, ambient: number, root
   setAttr(root, "sky-moon", "cx", f(pos.body === "moon" ? pos.x : CX - ARC_R));
   setAttr(root, "sky-moon", "cy", f(pos.body === "moon" ? pos.y : GROUND_Y + 8));
   setAttr(root, "sky-moon", "opacity", pos.body === "moon" ? "1" : "0");
+  // A disc of sky laid over the moon, slid aside by how much of it is lit: left while waxing, right while waning.
+  const r = 5;
+  const offset = 2 * r * cal.moonLight * (cal.moon < 0.5 ? -1 : 1);
+  setAttr(root, "sky-moon-shadow", "cx", f(pos.body === "moon" ? pos.x + offset : CX - ARC_R));
+  setAttr(root, "sky-moon-shadow", "cy", f(pos.body === "moon" ? pos.y : GROUND_Y + 8));
+  setAttr(root, "sky-moon-shadow", "fill", light.skyTop);
+  setAttr(root, "sky-moon-shadow", "opacity", pos.body === "moon" ? "1" : "0");
   setAttr(root, "sky-stars", "opacity", pos.body === "moon" && state.weather.precip === "none" && state.weather.clear ? "0.9" : "0");
   setAttr(root, "sky-top", "stop-color", light.skyTop);
   setAttr(root, "sky-bottom", "stop-color", light.skyBottom);

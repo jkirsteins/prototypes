@@ -4,6 +4,9 @@ import type { Season } from "./types";
 export const START_DOY = 90;
 export const START_MINUTE_OF_DAY = 8 * 60;
 export const LATITUDE_DEG = 62;
+export const SYNODIC_DAYS = 29.530588;
+/** Day index of a new moon, chosen so the run's first full moon is 3 April. */
+const NEW_MOON_DAY = -12.4;
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -11,6 +14,18 @@ const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "Jul
 /** "April" for month 3. */
 export function monthName(month: number): string {
   return MONTH_FULL[((month % 12) + 12) % 12];
+}
+
+/** 0 at new, 0.5 at full, in [0, 1). */
+export function moonPhase(minute: number): number {
+  const days = (minute + START_MINUTE_OF_DAY) / 1440;
+  const p = ((days - NEW_MOON_DAY) / SYNODIC_DAYS) % 1;
+  return p < 0 ? p + 1 : p;
+}
+
+/** Lit share of the disc, 0 at new to 1 at full. */
+export function moonIllumination(minute: number): number {
+  return (1 - Math.cos(2 * Math.PI * moonPhase(minute))) / 2;
 }
 
 export interface Calendar {
@@ -28,6 +43,10 @@ export interface Calendar {
   sunrise: number;
   sunset: number;
   isNight: boolean;
+  /** phase, 0 new to 0.5 full */
+  moon: number;
+  /** illumination 0..1 */
+  moonLight: number;
 }
 
 export function calendar(minute: number): Calendar {
@@ -56,6 +75,8 @@ export function calendar(minute: number): Calendar {
     sunrise,
     sunset,
     isNight: hour < sunrise || hour >= sunset,
+    moon: moonPhase(minute),
+    moonLight: moonIllumination(minute),
   };
 }
 
