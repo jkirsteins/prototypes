@@ -54,8 +54,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("sticks", 10),
   keep("bark", 12),
   keep("craft", 4, "cordage"),
-  keep("craft", 1, "knife"),
-  keep("craft", 1, "fireDrill"),
+  job("craft", { kind: "once" }, "knife"),
+  job("craft", { kind: "once" }, "fireDrill"),
   // A vessel, not "the second-order kit": with the shore iced (April, every
   // seed so far) the fill keep cannot even open an ice hole without one
   // ("needs a vessel" - check("fill") - the ice-hole step is inside the
@@ -68,13 +68,13 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("build", { kind: "once" }, "firePit"),
   keep("chop", 3),
   keep("split", 40),
-  keep("craft", 1, "fishingSpear"),
+  job("craft", { kind: "once" }, "fishingSpear"),
   keep("fish", 1, "any"),
   keep("cook", 1, "fish"),
   keep("cook", 1),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
-  keep("craft", 1, "bow"),
+  job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
   job("build", { kind: "once" }, "dryingRack"),
