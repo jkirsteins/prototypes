@@ -184,9 +184,11 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   }
   // A region with no orders has no intent (spec 2.3), whether the list was already
   // empty when this ran (an order removed by hand) or the loop above just emptied
-  // it. A manual intent (no orderId) is not this scheduler's to clear.
+  // it. A manual intent (no orderId) is not this scheduler's to clear, but wait is:
+  // startIntent gives it no orderId either, yet it is only ever started by this
+  // scheduler and belongs to it just the same.
   if (!st.orders.length) {
-    if (live?.orderId != null) state.intent = null;
+    if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;
     return;
   }
   const chosen = chooseOrder(state, world, cal);

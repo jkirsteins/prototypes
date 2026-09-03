@@ -291,6 +291,18 @@ describe("the scheduler", () => {
     expect(state.log.filter((e) => e.text === "Nothing to do. You wait at camp.").length).toBe(1);
   });
 
+  it("removing the last order while a wait intent is live still clears it", () => {
+    const g = campWith(3, { firewood: 40 });
+    const { state, world } = g;
+    // Already at target: the only order is met from the first free minute, so wait becomes live.
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    advance(state, world, 3);
+    expect(state.intent?.task).toBe("wait");
+    removeOrder(state, world, keep.id);
+    advance(state, world, 1);
+    expect(state.intent).toBeNull();
+  });
+
   it("chooseOrder judges the walk to the work too, skipping a route it cannot take", () => {
     const g = campWith(3, { firewood: 40 });
     const { state, world } = g;
