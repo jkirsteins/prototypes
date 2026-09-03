@@ -8,7 +8,7 @@ import { hourlyHazards } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
@@ -20,26 +20,25 @@ describe("wet wood", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell), "log", 2);
-    state.weather.precip = "light";
     startTask(state, world, cal, "split");
+    state.weather.precip = "light";
     advance(state, world, 20);
     expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBe(20);
     state.weather.precip = "none";
-    st.logsWet = 2 * 60;
-    startTask(state, world, cal, "split");
+    st.logsWet = 0;
     advance(state, world, 20);
     // The first batch has sat in the pack the whole 20 minutes, drying at the
     // unsheltered camp's 0.5 kg/h even with no fire yet: a sixth of a kilo gone.
-    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(40 - 1 / 6, 6);
+    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(20 - 1 / 6, 6);
     // Dries at 2 kg an hour by a lit fire, and keeps at it once it rains again:
     // the fire's own heat does the drying, not a dry sky.
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
-    const before = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
+    const dry_before = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
     advance(state, world, 60);
     const after = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
-    expect(before - after).toBeCloseTo(2, 0);
+    expect(dry_before - after).toBeCloseTo(2, 0);
     state.weather.precip = "heavy";
     advance(state, world, 60);
     const afterRain = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
@@ -131,6 +130,22 @@ describe("wet wood", () => {
     state.weather.precip = "heavy";
     advance(state, world, 60);
     expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(8, 6);
+  });
+});
+
+describe("splitting waits for dry weather", () => {
+  it("is blocked in rain and for six hours after, then allowed", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "log", 2);
+    state.weather.precip = "light";
+    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
+    state.weather.precip = "none";
+    st.logsWet = 60;
+    expect(check(state, world, calendar(0), "split").ok).toBe(false);
+    st.logsWet = 6 * 60;
+    expect(check(state, world, calendar(0), "split").ok).toBe(true);
   });
 });
 

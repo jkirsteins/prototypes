@@ -284,6 +284,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = opt({ group: "camp", label: "Split a log", detail: "one log into 20 kg of firewood", duration: 15, repeatable: true });
       if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
+      if (splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
     }
     case "fill": {
