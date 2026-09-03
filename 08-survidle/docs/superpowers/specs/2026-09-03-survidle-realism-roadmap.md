@@ -780,8 +780,9 @@ What the build taught, for the sub-projects after it:
 
 ### The baseline
 
-Seven fixes to rules that already exist, in the order they killed the
-headless runs of A's runner. None is a new system; each is a stock, a
+Specced: `2026-09-03-survidle-baseline-design.md`. Seven fixes to rules
+that already exist, in the order they killed the headless runs of A's
+runner. None is a new system; each is a stock, a
 priority or a keep the loop needs before any content lands on it. They
 get one spec between them, and F's reference player is that spec's gate:
 the scripted set-up on four seeds is what found these seven, its harness
