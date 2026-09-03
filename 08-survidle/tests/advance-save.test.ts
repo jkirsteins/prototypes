@@ -175,6 +175,25 @@ describe("save", () => {
     expect(orders[1].req.arg).toBe("willowGrouse");
   });
 
+  it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
+    const { state, world } = newGame(17);
+    const raw = JSON.parse(serialize(state));
+    raw.version = 3;
+    for (const st of Object.values(raw.state.regions) as Record<string, unknown>[]) {
+      delete st.iceHole;
+    }
+    const toolIds = ["axe", "knife", "bow", "fishingSpear", "fireDrill", "needle", "barkBucket", "waterskin"];
+    for (const inv of Object.values(raw.state.piles) as { items: Record<string, unknown> }[]) {
+      delete inv.items.water;
+      delete inv.items.ice;
+      for (const id of toolIds) delete inv.items[id];
+    }
+    const file = deserialize(JSON.stringify(raw));
+    expect(file).not.toBeNull();
+    for (const st of Object.values(file!.state.regions)) expect(st.iceHole).toBeNull();
+    expect(() => advance(file!.state, world, 1440)).not.toThrow();
+  });
+
   it("rejects garbage", () => {
     expect(deserialize("not json")).toBeNull();
     expect(deserialize("{}")).toBeNull();

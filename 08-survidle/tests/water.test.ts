@@ -206,6 +206,18 @@ describe("water at camp", () => {
     expect(qty(camp, "water")).toBeCloseTo(1, 2);
   });
 
+  it("a bucket at camp over half full may split in the freeze, same as a carried one", () => {
+    const { state, world, camp } = atCamp();
+    addItem(camp, "barkBucket", 1);
+    addItem(camp, "water", 3);
+    // Capacity is one bucket's 2 l; 3 l is over half of that, so the split rolls.
+    // Rng(7)'s first draw is 0.0117, under the one-in-three chance, so it fires.
+    hourlyHazards(state, world, cal, -8, -8, new Rng(7));
+    expect(qty(camp, "barkBucket")).toBe(0);
+    expect(qty(camp, "ice")).toBeCloseTo(1, 5);
+    expect(state.log.some((l) => l.text === "A bucket at camp has split in the frost.")).toBe(true);
+  });
+
   it("a fire at camp keeps the water from freezing", () => {
     const { state, world, st, camp } = atCamp();
     addItem(camp, "barkBucket", 1);
