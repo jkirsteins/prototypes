@@ -30,7 +30,7 @@ import {
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
-import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -175,6 +175,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "chop": {
       const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: terrain === "spruce" ? 50 : 60, repeatable: true }));
       if (!o.ok) return o;
+      if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!hasTool(p, "axe")) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
@@ -219,6 +220,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const kg = fishKg(state) * yieldFactor(state, "fishing");
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, world, cal, d, "fish"))}` }));
       if (!o.ok) return o;
+      if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
       if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
       return o;
@@ -397,6 +399,9 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   if (state.weather.precip !== "none") odds *= 0.85;
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
+  if (stormNow(state.weather, state.minute)) odds *= 0.5;
+  if (state.player.energy < 20) odds *= 0.5;
+  else if (state.player.energy < 30) odds *= 0.75;
   return Math.min(0.95, odds);
 }
 
@@ -684,7 +689,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
       if (wearTool(p, "axe", wearFactor(state, world, "chop"))) log(state, "The axe head splits on the last stroke. It is done for.", "bad");
-      if (rng.chance(0.01)) {
+      const axeInjury = p.energy < 20 ? 0.03 : p.energy < 30 ? 0.02 : 0.01;
+      if (rng.chance(axeInjury)) {
         p.injured = Math.max(p.injured, 24 * 60);
         p.health = Math.max(1, p.health - 10);
         log(state, "The axe glances off a knot into your shin. You will limp for a day.", "bad");

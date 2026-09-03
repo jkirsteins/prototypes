@@ -12,7 +12,7 @@ import { causeFrom, die, feltTemperature, stepPlayer } from "./player";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { autoDrink } from "./water";
-import { ambientTemperature, stepWeather } from "./weather";
+import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
 /** Daily rolls happen at this hour. */
@@ -40,11 +40,15 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   state.minute += dt;
   const cal = calendar(state.minute);
 
-  const ev = stepWeather(state.weather, cal, rng, dt);
+  const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
   const ambient = ambientTemperature(cal, state.weather);
   if (ev.coldSnap) log(state, `A cold snap. ${Math.round(ambient)} C and falling.`, "bad");
   if (ev.precipStarted) log(state, ambient <= 0 ? "Snow begins to fall." : "Rain sets in.");
   if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
+  if (state.weather.storm && !state.weather.storm.warned && stormComing(state.weather, state.minute)) {
+    state.weather.storm.warned = true;
+    log(state, "The sky is closing in from the west.", "bad");
+  }
 
   stepTask(state, world, cal, rng, dt);
   runIntent(state, world, cal, rng);

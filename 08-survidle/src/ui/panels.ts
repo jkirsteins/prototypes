@@ -2,7 +2,7 @@ import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
-import { smoky } from "../sim/fire";
+import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
@@ -15,7 +15,7 @@ import {
 } from "../sim/tasks";
 import { type GameState, type Garment, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
 import { THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { iceMode, weatherLabel } from "../sim/weather";
+import { iceMode, stormNow, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -125,6 +125,9 @@ export function clockHtml(state: GameState, cal: Calendar, ambient: number): str
   const sun = cal.isNight ? "night" : "day";
   const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
   const ice = state.weather.iceCm >= 1 ? `<span>ice ${Math.round(state.weather.iceCm)} cm</span>` : "";
+  const storm = state.weather.storm && stormNow(state.weather, state.minute)
+    ? `<span class="bad">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</span>` : "";
+  const dry = groundDry(state.weather, cal) ? `<span class="bad">tinder dry</span>` : "";
   return `<div class="clockrow"><div class="line">
 <span class="big">Day ${cal.day}</span>
 <span>${fmtDate(cal)}, ${cal.season}</span>
@@ -133,6 +136,8 @@ export function clockHtml(state: GameState, cal: Calendar, ambient: number): str
 <span class="${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C, ${weatherLabel(state.weather, ambient)}</span>
 ${snow}
 ${ice}
+${storm}
+${dry}
 <span class="dim">1 s = ${GAME_MINUTES_PER_REAL_SECOND} game min</span>
 </div>${skyHtml()}</div>`;
 }

@@ -7,12 +7,12 @@ import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR 
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
-import { atCamp, cellOf } from "./position";
+import { atCamp, cellOf, hereTerrain } from "./position";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { THIRSTY_L, stepWater } from "./water";
-import { DEEP_SNOW_CM, ICE_SAFE_CM } from "./weather";
+import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>(["rest", "night", "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors"]);
@@ -88,6 +88,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
+  if (stormNow(state.weather, state.minute)) felt -= 6;
   return felt;
 }
 
@@ -164,13 +165,17 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
     cabin: !!cabin,
     fireAtCamp: r.fire.lit && camp && campTask,
     bedded: bedded(state.task),
-    storm: w.storm !== null && state.minute >= w.storm.from && state.minute < w.storm.until,
+    storm: stormNow(w, state.minute),
   };
   stepGarments(state, x, dt);
 
   // Kilocalories.
   let burn = KCAL_PER_HOUR[a];
-  if (a === "walk" && carried(p) > PACK_COMFORTABLE_KG) burn = 350;
+  if (a === "walk") {
+    burn = 300 / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
+    if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
+    if (carried(p) > PACK_COMFORTABLE_KG) burn += 50;
+  }
   if (felt < 0) burn *= 1.3;
   if (p.sick > 0) burn *= 1.2;
   p.kcal = clamp(p.kcal - burn * h, 0, KCAL_FULL);
@@ -184,7 +189,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 
   // Energy.
   // A working day of ten hours plus six awake costs about what eight hours of sleep restores.
-  const energyRate = a === "sleep" ? 12.5 : a === "rest" && state.task?.id === "rest" ? 6 : a === "rest" ? -4 : -8;
+  const energyRate = a === "sleep" ? 12.5 : a === "rest" && state.task?.id === "rest" ? (p.energy < 20 ? 4 : 6) : a === "rest" ? -4 : -8;
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.

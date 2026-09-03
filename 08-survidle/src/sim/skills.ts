@@ -210,6 +210,8 @@ export function craftSuccess(state: GameState, recipe: RecipeId): number {
   let f = 0.5 ** gap(state, `craft:${recipe}`);
   // Cold hands double the chance of spoiling the piece, not halve the chance of success.
   if (state.player.frostbite.hands > 0) f = 1 - Math.min(1, 2 * (1 - f));
+  // Spent past energy 20, hands fumble the piece: the spoil chance doubles the same way.
+  if (state.player.energy < 20) f = 1 - Math.min(1, 2 * (1 - f));
   if (state.player.fingers) f *= 0.9;
   return f;
 }

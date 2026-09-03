@@ -18,6 +18,19 @@ const START_PER_HOUR: Record<Season, number> = { spring: 0.04, summer: 0.03, aut
 const STOP_PER_HOUR = 0.25;
 export const DEEP_SNOW_CM = 30;
 
+/** Daily chance of a storm rolling in, by season. */
+const STORM_CHANCE: Record<Season, number> = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
+
+/** True while a storm is blowing at this minute. */
+export function stormNow(w: Weather, minute: number): boolean {
+  return w.storm !== null && minute >= w.storm.from && minute < w.storm.until;
+}
+
+/** True in the hour before a storm starts, for the one warning. */
+export function stormComing(w: Weather, minute: number): boolean {
+  return w.storm !== null && minute >= w.storm.from - 60 && minute < w.storm.from;
+}
+
 /** Ice above this bears a walker's weight without risk. */
 export const ICE_SAFE_CM = 15;
 /** Ice above this bears a walker's weight, but each crossed cell risks a fall. */
@@ -43,8 +56,11 @@ function stepIce(w: Weather, cal: Calendar): void {
 
 export interface WeatherEvents { coldSnap: boolean; precipStarted: boolean; precipStopped: boolean }
 
-/** Advances precipitation and snow by dt minutes. dt is at most one minute. */
-export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number): WeatherEvents {
+/**
+ * Advances precipitation and snow by dt minutes. dt is at most one minute.
+ * `minute` defaults from `cal` for callers that have not adopted it.
+ */
+export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, minute = cal.dayIndex * 1440 + cal.hour * 60): WeatherEvents {
   const ev: WeatherEvents = { coldSnap: false, precipStarted: false, precipStopped: false };
   if (cal.dayIndex > w.rolledDay && cal.hour >= cal.sunrise) {
     stepIce(w, cal);
@@ -61,9 +77,24 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number): We
       w.dryDays += 1;
     }
     w.wetDay = false;
+    if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) {
+      const from = minute + 60 + rng.int(121);
+      w.storm = { from, until: from + 360 + rng.int(721), warned: false };
+    }
   }
   const ambient = ambientTemperature(cal, w);
-  if (w.precip === "none") {
+  if (stormNow(w, minute)) {
+    if (w.precip !== "heavy") {
+      w.precip = "heavy";
+      ev.precipStarted = true;
+    }
+  } else if (w.storm && minute >= w.storm.until) {
+    w.storm = null;
+    if (w.precip !== "none") {
+      w.precip = "none";
+      ev.precipStopped = true;
+    }
+  } else if (w.precip === "none") {
     if (rng.chance((START_PER_HOUR[cal.season] / 60) * dt)) {
       w.precip = rng.chance(0.3) ? "heavy" : "light";
       ev.precipStarted = true;
