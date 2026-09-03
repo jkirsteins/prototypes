@@ -5,7 +5,7 @@
  * margin, which keeps a region hop to a few thousand cells on a world of
  * millions. Results are cached per (from, to) for the life of a world.
  */
-import type { Terrain } from "../sim/types";
+import type { IceMode, Terrain } from "../sim/types";
 import { CELL_KM } from "../units";
 import { terrainOf, type World } from "./cells";
 
@@ -14,8 +14,6 @@ export const TERRAIN_SPEED: Record<Terrain, number> = {
   water: 0, fell: 0.5, rock: 0.75, bog: 0.7, spruce: 1, pine: 1, birch: 1, meadow: 1.1,
 };
 
-/** Whether a route may step onto water, and how: safe ice bears weight without risk, thin ice risks a fall. */
-export type IceMode = "none" | "safe" | "thin";
 /** Walking on ice relative to open forest. */
 export const ICE_SPEED = 0.8;
 

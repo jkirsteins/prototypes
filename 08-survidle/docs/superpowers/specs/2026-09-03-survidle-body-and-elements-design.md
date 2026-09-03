@@ -110,9 +110,11 @@ vessels from the camp's source when camp is waterside.
 
 Lakes and the sea's inlets freeze. `Weather.iceCm`, one thickness for the
 world (regional differences are out of scope), moves once a day at the
-weather roll from the day's mean ambient: grows 0.5 cm per degree below 0
-(a -10 C day adds 5 cm), melts 2 cm per degree above 0, never below 0. At
-62 N this gives walkable ice from roughly December to April.
+weather roll from the day's mean ambient: thickness squared grows by 7.2
+per freezing degree of the day's mean, the way real ice does, so it
+thickens fast when thin and slowly when thick; it melts 2 cm per degree
+above 0, never below 0. At 62 N this gives walkable ice from roughly
+December to April.
 
 | ice           | water cells                                              |
 |---------------|----------------------------------------------------------|

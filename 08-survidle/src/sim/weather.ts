@@ -1,7 +1,6 @@
 import type { Rng } from "../rng";
-import type { IceMode } from "../world/route";
 import type { Calendar } from "./calendar";
-import type { Season, Weather } from "./types";
+import type { IceMode, Season, Weather } from "./types";
 
 /** Mean temperature over the year at 62 N inland: +15 in mid-July, -9 in mid-January, about 0 on 1 April. */
 export function seasonalMean(dayOfYear: number): number {
@@ -30,10 +29,15 @@ export function iceMode(w: Weather): IceMode {
   return "none";
 }
 
-/** Yesterday's mean sets today's ice: half a centimetre per freezing degree, two per thawing one. */
+/**
+ * Yesterday's mean sets today's ice, by Stefan's law: thickness squared
+ * grows by 7.2 per freezing degree-day, so it thickens fast when thin and
+ * slowly when thick (a real ice sheet, not a linear one). Melting stays
+ * linear: two centimetres off per thawing degree.
+ */
 function stepIce(w: Weather, cal: Calendar): void {
   const mean = seasonalMean(cal.dayOfYear) + w.offset;
-  if (mean < 0) w.iceCm += 0.5 * -mean;
+  if (mean < 0) w.iceCm = Math.sqrt(w.iceCm * w.iceCm + 7.2 * -mean);
   else w.iceCm = Math.max(0, w.iceCm - 2 * mean);
 }
 

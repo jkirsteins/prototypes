@@ -54,6 +54,11 @@ function fillDefaults(state: GameState): void {
   w.wetDay ??= false;
   w.dryWarned ??= false;
   w.iceCm ??= 0;
+  if (state.route) {
+    state.route.ice ??= "none";
+    // Old saves predate lastLand; the route's own path (or its target, if already there) is the closest thing to it.
+    state.route.lastLand ??= state.route.path[0] ?? state.route.target;
+  }
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
     st.structures.hearth ??= false;

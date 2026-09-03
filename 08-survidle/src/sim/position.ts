@@ -7,7 +7,8 @@ import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
 import { enterRegion, regionState } from "./regionstate";
-import type { GameState, SpotId, Terrain } from "./types";
+import { iceMode } from "./weather";
+import type { GameState, IceMode, SpotId, Terrain } from "./types";
 
 export function cellIndex(world: World, x: number, y: number): number {
   const cx = Math.min(world.w - 1, Math.max(0, Math.floor(x)));
@@ -102,13 +103,13 @@ export function byWater(state: GameState, world: World): boolean {
 }
 
 /** Route length in km from the player to a cell, or null if unreachable. */
-export function kmTo(state: GameState, world: World, idx: number): number | null {
-  const route = findRoute(world, cellOf(state, world), idx);
+export function kmTo(state: GameState, world: World, idx: number, ice: IceMode = "none"): number | null {
+  const route = findRoute(world, cellOf(state, world), idx, ice);
   return route ? routeKm(route) : null;
 }
 
-export function kmBetween(world: World, a: number, b: number): number | null {
-  const route = findRoute(world, a, b);
+export function kmBetween(world: World, a: number, b: number, ice: IceMode = "none"): number | null {
+  const route = findRoute(world, a, b, ice);
   return route ? routeKm(route) : null;
 }
 
@@ -132,7 +133,8 @@ export function describeWhere(state: GameState, world: World): string {
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";
-  const km = kmBetween(world, cellOf(state, world), r.campCell);
+  const ice = iceMode(state.weather) === "safe" ? "safe" : "none";
+  const km = kmBetween(world, cellOf(state, world), r.campCell, ice);
   const dist = km === null ? "" : `, ${km.toFixed(1)} km from camp`;
   if (spot) return `at ${SPOT_WORDS[spot]}${dist}`;
   return `${GROUND[hereTerrain(state, world)]}${dist}`;

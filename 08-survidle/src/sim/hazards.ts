@@ -29,6 +29,7 @@ export function hourlyHazards(state: GameState, world: World, cal: Calendar, amb
  * (tasks.ts, stepWalk), so this is only for standing still on it.
  */
 export function iceUnderFoot(state: GameState, world: World, rng: Rng): void {
+  if (state.dead) return;
   if (state.weather.iceCm >= ICE_THIN_CM) return;
   if (activityOf(state.task) === "walk") return;
   const cell = cellOf(state, world);

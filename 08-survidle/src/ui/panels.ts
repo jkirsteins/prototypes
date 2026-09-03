@@ -163,7 +163,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       if (s.cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(world, myCell, s.cell);
+      const km = kmBetween(world, myCell, s.cell, iceMode(state.weather) === "safe" ? "safe" : "none");
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : ` <small>${esc(walk.why)}</small>`;
@@ -200,7 +200,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     const go = check(state, world, cal, "travel", `region:${id}`);
     travel = go.ok
       ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
-      : `<div class="dim" style="margin-top:6px">${esc(go.why)}</div>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}`;
+      : `<div style="margin-top:6px"><span class="dim">${esc(go.why)}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
   }
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>

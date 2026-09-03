@@ -1,7 +1,7 @@
 import type { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
-import { findRoute, type IceMode, routeKm, routeMinutes } from "../world/route";
+import { findRoute, routeKm, routeMinutes } from "../world/route";
 import { regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import {
@@ -25,7 +25,7 @@ import {
 } from "./position";
 import { discovery, regionState } from "./regionstate";
 import {
-  type GameState, type PausedTask, type RecipeId, SPECIES, type Species,
+  type GameState, type IceMode, type PausedTask, type RecipeId, SPECIES, type Species,
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
@@ -319,10 +319,11 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (here === campCell) return { ...o, ok: false, why: "you are at camp" };
       const kg = weight(pile(state, at));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
-      const route = findRoute(world, here, campCell);
+      const ice = walkIceMode(state, false);
+      const route = findRoute(world, here, campCell, ice);
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
-      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, PACK_HARD_KG + 5));
-      const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5));
+      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, PACK_HARD_KG + 5), ice);
+      const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
       return { ...o, duration: loaded + empty, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
     case "night":
@@ -592,7 +593,9 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
  * Moves the player along the route at the speed of the ground under foot.
  * The bar shows minutes: what has passed, and what the rest would take now.
  * Every water cell entered while the ice is under the safe thickness risks a
- * fall, which ends the walk on the spot.
+ * fall, which ends the walk on the spot (the thin-ice warning itself is
+ * level-triggered in stepPlayer, which sees the same standing-on-water
+ * condition whether you are mid-crossing or stopped).
  */
 function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task!;
@@ -602,8 +605,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
     return;
   }
   const p = state.player;
-  let prevTerrain = hereTerrain(state, world);
-  let km = (walkSpeed(state, cal, state.weather, prevTerrain, undefined, route.ice) / 60) * dt;
+  let km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
   while (km > 1e-9 && route.path.length) {
     const cell = route.path[0];
     const next = cellCenter(world, cell);
@@ -619,17 +621,13 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
       state.stats.km += distKm;
       const terrain = cellAt(world, cell).terrain;
       if (terrain === "water") {
-        if (state.weather.iceCm < ICE_SAFE_CM) {
-          if (prevTerrain !== "water") log(state, "The ice is thin here.");
-          if (rng.chance(fallChance(state.weather.iceCm))) {
-            fallThrough(state, world, rng, route.lastLand);
-            return;
-          }
+        if (state.weather.iceCm < ICE_SAFE_CM && rng.chance(fallChance(state.weather.iceCm))) {
+          fallThrough(state, world, rng, route.lastLand);
+          return;
         }
       } else {
         route.lastLand = cell;
       }
-      prevTerrain = terrain;
     } else {
       const f = km / distKm;
       p.x += dx * f;

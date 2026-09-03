@@ -15,6 +15,7 @@ import { ANIMALS, ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./
 import { log } from "./log";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
 import { regionState } from "./regionstate";
+import { iceMode } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
@@ -320,9 +321,10 @@ function fetchMissing(state: GameState, sid: StructureId, campCell: number): Fet
  */
 function fetchSources(state: GameState, world: World, sid: StructureId, campCell: number, from: number): FetchSources {
   const { missing, wanted } = fetchMissing(state, sid, campCell);
+  const ice = iceMode(state.weather) === "safe" ? "safe" : "none";
   const sources = pilesIn(state, world, state.player.region)
     .filter((x) => x.cell !== campCell && wanted(x.inv))
-    .map((x) => ({ ...x, km: kmBetween(world, from, x.cell) }))
+    .map((x) => ({ ...x, km: kmBetween(world, from, x.cell, ice) }))
     .filter((x): x is { cell: number; inv: Inventory; km: number } => x.km !== null)
     .sort((a, b) => a.km - b.km);
   return { missing, wanted, sources };

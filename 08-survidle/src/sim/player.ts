@@ -1,16 +1,16 @@
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG, clamp } from "../units";
-import type { World } from "../world/gen";
-import { type IceMode, speedOf } from "../world/route";
+import { cellAt, type World } from "../world/gen";
+import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
-import { atCamp } from "./position";
+import { atCamp, cellOf } from "./position";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
-import type { DeathCause, GameState, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { THIRSTY_L, stepWater } from "./water";
-import { DEEP_SNOW_CM } from "./weather";
+import { DEEP_SNOW_CM, ICE_SAFE_CM } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>(["rest", "night", "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors"]);
@@ -223,6 +223,8 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "wet", p.wetness >= 60, "You are soaked through.");
   warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");
   warn(state, "thirst", p.water < THIRSTY_L, "You are thirsty.");
+  const onThinIce = cellAt(world, cellOf(state, world)).terrain === "water" && w.iceCm < ICE_SAFE_CM;
+  warn(state, "thinice", onThinIce, "The ice is thin here.");
 
   return drains;
 }

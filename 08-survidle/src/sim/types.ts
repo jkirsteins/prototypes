@@ -4,13 +4,14 @@
  * game is how fast the clock runs, and that lives in units.ts.
  */
 
-import type { IceMode } from "../world/route";
-
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
 export type Terrain =
   | "water" | "fell" | "rock" | "bog"
   | "spruce" | "pine" | "birch" | "meadow";
+
+/** Whether a route may step onto water, and how: safe ice bears weight without risk, thin ice risks a fall. */
+export type IceMode = "none" | "safe" | "thin";
 
 export type Species = "hare" | "grouse" | "deer" | "elk" | "fish";
 export const SPECIES: Species[] = ["hare", "grouse", "deer", "elk", "fish"];
