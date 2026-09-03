@@ -9,7 +9,7 @@ import { feedFire } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { atCamp } from "./position";
 import { regionState } from "./regionstate";
-import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, RACK_MAX_KG } from "./items";
+import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS, RACK_MAX_KG } from "./items";
 import { log } from "./log";
 import type { GameState, ItemId } from "./types";
 
@@ -97,6 +97,6 @@ export function dropAll(state: GameState, world: World): void {
 
 export function itemLabel(item: ItemId, q: number): string {
   if (item === "water" || item === "ice") return `${q.toFixed(1)} l ${ITEM_NAMES[item]}`;
-  if (ITEM_KG[item] === 1) return `${q >= 10 ? Math.round(q) : q.toFixed(1)} kg ${ITEM_NAMES[item]}`;
+  if (KG_ITEMS.has(item)) return `${q >= 10 ? Math.round(q) : q.toFixed(1)} kg ${ITEM_NAMES[item]}`;
   return `${Math.round(q)} ${ITEM_NAMES[item]}`;
 }

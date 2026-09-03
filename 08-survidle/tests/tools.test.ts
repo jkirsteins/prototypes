@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { itemLabel } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { yieldItem } from "../src/sim/intent";
@@ -83,6 +84,11 @@ describe("tools as items", () => {
     expect(beginTask(state, world, cal, "craft", "knife")).toBe(true);
     advance(state, world, 60);
     expect(qty(p.pack, "knife")).toBe(1);
+  });
+
+  it("a count item at 1 kg apiece is still counted, not weighed", () => {
+    expect(ITEM_KG.fishingSpear).toBe(1.0);
+    expect(itemLabel("fishingSpear", 1)).toBe("1 fishing spears");
   });
 
   it("saves are version 4 and a version 3 file still loads", () => {

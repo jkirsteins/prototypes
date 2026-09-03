@@ -5,7 +5,7 @@ import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
@@ -466,8 +466,8 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
   if (!items.length) return `<div class="dim">nothing</div>`;
   return `<div class="inv">${items
     .map(({ item, qty: q }) => {
-      const one = ITEM_KG[item] === 1 ? Math.min(q, 1) : 1;
-      const oneLabel = ITEM_KG[item] === 1 ? "1 kg" : "1";
+      const one = KG_ITEMS.has(item) ? Math.min(q, 1) : 1;
+      const oneLabel = KG_ITEMS.has(item) ? "1 kg" : "1";
       return `<span class="n">${itemLabel(item, q)}</span><span class="ctl"><button class="mini" data-act="${act}" data-item="${item}" data-n="${one}">${act} ${oneLabel}</button> <button class="mini" data-act="${act}" data-item="${item}" data-n="all">all</button></span>`;
     })
     .join("")}</div>`;
