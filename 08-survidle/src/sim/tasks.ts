@@ -689,7 +689,9 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   train(state, world, dt);
   // An "any" task is the intent's and the order's work under whatever species it drew.
   const wanted = t.any ? "any" : t.arg;
-  const order = liveOrderFor(state, world, t.id, wanted);
+  // A concrete order or intent (arg "hare") can adopt a task drawn as "any" (steps.ts
+  // isRunning treats them as the same work), so try the drawn species too before giving up.
+  const order = liveOrderFor(state, world, t.id, wanted) ?? liveOrderFor(state, world, t.id, t.arg);
   if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
@@ -700,7 +702,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   state.task = null;
   const it = state.intent;
   if (it) {
-    if (it.task === id && (it.arg ?? "") === (wanted ?? "")) {
+    if (it.task === id && ((it.arg ?? "") === (wanted ?? "") || (it.arg ?? "") === (arg ?? ""))) {
       it.done++;
       if (order) order.done++;
     } else if (it.task === "night" && id === "sleep") {

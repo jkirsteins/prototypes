@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool } from "../src/sim/inventory";
+import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
 import { availableTasks, beginTask, check, drawSpecies, startTask, stepTask, stopTask } from "../src/sim/tasks";
@@ -318,8 +319,9 @@ describe("anything", () => {
     const { state, world } = g;
     armed(g);
     const r = regionAt(world, 1865);
-    const sea = r.cells.find((c) => cellAt(world, c).terrain !== "water" && watersideCell(world, c, "sea"));
+    const sea = r.cells.find((c) => cellAt(world, c).terrain !== "water" && watersideCell(world, c, "sea") && !watersideCell(world, c, "lake"));
     expect(sea).toBeDefined();
+    expect(watersideCell(world, sea!, "lake")).toBe(false);
     placeAt(state, world, sea!);
     const st = regionState(state, world, state.player.region);
     // Lake fish are about in this region: a draw that ignored the water would land one.
@@ -329,5 +331,19 @@ describe("anything", () => {
       const s = drawSpecies(state, world, cal, rng, "fish", sea!);
       if (s) expect(SPECIES_DEFS[s].habitat.sea).toBeDefined();
     }
+  });
+
+  it("an intent for a named species that adopts a running \"anything\" hunt still counts the kill", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    armed(g);
+    placeAtSpot(state, world, state.player.region, "heath");
+    expect(startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "hare", until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
+    expect(state.task).toMatchObject({ id: "hunt", arg: "hare" });
+    // Stand in for a task adopted from an already-running "anything" hunt that drew hare.
+    state.task = { ...state.task!, any: true };
+    done(g);
+    expect(state.intent).not.toBeNull();
+    expect(state.intent!.done).toBe(1);
   });
 });
