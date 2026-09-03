@@ -142,6 +142,16 @@ describe("panels", () => {
     expect(document.querySelector(`#region [data-act="task"][data-id="walk"][data-arg="cell:${loose}"]`)).not.toBeNull();
   });
 
+  it("the region panel shows camp water against its capacity", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(0);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "barkBucket", 2);
+    addItem(pile(state, st.campCell), "water", 3);
+    const html = regionHtml(state, world, cal, newUiState());
+    expect(html).toContain("water: 3.0 of 4.0 l");
+  });
+
   it("lists the roster in Game, Birds, Fish and Heard lines, only species that live here", () => {
     const { state, world } = newGame(5);
     const id = state.player.region;

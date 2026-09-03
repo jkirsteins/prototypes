@@ -63,6 +63,10 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   walk back, and the rest when the work is over; "Haul to camp" under
   advanced does the same for whatever lies where you stand. Building uses
   the camp pile plus your pack.
+- **Water at camp.** Buckets and waterskins left in the camp pile hold
+  water; "fill vessels, keep camp at 4 litres" carries it home. It freezes
+  without a fire and thaws by one, and an ice hole cut with the axe on a
+  frozen shore is open until morning.
 - **Species.** About thirty animals live in the north, each with a range:
   capercaillie in some old spruce country and not all of it, ptarmigan and
   reindeer on the fell, eider and cod on the coast, perch and pike in the
@@ -100,8 +104,13 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   the fire it leaves, and nothing more.
 - **Camp.** Fire pit, then fire (needs a fire drill and firewood); lean-to,
   then a cabin (40 logs, 60 hours); drying rack (3 kg raw to 1 kg that
-  keeps); snares on the heath. Auto-eat and auto-feed keep you alive while
-  the tab is closed, as long as the food and firewood are there.
+  keeps); snares on the heath. "Hang meat to dry" is a task, and a keep on
+  dried meat runs it as the rack has room. Auto-eat and auto-feed keep you
+  alive while the tab is closed, as long as the food and firewood are
+  there.
+- **Spares.** A tool recipe yields a spare that is taken up when the one in
+  hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
+  run.
 - **Light.** Every tile carries its ground's colour as a dark background.
   At night a lit fire glows on the map, two rings when it is fed and one
   when it burns low, and you can see your own camp from the next valley.
@@ -153,6 +162,12 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
 terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 
+`npm run reference` runs the day-one order list a competent player would
+write, headless, on four seeds, about ten seconds; its verdict is the
+baseline's gate. `npm run reference -- --kitted` runs a diagnostic that
+starts with tools and a fire already in hand instead of from scratch. It is
+not part of `npm test`.
+
 ## Where the numbers live
 
 - `src/units.ts`: the time scale and pack limits.
@@ -171,3 +186,4 @@ terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
 - `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
+- `src/sim/reference.ts`: the reference player's order list and checkpoints.

@@ -3,7 +3,7 @@ import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
-import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
@@ -17,7 +17,7 @@ import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
 import type { GameState, Garment, ItemId, LogEntry, SkillId, TaskId } from "../sim/types";
-import { ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
+import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type RegionDef, speciesHere, type World } from "../world/gen";
@@ -245,6 +245,11 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   const rack = st.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${RACK_MAX_KG} kg max)</small></div>`
     : "";
+  const campPile = pile(state, st.campCell);
+  const cap = campWaterCapacity(campPile);
+  const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
+    ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
+    : "";
   let travel = "";
   if (!here) {
     const go = check(state, world, cal, "travel", `region:${id}`);
@@ -259,7 +264,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 <dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
 <dt>animals</dt><dd>${rosterHtml(state, world, id, cal)}</dd>
 <dt>places</dt><dd class="spots">${spots}${loose}</dd>
-<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}</dd>
+<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}</dd>
 </dl>${travel}`;
 }
 
