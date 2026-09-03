@@ -19,15 +19,24 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 
 ## How it plays
 
-- **You say what, the game does how.** Every button is an intent: "Fell a
-  tree" walks to the forest itself; a strip above the list says how long
-  (once, N times, until camp has N, forever), whether to bring the yield to
-  camp, and where. The game does the walking, the work and the hauling,
-  and when the body asks for it, the walk back to camp, a fire from what
-  is at camp, and the night's sleep; at dawn it goes back to the work.
-  Anything it cannot do (no axe, nothing left to fell, no materials) ends
-  the intent with the reason in the log. An "advanced" toggle shows the
-  raw single actions underneath, one at a time, as they were.
+- **You give orders, the game keeps them.** Every button adds an order to
+  this camp's list; the strip above says what kind: once, N times, until
+  camp has N, keep camp at N, or forever. Keeps and forevers are standing
+  orders. "Keep camp at 40 kg firewood" triggers when the pile drops under
+  20 and splits back up to 40; "Fell trees, forever, bringing it to camp"
+  soaks up every spare hour. Jobs ("build a cabin", "make 20 arrows") drop
+  off when done. The list is ranked: each free minute the game serves the
+  highest order that is unmet and can start, finishes any load it owes
+  camp first, and never switches mid-task. A blocked order shows why
+  ("needs an axe", "missing materials at camp") and waits; a job placed
+  above the grind that will haul its logs in is how a cabin gets built
+  while you are away. With orders but nothing to do, you wait at camp,
+  where the nights are by the fire. The game does the walking, the work,
+  the hauling, and when the body asks for it, the walk back to camp, a
+  fire from what is at camp, and the night's sleep. An "advanced" toggle
+  shows the raw single actions underneath, one at a time.
+- **Orders belong to a camp.** Walk into a new region and its list is
+  empty; come back and the old list resumes.
 - **A big north.** The world is about 540 by 390 km, the shape of the far
   north: sea and fjords to the northwest, a fell spine inland, lakes and bog
   to the east. It is generated as you touch it, so loading is instant.
@@ -100,7 +109,8 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   short and an elk can hurt you; a craft under level can spoil the piece.
 - **Away.** Close the tab and the world keeps going. On return the elapsed
   time is simulated, up to 24 real hours (60 game days), and a panel tells
-  you what happened. You can die while away.
+  you what happened, and, above the log, what each order did while you
+  were gone and what any of them is blocked on. You can die while away.
 - **Winter** is December to February at 62 N: about five hours of light,
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
   Deer and elk thin out. You need hide clothing, a cabin, and a wood pile.
