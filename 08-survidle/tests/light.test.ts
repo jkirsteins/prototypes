@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { rule } from "./css";
+import { calendar } from "../src/sim/calendar";
+import { newGame } from "../src/sim/newgame";
+import { mapHtml } from "../src/ui/map";
+import { newUiState, setPanel, resetPanels } from "../src/ui/render";
+import { updateSky } from "../src/ui/sky";
 
 describe("terrain colour", () => {
   const backgrounds: Record<string, string> = {
@@ -19,5 +24,27 @@ describe("terrain colour", () => {
       expect(body).toContain("box-shadow: inset 0 0 0 20px");
       expect(body).not.toContain("background");
     }
+  });
+});
+
+describe("night shade", () => {
+  beforeEach(() => {
+    document.body.innerHTML = `<div id="map"></div>`;
+    resetPanels();
+  });
+
+  it("the grid darkens through a shade layer, not a brightness filter", () => {
+    expect(rule(".grid")).not.toContain("brightness(");
+    expect(rule(".grid")).toContain("saturate(var(--sat))");
+    expect(rule(".grid .shade")).toContain("opacity: calc(1 - var(--bright))");
+  });
+
+  it("the map carries one shade element and the sky still sets its brightness", () => {
+    const { state, world } = newGame(21);
+    const night = calendar(16 * 60);
+    setPanel("map", mapHtml(world, state, newUiState(), night));
+    expect(document.querySelectorAll("#map .grid .shade").length).toBe(1);
+    updateSky(state, night, -5);
+    expect(document.querySelector<HTMLElement>("#map .grid")!.style.getPropertyValue("--bright")).toBe("0.550");
   });
 });

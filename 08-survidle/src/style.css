@@ -138,8 +138,15 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   background: #05070c;
   width: max-content;
   user-select: none;
-  filter: brightness(var(--bright)) saturate(var(--sat));
+  filter: saturate(var(--sat));
   transition: filter 0.5s linear;
+}
+/* Night: a black sheet over the ground whose opacity is the sky's darkness. Lit cells rise above it. */
+.grid .shade {
+  position: absolute; inset: 0; pointer-events: none;
+  background: #000;
+  opacity: calc(1 - var(--bright));
+  transition: opacity 0.5s linear;
 }
 /* Fog of war and the edge of the world: fog has a grain so the world's extent reads against the void. */
 .grid .c.fog { color: #141a26; background: #0a0e17; }

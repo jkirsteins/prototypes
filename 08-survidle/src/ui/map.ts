@@ -203,7 +203,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
     parts.push(`<span class="${cls.join(" ")}"${act} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push("</div>");
+  parts.push(`<i class="shade"></i></div>`);
   parts.push(
     `<div class="legend"><span>~ water</span><span>A spruce</span><span>T pine</span><span>Y birch</span><span>. meadow</span><span>" bog</span><span>n rock</span><span>^ fell</span><span class="accent">@ you</span><span>H shelter</span><span>F fire</span><span class="pl-key">underlined: something lies there</span><span class="fog-key">dark: never been there</span></div>`,
   );
