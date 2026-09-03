@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { coldFeet, garmentWet, skinExposure, stepGarments, wetFactor } from "../src/sim/clothing";
+import { coldFeet, coldHands, garmentWet, skinExposure, stepGarments, wetFactor } from "../src/sim/clothing";
 import { hourlyHazards } from "../src/sim/hazards";
 import { CLOTHING } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
@@ -68,6 +68,19 @@ describe("wet clothing", () => {
 });
 
 describe("frostbite", () => {
+  it("bare hands in deep cold freeze through the hourly roll, no mittens needed to test it", () => {
+    const { state, world } = newGame(1);
+    expect(coldHands(state, -20)).toBe(true);
+    const rng = new Rng(5);
+    let hours = 0;
+    while (state.player.frostbite.hands === 0 && hours < 200) {
+      hourlyHazards(state, world, calendar(0), -20, -20, rng);
+      hours++;
+    }
+    expect(state.player.frostbite.hands).toBe(3 * 1440);
+    expect(state.log.some((e) => e.text === "You cannot feel your fingers.")).toBe(true);
+  });
+
   it("wet boots in frost freeze the feet within a night; a fire under a roof heals them; a second time costs toes", () => {
     const { state, world } = newGame(17);
     const boots = state.player.clothing.find((g) => CLOTHING[g.id].slot === "boots")!;
@@ -110,12 +123,28 @@ describe("frostbite", () => {
     expect(baseWalkSpeed(state, calendar(0), state.weather)).toBeCloseTo(3 * 0.85, 6);
   });
 
-  it("frostbitten hands halve the odds of the bow and the craft", () => {
+  it("the numb warning fires once, on the fresh bite; a repeat strike while it holds costs the toes instead, logged once", () => {
+    const { state, world } = newGame(17);
+    const boots = state.player.clothing.find((g) => CLOTHING[g.id].slot === "boots")!;
+    boots.wet = 80;
+    const rng = new Rng(2);
+    let hours = 0;
+    while (!state.player.toes && hours < 100) {
+      hourlyHazards(state, world, calendar(0), -12, -12, rng);
+      hours++;
+    }
+    expect(state.player.toes).toBe(true);
+    expect(state.log.filter((e) => e.text === "Your feet are numb.")).toHaveLength(1);
+    expect(state.log.filter((e) => e.text === "You will not get those toes back.")).toHaveLength(1);
+  });
+
+  it("frostbitten hands halve the hunting odds and double the chance the craft spoils", () => {
     const { state } = newGame(1);
     const o0 = oddsFactor(state, "hare");
-    const c0 = craftSuccess(state, "cordage");
+    const c0 = craftSuccess(state, "bow");
+    expect(c0).toBeLessThan(1);
     state.player.frostbite.hands = 1000;
     expect(oddsFactor(state, "hare")).toBeCloseTo(o0 * 0.5, 6);
-    expect(craftSuccess(state, "cordage")).toBeCloseTo(c0 * 0.5, 6);
+    expect(craftSuccess(state, "bow")).toBeCloseTo(1 - Math.min(1, 2 * (1 - c0)), 6);
   });
 });

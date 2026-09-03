@@ -185,12 +185,12 @@ or hands rolls frostbite:
 `Player.frostbite: { feet: number; hands: number }` in minutes, 3 days
 each. While it holds: feet, walking speed times 0.6 and heavy work 0.7;
 hands, crafting spoil chance doubled and hunting and fishing odds halved.
-It counts down only during hours under a roof with a lit fire at camp, at
-least 8 such hours per day, else it holds. A second roll succeeding while
-the first is unhealed is loss: `Player.toes` or `Player.fingers` set true,
-permanent walking speed 0.85 or permanent craft and hunt factors 0.9, log
-"You will not get those toes back." Warnings: "Your feet are numb." and
-"You cannot feel your fingers." once per crossing.
+It counts down only during hours under a roof with a lit fire at camp;
+anywhere else it holds. A second roll succeeding while the first is
+unhealed is loss: `Player.toes` or `Player.fingers` set true, permanent
+walking speed 0.85 or permanent craft and hunt factors 0.9, log "You will
+not get those toes back." Warnings: "Your feet are numb." and "You cannot
+feel your fingers." once per crossing.
 
 ## 3. Wood, fire, smoke, storm
 

@@ -24,26 +24,33 @@ export function hourlyHazards(state: GameState, world: World, cal: Calendar, amb
   frostbite(state, felt, rng);
 }
 
-/** A cold, exposed extremity rolls frostbite for the hour; a second bite while the first still holds costs the digits for good. */
+/**
+ * A cold, exposed extremity rolls frostbite for the hour. The numb warning
+ * fires only on a fresh bite; a repeat strike while the timer is already
+ * running costs the digits for good instead, logged once, and just resets
+ * the timer without a second warning.
+ */
 function frostbite(state: GameState, felt: number, rng: Rng): void {
   const p = state.player;
   const chance = frostbiteChance(felt);
   if (chance <= 0) return;
   if (coldFeet(state, felt) && rng.chance(chance)) {
-    if (p.frostbite.feet > 0 && !p.toes) {
+    const alreadyNumb = p.frostbite.feet > 0;
+    if (alreadyNumb && !p.toes) {
       p.toes = true;
       log(state, "You will not get those toes back.", "bad");
     }
     p.frostbite.feet = FROSTBITE_MINUTES;
-    log(state, "Your feet are numb.", "bad");
+    if (!alreadyNumb) log(state, "Your feet are numb.", "bad");
   }
   if (coldHands(state, felt) && rng.chance(chance)) {
-    if (p.frostbite.hands > 0 && !p.fingers) {
+    const alreadyNumb = p.frostbite.hands > 0;
+    if (alreadyNumb && !p.fingers) {
       p.fingers = true;
       log(state, "You will not get those fingers back.", "bad");
     }
     p.frostbite.hands = FROSTBITE_MINUTES;
-    log(state, "You cannot feel your fingers.", "bad");
+    if (!alreadyNumb) log(state, "You cannot feel your fingers.", "bad");
   }
 }
 

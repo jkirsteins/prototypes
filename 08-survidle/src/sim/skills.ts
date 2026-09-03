@@ -207,7 +207,8 @@ export function gapInjury(state: GameState, species: Species): number {
 /** Chance a piece comes out: halved per level short of the recommendation. */
 export function craftSuccess(state: GameState, recipe: RecipeId): number {
   let f = 0.5 ** gap(state, `craft:${recipe}`);
-  if (state.player.frostbite.hands > 0) f *= 0.5;
+  // Cold hands double the chance of spoiling the piece, not halve the chance of success.
+  if (state.player.frostbite.hands > 0) f = 1 - Math.min(1, 2 * (1 - f));
   if (state.player.fingers) f *= 0.9;
   return f;
 }
