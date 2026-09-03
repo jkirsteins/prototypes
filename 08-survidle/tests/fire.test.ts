@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { feedFire } from "../src/sim/camp";
-import { burnPerHour, fireWarmth, lightingInRain, smoky } from "../src/sim/fire";
+import { burnPerHour, fireSeason, fireWarmth, lightingInRain, smoky } from "../src/sim/fire";
 import { hourlyHazards } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -121,6 +121,13 @@ describe("wet wood", () => {
 });
 
 describe("spread and smoke", () => {
+  it("fire season is summer or September, not October", () => {
+    const sep = calendar((258 - 91) * 1440 + 12 * 60);
+    const oct = calendar((288 - 91) * 1440 + 12 * 60);
+    expect(fireSeason(sep)).toBe(true);
+    expect(fireSeason(oct)).toBe(false);
+  });
+
   it("a big fire left alone on dry August ground spreads at two percent an hour; a banked one never does", () => {
     const { state, world } = newGame(3);
     const july = calendar((200 - 91) * 1440 + 12 * 60);

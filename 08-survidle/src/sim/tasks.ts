@@ -60,7 +60,7 @@ export const SPOT_NAMES = SPOT_WORDS;
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
 const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook"]);
 /** Work you carry in your hands wherever you go. */
-const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightTorch"]);
+const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightIndoors", "lightTorch"]);
 
 /** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
 export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string, at = cellOf(state, world)): string | null {

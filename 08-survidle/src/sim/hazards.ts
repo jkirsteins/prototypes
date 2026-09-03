@@ -39,7 +39,7 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   }
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended < SPREAD_UNATTENDED_MINUTES) continue;
+    if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended <= SPREAD_UNATTENDED_MINUTES) continue;
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
     st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
     st.structures.leanTo = false;

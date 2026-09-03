@@ -36,7 +36,7 @@ export const SPREAD_PER_HOUR = 0.02;
 
 /** Fire season, when the ground can dry out enough to carry a fire off camp. */
 export function fireSeason(cal: Calendar): boolean {
-  return cal.season === "summer" || cal.month === 9;
+  return cal.season === "summer" || cal.month === 8;
 }
 
 /** Tinder-dry ground: fire season, and no rain for DRY_DAYS days running. */

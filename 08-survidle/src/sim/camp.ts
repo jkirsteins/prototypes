@@ -43,7 +43,6 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.wetKg = 0;
         st.fire.lit = false;
         st.fire.indoors = false;
-        st.fire.unattended = 0;
         log(state, mine ? "The fire has gone out." : `The fire at ${name()} has gone out.`, "bad");
       }
     }
