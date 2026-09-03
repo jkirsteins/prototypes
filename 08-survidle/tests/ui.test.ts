@@ -15,10 +15,10 @@ import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
-import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
+import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { fishSpecies, huntedLand } from "../src/sim/species";
-import { cellAt, neighbours, regionAt, spotOf } from "../src/world/gen";
+import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
+import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
 
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
@@ -140,6 +140,23 @@ describe("panels", () => {
     setPanel("region", regionHtml(state, world, cal, newUiState()));
     expect(document.querySelector("#region")!.textContent).toContain("40 kg lying at");
     expect(document.querySelector(`#region [data-act="task"][data-id="walk"][data-arg="cell:${loose}"]`)).not.toBeNull();
+  });
+
+  it("lists the roster in Game, Birds, Fish and Heard lines, only species that live here", () => {
+    const { state, world } = newGame(5);
+    const id = state.player.region;
+    const html = rosterHtml(state, world, id, calendar(1440 * 275)); // January
+    const r = regionAt(world, id);
+    for (const s of speciesHere(r)) expect(html).toContain(SPECIES_DEFS[s].name);
+    for (const s of Object.keys(SPECIES_DEFS) as Species[]) if (!r.capacity[s]) expect(html).not.toContain(`${SPECIES_DEFS[s].name}`);
+    if (r.capacity.mallard) expect(html).toContain("mallard gone until April");
+    if (r.capacity.bear) expect(html).toContain("brown bear denned until April");
+    if (r.capacity.loon) expect(html).toContain("loon (from May)");
+    if (r.capacity.hare) {
+      regionState(state, world, id).pop.hare = 0;
+      expect(rosterHtml(state, world, id, calendar(0))).toContain("hare <b>none</b>");
+    }
+    expect(html.startsWith("<div>Game:") || html.startsWith("<div>Birds:") || html.startsWith("<div>Fish:") || html.startsWith("<div>Heard:")).toBe(true);
   });
 
   it("inventory lists pack and ground with take and drop", () => {

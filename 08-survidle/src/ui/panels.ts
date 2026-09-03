@@ -1,12 +1,12 @@
 import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
-import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
+import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
-import { fishSpecies, huntedLand, SPECIES_DEFS } from "../sim/species";
+import { awayWord, fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
@@ -159,6 +159,33 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
   return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(state.weather.iceCm)} cm, thin)</button>`;
 }
 
+/** "mallard gone until April" for a migrant out of season, otherwise the density in words. */
+function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
+  const def = SPECIES_DEFS[s];
+  if (def.season.kind === "migrant" && (cal.month < def.season.arrive || cal.month >= def.season.leave)) {
+    return isVoiceOnly(s) ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} ${awayWord(def)} until ${monthName(def.season.arrive)}`;
+  }
+  if (isVoiceOnly(s)) return def.name;
+  return `${def.name} <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`;
+}
+
+/** Four lines, each only the species that live here: Game, Birds, Fish, Heard. Empty lines are left out. */
+export function rosterHtml(state: GameState, world: World, id: number, cal: Calendar): string {
+  const here = speciesHere(regionAt(world, id));
+  const groups: [string, (s: Species) => boolean][] = [
+    ["Game", (s) => SPECIES_DEFS[s].kind === "mammal"],
+    ["Birds", (s) => SPECIES_DEFS[s].kind === "bird" && !isVoiceOnly(s)],
+    ["Fish", (s) => isFish(s)],
+    ["Heard", (s) => isVoiceOnly(s)],
+  ];
+  return groups
+    .map(([label, pick]) => {
+      const list = here.filter(pick).map((s) => rosterEntry(state, world, id, s, cal));
+      return list.length ? `<div>${label}: ${list.join(", ")}</div>` : "";
+    })
+    .join("");
+}
+
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const p = state.player;
   const id = ui.selected ?? p.region;
@@ -172,7 +199,6 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     `forest ${pct(r.forest)} <small>(spruce ${pct(f.spruce)}, pine ${pct(f.pine)}, birch ${pct(f.birch)})</small>`,
     `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
   ].join(", ");
-  const animals = speciesHere(r).map((s) => `${SPECIES_DEFS[s].name}: <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`).join(", ");
   const myCell = cellOf(state, world);
   const spots = r.spots
     .map((s) => {
@@ -228,7 +254,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 <dl class="kv">
 <dt>land</dt><dd>${terrain}</dd>
 <dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
-<dt>animals</dt><dd>${animals}</dd>
+<dt>animals</dt><dd>${rosterHtml(state, world, id, cal)}</dd>
 <dt>places</dt><dd class="spots">${spots}${loose}</dd>
 <dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}</dd>
 </dl>${travel}`;
