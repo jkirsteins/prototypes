@@ -1,6 +1,7 @@
 import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
+import { garmentWet } from "../sim/clothing";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
@@ -11,7 +12,7 @@ import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skil
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
-import { type GameState, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
+import { type GameState, type Garment, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
 import { THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
@@ -25,6 +26,12 @@ function bar(id: string, cls: string, label: string): string {
 
 function durBar(v: number): string {
   return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`;
+}
+
+function wetBar(g: Garment): string {
+  const w = garmentWet(g);
+  const label = w > 80 ? "soaked" : w > 50 ? "wet" : "";
+  return `<div class="bar dur wet"><div class="fill" style="width:${Math.max(0, Math.min(100, w))}%"></div>${label ? `<span class="lbl"><span>${label}</span></span>` : ""}</div>`;
 }
 
 function masteryBar(m: { level: number; share: number }): string {
@@ -81,7 +88,7 @@ export function gearHtml(state: GameState): string {
     .map((g) => {
       const def = CLOTHING[g.id];
       const warmth = def.sleep ? `+${def.sleep} C asleep` : `+${def.insulation} C`;
-      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${durBar(g.durability)}</div>`;
+      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${durBar(g.durability)}${wetBar(g)}</div>`;
     })
     .join("");
   const tools = p.tools.length

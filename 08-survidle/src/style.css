@@ -95,6 +95,8 @@ small, .dim { color: var(--dim); }
 .bar.task .fill { background: #3c8f4a; transition: none; }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
+.bar.dur.wet .fill { background: var(--water); opacity: .7; }
+.bar.dur.wet .lbl { font-size: 9px; line-height: 8px; }
 .bar.low .fill { background: var(--bad); }
 .bar.mastery { height: 10px; margin: 4px 0 0; }
 .bar.mastery .fill { background: #4b6a8f; }

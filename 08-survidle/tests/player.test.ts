@@ -58,10 +58,14 @@ describe("player physiology", () => {
     const { state, world } = newGame(1);
     state.weather.precip = "heavy";
     for (let m = 0; m < 30; m++) stepPlayer(state, world, 5, 1);
-    expect(state.player.wetness).toBeCloseTo(60, 0);
+    // The coat and trousers start dry, so they keep most of the rain off the skin at first.
+    expect(state.player.wetness).toBeLessThan(20);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 5, 1);
+    // Soaked through by now, the skin catches up with the rain.
+    expect(state.player.wetness).toBeGreaterThan(50);
     state.weather.precip = "none";
     regionState(state, world, state.player.region).fire.lit = true;
-    for (let m = 0; m < 40; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 70; m++) stepPlayer(state, world, 5, 1);
     expect(state.player.wetness).toBe(0);
   });
 

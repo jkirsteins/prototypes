@@ -2,6 +2,7 @@ import { PACK_COMFORTABLE_KG, PACK_HARD_KG, clamp } from "../units";
 import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
+import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
@@ -54,7 +55,7 @@ export function firelit(state: GameState, world: World): boolean {
 
 export function insulation(state: GameState): number {
   let sum = 0;
-  for (const g of state.player.clothing) sum += CLOTHING[g.id].insulation * clamp(g.durability, 0, 100) / 100;
+  for (const g of state.player.clothing) sum += CLOTHING[g.id].insulation * clamp(g.durability, 0, 100) / 100 * wetFactor(g);
   return sum;
 }
 
@@ -149,6 +150,18 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   const cabin = roof && r.structures.cabin;
   const h = dt / 60;
 
+  const x: Exposure = {
+    raining: w.precip !== "none",
+    heavy: w.precip === "heavy",
+    snowing: w.precip !== "none" && ambient <= 0,
+    roof,
+    cabin: !!cabin,
+    fireAtCamp: r.fire.lit && camp && campTask,
+    bedded: bedded(state.task),
+    storm: w.storm !== null && state.minute >= w.storm.from && state.minute < w.storm.until,
+  };
+  stepGarments(state, x, dt);
+
   // Kilocalories.
   let burn = KCAL_PER_HOUR[a];
   if (a === "walk" && carried(p) > PACK_COMFORTABLE_KG) burn = 350;
@@ -176,6 +189,8 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
     // Snow brushes off; it dampens rather than soaks.
     const cap = ambient <= 0 ? SNOW_DAMP_MAX : 100;
     if (ambient <= 0) wet *= 0.25;
+    // A dry coat and trousers keep the rain off the skin; only a soaked layer lets it through.
+    wet *= skinExposure(state);
     p.wetness = clamp(p.wetness + wet * dt, 0, Math.max(p.wetness, cap));
   } else {
     const dry = r.fire.lit && camp && campTask ? 1.5 : roof ? 0.5 : raining ? 0 : 0.3;
@@ -188,7 +203,8 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
     const inUse = bedded(state.task);
     for (const g of p.clothing) {
       if (CLOTHING[g.id].slot === "blanket" && !inUse) continue;
-      g.durability = clamp(g.durability - wear, 0, 100);
+      const soaked = garmentWet(g) > 50 ? 1.5 : 1;
+      g.durability = clamp(g.durability - wear * soaked, 0, 100);
     }
   }
 
