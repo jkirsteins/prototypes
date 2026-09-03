@@ -92,7 +92,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "build": return arg === "snare" ? "hunting" : "building";
     case "fish": return "fishing";
     case "craft": case "repair": case "sharpen": return "crafting";
-    case "light": case "lightIndoors": case "lightTorch": case "cook": return "building";
+    case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": return "building";
     case "fill": case "iceHole": return "foraging";
     default: return null;
   }
@@ -103,7 +103,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
     case "sticks": case "bark": case "split": case "berries": case "stone":
-    case "repair": case "sharpen": case "light": case "lightTorch":
+    case "repair": case "sharpen": case "light": case "lightTorch": case "hang":
       return id;
     // "Anything" is not a thing you get better at: the species drawn is what the minutes go to.
     case "fish": return arg === "any" ? null : `fish:${arg}`;

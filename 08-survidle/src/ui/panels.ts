@@ -344,7 +344,7 @@ function optHtml(o: TaskOption): string {
   return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${time}${o.detail ? `; ${esc(o.detail)}` : ""}</small>${bar}</button>${rep}</div>`;
 }
 
-/** The eat / add firewood / hang raw meat buttons, shown whenever they apply, wherever the player stands. */
+/** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
 function instantHtml(state: GameState, world: World): string {
   const p = state.player;
   const invs = [p.pack, herePile(state, world)];
@@ -362,10 +362,6 @@ function instantHtml(state: GameState, world: World): string {
   const fire = st.fire.lit && camp
     ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
     : "";
-  const raw = invs.reduce((a, inv) => a + qty(inv, "rawMeat"), 0);
-  const rack = st.structures.dryingRack && camp
-    ? `<button class="mini" data-act="rack" ${raw <= 0 || st.rack.kg >= RACK_MAX_KG ? "disabled" : ""}>hang raw meat to dry <small>${fmtKg(Math.min(raw, RACK_MAX_KG - st.rack.kg))}</small></button>`
-    : "";
   const atSource = waterSource(state, world);
   const short = p.water < WATER_FULL - 1e-9;
   const shoreClosed = watersideCell(world, cellOf(state, world)) && state.weather.iceCm >= ICE_SHORE_CM;
@@ -377,7 +373,7 @@ function instantHtml(state: GameState, world: World): string {
   const fill = atSource && p.tools.some((t) => (TOOLS[t.id].litres ?? 0) > (t.litres ?? 0))
     ? `<button class="mini" data-act="fill">fill vessels</button>`
     : "";
-  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${rack}${drink}${fill}</div>`;
+  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
 }
 
 export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: UiState, instant = true): string {
@@ -397,7 +393,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       { id: "fish" as TaskId, arg: "any" },
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
     ] },
-    { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+    { label: "Camp", items: [{ id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
     { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
   ];

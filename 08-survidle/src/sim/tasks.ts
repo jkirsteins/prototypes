@@ -2,6 +2,7 @@ import { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, routeKm, routeMinutes } from "../world/route";
+import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { cue } from "./cues";
@@ -10,7 +11,7 @@ import {
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RECIPES, RECIPE_IDS, STRUCTURES,
+  CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { log } from "./log";
@@ -80,7 +81,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch", "fill", "iceHole",
+  "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -285,6 +286,17 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
       if (splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
+      return o;
+    }
+    case "hang": {
+      const raw = totalQty(invs, "rawMeat");
+      const room = RACK_MAX_KG - st.rack.kg;
+      const kg = Math.min(raw, room);
+      const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${RACK_MAX_KG} kg on the rack, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
+      if (!o.ok) return o;
+      if (!st.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
+      if (raw <= 1e-9) return { ...o, ok: false, why: "no raw meat here" };
+      if (room <= 1e-9) return { ...o, ok: false, why: "the rack is full" };
       return o;
     }
     case "fill": {
@@ -574,6 +586,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "lightIndoors"));
   out.push(check(state, world, cal, "lightTorch"));
   out.push(check(state, world, cal, "split"));
+  out.push(check(state, world, cal, "hang"));
   out.push(check(state, world, cal, "sharpen"));
   out.push(check(state, world, cal, "repair"));
   out.push(check(state, world, cal, "rest"));
@@ -1102,6 +1115,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "fill": {
       const added = fillVessels(state, world);
       if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
+      return;
+    }
+    case "hang": {
+      const kg = loadRack(state, world);
+      if (kg > 0) log(state, `You hang ${kg.toFixed(1)} kg of meat to dry.`);
       return;
     }
     case "iceHole": {

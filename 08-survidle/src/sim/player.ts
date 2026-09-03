@@ -27,7 +27,7 @@ export function activityOf(task: Task | null): Activity {
   switch (task.id) {
     case "sleep": return "sleep";
     case "rest": case "night": case "wait": case "craft": case "cook": case "repair": case "sharpen": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": return "rest";
-    case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": case "fill": return "light";
+    case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": case "fill": case "hang": return "light";
     case "travel": case "walk": case "haul": return "walk";
     case "chop": case "split": case "build": case "iceHole": return "heavy";
   }

@@ -4,7 +4,7 @@ import { mountControl } from "./audio/control";
 import { createAudioEngine } from "./audio/engine";
 import { SLOTS } from "./audio/manifest";
 import { createScheduler } from "./audio/scheduler";
-import { addFirewood, drop, dropAll, eat, loadRack, take } from "./sim/actions";
+import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
@@ -171,9 +171,6 @@ function onClick(ev: Event) {
       break;
     case "feed":
       addFirewood(state, world, 36);
-      break;
-    case "rack":
-      loadRack(state, world);
       break;
     case "drink":
       drink(state, world);

@@ -28,7 +28,7 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw", "wait"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw", "wait", "hang"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
@@ -73,6 +73,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
+    case "hang": return "driedMeat";
     default: return null;
   }
 }
@@ -84,6 +85,8 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];
   // A fill's litres never sit in the pack as an item; packCarries reads the vessels instead.
   if (task === "fill") return ["water"];
+  // Hang moves raw meat onto the rack; nothing lands in the pack for a delivery to carry.
+  if (task === "hang") return [];
   const one = yieldItem(task, arg);
   return one ? [one] : [];
 }
@@ -453,6 +456,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   sleep: () => "sleeping",
   fill: () => "filling vessels",
   iceHole: () => "cutting an ice hole",
+  hang: () => "hanging meat to dry",
 };
 
 /** The work step's text, with the place named when it is not where the camp pile sits. */
