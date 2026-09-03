@@ -378,7 +378,9 @@ describe("the Orders panel", () => {
   });
 
   it("lists the orders in rank order with their state, counters and buttons", () => {
-    const g = newGame(3);
+    // Seed 1's camp sits on forest ground, so the grind order is gathering within
+    // the window below rather than still walking out to the forest spot.
+    const g = newGame(1);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;

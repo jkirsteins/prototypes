@@ -103,7 +103,10 @@ describe("where the work is done", () => {
   });
 
   it("a hunt for anything stays on ground that suits something, and otherwise goes where most is about", () => {
-    const g = newGame(3);
+    // Seed 1: with the forest-spot species zeroed below, heath is the strict
+    // heaviest ground left; seed 3's camp cell now also weighs in (tied with
+    // shore), which the fixture needs not to happen.
+    const g = newGame(1);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });

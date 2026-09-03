@@ -79,7 +79,8 @@ describe("camp", () => {
   });
 
   it("wolves come only at night outside shelter", () => {
-    const { state, world } = newGame(2);
+    // Seed 1's start has wolves (seed 2's has none, capacity 0).
+    const { state, world } = newGame(1);
     const rng = new Rng(11);
     let hits = 0;
     for (let i = 0; i < 2000; i++) {

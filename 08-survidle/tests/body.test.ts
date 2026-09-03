@@ -24,8 +24,8 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   }
   return pred();
 }
-/** A forever felling from camp, with the camp cell to hand. Seed 17: bog camp, forest 0.6 km away. */
-function felling(seed = 17, deliver: "leave" | "camp" = "leave") {
+/** A forever felling from camp, with the camp cell to hand. Seed 39: meadow camp, forest 0.6 km away. */
+function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
   const g = newGame(seed);
   const { state, world } = g;
   const camp = regionState(state, world, state.player.region).campCell;
@@ -156,7 +156,7 @@ describe("the body tier", () => {
   });
 
   it("cold with a lean-to and no fire in deep cold: a rest that cannot help gives the need up", () => {
-    const { g, state, world, camp } = felling(17);
+    const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
     st.structures.leanTo = true;
     // Far below any target the shelter alone can reach, so the rest that follows cannot gain a point.
@@ -200,8 +200,8 @@ describe("the body tier", () => {
 
   it("pockets provisions when leaving camp, up to 2 kg and never past the comfortable load", () => {
     // Seed 3's camp sits on forest, so a "sticks" intent never leaves camp and provision()
-    // (fired from walkTo) never runs. Seed 17's camp is bog; the forest is 0.6 km off.
-    const g = newGame(17);
+    // (fired from walkTo) never runs. Seed 39's camp is meadow; the forest is 0.6 km off.
+    const g = newGame(39);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
     state.player.pack.items.driedMeat = 0;
@@ -216,11 +216,14 @@ describe("the body tier", () => {
     // region's camp is moved to a waterside cell of its own region for this test.
     // The named forest spot (rather than "nearest") keeps the felling cell distinct
     // from the new camp cell, so the intent actually walks off camp and provisions.
+    // The waterside cell also needs a real route to the forest spot: not every
+    // waterside cell in a region connects to it.
     const g = newGame(42);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     const r = regionAt(world, state.player.region);
-    const waterside = r.cells.find((c) => c !== st.campCell && watersideCell(world, c))!;
+    const forestCell = r.spots.find((s) => s.id === "forest")!.cell;
+    const waterside = r.cells.find((c) => c !== st.campCell && watersideCell(world, c) && findRoute(world, c, forestCell))!;
     st.campCell = waterside;
     placeAt(state, world, waterside);
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
@@ -344,7 +347,7 @@ describe("the runner in the elements", () => {
   });
 
   it("a storm sends it home, keeps the fire fed, and it waits under the roof until the storm passes", () => {
-    const { g, state, world, camp } = felling(17);
+    const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.structures.leanTo = true;
@@ -367,7 +370,7 @@ describe("the runner in the elements", () => {
   });
 
   it("a storm at a cold pit with a drill and dry wood lights the fire before waiting it out", () => {
-    const { g, state, world, camp } = felling(17);
+    const { g, state, world, camp } = felling();
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "stone", 6);
     addItem(pile(state, camp), "firewood", 20);
@@ -384,7 +387,7 @@ describe("the runner in the elements", () => {
   });
 
   it("in winter it leaves the work so as to be at camp by sunset", () => {
-    const { g, state, world, camp } = felling(17);
+    const { g, state, world, camp } = felling();
     state.minute = 320 * 1440;
     // A filled waterskin so an unreachable shore in the depths of winter never
     // masks the home need behind an unresolvable thirst; this trace is about dusk.
@@ -406,7 +409,7 @@ describe("the runner in the elements", () => {
     // Starting well into the winter afternoon (not the pre-dawn dark this same
     // day still carries at minute 0) so the trace has clear daylight to run
     // through before the walk-timed boundary fires and dusk actually falls.
-    const { g, state, world, camp } = felling(17);
+    const { g, state, world, camp } = felling();
     state.minute = 320 * 1440 + 240;
     state.player.tools.push({ id: "waterskin", durability: 100, litres: 3, frozen: false });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -429,7 +432,7 @@ describe("the runner in the elements", () => {
   });
 
   it("banks a big fire before walking off camp", () => {
-    const g = newGame(17);
+    const g = newGame(39);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
@@ -442,7 +445,7 @@ describe("the runner in the elements", () => {
   });
 
   it("splits a banked mixed pile's surplus back in the ratio it was held", () => {
-    const g = newGame(17);
+    const g = newGame(39);
     const { state, world } = g;
     const region = state.player.region;
     const st = regionState(state, world, region);
@@ -458,7 +461,7 @@ describe("the runner in the elements", () => {
   });
 
   it("a storm with no roof still sends the runner to camp to feed the fire and wait it out", () => {
-    const { g, state, world, camp } = felling(17);
+    const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.fire.lit = true;
@@ -476,7 +479,7 @@ describe("the runner in the elements", () => {
   });
 
   it("thirst that cannot be quenched does not mask the home need", () => {
-    const { g, state, world } = felling(17);
+    const { g, state, world } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // A winter afternoon a few minutes shy of sunset, with the shore iced over
     // and no fire at camp: nothing can be done about thirst here, so the need
@@ -569,12 +572,17 @@ describe("the runner in the elements", () => {
   });
 
   it("a region with no named shore spot but real waterside cells still finds water to walk to", () => {
-    // Seed 2: frac.water is a sliver (0.6%), under placeSpots' 2% floor for
-    // naming a "shore" spot at all, but the region still borders water.
-    const { g, state, world } = felling(2);
-    expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    const r = regionAt(world, state.player.region);
+    // findStart requires a shore spot, so no starting region can ever lack one; this
+    // stands the player in seed 2's region 94 instead, whose frac.water (2.0%) sits
+    // under placeSpots' 2% floor for naming a "shore" spot, though it still borders water.
+    const g = newGame(2);
+    const { state, world } = g;
+    const r = regionAt(world, 94);
     expect(hasSpot(r, "shore")).toBe(false);
+    placeAt(state, world, r.campCell);
+    addItem(state.player.pack, "driedMeat", 2);
+    startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.water = 0.8;
     advance(state, world, 1);
     expect(state.intent?.need).toBe("thirsty");

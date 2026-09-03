@@ -133,7 +133,8 @@ describe("what a torch does", () => {
   });
 
   it("keeps the wolves off, as does your own lit fire", () => {
-    const { state, world } = newGame(2);
+    // Seed 1's start has wolves (seed 2's has none, capacity 0).
+    const { state, world } = newGame(1);
     const rng = new Rng(11);
     const hits = () => {
       let n = 0;

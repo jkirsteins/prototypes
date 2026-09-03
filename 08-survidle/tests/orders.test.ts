@@ -514,7 +514,12 @@ describe("orders belong to a camp", () => {
 
 describe("the away report", () => {
   it("summarises every order of the camp you left: what it did, what blocks it, what finished", () => {
-    const g = campWith(3, { log: 6, firewood: 10 });
+    // 50 logs, well past the keep's 40 kg firewood target and the cabin's own 40-log
+    // need, so camp's own log count never dips low enough to count as missing: the
+    // cabin stays blocked on stone and cordage alone, which never sit at any pile
+    // in this fixture, so canFetch's allowance never opens and the report below is
+    // read at a stable "missing materials at camp" whenever the ten-day catch-up ends.
+    const g = campWith(3, { log: 50, firewood: 10 });
     const { state, world } = g;
     const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
     addOrder(state, world, req("sticks", { until: { kind: "once" } }), "job");
