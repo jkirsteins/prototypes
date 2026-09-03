@@ -39,6 +39,8 @@ const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
 
 /** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
 function groundOf(task: TaskId, arg?: string): SpotId | null {
+  // "Anything" names no species: a hunt for it starts in the forest, a cast for it at the shore.
+  if (arg === "any") return task === "hunt" ? "forest" : task === "fish" ? "shore" : null;
   if (task === "hunt" || task === "fish") return SPECIES_DEFS[arg as Species]?.hunt?.spot ?? null;
   if (task === "build" && arg === "snare") return "heath";
   return GROUND_OF[task] ?? null;
@@ -383,8 +385,8 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   stone: () => "gathering stone",
   berries: () => "picking berries",
   split: () => "splitting a log",
-  hunt: (arg) => `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`,
-  fish: (arg) => `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`,
+  hunt: (arg) => (arg === "any" ? "hunting" : `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`),
+  fish: (arg) => (arg === "any" ? "fishing" : `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`),
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,
   repair: () => "mending clothing",
@@ -403,7 +405,7 @@ function workGerund(state: GameState, world: World, it: Intent): string {
 }
 
 /** The work tier: one rule fires. "again" means an instant action was taken and the next decision can follow at once. */
-function workStep(state: GameState, world: World, cal: Calendar): Outcome {
+function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outcome {
   const it = state.intent!;
   const here = cellOf(state, world);
   const label = labelOf(state, world, cal, it);
@@ -443,7 +445,7 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
       ? { id: "sleep", step: "sleeping at camp" }
       : { id: "rest", step: "waiting at camp" }
     : { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
-  if (!takeStep(state, world, cal, step)) {
+  if (!takeStep(state, world, cal, step, rng)) {
     if (it.orderId !== null) state.intent = null;
     else endIntent(state, `${label}: cannot go on. You stop.`, "bad");
   } else if (it.task === "wait" && step.id === "sleep") {
@@ -471,6 +473,6 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
     }
   }
   for (let guard = 0; guard < 8 && state.intent && !state.task; guard++) {
-    if (workStep(state, world, cal) !== "again") return;
+    if (workStep(state, world, cal, rng) !== "again") return;
   }
 }

@@ -1,4 +1,4 @@
-import type { Rng } from "../rng";
+import { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, routeKm, routeMinutes } from "../world/route";
@@ -165,6 +165,43 @@ function huntDetail(state: GameState, s: Species, odds: number): string {
   return `${parts.join(", ")}; ${oddsText(odds)}`;
 }
 
+/** "a hare", "an elk": an animal named with the article its name takes; capitalised when it opens a sentence. */
+function anAnimal(s: Species, opening = false): string {
+  const { name } = SPECIES_DEFS[s];
+  const a = "aeiou".includes(name[0]) ? "an" : "a";
+  return `${opening ? a[0].toUpperCase() + a.slice(1) : a} ${name}`;
+}
+
+/** Species a hunt or a cast could meet from this cell: hunted, of the right kind, about now, and suited by the ground. */
+function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | "fish", at: number): { s: Species; w: number }[] {
+  const r = regionAt(world, state.player.region);
+  const st = regionState(state, world, state.player.region);
+  const pool = id === "fish" ? fishSpecies() : huntedLand();
+  const out: { s: Species; w: number }[] = [];
+  for (const s of pool) {
+    if (!r.capacity[s] || popOf(st, s) < 1) continue;
+    const def = SPECIES_DEFS[s].hunt!;
+    if (!spotSuits(world, at, def.spot, waterOf(s))) continue;
+    const d = regionDensity(state, world, state.player.region, s, cal);
+    if (d <= 0) continue;
+    out.push({ s, w: d * def.odds });
+  }
+  return out;
+}
+
+/** What "anything" turns out to be: drawn by how likely each species is to be met. Null when nothing is about. */
+export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: Rng, id: "hunt" | "fish", at: number): Species | null {
+  const c = candidates(state, world, cal, id, at);
+  const total = c.reduce((a, x) => a + x.w, 0);
+  if (total <= 0) return null;
+  let pick = rng.next() * total;
+  for (const x of c) {
+    pick -= x.w;
+    if (pick <= 0) return x.s;
+  }
+  return c[c.length - 1].s;
+}
+
 /**
  * The one place a task's legality and duration are decided. availableTasks
  * and startTask both go through it so the button and the click agree.
@@ -225,6 +262,17 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "hunt": {
+      if (arg === "any") {
+        const c = candidates(state, world, cal, "hunt", at);
+        const kinds = huntedLand().filter((k) => r.capacity[k] && popOf(st, k) >= 1);
+        const o = opt({ group: "hunt", label: "Hunt anything", duration: 120, repeatable: true, detail: `whatever is about; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` });
+        if (!kinds.length) return { ...o, ok: false, why: "nothing about" };
+        // Kinds live here but none of them keeps to this ground: the forest is where a hunt starts.
+        if (!c.length) return ground(false, "forest", "forest", o);
+        if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
+        if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
+        return o;
+      }
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
       if (!def?.hunt || isFish(s)) return { ...opt({ group: "hunt", label: "Hunt" }), ok: false, why: "no such animal" };
@@ -240,6 +288,16 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "fish": {
+      if (arg === "any") {
+        const c = candidates(state, world, cal, "fish", at);
+        const kinds = fishSpecies().filter((k) => r.capacity[k] && popOf(st, k) >= 1);
+        const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
+        if (!o.ok) return o;
+        if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
+        // Standing by the wrong water for every fish the region holds reads the same as an empty one.
+        if (!c.length) return { ...o, ok: false, why: "nothing about" };
+        return o;
+      }
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
       if (!def?.hunt || !isFish(s)) return { ...opt({ group: "hunt", label: "Fish" }), ok: false, why: "no such fish" };
@@ -454,7 +512,9 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
   for (const id of ["chop", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
+  out.push(check(state, world, cal, "hunt", "any"));
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
+  out.push(check(state, world, cal, "fish", "any"));
   for (const s of fishSpecies()) if (r.capacity[s]) out.push(check(state, world, cal, "fish", s));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
@@ -495,8 +555,8 @@ export function withProgression(state: GameState, world: World, o: TaskOption): 
 }
 
 /** Starts a task by hand. Whatever intent was running is over; the task set aside keeps its share. */
-export function startTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false): boolean {
-  if (!beginTask(state, world, cal, id, arg, repeat)) return false;
+export function startTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false, rng?: Rng): boolean {
+  if (!beginTask(state, world, cal, id, arg, repeat, rng)) return false;
   state.intent = null;
   return true;
 }
@@ -505,7 +565,7 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
  * Starts a task without touching the intent: what the runner calls for each
  * of its steps. Whatever was under way is set aside first, with its share done kept.
  */
-export function beginTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false): boolean {
+export function beginTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false, rng?: Rng): boolean {
   if (state.dead) return false;
   if (id === "night") return false;
   if (id === "haul") return false;
@@ -513,6 +573,17 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   setAside(state, world);
+  let any = false;
+  if ((id === "hunt" || id === "fish") && arg === "any") {
+    // No stream of the caller's own: take one off the saved seed and write it back, so a save round-trips the draw.
+    const r = rng ?? new Rng(state.rng);
+    const drawn = drawSpecies(state, world, cal, r, id, cellOf(state, world));
+    if (!rng) state.rng = r.s;
+    if (!drawn) return false;
+    arg = drawn;
+    any = true;
+    log(state, id === "hunt" ? `Fresh sign: ${anAnimal(drawn)}.` : `A swirl under the bank: ${SPECIES_DEFS[drawn].name}.`);
+  }
   if (id === "build" && !(regionState(state, world, state.player.region).build[arg as StructureId] ?? 0)) {
     // Materials are committed when the work starts, and stay laid out if you stop.
     consume(reach(state, world), STRUCTURES[arg as StructureId].needs);
@@ -532,7 +603,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const fresh = checkFresh(state, world, cal, id, arg);
   const fraction = key ? (state.paused[key]?.fraction ?? 0) : 0;
   if (key) delete state.paused[key];
-  state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable };
+  state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable, ...(any ? { any: true } : {}) };
   return true;
 }
 
@@ -616,7 +687,9 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
   train(state, world, dt);
-  const order = liveOrderFor(state, world, t.id, t.arg);
+  // An "any" task is the intent's and the order's work under whatever species it drew.
+  const wanted = t.any ? "any" : t.arg;
+  const order = liveOrderFor(state, world, t.id, wanted);
   if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
@@ -627,7 +700,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   state.task = null;
   const it = state.intent;
   if (it) {
-    if (it.task === id && (it.arg ?? "") === (arg ?? "")) {
+    if (it.task === id && (it.arg ?? "") === (wanted ?? "")) {
       it.done++;
       if (order) order.done++;
     } else if (it.task === "night" && id === "sleep") {
@@ -647,9 +720,10 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
   complete(state, world, cal, rng, id, arg);
   if (repeat && !state.dead) {
-    const o = check(state, world, cal, id, arg);
-    if (o.ok) state.task = { id, arg, progress: 0, duration: o.duration, repeat: true };
-    else log(state, `${o.label}: ${o.why}. You stop.`);
+    // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
+    const o = check(state, world, cal, id, wanted);
+    if (!o.ok) log(state, `${o.label}: ${o.why}. You stop.`);
+    else if (!beginTask(state, world, cal, id, wanted, true, rng)) log(state, `${o.label}: nothing about. You stop.`);
   }
 }
 
@@ -789,7 +863,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (x.fatKg) produce(state, world, "fat", x.fatKg);
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
-        log(state, `A ${def.name}. ${x.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
+        log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
         const injury = injuryChance(state, s);
         if (injury > 0 && rng.chance(injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
@@ -823,7 +897,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         state.stats.animals++;
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
         produce(state, world, "fish", kg);
-        log(state, `A ${def.name}, ${kg.toFixed(1)} kg.`, "good");
+        log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
       return;
     }

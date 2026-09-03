@@ -285,6 +285,8 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   } else if (!it && t) {
     const opts = availableTasks(state, world, cal);
     let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+    // Started as "anything": the species is what it turned out to be, so the head says both.
+    if (t.any) label = `${label} (whatever was about)`;
     if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
     head = `<div class="head"><b>${esc(label)}${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>${TASK_BAR}`;
   } else if (!it && !orders.length) {
@@ -361,7 +363,9 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
   return [
     { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
     { label: "Hunt", items: [
+      { id: "hunt" as TaskId, arg: "any" },
       ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
+      { id: "fish" as TaskId, arg: "any" },
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
     ] },
     { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },

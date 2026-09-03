@@ -135,7 +135,7 @@ function onClick(ev: Event) {
       if (id === "haul" || id === "night") {
         startIntent(state, world, cal, rng, { task: id, until: { kind: "once" }, deliver: "camp", where: { cell: cellOf(state, world) } });
       } else {
-        startTask(state, world, cal, id, target.dataset.arg || undefined, target.dataset.repeat === "1");
+        startTask(state, world, cal, id, target.dataset.arg || undefined, target.dataset.repeat === "1", rng);
       }
       break;
     }

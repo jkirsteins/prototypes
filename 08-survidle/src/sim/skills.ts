@@ -104,9 +104,10 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "sticks": case "bark": case "split": case "berries": case "stone":
     case "repair": case "sharpen": case "light": case "lightTorch":
       return id;
-    case "fish": return `fish:${arg}`;
+    // "Anything" is not a thing you get better at: the species drawn is what the minutes go to.
+    case "fish": return arg === "any" ? null : `fish:${arg}`;
     case "lightIndoors": return "light";
-    case "hunt": return `hunt:${arg}`;
+    case "hunt": return arg === "any" ? null : `hunt:${arg}`;
     case "build": return arg === "snare" ? "snare" : `build:${arg}`;
     case "craft": return `craft:${arg}`;
     case "cook": return `cook:${arg ?? "rawMeat"}`;

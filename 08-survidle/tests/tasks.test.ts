@@ -3,8 +3,9 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { cellOf, placeAt, placeAtSpot, spotHere } from "../src/sim/position";
-import { availableTasks, beginTask, check, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
+import { availableTasks, beginTask, check, drawSpecies, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { regionState } from "../src/sim/regionstate";
@@ -251,5 +252,82 @@ describe("tasks", () => {
     done(g);
     expect(state.intent!.done).toBe(1);
     expect(state.intent!.need).toBeNull();
+  });
+});
+
+describe("anything", () => {
+  function armed(g: G) {
+    g.state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false }, { id: "fishingSpear", durability: 100, litres: 0, frozen: false });
+    addItem(g.state.player.pack, "arrow", 10);
+  }
+
+  it("offers Hunt anything and Fish for anything ahead of the species rows", () => {
+    const g = newGame(3);
+    const rows = availableTasks(g.state, g.world, cal).filter((o) => o.group === "hunt");
+    expect(rows[0]).toMatchObject({ id: "hunt", arg: "any", label: "Hunt anything" });
+    const fishAt = rows.findIndex((o) => o.id === "fish");
+    expect(rows[fishAt]).toMatchObject({ id: "fish", arg: "any", label: "Fish for anything" });
+    // Only species with capacity here have rows.
+    const r = regionAt(g.world, g.state.player.region);
+    for (const o of rows) if (o.arg !== "any") expect(r.capacity[o.arg as Species]).toBeGreaterThan(0);
+  });
+
+  it("draws only from species about, on ground that suits them", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    armed(g);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const at = cellOf(state, world);
+    const st = regionState(state, world, state.player.region);
+    const rng = new Rng(9);
+    for (let i = 0; i < 50; i++) {
+      const s = drawSpecies(state, world, cal, rng, "hunt", at)!;
+      expect(huntedLand()).toContain(s);
+      expect(SPECIES_DEFS[s].hunt!.spot).toBe("forest");
+      expect(st.pop[s]!).toBeGreaterThanOrEqual(1);
+    }
+    for (const s of huntedLand()) st.pop[s] = 0;
+    expect(drawSpecies(state, world, cal, rng, "hunt", at)).toBeNull();
+    expect(check(state, world, cal, "hunt", "any").why).toBe("nothing about");
+  });
+
+  it("starts as the species drawn, trains it, and draws again on repeat", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    armed(g);
+    placeAtSpot(state, world, state.player.region, "forest");
+    expect(startTask(state, world, cal, "hunt", "any", true, new Rng(5))).toBe(true);
+    const first = state.task!;
+    expect(first.any).toBe(true);
+    expect(first.arg).not.toBe("any");
+    expect(huntedLand()).toContain(first.arg);
+    expect(first.duration).toBe(SPECIES_DEFS[first.arg as Species].hunt!.minutes);
+    expect(state.log.at(-1)!.text).toMatch(/^Fresh sign: /);
+    const rng = new Rng(1);
+    for (let m = 0; m < first.duration + 1 && state.task === first; m++) stepTask(state, world, cal, rng, 1);
+    expect(state.skills.hunting.mastery[`hunt:${first.arg}`]).toBeGreaterThan(0);
+    expect(state.task?.any).toBe(true);
+  });
+
+  it("fishing for anything at a sea shore never lands a lake fish", () => {
+    // No start region touches the sea: findStart wants forest, land and little water, and the
+    // coast lies far northwest of where it looks, so no seed puts the player on one. Seed 3's
+    // region 1865 is a coast with both a lake shore and a sea shore; change it if the map
+    // changes, with the reason here.
+    const g = newGame(3);
+    const { state, world } = g;
+    armed(g);
+    const r = regionAt(world, 1865);
+    const sea = r.cells.find((c) => cellAt(world, c).terrain !== "water" && watersideCell(world, c, "sea"));
+    expect(sea).toBeDefined();
+    placeAt(state, world, sea!);
+    const st = regionState(state, world, state.player.region);
+    // Lake fish are about in this region: a draw that ignored the water would land one.
+    expect(fishSpecies().some((s) => waterOf(s) === "lake" && (st.pop[s] ?? 0) >= 1)).toBe(true);
+    const rng = new Rng(2);
+    for (let i = 0; i < 30; i++) {
+      const s = drawSpecies(state, world, cal, rng, "fish", sea!);
+      if (s) expect(SPECIES_DEFS[s].habitat.sea).toBeDefined();
+    }
   });
 });
