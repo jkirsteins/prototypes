@@ -3,8 +3,9 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import { regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
+import { burnPerHour, dryWood, fuelTotal } from "./fire";
 import {
-  BOUGH_BED_DAYS, FIRE_BURN_KG_PER_HOUR, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
+  BOUGH_BED_DAYS, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
   SNARE_CATCH_MAX_AGE,
 } from "./items";
 import { log } from "./log";
@@ -18,15 +19,28 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     const mine = id === p.region;
+    const atCampHere = mine && atCamp(state, world);
     const name = () => regionAt(world, id).name;
 
+    st.logsWet = state.weather.precip !== "none" ? 0 : st.logsWet + dt;
+
     if (st.fire.lit) {
-      st.fire.fuelKg -= (FIRE_BURN_KG_PER_HOUR / 60) * dt;
-      if (st.fire.fuelKg <= FIRE_LOW_KG && mine && atCamp(state, world) && p.autoFeed) {
-        feedFire(state, world, id, FIRE_MAX_KG - st.fire.fuelKg);
+      const roof = st.structures.leanTo || st.structures.cabin;
+      const perMin = burnPerHour(state.weather, ambient, roof) / 60;
+      const total = fuelTotal(st.fire);
+      if (total > 0) {
+        const share = st.fire.wetKg / total;
+        st.fire.wetKg = Math.max(0, st.fire.wetKg - perMin * dt * share);
+        st.fire.fuelKg = Math.max(0, st.fire.fuelKg - perMin * dt * (1 - share));
       }
-      if (st.fire.fuelKg <= 0) {
+      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere && p.autoFeed) {
+        feedFire(state, world, id, FIRE_MAX_KG - fuelTotal(st.fire));
+      }
+      const outOfFuel = fuelTotal(st.fire) <= 0;
+      const drownedLow = state.weather.precip === "heavy" && !roof && fuelTotal(st.fire) < 2;
+      if (outOfFuel || drownedLow) {
         st.fire.fuelKg = 0;
+        st.fire.wetKg = 0;
         st.fire.lit = false;
         log(state, mine ? "The fire has gone out." : `The fire at ${name()} has gone out.`, "bad");
       }
@@ -44,6 +58,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
   }
+  dryWood(state, world, dt);
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];
@@ -62,19 +77,28 @@ function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where
   }
 }
 
-/** Puts up to `wantKg` of firewood on the fire from pack and camp pile. Returns kg added. */
+/** Puts up to `wantKg` of firewood on the fire from pack and camp pile: dry first, then wet. Returns kg added. */
 export function feedFire(state: GameState, world: World, region: number, wantKg: number): number {
   const st = regionState(state, world, region);
-  const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - st.fire.fuelKg));
+  const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - fuelTotal(st.fire)));
   let added = 0;
-  for (const inv of [state.player.pack, pile(state, st.campCell)]) {
+  const invs = [state.player.pack, pile(state, st.campCell)];
+  for (const inv of invs) {
     if (added >= room - 1e-9) break;
-    added += removeItem(inv, "firewood", room - added);
+    const took = removeItem(inv, "firewood", room - added);
+    st.fire.fuelKg += took;
+    added += took;
   }
-  st.fire.fuelKg += added;
+  for (const inv of invs) {
+    if (added >= room - 1e-9) break;
+    const took = removeItem(inv, "wetFirewood", room - added);
+    st.fire.wetKg += took;
+    added += took;
+  }
   return added;
 }
 
+/** Dry firewood only: what wet wood in reach cannot count toward a fresh light. */
 export function firewoodAt(state: GameState, world: World, region: number): number {
   return qty(state.player.pack, "firewood") + qty(pile(state, regionState(state, world, region).campCell), "firewood");
 }

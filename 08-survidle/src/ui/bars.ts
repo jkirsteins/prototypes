@@ -1,3 +1,4 @@
+import { fuelTotal } from "../sim/fire";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { regionState } from "../sim/regionstate";
 import type { GameState } from "../sim/types";
@@ -25,7 +26,11 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("water", p.water / WATER_FULL, `${p.water.toFixed(1)} l`, root);
 
   const st = regionState(state, world, p.region);
-  setBar("fire", st.fire.fuelKg / FIRE_MAX_KG, `${st.fire.fuelKg.toFixed(1)} kg, ${fmtDuration((st.fire.fuelKg / 3) * 60)}`, root);
+  const total = fuelTotal(st.fire);
+  const fireText = st.fire.wetKg > 0
+    ? `${st.fire.fuelKg.toFixed(1)} kg dry, ${st.fire.wetKg.toFixed(1)} kg wet`
+    : `${st.fire.fuelKg.toFixed(1)} kg, ${fmtDuration((total / 3) * 60)}`;
+  setBar("fire", total / FIRE_MAX_KG, fireText, root);
 
   const t = state.task;
   if (t) {

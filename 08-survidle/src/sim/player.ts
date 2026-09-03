@@ -3,6 +3,7 @@ import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
 import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
+import { fireWarmth } from "./fire";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
@@ -80,7 +81,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   let felt = ambient + insulation(state);
-  if (r.fire.lit && camp) felt += campTask ? 15 : 7;
+  if (camp) felt += fireWarmth(r.fire, campTask);
   if (camp && campTask) felt += shelterBonus(r);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;

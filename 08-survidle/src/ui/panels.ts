@@ -2,6 +2,7 @@ import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
+import { smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
@@ -202,7 +203,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
   const fire = st.structures.firePit
-    ? `<div>fire: ${st.fire.lit ? "<span class=\"good\">burning</span>" : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
+    ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
     : "";
   const rack = st.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${RACK_MAX_KG} kg max)</small></div>`
@@ -293,7 +294,7 @@ function instantHtml(state: GameState, world: World): string {
     })
     .join(" ");
   const st = regionState(state, world, p.region);
-  const wood = invs.reduce((a, inv) => a + qty(inv, "firewood"), 0);
+  const wood = invs.reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0);
   const fire = st.fire.lit && camp
     ? `<button class="mini" data-act="feed" ${wood <= 0 ? "disabled" : ""}>add firewood <small>${fmtKg(wood)} within reach</small></button>`
     : "";

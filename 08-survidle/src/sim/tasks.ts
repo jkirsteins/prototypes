@@ -23,13 +23,14 @@ import {
   atCamp, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
+import { lightingInRain, splitIsWet } from "./fire";
 import { discovery, regionState } from "./regionstate";
 import {
   type GameState, type IceMode, type PausedTask, type RecipeId, SPECIES, type Species,
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
-import { DEEP_SNOW_CM, ICE_SAFE_CM, iceMode } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -275,12 +276,19 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "light": {
-      const o = needCamp(opt({ group: "camp", label: "Light the fire", detail: "fire drill and 1 kg firewood", duration: 10 }));
+      const roof = st.structures.leanTo || st.structures.cabin;
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
+      const o = needCamp(opt({
+        group: "camp", label: "Light the fire",
+        detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
+        duration: lr.minutes,
+      }));
       if (!o.ok) return o;
       if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire pit" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!hasTool(p, "fireDrill")) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
+      if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
     }
     case "lightTorch": {
@@ -681,7 +689,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "berries": produce(state, world, "berries", 1 * yieldFactor(state, "foraging")); return;
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
-      produce(state, world, "firewood", ITEM_KG.log);
+      produce(state, world, splitIsWet(state, world) ? "wetFirewood" : "firewood", ITEM_KG.log);
       return;
     }
     case "hunt": {
@@ -802,6 +810,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "light": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
       wearTool(p, "fireDrill", 2 * wearFactor(state, world, "light"));
+      const roof = st.structures.leanTo || st.structures.cabin;
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
+      if (lr.failChance > 0 && rng.chance(lr.failChance)) {
+        log(state, "The tinder will not catch.", "bad");
+        return;
+      }
       st.fire.lit = true;
       st.fire.fuelKg += 1;
       log(state, "Smoke, then flame. The fire is lit.", "good");
