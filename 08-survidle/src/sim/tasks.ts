@@ -32,7 +32,7 @@ import type {
   GameState, IceMode, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
 } from "./types";
-import { campPileHere, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitresCapacity, WATER_FULL } from "./water";
+import { campPileHere, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitres, vesselLitresCapacity, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -304,6 +304,12 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Fill vessels", detail: "every vessel in hand, from open water", duration: 5, repeatable: true }));
       if (!o.ok) return o;
       if (holds <= 0) return { ...o, ok: false, why: "needs a vessel" };
+      // fillVessels tops every carried vessel off in one call, so a vessel already at
+      // capacity has nothing left to gain from another cycle; without this the task
+      // repeats forever at the shore instead of walking the full vessel home to pour.
+      if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
+        return { ...o, ok: false, why: "the vessels are full" };
+      }
       if (state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at)) {
         if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "iced over; needs an axe for an ice hole" };
         return { ...o, detail: `${o.detail}; opens an ice hole first`, duration: 25 };

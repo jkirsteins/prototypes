@@ -45,6 +45,17 @@ describe("the fill task", () => {
     expect(o.duration).toBe(5);
   });
 
+  it("with the carried vessel already full, the task stops instead of repeating forever", () => {
+    const { state, world } = waterCamp();
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    placeAt(state, world, shore.cell);
+    const bucket = state.player.tools.find((t) => t.id === "barkBucket")!;
+    bucket.litres = 2;
+    const o = check(state, world, cal, "fill");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("the vessels are full");
+  });
+
   it("a water keep fills at the shore, walks home, pours, and is met", () => {
     const { g, state, world, camp } = waterCamp();
     const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
