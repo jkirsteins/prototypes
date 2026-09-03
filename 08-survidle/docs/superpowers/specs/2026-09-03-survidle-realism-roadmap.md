@@ -160,6 +160,63 @@ lodestone, cordage and a stick, a few minutes of work, kept as a tool. It
 does nothing by day in clear weather, when the sun steers you, and
 everything in fog, at night under overcast, and on a fell in cloud.
 
+## The idle loop
+
+The six above make the north dangerous. These three make Survidle an idle
+game in the sense of Melvor Idle and A Dark Room: you set up a system, you
+leave, and you come back to gains and a readout of how well the system
+held. They run beside the six, not after them; the first is specced and
+should land before sub-project 2, since everything that follows is played
+through it. Every "away" carries a risk of dying. The point is that the
+risk is legible and the set-up lowers it.
+
+### A. Standing orders
+
+Specced: `2026-09-03-survidle-standing-orders-design.md`. A ranked list
+of orders per camp: keeps ("keep camp at 40 firewood", with a half rule
+so the runner does not walk home to split one log), grinds ("fell trees
+forever"), and jobs ("build a cabin", "make 20 arrows") that drop off when
+done. The runner serves the highest unmet order that can start, finishes
+a pending delivery before it switches, and waits at camp when nothing can
+run so the nights are spent by the fire. The away report summarises each
+order: what it did, and what it is blocked on.
+
+### B. The risk forecast
+
+An honest number, not a checklist: the simulation itself run forward from
+the current state in a worker, several times with different dice, and the
+deaths counted. Shown as a small table per horizon: tonight, a week, a
+month, each a percentage, with the top cause of death among the runs that
+died ("cold, night 4"). A month is long, and the month number is the one
+that says what to build next. The forecast reads the orders list, so it
+answers "will this set-up hold", and it is recomputed when the list, the
+stocks or the season change. The sim steps in game minutes and is
+deterministic per seed; a month is 43,200 steps per run. The spec settles
+how many runs, how the worker shares the world, and what the table shows
+before the runs finish.
+
+### C. Skill tiers
+
+Levels are a percent per level today, so a level 1 and a level 15
+woodcutter do the same work, one a little faster. Melvor's ladder is
+content tiers. Soft gates throughout, never "locked":
+
+- **Wood by species.** Logs and firewood carry their species. Birch burns
+  hottest and gives bark. Pine gives resin for torches and glue and splits
+  easily. Spruce gives boughs for bedding and roofing and burns fast. A
+  top rung such as dead standing pine, dry and light to haul. Each species
+  gets a recommended Woodcraft level like deer and elk have for Hunting;
+  under it the felling is slow and blunts the axe. Per-species mastery
+  already exists (`chop:spruce`, `chop:pine`, `chop:birch`); its extras at
+  20 and 50 become the concrete rewards.
+- **Hunting and crafting** already key per species and per recipe. They
+  need more rungs, not a new mechanism: more animals with a real spread of
+  yield and danger, and tool and clothing tiers worth the level.
+- **Buildings that produce, honestly.** A chicken coop lays real eggs at a
+  real rate and eats real feed. Belongs with the camp build-out
+  (sub-project 3), listed here because it is what an idle stock looks like
+  in this game: a hut that yields wood per hour does not exist.
+
 ## Rules that hold across all six
 
 - Every quantity stays real: litres, kilocalories, degrees, minutes,

@@ -139,7 +139,7 @@ describe("what a torch does", () => {
       let n = 0;
       for (let i = 0; i < 500; i++) {
         state.player.health = 100;
-        hourlyEvents(state, world, calendar(16 * 60), rng);
+        hourlyEvents(state, world, calendar(16 * 60), 5, 5, rng);
         if (state.player.health < 100) n++;
       }
       return n;

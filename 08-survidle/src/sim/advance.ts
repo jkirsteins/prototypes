@@ -7,7 +7,7 @@ import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
 import { runIntent } from "./intent";
 import { log } from "./log";
-import { causeFrom, die, stepPlayer } from "./player";
+import { causeFrom, die, feltTemperature, stepPlayer } from "./player";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { autoDrink } from "./water";
@@ -59,7 +59,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   const hour = Math.floor(state.minute / 60);
   if (hour > state.lastHour) {
     state.lastHour = hour;
-    hourlyEvents(state, world, cal, rng);
+    hourlyEvents(state, world, cal, ambient, feltTemperature(state, world, ambient), rng);
   }
   if (cal.dayIndex > state.lastDay && cal.hour >= DAILY_HOUR) {
     state.lastDay = cal.dayIndex;

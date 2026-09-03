@@ -48,8 +48,8 @@ export const TOOLS: Record<ToolId, { name: string; kg: number; litres?: number }
   fishingSpear: { name: "fishing spear", kg: 1.0 },
   fireDrill: { name: "fire drill", kg: 0.3 },
   needle: { name: "bone needle", kg: 0.01 },
-  barkBucket: { name: "bark bucket", kg: 0.3 },
-  waterskin: { name: "waterskin", kg: 0.4 },
+  barkBucket: { name: "bark bucket", kg: 0.3, litres: 2 },
+  waterskin: { name: "waterskin", kg: 0.4, litres: 3 },
 };
 
 /**

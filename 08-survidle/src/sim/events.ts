@@ -1,12 +1,13 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
+import { hourlyHazards } from "./hazards";
 import { log } from "./log";
 import { die, firelit, sheltered } from "./player";
 import type { GameState } from "./types";
 
 /** Rolled once per game hour. */
-export function hourlyEvents(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
   const p = state.player;
 
   // Sickness: cold and wet is how you catch it.
@@ -30,4 +31,6 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, rng:
       if (p.health <= 0) die(state, "wolves");
     }
   }
+
+  hourlyHazards(state, world, cal, ambient, felt, rng);
 }

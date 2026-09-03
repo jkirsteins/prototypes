@@ -82,7 +82,7 @@ describe("camp", () => {
     let hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;
-      hourlyEvents(state, world, calendar(16 * 60), rng);
+      hourlyEvents(state, world, calendar(16 * 60), 5, 5, rng);
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBeGreaterThan(5);
@@ -90,7 +90,7 @@ describe("camp", () => {
     hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;
-      hourlyEvents(state, world, calendar(16 * 60), rng);
+      hourlyEvents(state, world, calendar(16 * 60), 5, 5, rng);
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBe(0);

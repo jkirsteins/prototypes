@@ -10,7 +10,7 @@ import {
 } from "./inventory";
 import {
   ANIMALS, CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RECIPES, RECIPE_IDS, STRUCTURES,
-  STRUCTURE_IDS, TORCH_BURN_MINUTES, type SpeciesDef,
+  STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES, type SpeciesDef,
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
@@ -28,6 +28,7 @@ import {
   type GameState, type PausedTask, type RecipeId, SPECIES, type Species,
   type SpotId, type StructureId, type TaskId,
 } from "./types";
+import { WATER_FULL } from "./water";
 import { DEEP_SNOW_CM } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -320,7 +321,22 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const minutes = Math.min(600, Math.max(60, minutesUntilDawn(state.minute), toRested));
       return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${bedText(state, world)}`, duration: minutes });
     }
-    case "melt": case "thaw": case "lightIndoors":
+    case "melt": {
+      const o = needCamp(opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true }));
+      if (!o.ok) return o;
+      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
+      if (st.fire.fuelKg < 1) return { ...o, ok: false, why: "the fire is too low" };
+      if (state.weather.snowCm < 1) return { ...o, ok: false, why: "no snow to melt" };
+      return o;
+    }
+    case "thaw": {
+      const o = needCamp(opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 }));
+      if (!o.ok) return o;
+      if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
+      if (!p.tools.some((t) => t.frozen)) return { ...o, ok: false, why: "nothing is frozen" };
+      return o;
+    }
+    case "lightIndoors":
       return opt({ group: "camp", label: id, ok: false, why: "not yet" });
   }
 }
@@ -687,7 +703,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rec.tool) wearTool(p, rec.tool, wearFactor(state, world, "craft", rid));
       if (rec.out.tool) {
         p.tools = p.tools.filter((x) => x.id !== rec.out.tool);
-        p.tools.push({ id: rec.out.tool, durability: 100 });
+        const holds = TOOLS[rec.out.tool].litres;
+        p.tools.push(holds !== undefined ? { id: rec.out.tool, durability: 100, litres: 0, frozen: false } : { id: rec.out.tool, durability: 100 });
         log(state, `You have a ${rec.name}.`, "good");
       } else if (rec.out.clothing) {
         const slot = CLOTHING[rec.out.clothing].slot;
@@ -743,14 +760,33 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       log(state, "The torch catches.", "good");
       return;
     }
+    case "melt": {
+      st.fire.fuelKg -= 1;
+      let l = 1.0;
+      const drinkL = Math.min(l, WATER_FULL - p.water);
+      p.water += drinkL;
+      l -= drinkL;
+      for (const t of p.tools) {
+        const holds = TOOLS[t.id].litres ?? 0;
+        if (!holds || l <= 1e-9) continue;
+        const room = holds - (t.litres ?? 0);
+        const put = Math.min(room, l);
+        t.litres = (t.litres ?? 0) + put;
+        t.frozen = false;
+        l -= put;
+      }
+      return;
+    }
+    case "thaw": {
+      for (const t of p.tools) if (t.frozen) t.frozen = false;
+      return;
+    }
     case "haul":
     case "night":
     case "travel":
     case "walk":
     case "rest":
     case "sleep":
-    case "melt":
-    case "thaw":
     case "lightIndoors":
       return;
   }

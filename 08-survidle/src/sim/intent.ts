@@ -36,7 +36,7 @@ export interface IntentRequest {
 }
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "repair", "sharpen"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "repair", "sharpen", "melt", "thaw"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
