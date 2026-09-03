@@ -71,7 +71,7 @@
   // Player gains:
   water: number; autoDrink: boolean; frostbite: { feet: number; hands: number }; toes: boolean; fingers: boolean;
   // Weather gains:
-  storm: { from: number; until: number; warned: boolean } | null; dryDays: number; wetDay: boolean; iceCm: number;
+  storm: { from: number; until: number; warned: boolean } | null; dryDays: number; wetDay: boolean; dryWarned: boolean; iceCm: number;
   // RegionState gains:
   fire: { lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number };
   smoke: number; logsWet: number; structures.hearth: boolean;
@@ -118,7 +118,7 @@ In `tests/weather.test.ts`, the helper becomes:
 
 ```ts
 function w(over: Partial<Weather> = {}): Weather {
-  return { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: -1, storm: null, dryDays: 0, wetDay: false, iceCm: 0, ...over };
+  return { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: -1, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0, ...over };
 }
 ```
 
@@ -133,7 +133,7 @@ In `src/sim/types.ts` apply the Interfaces block above. `KgItem` gains `"wetFire
 
 - [ ] **Step 4: Starting values and defaults**
 
-`src/sim/newgame.ts`, in the player literal: `water: 2.5, autoDrink: true, frostbite: { feet: 0, hands: 0 }, toes: false, fingers: false,`; weather literal: `storm: null, dryDays: 0, wetDay: false, iceCm: 0`.
+`src/sim/newgame.ts`, in the player literal: `water: 2.5, autoDrink: true, frostbite: { feet: 0, hands: 0 }, toes: false, fingers: false,`; weather literal: `storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0`.
 
 `src/sim/regionstate.ts` `newRegionState`: `fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 }`, `smoke: 0`, `logsWet: 1440`, `structures.hearth: false`.
 
@@ -156,6 +156,7 @@ function fillDefaults(state: GameState): void {
   w.storm ??= null;
   w.dryDays ??= 0;
   w.wetDay ??= false;
+  w.dryWarned ??= false;
   w.iceCm ??= 0;
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
@@ -445,7 +446,7 @@ git commit -m "feat(survidle): a water reserve, drunk at the shore; thirst slows
 - `TOOLS.barkBucket = { name: "bark bucket", kg: 0.3, litres: 2 }`, `TOOLS.waterskin = { name: "waterskin", kg: 0.4, litres: 3 }`.
 - `RECIPES.barkBucket = { name: "bark bucket", needs: [{ item: "bark", qty: 4 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 20, out: { tool: "barkBucket" } }`, `RECIPES.waterskin = { name: "waterskin", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 60, out: { tool: "waterskin" } }`.
 - Tasks: `melt` (camp, "Melt snow", 15 min, needs a lit fire at camp with at least 1 kg dry fuel and `snowCm >= 1`; on completion `fire.fuelKg -= 1` and 1.0 l goes to the body then the vessels), `thaw` (camp, "Thaw the water", 10 min, needs a lit fire and a frozen vessel; on completion every vessel unfreezes). Both repeatable, both `activityOf` rest, both in `CAMP_TASKS` and `CAMP_BOUND`; `skillOf` null.
-- `hazards.ts` exports `hourlyHazards(state, world, cal, ambient, rng)`; this task's rule: vessel freezing and the bucket splitting.
+- `hazards.ts` exports `hourlyHazards(state, world, cal, ambient, felt, rng)` (the felt temperature is unused by this task's rule and used by Task 6); this task's rule: vessel freezing and the bucket splitting.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -495,7 +496,7 @@ describe("vessels and snow", () => {
     state.player.energy = 100;
     state.task = null;
     const rng = new Rng(3);
-    for (let h = 0; h < 6; h++) hourlyHazards(state, world, cal, -8, rng);
+    for (let h = 0; h < 6; h++) hourlyHazards(state, world, cal, -8, -8, rng);
     const skin = state.player.tools.find((t) => t.id === "waterskin")!;
     expect(skin.frozen).toBe(true);
     expect(vesselLitres(state.player)).toBe(0);
@@ -587,7 +588,9 @@ import { regionState } from "./regionstate";
 import type { GameState } from "./types";
 import { FREEZE_C } from "./water";
 
-export function hourlyHazards(state: GameState, world: World, cal: Calendar, ambient: number, rng: Rng): void {
+export function hourlyHazards(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
+  void cal;
+  void felt;
   freezeVessels(state, world, ambient, rng);
 }
 
@@ -611,7 +614,7 @@ function freezeVessels(state: GameState, world: World, ambient: number, rng: Rng
 }
 ```
 
-`events.ts` `hourlyEvents` gains an `ambient` parameter (advance passes it) and calls `hourlyHazards(state, world, cal, ambient, rng)` at its end. `cal` is unused by the first rule; later tasks use it.
+`events.ts` `hourlyEvents` gains `ambient` and `felt` parameters (advance computes `felt` with `feltTemperature` and passes both) and calls `hourlyHazards(state, world, cal, ambient, felt, rng)` at its end. The two `void` lines keep `noUnusedParameters` quiet until Tasks 6 and 8 use them; remove them then.
 
 - [ ] **Step 6: Run everything**
 
@@ -636,7 +639,7 @@ git commit -m "feat(survidle): a bark bucket and a waterskin carry water; snow m
 **Interfaces:**
 - `weather.ts`: `export const ICE_THIN_CM = 5, ICE_SAFE_CM = 15; export function iceMode(w: Weather): IceMode` ("safe" at or above 15, "none" below 5, "thin" between; callers that want to cross thin ice ask for it explicitly). The daily roll grows `iceCm` by `0.5 * -mean` when the day's mean (`seasonalMean(dayOfYear) + offset`) is below 0 and melts `2 * mean` above, floor 0.
 - `route.ts`: `export type IceMode = "none" | "safe" | "thin"; export const ICE_SPEED = 0.8; findRoute(world, from, to, ice: IceMode = "none")`; cache key includes the mode; water cells have speed `ICE_SPEED` when `ice !== "none"`. `routeMinutes(world, path, baseKmh, ice = "none")` uses the same speed for water. `passable(t, ice = "none")`.
-- `tasks.ts`: a walk argument may end in `:thin` (`cell:123:thin`, `spot:forest:thin`); `walkTarget` strips it and returns `thin: true`; the walk check routes with `thin ? "thin" : iceMode(weather) === "safe" ? "safe" : "none"`; `Route` gains `ice: IceMode`; `stepWalk(state, world, cal, rng, dt)` rolls the fall on every water cell entered while `iceCm < ICE_SAFE_CM`.
+- `tasks.ts`: a walk argument may end in `:thin` (`cell:123:thin`, `spot:forest:thin`); `walkTarget` strips it and returns `thin: true`; the walk check routes with `thin ? "thin" : iceMode(weather) === "safe" ? "safe" : "none"`; `Route` (types.ts) gains `ice: IceMode` and `lastLand: number` (the last land cell stood on, where a survivor of a fall crawls out); `stepWalk(state, world, cal, rng, dt)` rolls the fall on every water cell entered while `iceCm < ICE_SAFE_CM`; `fallChance` and `fallThrough` are exported from tasks.ts for hazards.ts.
 - `hazards.ts`: standing on a water cell with `iceCm < ICE_THIN_CM` rolls the fall once an hour.
 
 - [ ] **Step 1: Write the failing tests**
@@ -651,7 +654,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAt } from "../src/sim/position";
 import { check, startTask, stepTask } from "../src/sim/tasks";
-import { iceMode, stepWeather } from "../src/sim/weather";
+import { iceMode, seasonalMean, stepWeather } from "../src/sim/weather";
 import { cellAt, regionAt } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
 
@@ -677,8 +680,9 @@ describe("ice", () => {
     // Fourteen days at -10: half a centimetre per degree per day.
     for (let d = 1; d <= 14; d++) {
       w.rolledDay = d - 1;
-      w.offset = -10 - (3 + 12 * Math.cos((2 * Math.PI * (1 - 200)) / 365));
-      stepWeather(w, calendar(d * 1440 + 8 * 60), rng, 1);
+      const c = calendar(d * 1440 + 8 * 60);
+      w.offset = -10 - seasonalMean(c.dayOfYear);
+      stepWeather(w, c, rng, 1);
     }
     expect(w.iceCm).toBeGreaterThanOrEqual(15);
     expect(iceMode(w)).toBe("safe");
@@ -983,9 +987,7 @@ function wetRate(x: Exposure): number {
 
 function dryRate(x: Exposure): number {
   if (x.raining) return 0;
-  if (x.fireAtCamp && x.roof) return 20 / 60;
-  if (x.fireAtCamp) return 20 / 60;
-  return 5 / 60;
+  return x.fireAtCamp ? 20 / 60 : 5 / 60;
 }
 
 /** Wets or dries every garment for dt minutes. */
@@ -1087,7 +1089,7 @@ describe("frostbite", () => {
     const rng = new Rng(2);
     let hours = 0;
     while (state.player.frostbite.feet === 0 && hours < 200) {
-      hourlyHazards(state, world, calendar(0), -12, rng);
+      hourlyHazards(state, world, calendar(0), -12, -12, rng);
       hours++;
     }
     expect(state.player.frostbite.feet).toBe(3 * 1440);
@@ -1112,7 +1114,7 @@ describe("frostbite", () => {
     boots.wet = 80;
     placeAtSpot(state, world, state.player.region, "forest");
     state.task = null;
-    for (let h = 0; h < 200 && !state.player.toes; h++) hourlyHazards(state, world, calendar(0), -20, rng);
+    for (let h = 0; h < 200 && !state.player.toes; h++) hourlyHazards(state, world, calendar(0), -20, -20, rng);
     expect(state.player.toes).toBe(true);
     state.player.frostbite.feet = 0;
     expect(baseWalkSpeed(state, calendar(0), state.weather)).toBeCloseTo(3 * 0.85, 6);
@@ -1170,7 +1172,7 @@ export function frostbitten(state: GameState): { feet: boolean; hands: boolean }
 }
 ```
 
-`hazards.ts`: `hourlyHazards` gains `felt` (advance computes it via `feltTemperature` and passes it) and calls:
+`hazards.ts`: `hourlyHazards` already receives `felt`; drop the `void felt` line and call:
 
 ```ts
 function frostbite(state: GameState, felt: number, rng: Rng): void {
@@ -1195,8 +1197,6 @@ function frostbite(state: GameState, felt: number, rng: Rng): void {
   }
 }
 ```
-
-The `hourlyEvents` signature becomes `(state, world, cal, ambient, felt, rng)`; `advance` passes both.
 
 `player.ts`: in `stepPlayer`'s status countdown, frostbite counts down only when `roof && r.fire.lit && camp`: `if (roof && r.fire.lit) { p.frostbite.feet = Math.max(0, p.frostbite.feet - dt); p.frostbite.hands = ... }`. `baseWalkSpeed`: `if (p.frostbite.feet > 0) v *= 0.6; if (p.toes) v *= 0.85;`. `workSpeed`: `if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;`. `skills.ts` `oddsFactor`: multiply by 0.5 when `state.player.frostbite.hands > 0` and 0.9 when `state.player.fingers`; `craftSuccess`: the same two factors on the returned chance.
 
@@ -1249,6 +1249,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { feedFire } from "../src/sim/camp";
 import { burnPerHour, fireWarmth, lightingInRain, smoky } from "../src/sim/fire";
+import { hourlyHazards } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature } from "../src/sim/player";
@@ -1483,34 +1484,42 @@ Append to `tests/fire.test.ts`:
 
 ```ts
 describe("spread and smoke", () => {
-  it("a big fire left alone on dry August ground spreads within a day; a banked one does not", () => {
-    const g = newGame(3);
-    const { state, world } = g;
-    state.minute = (200 - 91) * 1440;
+  it("a big fire left alone on dry August ground spreads at two percent an hour; a banked one never does", () => {
+    const { state, world } = newGame(3);
+    const july = calendar((200 - 91) * 1440 + 12 * 60);
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.structures.leanTo = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
+    st.fire.unattended = 200;
     state.weather.dryDays = 4;
-    state.player.autoFeed = false;
     placeAtSpot(state, world, state.player.region, "forest");
     const wood0 = st.wood;
-    advance(state, world, 1440);
+    const rng = new Rng(9);
+    let hours = 0;
+    while (st.fire.lit && hours < 400) {
+      hourlyHazards(state, world, july, 18, 18, rng);
+      hours++;
+    }
+    expect(st.fire.lit).toBe(false);
+    expect(hours).toBeLessThan(400);
     expect(st.wood).toBeLessThan(wood0);
     expect(st.structures.leanTo).toBe(false);
-    expect(st.fire.lit).toBe(false);
     expect(state.log.some((e) => e.text.startsWith("Smoke on the wind"))).toBe(true);
-    const h = newGame(3);
-    const st2 = regionState(h.state, h.world, h.state.player.region);
-    h.state.minute = (200 - 91) * 1440;
-    st2.structures.firePit = true;
-    st2.fire.lit = true;
-    st2.fire.fuelKg = 6;
-    h.state.weather.dryDays = 4;
-    placeAtSpot(h.state, h.world, h.state.player.region, "forest");
-    advance(h.state, h.world, 1440);
-    expect(h.state.log.some((e) => e.text.startsWith("Smoke on the wind"))).toBe(false);
+    expect(state.log.some((e) => e.text === "The ground is tinder dry.")).toBe(true);
+    // Banked to six kilos, or ground that is not dry, or a fire someone sits at: no spread in 400 hours.
+    for (const fix of [{ fuel: 6, dry: 4, unattended: 200 }, { fuel: 30, dry: 1, unattended: 200 }, { fuel: 30, dry: 4, unattended: 30 }]) {
+      const h = newGame(3);
+      const st2 = regionState(h.state, h.world, h.state.player.region);
+      st2.structures.firePit = true;
+      st2.fire.lit = true;
+      st2.fire.fuelKg = fix.fuel;
+      st2.fire.unattended = fix.unattended;
+      h.state.weather.dryDays = fix.dry;
+      for (let k = 0; k < 400; k++) hourlyHazards(h.state, h.world, july, 18, 18, rng);
+      expect(st2.fire.lit).toBe(true);
+    }
   });
 
   it("a cabin gets no fire warmth without a hearth; a fire lit indoors warms, smokes, and kills a sleeper", () => {
@@ -1616,7 +1625,7 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng): void {
     const st = state.regions[id];
     if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended < SPREAD_UNATTENDED_MINUTES) continue;
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
-    st.wood = Math.max(0, st.wood - (10 + Math.floor(rng.next() * 21)));
+    st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
     st.structures.leanTo = false;
     st.structures.boughBed = false;
     st.fire.lit = false;
@@ -1628,7 +1637,7 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng): void {
 }
 ```
 
-(`rng.next()` is whatever the `Rng` class exposes for a unit float; use its existing method name.) Also the warning: in `advance`, once per crossing, "The ground is tinder dry." when `groundDry` becomes true (a `warn` in `stepPlayer` keyed `dry`).
+`Rng.int(n)` gives 0 to n-1. The warning "The ground is tinder dry." is logged from `spread` itself the first hour `groundDry` holds (keep a `dryWarned` flag on `Weather`, cleared when `dryDays` resets), so the hourly rule and its warning live together.
 
 `tasks.ts` `lightIndoors` check: `needCamp`, requires `st.structures.cabin`, `!st.structures.hearth` ("there is a hearth: light it there" when there is one, which routes to `light` in sub-project 2), `!st.fire.lit`, drill, 1 kg dry firewood; label "Light a fire indoors", detail "no smoke hole: the cabin will fill with smoke", duration 10. Completion: as `light`, then `st.fire.indoors = true`. `light`'s completion sets `st.fire.indoors = false`. `activityOf` rest; `CAMP_TASKS`; `CAMP_BOUND`; `INTENT_GROUPS` Camp gains `{ id: "lightIndoors" }`; `skillOf` returns "building" for it like `light`, `masteryKey` returns `"light"`.
 
@@ -1720,13 +1729,9 @@ describe("the body at work", () => {
   it("walking the fell burns twice what the forest does, and deep snow doubles it again", () => {
     const { state, world } = newGame(17);
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
-    const burnOn = (terrain: "spruce" | "fell", snow: number) => {
-      const r = { ...state, weather: { ...state.weather, snowCm: snow } } as typeof state;
-      // stepPlayer reads the ground under foot; stand the player on it.
-      return burnForTerrain(r, world, terrain);
-    };
-    expect(burnOn("fell", 0)).toBeCloseTo(burnOn("spruce", 0) * 2, 0);
-    expect(burnOn("spruce", 40)).toBeCloseTo(burnOn("spruce", 0) * 2, 0);
+    const forest = burnForTerrain(state, world, ["spruce", "pine", "birch"], 0);
+    expect(burnForTerrain(state, world, ["fell"], 0)).toBeCloseTo(forest * 2, 0);
+    expect(burnForTerrain(state, world, ["spruce", "pine", "birch"], 40)).toBeCloseTo(forest * 2, 0);
   });
 
   it("spent, the bow misses more, the craft spoils more, and rest gives less back", () => {
@@ -1746,7 +1751,7 @@ describe("the body at work", () => {
 });
 ```
 
-`burnForTerrain(state, world, terrain)` is a test helper you write in the same file: find a cell of that terrain in the player's region (`regionAt(world, region).cells` with `cellAt(world, c).terrain`), `placeAt` the player there, run 60 one-minute `stepPlayer` calls at ambient 15, and return the kcal lost. If the start region has no fell, walk the region list (`world.regions`) for one that has, and place there. Keep the helper honest: no mocking of the ground.
+`burnForTerrain(state, world, terrains, snowCm)` is a test helper you write in the same file: set `state.weather.snowCm`, find a cell whose terrain is in `terrains` in the player's region (`regionAt(world, region).cells` with `cellAt(world, c).terrain`), `placeAt` the player there, set `state.player.kcal = 5000`, run 60 one-minute `stepPlayer` calls at ambient 15, and return the kcal lost. If the start region has no fell, scan the region's `neighbours` (`regionAt(world, id)`) for one that has and place there. No mocking of the ground.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -1769,7 +1774,7 @@ export function stormComing(w: Weather, minute: number): boolean {
 const STORM_CHANCE: Record<Season, number> = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
 ```
 
-In the daily roll: `if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) { const from = minute + 60 + rng.next() * 120; w.storm = { from, until: from + 360 + rng.next() * 720, warned: false }; }` where `minute` is passed into `stepWeather` (add a `minute` parameter; `advance` passes `state.minute`; the tests above call `stepWeather(w, cal, rng, 1)` today, so give `minute` a default of `cal.dayIndex * 1440 + cal.hour * 60`). In the precipitation block: `if (stormNow(w, minute)) { if (w.precip !== "heavy") { w.precip = "heavy"; ev.precipStarted = true; } } else if (w.storm && minute >= w.storm.until) { w.storm = null; if (w.precip !== "none") { w.precip = "none"; ev.precipStopped = true; } }` before the ordinary start and stop rolls.
+In the daily roll: `if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) { const from = minute + 60 + rng.int(121); w.storm = { from, until: from + 360 + rng.int(721), warned: false }; }` where `minute` is passed into `stepWeather` (add a `minute` parameter; `advance` passes `state.minute`; the tests above call `stepWeather(w, cal, rng, 1)` today, so give `minute` a default of `cal.dayIndex * 1440 + cal.hour * 60`). In the precipitation block: `if (stormNow(w, minute)) { if (w.precip !== "heavy") { w.precip = "heavy"; ev.precipStarted = true; } } else if (w.storm && minute >= w.storm.until) { w.storm = null; if (w.precip !== "none") { w.precip = "none"; ev.precipStopped = true; } }` before the ordinary start and stop rolls.
 
 `advance.ts` `step`: after `stepWeather`, `if (state.weather.storm && !state.weather.storm.warned && stormComing(state.weather, state.minute)) { state.weather.storm.warned = true; log(state, "The sky is closing in from the west.", "bad"); }`.
 
