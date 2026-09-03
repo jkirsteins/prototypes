@@ -1,11 +1,6 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
-const dir = dirname(fileURLToPath(import.meta.url));
-const css = readFileSync(join(dir, "../src/style.css"), "utf8");
-
-export { css };
+export const css = readFileSync("src/style.css", "utf8");
 
 /** The declaration block of the first rule whose selector list is exactly `selector`. */
 export function rule(selector: string): string {
