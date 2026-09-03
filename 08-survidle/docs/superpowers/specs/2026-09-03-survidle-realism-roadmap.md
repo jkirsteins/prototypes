@@ -24,6 +24,12 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 ### 1. Body and elements
 
+Specced and in build: `2026-09-03-survidle-body-and-elements-design.md`.
+That spec holds water, ice (the base the rivers build on), wet clothing
+and frostbite, wet wood, smoke, storms and exhaustion. Fog, described
+below, is not in it: it gets its own spec after rivers, since a river bank
+is one of the things you follow out of it.
+
 Thirst and water: a third reserve beside food and warmth, drunk at a shore
 or from melted snow at a fire, which costs fuel; stored water freezes.
 Kilocalorie burn by activity and by the ground crossed. Exhaustion lowers
@@ -78,9 +84,11 @@ the flood, late summer the low, winter the freeze.
   wet legs and time; above a threshold flow the crossing is refused, "the
   river is too strong here". Rapids are never fordable and never freeze.
 - Ice grows by freezing degree-days and thins by thaw, the way ice does.
-  On foot you need about 10 cm. In the thaw the ice is rotten and a
-  crossing can break through: a soaking in freezing water, the worst thing
-  that can happen to you.
+  Sub-project 1 lands the base of this: one thickness for the world, thin
+  ice from 5 cm that can take you, safe ice from 15, the fall, and the
+  thaw that strands you (its spec, section 1.6). Rivers refine it per
+  water body: rapids that never freeze, rotten ice in the thaw, and the
+  fords and bridges that make a river more than a line on the map.
 - The trap comes for free. Cross a ford in September, rain for two days,
   and the way back is gone until the water drops. Cross on ice in March
   and the thaw strands you on the far side. The route planner already
