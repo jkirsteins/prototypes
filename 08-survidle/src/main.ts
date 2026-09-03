@@ -269,9 +269,12 @@ function zoomBy(delta: number) {
 
 boot();
 setCueSink((c) => sounds.cue(c));
-mountControl(document.getElementById("sound")!, audio);
+// Registered before mountControl's own capture listeners, so unlock() always
+// runs before the control's show() on the same click or keydown - otherwise
+// the note reads stale for one extra interaction.
 document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
+mountControl(document.getElementById("sound")!, audio);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();
   else audio.resume();
