@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { calendar } from "../src/sim/calendar";
+import { minutesToCamp } from "../src/sim/body";
+import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
-import { cellOf } from "../src/sim/position";
+import { baseWalkSpeed } from "../src/sim/player";
+import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { PACK_COMFORTABLE_KG } from "../src/units";
+import { cellAt, regionAt } from "../src/world/gen";
+import { findRoute, routeMinutes } from "../src/world/route";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -230,8 +235,15 @@ describe("the body tier", () => {
   });
 
   it("a working day with deliver camp: logs pile up at camp, the pack clears after each delivery, and sleep still happens at camp", () => {
-    // Seed 10: forest and shore both off camp; see the trace above.
+    // Seed 10: forest and shore both off camp; see the trace above. Ice closes the shore
+    // within the first day here, so a lit fire at camp is what keeps thirst answerable
+    // for the rest of this longer, heavier-laden trace.
     const { state, world, camp } = felling(10, "camp");
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    addItem(pile(state, camp), "firewood", 40);
     let clearedAfterDelivery = false;
     let sleptAtCamp = false;
     let sawThirsty = false;
@@ -364,5 +376,93 @@ describe("the runner in the elements", () => {
     expect(state.task?.id).toBe("walk");
     expect(st.fire.fuelKg).toBeCloseTo(6, 6);
     expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(24, 6);
+  });
+
+  it("splits a banked mixed pile's surplus back in the ratio it was held", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    st.fire.wetKg = 10;
+    const banked = bankFire(state, world, region);
+    expect(banked).toBeCloseTo(24, 6);
+    expect(st.fire.fuelKg).toBeCloseTo(4, 6);
+    expect(st.fire.wetKg).toBeCloseTo(2, 6);
+    expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(16, 6);
+    expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(8, 6);
+  });
+
+  it("a storm with no roof still sends the runner to camp to feed the fire and wait it out", () => {
+    const { g, state, world, camp } = felling(17);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 4;
+    addItem(pile(state, camp), "firewood", 20);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.weather.storm = { from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("storm");
+    expect(until(g, () => state.task?.id === "rest")).toBe(true);
+    expect(cellOf(state, world)).toBe(camp);
+    // Fed the same as with a roof: no-roof only changes cold's shelter check, not storm's.
+    expect(st.fire.fuelKg).toBeGreaterThanOrEqual(11.9);
+    expect(state.intent?.step).toBe("waiting out the storm");
+  });
+
+  it("thirst that cannot be quenched does not mask the home need", () => {
+    const { g, state, world } = felling(17);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    // A winter afternoon a few minutes shy of sunset, with the shore iced over
+    // and no fire at camp: nothing can be done about thirst here, so the need
+    // must not hold and hide the home need that should fire instead.
+    const sunset = calendar(320 * 1440).sunset;
+    state.minute = 320 * 1440 - START_MINUTE_OF_DAY + Math.round((sunset - 0.1) * 60);
+    state.player.water = 0.5;
+    state.weather.iceCm = 3;
+    advance(state, world, 1);
+    expect(state.intent?.need).not.toBe("thirsty");
+    expect(state.intent?.need).toBe("home");
+  });
+
+  it("times a route to camp with the same ice mode it was found under", () => {
+    const g = newGame(10);
+    const { state, world } = g;
+    // A water cell bridges two land cells in this region; crossing it under safe
+    // ice is far shorter than any route around, so that is the route found.
+    const here = 1685846;
+    const campCell = 1685844;
+    placeAt(state, world, here);
+    const st = regionState(state, world, state.player.region);
+    st.campCell = campCell;
+    state.weather.iceCm = 20;
+    const cal2 = calendar(state.minute);
+    const route = findRoute(world, here, campCell, "safe")!;
+    const expected = routeMinutes(world, route, baseWalkSpeed(state, cal2, state.weather), "safe");
+    expect(minutesToCamp(state, world, cal2)).toBeCloseTo(expected, 6);
+  });
+
+  it("falls through to the camp-and-melt fallback when the shore cannot be walked to", () => {
+    // Seed 42: the forest coincides with camp, so once thirst falls through it can
+    // go straight to melting rather than needing a further walk to observe.
+    const { g, state, world } = felling(42);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    const r = regionAt(world, state.player.region);
+    const shore = r.spots.find((s) => s.id === "shore")!;
+    // Stand the shore spot on open water: not iced over by ICE_SHORE_CM's own
+    // threshold, but nowhere a walk can actually take you.
+    shore.cell = r.cells.find((c) => cellAt(world, c).terrain === "water")!;
+    state.weather.iceCm = 0;
+    state.weather.snowCm = 5;
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    state.player.water = 0.8;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+    expect(state.intent?.step).toBe("melting snow");
   });
 });
