@@ -154,7 +154,10 @@ describe("save", () => {
     if (regionAt(world, id).capacity.hare) expect(pop.hare).toBe(10);
     for (const s of speciesHere(regionAt(world, id))) expect(pop[s]).toBeGreaterThan(0);
     expect(file.state.task).toMatchObject({ id: "fish", arg: "any" });
-    expect(file.state.paused["hunt:grouse@123"].arg).toBe("willowGrouse");
+    // The renamed arg moves house: the dictionary key is derived from it, so the entry is
+    // re-keyed too, not just edited in place under its stale "grouse" key.
+    expect(file.state.paused["hunt:grouse@123"]).toBeUndefined();
+    expect(file.state.paused["hunt:willowGrouse@123"]).toMatchObject({ arg: "willowGrouse", fraction: 0.5 });
   });
 
   it("a standing order saved against the old grouse or the bare fish keeps working after load", () => {

@@ -54,7 +54,17 @@ function fillDefaults(state: GameState): void {
   renameArg(state.task);
   if (state.intent && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
   if (state.intent && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
-  for (const p of Object.values(state.paused)) renameArg(p);
+  // A paused entry's dictionary key is built from its own arg (tasks.ts pauseKey: "id:arg@cell"
+  // for located work, "id:arg" for carried work, cell -1). Renaming .arg without moving the
+  // entry to the recomputed key would strand it under the old key, unresumable and undeletable.
+  for (const [key, p] of Object.entries(state.paused)) {
+    renameArg(p);
+    const newKey = p.cell === -1 ? `${p.id}:${p.arg ?? ""}` : `${p.id}:${p.arg ?? ""}@${p.cell}`;
+    if (newKey !== key) {
+      delete state.paused[key];
+      state.paused[newKey] = p;
+    }
+  }
   // An order's click carries the same task/arg shape under different field names.
   for (const st of Object.values(state.regions)) {
     for (const o of st.orders ?? []) {
