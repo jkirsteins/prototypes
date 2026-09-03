@@ -1117,8 +1117,9 @@ Not specced. The high-level guidance is here so the spec has something
 to argue with; the numbers are first targets, not rulings. It is the item
 the thirty-day gate measures, and it builds in three parts. The core is
 one slot right after the baseline: the world saved instead of the person,
-the journal, the dim map, the season spine, first decay, and the heir set
-down near the old camp. The lineage lands after B, in impact order: the
+the journal, the epitaph and the cemetery, the dim map, the season spine,
+first decay, and the heir set down near the old camp. The lineage lands
+after B, in impact order: the
 landing month, latitude by row, the goals list, the Lineage tree, and the
 death site with the corpse run and its search order. The ramp's parts
 land inside the sub-projects that own them. Trails and the cellar's keep
@@ -1258,6 +1259,55 @@ for the next one. There is no "write in the journal" button.
   the heir lands. A lineage accumulates metal this way, an axe per
   survivor. Rust as wear keeps the tenth a lump, and the reference player
   checks that the tool ramp stays honest under a long lineage.
+
+**The epitaph and the cemetery.** Every survivor's life is summed up in
+words the game writes from the log, and every world keeps the list. The
+"stories" bar in the gate table needs an artefact the tester can share,
+and a total of days is not one. The nearest models write no prose:
+Dwarf Fortress's legends, RimWorld's colonist histories, Crusader Kings'
+chronicle, Spelunky's death screen. Each lists facts with dates and the
+player supplies the meaning. That is the voice here too: real
+quantities, no adjectives, and no generated prose, since a model's
+paragraph would be generic, cost money per death, add latency to the one
+screen that has to be instant, and break the anonymous-beacon posture.
+Templates over a deterministic event selector are enough:
+
+- **The selector** reads the log and picks the notable events from a
+  short fixed list: days survived, each season threshold reached, the
+  first kill of each species, what was built, the worst night (lowest
+  warmth, wolves at the fire), the last three days, and the cause. It is
+  deterministic from the log, so a test asserts the epitaph of a seeded
+  run, and it is one module: the same selector writes the away report's
+  "what happened" line, so the check-in loop and the survivor loop share
+  it rather than each growing its own summary.
+- **The epitaph** is one line, the tombstone: "Day 87. Died of cold on
+  the fourth night of the cold snap, 2.1 km from camp, with 400 g of
+  dried meat in the pack and 6 kg of firewood at camp." It is written at
+  death, shown on the death card, and the death card is what the player
+  looks at while deciding to start again, so it is the screen the re-run
+  rate is measured on.
+- **The cemetery** is per world, since the world is what persists, and
+  it lists every survivor that died in it, newest first, each under its
+  tombstone line. Opening a tombstone shows the entry: the long form of
+  the same selector, a dozen lines at most, one line per season
+  threshold reached and per notable event in date order, then the last
+  three days and the cause. A survivor who lived three days has a
+  three-line entry; one who held a winter has the full dozen. The
+  cemetery is a list, not a place: the death site on the map is where the
+  body is, the cemetery is where the story is. It is reachable from the
+  death card, from the lineage screen and from the heir's journal, and
+  it is the first thing a returning player sees after the away report
+  when a survivor died while they were gone.
+- **What it is not.** There is no "write in the journal" button and no
+  editing of an entry; the rule that the heir is earned by living holds
+  for the story too. Nothing in the cemetery pays Lineage or changes the
+  world. The graveyard grows, and a growing graveyard reads as an
+  achievement list better than a total of days does; that is its whole
+  job.
+
+It lands in F's core because the journal is already there and the
+epitaph is the journal's summary; the selector, the templates and the
+list are the cost, and none of it waits on the lineage.
 
 **Decay between survivors** is where the balance lives and where the
 roof and the cellar earn their place. The gap is months, so decay is per
