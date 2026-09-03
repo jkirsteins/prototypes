@@ -161,10 +161,10 @@ Let `chosen` be the order found, or null.
    nothing owed. A winding-down intent is still preempted by the body
    tier like any other.
 3. **Switch.** Otherwise `startIntent` starts `chosen` in the ordinary way
-   with `orderId` set; its own `stopTask` sets the outgoing work aside
-   with its share kept. A switch is logged only when the outgoing intent
-   had a live task set aside: "`<label>` set aside; `<new label>`." as
-   plain text, so the away log reads why a felling stopped short.
+   with `orderId` set; its own `stopTask` clears the outgoing intent. The
+   slot is free, so there is no task to set aside and nothing to log: a
+   switch is silent. The share of work an outgoing intent had set aside
+   through the body tier stays in `paused` as today.
 4. **Nothing to do.** `chosen` is null and the live intent is not `wait`:
    stop it and start `wait` (section 2.3).
 
@@ -218,11 +218,13 @@ outranks it.
 A row whose work cannot be a keep (section 1) shows "once" in its small
 print when keep or campHas is chosen.
 
-`resolveCell` and `intentOption` are judged when the row renders, as today,
-so a greyed row still cannot be clicked. An order added to the list is
-judged again at every free minute; a row that was live-able when clicked
-and is not by the time its turn comes is skipped with its reason, not
-dropped.
+Every row is clickable, blocked or not. A row that cannot start now is
+drawn dim with its reason in small print, as today, but its button stays
+live and the order it adds starts skipped with that reason. This is the
+main use of a job: "build a cabin" queued under the grind that will haul
+its logs in. Every order is judged afresh at every free minute, so the
+row's reason at click time is only what the list shows until the reason
+clears.
 
 ### 3.1 The Orders panel
 
