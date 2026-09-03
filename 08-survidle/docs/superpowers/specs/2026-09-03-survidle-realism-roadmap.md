@@ -576,21 +576,43 @@ and the scar the next morning with the elk tracks on it a year later.
 The eight above make the north dangerous. The lettered ones below make
 Survidle an idle game in the sense of Melvor Idle and A Dark Room: you set up a system, you
 leave, and you come back to gains and a readout of how well the system
-held. They run beside the eight, not after them; the first is specced and
-should land before sub-project 2, since everything that follows is played
-through it. Every "away" carries a risk of dying. The point is that the
-risk is legible and the set-up lowers it.
+held. They run beside the eight, not after them; the first is built, and
+everything that follows is played through it. Every "away" carries a risk
+of dying. The point is that the risk is legible and the set-up lowers it.
 
 ### A. Standing orders
 
-Specced: `2026-09-03-survidle-standing-orders-design.md`. A ranked list
-of orders per camp: keeps ("keep camp at 40 firewood", with a half rule
-so the runner does not walk home to split one log), grinds ("fell trees
-forever"), and jobs ("build a cabin", "make 20 arrows") that drop off when
-done. The runner serves the highest unmet order that can start, finishes
-a pending delivery before it switches, and waits at camp when nothing can
-run so the nights are spent by the fire. The away report summarises each
-order: what it did, and what it is blocked on.
+Built: `2026-09-03-survidle-standing-orders-design.md`, plan
+`2026-09-03-survidle-standing-orders.md`. A ranked list of orders per
+camp: keeps ("keep camp at 40 kg firewood", unmet under half the target
+and then held until the target, so the runner does not walk home to split
+one log), grinds ("fell trees forever"), and jobs ("build a cabin", "make
+20 arrows") that drop off when done. Each free minute the scheduler judges
+every order, so every row shows a current state (met, its reason, or
+waiting), and serves the highest that is unmet and can start; it finishes
+a pending delivery before it switches and never switches mid-task. A
+blocked row is still clickable: a cabin job ranked above the grind that
+will haul its logs in is how a cabin gets built while you are away, since
+the runner never gathers a prerequisite on its own. With orders but
+nothing to run, the runner waits at camp, resting by day and sleeping by
+night, the body tier serving it as any intent; a region with no orders
+has no intent. The away report gives one line per order of the camp you
+left: what it did, what it is blocked on, and which jobs finished.
+
+What the build taught, for the sub-projects after it:
+
+- A set-up camp with no water in reach dies of thirst in about thirty
+  hours whatever its orders say (seed 3's start does). B's "tonight"
+  number will show that before anything else, and 2's rivers and 3's
+  water storage are what answer it.
+- Orders belong to a camp. Nothing crosses a region: an order's cells are
+  in the region it was given in, and travelling leaves the list behind
+  until you return. 6's moving camp, and any "stock the winter camp from
+  the summer one" play, needs an order that spans regions.
+- The runner's thresholds decide what "waiting" costs. Rest keeps energy
+  at full, so a waiting body would never have slept by the night clause
+  alone; the wait sleeps by the clock instead. B's forecast runs this
+  runner, so a change to those thresholds moves the forecast.
 
 ### B. The risk forecast
 
