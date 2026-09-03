@@ -33,6 +33,14 @@
   "assist": { "enabled": false },
   "overrides": [
     {
+      "includes": ["**/tests/**"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noExportsInTest": "off" }
+        }
+      }
+    },
+    {
       "includes": ["**/scripts/**"],
       "linter": {
         "rules": {
