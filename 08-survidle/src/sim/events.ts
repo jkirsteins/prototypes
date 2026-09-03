@@ -1,6 +1,7 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
+import { regionDensity } from "./animals";
 import { hourlyHazards } from "./hazards";
 import { log } from "./log";
 import { die, firelit, sheltered } from "./player";
@@ -20,11 +21,11 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambi
     }
   }
 
-  // Wolves: the night outside, worse in winter.
+  // Wolves: the night outside, where wolves live, worse in winter. A region without wolves has quiet nights.
   if (cal.isNight && !sheltered(state, world) && !firelit(state, world)) {
-    let chance = 0.01;
+    let chance = 0.02 * regionDensity(state, world, p.region, "wolf", cal);
     if (cal.season === "winter") chance *= 2;
-    if (rng.chance(chance)) {
+    if (chance > 0 && rng.chance(chance)) {
       p.health = Math.max(0, p.health - 25);
       p.injured = Math.max(p.injured, 24 * 60);
       log(state, "Wolves out of the dark. You fight them off, bleeding.", "bad");
