@@ -8,7 +8,7 @@ import type { Rng } from "../rng";
 import { PACK_HARD_KG } from "../units";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { bodyStep, currentNeed, provision } from "./body";
+import { bodyStep, currentNeed, orderKit, provision } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
@@ -20,7 +20,7 @@ import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres, waterSource } from "./water";
-import { candidateWeight, check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
+import { candidateWeight, check, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
 } from "./types";
@@ -185,10 +185,6 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null): boolean {
   if (state.dead || req.task === "walk" || req.task === "travel") return false;
   const { cell, note } = resolveCell(state, world, cal, req.task, req.arg, req.where);
-  if (!UNCHECKED.has(req.task)) {
-    const o = check(state, world, cal, req.task, req.arg, cell);
-    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) return false;
-  }
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
     ? item ? { kind: "campHas", item, qty: req.until.qty } : { kind: "once" }
@@ -204,13 +200,24 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
     until = { kind: "once" };
     deliver = "leave";
   }
-  // Whatever was under way, by hand or by intent, is set aside with its share kept.
-  stopTask(state, world);
+  // Tentatively in place, so provisioning below sees the new task; reverted on a failed check.
+  const prevIntent = state.intent;
   state.intent = {
     task: req.task, arg: req.arg, cell,
     campCell: regionState(state, world, state.player.region).campCell,
     until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
   };
+  // A bow hunt's arrows must be in the pack before the check below, which reads the pack only.
+  provision(state, world);
+  if (!UNCHECKED.has(req.task)) {
+    const o = check(state, world, cal, req.task, req.arg, cell);
+    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
+      state.intent = prevIntent;
+      return false;
+    }
+  }
+  // Whatever was under way, by hand or by intent, is set aside with its share kept.
+  setAside(state, world);
   runIntent(state, world, cal, rng);
   // The note (a chosen spot that did not suit) belongs on the first step, not "setting out".
   if (note && state.intent) state.intent.step = `${note}; ${state.intent.step}`;
@@ -279,7 +286,8 @@ function dropEverything(state: GameState, world: World): void {
   const from = state.player.pack;
   const here = cellOf(state, world);
   const to = pile(state, here);
-  for (const { item, qty: q } of listItems(from)) transfer(from, to, item, q);
+  const keep = new Set(orderKit(state));
+  for (const { item, qty: q } of listItems(from)) if (!keep.has(item)) transfer(from, to, item, q);
   // Unloading at the home camp empties the vessels too, as far as the vessels at camp have room.
   if (state.intent?.campCell === here) pourVessels(state.player, to);
 }

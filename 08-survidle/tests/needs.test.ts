@@ -93,3 +93,25 @@ describe("the need order", () => {
     expect(qty(pile(state, st.campCell), "water")).toBeLessThan(2);
   });
 });
+
+describe("arrows in the pack", () => {
+  it("a bow hunt keeps its arrows through an unloading at camp, and provisioning pockets them", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    placeAt(state, world, st.campCell);
+    addItem(p.pack, "bow", 1);
+    takeUp(state, world, "bow");
+    addItem(pile(state, st.campCell), "arrow", 12);
+    addItem(pile(state, st.campCell), "driedMeat", 2);
+    startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "any", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" });
+    expect(qty(p.pack, "arrow")).toBe(10);
+    // Meat in the pack meets the promise, so the runner walks home and unloads; the arrows must not go with the meat.
+    expect(until(g, () => state.task?.id === "hunt", 600)).toBe(true);
+    addItem(p.pack, "rawMeat", 5);
+    state.task = null;
+    expect(until(g, () => qty(pile(state, st.campCell), "rawMeat") >= 5, 1500)).toBe(true);
+    expect(qty(p.pack, "arrow")).toBe(10);
+  });
+});

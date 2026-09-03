@@ -20,7 +20,7 @@ import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check } from "./tasks";
-import type { BodyNeed, GameState, Intent } from "./types";
+import type { BodyNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, waterSource } from "./water";
 import { stormComing, stormNow, walkableIce } from "./weather";
 
@@ -256,6 +256,16 @@ function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it:
   return walkStep(state, world, it.campCell, " to eat");
 }
 
+/** Arrows a bow hunt carries out of camp. */
+export const ARROWS_TO_CARRY = 10;
+
+/** What the live order needs in the pack beside food: arrows for a bow hunt. Nothing else yet. */
+export function orderKit(state: GameState): ItemId[] {
+  const it = state.intent;
+  if (it?.task === "hunt" && hasTool(state.player, "bow")) return ["arrow"];
+  return [];
+}
+
 /**
  * Lunch for the day: at the home camp, pocket safe food from the pile up to
  * PROVISION_KG in the pack, never past the comfortable load. `want` and `kg`
@@ -279,4 +289,8 @@ export function provision(state: GameState, world: World): void {
   }
   // A waterside camp tops off every vessel along with lunch, the same errand.
   if (waterSource(state, world)) fillVessels(state, world);
+  if (orderKit(state).includes("arrow")) {
+    const arrowWant = ARROWS_TO_CARRY - qty(pack, "arrow");
+    if (arrowWant > 0) transfer(camp, pack, "arrow", Math.min(arrowWant, qty(camp, "arrow")));
+  }
 }
