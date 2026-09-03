@@ -342,7 +342,7 @@ describe("mastery extras", () => {
     expect(effectiveNeeds(state, "hideCoat")).toEqual([{ item: "hide", qty: 5.5 }, { item: "sinew", qty: 1 }]);
     state.skills.crafting.mastery["craft:furHat"] = masteryMinutes(20);
     // A need that drops to zero is left out rather than listed as 0.
-    expect(effectiveNeeds(state, "furHat")).toEqual([{ item: "hide", qty: 1 }]);
+    expect(effectiveNeeds(state, "furHat")).toEqual([{ item: "fur", qty: 1, alt: "hide" }]);
     expect(effectiveNeeds(state, "cordage")).toEqual([{ item: "bark", qty: 3 }]);
   });
 

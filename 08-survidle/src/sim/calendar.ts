@@ -6,6 +6,12 @@ export const START_MINUTE_OF_DAY = 8 * 60;
 export const LATITUDE_DEG = 62;
 const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_FULL = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "April" for month 3. */
+export function monthName(month: number): string {
+  return MONTH_FULL[((month % 12) + 12) % 12];
+}
 
 export interface Calendar {
   /** Days survived, 1-based. */

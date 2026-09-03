@@ -22,7 +22,7 @@ export type CountItem =
   | "snare" | "arrow" | "torch";
 /** Items measured in kilograms. */
 export type KgItem =
-  | "firewood" | "hide" | "rawMeat" | "cookedMeat" | "driedMeat"
+  | "firewood" | "hide" | "fur" | "fat" | "rawMeat" | "cookedMeat" | "driedMeat"
   | "fish" | "cookedFish" | "berries" | "wetFirewood";
 export type ItemId = CountItem | KgItem;
 

@@ -7,32 +7,33 @@ import type {
 export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4,
-  firewood: 1, hide: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
+  firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
 };
 
 export const KG_ITEMS = new Set<ItemId>([
-  "firewood", "hide", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
+  "firewood", "hide", "fur", "fat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
 ]);
 
 export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
   bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches",
-  firewood: "firewood", hide: "hide", rawMeat: "raw meat", cookedMeat: "cooked meat",
+  firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
   wetFirewood: "wet firewood",
 };
 
-export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries";
+export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
 export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number }> = {
   rawMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0.25 },
   cookedMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0 },
   driedMeat: { kcalPerKg: 3500, portionKg: 0.15, sickChance: 0 },
   cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0 },
   berries: { kcalPerKg: 500, portionKg: 0.2, sickChance: 0 },
+  fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 },
 };
-/** Order autoEat prefers: the least valuable safe food first, so dried meat is kept for winter. */
-export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat"];
+/** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
+export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
 
 export const KCAL_FULL = 6000;
 
@@ -93,9 +94,9 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   hideCoat: { name: "hide coat", needs: [{ item: "hide", qty: 6 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 480, out: { clothing: "hideCoat" } },
   hideTrousers: { name: "hide trousers", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 300, out: { clothing: "hideTrousers" } },
   hideBoots: { name: "hide boots", needs: [{ item: "hide", qty: 2 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 240, out: { clothing: "hideBoots" } },
-  furHat: { name: "fur hat", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furHat" } },
-  furMittens: { name: "fur mittens", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furMittens" } },
-  hideBlanket: { name: "hide blanket", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 240, out: { clothing: "hideBlanket" } },
+  furHat: { name: "fur hat", needs: [{ item: "fur", qty: 1, alt: "hide" }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furHat" } },
+  furMittens: { name: "fur mittens", needs: [{ item: "fur", qty: 1, alt: "hide" }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furMittens" } },
+  hideBlanket: { name: "hide blanket", needs: [{ item: "hide", qty: 4, alt: "fur" }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 240, out: { clothing: "hideBlanket" } },
   barkBucket: { name: "bark bucket", needs: [{ item: "bark", qty: 4 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 20, out: { tool: "barkBucket" } },
   waterskin: { name: "waterskin", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 60, out: { tool: "waterskin" } },
 };
