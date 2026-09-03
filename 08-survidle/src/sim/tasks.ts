@@ -803,7 +803,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
           p.health = Math.max(1, p.health - 15);
           log(state, `The ${def.name} turns on you. You are hurt.`, "bad");
         }
-        if (rng.chance(0.5)) {
+        const loss = huntExtras(state, s).arrowLoss;
+        if (loss > 0 && rng.chance(loss)) {
           removeItem(p.pack, "arrow", 1);
           log(state, `No ${def.name} today, and an arrow lost in the brush.`);
         } else log(state, `No ${def.name} today.`);

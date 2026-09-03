@@ -6,7 +6,7 @@
 import type { World } from "../world/gen";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
 import { hereTerrain } from "./position";
-import { fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
+import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
 import type { GameState, ItemId, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
@@ -57,8 +57,11 @@ export function masteryMinutes(m: number): number {
   return MASTERY_LEVEL_MINUTES * (m - 1) ** 2;
 }
 
+/** Keys the pool counts, for the skills whose rosters would otherwise put the perks out of reach. */
+const POOL_KEY_CAP: Partial<Record<SkillId, number>> = { hunting: 6, fishing: 3 };
+
 export function poolCapacity(skill: SkillId): number {
-  return POOL_MINUTES_PER_KEY * MASTERY_KEYS[skill].length;
+  return POOL_MINUTES_PER_KEY * Math.min(MASTERY_KEYS[skill].length, POOL_KEY_CAP[skill] ?? Number.POSITIVE_INFINITY);
 }
 
 export function poolShare(state: GameState, skill: SkillId): number {
@@ -141,9 +144,6 @@ export const EXTRAS: Record<string, { at20: string; at50: string }> = {
   "chop:spruce": { at20: "an extra stick per tree", at50: "the axe keeps its edge on spruce" },
   "chop:pine": { at20: "an extra stick per tree", at50: "the axe keeps its edge on pine" },
   "chop:birch": { at20: "an extra stick per tree", at50: "the axe keeps its edge on birch" },
-  "hunt:hare": { at20: "the fur comes off whole, 0.3 kg", at50: "a bone more" },
-  "hunt:deer": { at20: "a sinew more", at50: "half the chance of a hurt" },
-  "hunt:elk": { at20: "a sinew more", at50: "half the chance of a hurt" },
   "craft:hideCoat": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:hideTrousers": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:hideBoots": { at20: "one sinew fewer", at50: "a tenth less hide" },
@@ -151,6 +151,16 @@ export const EXTRAS: Record<string, { at20: string; at50: string }> = {
   "craft:furHat": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:furMittens": { at20: "one sinew fewer", at50: "a tenth less hide" },
 };
+
+/** Extras text by the class a hunted or fished species falls into. */
+const CLASS_EXTRAS = {
+  fur: { at20: "the pelt comes off whole, half again the fur", at50: "a bone more" },
+  big: { at20: "a sinew more", at50: "half the chance of a hurt" },
+  bird: { at20: "an arrow is never lost on a miss", at50: "a quarter better odds" },
+  fish: { at20: "a third more per catch", at50: "two thirds more per catch" },
+};
+for (const s of huntedLand()) EXTRAS[`hunt:${s}`] = CLASS_EXTRAS[extrasClass(s)!];
+for (const s of fishSpecies()) EXTRAS[`fish:${s}`] = CLASS_EXTRAS.fish;
 
 /** A readable name for a mastery key, for log lines: "Spruce felling", "Elk hunting", "Hide coat". */
 export function keyName(key: string): string {
@@ -168,16 +178,25 @@ export function chopSticks(state: GameState, world: World): number {
   return 4 + (masteryOf(state, "woodcraft", masteryKey(state, world, "chop")!) >= 20 ? 1 : 0);
 }
 
-export function huntExtras(state: GameState, species: Species): { meatKg: number; hideKg: number; furKg: number; fatKg: number; bone: number; sinew: number; injuryFactor: number } {
+export function huntExtras(state: GameState, species: Species): {
+  meatKg: number; hideKg: number; furKg: number; fatKg: number; bone: number; sinew: number; injuryFactor: number; oddsFactor: number; arrowLoss: number;
+} {
   const y = SPECIES_DEFS[species].yields ?? { meatKg: 0 };
   const m = masteryOf(state, "hunting", `hunt:${species}`);
-  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg: y.fatKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1 };
-  if (species === "hare") {
-    if (m >= 20) out.furKg = 0.3;
-    if (m >= 50) out.bone += 1;
-  } else if (species === "deer" || species === "elk") {
-    if (m >= 20) out.sinew += 1;
-    if (m >= 50) out.injuryFactor = 0.5;
+  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg: y.fatKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1, oddsFactor: 1, arrowLoss: 0.5 };
+  switch (extrasClass(species)) {
+    case "fur":
+      if (m >= 20) out.furKg = Math.round(out.furKg * 1.5 * 100) / 100;
+      if (m >= 50) out.bone += 1;
+      break;
+    case "big":
+      if (m >= 20) out.sinew += 1;
+      if (m >= 50) out.injuryFactor = 0.5;
+      break;
+    case "bird":
+      if (m >= 20) out.arrowLoss = 0;
+      if (m >= 50) out.oddsFactor = 1.25;
+      break;
   }
   return out;
 }
@@ -269,6 +288,7 @@ export function oddsFactor(state: GameState, species: Species): number {
   let f = (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
   if (state.player.frostbite.hands > 0) f *= 0.5;
   if (state.player.fingers) f *= 0.9;
+  if (!fishing) f *= huntExtras(state, species).oddsFactor;
   return f;
 }
 

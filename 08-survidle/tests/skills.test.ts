@@ -13,7 +13,7 @@ import { calendar } from "../src/sim/calendar";
 import { availableTasks, check, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
-import { fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
+import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
 import { regionAt } from "../src/world/gen";
 
 describe("skill curves", () => {
@@ -36,7 +36,6 @@ describe("skill curves", () => {
   });
 
   it("a pool holds 100 hours per mastery key", () => {
-    expect(poolCapacity("fishing")).toBe(fishSpecies().length * 6000);
     expect(poolCapacity("woodcraft")).toBe(6 * 6000);
     expect(MASTERY_KEYS.hunting).toEqual([...huntedLand().map((s) => `hunt:${s}`), "snare"]);
     expect(MASTERY_KEYS.crafting).toContain("craft:hideBlanket");
@@ -317,7 +316,7 @@ describe("mastery extras", () => {
 
   it("a hare at mastery 20 keeps its fur whole; at 50 a bone more", () => {
     const { state } = newGame(3);
-    expect(huntExtras(state, "hare")).toEqual({ meatKg: 1.2, hideKg: 0, furKg: 0.2, fatKg: 0, bone: 1, sinew: 0, injuryFactor: 1 });
+    expect(huntExtras(state, "hare")).toEqual({ meatKg: 1.2, hideKg: 0, furKg: 0.2, fatKg: 0, bone: 1, sinew: 0, injuryFactor: 1, oddsFactor: 1, arrowLoss: 0.5 });
     state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(20);
     expect(huntExtras(state, "hare").furKg).toBe(0.3);
     state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(50);
@@ -331,15 +330,6 @@ describe("mastery extras", () => {
     expect(huntExtras(state, "elk").sinew).toBe(7);
     state.skills.hunting.mastery["hunt:elk"] = masteryMinutes(50);
     expect(injuryChance(state, "elk")).toBeCloseTo(0.075, 9);
-  });
-
-  it("a perch: a third heavier at mastery 20, two thirds at 50", () => {
-    const { state } = newGame(3);
-    expect(fishKg(state, "perch")).toBeCloseTo(0.3, 9);
-    state.skills.fishing.mastery["fish:perch"] = masteryMinutes(20);
-    expect(fishKg(state, "perch")).toBeCloseTo(0.4, 9);
-    state.skills.fishing.mastery["fish:perch"] = masteryMinutes(50);
-    expect(fishKg(state, "perch")).toBeCloseTo(0.5, 9);
   });
 
   it("hide and fur recipes: one sinew fewer at 20, a tenth less hide at 50", () => {
@@ -364,6 +354,53 @@ describe("mastery extras", () => {
     startTask(state, world, cal, "chop");
     run(g, 2);
     expect(state.log.some((e) => e.text.includes("mastery 20") && e.text.includes(EXTRAS["chop:spruce"].at20))).toBe(true);
+  });
+});
+
+describe("extras by class", () => {
+  function withMastery(key: string, skill: "hunting" | "fishing", m: number) {
+    const { state, world } = newGame(3);
+    state.skills[skill].mastery[key] = masteryMinutes(m);
+    return { state, world };
+  }
+
+  it("fur-bearers: half again the fur at 20, a bone more at 50", () => {
+    expect(huntExtras(withMastery("hunt:fox", "hunting", 1).state, "fox")).toMatchObject({ furKg: 1, bone: 2 });
+    expect(huntExtras(withMastery("hunt:fox", "hunting", 20).state, "fox")).toMatchObject({ furKg: 1.5, bone: 2 });
+    expect(huntExtras(withMastery("hunt:fox", "hunting", 50).state, "fox")).toMatchObject({ furKg: 1.5, bone: 3 });
+    expect(huntExtras(withMastery("hunt:hare", "hunting", 20).state, "hare").furKg).toBeCloseTo(0.3, 9);
+  });
+
+  it("big game: a sinew more at 20, half the hurt at 50", () => {
+    expect(huntExtras(withMastery("hunt:reindeer", "hunting", 20).state, "reindeer")).toMatchObject({ sinew: 5, injuryFactor: 1 });
+    expect(huntExtras(withMastery("hunt:wolf", "hunting", 50).state, "wolf")).toMatchObject({ sinew: 5, injuryFactor: 0.5 });
+  });
+
+  it("birds: no arrow lost at 20, a quarter better odds at 50", () => {
+    expect(huntExtras(withMastery("hunt:capercaillie", "hunting", 1).state, "capercaillie")).toMatchObject({ arrowLoss: 0.5, oddsFactor: 1 });
+    expect(huntExtras(withMastery("hunt:capercaillie", "hunting", 20).state, "capercaillie")).toMatchObject({ arrowLoss: 0, oddsFactor: 1 });
+    expect(huntExtras(withMastery("hunt:capercaillie", "hunting", 50).state, "capercaillie")).toMatchObject({ arrowLoss: 0, oddsFactor: 1.25 });
+  });
+
+  it("fish: a third more at 20, two thirds more at 50", () => {
+    expect(fishKg(withMastery("fish:pike", "fishing", 1).state, "pike")).toBeCloseTo(2.0, 9);
+    expect(fishKg(withMastery("fish:pike", "fishing", 20).state, "pike")).toBeCloseTo(2.0 * 4 / 3, 9);
+    expect(fishKg(withMastery("fish:pike", "fishing", 50).state, "pike")).toBeCloseTo(2.0 * 5 / 3, 9);
+  });
+
+  it("every hunted species has extras text of its class", () => {
+    for (const s of [...huntedLand(), ...fishSpecies()]) {
+      const key = fishSpecies().includes(s) ? `fish:${s}` : `hunt:${s}`;
+      expect(EXTRAS[key], key).toBeDefined();
+      expect(extrasClass(s)).not.toBeNull();
+    }
+  });
+
+  it("the pools of Hunting and Fishing count six and three keys", () => {
+    expect(poolCapacity("hunting")).toBe(6 * 6000);
+    expect(poolCapacity("fishing")).toBe(3 * 6000);
+    expect(poolCapacity("woodcraft")).toBe(6 * 6000);
+    expect(poolCapacity("crafting")).toBe(MASTERY_KEYS.crafting.length * 6000);
   });
 });
 
