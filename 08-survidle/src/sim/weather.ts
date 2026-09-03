@@ -1,4 +1,5 @@
 import type { Rng } from "../rng";
+import type { IceMode } from "../world/route";
 import type { Calendar } from "./calendar";
 import type { Season, Weather } from "./types";
 
@@ -18,12 +19,31 @@ const START_PER_HOUR: Record<Season, number> = { spring: 0.04, summer: 0.03, aut
 const STOP_PER_HOUR = 0.25;
 export const DEEP_SNOW_CM = 30;
 
+/** Ice above this bears a walker's weight without risk. */
+export const ICE_SAFE_CM = 15;
+/** Ice above this bears a walker's weight, but each crossed cell risks a fall. */
+export const ICE_THIN_CM = 5;
+
+export function iceMode(w: Weather): IceMode {
+  if (w.iceCm >= ICE_SAFE_CM) return "safe";
+  if (w.iceCm >= ICE_THIN_CM) return "thin";
+  return "none";
+}
+
+/** Yesterday's mean sets today's ice: half a centimetre per freezing degree, two per thawing one. */
+function stepIce(w: Weather, cal: Calendar): void {
+  const mean = seasonalMean(cal.dayOfYear) + w.offset;
+  if (mean < 0) w.iceCm += 0.5 * -mean;
+  else w.iceCm = Math.max(0, w.iceCm - 2 * mean);
+}
+
 export interface WeatherEvents { coldSnap: boolean; precipStarted: boolean; precipStopped: boolean }
 
 /** Advances precipitation and snow by dt minutes. dt is at most one minute. */
 export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number): WeatherEvents {
   const ev: WeatherEvents = { coldSnap: false, precipStarted: false, precipStopped: false };
   if (cal.dayIndex > w.rolledDay && cal.hour >= cal.sunrise) {
+    stepIce(w, cal);
     w.rolledDay = cal.dayIndex;
     // Winter anomalies lean cold: clear, still nights under a high sink far below the mean.
     w.offset = rng.gauss() * 4 - (cal.season === "winter" ? 3 : 0);

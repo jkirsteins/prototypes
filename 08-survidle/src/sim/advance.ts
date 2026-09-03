@@ -5,6 +5,7 @@ import { dailyAnimals } from "./animals";
 import { calendar } from "./calendar";
 import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
+import { iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
 import { log } from "./log";
 import { causeFrom, die, feltTemperature, stepPlayer } from "./player";
@@ -55,6 +56,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   const drains = stepPlayer(state, world, ambient, dt);
   autoEat(state, world, rng);
   autoDrink(state, world);
+  iceUnderFoot(state, world, rng);
 
   const hour = Math.floor(state.minute / 60);
   if (hour > state.lastHour) {

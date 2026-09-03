@@ -4,6 +4,8 @@
  * game is how fast the clock runs, and that lives in units.ts.
  */
 
+import type { IceMode } from "../world/route";
+
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
 export type Terrain =
@@ -93,6 +95,10 @@ export interface Route {
   target: number;
   path: number[];
   label: string;
+  /** Whether this walk may cross water, and how: matters when the ice under it later changes. */
+  ice: IceMode;
+  /** The last non-water cell stood on, where a fall through the ice crawls out. */
+  lastLand: number;
 }
 
 /** When an intent is finished with. */

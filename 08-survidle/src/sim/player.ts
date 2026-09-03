@@ -1,6 +1,6 @@
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG, clamp } from "../units";
 import type { World } from "../world/gen";
-import { TERRAIN_SPEED } from "../world/route";
+import { type IceMode, speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
@@ -112,9 +112,9 @@ export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather,
   return v;
 }
 
-/** Walking speed in km/h on this ground, right now, with this load. */
-export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, terrain: Terrain, loadKg = carried(state.player)): number {
-  return baseWalkSpeed(state, cal, weather, loadKg) * TERRAIN_SPEED[terrain];
+/** Walking speed in km/h on this ground, right now, with this load; a water cell needs the route's ice mode. */
+export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, terrain: Terrain, loadKg = carried(state.player), ice: IceMode = "none"): number {
+  return baseWalkSpeed(state, cal, weather, loadKg) * speedOf(terrain, ice);
 }
 
 const KCAL_PER_HOUR: Record<Activity, number> = { sleep: 70, rest: 100, light: 200, walk: 300, heavy: 400 };

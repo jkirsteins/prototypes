@@ -14,8 +14,19 @@ export const TERRAIN_SPEED: Record<Terrain, number> = {
   water: 0, fell: 0.5, rock: 0.75, bog: 0.7, spruce: 1, pine: 1, birch: 1, meadow: 1.1,
 };
 
-export function passable(t: Terrain): boolean {
-  return TERRAIN_SPEED[t] > 0;
+/** Whether a route may step onto water, and how: safe ice bears weight without risk, thin ice risks a fall. */
+export type IceMode = "none" | "safe" | "thin";
+/** Walking on ice relative to open forest. */
+export const ICE_SPEED = 0.8;
+
+/** Speed on this ground given the ice mode a route is willing to cross water with. */
+export function speedOf(t: Terrain, ice: IceMode): number {
+  if (t === "water") return ice === "none" ? 0 : ICE_SPEED;
+  return TERRAIN_SPEED[t];
+}
+
+export function passable(t: Terrain, ice: IceMode = "none"): boolean {
+  return speedOf(t, ice) > 0;
 }
 
 /** Cells of slack around the endpoints' bounding box. */
@@ -28,7 +39,7 @@ const caches = new WeakMap<World, Map<string, number[] | null>>();
  * `to`, or null when no land route exists within the search box. An empty
  * array means already there.
  */
-export function findRoute(world: World, from: number, to: number): number[] | null {
+export function findRoute(world: World, from: number, to: number, ice: IceMode = "none"): number[] | null {
   if (from === to) return [];
   let cache = caches.get(world);
   if (!cache) {
@@ -37,21 +48,24 @@ export function findRoute(world: World, from: number, to: number): number[] | nu
   }
   // Callers consume the array they get (a walk shifts cells off it), so the
   // cache hands out copies and keeps its own.
-  const key = `${from}>${to}`;
+  const key = `${from}>${to}>${ice}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit ? hit.slice() : null;
-  const route = astar(world, from, to);
+  const route = astar(world, from, to, ice);
   cache.set(key, route);
   return route ? route.slice() : null;
 }
 
-function astar(world: World, from: number, to: number): number[] | null {
+function astar(world: World, from: number, to: number, ice: IceMode): number[] | null {
   const W = world.w;
   const fx = from % W;
   const fy = Math.floor(from / W);
   const tx = to % W;
   const ty = Math.floor(to / W);
-  if (!passable(terrainOf(world, tx, ty))) return null;
+  // Impassable ground at either end blocks the whole route: standing on ice
+  // that has thinned past the mode asked for is a dead end, not just a wall
+  // ahead, since there is no legal first step out of it.
+  if (!passable(terrainOf(world, fx, fy), ice) || !passable(terrainOf(world, tx, ty), ice)) return null;
   // The search box.
   const x0 = Math.max(0, Math.min(fx, tx) - ROUTE_MARGIN);
   const y0 = Math.max(0, Math.min(fy, ty) - ROUTE_MARGIN);
@@ -64,7 +78,7 @@ function astar(world: World, from: number, to: number): number[] | null {
   const start = local(fx, fy);
   const goal = local(tx, ty);
   const speed = new Float32Array(n);
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) speed[local(x, y)] = TERRAIN_SPEED[terrainOf(world, x, y)];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) speed[local(x, y)] = speedOf(terrainOf(world, x, y), ice);
 
   const g = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
   const f = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
@@ -144,10 +158,10 @@ export function routeKm(path: number[]): number {
 }
 
 /** Minutes to walk a route at a given base speed (km/h), terrain of each cell applied. */
-export function routeMinutes(world: World, path: number[], baseKmh: number): number {
+export function routeMinutes(world: World, path: number[], baseKmh: number, ice: IceMode = "none"): number {
   let minutes = 0;
   for (const c of path) {
-    const v = baseKmh * TERRAIN_SPEED[terrainOf(world, c % world.w, Math.floor(c / world.w))];
+    const v = baseKmh * speedOf(terrainOf(world, c % world.w, Math.floor(c / world.w)), ice);
     minutes += (CELL_KM / Math.max(0.05, v)) * 60;
   }
   return minutes;

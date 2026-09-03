@@ -197,6 +197,8 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   color: var(--dim);
 }
 .grid .c.t-water { color: #3a6fd8; background: #0a1633; }
+.grid .c.ice-thin { color: #6d8a9c; }
+.grid .c.ice-safe { color: #cfe6f0; }
 .grid .c.t-spruce { color: #1f8f3a; background: #0b1f11; }
 .grid .c.t-pine { color: #3fbf5a; background: #0e2415; }
 .grid .c.t-birch { color: #9be36a; background: #1a2a12; }

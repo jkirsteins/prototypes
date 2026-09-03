@@ -9,6 +9,7 @@ import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
 import { discovery, SEEN, VISITED } from "../sim/regionstate";
 import type { GameState, RegionState, Terrain } from "../sim/types";
+import { iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 
@@ -151,7 +152,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const piles = Object.keys(state.piles).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const cell = cellOf(state, world);
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${state.player.torch.lit ? "T" : ""}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${state.player.torch.lit ? "T" : ""}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
@@ -247,6 +248,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (sel !== null && reg === sel) cls.push("sel");
       if (routeGlyphs.has(i)) cls.push("rt");
       glyph = GLYPH[t];
+      if (t === "water" && iceMode(state.weather) !== "none") {
+        glyph = "=";
+        cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
+      }
       if (snow && t === "meadow") glyph = "*";
       // Only regions already built get named; building one here would fill its chunks for a tooltip.
       title = seen === VISITED ? (world.regions.get(reg)?.name ?? "known country") : "seen from a distance";
@@ -271,7 +276,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   }
   parts.push(`<i class="shade"></i></div>`);
   parts.push(
-    `<div class="legend"><span>~ water</span><span>A spruce</span><span>T pine</span><span>Y birch</span><span>. meadow</span><span>" bog</span><span>n rock</span><span>^ fell</span><span class="accent">@ you</span><span>H shelter</span><span>F fire</span><span class="pl-key">underlined: something lies there</span><span class="fog-key">dark: never been there</span></div>`,
+    `<div class="legend"><span>~ water</span><span>= ice</span><span>A spruce</span><span>T pine</span><span>Y birch</span><span>. meadow</span><span>" bog</span><span>n rock</span><span>^ fell</span><span class="accent">@ you</span><span>H shelter</span><span>F fire</span><span class="pl-key">underlined: something lies there</span><span class="fog-key">dark: never been there</span></div>`,
   );
   return parts.join("");
 }

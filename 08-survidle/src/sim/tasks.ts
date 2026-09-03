@@ -1,7 +1,7 @@
 import type { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
-import { findRoute, routeKm, routeMinutes } from "../world/route";
+import { findRoute, type IceMode, routeKm, routeMinutes } from "../world/route";
 import { regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import {
@@ -13,7 +13,7 @@ import {
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES, type SpeciesDef,
 } from "./items";
 import { log } from "./log";
-import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
   masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
@@ -29,7 +29,7 @@ import {
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
-import { DEEP_SNOW_CM } from "./weather";
+import { DEEP_SNOW_CM, ICE_SAFE_CM, iceMode } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -94,23 +94,33 @@ function needsList(needs: { item: string; qty: number; alt?: string }[]): string
 /**
  * A walk's argument names its target: a spot of the current region, a
  * region's camp, or a bare cell (for things lying about and work set aside).
+ * A trailing `:thin` asks the route to cross thin ice rather than the safe
+ * ice a plain walk uses when the world has it.
  */
-export function walkTarget(state: GameState, world: World, arg: string): { cell: number; label: string } | null {
-  const [kind, val] = arg.split(":");
+export function walkTarget(state: GameState, world: World, arg: string): { cell: number; label: string; thin: boolean } | null {
+  const parts = arg.split(":");
+  const thin = parts[parts.length - 1] === "thin";
+  if (thin) parts.pop();
+  const [kind, val] = parts;
   if (kind === "spot") {
     const s = spotOf(regionAt(world, state.player.region), val as SpotId);
-    return s ? { cell: s.cell, label: SPOT_WORDS[val as SpotId] } : null;
+    return s ? { cell: s.cell, label: SPOT_WORDS[val as SpotId], thin } : null;
   }
   if (kind === "region") {
     const r = regionAt(world, Number(val));
-    return r ? { cell: r.campCell, label: r.name } : null;
+    return r ? { cell: r.campCell, label: r.name, thin } : null;
   }
   if (kind === "cell") {
     const cell = Number(val);
     if (!Number.isInteger(cell) || cell < 0 || cell >= world.w * world.h) return null;
-    return { cell, label: whereIs(state, world, cell) };
+    return { cell, label: whereIs(state, world, cell), thin };
   }
   return null;
+}
+
+/** The ice a walk crosses water with: thin when asked for and available, safe ice by default, else none. */
+function walkIceMode(state: GameState, thin: boolean): IceMode {
+  return thin ? "thin" : iceMode(state.weather) === "safe" ? "safe" : "none";
 }
 
 /** "the forest", "camp in Stensund", "a spot 0.4 km east": how a cell is named to the player. */
@@ -289,11 +299,15 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (id === "travel" && discovery(state, cellAt(world, target.cell).region) === 0) return { ...o, ok: false, why: "you know nothing of that country" };
       const from = cellOf(state, world);
       if (target.cell === from) return { ...o, ok: false, why: "you are here" };
-      const route = findRoute(world, from, target.cell);
+      if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
+      const ice = walkIceMode(state, target.thin);
+      const route = findRoute(world, from, target.cell, ice);
       if (!route) return { ...o, ok: false, why: "no way there on foot" };
       const v = baseWalkSpeed(state, cal, state.weather);
-      const minutes = routeMinutes(world, route, v);
-      const o2 = { ...o, duration: minutes, detail: `${routeKm(route).toFixed(1)} km on foot` };
+      const minutes = routeMinutes(world, route, v, ice);
+      let detail = `${routeKm(route).toFixed(1)} km on foot`;
+      if (ice === "thin") detail += `; thin ice, ${Math.round(fallChance(state.weather.iceCm) * 100)}% per crossing cell`;
+      const o2 = { ...o, duration: minutes, detail };
       if (weight(p.pack) > PACK_HARD_KG) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
       return o2;
     }
@@ -438,8 +452,10 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   }
   if (id === "walk" || id === "travel") {
     const target = walkTarget(state, world, arg ?? "")!;
-    const path = findRoute(world, cellOf(state, world), target.cell) ?? [];
-    state.route = { target: target.cell, path, label: target.label };
+    const ice = walkIceMode(state, target.thin);
+    const from = cellOf(state, world);
+    const path = findRoute(world, from, target.cell, ice) ?? [];
+    state.route = { target: target.cell, path, label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
   }
@@ -514,7 +530,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const t = state.task;
   if (!t || state.dead) return;
   if (t.id === "walk" || t.id === "travel") {
-    stepWalk(state, world, cal, dt);
+    stepWalk(state, world, cal, rng, dt);
     return;
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
@@ -549,11 +565,36 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
 }
 
+/** Chance per thin-ice cell of going through: ten percent at 5 cm, one at 14. */
+export function fallChance(iceCm: number): number {
+  return Math.max(0, ((ICE_SAFE_CM - iceCm) / 10) * 0.1);
+}
+
+/** Through the ice: three in five drown; the rest crawl out onto the last land, soaked and cold, the walk over. */
+export function fallThrough(state: GameState, world: World, rng: Rng, land: number): void {
+  const p = state.player;
+  if (rng.chance(0.6)) {
+    die(state, "drowned");
+    return;
+  }
+  placeAt(state, world, land);
+  p.wetness = 100;
+  for (const g of p.clothing) g.wet = 100;
+  p.warmth = Math.max(0, p.warmth - 30);
+  p.energy = Math.max(0, p.energy - 20);
+  state.route = null;
+  state.task = null;
+  state.intent = null;
+  log(state, "Through the ice. You crawl out soaked and shaking.", "bad");
+}
+
 /**
  * Moves the player along the route at the speed of the ground under foot.
  * The bar shows minutes: what has passed, and what the rest would take now.
+ * Every water cell entered while the ice is under the safe thickness risks a
+ * fall, which ends the walk on the spot.
  */
-function stepWalk(state: GameState, world: World, cal: Calendar, dt: number): void {
+function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task!;
   const route = state.route;
   if (!route) {
@@ -561,19 +602,34 @@ function stepWalk(state: GameState, world: World, cal: Calendar, dt: number): vo
     return;
   }
   const p = state.player;
-  let km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world)) / 60) * dt;
+  let prevTerrain = hereTerrain(state, world);
+  let km = (walkSpeed(state, cal, state.weather, prevTerrain, undefined, route.ice) / 60) * dt;
   while (km > 1e-9 && route.path.length) {
-    const next = cellCenter(world, route.path[0]);
+    const cell = route.path[0];
+    const next = cellCenter(world, cell);
     const dx = next.x - p.x;
     const dy = next.y - p.y;
     const distKm = Math.hypot(dx, dy) * CELL_KM;
     if (km >= distKm) {
       p.x = next.x;
       p.y = next.y;
-      setRegion(state, world, cellAt(world, route.path[0]).region);
+      setRegion(state, world, cellAt(world, cell).region);
       route.path.shift();
       km -= distKm;
       state.stats.km += distKm;
+      const terrain = cellAt(world, cell).terrain;
+      if (terrain === "water") {
+        if (state.weather.iceCm < ICE_SAFE_CM) {
+          if (prevTerrain !== "water") log(state, "The ice is thin here.");
+          if (rng.chance(fallChance(state.weather.iceCm))) {
+            fallThrough(state, world, rng, route.lastLand);
+            return;
+          }
+        }
+      } else {
+        route.lastLand = cell;
+      }
+      prevTerrain = terrain;
     } else {
       const f = km / distKm;
       p.x += dx * f;
@@ -584,7 +640,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, dt: number): vo
     }
   }
   t.progress += dt;
-  t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather));
+  t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
   if (!route.path.length) {
     const label = route.label;
     const wasTravel = t.id === "travel";

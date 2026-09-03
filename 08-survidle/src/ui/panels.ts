@@ -9,11 +9,11 @@ import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
 import {
-  availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
+  availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
 import { type GameState, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
 import { THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { weatherLabel } from "../sim/weather";
+import { iceMode, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -111,6 +111,7 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
 export function clockHtml(state: GameState, cal: Calendar, ambient: number): string {
   const sun = cal.isNight ? "night" : "day";
   const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
+  const ice = state.weather.iceCm >= 1 ? `<span>ice ${Math.round(state.weather.iceCm)} cm</span>` : "";
   return `<div class="clockrow"><div class="line">
 <span class="big">Day ${cal.day}</span>
 <span>${fmtDate(cal)}, ${cal.season}</span>
@@ -118,8 +119,23 @@ export function clockHtml(state: GameState, cal: Calendar, ambient: number): str
 <span>${sun}, light ${fmtClock(cal.sunrise)} to ${fmtClock(cal.sunset)}</span>
 <span class="${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C, ${weatherLabel(state.weather, ambient)}</span>
 ${snow}
+${ice}
 <span class="dim">1 s = ${GAME_MINUTES_PER_REAL_SECOND} game min</span>
 </div>${skyHtml()}</div>`;
+}
+
+/**
+ * A second button offering the shortcut across thin ice, only while the ice
+ * is thin (safe ice is already the plain route; no ice at all leaves nothing
+ * to cross) and only when it beats the plain route: shorter, or the plain
+ * route does not exist at all.
+ */
+function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk" | "travel", arg: string, plain: TaskOption): string {
+  if (iceMode(state.weather) !== "thin") return "";
+  const thin = check(state, world, cal, id, `${arg}:thin`);
+  if (!thin.ok || (plain.ok && thin.duration >= plain.duration)) return "";
+  const pct = Math.round(fallChance(state.weather.iceCm) * 100);
+  return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(state.weather.iceCm)} cm, thin)</button>`;
 }
 
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
@@ -151,7 +167,8 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : ` <small>${esc(walk.why)}</small>`;
-      return `<div>${SPOT_NAMES[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}</div>`;
+      const thin = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
+      return `<div>${SPOT_NAMES[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
     })
     .join("");
   // Things lying about this region away from the named spots.
@@ -182,8 +199,8 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (!here) {
     const go = check(state, world, cal, "travel", `region:${id}`);
     travel = go.ok
-      ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button></div>`
-      : `<div class="dim" style="margin-top:6px">${esc(go.why)}</div>`;
+      ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
+      : `<div class="dim" style="margin-top:6px">${esc(go.why)}</div>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}`;
   }
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
