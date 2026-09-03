@@ -9,6 +9,7 @@ import { newGame } from "../src/sim/newgame";
 import { feltTemperature } from "../src/sim/player";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
+import { ambientTemperature } from "../src/sim/weather";
 
 const cal = calendar(0);
 
@@ -25,7 +26,9 @@ describe("wet wood", () => {
     st.logsWet = 2 * 60;
     startTask(state, world, cal, "split");
     advance(state, world, 20);
-    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBe(40);
+    // The first batch has sat in the pack the whole 20 minutes, drying at the
+    // unsheltered camp's 0.5 kg/h even with no fire yet: a sixth of a kilo gone.
+    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(40 - 1 / 6, 6);
     // Dries at 2 kg an hour by a lit fire; not at all once it rains again.
     st.structures.firePit = true;
     st.fire.lit = true;
@@ -71,8 +74,21 @@ describe("wet wood", () => {
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 1.5;
+    // Push the ambient warm so this is really heavy rain, not heavy snow.
+    w.offset = 12;
+    expect(ambientTemperature(cal, state.weather)).toBeGreaterThan(0);
     advance(state, world, 1);
     expect(st.fire.lit).toBe(false);
+    // The mirror case: heavy snowfall burns at half strength and never puts a fire out at once.
+    w.precip = "heavy";
+    w.offset = -12;
+    expect(ambientTemperature(cal, state.weather)).toBeLessThan(0);
+    expect(burnPerHour(w, ambientTemperature(cal, state.weather), false)).toBe(4.5);
+    st.fire.lit = true;
+    st.fire.fuelKg = 1.5;
+    advance(state, world, 1);
+    expect(st.fire.lit).toBe(true);
+    w.offset = 0;
     // Lighting in light rain: a third of tries fail and cost the wood either way.
     w.precip = "light";
     state.player.tools.push({ id: "fireDrill", durability: 100 });
@@ -91,5 +107,13 @@ describe("wet wood", () => {
     expect(fails).toBeGreaterThan(0);
     expect(fails).toBeLessThan(12);
     expect(qty(state.player.pack, "firewood")).toBe(0);
+  });
+
+  it("an unsheltered camp is still the open: wet firewood dries there too, just slowly", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "wetFirewood", 10);
+    advance(state, world, 60);
+    expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(9.5, 6);
   });
 });

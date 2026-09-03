@@ -201,8 +201,10 @@ you split, or when the log has lain in rain: piles track `wetSince` per
 log stack is overkill, so the rule is the region's: `RegionState.logsWet`
 minutes, set to 0 whenever it rains on the region and counting up in dry
 weather; logs split within 6 hours of rain are wet. Wet firewood dries to
-firewood at 2 kg per hour beside a lit fire or under a roof at camp, 0.5 in
-the open in dry weather, none in rain. Drying is per pile, in `stepCamp`.
+firewood at 2 kg an hour in total, from the camp pile and the pack of
+anyone standing at camp, beside a lit fire or under a roof; 0.5 an hour
+otherwise in dry weather, an unsheltered camp included, none in rain.
+Drying is per pile, in `stepCamp`.
 
 `RegionState.fire` gains `wetKg`. `feedFire` takes dry first when both are
 in reach; `autoFeed` the same. The fire burns both at 3 kg per hour in the

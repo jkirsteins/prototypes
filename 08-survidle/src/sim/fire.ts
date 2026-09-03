@@ -64,11 +64,12 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number): void {
 }
 
 /**
- * Wet firewood drying: a lit fire or a roof dries 2 kg an hour, shared by the
- * camp's own pile and the pack of whoever is standing there so a fire does
- * not somehow dry two stacks of wood at once. Away from any warmth a stack
- * still gets some sun and wind in dry weather, at 0.5 kg an hour, on its own.
- * None of it dries in the rain.
+ * Wet firewood drying: a fire or a roof dries 2 kg an hour in total, shared
+ * by the camp's own pile and the pack of whoever is standing there, so a
+ * fire does not somehow dry two stacks of wood at once. An unsheltered camp
+ * is still the open, and dries the same combined way at 0.5. Every other
+ * pile, and the pack away from any camp, dries at 0.5 on its own. None of it
+ * dries in the rain.
  */
 export function dryWood(state: GameState, world: World, dt: number): void {
   const w = state.weather;
@@ -80,10 +81,8 @@ export function dryWood(state: GameState, world: World, dt: number): void {
     const warm = st.fire.lit || st.structures.leanTo || st.structures.cabin;
     const campPile = state.piles[st.campCell];
     const atThisCamp = id === p.region && here === st.campCell;
-    if (warm) {
-      const invs = [campPile, atThisCamp ? p.pack : undefined].filter((x): x is Inventory => x !== undefined);
-      dryBudget(invs, 2, dt);
-    }
+    const invs = [campPile, atThisCamp ? p.pack : undefined].filter((x): x is Inventory => x !== undefined);
+    dryBudget(invs, warm ? 2 : 0.5, dt);
   }
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);

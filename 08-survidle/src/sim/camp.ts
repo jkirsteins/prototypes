@@ -37,7 +37,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         feedFire(state, world, id, FIRE_MAX_KG - fuelTotal(st.fire));
       }
       const outOfFuel = fuelTotal(st.fire) <= 0;
-      const drownedLow = state.weather.precip === "heavy" && !roof && fuelTotal(st.fire) < 2;
+      const drownedLow = state.weather.precip === "heavy" && ambient > 0 && !roof && fuelTotal(st.fire) < 2;
       if (outOfFuel || drownedLow) {
         st.fire.fuelKg = 0;
         st.fire.wetKg = 0;
