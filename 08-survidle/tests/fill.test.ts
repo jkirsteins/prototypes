@@ -72,6 +72,18 @@ describe("the fill task", () => {
     expect(o.skipped).toBe("camp holds 2 litres; more vessels at camp would hold more");
   });
 
+  it("a keep with no vessel anywhere reads as needing one, not as already at capacity", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    // No barkBucket in the pack, the pile, or in hand: camp capacity is 0
+    // litres, same as a camp that is genuinely full. Zero is not full.
+    const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(chooseOrder(state, world, cal)).toBeNull();
+    expect(o.skipped).toBe("needs a vessel");
+  });
+
   it("on a frozen shore the fill opens an ice hole first, and the hole is gone at dawn", () => {
     const { g, state, world, st, camp } = waterCamp();
     state.weather.iceCm = 10;
