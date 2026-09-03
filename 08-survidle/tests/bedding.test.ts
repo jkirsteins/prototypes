@@ -160,7 +160,7 @@ describe("bough bed and blanket in play", () => {
   it("the worn list shows the blanket as warmth for sleeping, and the camp card lists the bed", () => {
     const { state, world } = newGame(3);
     state.player.clothing.push({ id: "hideBlanket", durability: 100 });
-    expect(gearHtml(state)).toContain("hide blanket <small>+8 C asleep, 100%</small>");
+    expect(gearHtml(state, 10)).toContain("hide blanket <small>+8 C asleep, 100%</small>");
     regionState(state, world, state.player.region).structures.boughBed = true;
     expect(regionHtml(state, world, cal, newUiState())).toContain("bough bed");
   });

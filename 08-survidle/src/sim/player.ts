@@ -99,6 +99,7 @@ export function workSpeed(state: GameState, world: World): number {
   if (p.water < THIRSTY_L) f *= 0.8;
   const t = state.task;
   if (t) f *= speedFactor(state, world, t.id, t.arg);
+  if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;
   return f;
 }
 
@@ -110,6 +111,8 @@ export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather,
   if (loadKg > PACK_HARD_KG) v *= 0.6;
   else if (loadKg > PACK_COMFORTABLE_KG) v *= 0.8;
   if (state.player.energy < 20) v *= 0.7;
+  if (state.player.frostbite.feet > 0) v *= 0.6;
+  if (state.player.toes) v *= 0.85;
   return v;
 }
 
@@ -210,6 +213,11 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   // Statuses tick down.
   if (p.sick > 0) p.sick = Math.max(0, p.sick - dt);
   if (p.injured > 0) p.injured = Math.max(0, p.injured - dt);
+  // Frostbite only heals hours under a roof by a lit fire at camp; otherwise it holds.
+  if (roof && r.fire.lit && camp) {
+    if (p.frostbite.feet > 0) p.frostbite.feet = Math.max(0, p.frostbite.feet - dt);
+    if (p.frostbite.hands > 0) p.frostbite.hands = Math.max(0, p.frostbite.hands - dt);
+  }
 
   // A torch burns whatever you do, and there is no saving the stub.
   if (p.torch.lit) {

@@ -1,7 +1,7 @@
 import { itemLabel } from "../sim/actions";
 import { densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
-import { garmentWet } from "../sim/clothing";
+import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
@@ -56,6 +56,8 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
   if (p.injured > 0) tags.push(`<span class="tag bad">injured, ${fmtDuration(p.injured)}</span>`);
+  if (p.frostbite.feet > 0) tags.push(`<span class="tag bad">frostbitten feet, ${fmtDuration(p.frostbite.feet)}</span>`);
+  if (p.frostbite.hands > 0) tags.push(`<span class="tag bad">frostbitten hands, ${fmtDuration(p.frostbite.hands)}</span>`);
   if (p.torch.lit) tags.push(`<span class="tag">torch lit, ${fmtDuration(p.torch.minutes)}</span>`);
   if (p.kcal <= 1200) tags.push(`<span class="tag bad">starving</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
@@ -82,13 +84,16 @@ ${bar("wet", "wet", "Wet")}
 </div>`;
 }
 
-export function gearHtml(state: GameState): string {
+export function gearHtml(state: GameState, felt: number): string {
   const p = state.player;
+  const cf = coldFeet(state, felt);
+  const ch = coldHands(state, felt);
   const clothes = p.clothing
     .map((g) => {
       const def = CLOTHING[g.id];
       const warmth = def.sleep ? `+${def.sleep} C asleep` : `+${def.insulation} C`;
-      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${durBar(g.durability)}${wetBar(g)}</div>`;
+      const cold = (def.slot === "boots" && cf) || (def.slot === "mittens" && ch) ? ` <small class="bad">${def.slot === "boots" ? "feet cold" : "hands cold"}</small>` : "";
+      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${cold}${durBar(g.durability)}${wetBar(g)}</div>`;
     })
     .join("");
   const tools = p.tools.length

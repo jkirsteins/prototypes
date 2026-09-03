@@ -10,6 +10,37 @@ import type { ClothingSlot, GameState, Garment } from "./types";
 
 export const OUTER: ReadonlySet<ClothingSlot> = new Set<ClothingSlot>(["coat", "hat", "boots", "mittens"]);
 
+/** Minutes frostbite lasts in an extremity before it heals: 3 days. */
+export const FROSTBITE_MINUTES = 3 * 1440;
+
+function slotGarment(state: GameState, slot: ClothingSlot): Garment | undefined {
+  return state.player.clothing.find((g) => CLOTHING[g.id].slot === slot);
+}
+
+/** Cold feet: felt under 0 and the boots wet over 50, worn under 25, or missing. */
+export function coldFeet(state: GameState, felt: number): boolean {
+  if (felt >= 0) return false;
+  const boots = slotGarment(state, "boots");
+  return !boots || garmentWet(boots) > 50 || boots.durability < 25;
+}
+
+/** Cold hands: felt under -10 with no mittens or mittens wet over 50. */
+export function coldHands(state: GameState, felt: number): boolean {
+  if (felt >= -10) return false;
+  const mittens = slotGarment(state, "mittens");
+  return !mittens || garmentWet(mittens) > 50;
+}
+
+/** Chance per hour of frostbite for a cold extremity at this felt temperature. */
+export function frostbiteChance(felt: number): number {
+  if (felt > -5) return 0;
+  return felt < -15 ? 0.06 : 0.02;
+}
+
+export function frostbitten(state: GameState): { feet: boolean; hands: boolean } {
+  return { feet: state.player.frostbite.feet > 0, hands: state.player.frostbite.hands > 0 };
+}
+
 export interface Exposure {
   raining: boolean;
   heavy: boolean;

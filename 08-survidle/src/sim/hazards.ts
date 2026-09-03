@@ -7,6 +7,7 @@
 import type { Rng } from "../rng";
 import { cellAt, neighbours, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
+import { coldFeet, coldHands, frostbiteChance, FROSTBITE_MINUTES } from "./clothing";
 import { TOOLS } from "./items";
 import { log } from "./log";
 import { activityOf } from "./player";
@@ -19,8 +20,31 @@ import { ICE_THIN_CM } from "./weather";
 
 export function hourlyHazards(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
   void cal;
-  void felt;
   freezeVessels(state, world, ambient, rng);
+  frostbite(state, felt, rng);
+}
+
+/** A cold, exposed extremity rolls frostbite for the hour; a second bite while the first still holds costs the digits for good. */
+function frostbite(state: GameState, felt: number, rng: Rng): void {
+  const p = state.player;
+  const chance = frostbiteChance(felt);
+  if (chance <= 0) return;
+  if (coldFeet(state, felt) && rng.chance(chance)) {
+    if (p.frostbite.feet > 0 && !p.toes) {
+      p.toes = true;
+      log(state, "You will not get those toes back.", "bad");
+    }
+    p.frostbite.feet = FROSTBITE_MINUTES;
+    log(state, "Your feet are numb.", "bad");
+  }
+  if (coldHands(state, felt) && rng.chance(chance)) {
+    if (p.frostbite.hands > 0 && !p.fingers) {
+      p.fingers = true;
+      log(state, "You will not get those fingers back.", "bad");
+    }
+    p.frostbite.hands = FROSTBITE_MINUTES;
+    log(state, "You cannot feel your fingers.", "bad");
+  }
 }
 
 /**

@@ -206,7 +206,10 @@ export function gapInjury(state: GameState, species: Species): number {
 
 /** Chance a piece comes out: halved per level short of the recommendation. */
 export function craftSuccess(state: GameState, recipe: RecipeId): number {
-  return 0.5 ** gap(state, `craft:${recipe}`);
+  let f = 0.5 ** gap(state, `craft:${recipe}`);
+  if (state.player.frostbite.hands > 0) f *= 0.5;
+  if (state.player.fingers) f *= 0.9;
+  return f;
 }
 
 /** Half of each need, for a spoiled attempt: counts rounded up, kilograms exact. */
@@ -250,7 +253,10 @@ export function wearFactor(state: GameState, world: World, id: TaskId, arg?: str
 export function oddsFactor(state: GameState, species: string): number {
   const skill: SkillId = species === "fish" ? "fishing" : "hunting";
   const key = species === "fish" ? "fish" : `hunt:${species}`;
-  return (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
+  let f = (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
+  if (state.player.frostbite.hands > 0) f *= 0.5;
+  if (state.player.fingers) f *= 0.9;
+  return f;
 }
 
 /** One minute at the current task: skill, mastery and pool each gain it. Called from stepTask. */

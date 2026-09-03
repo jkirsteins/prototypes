@@ -7,6 +7,7 @@ import { intentOption, startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { log } from "./sim/log";
 import { newGame } from "./sim/newgame";
+import { feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
@@ -69,7 +70,7 @@ function render() {
   const cal = calendar(state.minute);
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
-  setPanel("gear", gearHtml(state));
+  setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("clock", clockHtml(state, cal, ambient));
   const key = mapKey(state, world, ui, cal);
