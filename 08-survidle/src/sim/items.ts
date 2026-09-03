@@ -6,7 +6,7 @@ import type {
 /** Unit weight in kg. Kilogram items weigh 1 per unit by definition. */
 export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
-  sinew: 0.05, snare: 0.4, arrow: 0.05,
+  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4,
   firewood: 1, hide: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1,
 };
@@ -17,7 +17,7 @@ export const KG_ITEMS = new Set<ItemId>([
 
 export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
-  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows",
+  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches",
   firewood: "firewood", hide: "hide", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
 };
@@ -86,6 +86,7 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   snare: { name: "snare", needs: [{ item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 20, out: { item: "snare", qty: 1 } },
   needle: { name: "bone needle", needs: [{ item: "bone", qty: 1 }], tool: "knife", minutes: 20, out: { tool: "needle" } },
   axe: { name: "stone axe", needs: [{ item: "stone", qty: 3 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 90, out: { tool: "axe" } },
+  torch: { name: "torch", needs: [{ item: "stick", qty: 1 }, { item: "bark", qty: 2 }], minutes: 20, out: { item: "torch", qty: 1 } },
   hideCoat: { name: "hide coat", needs: [{ item: "hide", qty: 6 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 480, out: { clothing: "hideCoat" } },
   hideTrousers: { name: "hide trousers", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 300, out: { clothing: "hideTrousers" } },
   hideBoots: { name: "hide boots", needs: [{ item: "hide", qty: 2 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 240, out: { clothing: "hideBoots" } },
@@ -137,3 +138,5 @@ export const FIRE_LOW_KG = 3;
 export const RACK_MAX_KG = 6;
 export const RACK_DRY_MINUTES = 48 * 60;
 export const SNARE_CATCH_MAX_AGE = 2 * 1440;
+/** Minutes a torch burns once lit; there is no putting it out. */
+export const TORCH_BURN_MINUTES = 60;

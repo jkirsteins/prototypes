@@ -36,6 +36,7 @@ function fillDefaults(state: GameState): void {
   state.intent ??= null;
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
+  state.player.torch ??= { lit: false, minutes: 0 };
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
     st.boughBedAge ??= 0;

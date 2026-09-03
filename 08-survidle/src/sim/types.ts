@@ -16,7 +16,7 @@ export const SPECIES: Species[] = ["hare", "grouse", "deer", "elk", "fish"];
 /** Items counted in pieces. */
 export type CountItem =
   | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew"
-  | "snare" | "arrow";
+  | "snare" | "arrow" | "torch";
 /** Items measured in kilograms. */
 export type KgItem =
   | "firewood" | "hide" | "rawMeat" | "cookedMeat" | "driedMeat"
@@ -50,7 +50,7 @@ export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare
 
 export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
-  | "snare" | "needle" | "axe"
+  | "snare" | "needle" | "axe" | "torch"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
   | "hideBlanket";
 
@@ -164,6 +164,8 @@ export interface Player {
   injured: number;
   clothing: Garment[];
   tools: Tool[];
+  /** A torch in hand: lit, and the minutes of burn left. */
+  torch: { lit: boolean; minutes: number };
   pack: Inventory;
   autoEat: boolean;
   autoFeed: boolean;

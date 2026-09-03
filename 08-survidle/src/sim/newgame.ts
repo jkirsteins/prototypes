@@ -34,6 +34,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
         { id: "woolHat", durability: 70 },
       ],
       tools: [{ id: "axe", durability: 100 }],
+      torch: { lit: false, minutes: 0 },
       pack,
       autoEat: true,
       autoFeed: true,
