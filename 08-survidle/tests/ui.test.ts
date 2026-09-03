@@ -177,6 +177,17 @@ describe("panels", () => {
     expect(document.querySelector("#overlay")!.textContent).toContain("Hunting 12");
   });
 
+  it("the death screen tells the last three lines before the end", () => {
+    const { state, world } = newGame(3);
+    state.log.push({ minute: 100, text: "You are thirsty.", kind: "bad" });
+    state.log.push({ minute: 200, text: "You are starving.", kind: "bad" });
+    state.log.push({ minute: 300, text: "The shore is iced over.", kind: "bad" });
+    state.dead = { cause: "thirst", minute: 301 };
+    const html = deathHtml(state, world, calendar(301));
+    expect(html).toContain("Thirst took you.");
+    expect(html).toMatch(/You are thirsty\..*You are starving\..*The shore is iced over\./s);
+  });
+
   it("commitStripN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its strip field has focus", () => {
     const ui = newUiState();
     commitStripN(ui, "7");

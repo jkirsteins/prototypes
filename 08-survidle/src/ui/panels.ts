@@ -438,9 +438,11 @@ export function deathHtml(state: GameState, world: World, cal: Calendar): string
     thirst: "Thirst took you.", smoke: "The smoke took you in your sleep.", drowned: "The ice gave way. The lake kept you.",
   }[d.cause];
   const s = state.stats;
+  const story = state.log.filter((e) => e.minute <= d.minute && e.text !== cause).slice(-3);
   return `<div class="box">
 <h1>Dead</h1>
 <p>${cause} ${fmtDate(cal)}, day ${cal.day} of the run, at ${esc(regionAt(world, state.player.region).name)}.</p>
+${story.length ? `<div class="entries">${story.map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`).join("")}</div>` : ""}
 <p>${s.trees} trees felled. ${s.animals} animals taken. ${s.structures} things built. ${s.km.toFixed(1)} km walked.</p>
 <p>${bestSkill(state)}</p>
 <p class="dim">The save is gone. There is no coming back from this one.</p>

@@ -59,6 +59,19 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   camp, plus activity, minus wetness. Below 20 warmth you lose health fast.
   Energy drains awake and faster working; below 20 you work at half speed,
   and if you idle while spent you fall asleep where you stand.
+- **The elements.** Water is a reserve like food: drink at a shore, carry it
+  in a bark bucket or a waterskin, melt snow at the fire in winter for a kilo
+  of wood a litre. Lakes freeze; thin ice is a shortcut that can take you,
+  safe ice is a road until it melts and strands you. Clothing gets wet
+  garment by garment and a soaked coat is half a coat; wet boots in frost
+  are frostbite, which heals only by a fire under a roof and can cost toes.
+  Wood split in rain is wet wood that smokes and gives half the heat; rain
+  makes lighting chancy and eats the fire. A fire left big on dry August
+  ground can spread. A fire inside a closed cabin without a hearth fills it
+  with smoke and can kill you in your sleep. Storms are announced an hour
+  ahead. Spent, you miss more, spoil more and recover slower. The runner
+  drinks, shelters from a storm, is home before dark in winter and banks
+  the fire it leaves, and nothing more.
 - **Camp.** Fire pit, then fire (needs a fire drill and firewood); lean-to,
   then a cabin (40 logs, 60 hours); drying rack (3 kg raw to 1 kg that
   keeps); snares on the heath. Auto-eat and auto-feed keep you alive while
@@ -122,3 +135,7 @@ terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
 - `src/ui/map.ts`: light sources and the rings they light.
+- `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
+- `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
+- `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
+- `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
