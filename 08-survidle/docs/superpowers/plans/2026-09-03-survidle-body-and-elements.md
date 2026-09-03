@@ -1425,7 +1425,10 @@ export function dryWood(state: GameState, world: World, dt: number): void {
     const isCamp = touchedRegions(state).some((id) => state.regions[id].campCell === cell);
     if (!isCamp) dryAt(inv, 0.5);
   }
-  dryAt(p.pack, here >= 0 ? 0.5 : 0);
+  // Wood on your back dries at the camp rate when you stand at a camp with a fire or a roof.
+  const st = regionState(state, world, p.region);
+  const atWarmCamp = here === st.campCell && (st.fire.lit || st.structures.leanTo || st.structures.cabin);
+  dryAt(p.pack, atWarmCamp ? 2 : 0.5);
 }
 ```
 
