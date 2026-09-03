@@ -53,8 +53,7 @@ function boot() {
     world = generateWorld(state.seed);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead) {
-      const entries = catchUp(state, world, elapsed, speed);
-      ui.away = entries;
+      ui.away = catchUp(state, world, elapsed, speed);
       awayInfo = { seconds: Math.min(elapsed, MAX_OFFLINE_SECONDS), capped: elapsed > MAX_OFFLINE_SECONDS };
       saveGame(state);
     }

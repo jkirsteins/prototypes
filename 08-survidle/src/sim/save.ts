@@ -1,9 +1,12 @@
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
-import type { World } from "../world/gen";
+import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
+import { calendar } from "./calendar";
 import { TOOLS } from "./items";
+import { ordersHere, orderSentence } from "./orders";
+import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
-import type { GameState, LogEntry } from "./types";
+import type { GameState, LogEntry, TaskId } from "./types";
 
 export const SAVE_KEY = "survidle.save";
 /** Away longer than this is simulated as this. */
@@ -96,15 +99,59 @@ export function clearSave(storage: Storage = localStorage): void {
   storage.removeItem(SAVE_KEY);
 }
 
+export interface AwayOrder {
+  label: string;
+  task: TaskId;
+  /** Completions and minutes since the player left. */
+  done: number;
+  minutes: number;
+  /** Why it is blocked now, or "". */
+  skipped: string;
+  /** Finished and dropped off the list while away. */
+  gone: boolean;
+}
+
+export interface AwaySummary {
+  entries: LogEntry[];
+  /** One per order of the camp the player left, in rank order. */
+  orders: AwayOrder[];
+  /** The region the player is in now, when it is not the one they left. */
+  movedTo: string | null;
+}
+
 /**
- * Simulates the time the tab was closed and returns what happened meanwhile.
- * Runs one-minute steps, the same steps the foreground loop takes.
+ * Simulates the time the tab was closed and returns what happened meanwhile:
+ * the log, and each order's share of it. Runs one-minute steps, the same
+ * steps the foreground loop takes.
  */
-export function catchUp(state: GameState, world: World, realSecondsElapsed: number, speed = 1): LogEntry[] {
+export function catchUp(state: GameState, world: World, realSecondsElapsed: number, speed = 1): AwaySummary {
   const seconds = Math.min(MAX_OFFLINE_SECONDS, Math.max(0, realSecondsElapsed));
   const minutes = seconds * GAME_MINUTES_PER_REAL_SECOND * speed;
   const before = state.log.length;
   const firstMinute = state.minute;
+  const region = state.player.region;
+  const cal = calendar(state.minute);
+  // The whole order is copied: a job that finishes while away is removed with
+  // its counters, and its "until" is what says how many completions that took.
+  const snap = ordersHere(state, world).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
   advance(state, world, minutes);
-  return state.log.slice(before).filter((e) => e.minute > firstMinute);
+  const after = regionState(state, world, region).orders;
+  const orders = snap.map((s) => {
+    const o = after.find((x) => x.id === s.id);
+    const u = s.req.until;
+    const finished = u.kind === "times" ? u.n : 1;
+    return {
+      label: s.label,
+      task: s.req.task,
+      done: o ? o.done - s.done : Math.max(0, finished - s.done),
+      minutes: (o?.minutes ?? s.minutes) - s.minutes,
+      skipped: o?.skipped ?? "",
+      gone: !o,
+    };
+  });
+  return {
+    entries: state.log.slice(before).filter((e) => e.minute > firstMinute),
+    orders,
+    movedTo: state.player.region === region ? null : regionAt(world, state.player.region).name,
+  };
 }

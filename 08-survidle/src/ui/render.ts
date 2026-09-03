@@ -1,5 +1,6 @@
+import type { AwaySummary } from "../sim/save";
 import type { TaskGroup } from "../sim/tasks";
-import type { LogEntry, SpotId } from "../sim/types";
+import type { SpotId } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
@@ -7,8 +8,8 @@ export interface UiState {
   tab: TaskGroup;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
-  /** Log lines produced while the tab was closed, until dismissed. */
-  away: LogEntry[] | null;
+  /** What happened while the tab was closed, until dismissed. */
+  away: AwaySummary | null;
   confirmAbandon: boolean;
   /** Index into ZOOMS: 0 is one cell per glyph. */
   zoom: number;

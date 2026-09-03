@@ -6,7 +6,7 @@ import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { deserialize, serialize } from "../src/sim/save";
+import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
@@ -462,5 +462,61 @@ describe("orders belong to a camp", () => {
     advance(state, world, 5);
     expect(ordersHere(state, world).map((o) => o.id)).toEqual([a.id]);
     expect(state.intent?.orderId).toBe(a.id);
+  });
+});
+
+describe("the away report", () => {
+  it("summarises every order of the camp you left: what it did, what blocks it, what finished", () => {
+    const g = campWith(3, { log: 6, firewood: 10 });
+    const { state, world } = g;
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    addOrder(state, world, req("sticks", { until: { kind: "once" } }), "job");
+    addOrder(state, world, req("build", { arg: "cabin", until: { kind: "once" } }), "job");
+    const grind = addOrder(state, world, req("chop", { until: { kind: "forever" }, deliver: "camp" }), "grind");
+    const away = catchUp(state, world, 4 * 3600);
+    expect(away.movedTo).toBeNull();
+    expect(away.orders.map((o) => o.label)).toEqual([
+      orderSentence(state, world, calendar(state.minute), keep),
+      "Gather sticks",
+      "log cabin",
+      orderSentence(state, world, calendar(state.minute), grind),
+    ]);
+    const [k, j, c, t] = away.orders;
+    expect(k.done).toBe(keep.done);
+    expect(k.minutes).toBe(keep.minutes);
+    expect(j.gone).toBe(true);
+    expect(j.done).toBe(1);
+    expect(c.skipped).toBe("missing materials at camp");
+    expect(c.done).toBe(0);
+    expect(t.task).toBe("chop");
+    expect(t.done).toBe(grind.done);
+    expect(away.entries.length).toBeGreaterThan(0);
+  });
+
+  it("counts only what happened while away", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const grind = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 60);
+    const before = grind.done;
+    expect(before).toBeGreaterThan(0);
+    const away = catchUp(state, world, 1800);
+    expect(away.orders[0].done).toBe(grind.done - before);
+  });
+
+  it("a save mid-order resumes the same order", () => {
+    // 10 logs at 15 min a split outlast the 5 + 120 minutes below; 6 would run
+    // dry partway through and the order would fall through to a wait, which
+    // is not what this test is checking.
+    const g = campWith(3, { log: 10 });
+    const { state, world } = g;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 5);
+    const file = deserialize(serialize(state))!;
+    const s2 = file.state;
+    expect(s2.intent?.orderId).toBe(a.id);
+    catchUp(s2, world, 120);
+    expect(s2.intent?.orderId).toBe(a.id);
+    expect(regionState(s2, world, s2.player.region).orders[0].done).toBeGreaterThan(a.done);
   });
 });

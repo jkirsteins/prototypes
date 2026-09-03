@@ -6,9 +6,11 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
+import { countWord } from "../sim/orders";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { regionState } from "../sim/regionstate";
+import type { AwayOrder, AwaySummary } from "../sim/save";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
@@ -450,13 +452,23 @@ ${story.length ? `<div class="entries">${story.map((e) => `<div class="e ${e.kin
 </div>`;
 }
 
-export function awayHtml(entries: LogEntry[], realSeconds: number, capped: boolean): string {
+function awayOrderLine(o: AwayOrder): string {
+  const did = o.done > 0 ? `${o.done} ${countWord(o.task, o.done)}, ${fmtDuration(o.minutes)}` : "";
+  const now = o.gone ? "done" : o.skipped ? `blocked, ${o.skipped}` : did ? "" : "nothing to do";
+  return `<div class="e ${o.skipped && !o.gone ? "bad" : ""}">${esc(o.label)}: ${esc([did, now].filter(Boolean).join("; "))}.</div>`;
+}
+
+export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean): string {
   const h = Math.floor(realSeconds / 3600);
   const m = Math.floor((realSeconds % 3600) / 60);
   const gameMin = realSeconds * GAME_MINUTES_PER_REAL_SECOND;
+  const moved = away.movedTo ? `<p>You are now in ${esc(away.movedTo)}.</p>` : "";
+  const orders = away.orders.length ? `<div class="entries orders">${away.orders.map(awayOrderLine).join("")}</div>` : "";
+  const entries = away.entries;
   return `<div class="box">
 <h1>While you were away</h1>
 <p>${h ? `${h} h ` : ""}${m} min of the clock; ${fmtDuration(gameMin)} in the north${capped ? " (a day is as much as the world runs on without you)" : ""}.</p>
+${moved}${orders}
 ${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
 <button class="act" data-act="dismiss">Continue</button>
 </div>`;

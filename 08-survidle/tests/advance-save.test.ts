@@ -133,9 +133,9 @@ describe("save", () => {
   it("catches up on time away, capped at a day, and reports what happened", () => {
     const { state, world } = newGame(9);
     // Twenty real minutes are 1200 game minutes.
-    const entries = catchUp(state, world, 20 * 60);
+    const away = catchUp(state, world, 20 * 60);
     expect(state.minute).toBeCloseTo(1200, 6);
-    expect(Array.isArray(entries)).toBe(true);
+    expect(Array.isArray(away.entries)).toBe(true);
     const long = newGame(9);
     catchUp(long.state, long.world, MAX_OFFLINE_SECONDS * 3);
     // A real second is a game minute, so the cap in game minutes equals the cap in seconds.

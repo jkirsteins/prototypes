@@ -317,6 +317,7 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .e time { color: var(--dim); margin-right: 8px; }
 .e.bad { color: var(--bad); }
 .e.good { color: var(--good); }
+.entries.orders { margin-bottom: 8px; border-bottom: 1px dotted var(--line); padding-bottom: 6px; }
 
 /* Overlay */
 #overlay {
