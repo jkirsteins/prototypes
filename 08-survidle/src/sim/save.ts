@@ -43,6 +43,11 @@ function fillDefaults(state: GameState): void {
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
   p.fingers ??= false;
+  for (const g of p.clothing) g.wet ??= 0;
+  for (const t of p.tools) {
+    t.litres ??= 0;
+    t.frozen ??= false;
+  }
   const w = state.weather;
   w.storm ??= null;
   w.dryDays ??= 0;
