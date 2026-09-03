@@ -12,7 +12,7 @@ import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { log } from "./log";
-import { SPOT_WORDS } from "./position";
+import { cellOf, SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
 import { check } from "./tasks";
 import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId } from "./types";
@@ -123,7 +123,7 @@ export function countWord(task: TaskId, n: number): string {
   return n === 1 ? w[0] : w[1];
 }
 
-/** Sets the skip reason and logs it once when it changes from nothing to something. */
+/** Sets the skip reason. Logs only the "" to reason transition; one reason replacing another stays quiet. */
 function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string): void {
   if (why && !o.skipped) log(state, `${orderSentence(state, world, cal, o)}: ${why}.`, "bad");
   o.skipped = why;
@@ -132,10 +132,14 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
 /**
  * The first order, top down, that is unmet and can start where its work
  * would be done. Every order passed over is marked with its reason; the
- * ones below the choice are left as they were.
+ * ones below the choice are left as they were. The walk there is judged
+ * too, so a route a storm or an overloaded pack has closed is skipped
+ * with that reason instead of restarting every minute only to fail at
+ * the first step.
  */
 export function chooseOrder(state: GameState, world: World, cal: Calendar): Order | null {
   const liveId = state.intent?.orderId ?? null;
+  const here = cellOf(state, world);
   for (const o of ordersHere(state, world)) {
     if (orderMet(state, world, o, o.id === liveId)) {
       markSkipped(state, world, cal, o, "");
@@ -145,6 +149,14 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
     if (!opt.ok) {
       markSkipped(state, world, cal, o, opt.why);
       continue;
+    }
+    const { cell } = resolveCell(state, world, o.req.task, o.req.arg, o.req.where);
+    if (cell !== here) {
+      const w = check(state, world, cal, "walk", `cell:${cell}`);
+      if (!w.ok) {
+        markSkipped(state, world, cal, o, w.why);
+        continue;
+      }
     }
     o.skipped = "";
     return o;
@@ -163,7 +175,6 @@ const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver:
 export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (state.dead || state.task) return;
   const st = regionState(state, world, state.player.region);
-  if (!st.orders.length) return;
   const live = state.intent;
   for (const o of [...st.orders]) {
     if (o.kind === "job" && orderMet(state, world, o, live?.orderId === o.id)) {
@@ -171,10 +182,11 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
       removeOrder(state, world, o.id);
     }
   }
-  // A region with no orders left has no intent (spec 2.3): the removal loop above may
-  // have just emptied the list, and the live intent it was serving goes with it.
+  // A region with no orders has no intent (spec 2.3), whether the list was already
+  // empty when this ran (an order removed by hand) or the loop above just emptied
+  // it. A manual intent (no orderId) is not this scheduler's to clear.
   if (!st.orders.length) {
-    if (live) state.intent = null;
+    if (live?.orderId != null) state.intent = null;
     return;
   }
   const chosen = chooseOrder(state, world, cal);

@@ -588,8 +588,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (it) {
     if (it.task === id && (it.arg ?? "") === (arg ?? "")) {
       it.done++;
-      const o = liveOrderFor(state, world, id, arg);
-      if (o) o.done++;
+      if (order) order.done++;
     } else if (it.task === "night" && id === "sleep") it.done++;
     if (id === "sleep" && it.need === "sleep") it.need = null;
     // A rest that barely warmed anyone is not worth repeating: give the need up until warmth

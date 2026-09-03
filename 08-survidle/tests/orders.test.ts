@@ -270,6 +270,50 @@ describe("the scheduler", () => {
     expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
   });
 
+  it("removing the last order clears its live intent, not just one among several", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    // Sticks never run out, unlike split's logs: the intent only ends because the list is empty, not because the work did.
+    const a = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
+    removeOrder(state, world, a.id);
+    expect(until(g, () => state.intent === null)).toBe(true);
+    expect(ordersHere(state, world)).toEqual([]);
+  });
+
+  it("nothing to do starts one wait intent that stays live, not a task that ends and restarts it", () => {
+    const g = campWith(3, { firewood: 40 });
+    const { state, world } = g;
+    // Already at target: the only order is met from the first free minute, so there is nothing to run.
+    addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    advance(state, world, 10);
+    expect(state.intent?.task).toBe("wait");
+    expect(state.log.filter((e) => e.text === "Nothing to do. You wait at camp.").length).toBe(1);
+  });
+
+  it("chooseOrder judges the walk to the work too, skipping a route it cannot take", () => {
+    const g = campWith(3, { firewood: 40 });
+    const { state, world } = g;
+    // Two logs is 40 kg, over the 35 kg pack limit: any walk fails, but chop's own check does not mind a full pack.
+    addItem(state.player.pack, "log", 2);
+    // Seed 3's camp sits on forest ground; name the forest spot so the work cell is off camp and a walk is owed.
+    const chop = addOrder(state, world, req("chop", { until: { kind: "forever" }, where: "forest" }), "grind");
+    expect(chooseOrder(state, world, cal)).toBeNull();
+    expect(chop.skipped).toBe("the pack is too heavy to lift");
+  });
+
+  it("a blocked walk to the work silently ends an order's intent, not a logged stop", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    // Started directly (bypassing chooseOrder's own walk check) so the failure is workStep's to handle.
+    addItem(state.player.pack, "log", 2);
+    const chop = addOrder(state, world, req("chop", { until: { kind: "forever" }, where: "forest" }), "grind");
+    const before = state.log.length;
+    startIntent(state, world, cal, new Rng(1), chop.req, chop.id);
+    expect(state.intent).toBeNull();
+    expect(state.log.length).toBe(before);
+  });
+
   it("a manual intent is left alone while the region has no orders, and a raw task overrides the list until it ends", () => {
     const g = campWith(3, { log: 6 });
     const { state, world } = g;

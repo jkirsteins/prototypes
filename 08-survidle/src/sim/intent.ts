@@ -246,7 +246,10 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
   if (here === it.campCell) provision(state, world);
   const o = check(state, world, cal, "walk", `cell:${cell}`);
   if (!o.ok) {
-    endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. You stop.`, "bad");
+    // An order's intent says nothing here either: the scheduler re-judges the
+    // route next free minute and logs the reason once, through chooseOrder.
+    if (it.orderId !== null) state.intent = null;
+    else endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. You stop.`, "bad");
     return undefined;
   }
   if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
@@ -427,9 +430,13 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
-  if (it.task === "night") return undefined;
+  // wait has no work step of its own; Task 4 gives it one. night's is the sleep the body tier starts.
+  if (it.task === "night" || it.task === "wait") return undefined;
   const step: Step = { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
-  if (!takeStep(state, world, cal, step)) endIntent(state, `${label}: cannot go on. You stop.`, "bad");
+  if (!takeStep(state, world, cal, step)) {
+    if (it.orderId !== null) state.intent = null;
+    else endIntent(state, `${label}: cannot go on. You stop.`, "bad");
+  }
   return undefined;
 }
 
