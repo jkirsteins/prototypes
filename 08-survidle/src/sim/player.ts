@@ -17,7 +17,7 @@ import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>([
   "rest", "night", "wait", // a waiting body burns at the camp rate too, the same as rest and night
-  "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors",
+  "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors", "hang",
 ]);
 
 export type Activity = "sleep" | "rest" | "light" | "walk" | "heavy";
