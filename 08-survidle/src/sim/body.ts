@@ -6,18 +6,23 @@
  */
 import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
-import { regionAt, type World } from "../world/gen";
+import { findRoute, routeMinutes } from "../world/route";
+import { regionAt, spotOf, type World } from "../world/gen";
 import { eat } from "./actions";
 import type { Calendar } from "./calendar";
-import { fireWarms } from "./fire";
+import { feedFire } from "./camp";
+import { fireWarms, fuelTotal, SPREAD_FUEL_KG } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG } from "./items";
 import { log } from "./log";
+import { baseWalkSpeed } from "./player";
 import { cellOf } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent } from "./types";
+import { drink, ICE_SHORE_CM, THIRSTY_L } from "./water";
+import { iceMode, stormComing, stormNow } from "./weather";
 
 export const SLEEP_AT = 20;
 export const NIGHT_SLEEP_UNDER = 60;
@@ -36,18 +41,77 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
     || (cal.isNight && p.energy < NIGHT_SLEEP_UNDER)
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
+  if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) it.coldSpent = false;
   const cold = !it.coldSpent && (p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (p.kcal < HUNGRY_UNDER) return "hungry";
+  if (p.water < THIRSTY_L) return "thirsty";
+  if (homeBeforeDark(state, world, cal)) return "home";
   return null;
+}
+
+/** Winter days are short: leave the work so as to reach camp by sunset. */
+function homeBeforeDark(state: GameState, world: World, cal: Calendar): boolean {
+  if (cal.season !== "winter" || cal.isNight) return false;
+  const st = regionState(state, world, state.player.region);
+  const here = cellOf(state, world);
+  if (here === st.campCell) return (cal.sunset - cal.hour) * 60 <= 15;
+  const route = findRoute(world, here, st.campCell, iceMode(state.weather) === "safe" ? "safe" : "none");
+  if (!route) return false;
+  const minutes = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather));
+  return (cal.sunset - cal.hour) * 60 <= minutes + 15;
 }
 
 /** The step a need calls for, or null when there is nothing to start for it. */
 export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: Intent, need: BodyNeed): Step | null {
-  if (need === "hungry") return hungryStep(state, world, cal, rng, it);
-  return campStep(state, world, cal, it, need);
+  switch (need) {
+    case "hungry": return hungryStep(state, world, cal, rng, it);
+    case "thirsty": return thirstyStep(state, world, cal);
+    case "storm": return stormStep(state, world, cal);
+    case "home": return homeStep(state, world, cal);
+    default: return campStep(state, world, cal, it, need);
+  }
+}
+
+/** Drink in reach; else walk to the region's shore when it is not iced over; else walk to camp and melt snow at the fire; else nothing. */
+function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null {
+  if (drink(state, world)) return null;
+  const r = regionAt(world, state.player.region);
+  const shore = spotOf(r, "shore");
+  const here = cellOf(state, world);
+  if (shore && shore.cell !== here && state.weather.iceCm < ICE_SHORE_CM) {
+    return check(state, world, cal, "walk", `cell:${shore.cell}`).ok ? walkStep(state, world, shore.cell, " for water") : null;
+  }
+  const st = regionState(state, world, state.player.region);
+  if (st.fire.lit && state.weather.snowCm >= 1) {
+    if (here !== st.campCell) {
+      return check(state, world, cal, "walk", `cell:${st.campCell}`).ok ? walkStep(state, world, st.campCell, " for water") : null;
+    }
+    return check(state, world, cal, "melt").ok ? { id: "melt", step: "melting snow" } : null;
+  }
+  return null;
+}
+
+/** Walk to this region's camp, keep the fire fed against the wind, then wait it out. */
+function stormStep(state: GameState, world: World, cal: Calendar): Step | null {
+  const st = regionState(state, world, state.player.region);
+  const here = cellOf(state, world);
+  if (here !== st.campCell) {
+    return check(state, world, cal, "walk", `cell:${st.campCell}`).ok ? walkStep(state, world, st.campCell, " before the storm") : null;
+  }
+  if (st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire));
+  return { id: "rest", step: "waiting out the storm" };
+}
+
+/** Walk to this region's camp and settle in before dark. */
+function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
+  const st = regionState(state, world, state.player.region);
+  if (cellOf(state, world) !== st.campCell) {
+    return check(state, world, cal, "walk", `cell:${st.campCell}`).ok ? walkStep(state, world, st.campCell, " before dark") : null;
+  }
+  return { id: "rest", step: "in before dark" };
 }
 
 /**

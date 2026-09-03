@@ -5,7 +5,7 @@
  */
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { addItem, qty, removeItem } from "./inventory";
+import { addItem, pile, qty, removeItem } from "./inventory";
 import { cellOf } from "./position";
 import { regionState, touchedRegions } from "./regionstate";
 import type { GameState, Inventory, RegionState, Weather } from "./types";
@@ -27,6 +27,26 @@ export function fireWarmth(fire: RegionState["fire"], campTask: boolean): number
   if (!fire.lit) return 0;
   const full = campTask ? 15 : 7;
   return smoky(fire) ? full / 2 : full;
+}
+
+export const BANKED_KG = 6;
+
+/** Lets a lit fire down to a few kilos before you leave it; the surplus goes back on the pile. */
+export function bankFire(state: GameState, world: World, region: number): number {
+  const st = regionState(state, world, region);
+  if (!st.fire.lit) return 0;
+  const total = fuelTotal(st.fire);
+  if (total <= BANKED_KG) return 0;
+  const surplus = total - BANKED_KG;
+  const wetShare = st.fire.wetKg / total;
+  const wet = surplus * wetShare;
+  const dry = surplus - wet;
+  st.fire.wetKg -= wet;
+  st.fire.fuelKg -= dry;
+  const to = pile(state, st.campCell);
+  if (dry > 1e-9) addItem(to, "firewood", dry);
+  if (wet > 1e-9) addItem(to, "wetFirewood", wet);
+  return surplus;
 }
 
 export const SPREAD_FUEL_KG = 12;

@@ -10,6 +10,7 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, provision } from "./body";
 import type { Calendar } from "./calendar";
+import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
 import { ANIMALS, ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
@@ -255,6 +256,7 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
   const here = cellOf(state, world);
   if (here === cell) return undefined;
   if (here === it.campCell) provision(state, world);
+  if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
   const o = check(state, world, cal, "walk", `cell:${cell}`);
   if (!o.ok) {
     endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. You stop.`, "bad");

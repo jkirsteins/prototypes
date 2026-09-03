@@ -7,7 +7,6 @@ import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { cellOf } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { WATER_FULL } from "../src/sim/water";
 import { PACK_COMFORTABLE_KG } from "../src/units";
 
 type G = ReturnType<typeof newGame>;
@@ -208,14 +207,14 @@ describe("the body tier", () => {
   });
 
   it("a working day: trees fall, the night is spent at camp, and the work goes on at dawn", () => {
-    // Seed 19: meadow camp, forest 0.6 km away.
-    const { state, world, camp } = felling(19);
+    // Seed 10: forest and shore both off camp, so a long trace can drink at the
+    // shore on its own instead of needing its water kept topped up by hand.
+    const { state, world, camp } = felling(10);
     const seen = new Map<string, number>();
+    let sawThirsty = false;
     for (let m = 0; m < 1440 * 1.5; m++) {
-      // The runner does not fetch water on its own; keep the reserve full
-      // so this trace stays about felling and sleep, not thirst.
-      state.player.water = WATER_FULL;
       advance(state, world, 1);
+      if (state.intent?.need === "thirsty") sawThirsty = true;
       const k = `${state.task?.id ?? "idle"}@${cellOf(state, world) === camp ? "camp" : "away"}`;
       seen.set(k, (seen.get(k) ?? 0) + 1);
     }
@@ -224,22 +223,22 @@ describe("the body tier", () => {
     expect(seen.get("sleep@camp") ?? 0).toBeGreaterThan(60);
     expect(seen.get("chop@away") ?? 0).toBeGreaterThan(300);
     expect(state.intent?.task).toBe("chop");
+    expect(sawThirsty).toBe(true);
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the
     // minute a tree comes down is counted by train and not by the trace: one minute per tree of slack.
     expect(Math.abs(state.skills.woodcraft.xp - seen.get("chop@away")!)).toBeLessThanOrEqual(state.stats.trees + 1);
   });
 
   it("a working day with deliver camp: logs pile up at camp, the pack clears after each delivery, and sleep still happens at camp", () => {
-    // Seed 19: meadow camp, forest 0.6 km away.
-    const { state, world, camp } = felling(19, "camp");
+    // Seed 10: forest and shore both off camp; see the trace above.
+    const { state, world, camp } = felling(10, "camp");
     let clearedAfterDelivery = false;
     let sleptAtCamp = false;
+    let sawThirsty = false;
     let lastCampLogs = qty(pile(state, camp), "log");
     for (let m = 0; m < 1440 * 1.5; m++) {
-      // The runner does not fetch water on its own; keep the reserve full
-      // so this trace stays about delivery and sleep, not thirst.
-      state.player.water = WATER_FULL;
       advance(state, world, 1);
+      if (state.intent?.need === "thirsty") sawThirsty = true;
       const campLogs = qty(pile(state, camp), "log");
       // Whenever the camp pile just grew, the load that grew it should already be off the back.
       if (campLogs > lastCampLogs && qty(state.player.pack, "log") === 0) clearedAfterDelivery = true;
@@ -250,6 +249,7 @@ describe("the body tier", () => {
     expect(qty(pile(state, camp), "log")).toBeGreaterThan(8);
     expect(clearedAfterDelivery).toBe(true);
     expect(sleptAtCamp).toBe(true);
+    expect(sawThirsty).toBe(true);
   });
 
   it("a cabin build is set aside for the night and picked up with its minutes kept", () => {
@@ -272,5 +272,97 @@ describe("the body tier", () => {
     expect(banked).toBeGreaterThan(10);
     expect(until(g, () => state.task?.id === "build", 1500)).toBe(true);
     expect(state.task!.duration).toBeCloseTo(3600 - banked, 0);
+  });
+});
+
+describe("the runner in the elements", () => {
+  it("drinks from a vessel, else walks to the shore, else melts snow at the fire", () => {
+    // Seed 10: the forest is off camp and so is the shore, so both fallbacks in this
+    // test actually walk somewhere; seed 42's forest sits right on top of its camp.
+    const { g, state, world } = felling(10);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.player.water = 0.8;
+    state.player.tools.push({ id: "barkBucket", durability: 100, litres: 2 });
+    advance(state, world, 1);
+    expect(state.player.water).toBeGreaterThan(2.5);
+    expect(state.task?.id).toBe("chop");
+    state.player.tools = state.player.tools.filter((t) => t.id !== "barkBucket");
+    state.player.water = 0.8;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+    expect(state.intent?.step).toBe("walking to the shore for water");
+    // Drink fills to WATER_FULL, but the same minute's own loss still applies after it,
+    // so the reserve settles a hair under 3.0 rather than sitting exactly at it.
+    expect(until(g, () => state.player.water >= 2.9)).toBe(true);
+    // Iced over: melt at camp instead, when a fire burns there. Setting the ice and
+    // the fire before letting the walk back to the tree finish (rather than forcing
+    // thirst again straight away) means the next low reading is judged from the work
+    // cell, not caught mid-return, so it is this fallback under test and not the last.
+    state.weather.iceCm = 4;
+    state.weather.snowCm = 5;
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.player.water = 0.8;
+    advance(state, world, 1);
+    expect(state.intent?.step).toBe("walking to camp for water");
+    expect(until(g, () => state.task?.id === "melt")).toBe(true);
+  });
+
+  it("a storm sends it home, keeps the fire fed, and it waits under the roof until the storm passes", () => {
+    const { g, state, world, camp } = felling(17);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.structures.leanTo = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 4;
+    addItem(pile(state, camp), "firewood", 20);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.weather.storm = { from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("storm");
+    expect(state.intent?.step).toBe("walking to camp before the storm");
+    expect(until(g, () => state.task?.id === "rest")).toBe(true);
+    expect(cellOf(state, world)).toBe(camp);
+    // Fed to 12 kg every minute it runs short, then the same minute's own burn
+    // nibbles a little off again before this reads it back.
+    expect(st.fire.fuelKg).toBeGreaterThanOrEqual(11.9);
+    expect(state.intent?.step).toBe("waiting out the storm");
+    expect(until(g, () => state.intent?.need !== "storm", 600)).toBe(true);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+  });
+
+  it("in winter it leaves the work so as to be at camp by sunset", () => {
+    const { g, state, world, camp } = felling(17);
+    state.minute = 320 * 1440;
+    // A filled waterskin so an unreachable shore in the depths of winter never
+    // masks the home need behind an unresolvable thirst; this trace is about dusk.
+    state.player.tools.push({ id: "waterskin", durability: 100, litres: 3, frozen: false });
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    const c = calendar(state.minute);
+    expect(c.season).toBe("winter");
+    let arrivedAt = -1;
+    until(g, () => {
+      if (cellOf(state, world) === camp && arrivedAt < 0) arrivedAt = calendar(state.minute).hour;
+      return arrivedAt >= 0;
+    }, 900);
+    expect(arrivedAt).toBeGreaterThan(0);
+    expect(arrivedAt).toBeLessThanOrEqual(calendar(state.minute).sunset + 0.05);
+    expect(state.intent?.need === "home" || state.intent?.need === "sleep").toBe(true);
+  });
+
+  it("banks a big fire before walking off camp", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 30;
+    startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    expect(state.task?.id).toBe("walk");
+    expect(st.fire.fuelKg).toBeCloseTo(6, 6);
+    expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(24, 6);
   });
 });
