@@ -212,8 +212,8 @@ describe("the body tier", () => {
     const { state, world, camp } = felling(19);
     const seen = new Map<string, number>();
     for (let m = 0; m < 1440 * 1.5; m++) {
-      // Fetching water is the runner's job (a later task); keep the reserve
-      // full so this trace stays about felling and sleep, not thirst.
+      // The runner does not fetch water on its own; keep the reserve full
+      // so this trace stays about felling and sleep, not thirst.
       state.player.water = WATER_FULL;
       advance(state, world, 1);
       const k = `${state.task?.id ?? "idle"}@${cellOf(state, world) === camp ? "camp" : "away"}`;
@@ -236,8 +236,8 @@ describe("the body tier", () => {
     let sleptAtCamp = false;
     let lastCampLogs = qty(pile(state, camp), "log");
     for (let m = 0; m < 1440 * 1.5; m++) {
-      // Fetching water is the runner's job (a later task); keep the reserve
-      // full so this trace stays about delivery and sleep, not thirst.
+      // The runner does not fetch water on its own; keep the reserve full
+      // so this trace stays about delivery and sleep, not thirst.
       state.player.water = WATER_FULL;
       advance(state, world, 1);
       const campLogs = qty(pile(state, camp), "log");

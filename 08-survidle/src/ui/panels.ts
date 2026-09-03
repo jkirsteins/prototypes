@@ -58,10 +58,10 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   return `<h2>You <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food")}
+${bar("water", "water", "Water")}
 ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}
 ${bar("wet", "wet", "Wet")}
-${bar("water", "water", "Water")}
 <div class="statuses">${tags.join("")}</div>
 <div>
   <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under 1800 kcal">auto-eat: ${p.autoEat ? "on" : "off"}</button>
