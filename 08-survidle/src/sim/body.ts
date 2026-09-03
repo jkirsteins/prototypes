@@ -1,8 +1,8 @@
 /**
- * The body tier of an intent: sleep, cold and hunger, in that order, and
- * what to do about each. Every step is an ordinary task; the fire steps are
- * guarded by check, so a missing drill or an under-level pit is skipped,
- * never an error.
+ * The body tier of an intent: sleep, storm, cold, thirst, hunger, in that
+ * order, and what to do about each. Every step is an ordinary task; the fire
+ * steps are guarded by check, so a missing drill or an under-level pit is
+ * skipped, never an error.
  */
 import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
@@ -46,10 +46,19 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (p.warmth >= WARM_AT) it.coldSpent = false;
   const cold = !it.coldSpent && (p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
-  if (p.kcal < HUNGRY_UNDER) return "hungry";
   if (p.water < THIRSTY_L && canQuench(state, world, cal)) return "thirsty";
+  if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
   if (homeBeforeDark(state, world, cal, it)) return "home";
   return null;
+}
+
+/** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */
+export function canFeed(state: GameState, world: World, cal: Calendar, it: Intent): boolean {
+  const p = state.player;
+  if (AUTO_EAT_ORDER.some((f) => qty(p.pack, f) > 1e-9)) return true;
+  const camp = pile(state, it.campCell);
+  if (!AUTO_EAT_ORDER.some((f) => qty(camp, f) > 1e-9)) return false;
+  return cellOf(state, world) === it.campCell || check(state, world, cal, "walk", `cell:${it.campCell}`).ok;
 }
 
 /** Minutes to this region's camp on foot right now, or null when there is no way there. Zero already there. */
@@ -94,8 +103,13 @@ export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng
 
 /** The nearest waterside cell in this region to fetch water from, not this cell, not iced over, and a walk there can start. Null otherwise. */
 function shoreForWater(state: GameState, world: World, cal: Calendar): number | null {
-  if (state.weather.iceCm >= ICE_SHORE_CM) return null;
   const here = cellOf(state, world);
+  const st = regionState(state, world, state.player.region);
+  if (state.weather.iceCm >= ICE_SHORE_CM) {
+    const hole = st.iceHole?.cell;
+    if (hole === undefined || hole === here) return null;
+    return check(state, world, cal, "walk", `cell:${hole}`).ok ? hole : null;
+  }
   const r = regionAt(world, state.player.region);
   const candidates = r.cells
     .filter((c) => c !== here && watersideCell(world, c))
@@ -106,12 +120,20 @@ function shoreForWater(state: GameState, world: World, cal: Calendar): number | 
   return null;
 }
 
-/** Whether this region's camp can melt snow for water right now: a lit fire, snow on the ground, and camp in reach. */
+/** Camp water in reach: litres in the camp pile, and camp under foot or a walk there open. */
+function campWaterReady(state: GameState, world: World, cal: Calendar): boolean {
+  const st = regionState(state, world, state.player.region);
+  if (qty(pile(state, st.campCell), "water") <= 1e-9) return false;
+  return cellOf(state, world) === st.campCell || check(state, world, cal, "walk", `cell:${st.campCell}`).ok;
+}
+
+/** Whether this region's camp can melt snow for water right now: snow on the ground, a fire lit or still gettable, and camp in reach. */
 function campMeltReady(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
-  if (!st.fire.lit || state.weather.snowCm < 1) return false;
+  if (state.weather.snowCm < 1) return false;
+  if (!st.fire.lit && fireStep(state, world, cal, st.campCell) === null) return false;
   return cellOf(state, world) === st.campCell
-    ? check(state, world, cal, "melt").ok
+    ? !st.fire.lit || check(state, world, cal, "melt").ok
     : check(state, world, cal, "walk", `cell:${st.campCell}`).ok;
 }
 
@@ -120,19 +142,24 @@ function canQuench(state: GameState, world: World, cal: Calendar): boolean {
   return vesselLitres(state.player) > 0
     || waterSource(state, world)
     || shoreForWater(state, world, cal) !== null
+    || campWaterReady(state, world, cal)
     || campMeltReady(state, world, cal);
 }
 
-/** Drink in reach; else walk to the region's shore when it is not iced over; else walk to camp and melt snow at the fire; else nothing. */
+/** Drink in reach; else walk to the region's shore when it is not iced over; else walk to camp for its water or to melt snow at the fire; else nothing. */
 function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null {
   if (drink(state, world)) return null;
   const shoreCell = shoreForWater(state, world, cal);
   if (shoreCell !== null) return walkStep(state, world, shoreCell, " for water");
+  const st = regionState(state, world, state.player.region);
+  const atCamp = cellOf(state, world) === st.campCell;
+  if (campWaterReady(state, world, cal)) return atCamp ? null : walkStep(state, world, st.campCell, " for water");
   if (campMeltReady(state, world, cal)) {
-    const st = regionState(state, world, state.player.region);
-    return cellOf(state, world) === st.campCell
-      ? { id: "melt", step: "melting snow" }
-      : walkStep(state, world, st.campCell, " for water");
+    if (!atCamp) return walkStep(state, world, st.campCell, " for water");
+    // The cold step's fire, for the same reason: no fire, no melt.
+    const fs = fireStep(state, world, cal, st.campCell);
+    if (fs) return fs;
+    return { id: "melt", step: "melting snow" };
   }
   return null;
 }
