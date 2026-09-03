@@ -122,6 +122,121 @@ an untreated wound. Mosquito, black fly and tick season that makes places
 unusable and makes smoke, clothing and the camp site matter. Loneliness and
 poor judgement over months alone.
 
+**Why this sub-project owns a body model.** Sub-project 1 shipped the flat
+version: `injured` and `sick` as timers, `frostbite.feet` and `.hands` as
+timers, `toes` and `fingers` as flags, and a walking-speed or odds factor
+per flag. That is realistic in kind and much too kind in degree. Real
+frostbite has two tiers: superficial, which clears in days by a fire, and
+deep, which is dead tissue from the hour it freezes and declares itself
+over three to six weeks ("frostbite in January, amputate in July"). A
+thawed deep frostbite is not a limp, it is a bed: severe pain, blisters,
+no walking and no heavy work for weeks, so the real question is whether
+camp can carry you that long. What kills is not the cold but the
+infection that follows, and the loss is not only toes: forefeet, a foot, a
+hand, a leg after an axe wound or a fall on the fell. This sub-project
+replaces the flat fields with one wound model that also serves the axe,
+the elk, the fall through ice, burns, bites and disease.
+
+**The body, as data.** Ten parts, each with a lost flag and a list of
+wounds; the core reserves stay where they are.
+
+```ts
+type Part =
+  | "head" | "torso"
+  | "leftArm" | "rightArm" | "leftHand" | "rightHand"
+  | "leftLeg" | "rightLeg" | "leftFoot" | "rightFoot";
+
+type WoundKind = "cut" | "bruise" | "fracture" | "frostbite" | "burn" | "bite";
+
+interface Wound {
+  part: Part;
+  kind: WoundKind;
+  /** 1 superficial, 2 deep, 3 the part is dying. */
+  severity: 1 | 2 | 3;
+  /** Minutes since it happened. */
+  age: number;
+  /** Dressed, splinted, cleaned: what care it has had, as minutes since. */
+  dressedAgo: number | null;
+  /** 0 clean to 100 septic; rises with dirt, wet and cold, falls with care and rest. */
+  infection: number;
+  /** Deep frostbite only: minutes until the dead tissue declares itself. */
+  demarcation: number | null;
+}
+
+interface Body {
+  parts: Record<Part, { lost: boolean; wounds: Wound[] }>;
+  /** Fever, parasites, food poisoning: whole-body courses with a timer and a strength. */
+  conditions: { kind: "fever" | "parasites" | "foodPoisoning"; minutes: number; strength: number }[];
+}
+```
+
+`Player.kcal`, `water`, `warmth`, `energy` and `wetness` remain the core
+reserves; `sick`, `injured`, `frostbite`, `toes` and `fingers` fold into
+`Body` and are migrated on load.
+
+**What a part does, and what a wound or a loss costs.** Every effect on
+the game goes through a small set of capability functions that read the
+body, so no task ever reads a part directly:
+
+| part            | carries                          | severity 2 wound                              | lost                                   |
+|-----------------|----------------------------------|-----------------------------------------------|----------------------------------------|
+| foot            | walking, standing work           | walk 0.5, no heavy work, no fell or bog       | walk 0.5 for good, no fell or bog, no hauling |
+| leg             | walking, hauling                 | walk 0.4, no hauling; fracture: no walking    | crutch: walk 0.3, no hauling, no hunt  |
+| hand            | tools, the bow, crafts           | odds and crafts 0.5, no axe                   | no bow, no axe, crafts 0.5 with the other |
+| arm             | felling, the bow, hauling        | no felling, no bow, hauling 0.5               | as hand, and hauling 0.5               |
+| torso           | everything                       | work 0.7, walk 0.8, kcal burn 1.2             | not survivable                          |
+| head            | judgement                        | odds 0.7, the log's warnings arrive late       | not survivable                          |
+
+Pairs matter: one bad hand leaves the other; both, and you cannot make a
+fire. `canUse(tool)`, `walkFactor()`, `workFactor(activity)`,
+`oddsFactor()` and `hauling()` are the only readers; today's `workSpeed`,
+`baseWalkSpeed` and the skill odds call them.
+
+**Courses.** A wound ages every minute. Infection rises by kind and
+severity, faster wet, cold, dirty or starving, and falls with a dressing
+that is fresh, with rest under a roof, and with the wound cleaned in boiled
+water (a use for the water reserve and the fire). A wound past 60 infection
+drains health and burns kcal; past 90 the part is dying (severity 3) and
+the choice is the knife or the fever. Deep frostbite runs its
+`demarcation` clock; at the end the part is either whole again (small
+wounds) or lost (the toes, the forefoot, the foot), and the log says which
+day the line will be drawn. Refreezing a thawed frostbite sets severity 3
+at once: the one rule every account of cold injury agrees on.
+
+**Care, as tasks.** Dress a wound (hide or cloth, minutes, needs a free
+hand), splint a fracture (two sticks, cordage), clean a wound (1 litre
+boiled: a fire and a vessel), rest it (a day off the part; the runner
+respects a "no heavy work" flag the way it respects hunger), and amputate
+(a knife and a fire, hours, a mortality roll of one in three alone, a
+permanent loss, and a wound of its own to nurse). Each is an ordinary task
+under an intent, trains Crafting, and appears in the Camp list only when a
+wound calls for it.
+
+**Sources of wounds.** The axe (1 to 3 percent per tree, worse spent), the
+hunt that turns on you (the elk already does), the fall on the fell and
+the fall through ice (sub-project 2), burns from a fire tended tired, and
+bites from sub-project 4's animals. Each names a part by where it lands:
+the axe takes shins and feet, the elk takes torsos and legs, the ice takes
+the whole body cold and the feet first.
+
+**The mind.** Loneliness is a slow course too: weeks without a change of
+region or a finished build raise it, a warm cabin and a full store lower
+it; high loneliness widens the odds of every mistake (the axe, the fire
+left big, the thin ice taken) rather than adding a bar to watch.
+
+**Insects.** June to August, bog and shore cells carry a mosquito load by
+warmth and wind; working there without smoke or a hood costs energy and
+sleep and raises the itch that turns into scratched, infected skin;
+smoke from a smudge fire at camp clears the camp; ticks in tall grass on
+the heath seed a fever course a week later. This is why camp on a windy
+shore beats camp in the bog.
+
+**What this sub-project explicitly does not do.** No pain or morale bar;
+no permanent stats beyond the loss table; no medicine the north did not
+have. The player learns the body from the body panel, which shows each
+part with its wounds, their age and care, and from the log, which says
+what a wound needs before it says what it took.
+
 ### 6. Territory
 
 Every gathered resource depletes per region and regrows at a rate that
