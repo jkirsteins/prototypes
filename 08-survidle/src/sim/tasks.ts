@@ -30,7 +30,7 @@ import {
   type SpotId, type StructureId, type TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
-import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow } from "./weather";
+import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -121,7 +121,7 @@ export function walkTarget(state: GameState, world: World, arg: string): { cell:
 
 /** The ice a walk crosses water with: thin when asked for and available, safe ice by default, else none. */
 function walkIceMode(state: GameState, thin: boolean): IceMode {
-  return thin ? "thin" : iceMode(state.weather) === "safe" ? "safe" : "none";
+  return thin ? "thin" : walkableIce(state.weather);
 }
 
 /** "the forest", "camp in Stensund", "a spot 0.4 km east": how a cell is named to the player. */
@@ -852,7 +852,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "melt": {
-      st.fire.fuelKg -= 1;
+      st.fire.fuelKg = Math.max(0, st.fire.fuelKg - 1);
       let l = 1.0;
       const drinkL = Math.min(l, WATER_FULL - p.water);
       p.water += drinkL;
@@ -862,6 +862,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (!holds || l <= 1e-9) continue;
         const room = holds - (t.litres ?? 0);
         const put = Math.min(room, l);
+        if (put <= 1e-9) continue;
         t.litres = (t.litres ?? 0) + put;
         t.frozen = false;
         l -= put;

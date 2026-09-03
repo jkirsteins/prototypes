@@ -90,7 +90,7 @@ Instant buttons: "fill" at a source (fills every vessel), "drink" (section
 1.2). A vessel is a tool, so it weighs its own mass plus its water at 1 kg
 per litre in `carried`.
 
-Freezing: each minute at ambient under `FREEZE_C = -5`, a vessel's water
+Freezing: each hour at ambient under `FREEZE_C = -5`, a vessel's water
 freezes unless the player is walking or working (body heat in the pack) or
 stands by a lit fire. Frozen water is not drinkable. "Thaw" is a 10-minute
 task at a lit fire. When a bark bucket freezes while more than half full it
@@ -202,8 +202,10 @@ log stack is overkill, so the rule is the region's: `RegionState.logsWet`
 minutes, set to 0 whenever it rains on the region and counting up in dry
 weather; logs split within 6 hours of rain are wet. Wet firewood dries to
 firewood at 2 kg an hour in total, from the camp pile and the pack of
-anyone standing at camp, beside a lit fire or under a roof; 0.5 an hour
-otherwise in dry weather, an unsheltered camp included, none in rain.
+anyone standing at camp, beside a lit fire or in a cabin, whatever the
+weather; under a lean-to alone, the same 2 kg an hour but only in dry
+weather, none in rain; an unsheltered camp, every other pile, and the pack
+away from any camp, 0.5 kg an hour in dry weather, none in rain.
 Drying is per pile, in `stepCamp`.
 
 `RegionState.fire` gains `wetKg`. `feedFire` takes dry first when both are

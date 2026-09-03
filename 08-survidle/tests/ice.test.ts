@@ -88,8 +88,10 @@ describe("ice", () => {
         drowned.push(false);
       }
     }
-    // Ten percent per cell at 5 cm across twelve tries: at least one fall, and drowning is the likelier end.
+    // Ten percent per cell at 5 cm across twelve tries: at least one fall, and
+    // fallThrough drowns three in five, so across enough falls at least half should.
     expect(drowned.length).toBeGreaterThan(0);
+    expect(drowned.filter(Boolean).length / drowned.length).toBeGreaterThanOrEqual(0.5);
   });
 
   it("safe ice crossed, then melted, leaves no way back", () => {

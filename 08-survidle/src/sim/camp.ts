@@ -82,8 +82,12 @@ function reportSpoil(state: GameState, lost: ReturnType<typeof ageStacks>, where
   }
 }
 
-/** Puts up to `wantKg` of firewood on the fire from pack and camp pile: dry first, then wet. Returns kg added. */
-export function feedFire(state: GameState, world: World, region: number, wantKg: number): number {
+/**
+ * Puts up to `wantKg` of firewood on the fire from pack and camp pile: dry
+ * first, then wet unless `dryOnly` asks for none of that (a storm's ladder
+ * lights a fresh fire from dry wood alone). Returns kg added.
+ */
+export function feedFire(state: GameState, world: World, region: number, wantKg: number, dryOnly = false): number {
   const st = regionState(state, world, region);
   const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - fuelTotal(st.fire)));
   let added = 0;
@@ -94,6 +98,7 @@ export function feedFire(state: GameState, world: World, region: number, wantKg:
     st.fire.fuelKg += took;
     added += took;
   }
+  if (dryOnly) return added;
   for (const inv of invs) {
     if (added >= room - 1e-9) break;
     const took = removeItem(inv, "wetFirewood", room - added);

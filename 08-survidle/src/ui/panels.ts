@@ -7,15 +7,15 @@ import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
-import { cellOf, describeWhere, kmBetween, spotHere } from "../sim/position";
+import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
 import { type GameState, type Garment, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
-import { THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
-import { iceMode, stormNow, weatherLabel } from "../sim/weather";
+import { ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
+import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -181,7 +181,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       if (s.cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(world, myCell, s.cell, iceMode(state.weather) === "safe" ? "safe" : "none");
+      const km = kmBetween(world, myCell, s.cell, walkableIce(state.weather));
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : ` <small>${esc(walk.why)}</small>`;
@@ -309,9 +309,12 @@ function instantHtml(state: GameState, world: World): string {
     : "";
   const atSource = waterSource(state, world);
   const short = p.water < WATER_FULL - 1e-9;
+  const shoreClosed = watersideCell(world, cellOf(state, world)) && state.weather.iceCm >= ICE_SHORE_CM;
   const drink = short && (atSource || vesselLitres(p) > 0)
     ? `<button class="mini" data-act="drink">drink <small>${p.water.toFixed(1)} of ${WATER_FULL.toFixed(1)} l</small></button>`
-    : "";
+    : shoreClosed && vesselLitres(p) <= 0
+      ? `<button class="mini" disabled>drink <small>iced over</small></button>`
+      : "";
   const fill = atSource && p.tools.some((t) => (TOOLS[t.id].litres ?? 0) > (t.litres ?? 0))
     ? `<button class="mini" data-act="fill">fill vessels</button>`
     : "";

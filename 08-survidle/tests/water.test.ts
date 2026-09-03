@@ -8,7 +8,9 @@ import { causeFrom, stepPlayer, workSpeed } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
-import { drink, fillVessels, THIRSTY_L, vesselLitres, WATER_FULL, waterLossPerHour, waterSource } from "../src/sim/water";
+import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterLossPerHour, waterSource } from "../src/sim/water";
+import { doHtml } from "../src/ui/panels";
+import { newUiState } from "../src/ui/render";
 
 const cal = calendar(0);
 
@@ -65,6 +67,17 @@ describe("water", () => {
     expect(waterSource(state, world)).toBe(true);
     state.weather.iceCm = 2;
     expect(waterSource(state, world)).toBe(false);
+  });
+
+  it("an iced-over shore logs the warning once and offers a disabled drink button saying so", () => {
+    const { state, world } = newGame(42);
+    placeAtSpot(state, world, state.player.region, "shore");
+    state.weather.iceCm = ICE_SHORE_CM + 1;
+    advance(state, world, 1);
+    const lines = state.log.filter((e) => e.text === "The shore is iced over.");
+    expect(lines).toHaveLength(1);
+    const html = doHtml(state, world, calendar(state.minute), newUiState());
+    expect(html).toContain("iced over");
   });
 
   it("a working day without drinking ends thirsty and, left alone, dead of thirst before starvation", () => {

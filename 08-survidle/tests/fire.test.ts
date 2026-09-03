@@ -16,7 +16,7 @@ import { ambientTemperature } from "../src/sim/weather";
 const cal = calendar(0);
 
 describe("wet wood", () => {
-  it("logs split in rain, or within six hours of it, give wet firewood, which dries by a fire and not in rain", () => {
+  it("logs split in rain, or within six hours of it, give wet firewood, which dries by a fire whatever the weather", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell), "log", 2);
@@ -31,7 +31,8 @@ describe("wet wood", () => {
     // The first batch has sat in the pack the whole 20 minutes, drying at the
     // unsheltered camp's 0.5 kg/h even with no fire yet: a sixth of a kilo gone.
     expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(40 - 1 / 6, 6);
-    // Dries at 2 kg an hour by a lit fire; not at all once it rains again.
+    // Dries at 2 kg an hour by a lit fire, and keeps at it once it rains again:
+    // the fire's own heat does the drying, not a dry sky.
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
@@ -41,7 +42,8 @@ describe("wet wood", () => {
     expect(before - after).toBeCloseTo(2, 0);
     state.weather.precip = "heavy";
     advance(state, world, 60);
-    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(after, 0);
+    const afterRain = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
+    expect(after - afterRain).toBeCloseTo(2, 0);
   });
 
   it("wet wood on the fire halves its warmth and the fire is smoky", () => {
@@ -117,6 +119,18 @@ describe("wet wood", () => {
     addItem(pile(state, st.campCell), "wetFirewood", 10);
     advance(state, world, 60);
     expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(9.5, 6);
+  });
+
+  it("a lit fire dries the camp pile at 2 kg an hour even in heavy rain", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 30;
+    addItem(pile(state, st.campCell), "wetFirewood", 10);
+    state.weather.precip = "heavy";
+    advance(state, world, 60);
+    expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(8, 6);
   });
 });
 

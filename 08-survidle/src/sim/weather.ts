@@ -42,6 +42,11 @@ export function iceMode(w: Weather): IceMode {
   return "none";
 }
 
+/** The ice a plain walk (never asking for the thin-ice shortcut) may cross: safe ice, or none. */
+export function walkableIce(w: Weather): IceMode {
+  return iceMode(w) === "safe" ? "safe" : "none";
+}
+
 /**
  * Yesterday's mean sets today's ice, by Stefan's law: thickness squared
  * grows by 7.2 per freezing degree-day, so it thickens fast when thin and
@@ -76,7 +81,9 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     } else {
       w.dryDays += 1;
     }
-    w.wetDay = false;
+    // A storm running across the roll counts today as wet from the moment it rolls,
+    // not just from whatever transition into rain happens to land on this same minute.
+    w.wetDay = w.precip !== "none";
     if (!w.storm && rng.chance(STORM_CHANCE[cal.season])) {
       const from = minute + 60 + rng.int(121);
       w.storm = { from, until: from + 360 + rng.int(721), warned: false };

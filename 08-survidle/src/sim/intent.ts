@@ -16,7 +16,7 @@ import { ANIMALS, ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./
 import { log } from "./log";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
 import { regionState } from "./regionstate";
-import { iceMode } from "./weather";
+import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
@@ -256,12 +256,12 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
   const here = cellOf(state, world);
   if (here === cell) return undefined;
   if (here === it.campCell) provision(state, world);
-  if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
   const o = check(state, world, cal, "walk", `cell:${cell}`);
   if (!o.ok) {
     endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. You stop.`, "bad");
     return undefined;
   }
+  if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
   takeStep(state, world, cal, walkStep(state, world, cell, why));
   return undefined;
 }
@@ -323,7 +323,7 @@ function fetchMissing(state: GameState, sid: StructureId, campCell: number): Fet
  */
 function fetchSources(state: GameState, world: World, sid: StructureId, campCell: number, from: number): FetchSources {
   const { missing, wanted } = fetchMissing(state, sid, campCell);
-  const ice = iceMode(state.weather) === "safe" ? "safe" : "none";
+  const ice = walkableIce(state.weather);
   const sources = pilesIn(state, world, state.player.region)
     .filter((x) => x.cell !== campCell && wanted(x.inv))
     .map((x) => ({ ...x, km: kmBetween(world, from, x.cell, ice) }))

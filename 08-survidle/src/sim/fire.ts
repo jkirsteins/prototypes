@@ -124,26 +124,29 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number): void {
 }
 
 /**
- * Wet firewood drying: a fire or a roof dries 2 kg an hour in total, shared
- * by the camp's own pile and the pack of whoever is standing there, so a
- * fire does not somehow dry two stacks of wood at once. An unsheltered camp
- * is still the open, and dries the same combined way at 0.5. Every other
- * pile, and the pack away from any camp, dries at 0.5 on its own. None of it
- * dries in the rain.
+ * Wet firewood drying: a lit fire or a cabin dries 2 kg an hour in total,
+ * shared by the camp's own pile and the pack of whoever is standing there,
+ * whatever the weather - the heat, or the roof, keeps the rain out of it.
+ * A lean-to alone is not that complete a shelter: 2 kg an hour in dry
+ * weather, none in rain. Every other pile, and the pack away from any camp,
+ * dries at 0.5 an hour in dry weather, none in rain.
  */
 export function dryWood(state: GameState, world: World, dt: number): void {
   const w = state.weather;
-  if (w.precip !== "none") return;
+  const dry = w.precip === "none";
   const p = state.player;
   const here = cellOf(state, world);
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    const warm = st.fire.lit || st.structures.leanTo || st.structures.cabin;
+    const sheltered = st.fire.lit || st.structures.cabin;
+    const perHour = sheltered ? 2 : st.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
+    if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];
     const atThisCamp = id === p.region && here === st.campCell;
     const invs = [campPile, atThisCamp ? p.pack : undefined].filter((x): x is Inventory => x !== undefined);
-    dryBudget(invs, warm ? 2 : 0.5, dt);
+    dryBudget(invs, perHour, dt);
   }
+  if (!dry) return;
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];

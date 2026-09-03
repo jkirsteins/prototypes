@@ -7,7 +7,7 @@ import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
 import { enterRegion, regionState } from "./regionstate";
-import { iceMode } from "./weather";
+import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 
 export function cellIndex(world: World, x: number, y: number): number {
@@ -133,7 +133,7 @@ export function describeWhere(state: GameState, world: World): string {
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";
-  const ice = iceMode(state.weather) === "safe" ? "safe" : "none";
+  const ice = walkableIce(state.weather);
   const km = kmBetween(world, cellOf(state, world), r.campCell, ice);
   const dist = km === null ? "" : `, ${km.toFixed(1)} km from camp`;
   if (spot) return `at ${SPOT_WORDS[spot]}${dist}`;

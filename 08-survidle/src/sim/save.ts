@@ -1,6 +1,7 @@
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import type { World } from "../world/gen";
 import { advance } from "./advance";
+import { TOOLS } from "./items";
 import { newSkills } from "./skills";
 import type { GameState, LogEntry } from "./types";
 
@@ -45,6 +46,7 @@ function fillDefaults(state: GameState): void {
   p.fingers ??= false;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
+    if (TOOLS[t.id].litres === undefined) continue;
     t.litres ??= 0;
     t.frozen ??= false;
   }

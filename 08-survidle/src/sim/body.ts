@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
-import { regionAt, spotOf, type World } from "../world/gen";
+import { regionAt, type World } from "../world/gen";
 import { eat } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
@@ -16,13 +16,13 @@ import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
-import { cellOf } from "./position";
+import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent } from "./types";
-import { drink, ICE_SHORE_CM, THIRSTY_L, vesselLitres, waterSource } from "./water";
-import { iceMode, stormComing, stormNow } from "./weather";
+import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, waterSource } from "./water";
+import { stormComing, stormNow, walkableIce } from "./weather";
 
 export const SLEEP_AT = 20;
 export const NIGHT_SLEEP_UNDER = 60;
@@ -48,7 +48,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (p.kcal < HUNGRY_UNDER) return "hungry";
   if (p.water < THIRSTY_L && canQuench(state, world, cal)) return "thirsty";
-  if (homeBeforeDark(state, world, cal)) return "home";
+  if (homeBeforeDark(state, world, cal, it)) return "home";
   return null;
 }
 
@@ -57,17 +57,25 @@ export function minutesToCamp(state: GameState, world: World, cal: Calendar): nu
   const st = regionState(state, world, state.player.region);
   const here = cellOf(state, world);
   if (here === st.campCell) return 0;
-  const ice = iceMode(state.weather) === "safe" ? "safe" : "none";
+  const ice = walkableIce(state.weather);
   const route = findRoute(world, here, st.campCell, ice);
   if (!route) return null;
   return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice);
 }
 
-/** Winter days are short: leave the work so as to reach camp by sunset. */
-function homeBeforeDark(state: GameState, world: World, cal: Calendar): boolean {
+/**
+ * Winter days are short: leave the work so as to reach camp by sunset.
+ * Sticky once it holds, until night actually falls, so the boundary the
+ * walk time sets does not flicker the need in and out and send the runner
+ * back out for one more minute of work between crossings.
+ */
+function homeBeforeDark(state: GameState, world: World, cal: Calendar, it: Intent): boolean {
   if (cal.season !== "winter" || cal.isNight) return false;
+  if (it.need === "home") return true;
   const st = regionState(state, world, state.player.region);
-  if (cellOf(state, world) === st.campCell) return (cal.sunset - cal.hour) * 60 <= 15;
+  // Already at camp: nothing to walk home for. The old 15-minutes-to-sunset
+  // check fired here too and only ever idled the evening away at rest.
+  if (cellOf(state, world) === st.campCell) return false;
   const minutes = minutesToCamp(state, world, cal);
   if (minutes === null) return false;
   return (cal.sunset - cal.hour) * 60 <= minutes + 15;
@@ -84,13 +92,18 @@ export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng
   }
 }
 
-/** The region's shore, to fetch water from: not this cell, not iced over, and a walk there can start. Null otherwise. */
+/** The nearest waterside cell in this region to fetch water from, not this cell, not iced over, and a walk there can start. Null otherwise. */
 function shoreForWater(state: GameState, world: World, cal: Calendar): number | null {
-  const r = regionAt(world, state.player.region);
-  const shore = spotOf(r, "shore");
+  if (state.weather.iceCm >= ICE_SHORE_CM) return null;
   const here = cellOf(state, world);
-  if (!shore || shore.cell === here || state.weather.iceCm >= ICE_SHORE_CM) return null;
-  return check(state, world, cal, "walk", `cell:${shore.cell}`).ok ? shore.cell : null;
+  const r = regionAt(world, state.player.region);
+  const candidates = r.cells
+    .filter((c) => c !== here && watersideCell(world, c))
+    .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  for (const cell of candidates) {
+    if (check(state, world, cal, "walk", `cell:${cell}`).ok) return cell;
+  }
+  return null;
 }
 
 /** Whether this region's camp can melt snow for water right now: a lit fire, snow on the ground, and camp in reach. */
@@ -124,14 +137,16 @@ function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null
   return null;
 }
 
-/** Walk to this region's camp, keep the fire fed against the wind, then wait it out. */
+/** Walk to this region's camp, light a fire there if a cold pit allows it, keep it fed against the wind with dry wood, then wait the storm out. */
 function stormStep(state: GameState, world: World, cal: Calendar): Step | null {
   const st = regionState(state, world, state.player.region);
   const here = cellOf(state, world);
   if (here !== st.campCell) {
     return check(state, world, cal, "walk", `cell:${st.campCell}`).ok ? walkStep(state, world, st.campCell, " before the storm") : null;
   }
-  if (st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire));
+  const fs = fireStep(state, world, cal, st.campCell);
+  if (fs) return fs;
+  if (st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
   return { id: "rest", step: "waiting out the storm" };
 }
 
@@ -228,11 +243,13 @@ export function provision(state: GameState, world: World): void {
   let want = PROVISION_KG - PROVISIONS.reduce((a, f) => a + qty(pack, f), 0);
   let room = PACK_COMFORTABLE_KG - weight(pack);
   for (const f of PROVISIONS) {
-    if (want <= 1e-9 || room <= 1e-9) return;
+    if (want <= 1e-9 || room <= 1e-9) break;
     const kg = Math.min(want, room, qty(camp, f)) / ITEM_KG[f];
     if (kg <= 1e-9) continue;
     const moved = transfer(camp, pack, f, kg);
     want -= moved;
     room -= moved;
   }
+  // A waterside camp tops off every vessel along with lunch, the same errand.
+  if (waterSource(state, world)) fillVessels(state, world);
 }

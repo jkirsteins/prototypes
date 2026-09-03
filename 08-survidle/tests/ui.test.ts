@@ -181,11 +181,11 @@ describe("panels", () => {
     const { state, world } = newGame(3);
     state.log.push({ minute: 100, text: "You are thirsty.", kind: "bad" });
     state.log.push({ minute: 200, text: "You are starving.", kind: "bad" });
-    state.log.push({ minute: 300, text: "The shore is iced over.", kind: "bad" });
+    state.log.push({ minute: 300, text: "You can barely lift your arms. Sleep.", kind: "bad" });
     state.dead = { cause: "thirst", minute: 301 };
     const html = deathHtml(state, world, calendar(301));
     expect(html).toContain("Thirst took you.");
-    expect(html).toMatch(/You are thirsty\..*You are starving\..*The shore is iced over\./s);
+    expect(html).toMatch(/You are thirsty\..*You are starving\..*You can barely lift your arms\. Sleep\./s);
   });
 
   it("a froze death excludes its own death line from the story, not just the cause paragraph", () => {

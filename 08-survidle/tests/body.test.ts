@@ -8,10 +8,10 @@ import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed } from "../src/sim/player";
-import { cellOf, placeAt } from "../src/sim/position";
+import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { PACK_COMFORTABLE_KG } from "../src/units";
-import { cellAt, regionAt } from "../src/world/gen";
+import { hasSpot, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 
 type G = ReturnType<typeof newGame>;
@@ -211,6 +211,25 @@ describe("the body tier", () => {
     expect(weight(state.player.pack)).toBeLessThanOrEqual(PACK_COMFORTABLE_KG);
   });
 
+  it("provisioning at a waterside camp also fills every vessel", () => {
+    // Seed 42's camp is not itself waterside (waterSource is false there), so the
+    // region's camp is moved to a waterside cell of its own region for this test.
+    // The named forest spot (rather than "nearest") keeps the felling cell distinct
+    // from the new camp cell, so the intent actually walks off camp and provisions.
+    const g = newGame(42);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    const r = regionAt(world, state.player.region);
+    const waterside = r.cells.find((c) => c !== st.campCell && watersideCell(world, c))!;
+    st.campCell = waterside;
+    placeAt(state, world, waterside);
+    state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
+    addItem(state.player.pack, "driedMeat", 2);
+    startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "once" }, deliver: "leave", where: "forest" });
+    expect(state.intent?.step).toBe("walking to the forest");
+    expect(state.player.tools.find((t) => t.id === "barkBucket")!.litres).toBeCloseTo(2, 6);
+  });
+
   it("a working day: trees fall, the night is spent at camp, and the work goes on at dawn", () => {
     // Seed 10: forest and shore both off camp, so a long trace can drink at the
     // shore on its own instead of needing its water kept topped up by hand.
@@ -302,7 +321,8 @@ describe("the runner in the elements", () => {
     state.player.water = 0.8;
     advance(state, world, 1);
     expect(state.intent?.need).toBe("thirsty");
-    expect(state.intent?.step).toBe("walking to the shore for water");
+    // The nearest waterside cell to where the chop left off, not necessarily the named shore spot.
+    expect(state.intent?.step).toMatch(/^walking to .+ for water$/);
     // Drink fills to WATER_FULL, but the same minute's own loss still applies after it,
     // so the reserve settles a hair under 3.0 rather than sitting exactly at it.
     expect(until(g, () => state.player.water >= 2.9)).toBe(true);
@@ -346,6 +366,23 @@ describe("the runner in the elements", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
   });
 
+  it("a storm at a cold pit with a drill and dry wood lights the fire before waiting it out", () => {
+    const { g, state, world, camp } = felling(17);
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, camp), "stone", 6);
+    addItem(pile(state, camp), "firewood", 20);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.weather.storm = { from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
+    const steps: string[] = [];
+    until(g, () => {
+      const s = state.intent?.step ?? "";
+      if (steps.at(-1) !== s) steps.push(s);
+      return state.intent?.step === "waiting out the storm";
+    }, 600);
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp before the storm", "laying a fire pit", "lighting the fire", "waiting out the storm"]));
+    expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
+  });
+
   it("in winter it leaves the work so as to be at camp by sunset", () => {
     const { g, state, world, camp } = felling(17);
     state.minute = 320 * 1440;
@@ -363,6 +400,32 @@ describe("the runner in the elements", () => {
     expect(arrivedAt).toBeGreaterThan(0);
     expect(arrivedAt).toBeLessThanOrEqual(calendar(state.minute).sunset + 0.05);
     expect(state.intent?.need === "home" || state.intent?.need === "sleep").toBe(true);
+  });
+
+  it("the home need holds sticky from the minute it first fires until night, without flickering the runner back out to work", () => {
+    // Starting well into the winter afternoon (not the pre-dawn dark this same
+    // day still carries at minute 0) so the trace has clear daylight to run
+    // through before the walk-timed boundary fires and dusk actually falls.
+    const { g, state, world, camp } = felling(17);
+    state.minute = 320 * 1440 + 240;
+    state.player.tools.push({ id: "waterskin", durability: 100, litres: 3, frozen: false });
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    expect(calendar(state.minute).season).toBe("winter");
+    let homeStarted = false;
+    for (let m = 0; m < 900; m++) {
+      advance(state, world, 1);
+      const c = calendar(state.minute);
+      if (c.isNight) break;
+      if (state.intent?.need === "home") {
+        homeStarted = true;
+        if (cellOf(state, world) === camp) expect(state.intent?.step).toBe("in before dark");
+        expect(state.intent?.step).not.toBe("walking to the forest");
+      } else {
+        // Once the need has fired it must hold every minute until night; it never lets go early.
+        expect(homeStarted).toBe(false);
+      }
+    }
+    expect(homeStarted).toBe(true);
   });
 
   it("banks a big fire before walking off camp", () => {
@@ -444,16 +507,13 @@ describe("the runner in the elements", () => {
     expect(minutesToCamp(state, world, cal2)).toBeCloseTo(expected, 6);
   });
 
-  it("falls through to the camp-and-melt fallback when the shore cannot be walked to", () => {
+  it("falls through to the camp-and-melt fallback when no shore can be walked to", () => {
     // Seed 42: the forest coincides with camp, so once thirst falls through it can
     // go straight to melting rather than needing a further walk to observe.
     const { g, state, world } = felling(42);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    const r = regionAt(world, state.player.region);
-    const shore = r.spots.find((s) => s.id === "shore")!;
-    // Stand the shore spot on open water: not iced over by ICE_SHORE_CM's own
-    // threshold, but nowhere a walk can actually take you.
-    shore.cell = r.cells.find((c) => cellAt(world, c).terrain === "water")!;
+    // Overload the pack so no walk can start anywhere; melting needs none once at camp.
+    addItem(state.player.pack, "stone", 40);
     state.weather.iceCm = 0;
     state.weather.snowCm = 5;
     const st = regionState(state, world, state.player.region);
@@ -464,5 +524,60 @@ describe("the runner in the elements", () => {
     advance(state, world, 1);
     expect(state.intent?.need).toBe("thirsty");
     expect(state.intent?.step).toBe("melting snow");
+  });
+
+  it("thin ice never carries an automatic walk, through thirst, a storm, and the home need", () => {
+    // Thin ice (8 cm, between ICE_THIN_CM and ICE_SAFE_CM) sits in the world
+    // throughout: every plain walk the body's own needs start must resolve to
+    // safe ice or none, sampled every minute across all three needs.
+    const { state, world } = felling(10);
+    state.weather.iceCm = 8;
+    let sawThin = false;
+    const sample = () => {
+      if (state.route?.ice === "thin") sawThin = true;
+    };
+    const run = (minutes: number) => {
+      for (let m = 0; m < minutes; m++) {
+        advance(state, world, 1);
+        sample();
+      }
+    };
+
+    // Thirst: the shore is iced shut at this thickness, so this forces the melt-at-camp fallback.
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    state.weather.snowCm = 5;
+    state.player.water = 0.5;
+    run(200);
+    expect(state.dead).toBeNull();
+
+    // Storm.
+    state.weather.storm = { from: state.minute + 5, until: state.minute + 5 + 4 * 60, warned: false };
+    run(400);
+    expect(state.dead).toBeNull();
+
+    // Home before dark, deep winter; reserves topped off so the trace runs to night rather than to a death.
+    state.minute = 320 * 1440 + 240;
+    state.player.tools.push({ id: "waterskin", durability: 100, litres: 3, frozen: false });
+    state.player.water = 3;
+    state.player.kcal = 5000;
+    state.player.health = 100;
+    run(900);
+    expect(sawThin).toBe(false);
+  });
+
+  it("a region with no named shore spot but real waterside cells still finds water to walk to", () => {
+    // Seed 2: frac.water is a sliver (0.6%), under placeSpots' 2% floor for
+    // naming a "shore" spot at all, but the region still borders water.
+    const { g, state, world } = felling(2);
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    const r = regionAt(world, state.player.region);
+    expect(hasSpot(r, "shore")).toBe(false);
+    state.player.water = 0.8;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+    expect(state.intent?.step).toMatch(/^walking to .+ for water$/);
   });
 });

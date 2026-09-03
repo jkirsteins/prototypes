@@ -44,6 +44,25 @@ describe("weather", () => {
     expect(warm.snowCm).toBe(0);
   });
 
+  it("rain running through the dawn roll still counts as today's wet day", () => {
+    const rng = new Rng(5);
+    // Rain already going before 03:00, held steady across the roll: no fresh
+    // "started" transition happens right at dawn, only continuing rain.
+    const weather = w({ precip: "light", wetDay: true, dryDays: 3, rolledDay: 0 });
+    let rolled = false;
+    for (let m = 1 * 1440 - 5 * 60; m < 1 * 1440 + 8 * 60; m++) {
+      weather.precip = "light";
+      stepWeather(weather, calendar(m), rng, 1, m);
+      if (weather.rolledDay === 1) {
+        rolled = true;
+        break;
+      }
+    }
+    expect(rolled).toBe(true);
+    expect(weather.dryDays).toBe(0);
+    expect(weather.wetDay).toBe(true);
+  });
+
   it("rolls a new daily offset at dawn only once", () => {
     const rng = new Rng(3);
     const weather = w({ rolledDay: -1 });

@@ -33,7 +33,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
         { id: "leatherBoots", durability: 50, wet: 0 },
         { id: "woolHat", durability: 70, wet: 0 },
       ],
-      tools: [{ id: "axe", durability: 100, litres: 0, frozen: false }],
+      tools: [{ id: "axe", durability: 100 }],
       torch: { lit: false, minutes: 0 },
       pack,
       autoEat: true,

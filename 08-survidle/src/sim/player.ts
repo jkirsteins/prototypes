@@ -7,11 +7,11 @@ import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR 
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
-import { atCamp, cellOf, hereTerrain } from "./position";
+import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
-import { THIRSTY_L, stepWater } from "./water";
+import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
@@ -261,8 +261,10 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "wet", p.wetness >= 60, "You are soaked through.");
   warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");
   warn(state, "thirst", p.water < THIRSTY_L, "You are thirsty.");
-  const onThinIce = cellAt(world, cellOf(state, world)).terrain === "water" && w.iceCm < ICE_SAFE_CM;
+  const here = cellOf(state, world);
+  const onThinIce = cellAt(world, here).terrain === "water" && w.iceCm < ICE_SAFE_CM;
   warn(state, "thinice", onThinIce, "The ice is thin here.");
+  warn(state, "icedover", watersideCell(world, here) && w.iceCm >= ICE_SHORE_CM, "The shore is iced over.");
   warn(state, "smoke", camp && r.smoke > SMOKE_COUGH, "The fire is smoking the place out.");
   warn(state, "co", smoking, "The air is thick. You wake coughing.");
 

@@ -37,10 +37,6 @@ export function frostbiteChance(felt: number): number {
   return felt < -15 ? 0.06 : 0.02;
 }
 
-export function frostbitten(state: GameState): { feet: boolean; hands: boolean } {
-  return { feet: state.player.frostbite.feet > 0, hands: state.player.frostbite.hands > 0 };
-}
-
 export interface Exposure {
   raining: boolean;
   heavy: boolean;
