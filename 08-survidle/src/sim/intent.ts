@@ -431,9 +431,14 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   if (it.task === "night") return undefined;
-  // Waiting is resting at camp, started afresh each time the slot frees; the body tier does the rest.
+  // Waiting rests by day; by night it sleeps outright, or a running rest keeps
+  // raising energy and the sleep need's night clause (night and energy under
+  // 60) never gets the chance to fire. Started afresh each time the slot
+  // frees; the body tier still preempts either one.
   const step: Step = it.task === "wait"
-    ? { id: "rest", step: "waiting at camp" }
+    ? cal.isNight
+      ? { id: "sleep", step: "sleeping at camp" }
+      : { id: "rest", step: "waiting at camp" }
     : { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
   if (!takeStep(state, world, cal, step)) {
     if (it.orderId !== null) state.intent = null;

@@ -7,7 +7,8 @@ import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { beginTask, check, stopTask } from "../src/sim/tasks";
+import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
+import { regionAt } from "../src/world/gen";
 import {
   addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord,
 } from "../src/sim/orders";
@@ -386,5 +387,80 @@ describe("waiting at camp", () => {
     const { state, world } = newGame(3);
     advance(state, world, 10);
     expect(state.intent).toBeNull();
+  });
+
+  it("waits through the day and sleeps once night falls", () => {
+    const g = campWith(3, { firewood: 60 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    // Already met: the wait starts at once, no order ever runs.
+    addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    expect(until(g, () => calendar(state.minute).isNight && state.task?.id === "sleep", 1500)).toBe(true);
+    expect(cellOf(state, world)).toBe(st.campCell);
+    expect(state.intent?.task).toBe("wait");
+  });
+});
+
+describe("a set-up camp", () => {
+  it("keeps the fire, the sticks and the felling going for three days, every night at camp", () => {
+    // Seed 3's home region has no waterside cell at all, so a stay-at-camp
+    // run there dies of thirst regardless of orders; seed 21's camp is on
+    // forest ground with a reachable shore, same as the wait-at-camp fixtures.
+    const g = campWith(21, { log: 6, firewood: 30, driedMeat: 5 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    const wood = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    const sticks = addOrder(state, world, req("sticks", { until: { kind: "campHas", qty: 30 }, deliver: "camp" }), "keep");
+    const trees = addOrder(state, world, req("chop", { until: { kind: "forever" }, deliver: "camp" }), "grind");
+    let sleptElsewhere = 0;
+    let sleeps = 0;
+    let prev: string | undefined;
+    for (let m = 0; m < 72 * 60; m++) {
+      advance(state, world, 1);
+      const id = state.task?.id;
+      if (id === "sleep" && prev !== "sleep") {
+        sleeps++;
+        if (cellOf(state, world) !== st.campCell) sleptElsewhere++;
+      }
+      prev = id;
+    }
+    expect(state.dead).toBeNull();
+    expect(sleeps).toBeGreaterThanOrEqual(2);
+    expect(sleptElsewhere).toBe(0);
+    expect(wood.done).toBeGreaterThanOrEqual(1);
+    expect(sticks.done).toBeGreaterThanOrEqual(1);
+    expect(trees.done).toBeGreaterThanOrEqual(3);
+    expect(state.stats.trees).toBe(trees.done);
+    // The counters are the completions: minutes in the work, none from walks or hauls.
+    expect(trees.minutes).toBeGreaterThan(0);
+    expect(qty(pile(state, st.campCell), "log")).toBeGreaterThan(0);
+  });
+});
+
+describe("orders belong to a camp", () => {
+  it("the next region has its own empty list, and the first list resumes on return", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const home = state.player.region;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(a.id);
+    const nb = regionAt(world, home).neighbours[0].id;
+    expect(startTask(state, world, calendar(state.minute), "travel", `region:${nb}`)).toBe(true);
+    expect(state.intent).toBeNull();
+    expect(until(g, () => state.player.region === nb, 6000)).toBe(true);
+    expect(until(g, () => state.task === null, 6000)).toBe(true);
+    advance(state, world, 5);
+    expect(ordersHere(state, world)).toEqual([]);
+    expect(state.intent).toBeNull();
+    expect(startTask(state, world, calendar(state.minute), "travel", `region:${home}`)).toBe(true);
+    // Home still has the order, so the runner is never truly idle here as it
+    // was in the empty-list region: the moment work is blocked, wait fills
+    // the slot in the same tick, and task never reads back as null again
+    // until the order itself resumes. That resuming is the thing under test.
+    expect(until(g, () => state.player.region === home && state.intent?.orderId === a.id, 6000)).toBe(true);
+    advance(state, world, 5);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([a.id]);
+    expect(state.intent?.orderId).toBe(a.id);
   });
 });
