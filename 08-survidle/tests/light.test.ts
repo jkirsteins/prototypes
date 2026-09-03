@@ -119,4 +119,28 @@ describe("firelight", () => {
     expect(css).toContain("@keyframes flicker");
     expect(rule(".grid.night .c.mk-fire")).toContain("animation: flicker");
   });
+
+  it("a torch in hand lights one ring wherever you stand, and the key knows it", () => {
+    const { state, world } = newGame(21);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const k1 = mapKey(state, world, newUiState(), night);
+    state.player.torch = { lit: true, minutes: 30 };
+    expect(mapKey(state, world, newUiState(), night)).not.toBe(k1);
+    draw(state, world);
+    expect(lit("lit-0")).toBe(1);
+    expect(lit("lit-1")).toBe(8);
+    expect(lit("lit-2")).toBe(0);
+    expect(document.querySelector("#map .c.lit-0.mk-player")).not.toBeNull();
+  });
+
+  it("standing on your fire with a torch lit, no cell is lit twice", () => {
+    const { state, world } = newGame(21);
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = true;
+    st.fire.fuelKg = 10;
+    state.player.torch = { lit: true, minutes: 30 };
+    draw(state, world);
+    expect(lit("lit-0") + lit("lit-1") + lit("lit-2")).toBe(21);
+    expect(document.querySelectorAll("#map .c.lit-0.lit-1, #map .c.lit-1.lit-2, #map .c.lit-0.lit-2").length).toBe(0);
+  });
 });

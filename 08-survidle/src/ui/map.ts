@@ -92,7 +92,7 @@ export function lightSources(state: GameState, world: World): LightSource[] {
     if (!st.fire.lit || discovery(state, Number(idText)) !== VISITED) continue;
     out.push({ cell: st.campCell, reach: st.fire.fuelKg >= FIRE_LOW_KG ? 2 : 1 });
   }
-  void world;
+  if (state.player.torch.lit) out.push({ cell: cellOf(state, world), reach: 1 });
   return out;
 }
 
@@ -141,7 +141,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const z = ZOOMS[ui.zoom];
   const cell = cellOf(state, world);
-  return `${ui.zoom}|${x0}|${y0}|${z > 1 ? cell : cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}`;
+  return `${ui.zoom}|${x0}|${y0}|${z > 1 ? cell : cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${state.player.torch.lit ? "T" : ""}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
