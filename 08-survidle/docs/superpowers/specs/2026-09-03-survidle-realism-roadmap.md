@@ -25,11 +25,14 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 The numbers below are names, not the sequence; they stay put so specs can
 cite them while sections are still being written. The build order is:
-1 (in build), then A standing orders, then D species and sound, then 2
-rivers, 3 camp, 4 animals, 5 injury and the body model, 7 wind, 8 forest
-fire, and 6 territory last,
+1 (in build), then A standing orders, then D species and sound, then E
+hides and clothing, then 2 rivers, 3 camp, 4 animals, 5 injury and the
+body model, 7 wind, 8 forest fire, and 6 territory last,
 with B the risk forecast as soon after A as the runner is stable and C
-the skill tiers alongside 3. Fire comes after 5 because its burns are
+the skill tiers alongside 3. E comes straight after D because D's fur and
+fat are its inputs and because 5 (insects, burns on bare skin), 7 (wind
+through a coat) and C (clothing tiers worth the level) all reach for a
+clothing model that 1 left thin. Fire comes after 5 because its burns are
 wounds in that model and after 7 because it cannot spread without wind;
 it comes before 6 because the burn's regrowth clock is the first of the
 regrowth clocks Territory generalises.
@@ -570,8 +573,8 @@ and the scar the next morning with the elk tracks on it a year later.
 
 ## The idle loop
 
-The eight above make the north dangerous. These three make Survidle an idle
-game in the sense of Melvor Idle and A Dark Room: you set up a system, you
+The eight above make the north dangerous. The lettered ones below make
+Survidle an idle game in the sense of Melvor Idle and A Dark Room: you set up a system, you
 leave, and you come back to gains and a readout of how well the system
 held. They run beside the eight, not after them; the first is specced and
 should land before sub-project 2, since everything that follows is played
@@ -640,6 +643,159 @@ thunder and 8's crackle plug into. It is here beside the idle loop because
 the roster is what B's forecast and A's orders hunt, and it lands right
 after A because it rewrites the hunt and fish branches that A's runner
 drives.
+
+### E. Hides and clothing
+
+Clothing is named in 1 (wet garments, frostbite), 5 (insects, burns on
+whatever is not covered), 7 ("a warmer clothing rung so winter stays
+winnable") and C ("clothing tiers worth the level"), and D adds fur.
+Nothing owns how a hide becomes a coat, and today that step is free.
+
+**What the game does today.** Hide comes off the animal ready to sew and
+never rots. A garment loses 0.5 durability an outdoor hour, 1.0 in rain,
+1.5 times that while soaked, whatever it is made of and whatever you are
+doing in it: a hide coat wears exactly like the wool one, asleep by the
+fire in the open exactly like felling. Insulation scales with durability,
+so a garment at 0 gives nothing, but it never goes: it sits in its slot
+as a ghost, and a mitten at 0 still counts as mittens against frostbite.
+"Mend clothing" is 0.5 kg hide, a bone needle and 30 minutes for +40 on
+the most worn piece, and it revives the ghost for ever. The pace, at
+twelve outdoor hours a day: the starting wool coat (60) is at 0 in ten
+days, the starting boots (50) in eight, a new hide coat in seventeen,
+and a full five-piece set costs 0.4 kg hide a day to hold at full, a
+deer every eight days. The loop is coherent; it is thin. Wool is what
+you arrived with, whenever this is set; the world has no iron and no
+sheep, so hide is what the land gives, and the only clothing tech worth
+having is the one that turned hides into fitted, layered clothing long
+before wool: that is what this sub-project adds. Four decisions are
+taken: tanning is in; torso and legs get a second layer; a garment at 0
+becomes scrap; and wool keeps taking hide patches.
+
+**Hide.** Three states, each an item with a weight, replacing the one
+`hide` today:
+
+| item | keeps | sews into | how it is made |
+|------|-------|-----------|----------------|
+| fresh hide | 72 h above 0 C like meat; frozen it holds | nothing; it is flesh on skin | comes off the kill, at the kill |
+| rawhide | for ever while dry; soaked, it is fresh hide again with a 72 h clock | a wrapped piece: stiff, drafty, wears three times as fast | scrape: knife, at camp or at the kill, 1 h per 3 kg, loses a fifth of its weight to flesh and fat |
+| tanned hide | for ever | every tailored piece | tan, then smoke (below) |
+
+Tanning is one of two ways, both camp tasks, and the spec picks whether
+both ship:
+
+- Brain tanning: the animal's own brain, one per kill and enough for its
+  own hide, 4 hours of work on the soaked rawhide, then a day drying in
+  the open or by the fire. Fast, and it ties the hide to the kill.
+- Bark tanning: 1 kg of birch bark per kg of hide, soaked together in a
+  vessel or a pit at camp for 5 days, a task that is a standing order in
+  A's sense rather than a wait. Slow, and it scales: an elk's 20 kg goes
+  through in one pit. Birch bark is the wood-species rung C names, so the
+  same bark that is tinder is the tannin.
+
+Smoking is the last step and the one that matters in rain: 6 hours over
+a low fire under a roof, or in 3's smokehouse. Smoked hide keeps half its
+insulation soaked, like wool, where unsmoked tanned hide keeps a third,
+and it does not stiffen after a wetting. Every step is a Crafting task
+with its own mastery key. A tan or a smoke done under the recommended
+level can spoil the way a craft does today, and a spoiled tan is the hide
+gone. Fat scraped off the hide is D's fat item, 0.1 kg per kg of hide,
+and is what feeds the tallow light 3 wants; the roadmap's calorie rule
+holds, fat is 9 kcal a gram.
+
+**Layers.** Torso and legs each get a second slot: base and shell. Head,
+hands and feet keep one. The shell is the layer the weather finds first,
+which `clothing.ts` already models as its outer set; the base takes half
+the wetting, as the inner layers do today. Insulation sums. What the two
+slots buy: the wind of sub-project 7 takes its felt-temperature cut off a
+body with no shell in full, half through a wool shell, and none through
+a hide shell; a base with no shell soaks straight through in rain; a
+shell with no base is the wrapped-in-a-bearskin look, warm in the air
+and cold where the wind gets in. The starting wool coat and trousers
+are base layers. That is the one visible change to the opening: the wool
+you arrived with is not enough for a winter shell, and it never was.
+
+**Pieces and rungs.** Every slot gets a wrapped rung and a tailored rung,
+where today there is only the tailored one at Crafting 8 and nothing
+between it and wool:
+
+| slot | wrapped: rawhide or tanned, cordage, no needle, Crafting 1 | tailored: tanned hide, sinew, needle |
+|------|------|------|
+| shell, torso | hide wrap, 4 kg, +8 C, 2 h | hide coat as today (+12) and, at Crafting 12, a parka with the hood sewn on (+14 and the head's shell) |
+| shell, legs | hide leg wraps, +4 C, 1 h | hide trousers as today (+6) |
+| base, torso | none | hide shirt, fur inward, 2 kg, +6 C, Crafting 5 |
+| base, legs | none | hide leggings, +3 C, Crafting 5 |
+| head | none | fur hat as today; fur hood, +4 C, Crafting 4, blocks the wind on the head |
+| hands | hide mitts tied at the wrist, +1 C | fur mittens as today |
+| feet | hide footwraps, +2 C, wet through in an hour | hide boots as today; lined boots below |
+
+Lined boots are the cheap winter thing: dry grass or hay, a `hay` item
+gathered on meadow under Foraging, 0.2 kg per lining, an instant action
+at camp that gives +2 C on the feet and counts against cold feet, holds
+while the boots are under 50 wet, and is flat after five days, the bough
+bed's pattern. "Keep boots lined" is a standing order in A's sense. A
+wrapped piece wears twice as fast as a tailored one and gives the
+numbers above at best; a tailored piece under the recommended level can
+spoil the way today's crafts do.
+
+**Wear, by use and by material.** Wear per hour becomes a product:
+
+- The task: asleep or resting 0, walking 0.5, felling, hauling, building
+  and hunting 1.0, and nothing under a roof at rest, as today.
+- The weather: rain doubles it, soaked 1.5 times, as today.
+- The material: wool 1, tanned hide 0.75, smoked hide 0.6, rawhide 3.
+- The making: a piece carries the Crafting level of the hands that made
+  it, and wears 1 percent less per level, so a level 20 coat lasts a
+  fifth longer than a level 1 coat of the same hide.
+
+The log says "The coat is wearing thin." at 25, once. At 0 the garment
+leaves its slot and becomes scrap: 0.3 kg for a small piece, 1 kg for a
+coat, an item that mends with the same recipe as hide. Mending needs the
+piece to be above 0, so "mend before it is gone" is a real choice and
+the ghost coat is gone. Each patch lowers the piece's cap by 5: a coat
+patched a dozen times is a coat that will not go above 40 again, and a
+new one is the answer. Wool takes hide patches as today; the starting
+coat becoming a patchwork is the right story.
+
+**Skills.** The rule for this sub-project: every step has a level,
+a mastery and a pool, and each buys something concrete and real, the way
+felling and the hide coat do today. All under Crafting except the hay,
+which is Foraging, and the skinning, which is Hunting:
+
+| key | level buys (1% a level, as today) | mastery 20 | mastery 50 | pool |
+|-----|------|------|------|------|
+| `hunt:<species>` | the hide off in the hunt's time | as today | as today, and the hide comes off clean: fresh hide keeps 5 days, not 3 | 50%: every hide comes off clean |
+| `scrape` | speed | loses a tenth to flesh, not a fifth | the fat comes off whole: 0.15 kg per kg | 25%: half the knife wear, as `wearFactor` does today |
+| `tan:brain`, `tan:bark` | speed; under the recommended level (3) the tan can spoil, halving per level short as crafts do | a day less in the pit; a brain tans a hide and a half | 1 kg bark tans 2 kg hide; a spoiled tan is half the hide, not all of it | 25%: half the vessel wear; 95%: a tan never spoils |
+| `smoke` | speed; recommended 5 | 4 hours, not 6 | the smoked hide wears as wool does when soaked, 1.5 times, not more | 10%: the smoke also drives the insects of 5 off the camp cell for the day |
+| `craft:<piece>` | speed; the maker's level is the piece's wear discount above | one sinew fewer, as today | a tenth less hide, as today, and the piece starts at 110 | 25% and 95%: needle wear, as today |
+| `repair` | speed | +50 a patch, not +40 | a patch costs 0.3 kg and takes 2 off the cap, not 5 | |
+| `hay` | speed | a lining lasts a week | a lining holds to 75 wet | Foraging's yield perks, as today |
+
+A line of that table is a mechanism the code has (`EXTRAS`,
+`effectiveNeeds`, `wearFactor`, `craftSuccess`, `RECOMMENDED`) with a new
+key, not a new mechanism, which is the point of C: rungs, not systems.
+The one new field is the maker's level on the garment, which `Garment`
+carries beside `durability` and `wet`, and which the mending rule reads.
+
+**What it does to the rest.** 1's wet model gets the smoked and unsmoked
+split and the base-takes-half rule it already half has. 5's insects find
+bare skin: a hood and mittens are how the black-fly weeks are worked, and
+its burns land on whatever the slots leave bare. 7's wind is what the
+shell slot is for, and the parka is the "warmer clothing rung" 7 asks
+about, settled here. 3's smokehouse smokes hides as well as meat, and
+its water storage is the tanning pit. C gets its clothing tiers. D's
+fur is the base-layer material by preference (fur inward, a degree more
+than hide in the shirt), and its fat item gets a second source. A's
+runner gets three orders: keep boots lined, keep clothing above N, and
+the pit as a job that finishes on its own; B's forecast gets "your coat
+will be at 0 in six days" as a cause.
+
+**What to settle in the spec.** Whether both tanning ways ship or bark
+alone; whether the pit is a structure in 3's sense or a vessel with a
+timer; the exact insulation of every rung, checked against the winter
+rule that a full tailored set, a cabin and a fire hold warmth at -30 C
+and a wrapped set does not; and whether the starting kit gets a rawhide
+or a scrap of tanned hide so the first mend does not wait on a deer.
 
 ## Rules that hold across all eight
 
