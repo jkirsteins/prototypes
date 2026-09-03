@@ -134,12 +134,57 @@ stand beside them:
 
 ### 3. Camp build-out
 
-The cabin made properly expensive for one person. Woodshed, smokehouse,
-raised cache or cellar, storehouse, tool shed, palisade, a chimney or vent
-as part of a shelter, roofs with a snow load they can fail under, water
-storage. Every building is an answer to a threat from 1, 4, 7 or 8, and
-its cost is tuned against that threat. Water storage and the cellar are
-the two that answer what A's build measured, and they come first.
+Camp today is two rungs, a lean-to at 4 hours for +5 and a cabin at 60
+hours and 40 logs for +15, with nothing between, and A's build shows the
+away runs dead before the cabin is affordable. This is the item with the
+least depth today and the cheapest depth to add: every rung is a row in
+the structures table and a warmth rule. It has three parts, in this
+order: siting, the shelter ladder, and the buildings.
+
+**Siting.** Camp is the cell nearest the region centroid and the player
+never places it. It becomes a chosen cell: walk to it and "make camp
+here". The region says what a cell offers before you commit: water
+within reach and whether it ices over, forest within haul, rock, a dry
+slope, bark or bog turf for a roof, wind exposure once 7 lands, bear
+country once D's populations act. Orders belong to the camp as they do
+today and the runner walks to the chosen cell. Choosing where to settle
+is the decision the rest of the run is spent living with, and it is the
+most idle-shaped addition in this roadmap; the rungs below are what make
+the choice mean something.
+
+**The shelter ladder.** Each rung has a northern precedent and a cost it
+pays back in a different currency. Warmth is the shelter term of the
+felt-temperature sum, as the lean-to's +5 and the cabin's +15 are today.
+
+| rung | build | gives | costs it back | where it stands |
+|---|---|---|---|---|
+| snow shelter | 2 h, no materials, deep snow | about 0 C inside, out of the wind | melts in a thaw; winter only | wherever 7's drifts put deep snow |
+| lean-to | as today: 4 h, 8 sticks, 4 logs, 2 cordage | +5, halves wetting | open front | anywhere |
+| rock shelter | nothing; the site gives it | the lean-to's roof and wind wall, no snow load, no fire spread from bare rock | cold rock, so no more than a lean-to's warmth; smoke pools under the overhang by the closed-cabin rule; a bear den in winter (4) | fell edge and boulder field cells the world generates |
+| turf hut | 2 days: poles, 20 sticks, birch bark or bog turf for the roof | +10, blocks rain, a hearth with a smoke hole so a fire inside is legal | the roof rots in a year or two and is re-turfed; heavy in bark, light in logs | where bark or turf is within reach |
+| dug-out | 30 h: 12 logs for the roof, turf over, and a digging tool, an elk's shoulder blade from D's bone yield | +12, and the earth holds it near 0 C unheated, so a winter costs a third of a cabin's firewood | damp: bedding and hide inside wear as if in rain; floods on flat ground, so a dry slope or nothing | a slope that is neither rock nor bog |
+| cabin | as today: 60 h, 40 logs, 12 stone, 8 cordage | +15, blocks everything; the hearth, storehouse and cellar attach here | the cost | forest within haul |
+| hide tent | E's hides, 6 of them sewn, and poles cut on site | +8 with a hearth inside; 15 kg in the pack | wears like clothing; poles are cut fresh each pitch | walks with you; it is the shelter 6's moving camp needs and a multi-day hunt uses before that |
+
+The rungs that carry the item: the turf hut is the missing middle, the
+rung a player reaches in the first fortnight and winters in when the
+cabin is out of reach, so the first winter becomes a choice between hut
+plus wood pile and cabin plus less wood. The dug-out is the idle economy
+rung, since its payoff is firewood not burned, which is hours the runner
+does not spend, the currency every standing order is measured in. The
+rock shelter is the first-winter answer that costs a walk instead of a
+build, and it stays worse than a cabin in every way that matters so the
+cabin keeps its reason. A player who winters in a shelter survives and
+grows nothing; a player who builds a cabin has somewhere for the
+storehouse to go.
+
+**The buildings.** The cabin made properly expensive for one person.
+Woodshed, smokehouse, raised cache or cellar, storehouse, tool shed,
+palisade, a chimney or vent as part of a shelter, roofs with a snow load
+they can fail under, water storage. Every building is an answer to a
+threat from 1, 4, 7 or 8, and its cost is tuned against that threat.
+Water storage and the cellar are the two that answer what A's build
+measured, and they come first.
 
 ### 4. Animals as agents
 
