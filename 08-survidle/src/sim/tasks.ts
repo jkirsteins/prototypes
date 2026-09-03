@@ -10,7 +10,7 @@ import {
 } from "./inventory";
 import {
   ANIMALS, CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RECIPES, RECIPE_IDS, STRUCTURES,
-  STRUCTURE_IDS, type SpeciesDef,
+  STRUCTURE_IDS, TORCH_BURN_MINUTES, type SpeciesDef,
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed, walkSpeed, workSpeed } from "./player";
@@ -58,7 +58,7 @@ export const SPOT_NAMES = SPOT_WORDS;
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
 const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook"]);
 /** Work you carry in your hands wherever you go. */
-const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light"]);
+const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightTorch"]);
 
 /** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
 export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string, at = cellOf(state, world)): string | null {
@@ -76,7 +76,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "light",
+  "craft", "repair", "sharpen", "build", "light", "lightTorch",
 ]);
 
 /** Berries ripen mid-July and are gone by mid-October. */
@@ -272,6 +272,14 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }
+    case "lightTorch": {
+      const o = opt({ group: "camp", label: "Light a torch", detail: "burns 1 h; no night penalty on foot, and wolves keep off", duration: 1 });
+      if (p.torch.lit) return { ...o, ok: false, why: "a torch is already burning" };
+      if (totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
+      if (camp && st.fire.lit) return { ...o, detail: `${o.detail}; lit from the fire` };
+      if (hasTool(p, "fireDrill")) return { ...o, duration: 10, detail: `${o.detail}; with the fire drill` };
+      return { ...o, ok: false, why: "needs a fire or a fire drill" };
+    }
     case "travel":
     case "walk": {
       const target = walkTarget(state, world, arg ?? "");
@@ -353,6 +361,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
   out.push(check(state, world, cal, "light"));
+  out.push(check(state, world, cal, "lightTorch"));
   out.push(check(state, world, cal, "split"));
   out.push(check(state, world, cal, "sharpen"));
   out.push(check(state, world, cal, "repair"));
@@ -723,6 +732,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.fire.lit = true;
       st.fire.fuelKg += 1;
       log(state, "Smoke, then flame. The fire is lit.", "good");
+      return;
+    }
+    case "lightTorch": {
+      consume(invs, [{ item: "torch", qty: 1 }]);
+      if (!(atCamp(state, world) && st.fire.lit)) wearTool(p, "fireDrill", wearFactor(state, world, "lightTorch"));
+      p.torch = { lit: true, minutes: TORCH_BURN_MINUTES };
+      log(state, "The torch catches.", "good");
       return;
     }
     case "haul":

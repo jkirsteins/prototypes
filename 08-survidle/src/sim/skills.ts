@@ -23,7 +23,7 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   hunting: ["hunt:hare", "hunt:grouse", "hunt:deer", "hunt:elk", "snare"],
   fishing: ["fish"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen"],
-  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "cook:rawMeat", "cook:fish"],
+  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish"],
 };
 
 export const SKILL_CAP = 50;
@@ -88,7 +88,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "build": return arg === "snare" ? "hunting" : "building";
     case "fish": return "fishing";
     case "craft": case "repair": case "sharpen": return "crafting";
-    case "light": case "cook": return "building";
+    case "light": case "lightTorch": case "cook": return "building";
     default: return null;
   }
 }
@@ -98,7 +98,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
     case "sticks": case "bark": case "split": case "berries": case "stone":
-    case "fish": case "repair": case "sharpen": case "light":
+    case "fish": case "repair": case "sharpen": case "light": case "lightTorch":
       return id;
     case "hunt": return `hunt:${arg}`;
     case "build": return arg === "snare" ? "snare" : `build:${arg}`;

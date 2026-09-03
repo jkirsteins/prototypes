@@ -61,7 +61,7 @@ export const SPOTS: SpotId[] = ["camp", "forest", "outcrop", "shore", "heath"];
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build"
-  | "light" | "travel" | "walk" | "haul" | "night" | "rest" | "sleep";
+  | "light" | "lightTorch" | "travel" | "walk" | "haul" | "night" | "rest" | "sleep";
 
 export interface Task {
   id: TaskId;

@@ -48,6 +48,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
   if (p.injured > 0) tags.push(`<span class="tag bad">injured, ${fmtDuration(p.injured)}</span>`);
+  if (p.torch.lit) tags.push(`<span class="tag">torch lit, ${fmtDuration(p.torch.minutes)}</span>`);
   if (p.kcal <= 1200) tags.push(`<span class="tag bad">starving</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
@@ -280,7 +281,7 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
 export const INTENT_GROUPS: { label: string; items: { id: TaskId; arg?: string }[] }[] = [
   { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
   { label: "Hunt", items: [...SPECIES.filter((s) => s !== "fish").map((s) => ({ id: "hunt" as TaskId, arg: s })), { id: "fish" }] },
-  { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+  { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
   { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
   { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
 ];

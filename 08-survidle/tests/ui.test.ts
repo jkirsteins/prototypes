@@ -41,7 +41,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     }
   });
   it("every gather, camp and move task", () => {
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "rest", "sleep", "haul"]) {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep", "haul"]) {
       expect(html).toContain(`data-opt="${id}:`);
     }
     for (const nb of regionAt(world, state.player.region).neighbours) expect(html).toContain(`data-opt="travel:region:${nb.id}"`);
@@ -222,6 +222,7 @@ describe("the Do panel", () => {
     for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
+    expect(html).toContain('data-opt="intent:lightTorch:"');
     expect(html).not.toContain('class="tabs"');
     expect(html).toContain('data-act="advanced"');
   });

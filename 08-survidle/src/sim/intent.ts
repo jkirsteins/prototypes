@@ -393,6 +393,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   sharpen: () => "sharpening the axe",
   build: (arg) => `building the ${STRUCTURES[arg as StructureId].name}`,
   light: () => "lighting the fire",
+  lightTorch: () => "lighting a torch",
   rest: () => "resting",
   sleep: () => "sleeping",
 };
