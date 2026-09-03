@@ -209,10 +209,13 @@ up" when there is no fire). `rest` is 60 minutes and repeats through the
 work tier's silence until warmth is back at 45; the runner starts another
 `rest` each time the slot frees while the need holds.
 
-A cold body with no fire and no shelter may never reach 45; then the rest
-repeats until sleep takes over or the player stops it. That is the
-same fate a manual player meets, and the Doing panel says "resting to warm
-up" so the player can see it is not working and act.
+The need holds only when this region's camp can actually warm the body: a
+fire already lit, a roof over it (a lean-to or a cabin), or a fire step
+(build the pit, split fuel, light it) still waiting to be taken there.
+Otherwise the work goes on cold, because activity runs warmer than idling by
+a fire that is not there - a camp with none of these would only cool the
+character faster through `rest` than felling a tree does, and the runner
+does not walk into that trade for them.
 
 ### 3.3 Hungry
 

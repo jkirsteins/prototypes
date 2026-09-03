@@ -97,13 +97,18 @@ describe("the body tier", () => {
   });
 
   it("cold, it goes to camp and rests until warm again, and sleep outranks cold", () => {
-    const { g, state, world } = felling();
+    const { g, state, world, camp } = felling();
+    const st = regionState(state, world, state.player.region);
+    // A fire already going, so this region's camp can actually warm a cold body.
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
     expect(state.intent?.need).toBe("cold");
     expect(state.intent?.step).toBe("walking to camp to warm up");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
+    expect(cellOf(state, world)).toBe(camp);
     // Between the entry and the exit the need still holds; at the exit it lets go.
     state.player.warmth = 40;
     advance(state, world, 1);
@@ -115,6 +120,26 @@ describe("the body tier", () => {
     state.player.energy = 15;
     advance(state, world, 1);
     expect(state.intent?.need).toBe("sleep");
+  });
+
+  it("cold with a bare camp (no pit, no drill, no shelter) keeps working: the camp cannot warm anyone", () => {
+    const { g, state, world } = felling();
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.player.warmth = 29;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBeNull();
+    expect(state.task?.id).toBe("chop");
+  });
+
+  it("cold with a lean-to at camp and no fire still goes to camp: shelter alone counts", () => {
+    const { g, state, world } = felling();
+    const st = regionState(state, world, state.player.region);
+    st.structures.leanTo = true;
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.player.warmth = 29;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("cold");
+    expect(state.intent?.step).toBe("walking to camp to warm up");
   });
 
   it("hungry, it eats from the pack and keeps working; with food only at camp it goes there", () => {

@@ -9,7 +9,7 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { eat } from "./actions";
 import type { Calendar } from "./calendar";
-import { hasTool, pile, qty, reach, totalQty, transfer, weight } from "./inventory";
+import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG } from "./items";
 import { log } from "./log";
 import { cellOf } from "./position";
@@ -28,14 +28,15 @@ export const PROVISION_KG = 2;
 const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"];
 
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
-export function currentNeed(state: GameState, cal: Calendar, it: Intent): BodyNeed | null {
+export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
   const sleep = it.need === "sleep"
     || p.energy <= SLEEP_AT
     || (cal.isNight && p.energy < NIGHT_SLEEP_UNDER)
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
-  if (p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT)) return "cold";
+  const cold = p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT);
+  if (cold && campCanWarm(state, world, cal)) return "cold";
   if (p.kcal < HUNGRY_UNDER) return "hungry";
   return null;
 }
@@ -44,6 +45,40 @@ export function currentNeed(state: GameState, cal: Calendar, it: Intent): BodyNe
 export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, need: BodyNeed): Step | null {
   if (need === "hungry") return hungryStep(state, world, cal, rng);
   return campStep(state, world, cal, need);
+}
+
+/**
+ * The fire step waiting at a cell: build the pit, split fuel for it, or
+ * light it. Null once the fire is already lit or nothing more can be done
+ * there. Judged at a given cell (rather than wherever the player stands) so
+ * a body already at camp and one still deciding whether the walk is worth
+ * it never disagree about what camp offers.
+ */
+function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
+  const p = state.player;
+  const st = regionState(state, world, p.region);
+  if (st.fire.lit) return null;
+  if (!st.structures.firePit) {
+    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "laying a fire pit" } : null;
+  }
+  if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
+  const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
+  if (hasTool(p, "fireDrill") && firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {
+    return { id: "split", step: "splitting a log for the fire" };
+  }
+  return null;
+}
+
+/**
+ * Whether this region's camp can actually warm a cold body: a fire already
+ * lit, a roof over it, or a fire step still waiting there. A camp with none
+ * of these cannot help; the cold need does not send the runner to a rest
+ * that only makes it colder than working would have.
+ */
+function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
+  const st = regionState(state, world, state.player.region);
+  if (st.fire.lit || st.structures.leanTo || st.structures.cabin) return true;
+  return fireStep(state, world, cal, st.campCell) !== null;
 }
 
 /** Walk to this region's camp, make a fire if the means are here, then sleep or rest. */
@@ -61,15 +96,8 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. You sleep where you are.", "bad");
     return s;
   }
-  if (!st.fire.lit) {
-    if (!st.structures.firePit) {
-      if (check(state, world, cal, "build", "firePit").ok) return { id: "build", arg: "firePit", step: "laying a fire pit" };
-    } else if (check(state, world, cal, "light").ok) {
-      return { id: "light", step: "lighting the fire" };
-    } else if (hasTool(p, "fireDrill") && totalQty(reach(state, world), "firewood") < 1 && check(state, world, cal, "split").ok) {
-      return { id: "split", step: "splitting a log for the fire" };
-    }
-  }
+  const fs = fireStep(state, world, cal, st.campCell);
+  if (fs) return fs;
   if (need === "sleep") {
     const s: Step = { id: "sleep", step: "sleeping" };
     if (!isRunning(state, s) && st.campCell !== it.campCell) log(state, `You turn in at camp in ${regionAt(world, p.region).name}.`);

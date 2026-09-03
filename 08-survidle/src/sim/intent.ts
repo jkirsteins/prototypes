@@ -389,7 +389,7 @@ function workStep(state: GameState, world: World, cal: Calendar): Outcome {
 export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (!state.intent || state.dead) return;
   const it = state.intent;
-  const need = currentNeed(state, cal, it);
+  const need = currentNeed(state, world, cal, it);
   it.need = need;
   if (need) {
     const s = bodyStep(state, world, cal, rng, need);
