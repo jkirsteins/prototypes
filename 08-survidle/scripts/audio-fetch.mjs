@@ -24,8 +24,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
-const FFMPEG = process.env.FFMPEG ?? "/opt/homebrew/bin/ffmpeg";
-const FFPROBE = process.env.FFPROBE ?? "/opt/homebrew/bin/ffprobe";
+const FFMPEG = process.env.FFMPEG ?? "ffmpeg";
+const FFPROBE = process.env.FFPROBE ?? "ffprobe";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const proto = path.resolve(here, "..");
