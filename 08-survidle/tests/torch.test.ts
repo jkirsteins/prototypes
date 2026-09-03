@@ -10,8 +10,8 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
-import { newUiState } from "../src/ui/render";
 import { statsHtml } from "../src/ui/panels";
+import { newUiState } from "../src/ui/render";
 
 type G = ReturnType<typeof newGame>;
 function run(g: G, minutes: number) {
