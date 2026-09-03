@@ -12,6 +12,7 @@ import { log } from "./log";
 import { atCamp } from "./position";
 import { regionState, touchedRegions } from "./regionstate";
 import { type GameState, PERISHABLES } from "./types";
+import { THAW_L_PER_HOUR } from "./water";
 
 /** Fires, racks and rot, every minute, everywhere. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number): void {
@@ -59,6 +60,18 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${name()}.`, "good");
         st.rack.kg = 0;
         st.rack.dried = 0;
+      }
+    }
+
+    // A bucket of ice by a fed fire thaws itself; nobody has to tend it.
+    if (st.fire.lit && st.fire.fuelKg > 0) {
+      const campPile = state.piles[st.campCell];
+      const ice = campPile ? qty(campPile, "ice") : 0;
+      if (campPile && ice > 1e-9) {
+        const melt = Math.min(ice, (THAW_L_PER_HOUR / 60) * dt);
+        removeItem(campPile, "ice", melt);
+        addItem(campPile, "water", melt);
+        if (ice - melt <= 1e-9) log(state, mine ? "The ice at camp has thawed." : `The ice at camp in ${name()} has thawed.`, "good");
       }
     }
 

@@ -96,6 +96,7 @@ export function dropAll(state: GameState, world: World): void {
 }
 
 export function itemLabel(item: ItemId, q: number): string {
+  if (item === "water" || item === "ice") return `${q.toFixed(1)} l ${ITEM_NAMES[item]}`;
   if (ITEM_KG[item] === 1) return `${q >= 10 ? Math.round(q) : q.toFixed(1)} kg ${ITEM_NAMES[item]}`;
   return `${Math.round(q)} ${ITEM_NAMES[item]}`;
 }

@@ -163,12 +163,12 @@ export function consume(invs: Inventory[], needs: Need[]): void {
 
 /**
  * Where something just made goes: the pack while it is under the comfortable
- * limit, otherwise the ground. Logs are never pocketed.
+ * limit, otherwise the ground. Logs, water and ice are never pocketed.
  */
 export function produce(state: GameState, world: World, item: ItemId, n: number): "pack" | "pile" {
   const p = state.player;
   const addedKg = n * ITEM_KG[item];
-  if (item !== "log" && weight(p.pack) + addedKg <= PACK_COMFORTABLE_KG + 1e-9) {
+  if (item !== "log" && item !== "water" && item !== "ice" && weight(p.pack) + addedKg <= PACK_COMFORTABLE_KG + 1e-9) {
     addItem(p.pack, item, n);
     return "pack";
   }

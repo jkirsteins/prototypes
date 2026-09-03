@@ -5,11 +5,11 @@
  */
 import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
-import { carried } from "./inventory";
+import { addItem, carried, pile, qty, removeItem } from "./inventory";
 import { TOOLS } from "./items";
 import { type Activity, activityOf } from "./player";
 import { cellOf, watersideCell } from "./position";
-import type { GameState, Player } from "./types";
+import type { GameState, Inventory, Player, ToolId } from "./types";
 
 export const WATER_FULL = 3.0;
 export const THIRSTY_L = 1.0;
@@ -49,7 +49,47 @@ export function vesselLitres(p: Player): number {
   return l;
 }
 
-/** Fills the body from a vessel first, then the source under foot. False when neither has water. */
+/** What holds water when it is left at camp. */
+export const VESSELS: ToolId[] = ["barkBucket", "waterskin"];
+/** Litres an hour a fed fire thaws at camp. */
+export const THAW_L_PER_HOUR = 2;
+
+/** Litres the vessels lying in this pile can hold between them. */
+export function campWaterCapacity(inv: Inventory): number {
+  let l = 0;
+  for (const v of VESSELS) l += qty(inv, v) * (TOOLS[v].litres ?? 0);
+  return l;
+}
+
+/** Room left in this pile's vessels: capacity less the water and ice already in them. */
+export function campWaterRoom(inv: Inventory): number {
+  return Math.max(0, campWaterCapacity(inv) - qty(inv, "water") - qty(inv, "ice"));
+}
+
+/** Empties the carried vessels into the pile's vessels as far as they have room. Returns litres poured. */
+export function pourVessels(p: Player, inv: Inventory): number {
+  let room = campWaterRoom(inv);
+  let poured = 0;
+  for (const t of p.tools) {
+    if (room <= 1e-9) break;
+    if (t.frozen || !(t.litres ?? 0)) continue;
+    const put = Math.min(room, t.litres!);
+    t.litres! -= put;
+    room -= put;
+    poured += put;
+  }
+  if (poured > 1e-9) addItem(inv, "water", poured);
+  return poured;
+}
+
+/** This region's camp pile, when standing on its camp cell; null anywhere else. */
+export function campPileHere(state: GameState, world: World): Inventory | null {
+  const st = state.regions[state.player.region];
+  if (!st || cellOf(state, world) !== st.campCell) return null;
+  return pile(state, st.campCell);
+}
+
+/** Fills the body from a vessel first, then camp water underfoot, then the source under foot. False when nothing has water. */
 export function drink(state: GameState, world: World): boolean {
   const p = state.player;
   let want = WATER_FULL - p.water;
@@ -59,6 +99,12 @@ export function drink(state: GameState, world: World): boolean {
     if (t.frozen || !(t.litres ?? 0)) continue;
     const take = Math.min(want, t.litres!);
     t.litres! -= take;
+    want -= take;
+  }
+  const camp = want > 1e-9 ? campPileHere(state, world) : null;
+  if (camp) {
+    const take = Math.min(want, qty(camp, "water"));
+    removeItem(camp, "water", take);
     want -= take;
   }
   if (want > 1e-9 && waterSource(state, world)) want = 0;

@@ -24,7 +24,9 @@ export type CountItem =
 /** Items measured in kilograms. */
 export type KgItem =
   | "firewood" | "hide" | "fur" | "fat" | "rawMeat" | "cookedMeat" | "driedMeat"
-  | "fish" | "cookedFish" | "berries" | "wetFirewood";
+  | "fish" | "cookedFish" | "berries" | "wetFirewood"
+  /** Litres, at a kilo a litre; only ever in a pile. */
+  | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */

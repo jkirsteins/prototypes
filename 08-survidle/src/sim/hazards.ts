@@ -9,6 +9,7 @@ import { cellAt, neighbours, regionAt, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { coldFeet, coldHands, frostbiteChance, FROSTBITE_MINUTES } from "./clothing";
 import { fuelTotal, groundDry, SPREAD_FUEL_KG, SPREAD_PER_HOUR, SPREAD_UNATTENDED_MINUTES } from "./fire";
+import { addItem, qty, removeItem } from "./inventory";
 import { TOOLS } from "./items";
 import { log } from "./log";
 import { activityOf } from "./player";
@@ -16,11 +17,12 @@ import { atCamp, cellOf } from "./position";
 import { regionState, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
-import { FREEZE_C } from "./water";
+import { campWaterCapacity, FREEZE_C } from "./water";
 import { ICE_THIN_CM } from "./weather";
 
 export function hourlyHazards(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
   freezeVessels(state, world, ambient, rng);
+  freezeCamps(state, world, ambient, rng);
   frostbite(state, felt, rng);
   spread(state, world, cal, rng);
 }
@@ -115,5 +117,31 @@ function freezeVessels(state: GameState, world: World, ambient: number, rng: Rng
       p.tools = p.tools.filter((x) => x !== t);
       log(state, "The bucket has split in the frost.", "bad");
     }
+  }
+}
+
+/** Water left at camp in frost with no fire: it freezes, and a full bucket may split. */
+function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng): void {
+  if (ambient >= FREEZE_C) return;
+  const p = state.player;
+  for (const id of touchedRegions(state)) {
+    const st = state.regions[id];
+    if (st.fire.lit) continue;
+    const camp = state.piles[st.campCell];
+    if (!camp) continue;
+    const litres = qty(camp, "water");
+    if (litres <= 1e-9) continue;
+    removeItem(camp, "water", litres);
+    addItem(camp, "ice", litres);
+    // Each bucket at camp rolls the split a carried one does, and takes its share of the ice with it.
+    const buckets = qty(camp, "barkBucket");
+    const full = litres > campWaterCapacity(camp) / 2;
+    for (let i = 0; i < buckets; i++) {
+      if (!full || !rng.chance(1 / 3)) continue;
+      removeItem(camp, "barkBucket", 1);
+      removeItem(camp, "ice", Math.min(TOOLS.barkBucket.litres!, qty(camp, "ice")));
+      log(state, id === p.region ? "A bucket at camp has split in the frost." : `A bucket at camp in ${regionAt(world, id).name} has split in the frost.`, "bad");
+    }
+    log(state, id === p.region ? "The water at camp has frozen." : `The water at camp in ${regionAt(world, id).name} has frozen.`, "bad");
   }
 }

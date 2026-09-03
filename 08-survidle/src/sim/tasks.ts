@@ -6,7 +6,7 @@ import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { cue } from "./cues";
 import {
-  canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
+  addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
@@ -31,7 +31,7 @@ import type {
   GameState, IceMode, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
 } from "./types";
-import { WATER_FULL } from "./water";
+import { campPileHere, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -483,7 +483,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = needCamp(opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 }));
       if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (!p.tools.some((t) => t.frozen)) return { ...o, ok: false, why: "nothing is frozen" };
+      if (!p.tools.some((t) => t.frozen) && qty(pile(state, st.campCell), "ice") <= 1e-9) return { ...o, ok: false, why: "nothing is frozen" };
       return o;
     }
     case "lightIndoors": {
@@ -1063,6 +1063,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "thaw": {
       for (const t of p.tools) if (t.frozen) t.frozen = false;
+      const camp = campPileHere(state, world);
+      if (camp) {
+        const ice = qty(camp, "ice");
+        removeItem(camp, "ice", ice);
+        addItem(camp, "water", ice);
+      }
       return;
     }
     case "haul":

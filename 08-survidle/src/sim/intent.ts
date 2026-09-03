@@ -19,6 +19,7 @@ import { regionState } from "./regionstate";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
+import { pourVessels } from "./water";
 import { candidateWeight, check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
@@ -270,8 +271,11 @@ function loadFull(state: GameState, it: Intent): boolean {
 
 function dropEverything(state: GameState, world: World): void {
   const from = state.player.pack;
-  const to = pile(state, cellOf(state, world));
+  const here = cellOf(state, world);
+  const to = pile(state, here);
   for (const { item, qty: q } of listItems(from)) transfer(from, to, item, q);
+  // Unloading at the home camp empties the vessels too, as far as the vessels at camp have room.
+  if (state.intent?.campCell === here) pourVessels(state.player, to);
 }
 
 type Outcome = "again" | undefined;

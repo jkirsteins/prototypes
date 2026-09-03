@@ -3,12 +3,17 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { hourlyHazards } from "../src/sim/hazards";
+import { addItem, pile, produce, qty, takeUp } from "../src/sim/inventory";
+import { itemLabel } from "../src/sim/actions";
 import { newGame } from "../src/sim/newgame";
 import { causeFrom, stepPlayer, workSpeed } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
-import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterLossPerHour, waterSource } from "../src/sim/water";
+import {
+  campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
+  vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
+} from "../src/sim/water";
 import { doHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 
@@ -144,5 +149,75 @@ describe("vessels and snow", () => {
     const bucket = state.player.tools.find((t) => t.id === "barkBucket");
     // Six freezing hours at one-in-three: the bucket split (gone) or froze whole; never a drinkable one left.
     expect(bucket === undefined || bucket.frozen === true).toBe(true);
+  });
+});
+
+function atCamp(seed = 17) {
+  const g = newGame(seed);
+  const { state, world } = g;
+  const st = regionState(state, world, state.player.region);
+  placeAt(state, world, st.campCell);
+  return { g, state, world, st, camp: pile(state, st.campCell) };
+}
+
+describe("water at camp", () => {
+  it("capacity is the vessels lying at camp, and a pour stops at the cap", () => {
+    const { state, world, camp } = atCamp();
+    expect(campWaterCapacity(camp)).toBe(0);
+    addItem(camp, "barkBucket", 1);
+    addItem(camp, "waterskin", 1);
+    expect(campWaterCapacity(camp)).toBe(5);
+    addItem(state.player.pack, "waterskin", 1);
+    takeUp(state, world, "waterskin");
+    state.player.tools.find((t) => t.id === "waterskin")!.litres = 3;
+    addItem(camp, "water", 4);
+    expect(pourVessels(state.player, camp)).toBe(1);
+    expect(qty(camp, "water")).toBe(5);
+    expect(state.player.tools.find((t) => t.id === "waterskin")!.litres).toBe(2);
+    expect(itemLabel("water", 5)).toBe("5.0 l water");
+  });
+
+  it("standing at camp, you drink the camp water", () => {
+    const { state, world, camp } = atCamp();
+    state.player.water = 1;
+    addItem(camp, "barkBucket", 1);
+    addItem(camp, "water", 2);
+    expect(drink(state, world)).toBe(true);
+    expect(state.player.water).toBe(3);
+    expect(qty(camp, "water")).toBe(0);
+  });
+
+  it("camp water freezes without a fire under -5 C and thaws by a fed fire", () => {
+    const { state, world, st, camp } = atCamp();
+    // Under half the capacity, so no bucket rolls a split and the numbers are exact.
+    addItem(camp, "barkBucket", 2);
+    addItem(camp, "water", 1.5);
+    hourlyHazards(state, world, cal, -8, -8, new Rng(1));
+    expect(qty(camp, "water")).toBe(0);
+    expect(qty(camp, "ice")).toBeCloseTo(1.5, 5);
+    expect(qty(camp, "barkBucket")).toBe(2);
+    expect(state.log.some((l) => l.text === "The water at camp has frozen.")).toBe(true);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 30;
+    // Two litres an hour: half an hour thaws one.
+    advance(state, world, 30);
+    expect(qty(camp, "ice")).toBeCloseTo(0.5, 2);
+    expect(qty(camp, "water")).toBeCloseTo(1, 2);
+  });
+
+  it("a fire at camp keeps the water from freezing", () => {
+    const { state, world, st, camp } = atCamp();
+    addItem(camp, "barkBucket", 1);
+    addItem(camp, "water", 2);
+    st.fire.lit = true;
+    st.fire.fuelKg = 10;
+    hourlyHazards(state, world, cal, -8, -8, new Rng(1));
+    expect(qty(camp, "water")).toBe(2);
+  });
+
+  it("water is never pocketed: produce puts it on the ground", () => {
+    const { state, world } = atCamp();
+    expect(produce(state, world, "water", 1)).toBe("pile");
   });
 });

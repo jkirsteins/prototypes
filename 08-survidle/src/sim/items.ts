@@ -9,12 +9,14 @@ export const ITEM_KG: Record<ItemId, number> = {
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4,
   firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
+  water: 1, ice: 1,
   axe: 1.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
   needle: 0.01, barkBucket: 0.3, waterskin: 0.4,
 };
 
 export const KG_ITEMS = new Set<ItemId>([
   "firewood", "hide", "fur", "fat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
+  "water", "ice",
 ]);
 
 export const ITEM_NAMES: Record<ItemId, string> = {
@@ -22,7 +24,7 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches",
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
-  wetFirewood: "wet firewood",
+  wetFirewood: "wet firewood", water: "water", ice: "ice",
   axe: "axes", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
