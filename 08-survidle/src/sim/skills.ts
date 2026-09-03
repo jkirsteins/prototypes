@@ -140,8 +140,8 @@ export function gap(state: GameState, key: string): number {
   return Math.max(0, rec.level - skillLevel(state, rec.skill));
 }
 
-/** The concrete extras, at mastery 20 and 50, by key; a key not here is speed only. */
-export const EXTRAS: Record<string, { at20: string; at50: string }> = {
+/** The concrete extras, at mastery 20 and 50, by key; a key not here is speed only. A key with no at50 has nothing to promise there. */
+export const EXTRAS: Record<string, { at20: string; at50?: string }> = {
   "chop:spruce": { at20: "an extra stick per tree", at50: "the axe keeps its edge on spruce" },
   "chop:pine": { at20: "an extra stick per tree", at50: "the axe keeps its edge on pine" },
   "chop:birch": { at20: "an extra stick per tree", at50: "the axe keeps its edge on birch" },
@@ -149,8 +149,9 @@ export const EXTRAS: Record<string, { at20: string; at50: string }> = {
   "craft:hideTrousers": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:hideBoots": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:hideBlanket": { at20: "one sinew fewer", at50: "a tenth less hide" },
-  "craft:furHat": { at20: "one sinew fewer", at50: "a tenth less hide" },
-  "craft:furMittens": { at20: "one sinew fewer", at50: "a tenth less hide" },
+  // The tenth off the canonical need is real but inert on these two: a tenth off one fur rounds back to one, so nothing is promised at 50.
+  "craft:furHat": { at20: "one sinew fewer" },
+  "craft:furMittens": { at20: "one sinew fewer" },
 };
 
 /** Extras text by the class a hunted or fished species falls into. */
@@ -208,7 +209,7 @@ export function fishKg(state: GameState, species: Species): number {
   return (SPECIES_DEFS[species].yields?.meatKg ?? 0) * (m >= 50 ? 5 / 3 : m >= 20 ? 4 / 3 : 1);
 }
 
-/** A recipe's needs after mastery: hide and fur pieces want one sinew fewer at 20 and a tenth less hide at 50. */
+/** A recipe's needs after mastery: hide and fur pieces want one sinew fewer at 20 and a tenth less of the skin they are cut from at 50. */
 export function effectiveNeeds(state: GameState, recipe: RecipeId): Need[] {
   const rec = RECIPES[recipe];
   if (!EXTRAS[`craft:${recipe}`]) return rec.needs;
@@ -216,13 +217,13 @@ export function effectiveNeeds(state: GameState, recipe: RecipeId): Need[] {
   return rec.needs
     .map((n) => {
       if (n.item === "sinew" && m >= 20) return { ...n, qty: n.qty - 1 };
-      if (n.item === "hide" && m >= 50) return { ...n, qty: Math.round((n.qty * 0.9) * 2) / 2 };
+      if ((n.item === "hide" || n.item === "fur") && m >= 50) return { ...n, qty: Math.round((n.qty * 0.9) * 2) / 2 };
       return n;
     })
     .filter((n) => n.qty > 0);
 }
 
-/** Chance the animal hurts you: its own, plus ten points per level short, halved by mastery 50 on deer and elk. */
+/** Chance the animal hurts you: its own, plus ten points per level short, halved by mastery 50 on big game, whatever extrasClass calls big. */
 export function injuryChance(state: GameState, species: Species): number {
   const base = (SPECIES_DEFS[species].hunt?.injury ?? 0) + 0.1 * gap(state, `hunt:${species}`);
   return Math.min(1, base * huntExtras(state, species).injuryFactor);
@@ -312,7 +313,7 @@ export function train(state: GameState, world: World, dt: number): void {
   const extra = EXTRAS[key];
   if (extra) {
     if (mBefore < 20 && mAfter >= 20) log(state, `${keyName(key)} mastery 20: ${extra.at20}.`, "good");
-    if (mBefore < 50 && mAfter >= 50) log(state, `${keyName(key)} mastery 50: ${extra.at50}.`, "good");
+    if (extra.at50 && mBefore < 50 && mAfter >= 50) log(state, `${keyName(key)} mastery 50: ${extra.at50}.`, "good");
   }
   s.pool = Math.min(poolCapacity(skill), s.pool + dt);
 }

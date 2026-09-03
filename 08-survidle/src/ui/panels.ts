@@ -1,12 +1,12 @@
 import { itemLabel } from "../sim/actions";
-import { densityLabel, regionDensity } from "../sim/animals";
+import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
-import { awayWord, fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
+import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
@@ -159,11 +159,14 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
   return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(state.weather.iceCm)} cm, thin)</button>`;
 }
 
-/** "mallard gone until April" for a migrant out of season, otherwise the density in words. */
+/** "mallard gone until April" for a species that cannot be met at all now, otherwise the density in words. */
 function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
   const def = SPECIES_DEFS[s];
-  if (def.season.kind === "migrant" && (cal.month < def.season.arrive || cal.month >= def.season.leave)) {
-    return isVoiceOnly(s) ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} ${awayWord(def)} until ${monthName(def.season.arrive)}`;
+  // The same predicate the hunt and fish rows use, so the card and the row cannot disagree.
+  const gone = absence(def, cal, state.weather.iceCm);
+  if (gone) {
+    if (!isVoiceOnly(s)) return `${def.name} ${gone}`;
+    return def.season.kind === "migrant" ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} (${gone})`;
   }
   if (isVoiceOnly(s)) return def.name;
   return `${def.name} <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`;

@@ -332,7 +332,7 @@ describe("mastery extras", () => {
     expect(injuryChance(state, "elk")).toBeCloseTo(0.075, 9);
   });
 
-  it("hide and fur recipes: one sinew fewer at 20, a tenth less hide at 50", () => {
+  it("hide and fur recipes: one sinew fewer at 20, a tenth less of the skin at 50", () => {
     const { state } = newGame(3);
     expect(effectiveNeeds(state, "hideCoat")).toEqual([{ item: "hide", qty: 6 }, { item: "sinew", qty: 2 }]);
     state.skills.crafting.mastery["craft:hideCoat"] = masteryMinutes(20);
@@ -342,6 +342,14 @@ describe("mastery extras", () => {
     state.skills.crafting.mastery["craft:furHat"] = masteryMinutes(20);
     // A need that drops to zero is left out rather than listed as 0.
     expect(effectiveNeeds(state, "furHat")).toEqual([{ item: "fur", qty: 1, alt: "hide" }]);
+    // The tenth comes off fur as well as hide, but a tenth off one fur rounds back to one, so the fur pieces promise nothing at 50.
+    state.skills.crafting.mastery["craft:furHat"] = masteryMinutes(50);
+    expect(effectiveNeeds(state, "furHat")).toEqual([{ item: "fur", qty: 1, alt: "hide" }]);
+    expect(EXTRAS["craft:furHat"].at50).toBeUndefined();
+    expect(EXTRAS["craft:furMittens"].at50).toBeUndefined();
+    // The blanket is cut from four, and there the tenth shows, whether it is hide or the fur alt.
+    state.skills.crafting.mastery["craft:hideBlanket"] = masteryMinutes(50);
+    expect(effectiveNeeds(state, "hideBlanket")).toEqual([{ item: "hide", qty: 3.5, alt: "fur" }, { item: "sinew", qty: 1 }]);
     expect(effectiveNeeds(state, "cordage")).toEqual([{ item: "bark", qty: 3 }]);
   });
 

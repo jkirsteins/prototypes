@@ -87,7 +87,7 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
 
 /** "Split a log, keep camp at 40 kg firewood"; "Fell a tree, forever, bringing it to camp". */
 export function orderSentence(state: GameState, world: World, cal: Calendar, o: Order): string {
-  const { cell } = resolveCell(state, world, o.req.task, o.req.arg, o.req.where);
+  const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
   const parts = [check(state, world, cal, o.req.task, o.req.arg, cell).label];
   const keep = keepTarget(o);
   const u = o.req.until;
@@ -148,7 +148,7 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       markSkipped(state, world, cal, o, opt.why);
       continue;
     }
-    const { cell } = resolveCell(state, world, o.req.task, o.req.arg, o.req.where);
+    const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
     if (cell !== here) {
       const w = check(state, world, cal, "walk", `cell:${cell}`);
       if (!w.ok) {

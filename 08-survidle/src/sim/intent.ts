@@ -19,7 +19,7 @@ import { regionState } from "./regionstate";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
-import { check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
+import { candidateWeight, check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
 } from "./types";
@@ -39,7 +39,7 @@ const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
 
 /** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
 function groundOf(task: TaskId, arg?: string): SpotId | null {
-  // "Anything" names no species: a hunt for it starts in the forest, a cast for it at the shore.
+  // "Anything" names no species: a cast for it goes to the shore, a hunt for it is placed by anyCell below.
   if (arg === "any") return task === "hunt" ? "forest" : task === "fish" ? "shore" : null;
   if (task === "hunt" || task === "fish") return SPECIES_DEFS[arg as Species]?.hunt?.spot ?? null;
   if (task === "build" && arg === "snare") return "heath";
@@ -83,8 +83,42 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   return one ? [one] : [];
 }
 
+/** The spots a hunt could start from, best first only by what is about; the forest is where a hunt with nothing about begins. */
+const HUNT_SPOTS: SpotId[] = ["forest", "heath", "outcrop", "shore"];
+
+/**
+ * Where a hunt for anything goes. It names no species and so no ground of
+ * its own: the ground under foot is kept whenever anything at all keeps to
+ * it, so a hunt started on a heath full of hare does not walk off to a
+ * forest whose deer the hunter cannot yet take. Otherwise the spot with the
+ * most about, by the weights the draw itself uses.
+ */
+function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where): { cell: number; note: string } {
+  const here = cellOf(state, world);
+  const r = regionAt(world, state.player.region);
+  const weigh = (cell: number) => candidateWeight(state, world, cal, "hunt", cell);
+  let asked: SpotId | null = null;
+  if (typeof where === "string" && where !== "nearest") {
+    const s = spotOf(r, where);
+    if (s && weigh(s.cell) > 0) return { cell: s.cell, note: "" };
+    asked = where;
+  }
+  const note = (spot: SpotId) => (asked ? `${SPOT_WORDS[asked]} does not suit; going to ${SPOT_WORDS[spot]} instead` : "");
+  if (weigh(here) > 0) return { cell: here, note: asked ? `${SPOT_WORDS[asked]} does not suit; hunting from here instead` : "" };
+  let best: { id: SpotId; cell: number; w: number } | null = null;
+  for (const id of HUNT_SPOTS) {
+    const s = spotOf(r, id);
+    if (!s) continue;
+    const w = weigh(s.cell);
+    if (w > 0 && (!best || w > best.w)) best = { id, cell: s.cell, w };
+  }
+  if (best) return { cell: best.cell, note: note(best.id) };
+  const forest = spotOf(r, "forest");
+  return forest ? { cell: forest.cell, note: note("forest") } : { cell: here, note: "" };
+}
+
 /** Where the work is done, decided once. The note says when the chosen spot did not suit. */
-export function resolveCell(state: GameState, world: World, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
+export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
   const here = cellOf(state, world);
   if (typeof where === "object") return { cell: where.cell, note: "" };
   const r = regionAt(world, state.player.region);
@@ -95,6 +129,7 @@ export function resolveCell(state: GameState, world: World, task: TaskId, arg: s
     const needs = RECIPES[arg as RecipeId].needs;
     return { cell: canConsume(reach(state, world), needs) ? here : st.campCell, note: "" };
   }
+  if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
   const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
@@ -133,7 +168,7 @@ function fetchAllowance(state: GameState, world: World, task: TaskId, arg: strin
 
 /** The button: legality judged where the work would be done, so ground is never the reason. */
 export function intentOption(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): TaskOption {
-  const { cell } = resolveCell(state, world, task, arg, where);
+  const { cell } = resolveCell(state, world, cal, task, arg, where);
   const o = check(state, world, cal, task, arg, cell);
   if (o.ok) return o;
   const fa = fetchAllowance(state, world, task, arg, o.why);
@@ -143,7 +178,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 /** Sets out. False when the work could not start at its place; the button already said why. */
 export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null): boolean {
   if (state.dead || req.task === "walk" || req.task === "travel") return false;
-  const { cell, note } = resolveCell(state, world, req.task, req.arg, req.where);
+  const { cell, note } = resolveCell(state, world, cal, req.task, req.arg, req.where);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
     if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) return false;

@@ -6,10 +6,11 @@ import { intentOption, type IntentRequest, intentSentence, resolveCell, startInt
 import { addItem, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { check, stepTask, stopTask } from "../src/sim/tasks";
+import { candidateWeight, check, stepTask, stopTask } from "../src/sim/tasks";
 import { takeStep } from "../src/sim/steps";
 import type { TaskId } from "../src/sim/types";
 import { cellAt, regionAt, spotOf } from "../src/world/gen";
@@ -72,10 +73,10 @@ describe("where the work is done", () => {
     const r = regionAt(world, state.player.region);
     // The starting region's camp happens to sit on forest ground for this seed; stand somewhere that is neither forest nor heath first.
     placeAtSpot(state, world, state.player.region, "heath");
-    expect(resolveCell(state, world, "chop", undefined, "nearest").cell).toBe(spotOf(r, "forest")!.cell);
+    expect(resolveCell(state, world, cal, "chop", undefined, "nearest").cell).toBe(spotOf(r, "forest")!.cell);
     placeAtSpot(state, world, state.player.region, "forest");
-    expect(resolveCell(state, world, "chop", undefined, "nearest").cell).toBe(cellOf(state, world));
-    expect(resolveCell(state, world, "berries", undefined, "nearest").cell).toBe(spotOf(r, "heath")!.cell);
+    expect(resolveCell(state, world, cal, "chop", undefined, "nearest").cell).toBe(cellOf(state, world));
+    expect(resolveCell(state, world, cal, "berries", undefined, "nearest").cell).toBe(spotOf(r, "heath")!.cell);
   });
 
   it("a spot that does not suit the work falls back to one that does, and says so", () => {
@@ -83,7 +84,7 @@ describe("where the work is done", () => {
     const r = regionAt(world, state.player.region);
     // Off forest ground, same reason as above, so the fallback is really tested.
     placeAtSpot(state, world, state.player.region, "heath");
-    const res = resolveCell(state, world, "chop", undefined, "outcrop");
+    const res = resolveCell(state, world, cal, "chop", undefined, "outcrop");
     expect(res.cell).toBe(spotOf(r, "forest")!.cell);
     expect(res.note).toContain("the forest");
     // The note reaches the player: it prefixes the first real step, not just the placeholder.
@@ -95,10 +96,36 @@ describe("where the work is done", () => {
     const { state, world } = newGame(3);
     const camp = regionState(state, world, state.player.region).campCell;
     placeAtSpot(state, world, state.player.region, "forest");
-    expect(resolveCell(state, world, "split", undefined, "nearest").cell).toBe(camp);
-    expect(resolveCell(state, world, "craft", "cordage", "nearest").cell).toBe(camp);
+    expect(resolveCell(state, world, cal, "split", undefined, "nearest").cell).toBe(camp);
+    expect(resolveCell(state, world, cal, "craft", "cordage", "nearest").cell).toBe(camp);
     addItem(state.player.pack, "bark", 3);
-    expect(resolveCell(state, world, "craft", "cordage", "nearest").cell).toBe(cellOf(state, world));
+    expect(resolveCell(state, world, cal, "craft", "cordage", "nearest").cell).toBe(cellOf(state, world));
+  });
+
+  it("a hunt for anything stays on ground that suits something, and otherwise goes where most is about", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const r = regionAt(world, state.player.region);
+    state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
+    addItem(state.player.pack, "arrow", 10);
+    const heath = spotOf(r, "heath")!.cell;
+    placeAt(state, world, heath);
+    // Hare and willow grouse keep to the heath: no reason to walk to the forest for a deer this hunter cannot take.
+    expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heath);
+    expect(startIntent(state, world, cal, rng(), req("hunt", { arg: "any" }))).toBe(true);
+    expect(state.intent!.cell).toBe(heath);
+    stopTask(state, world);
+    state.intent = null;
+    // Standing on forest ground with nothing left in the forest, the hunt goes to the spot that weighs most, not to the forest.
+    placeAtSpot(state, world, state.player.region, "camp");
+    const st = regionState(state, world, state.player.region);
+    for (const s of huntedLand()) if (SPECIES_DEFS[s].hunt!.spot === "forest") st.pop[s] = 0;
+    const heaviest = r.spots
+      .map((s) => ({ cell: s.cell, w: candidateWeight(state, world, cal, "hunt", s.cell) }))
+      .reduce((a, b) => (b.w > a.w ? b : a));
+    expect(heaviest.cell).toBe(heath);
+    expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heaviest.cell);
+    expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).not.toBe(spotOf(r, "forest")!.cell);
   });
 
   it("the button is judged at the resolved cell, so ground is never the reason", () => {

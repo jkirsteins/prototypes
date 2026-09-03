@@ -10,6 +10,7 @@ import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "..
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { regionState } from "../src/sim/regionstate";
+import { rosterHtml } from "../src/ui/panels";
 import { cellAt, regionAt } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -345,5 +346,90 @@ describe("anything", () => {
     done(g);
     expect(state.intent).not.toBeNull();
     expect(state.intent!.done).toBe(1);
+  });
+});
+
+describe("away for the season", () => {
+  // Seed 5's region 1865 is a coast with a lake shore, mallard on the lake and bear in its forest,
+  // which the start regions have not got. Change it if the map changes, with the reason here.
+  const REGION = 1865;
+  function armedAt(seed: number, cell: number) {
+    const g = newGame(seed);
+    g.state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false }, { id: "fishingSpear", durability: 100, litres: 0, frozen: false });
+    addItem(g.state.player.pack, "arrow", 10);
+    placeAt(g.state, g.world, cell);
+    return g;
+  }
+  function lakeShore(world: G["world"]): number {
+    const cell = regionAt(world, REGION).cells.find((c) => cellAt(world, c).terrain !== "water" && watersideCell(world, c, "lake"));
+    expect(cell).toBeDefined();
+    return cell!;
+  }
+
+  it("a migrant gone for the year is away, not merely scarce", () => {
+    const world = newGame(5).world;
+    const g = armedAt(5, lakeShore(world));
+    const { state } = g;
+    const october = calendar(1440 * 200);
+    // The flock decays by a tenth a day, so weeks after it left the numbers still say there are mallard here.
+    expect(regionState(state, g.world, REGION).pop.mallard!).toBeGreaterThan(1);
+    const o = check(state, g.world, october, "hunt", "mallard");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("gone until April");
+    // June, the same shore: the row is the ordinary one again.
+    expect(check(state, g.world, calendar(1440 * 70), "hunt", "mallard").ok).toBe(true);
+  });
+
+  it("a denned bear says so in its own word", () => {
+    const world = newGame(5).world;
+    const forest = spotOf(regionAt(world, REGION), "forest")!.cell;
+    const g = armedAt(5, forest);
+    const january = calendar(1440 * 275);
+    const o = check(g.state, g.world, january, "hunt", "bear");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("denned until April");
+  });
+
+  it("ice takes the lake birds off the row and leaves the fish under it", () => {
+    const world = newGame(5).world;
+    const g = armedAt(5, lakeShore(world));
+    const { state } = g;
+    const june = calendar(1440 * 70);
+    state.weather.iceCm = 10;
+    const duck = check(state, g.world, june, "hunt", "mallard");
+    expect(duck.ok).toBe(false);
+    expect(duck.why).toBe("the lake is frozen");
+    // Fish are reached through the ice, however thick it is.
+    state.weather.iceCm = 30;
+    const perch = check(state, g.world, june, "fish", "perch");
+    expect(perch.ok).toBe(true);
+    expect(perch.why).toBe("");
+  });
+
+  it("the card and the row say the same thing about an absent species", () => {
+    const world = newGame(5).world;
+    const g = armedAt(5, lakeShore(world));
+    const october = calendar(1440 * 200);
+    const html = rosterHtml(g.state, g.world, REGION, october);
+    expect(html).toContain("mallard gone until April");
+    expect(check(g.state, g.world, october, "hunt", "mallard").why).toBe("gone until April");
+  });
+
+  it("a hunt for anything counts only the kinds that can be met, and a cast only this water's", () => {
+    const world = newGame(5).world;
+    const g = armedAt(5, lakeShore(world));
+    const { state } = g;
+    const june = calendar(1440 * 70);
+    const kinds = (o: { detail: string }) => Number(o.detail.match(/(\d+) kinds? here/)![1]);
+    const summer = kinds(check(state, g.world, june, "hunt", "any"));
+    // In January the migrants are away and the count says so.
+    const january = kinds(check(state, g.world, calendar(1440 * 275), "hunt", "any"));
+    expect(january).toBeLessThan(summer);
+    // The lake shore counts lake fish; the region's sea fish are no comfort there.
+    const st = regionState(state, g.world, REGION);
+    for (const s of fishSpecies()) if (waterOf(s) === "lake") st.pop[s] = 0;
+    const cast = check(state, g.world, june, "fish", "any");
+    expect(cast.ok).toBe(false);
+    expect(cast.why).toBe("nothing bites here");
   });
 });

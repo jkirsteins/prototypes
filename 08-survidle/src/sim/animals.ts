@@ -1,9 +1,9 @@
 import type { Rng } from "../rng";
 import { regionAt, speciesHere, type World } from "../world/gen";
-import type { Calendar } from "./calendar";
+import { type Calendar, monthName } from "./calendar";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
-import { isVoiceOnly, seasonFactor, type Species, SPECIES_DEFS } from "./species";
+import { awayWord, isVoiceOnly, seasonFactor, type Species, SPECIES_DEFS, type SpeciesDef } from "./species";
 import type { GameState, RegionState } from "./types";
 import { ICE_THIN_CM } from "./weather";
 
@@ -28,12 +28,24 @@ export function popOf(st: RegionState, s: Species): number {
   return st.pop[s] ?? 0;
 }
 
+/**
+ * Why a species cannot be met here at all just now, in the words the hunt
+ * row and the region card both say, or null when it can be met. The one
+ * predicate for it: the population alone would not show an absence, because
+ * a migrant's numbers decay by a tenth a day and stay above one animal for
+ * weeks after the flock has gone.
+ */
+export function absence(def: SpeciesDef, cal: Calendar, iceCm: number): string | null {
+  if (def.season.kind === "migrant" && seasonFactor(def, cal.month) === 0) return `${awayWord(def)} until ${monthName(def.season.arrive)}`;
+  if (def.kind === "bird" && def.habitat.lake !== undefined && iceCm >= ICE_THIN_CM) return "the lake is frozen";
+  return null;
+}
+
 /** Capacity as it stands this season: winter thins the browsers, migrants are away, lake birds leave a frozen lake. */
 export function seasonalCapacity(world: World, region: number, s: Species, cal: Calendar, iceCm = 0): number {
-  const k = regionAt(world, region).capacity[s] ?? 0;
   const def = SPECIES_DEFS[s];
-  if (def.kind === "bird" && def.habitat.lake !== undefined && iceCm >= ICE_THIN_CM) return 0;
-  return k * seasonFactor(def, cal.month);
+  if (absence(def, cal, iceCm)) return 0;
+  return (regionAt(world, region).capacity[s] ?? 0) * seasonFactor(def, cal.month);
 }
 
 export function regionDensity(state: GameState, world: World, region: number, s: Species, cal: Calendar): number {

@@ -2,7 +2,7 @@ import { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, routeKm, routeMinutes } from "../world/route";
-import { popOf, regionDensity } from "./animals";
+import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import {
   canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
@@ -172,7 +172,11 @@ function anAnimal(s: Species, opening = false): string {
   return `${opening ? a[0].toUpperCase() + a.slice(1) : a} ${name}`;
 }
 
-/** Species a hunt or a cast could meet from this cell: hunted, of the right kind, about now, and suited by the ground. */
+/**
+ * Species a hunt or a cast could meet from this cell: hunted, of the right
+ * kind, about now, and suited by the ground. A species that is away keeps
+ * itself out: its seasonal capacity is 0, so its density is too.
+ */
 function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | "fish", at: number): { s: Species; w: number }[] {
   const r = regionAt(world, state.player.region);
   const st = regionState(state, world, state.player.region);
@@ -187,6 +191,11 @@ function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | 
     out.push({ s, w: d * def.odds });
   }
   return out;
+}
+
+/** How much is about for a hunt or a cast from this cell, by the same weights the draw uses. 0 when the ground suits nothing. */
+export function candidateWeight(state: GameState, world: World, cal: Calendar, id: "hunt" | "fish", at: number): number {
+  return candidates(state, world, cal, id, at).reduce((a, x) => a + x.w, 0);
 }
 
 /** What "anything" turns out to be: drawn by how likely each species is to be met. Null when nothing is about. */
@@ -264,13 +273,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "hunt": {
       if (arg === "any") {
         const c = candidates(state, world, cal, "hunt", at);
-        const kinds = huntedLand().filter((k) => r.capacity[k] && popOf(st, k) >= 1);
+        const kinds = huntedLand().filter((k) => r.capacity[k] && popOf(st, k) >= 1 && !absence(SPECIES_DEFS[k], cal, state.weather.iceCm));
         const o = opt({ group: "hunt", label: "Hunt anything", duration: 120, repeatable: true, detail: `whatever is about; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` });
-        if (!kinds.length) return { ...o, ok: false, why: "nothing about" };
-        // Kinds live here but none of them keeps to this ground: the forest is where a hunt starts.
-        if (!c.length) return ground(false, "forest", "forest", o);
+        // Ground, then tool, then animal. Kinds live here but none of them keeps to this ground: the forest is where a hunt starts.
+        if (kinds.length && !c.length) return ground(false, "forest", "forest", o);
         if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
         if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
+        if (!kinds.length) return { ...o, ok: false, why: "nothing about" };
         return o;
       }
       const s = arg as Species;
@@ -284,18 +293,23 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
       if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
+      // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
+      const gone = absence(def, cal, state.weather.iceCm);
+      if (gone) return { ...o, ok: false, why: gone };
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
     }
     case "fish": {
       if (arg === "any") {
         const c = candidates(state, world, cal, "fish", at);
-        const kinds = fishSpecies().filter((k) => r.capacity[k] && popOf(st, k) >= 1);
+        const inRegion = fishSpecies().filter((k) => r.capacity[k] && popOf(st, k) >= 1 && !absence(SPECIES_DEFS[k], cal, state.weather.iceCm));
+        // The count is what this water holds: a lake's fish are no comfort at a sea shore.
+        const kinds = inRegion.filter((k) => watersideCell(world, at, waterOf(k) ?? "any"));
         const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
         if (!o.ok) return o;
         if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
-        // Standing by the wrong water for every fish the region holds reads the same as an empty one.
-        if (!c.length) return { ...o, ok: false, why: "nothing about" };
+        // Fish in the region but none in this water is the wrong water, not an empty one.
+        if (!c.length) return { ...o, ok: false, why: !kinds.length && inRegion.length ? "nothing bites here" : "nothing about" };
         return o;
       }
       const s = arg as Species;
@@ -315,6 +329,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       }
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
+      const away = absence(def, cal, state.weather.iceCm);
+      if (away) return { ...o, ok: false, why: away };
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
     }
