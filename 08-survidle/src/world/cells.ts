@@ -21,12 +21,14 @@ export interface World {
   regions: Map<number, RegionDef>;
   /** The region the run begins in. */
   start: number;
+  /** Rings of the lattice the start search walked; 40 means the fallback anchor. */
+  startRing: number;
 }
 
 export interface Cell { x: number; y: number; terrain: Terrain; region: number }
 
 export function newWorld(seed: number): World {
-  return { seed, w: WORLD_W, h: WORLD_H, chunks: new Map(), regions: new Map(), start: -1 };
+  return { seed, w: WORLD_W, h: WORLD_H, chunks: new Map(), regions: new Map(), start: -1, startRing: -1 };
 }
 
 function chunkFor(world: World, x: number, y: number): { chunk: Chunk; i: number } {

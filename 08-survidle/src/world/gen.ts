@@ -10,7 +10,7 @@ import { CELL_KM } from "../units";
 import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionOf, terrainOf, type World } from "./cells";
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
-import { fieldsAt, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
+import { fieldsAt, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, terrainAt, WORLD_H, WORLD_W } from "./terrain";
 import { wildlifeCapacity } from "./wildlife";
 
 export { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
@@ -49,7 +49,9 @@ export interface RegionDef {
 /** A world is cheap to make; regions and chunks come as they are touched. */
 export function generateWorld(seed: number): World {
   const world = newWorld(seed);
-  world.start = findStart(world);
+  const s = findStart(world);
+  world.start = s.id;
+  world.startRing = s.ring;
   return world;
 }
 
@@ -209,13 +211,52 @@ function nearestCell(world: World, cells: number[], cx: number, cy: number, ok: 
 }
 
 /**
- * The run starts inland, in the forested country south of the fells: the
- * first lattice cell spiralling out from that anchor whose region is mostly
- * forest with room to build.
+ * A region build routes every spot, so the search only builds squares the
+ * samples say could pass: cheap next to a full region build. Sampled over
+ * the same 3x3 lattice neighbourhood buildRegion scans, since a region's
+ * jittered seed point can put most of its area outside its own lattice
+ * square. The forest floor sits well under the exact filter's 0.45: this
+ * anchor sits on the ridge itself, so the box around a candidate near it
+ * mixes in enough bare rock to read a genuinely forested region as low as
+ * 0.25-0.30, and a 9x9 grid is too coarse even at that floor to avoid
+ * missing real starts (checked against an exhaustive search).
  */
-function findStart(world: World): number {
-  const ax = Math.floor((0.58 * WORLD_W) / LATTICE);
-  const ay = Math.floor((0.72 * WORLD_H) / LATTICE);
+function looksLikeStart(seed: number, lx: number, ly: number): boolean {
+  const x0 = Math.max(0, (lx - 1) * LATTICE);
+  const y0 = Math.max(0, (ly - 1) * LATTICE);
+  const x1 = Math.min(WORLD_W - 1, (lx + 2) * LATTICE);
+  const y1 = Math.min(WORLD_H - 1, (ly + 2) * LATTICE);
+  let forest = 0;
+  let water = 0;
+  let rock = 0;
+  const g = 15;
+  const n = g * g;
+  for (let j = 0; j < g; j++) {
+    for (let i = 0; i < g; i++) {
+      const x = Math.min(WORLD_W - 1, Math.max(0, Math.round(x0 + ((i + 0.5) / g) * (x1 - x0))));
+      const y = Math.min(WORLD_H - 1, Math.max(0, Math.round(y0 + ((j + 0.5) / g) * (y1 - y0))));
+      const t = terrainAt(seed, x, y);
+      if (t === "spruce" || t === "pine" || t === "birch") forest++;
+      else if (t === "water") water++;
+      else if (t === "rock" || t === "fell") rock++;
+    }
+  }
+  return forest / n >= 0.25 && water >= 1 && rock >= 1 && water / n < 0.15;
+}
+
+// The search is the dear part of a world and a seed always gives the same answer.
+const STARTS = new Map<number, { id: number; ring: number }>();
+
+/**
+ * The run starts on the fell edge: the anchor itself sits on the ridge, and
+ * the search spirals out from it for the first lattice cell whose region is
+ * mostly forest, with a shore for water and an outcrop for stone within it.
+ */
+function findStart(world: World): { id: number; ring: number } {
+  const cached = STARTS.get(world.seed);
+  if (cached) return cached;
+  const ax = Math.floor((0.55 * WORLD_W) / LATTICE);
+  const ay = Math.floor((0.5 * WORLD_H) / LATTICE);
   for (let ring = 0; ring < 40; ring++) {
     for (let dy = -ring; dy <= ring; dy++) {
       for (let dx = -ring; dx <= ring; dx++) {
@@ -223,13 +264,21 @@ function findStart(world: World): number {
         const lx = ax + dx;
         const ly = ay + dy;
         if (lx < 0 || ly < 0 || lx >= LATTICE_W || ly >= LATTICE_H) continue;
+        if (!looksLikeStart(world.seed, lx, ly)) continue;
         const id = ly * LATTICE_W + lx;
         const r = regionAt(world, id);
-        if (r.forest >= 0.45 && r.landCells >= 120 && r.frac.water < 0.15 && r.spots.length >= 3) return id;
+        if (r.forest >= 0.45 && r.landCells >= 120 && r.frac.water < 0.15 && r.spots.length >= 3
+          && hasSpot(r, "shore") && hasSpot(r, "outcrop")) {
+          const found = { id, ring };
+          STARTS.set(world.seed, found);
+          return found;
+        }
       }
     }
   }
-  return ay * LATTICE_W + ax;
+  const fallback = { id: ay * LATTICE_W + ax, ring: 40 };
+  STARTS.set(world.seed, fallback);
+  return fallback;
 }
 
 export function spotOf(region: RegionDef, spot: SpotId): Spot | undefined {
