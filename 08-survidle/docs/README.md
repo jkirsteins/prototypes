@@ -122,8 +122,9 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   were gone and what any of them is blocked on. You can die while away.
 - **Winter** is December to February at 62 N: about five hours of light,
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
-  Deer and elk thin out, the ducks and geese are gone south, and the lakes'
-  birds leave with the ice. You need hide clothing, a cabin, and a wood pile.
+  Deer and elk thin out, the mallards and geese are gone south, the eider
+  stay on the coast, and the lakes' birds leave with the ice. You need hide
+  clothing, a cabin, and a wood pile.
 
 ## Debug URL parameters
 

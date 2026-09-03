@@ -22,7 +22,7 @@ export interface Call {
   /** Slot in the audio manifest. */
   sound: string;
   when: "day" | "night" | "dawn" | "dusk" | "any";
-  /** 0-based inclusive month range; absent means all year. */
+  /** 0-based inclusive month range; absent means all year. An end below the start wraps the year: [11, 1] is December to February. */
   months?: [number, number];
   /** Relative frequency among a region's open calls. */
   weight: number;
@@ -126,6 +126,7 @@ const SPECIES_DEFS_RAW = {
     calls: [{ sound: "cuckoo", when: "day", weight: 3 }, { sound: "cuckoo", when: "dawn", weight: 3 }] },
   raven: { name: "raven", kind: "bird", habitat: { fell: 1, rock: 1, spruce: 0.3 }, range: 0.9, season: resident(), growth: 0.005,
     calls: [{ sound: "raven", when: "day", weight: 2 }] },
+  // Two calls in one window, not one stronger call: the sound layer rolls each open call on its own, so February to May the owl is heard twice as often.
   owl: { name: "Ural owl", kind: "bird", habitat: { spruce: 0.5, pine: 0.3 }, range: 0.5, season: resident(), growth: 0.005,
     calls: [{ sound: "owl", when: "night", weight: 2 }, { sound: "owl", when: "night", months: [1, 4], weight: 2 }] },
   crane: { name: "crane", kind: "bird", habitat: { bog: 1.5 }, range: 0.5, season: migrant(3, 9), growth: 0.005,

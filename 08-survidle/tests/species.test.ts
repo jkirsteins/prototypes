@@ -97,6 +97,17 @@ describe("the species catalogue", () => {
     expect(RECIPES.hideBlanket.needs[0]).toEqual({ item: "hide", qty: 4, alt: "fur" });
   });
 
+  it("keeps the catalogue in the order the world was drawn with", () => {
+    // A species' position seeds its range noise, so a reorder redraws every range in every world. Append; never insert or sort.
+    expect(SPECIES_IDS).toEqual([
+      "hare", "squirrel", "fox", "beaver", "deer", "reindeer", "elk", "wolf", "wolverine", "bear",
+      "willowGrouse", "ptarmigan", "blackGrouse", "capercaillie", "hazelGrouse", "mallard", "eider", "goose",
+      "loon", "cuckoo", "raven", "owl", "crane", "woodpecker",
+      "perch", "roach", "pike", "whitefish", "char", "trout", "burbot",
+      "cod", "saithe", "herring",
+    ]);
+  });
+
   it("names months", () => {
     expect(monthName(0)).toBe("January");
     expect(monthName(3)).toBe("April");

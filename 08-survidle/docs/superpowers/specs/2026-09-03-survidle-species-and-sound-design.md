@@ -113,6 +113,9 @@ Mammals. Fur-bearers yield fur; deer and bigger yield hide.
 | wolverine | wolverine | fell 0.03, spruce 0.03, rock 0.02, bog 0.02 | 0.4 | resident | outcrop, 240, 0.2, 0, level 10 | meat 8, fur 1.5, bone 3, sinew 2 |
 | bear | brown bear | spruce 0.15, pine 0.1, bog 0.1, birch 0.08 | 0.5 | denned November to March (the migrant rule, April to October) | forest, 300, 0.25, 0.5, level 15 | meat 80, fur 8, fat 10, bone 8, sinew 5 |
 
+The hare's hunt has a night odds factor of 0.9: hares move at dusk and
+dawn, so darkness costs the hunter less than the 0.7 the others take.
+
 Fat is in kilograms like meat, and the roadmap's calorie rule holds: it
 is a food at 9000 kcal per kilogram, a 0.1 kg portion, never sickening,
 last in the auto-eat order so it is kept. It does not spoil. E's tanning
@@ -202,10 +205,17 @@ them in the same scan that counts terrain. `frac.water === lake + sea`.
 Capacity per species:
 
     raw = area * sum over habitats h of share[h] * habitat[h]
-    u   = fbm(cx / 84, cy / 84, derive(seed, 2000 + speciesIndex), 2)   in 0..1
-    present = raw >= 0.5 and u >= 1 - range
+    u   = clamp(0.5 + (fbm(cx / 84, cy / 84, derive(seed, 2000 + speciesIndex), 2) - 0.5) * 2, 0, 1)
+    present = ground > 0.02 and raw >= 0.5 and u >= 1 - range
     heart   = (u - (1 - range)) / range                                   in 0..1 when present
     capacity = present ? raw * (0.5 + heart) : 0
+
+`u` is the range noise stretched around a half by a factor of 2, because
+fbm clusters near a half: unstretched, a range of r covers far less than r
+of the country. `ground` is the sum of the shares of the species' own
+habitats; the floor of 0.02 says how thin a habitat may be before the
+species is not worth listing, so two pine cells on a bare fell are not a
+pine wood.
 
 `cx, cy` are the region's centroid in cells, so 84 cells is about 25 km:
 ranges are patches a few regions wide, and neighbouring regions mostly

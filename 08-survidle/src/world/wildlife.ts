@@ -15,10 +15,10 @@ const RANGE_SPREAD = 2.0;
 /** Below this many animals a region has none of the species at all. */
 const MIN_CAPACITY = 0.5;
 /**
- * Share of the region a species' ground must cover before it lives there.
- * It is the share below which placeSpots gives the region no spot on that
- * ground either, so two pine cells on a bare fell would otherwise put an
- * animal on the card that there is nowhere to go and hunt.
+ * A floor on how thin a habitat may be before the species is not worth
+ * listing: a region whose ground for a species covers this share of it or
+ * less holds none, however large the region. Two pine cells on a bare fell
+ * are not a pine wood.
  */
 const MIN_GROUND = 0.02;
 
