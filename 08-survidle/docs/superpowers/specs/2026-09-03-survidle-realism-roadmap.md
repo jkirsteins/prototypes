@@ -3,7 +3,7 @@
 Survidle should be as hard as the north is. Being away must be riskier than
 playing by hand, never safer: the intent runner carries out what you asked
 and adds no safety nets. What makes it hard in real life applies here too.
-This roadmap names the work in six sub-projects, each with its own spec,
+This roadmap names the work in seven sub-projects, each with its own spec,
 plan and build, in the order they should land. Each spec lives beside this
 file as `2026-MM-DD-survidle-<name>-design.md`.
 
@@ -20,7 +20,7 @@ What is already hard and stays: fishing barely breaks even on calories, a
 bow needs cordage, a log, a knife and arrows need sinew from a kill, a deer
 is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
-## The six sub-projects, in order
+## The seven sub-projects, in order
 
 ### 1. Body and elements
 
@@ -105,8 +105,8 @@ raised cache or cellar, storehouse, tool shed, palisade, a chimney or vent
 as part of a shelter, roofs with a snow load they can fail under, water
 storage. Bridges: a log bridge on a narrow segment, a longer one on a
 wider segment for more logs, more cordage and days of work, and a bridge
-the flood can take. Every building is an answer to a threat from 1, 2 or
-4, and its cost is tuned against that threat.
+the flood can take. Every building is an answer to a threat from 1, 2, 4
+or 7, and its cost is tuned against that threat.
 
 ### 4. Animals as agents
 
@@ -160,12 +160,206 @@ lodestone, cordage and a stick, a few minutes of work, kept as a tool. It
 does nothing by day in clear weather, when the sun steers you, and
 everything in fog, at night under overcast, and on a fell in cloud.
 
+### 7. Forest fire
+
+The one threat that changes the map. Its inputs all exist: a dry-day count
+on the weather, storms, a camp fire that can already walk off camp, a torch
+that burns for an hour and cannot be put out, populations per region. What
+it needs that does not exist is wind, a real dryness number, and a way for
+a cell's ground to change. It is numbered last so nothing above renumbers,
+but its slot is between 4 and 6: after 4, since a fire is what makes the
+animals move, and before 6, because the burn's regrowth clock is the first
+of the regrowth clocks that Territory generalises. Sub-project 1's camp-fire spread (its section 3.3, a one-shot
+loss of 10 to 30 wood and the lean-to) becomes one of this sub-project's
+ignitions: the fire starts at the camp cell and what burns is what the
+fire reaches.
+
+**Realism.** At 62 N inland the fire season is May to September. Two
+peaks: early May, when last year's grass is dead and dry and the birch is
+not in leaf, is grass-fire season on meadow and bog edge; July and August
+drought is forest-fire season. Snow on the ground ends it. Pine is fire
+country: thick bark, open lichen heath under it, a surface fire every 30
+to 100 years that most of the pines survive. Spruce is the opposite: thin
+bark, shallow roots, a moist floor that seldom takes, and when it does the
+fire goes into the crowns and kills the stand. Birch in leaf hardly burns
+and resprouts from the stump when it does. A bog burns only in a deep
+drought, weeks without rain, and then it smoulders in the peat for days or
+weeks, ignores ordinary rain, and re-lights its edges. Rock and water stop
+a fire; so does ground that has already burnt. A surface fire moves 1 to
+10 m a minute, a wind-driven crown fire 1 to 3 km an hour, and every fire
+lies down at night when the air is damp. Lightning is the natural cause;
+a strike often smoulders in the duff for a day or three before it flares,
+which is why a fire "appears" after a storm has passed. Most fires are
+people: a camp fire, a dropped brand. Afterwards the burn is black for a
+year, fireweed and raspberry the next two, a birch thicket with dead
+standing pines by year five, and elk and hare come to the browse. People
+in this country burnt spruce forest on purpose for rye (svedjebruk, kaski);
+that is a later camp feature this leaves room for.
+
+**Dryness, wind, lightning.** `Weather.dryDays` becomes two buckets, both
+in millimetres of evaporation deficit, since the ground dries by
+temperature and sun and wets by rain, not by a day count:
+
+| bucket | scale | dries by | fills by | thresholds |
+|--------|-------|----------|----------|------------|
+| litter | 0 to 20 mm | 1 to 4 mm a day, from the day's mean and clear sky; nothing under 5 C | light rain 1 mm an hour, heavy 3 | dry at 8 (a camp fire can walk), tinder at 15 (lightning and a brand take) |
+| peat | 0 to 200 mm | the same rate | the same | bog burns above 120: five or six dry weeks |
+
+The clock line reads "dry" and "tinder dry", the log warns once at each
+("The ground is tinder dry." moves to the second). Wind is a daily roll
+at dawn like the temperature anomaly: one of eight directions and a speed
+in metres a second, persisting from yesterday with drift; a storm forces
+a gale. Fog, snow load and wind damage in 6 want the same field. A storm
+in fire season is a thunderstorm: "Thunder over the fells." One
+thunderstorm in four is dry where you are. Each strikes a few cells in
+the simulated country; a strike on a forest or bog cell at tinder starts
+a smoulder that flares one to three days later if the litter is still at
+tinder, and dies if rain comes first. Odds set so that a player at one
+camp sees a lightning fire in the neighbourhood every few dry summers,
+not every year.
+
+**Ignitions from the player.** The camp-fire rule stays (over 12 kg, no
+one at camp for 2 hours, dry ground, 2 percent an hour); at tinder any
+outdoor fire on a forest cell rolls a small chance an hour even attended,
+four times that in a gale, and none under a hearth. A torch's stub falls
+where it gutters out: on a fuel cell in fire season it takes 1 time in
+100 at dry and 1 in 20 at tinder. Nothing else lights the forest. The
+player can put out a fire only in its first minutes and only where it
+started: "Beat it out" on the cell, 30 minutes with a spruce bough, two
+times in three at dry and one in three at tinder, a few points of health
+in burns each try; ten litres from a bucket on the camp cell within ten
+minutes is certain. Past one cell it is a forest fire and nobody stops it.
+
+**Spread.** An active fire is a set of burning cells, each with its
+ignition minute, stepped every 10 game minutes. A burning cell tries to
+light each 4-neighbour with a chance from the neighbour's fuel, the
+litter bucket, the wind (downwind three times, upwind a third, calm all
+equal), night (a third between dusk and dawn) and rain (light rain
+halves it, heavy rain puts a surface fire out within the hour, peat
+ignores both until two wet days). Fuel by ground, and what the cell is
+afterwards:
+
+| ground | takes | burns for | after |
+|--------|-------|-----------|-------|
+| meadow | fast in May, poorly in leaf season | 20 min | meadow next spring; hare nests lost |
+| birch | poorly in leaf (June to September), like grass before | 1 h | burnt, then birch again from the stump by year 5 |
+| pine | readily | 2 h | at dry the pines stand and only the floor burns: still pine; at tinder a crown fire: burnt |
+| spruce | seldom below tinder; fiercely at tinder | 2 h | burnt, then thicket, then birch; spruce not in a run's lifetime |
+| bog | only above the peat threshold | days to weeks, smouldering | bog, cloudberry gone for ten years |
+| fell | dwarf shrub, tinder only, slow | 1 h | fell |
+| rock, water, burnt, cleared | never | | firebreak |
+
+At 300 m a cell, a breeze on a dry July day moves the front one cell in
+20 to 40 minutes downwind, a gale in five, a calm night in hours: a
+fire that starts at dusk 3 km upwind is at camp by morning, and one that
+starts at dawn is there by lunch. A cell that has burnt smoulders for
+12 hours, with smoke and no spread, then is burnt ground. A fire ends
+when it runs out of fuel, meets water, rock or old burn on every side, or
+rain comes.
+
+**What it does.** A burning cell destroys what is on it: the pile, the
+logs, a lean-to, the rack and its meat, snares, the bough bed, the wood
+pile and the cabin, which is the biggest loss the game has. Stone and
+bone survive in the ash. The region's `wood` drops by the burnt forest
+cells' share, less the pines that stood. Hare and grouse on the burnt
+cells mostly die; deer and elk mostly run, so the region loses a small
+share to the fire and the rest of the burnt share moves to touched
+neighbours at once instead of waiting for the daily migration. Fish are
+untouched. On a burning cell you lose 25 health a minute: four minutes.
+Smoke downwind is never deadly outdoors; it halves work and hunting odds
+and brings visibility to 200 m through the fog mechanism. The runner
+keeps its rule and plans nothing around a fire, but a body flinches from
+flame the way it shelters from a storm: awake, with fire on a neighbour
+cell, you step to the nearest cell that cannot burn, which the intent
+reports as "fled the fire"; a walk routes around burning cells; asleep,
+the smoke wakes you two times in three, and the third time is the death
+cause "burned". A fire that comes through while you are away is a line in
+the away report and a cause in the risk forecast, which is where a dry
+July gets its honest number.
+
+**What it gives.** Dead standing pine is the top rung of sub-project C's
+wood ladder, and a burn is where it stands: felling on a burnt cell is
+half the time, and its wood splits dry in any weather but rain, for five
+years. Raspberry doubles the berry yield on a burn in years two to five.
+Elk capacity doubles and hare rises by half on young burn cells for ten
+years; grouse capacity there drops to a third, since grouse want old
+forest. Burnt ground walks at meadow speed, thicket slower than forest.
+The set-up that lowers the risk, so that the forecast can be answered:
+camp on rock, meadow or shore rather than in spruce; a hearth; "Clear
+the ground", a camp job of six hours with an axe that makes the camp cell
+and its four neighbours firebreak for the year and yields sticks; a full
+bucket at camp; no torches in a dry spell; a small banked fire, which the
+runner already leaves.
+
+**World generation.** Terrain is a pure function of seed and position,
+and region stats, spots, names and routes are caches of it. A fire is
+the first thing that changes a cell, so it needs one overlay and one
+succession function, and both should serve generation too:
+
+- `succession(original, years)` maps a ground and the years since it
+  burnt to what stands there now: burnt to year 2, thicket to year 15,
+  the pioneer after (birch on spruce and birch sites, pine on pine
+  sites), spruce at 80. `Terrain` gains `burnt` and `thicket`.
+- At generation a slow noise marks old burns, about one forest cell in
+  twenty, aged 3, 8 or 20 years before the run, drawn through the same
+  function: so the first map already has birch thickets full of dead
+  pines and elk, and a black scar on a fell side, which is what that
+  country looks like.
+- At run time `GameState.burns` holds cell index to burn minute, the
+  world reads it through the same function, and the chunk caches keep
+  the original ground. A burn marks its regions dirty; their defs are
+  rebuilt from the effective ground (fractions, forest, `wood0`,
+  capacities, spots), the region name is computed from the original
+  ground so it never changes, and the route cache is cleared. Active
+  fires live in `GameState.fires`. Save version bumps; an old save has
+  no burns and its dryness comes from its dry-day count.
+- Fires are simulated in touched regions and one ring around them, the
+  same country the animals move in; a fire beyond that does not exist.
+
+**Visuals.** The question is how a fire in the trees at night reads as
+something other than a hearth or a torch, since all three are orange
+light on a dark map. A hearth today is one marker with one or two amber
+rings that flicker in place; a torch is one amber ring around you. The
+fire is told apart on four counts, and the rule that keeps them apart is
+that rings belong to hearths and torches only:
+
+- Shape and motion. A fire is many cells, contiguous, and it moves: the
+  front advances a glyph at a time, every ten game seconds at speed. A
+  burning cell keeps its ground glyph, so you see the pine burning, in
+  flame yellow on deep red, flickering faster than a hearth and out of
+  step per cell, and never gets a ring class. Behind the front the cell
+  is `x` in ember red with a slow pulse while it smoulders, then `x` in
+  ash grey on charcoal, no animation, day and night: a black scar that
+  stays. Thicket is `y`, the small birch.
+- Smoke. Two or three cells downwind carry a brown-grey veil with the
+  glyph faded, the fog veil in another colour, by day as much as by
+  night. Firelight has no smoke.
+- The sky. With a fire within 10 km the sky strip's horizon goes tan and
+  the sun disc red; at night the horizon on the fire's side carries an
+  orange band and the map tint takes a brown cast. A hearth never touches
+  the sky.
+- Range. A smoke column is seen fifty kilometres off, so a burning block
+  shows red at every zoom and even in never-visited fog, and the coarse
+  zooms show burnt blocks as scar. The clock line says "fire 2.1 km NW,
+  coming this way", which is the one signal that needs no reading of
+  colour.
+
+If play shows the hearth and the fire still confused, the hearth marker
+moves from brick red toward amber and the fire keeps the red. A crackle
+within a kilometre as a one-shot effect, no bed. The legend gains
+"red: burning", "x burnt", "y thicket".
+
+The browser pass for this one: a July run with a dry spell, the tinder
+warning, thunder, a fire seen from camp two valleys over and the front
+moving on the night map beside a lit camp fire, the flight to the shore,
+and the scar the next morning with the elk tracks on it a year later.
+
 ## The idle loop
 
-The six above make the north dangerous. These three make Survidle an idle
+The seven above make the north dangerous. These three make Survidle an idle
 game in the sense of Melvor Idle and A Dark Room: you set up a system, you
 leave, and you come back to gains and a readout of how well the system
-held. They run beside the six, not after them; the first is specced and
+held. They run beside the seven, not after them; the first is specced and
 should land before sub-project 2, since everything that follows is played
 through it. Every "away" carries a risk of dying. The point is that the
 risk is legible and the set-up lowers it.
@@ -217,7 +411,7 @@ content tiers. Soft gates throughout, never "locked":
   (sub-project 3), listed here because it is what an idle stock looks like
   in this game: a hut that yields wood per hour does not exist.
 
-## Rules that hold across all six
+## Rules that hold across all seven
 
 - Every quantity stays real: litres, kilocalories, degrees, minutes,
   kilometres, metres of visibility, cubic metres a second, centimetres of
