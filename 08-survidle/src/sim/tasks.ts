@@ -4,6 +4,7 @@ import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, routeKm, routeMinutes } from "../world/route";
 import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
+import { cue } from "./cues";
 import {
   canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, tool, totalQty, transfer, wearTool, weight,
@@ -752,6 +753,7 @@ export function fallChance(iceCm: number): number {
 
 /** Through the ice: three in five drown; the rest crawl out onto the last land, soaked and cold, the walk over. */
 export function fallThrough(state: GameState, world: World, rng: Rng, land: number): void {
+  cue("fallThrough");
   const p = state.player;
   if (rng.chance(0.6)) {
     die(state, "drowned");
@@ -800,6 +802,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
       state.stats.km += distKm;
       const terrain = cellAt(world, cell).terrain;
       if (terrain === "water") {
+        if (state.weather.iceCm < ICE_SAFE_CM) cue("iceCracks");
         if (state.weather.iceCm < ICE_SAFE_CM && rng.chance(fallChance(state.weather.iceCm))) {
           fallThrough(state, world, rng, route.lastLand);
           return;
@@ -835,11 +838,15 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
   const invs = reach(state, world);
   switch (id) {
     case "chop": {
+      cue("treeFalls");
       st.wood -= 1;
       produce(state, world, "log", 4);
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
-      if (wearTool(p, "axe", wearFactor(state, world, "chop"))) log(state, "The axe head splits on the last stroke. It is done for.", "bad");
+      if (wearTool(p, "axe", wearFactor(state, world, "chop"))) {
+        cue("toolBreaks");
+        log(state, "The axe head splits on the last stroke. It is done for.", "bad");
+      }
       const axeInjury = p.energy < 20 ? 0.03 : p.energy < 30 ? 0.02 : 0.01;
       if (rng.chance(axeInjury)) {
         p.injured = Math.max(p.injured, 24 * 60);
@@ -870,7 +877,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       // A hunt saved against a species the catalogue no longer has finishes as nothing.
       if (!def?.hunt || isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
-      if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) log(state, "The bow snaps.", "bad");
+      if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) {
+        cue("toolBreaks");
+        log(state, "The bow snaps.", "bad");
+      }
+      cue("arrow");
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
@@ -909,7 +920,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       // Likewise a cast saved before fishing named its fish.
       if (!def?.hunt || !isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
-      if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish", s))) log(state, "The spear shaft splits.", "bad");
+      if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish", s))) {
+        cue("toolBreaks");
+        log(state, "The spear shaft splits.", "bad");
+      }
+      cue("spear");
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
@@ -999,6 +1014,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         return;
       }
       st.fire.lit = true;
+      cue("fireCatches");
       st.fire.fuelKg += 1;
       st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");
@@ -1008,6 +1024,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       consume(invs, [{ item: "torch", qty: 1 }]);
       if (!(atCamp(state, world) && st.fire.lit)) wearTool(p, "fireDrill", wearFactor(state, world, "lightTorch"));
       p.torch = { lit: true, minutes: TORCH_BURN_MINUTES };
+      cue("torchLit");
       log(state, "The torch catches.", "good");
       return;
     }

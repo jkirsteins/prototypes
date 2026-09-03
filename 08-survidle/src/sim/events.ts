@@ -2,6 +2,7 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { regionDensity } from "./animals";
+import { cue } from "./cues";
 import { hourlyHazards } from "./hazards";
 import { log } from "./log";
 import { die, firelit, sheltered } from "./player";
@@ -28,6 +29,7 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambi
     if (chance > 0 && rng.chance(chance)) {
       p.health = Math.max(0, p.health - 25);
       p.injured = Math.max(p.injured, 24 * 60);
+      cue("wolves");
       log(state, "Wolves out of the dark. You fight them off, bleeding.", "bad");
       if (p.health <= 0) die(state, "wolves");
     }
