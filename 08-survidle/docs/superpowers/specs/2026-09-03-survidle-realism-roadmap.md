@@ -13,10 +13,48 @@ to. Each spec lives beside this file as
 
 ## What we are optimising for
 
-Retention. Every item below is judged by one question: does it give a
-player a reason to open the tab again, or to start again after a death?
-Realism is how the game earns that, not the aim in itself; a sub-project
-that adds truth and no reason to return waits behind one that does.
+Survidle is a premium game for a niche: the idle and survival corner of
+Steam where Melvor Idle, Wayward and UnReal World live, at ten to fifteen
+dollars, with the browser build as its demo. Free-to-play sells a number
+that never goes down, and this design bans every lever that model pulls:
+no time skips, no boosts, no shop, no second slot. A premium buyer expects
+permadeath, a finite arc and a game that ends, and that is what this is.
+
+This prototype has one job: to show the game has legs and pull before a
+proper game is built on it. Presentation and marketing wait on that. Both
+can be added later, and neither can save a loop that does not hold.
+
+**The target is thirty calendar days of content**: a player still opening
+the tab on the thirtieth real day with something new to do. In game time
+that is about five years of the sim, four to six survivors, the lineage
+tree filled, one full year held, and the first step north. Thirty is the
+smallest window in which every loop the game has runs several times, so a
+player still there is showing pull and not novelty. Seven days is one run
+and proves only the check-in loop; sixty needs the content sub-projects,
+which is the proper game.
+
+The gate is measured, not felt: twenty to fifty testers who opt in from
+the incremental community, an anonymous beacon on each open so the
+numbers exist, and these bars.
+
+| measure | bar | why |
+|---|---|---|
+| re-run rate | two thirds start a new survivor within a day of a first death; half after a death that ended a run past 100 game days | the survivor loop is the unproven bet; if this is low nothing else matters |
+| the first run | a tester completes a first death and starts again inside two hours of attention | the Steam refund window |
+| would they pay | two thirds say yes to ten dollars after a week | the one question that maps to revenue |
+| hours of attention | a median of ten or more among testers past day 1 | the arc a premium price needs |
+| day 30 | a tenth still opening the tab | a bonus, not a gate |
+| stories | testers tell survivor stories unprompted | the marketing, when it comes, is these |
+
+Nothing is scoped for the proper game. This roadmap states the target and
+sequences the work for the most impact per build toward it; nothing stops
+the work going further if it is fun. Once the gate is passed, the proper
+game targets a longer window from the same tree.
+
+Every item below is judged by one question: does it give a player a
+reason to open the tab again, or to start again after a death? Realism is
+how the game earns that, not the aim in itself; a sub-project that adds
+truth and no reason to return waits behind one that does.
 
 What retention means here is fixed by the scale. A game day is 24 real
 minutes, a year is about 6 real days, and the away cap is 60 game days.
@@ -29,9 +67,9 @@ the two loops that carry it are:
   change to one standing order), and visible progress since last time
   (stocks, skills, a season nearer).
 - **The survivor loop.** Every survivor dies. What they built, walked and
-  saw stays in the world for the next one. A longer life is the score
-  and the achievement; the world remembering it is the reason to start
-  again. This is item F below.
+  saw stays in the world for the next one, and the lineage grows. A
+  longer life is the score and the achievement; the world remembering it
+  is the reason to start again. This is item F below.
 
 The contract is Don't Starve's and The Long Dark's, not Melvor Idle's.
 Melvor's number never goes down and its player never loses, and that is
@@ -42,10 +80,11 @@ what came home builds the camp, the camp persists. What Survidle keeps
 from Melvor is the in-run part, the skill ladder, mastery and pools,
 and standing orders. The unproven combination is brutal plus idle:
 nobody has shown players accepting death while the tab is closed. That
-is why B is not optional and why every away death has to be one the
-forecast showed. Punishing is the aim; unfair is the failure mode.
+is why B is not optional, why every away death has to be one the
+forecast showed, and why the re-run rate is the first bar above.
+Punishing is the aim; unfair is the failure mode.
 
-Targets, to calibrate rather than to hit exactly:
+Calibration targets for the sim, to steer by rather than to hit exactly:
 
 - A first run dies inside 20 days. A player who has learned the loop
   reaches winter (about day 245) in one run in five. A full year is the
@@ -57,6 +96,7 @@ Targets, to calibrate rather than to hit exactly:
 - Something new to read in the log every game day, and a season
   threshold to prepare for every 30 to 45 game days: berries, the rut,
   first frost, lake freeze, first snow, the dark, the cold snap, ice-out.
+
 
 ## What kills you today
 
@@ -76,22 +116,26 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 The numbers below are names, not the sequence; they stay put so specs can
 cite them while sections are still being written. The build order is by
-reason to return, soonest first: what kills an away run soonest, then
-what makes the death worth coming back from, then what makes the next
-death fair, then content. So: 1 (built), A standing orders (built), D
-species and sound (built), then the baseline (the section of that name
-under the idle loop: water at camp, the thirst priority, arrows in the
-pack, wet wood, the rack as a task, tool keeps, and a start with a shore
-and rock, with the reference player as its gate), then F's core (the
-world saved instead of the person, the journal, the dim map, cumulative
-days, the season spine; not its ramp, and not decay, trails, search or
-placement, which land with 3), then B the risk forecast with the away
-cap as its horizon, then the first producers and stocks (C's basket trap,
-and 3's water storage and cellar, pulled out of their items), then E
-hides and clothing, then the rest of 3 camp (siting, the shelter ladder,
-the buildings) with the rest of C alongside and F's decay, trails, search
-and placement, then 4 animals, 5 injury and the body model, 7 wind with
-1's fog beside it, 8 forest fire, and 6 territory last. F's ramp is not one slot: its parts land inside C (the
+impact toward the thirty-day gate, soonest first: what kills an away run
+soonest, then what makes the death worth coming back from, then what
+makes the next death fair, then what makes the second run a different
+game and the lineage grow, then content. So: 1 (built), A standing orders
+(built), D species and sound (built), then the baseline (the section of
+that name under the idle loop: water at camp, the thirst priority, arrows
+in the pack, wet wood, the rack as a task, tool keeps, and a start with a
+shore and rock, with the reference player as its gate), then F's core
+(the world saved instead of the person, the journal, the dim map, the
+season spine, first decay, and the heir set down near the old camp; not
+its ramp), then B the risk forecast with the away cap as its horizon,
+then the rest of F in impact order (the landing month, latitude by row
+with the landing moving north, the goals list, the Lineage tree, and the
+death site with the corpse run and its search order), then the first
+producers and stocks (C's basket trap, and 3's water storage and cellar,
+pulled out of their items), then E hides and clothing, then the rest of
+3 camp (siting, the shelter ladder, the buildings) with the rest of C
+alongside and F's trails and the cellar's keep, then 4 animals, 5 injury
+and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
+territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
 4 and 6 (depletion and fed wolves), each when its sub-project does, and
 the reference player says when the ramp is enough. 2 rivers is flavour
@@ -111,13 +155,20 @@ a week.
 Why F's core comes before B: a first run dies inside 20 days by design,
 so death is the first thing a returning player meets, and today it is a
 deletion. F's core is the smaller build (a save shape, a log the game
-already writes, a fog level, a counter) and it turns that death into a
-chapter. B is the larger and riskier build (a worker running the real
+already writes, a fog level, a decay table, a landing) and it turns that
+death into a chapter. B is the larger and riskier build (a worker running the real
 sim several times over) and its calibration wants the reference player,
-which lands with the baseline, already in place. B is still what makes an away death fair, which is why
-it comes before any content: the trap and the cellar are the first things
-that yield while the player is gone, and they come after the death they
-can cause is a foreseeable one.
+which lands with the baseline, already in place. B is still what makes an
+away death fair, which is why it comes before any content.
+
+Why the rest of F comes before any producer: the thirty-day gate measures
+the survivor loop, and the re-run rate is its first bar. The landing
+month and the latitude are what make the second run a different game
+from the first; the goals and the tree are what the second run is for;
+the corpse run is what a death leaves reachable. The trap and the cellar
+yield while the player is gone, which is worth more once there are runs
+to be gone from, and they come after the death they can cause is a
+foreseeable one.
 
 Why D landed whole and early: the species half because the roster is
 what the orders hunt, and the sound half beside it because the cue sink
@@ -1063,23 +1114,25 @@ or a scrap of tanned hide so the first mend does not wait on a deer.
 ### F. The survivor loop
 
 Not specced. The high-level guidance is here so the spec has something
-to argue with; the numbers are first targets, not rulings. It builds in
-two parts: the core, which is one slot right after the baseline (the
-world saved instead of the person, the journal, the dim map, cumulative
-days, the season spine), and the ramp, whose parts land inside the
-sub-projects that own them. The core is a save shape, a log the game
-already writes, a fog level, a counter and a panel, and nothing else:
-decay, trails, search and placement below are F's but land with 3,
-because each needs a camp that can be sited, left and found. The
+to argue with; the numbers are first targets, not rulings. It is the item
+the thirty-day gate measures, and it builds in three parts. The core is
+one slot right after the baseline: the world saved instead of the person,
+the journal, the dim map, the season spine, first decay, and the heir set
+down near the old camp. The lineage lands after B, in impact order: the
+landing month, latitude by row, the goals list, the Lineage tree, and the
+death site with the corpse run and its search order. The ramp's parts
+land inside the sub-projects that own them. Trails and the cellar's keep
+land with 3, because each needs a camp that can be sited and stocked. The
 reference player is F's instrument and lands with the baseline.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
-them. The world is saved instead of the person. The next survivor is set
-down in the same world the following 1 April and finds what the last one
-left. There is no rescue, no walking out and no voluntary end: a run ends
-when the survivor dies, and the design has to make sure they do. Rogue
-Legacy is the shape, with the land as the castle.
+them, except what the tree below carries. The world is saved instead of
+the person. The next survivor is set down in the same world after a gap
+of months and finds what the last one left. There is no rescue, no
+walking out and no voluntary end: a run ends when the survivor dies, and
+the design has to make sure they do. Rogue Legacy is the shape, with the
+land as the castle and the north as its upper floors.
 
 **The ramp.** A ramp is what rises inside one run until it kills. Without
 one a stable camp is stable forever, and the game's promise is that no
@@ -1108,24 +1161,81 @@ damage is 5's, depletion and regrowth are 4's and 6's. Each lands when
 its sub-project does, and the ramp is complete when the reference player
 dies in its second year.
 
-The test of the ramp is B's forecast: a month number that reads zero for
-a camp in its second year means the ramp is missing, and that is a
-balance bug to fix before content.
+The tree never touches the ramp. Carried skill hours do not slow the
+axe, the body or the land, so an heir at full Lineage still dies, and the
+reference player checks it. The test of the ramp is B's forecast: a
+month number that reads zero for a camp in its second year means the
+ramp is missing, and that is a balance bug to fix before content.
 
-**The ratchet.** A ratchet is what the next survivor starts with that the
-last one did not. It must never be power: no skills carry, no pack, no
-kit beyond the standard one. What carries is the world and knowledge of
-it, and every rung of it is derived from play, never from a discrete
-action the player takes for the heir. There is no "write in the journal"
-button.
+**The recipe.** Two things make every run the same run today: every
+survivor lands on 1 April with the same kit at the same kind of place,
+and days survived is the only thing to aim at. A known recipe is fine in
+a roguelike as long as executing it under variance is the game, and in
+an idle game execution is a list of orders, so the variance has to live
+in the world. Three levers, cheapest first:
+
+- **The landing month.** The boat lands in any month the coast is open.
+  A July landing is a sprint to winter through abundance; an October
+  landing is winter first in a wool coat. The season spine already
+  handles a year starting anywhere. The reference player gains a set-up
+  per season.
+- **Latitude by row.** Latitude is one number today, 62 N. It becomes a
+  function of the map row, about 61 N at the south edge and 67 N at the
+  top: steeper than the real north, and nobody will measure it.
+  Daylight, temperature, snow and D's ranges fall out of the row, and the
+  top has polar night and treeless coast. This is the ascension. The
+  landing moves north along the coast as the lineage grows, the goals
+  point north, and everything a lineage built stays south and reachable
+  by a long walk, so the old cabin is the waypoint on the way up. It is
+  also the reason 6's moving camp exists: a summer camp south, a winter
+  push north, stock carried between.
+- **The camp as the decision.** 3's siting, when it lands: coast, inland
+  lake and fell edge should each want a different orders list. Not in the
+  thirty-day scope; the test says whether the two above are enough.
+
+**Goals.** Hades' fated list is the model: every goal in the world is
+listed, a few are open at a time, harder ones open as earlier ones close,
+and each pays Lineage. Two rules keep the list from being a recipe. The
+world picks which goals are open, by the season next and by what lives
+here: a coast world offers eider and cod, an inland one the bear and the
+ice road. And a goal pays Lineage, or it is a badge and does not belong
+here. Most of the currency comes from goals a good run wants anyway:
+reach the first frost, winter under a roof, take an elk, live 30, 100,
+245 and 365 days. Side goals that pull the set-up off course turn the
+list into a checklist. The first three are the tutorial: hold a fire
+through a night, hold a week of water, reach the first frost. Thirty to
+forty goals for the gate.
+
+**Lineage.** One level, owned by the player and not the world, so it
+survives a new seed. It is earned by goals and by nothing else: no real
+money, no time. It is spent on a tree of four branches, whose nodes are
+things a lineage would know or hold, never raw percentages:
+
+- **Arrival.** Set down nearer the old camp, then at it. A chosen
+  landing month instead of a roll. A kit variant: a knife and a net, a
+  bucket.
+- **Knowledge.** The dim map, trails, the death site marked, the journal
+  read earlier, the season spine's warnings a week sooner.
+- **Carry, per skill.** A node per skill: "Woodcraft carries a quarter",
+  then a half. The player chooses what the lineage keeps. Capped at
+  half, so every survivor still earns half of everything.
+- **Settlement.** Slower decay: the cabin stands a lifetime, the cellar
+  keeps, tools rust less.
+
+About twenty nodes for the gate. The tree is spendable, and that does not
+break the rule that the heir's start is derived from play: that rule is
+about the world, and the tree sits one level above it. Inside the world
+there is still no button for the heir. The journal, the map, the trails
+and the caches are earned by living, never by a discrete action taken
+for the next one. There is no "write in the journal" button.
 
 - **The season spine** is the year the journal is written against and
-  the goal ladder inside a run: a threshold every 30 to 45 game days
-  (berries, the rut, first frost, lake freeze, first snow, the dark, the
-  cold snap, ice-out), each announced in the log ahead and named when it
-  arrives, and a season panel that says which is next and what it asks
-  for. The weather and wildlife already move by date, so this is log
-  lines and a panel, and it is core because a run needs something to
+  the thresholds the goals list is keyed to: one every 30 to 45 game
+  days (berries, the rut, first frost, lake freeze, first snow, the dark,
+  the cold snap, ice-out), each announced in the log ahead and named
+  when it arrives, and a season panel that says which is next and what
+  it asks for. The weather and wildlife already move by date, so this is
+  log lines and a panel, and it is core because a run needs something to
   reach before winter.
 - **The journal** is the log the game already writes. A survivor who
   lived three days leaves three days; one who lived a season leaves
@@ -1140,65 +1250,56 @@ button.
 - **Caches and structures.** What was at camp when the survivor died,
   minus decay. The stockpile was for their own winter; it is the heir's
   by accident.
-- **Cumulative days survived**, across all survivors, is the one
-  threshold currency, and it is also the score. It buys the single gift
-  the world cannot explain: how close to the best camp the heir is set
-  down. First targets: under 30 cumulative days, at the landing with the
-  journal only; to 100, the map; to 250, the trails; past a year of
-  cumulative living, set down at camp. A chain of three survivors dead by
-  day 5 has earned nothing; one survivor who lived 200 days has earned
-  most of it. Content the player is meant to meet only on a later run is
-  gated this way, softly, by calibration: it needs a cabin already
-  standing, a journal that names the place, a trail that reaches it, or
-  more labour than one life gives (cabin, then cellar, then smokehouse,
-  then a second camp). Never by a run counter.
+- **The death site.** Where the survivor died is marked on the dim map
+  with the day and the cause, and the pack lies there as a pile, minus
+  what the months took: the meat gone, the hide rotted, the axe rusted to
+  a wear penalty. The heir can walk there and take it. It is never placed
+  far by design; the distance comes from where the death was and where
+  the heir lands. A lineage accumulates metal this way, an axe per
+  survivor. Rust as wear keeps the tenth a lump, and the reference player
+  checks that the tool ramp stays honest under a long lineage.
 
 **Decay between survivors** is where the balance lives and where the
 roof and the cellar earn their place. The gap is months, so decay is per
 month elapsed and the away catch-up already knows how to run it. First
 rulings for the spec to strike: a cabin stands for decades; a lean-to
 falls in a season; a rack rots in a season; dried meat in the open is
-gone in a month and dried meat in the cellar keeps; a tool rusts to a
-wear penalty and is still a tool; the fire pit stays; a trail fades in
-two years unwalked; the dim map never fades, since it is knowledge; the
-journal is forever.
+gone in a month and dried meat in the cellar keeps, once 3 builds the
+cellar; a tool rusts to a wear penalty and is still a tool; the fire pit
+stays; a trail fades in two years unwalked; the dim map never fades,
+since it is knowledge; the journal is forever.
 
-**Where the heir is set down.** If the landing is fixed and the survivor
-camps at it, the placement ladder is skipped. Either the landing moves
-(the boat puts you ashore where the ice allows, so the drop point is
-random along the coast) or the good land is deliberately not at the
-coast, so camping at the landing is a bad camp. The second is more
-honest and the terrain already reads that way: shore, then bog, then the
-forest and rock a camp wants. It also contradicts the baseline, which
-puts a shore and an outcrop at the start on purpose so the first camp
-can be idled, and it is hollow while camp is the region's centroid cell
-that nobody places: the heir set down in the start region is in reach of
-the old camp whatever the counter says. So placement waits for 3's
-siting, and the spec settles the landing then; until it does, cumulative
-days buy the journal, the map and the trails, and nothing about where you
-stand.
+**Where the heir is set down.** On the coast within a day's walk of the
+old camp from the first death; Arrival nodes bring it closer, then to
+camp itself. The first survivor keeps the baseline's start with a shore
+and an outcrop. After that the landing is chosen by the old camp and by
+how far north the lineage has reached, and the good land is always
+further up, so camping at the landing is never the best camp for long.
 
-**Search.** A cabin in fog is a real find. The vision ring, per-cell fog
-and named spots exist; what is missing is a "search this region"
-standing order that sweeps until a structure cell enters the ring. A
-chimney does not glow, so the old camp is found by walking, by the
-journal's direction, or by the trail.
+**Search.** A cabin in fog is a real find, and so is a body. The vision
+ring, per-cell fog and named spots exist; what is missing is a "search
+this region" standing order that sweeps until a structure cell or the
+death site enters the ring. A chimney does not glow, so the old camp is
+found by walking, by the journal's direction, or by the trail.
 
-**The reference player.** The ramp and the ratchet are calibrated by
+**The reference player.** The ramp and the lineage are calibrated by
 headless runs, the way the baseline was found: a scripted set-up that a
 competent player would make, run on four seeds, and its day of death and
 cause reported. It is built with the baseline, as that spec's gate, and
 it is F's because F is what it measures from then on. Its pass criterion
-moves with the roadmap: reaches 1 December before winter content, dies
-in year two after the ramp lands, and never reads a zero month
-forecast. It is the test that keeps "no
-set-up holds forever" true as content is added under it.
+moves with the roadmap: reaches 1 December before winter content, from
+every landing month once the month is rolled; dies in year two after the
+ramp lands, at full Lineage as well as at none; and never reads a zero
+month forecast. It is the test that keeps "no set-up holds forever" true
+as content is added under it.
 
 **What this asks of the sub-projects around it.** 3's siting and cellar
 decide what a camp leaves behind; 5's permanent damage is a ramp; 6's
-regrowth clocks are the decay clocks with the sign flipped; B's forecast
-is how the ramp is measured; the save (`src/sim/save.ts`) stops being a
-save of the person and becomes a save of the world with a person in it.
+regrowth clocks are the decay clocks with the sign flipped, and its
+moving camp is the push north; B's forecast is how the ramp is measured;
+the weather, the daylight and D's ranges read latitude from the row; the
+save (`src/sim/save.ts`) stops being a save of the person and becomes a
+save of the world with a person in it, and a lineage beside them.
 
 ## Rules that hold across all eight
 
@@ -1212,7 +1313,8 @@ save of the person and becomes a save of the world with a person in it.
 - Each sub-project ships with the browser pass that shows a run through
   its new danger, not only its tests.
 - Every death is the end of a survivor, never of the world. Nothing a
-  sub-project adds may make a set-up hold forever, and nothing may carry
-  power from one survivor to the next.
+  sub-project adds may make a set-up hold forever. Nothing carries on the
+  person except through the Lineage tree, and the tree never buys
+  anything on the ramp.
 - A sub-project that adds truth and no reason to come back waits behind
   one that does.
