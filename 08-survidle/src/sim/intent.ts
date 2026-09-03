@@ -8,7 +8,7 @@ import type { Rng } from "../rng";
 import { PACK_HARD_KG } from "../units";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { bodyStep, currentNeed, orderKit, provision } from "./body";
+import { bodyStep, currentNeed, orderKit, provision, provisionKit } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
@@ -200,18 +200,20 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
     until = { kind: "once" };
     deliver = "leave";
   }
-  // Tentatively in place, so provisioning below sees the new task; reverted on a failed check.
+  // Tentatively in place, so the kit check below sees the new task; reverted on a failed check.
   const prevIntent = state.intent;
   state.intent = {
     task: req.task, arg: req.arg, cell,
     campCell: regionState(state, world, state.player.region).campCell,
     until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
   };
-  // A bow hunt's arrows must be in the pack before the check below, which reads the pack only.
-  provision(state, world);
+  // A bow hunt's arrows must be in the pack before the check below, which reads the pack
+  // only; food and vessels stay in the camp pile until the intent actually starts.
+  const pocketed = provisionKit(state, world);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
     if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
+      if (pocketed > 0) transfer(state.player.pack, pile(state, state.intent.campCell), "arrow", pocketed);
       state.intent = prevIntent;
       return false;
     }

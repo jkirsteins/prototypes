@@ -8,6 +8,7 @@ import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { huntedLand } from "../src/sim/species";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -113,5 +114,24 @@ describe("arrows in the pack", () => {
     state.task = null;
     expect(until(g, () => qty(pile(state, st.campCell), "rawMeat") >= 5, 1500)).toBe(true);
     expect(qty(p.pack, "arrow")).toBe(10);
+  });
+
+  it("a hunt that cannot start pockets nothing: the check fails with the bow already in hand", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    placeAt(state, world, st.campCell);
+    addItem(p.pack, "bow", 1);
+    takeUp(state, world, "bow");
+    addItem(pile(state, st.campCell), "arrow", 12);
+    // Nothing huntable about at all: the check fails on "nothing about" with the bow
+    // (and, until reverted, the pocketed arrows) already in hand, not on the bow or arrows.
+    for (const s of huntedLand()) st.pop[s] = 0;
+    const before = state.intent;
+    const ok = startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "any", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" });
+    expect(ok).toBe(false);
+    expect(state.intent).toBe(before);
+    expect(qty(pile(state, st.campCell), "arrow")).toBe(12);
   });
 });

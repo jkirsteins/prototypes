@@ -267,6 +267,22 @@ export function orderKit(state: GameState): ItemId[] {
 }
 
 /**
+ * Pockets the live order's kit - arrows for a bow hunt - from the camp pile, up to
+ * ARROWS_TO_CARRY, when standing at the intent's camp cell. Returns how many it moved,
+ * so a start that turns out illegal can hand them straight back.
+ */
+export function provisionKit(state: GameState, world: World): number {
+  const it = state.intent;
+  if (!it || cellOf(state, world) !== it.campCell || !orderKit(state).includes("arrow")) return 0;
+  const pack = state.player.pack;
+  const camp = pile(state, it.campCell);
+  const want = ARROWS_TO_CARRY - qty(pack, "arrow");
+  if (want <= 0) return 0;
+  // Arrows are 0.05 kg each; ten weigh half a kilo, never worth a pack-room guard.
+  return transfer(camp, pack, "arrow", Math.min(want, qty(camp, "arrow")));
+}
+
+/**
  * Lunch for the day: at the home camp, pocket safe food from the pile up to
  * PROVISION_KG in the pack, never past the comfortable load. `want` and `kg`
  * below read `qty` as kilos directly: every item in PROVISIONS has
@@ -289,8 +305,5 @@ export function provision(state: GameState, world: World): void {
   }
   // A waterside camp tops off every vessel along with lunch, the same errand.
   if (waterSource(state, world)) fillVessels(state, world);
-  if (orderKit(state).includes("arrow")) {
-    const arrowWant = ARROWS_TO_CARRY - qty(pack, "arrow");
-    if (arrowWant > 0) transfer(camp, pack, "arrow", Math.min(arrowWant, qty(camp, "arrow")));
-  }
+  provisionKit(state, world);
 }
