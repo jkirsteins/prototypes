@@ -4,7 +4,7 @@
  * UI never shows coordinates; it shows what these functions say.
  */
 import { CELL_KM } from "../units";
-import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, type World } from "../world/gen";
+import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, waterKindOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
 import { enterRegion, regionState } from "./regionstate";
 import { walkableIce } from "./weather";
@@ -81,9 +81,12 @@ export function heathCell(world: World, idx: number): boolean {
   return t === "bog" || t === "meadow";
 }
 
-/** A cell with water next to it: where you can fish. */
-export function watersideCell(world: World, idx: number): boolean {
-  return neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water");
+/** Land beside water: any water, or only a lake or only the sea. */
+export function watersideCell(world: World, idx: number, kind: "lake" | "sea" | "any" = "any"): boolean {
+  return neighbours(world, idx).some((n) => {
+    const w = waterKindOf(world, n);
+    return w !== null && (kind === "any" || w === kind);
+  });
 }
 
 export function inForest(state: GameState, world: World): boolean {

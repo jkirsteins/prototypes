@@ -4,9 +4,10 @@
  * hours. What a level buys is what practice buys: speed, odds, less waste.
  */
 import type { World } from "../world/gen";
-import { ANIMALS, ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
+import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
 import { hereTerrain } from "./position";
-import type { GameState, ItemId, RecipeId, SkillId, SkillState, Species, StructureId, TaskId } from "./types";
+import { fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
+import type { GameState, ItemId, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
@@ -20,8 +21,8 @@ export const SKILL_NAMES: Record<SkillId, string> = {
 export const MASTERY_KEYS: Record<SkillId, string[]> = {
   woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split"],
   foraging: ["berries", "stone"],
-  hunting: ["hunt:hare", "hunt:grouse", "hunt:deer", "hunt:elk", "snare"],
-  fishing: ["fish"],
+  hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
+  fishing: fishSpecies().map((s) => `fish:${s}`),
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen"],
   building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish"],
 };
@@ -98,8 +99,9 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
     case "sticks": case "bark": case "split": case "berries": case "stone":
-    case "fish": case "repair": case "sharpen": case "light": case "lightTorch":
+    case "repair": case "sharpen": case "light": case "lightTorch":
       return id;
+    case "fish": return `fish:${arg}`;
     case "lightIndoors": return "light";
     case "hunt": return `hunt:${arg}`;
     case "build": return arg === "snare" ? "snare" : `build:${arg}`;
@@ -111,8 +113,6 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
 
 /** Recommended levels. Under them the odds are punished; over them nothing extra. */
 export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
-  "hunt:deer": { skill: "hunting", level: 4 },
-  "hunt:elk": { skill: "hunting", level: 8 },
   "craft:bow": { skill: "crafting", level: 5 },
   "craft:hideBlanket": { skill: "crafting", level: 6 },
   "craft:hideCoat": { skill: "crafting", level: 8 },
@@ -120,6 +120,14 @@ export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
   "craft:hideBoots": { skill: "crafting", level: 8 },
   "build:cabin": { skill: "building", level: 10 },
 };
+for (const s of huntedLand()) {
+  const l = SPECIES_DEFS[s].hunt?.level;
+  if (l) RECOMMENDED[`hunt:${s}`] = { skill: "hunting", level: l };
+}
+for (const s of fishSpecies()) {
+  const l = SPECIES_DEFS[s].hunt?.level;
+  if (l) RECOMMENDED[`fish:${s}`] = { skill: "fishing", level: l };
+}
 
 /** Levels short of the recommendation for a mastery key; 0 when there is none or you are there. */
 export function gap(state: GameState, key: string): number {
@@ -133,10 +141,9 @@ export const EXTRAS: Record<string, { at20: string; at50: string }> = {
   "chop:spruce": { at20: "an extra stick per tree", at50: "the axe keeps its edge on spruce" },
   "chop:pine": { at20: "an extra stick per tree", at50: "the axe keeps its edge on pine" },
   "chop:birch": { at20: "an extra stick per tree", at50: "the axe keeps its edge on birch" },
-  "hunt:hare": { at20: "the hide comes off whole, 0.3 kg", at50: "a bone more" },
+  "hunt:hare": { at20: "the fur comes off whole, 0.3 kg", at50: "a bone more" },
   "hunt:deer": { at20: "a sinew more", at50: "half the chance of a hurt" },
   "hunt:elk": { at20: "a sinew more", at50: "half the chance of a hurt" },
-  fish: { at20: "0.9 kg per catch", at50: "1.2 kg per catch" },
   "craft:hideCoat": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:hideTrousers": { at20: "one sinew fewer", at50: "a tenth less hide" },
   "craft:hideBoots": { at20: "one sinew fewer", at50: "a tenth less hide" },
@@ -150,7 +157,7 @@ export function keyName(key: string): string {
   const [kind, arg] = key.split(":");
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   if (kind === "chop") return `${cap(arg)} felling`;
-  if (kind === "hunt") return `${cap(ANIMALS[arg as Species].name)} hunting`;
+  if (kind === "hunt" || kind === "fish") return `${cap(SPECIES_DEFS[arg as Species].name)} ${kind === "hunt" ? "hunting" : "fishing"}`;
   if (kind === "craft") return cap(RECIPES[arg as RecipeId].name);
   if (kind === "build") return cap(STRUCTURES[arg as StructureId].name);
   if (kind === "cook") return `Cooking ${ITEM_NAMES[arg as ItemId]}`;
@@ -161,12 +168,12 @@ export function chopSticks(state: GameState, world: World): number {
   return 4 + (masteryOf(state, "woodcraft", masteryKey(state, world, "chop")!) >= 20 ? 1 : 0);
 }
 
-export function huntExtras(state: GameState, species: Species): { hideKg: number; bone: number; sinew: number; injuryFactor: number } {
-  const def = ANIMALS[species];
+export function huntExtras(state: GameState, species: Species): { meatKg: number; hideKg: number; furKg: number; fatKg: number; bone: number; sinew: number; injuryFactor: number } {
+  const y = SPECIES_DEFS[species].yields ?? { meatKg: 0 };
   const m = masteryOf(state, "hunting", `hunt:${species}`);
-  const out = { hideKg: def.hideKg, bone: def.bone, sinew: def.sinew, injuryFactor: 1 };
+  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg: y.fatKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1 };
   if (species === "hare") {
-    if (m >= 20) out.hideKg = 0.3;
+    if (m >= 20) out.furKg = 0.3;
     if (m >= 50) out.bone += 1;
   } else if (species === "deer" || species === "elk") {
     if (m >= 20) out.sinew += 1;
@@ -175,9 +182,10 @@ export function huntExtras(state: GameState, species: Species): { hideKg: number
   return out;
 }
 
-export function fishKg(state: GameState): number {
-  const m = masteryOf(state, "fishing", "fish");
-  return ANIMALS.fish.meatKg + (m >= 50 ? 0.5 : m >= 20 ? 0.2 : 0);
+/** Kilograms a catch of this species weighs, after mastery. */
+export function fishKg(state: GameState, species: Species): number {
+  const m = masteryOf(state, "fishing", `fish:${species}`);
+  return (SPECIES_DEFS[species].yields?.meatKg ?? 0) * (m >= 50 ? 5 / 3 : m >= 20 ? 4 / 3 : 1);
 }
 
 /** A recipe's needs after mastery: hide and fur pieces want one sinew fewer at 20 and a tenth less hide at 50. */
@@ -196,7 +204,7 @@ export function effectiveNeeds(state: GameState, recipe: RecipeId): Need[] {
 
 /** Chance the animal hurts you: its own, plus ten points per level short, halved by mastery 50 on deer and elk. */
 export function injuryChance(state: GameState, species: Species): number {
-  const base = ANIMALS[species].injury + 0.1 * gap(state, `hunt:${species}`);
+  const base = (SPECIES_DEFS[species].hunt?.injury ?? 0) + 0.1 * gap(state, `hunt:${species}`);
   return Math.min(1, base * huntExtras(state, species).injuryFactor);
 }
 
@@ -254,9 +262,10 @@ export function wearFactor(state: GameState, world: World, id: TaskId, arg?: str
 }
 
 /** Odds multiplier for a hunt or a cast: the skill's level, halved per level short of the recommendation. */
-export function oddsFactor(state: GameState, species: string): number {
-  const skill: SkillId = species === "fish" ? "fishing" : "hunting";
-  const key = species === "fish" ? "fish" : `hunt:${species}`;
+export function oddsFactor(state: GameState, species: Species): number {
+  const fishing = SPECIES_DEFS[species].kind === "fish";
+  const skill: SkillId = fishing ? "fishing" : "hunting";
+  const key = fishing ? `fish:${species}` : `hunt:${species}`;
   let f = (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
   if (state.player.frostbite.hands > 0) f *= 0.5;
   if (state.player.fingers) f *= 0.9;

@@ -3,6 +3,7 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { Species } from "./species";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
 
@@ -13,8 +14,7 @@ export type Terrain =
 /** Whether a route may step onto water, and how: safe ice bears weight without risk, thin ice risks a fall. */
 export type IceMode = "none" | "safe" | "thin";
 
-export type Species = "hare" | "grouse" | "deer" | "elk" | "fish";
-export const SPECIES: Species[] = ["hare", "grouse", "deer", "elk", "fish"];
+export type { Habitat, Species } from "./species";
 
 /** Items counted in pieces. */
 export type CountItem =
@@ -69,13 +69,15 @@ export type TaskId =
 
 export interface Task {
   id: TaskId;
-  /** Species for hunt, recipe for craft, structure for build, region for travel, spot for walk, food for cook. */
+  /** Species for hunt and fish, recipe for craft, structure for build, region for travel, spot for walk, food for cook. */
   arg?: string;
   /** Minutes of work done. */
   progress: number;
   /** Minutes of work the task needs at full speed. */
   duration: number;
   repeat: boolean;
+  /** Started as "hunt anything" or "fish for anything": the arg is the species drawn, and a repeat draws again. */
+  any?: boolean;
 }
 
 /**
@@ -179,7 +181,8 @@ export interface Intent {
 export interface RegionState {
   /** Standing trees worth felling. */
   wood: number;
-  pop: Record<Species, number>;
+  /** Animals by species, only for species with capacity here. */
+  pop: Partial<Record<Species, number>>;
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean };

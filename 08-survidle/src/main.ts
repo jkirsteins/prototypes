@@ -9,6 +9,7 @@ import { newGame } from "./sim/newgame";
 import { addOrder, moveOrder, removeOrder } from "./sim/orders";
 import { feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
+import { fillPopulations } from "./sim/regionstate";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
 import type { GameState, ItemId, OrderKind, TaskId, UntilChoice } from "./sim/types";
@@ -51,6 +52,7 @@ function boot() {
   if (saved) {
     state = saved.state;
     world = generateWorld(state.seed);
+    fillPopulations(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead) {
       ui.away = catchUp(state, world, elapsed, speed);

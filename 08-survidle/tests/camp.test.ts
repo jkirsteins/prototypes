@@ -41,7 +41,9 @@ describe("camp", () => {
   it("snares catch hares where hares are, and a fox takes old catches", () => {
     const { state, world } = newGame(2);
     const rng = new Rng(4);
-    const r = regionAt(world, state.player.region).capacity.hare > 5 ? regionAt(world, state.player.region) : regionAt(world, regionAt(world, state.player.region).neighbours.find((nb) => regionAt(world, nb.id).capacity.hare > 5)!.id);
+    const hares = (id: number) => regionAt(world, id).capacity.hare ?? 0;
+    const home = state.player.region;
+    const r = regionAt(world, hares(home) > 5 ? home : regionAt(world, home).neighbours.find((nb) => hares(nb.id) > 5)!.id);
     const st = regionState(state, world, r.id);
     st.structures.snares = 5;
     st.pop.hare = r.capacity.hare;

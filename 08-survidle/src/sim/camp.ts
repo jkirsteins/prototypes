@@ -1,6 +1,6 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, type World } from "../world/gen";
-import { regionDensity } from "./animals";
+import { popOf, regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, stepSmoke } from "./fire";
@@ -129,8 +129,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     if (st.structures.snares > 0) {
       const d = regionDensity(state, world, id, "hare", cal);
       for (let i = 0; i < st.structures.snares; i++) {
-        if (st.pop.hare >= 1 && rng.chance(0.3 * d)) {
-          st.pop.hare -= 1;
+        if (popOf(st, "hare") >= 1 && rng.chance(0.3 * d)) {
+          st.pop.hare = popOf(st, "hare") - 1;
           st.snareCatch.count += 1;
         }
       }

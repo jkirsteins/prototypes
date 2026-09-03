@@ -13,6 +13,8 @@ import { calendar } from "../src/sim/calendar";
 import { availableTasks, check, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { workSpeed } from "../src/sim/player";
 import { regionDensity } from "../src/sim/animals";
+import { fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "../src/sim/species";
+import { regionAt } from "../src/world/gen";
 
 describe("skill curves", () => {
   it("skill level is hours squared: 1 at 0, 2 at 2 h, 10 at 162 h, capped at 50", () => {
@@ -34,9 +36,9 @@ describe("skill curves", () => {
   });
 
   it("a pool holds 100 hours per mastery key", () => {
-    expect(poolCapacity("fishing")).toBe(6000);
+    expect(poolCapacity("fishing")).toBe(fishSpecies().length * 6000);
     expect(poolCapacity("woodcraft")).toBe(6 * 6000);
-    expect(MASTERY_KEYS.hunting).toEqual(["hunt:hare", "hunt:grouse", "hunt:deer", "hunt:elk", "snare"]);
+    expect(MASTERY_KEYS.hunting).toEqual([...huntedLand().map((s) => `hunt:${s}`), "snare"]);
     expect(MASTERY_KEYS.crafting).toContain("craft:hideBlanket");
     expect(MASTERY_KEYS.building).toContain("build:boughBed");
     expect(MASTERY_KEYS.building).not.toContain("build:snare");
@@ -77,6 +79,10 @@ describe("what trains what", () => {
 });
 
 type G = ReturnType<typeof newGame>;
+/** A fish the player's region holds; the tests want one that exists, not a particular one. */
+function aFish(g: G): Species {
+  return fishSpecies().find((s) => regionAt(g.world, g.state.player.region).capacity[s])!;
+}
 function run(g: G, minutes: number) {
   const rng = new Rng(1);
   for (let m = 0; m < minutes; m++) stepTask(g.state, g.world, calendar(g.state.minute), rng, 1);
@@ -127,14 +133,15 @@ describe("training", () => {
   });
 
   it("the pool stops at capacity", () => {
+    // Seed 4: the only starting region among the test seeds with a lake, so it has fish.
     const g = newGame(4);
     const { state, world } = g;
-    state.skills.fishing.pool = 6000 - 1;
+    state.skills.fishing.pool = poolCapacity("fishing") - 1;
     placeAtSpot(state, world, state.player.region, "shore");
     state.player.tools.push({ id: "fishingSpear", durability: 100 });
-    startTask(state, world, cal, "fish");
+    startTask(state, world, cal, "fish", aFish(g));
     run(g, 5);
-    expect(state.skills.fishing.pool).toBe(6000);
+    expect(state.skills.fishing.pool).toBe(poolCapacity("fishing"));
   });
 });
 
@@ -149,15 +156,17 @@ describe("effects", () => {
   });
 
   it("Hunting 11 has 10% better odds; Fishing reads its own skill", () => {
-    const { state, world } = newGame(3);
+    const g = newGame(4);
+    const { state, world } = g;
     const d = regionDensity(state, world, state.player.region, "hare", cal);
     const base = huntOdds(state, world, cal, d, "hare");
     state.skills.hunting.xp = levelMinutes(11);
     expect(huntOdds(state, world, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
-    const df = regionDensity(state, world, state.player.region, "fish", cal);
-    const fish = huntOdds(state, world, cal, df, "fish");
+    const f = aFish(g);
+    const df = regionDensity(state, world, state.player.region, f, cal);
+    const fish = huntOdds(state, world, cal, df, f);
     state.skills.fishing.xp = levelMinutes(11);
-    expect(huntOdds(state, world, cal, df, "fish")).toBeCloseTo(fish * 1.1, 6);
+    expect(huntOdds(state, world, cal, df, f)).toBeCloseTo(fish * 1.1, 6);
   });
 
   it("Crafting 11 wears the needle 10% less", () => {
@@ -233,7 +242,7 @@ describe("the button text agrees with the sim", () => {
 
     state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(20);
     const hare = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "hare")!;
-    expect(hare.detail).toContain("0.3 kg hide");
+    expect(hare.detail).toContain("0.3 kg fur");
   });
 
   it("odds that round to nothing but are not zero read \"under 1%\", not \"about 0%\"", () => {
@@ -306,11 +315,11 @@ describe("mastery extras", () => {
     expect(qty(state.player.pack, "stick")).toBe(5);
   });
 
-  it("a hare at mastery 20 keeps its hide whole; at 50 a bone more", () => {
+  it("a hare at mastery 20 keeps its fur whole; at 50 a bone more", () => {
     const { state } = newGame(3);
-    expect(huntExtras(state, "hare")).toEqual({ hideKg: 0.2, bone: 1, sinew: 0, injuryFactor: 1 });
+    expect(huntExtras(state, "hare")).toEqual({ meatKg: 1.2, hideKg: 0, furKg: 0.2, fatKg: 0, bone: 1, sinew: 0, injuryFactor: 1 });
     state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(20);
-    expect(huntExtras(state, "hare").hideKg).toBe(0.3);
+    expect(huntExtras(state, "hare").furKg).toBe(0.3);
     state.skills.hunting.mastery["hunt:hare"] = masteryMinutes(50);
     expect(huntExtras(state, "hare").bone).toBe(2);
   });
@@ -324,13 +333,13 @@ describe("mastery extras", () => {
     expect(injuryChance(state, "elk")).toBeCloseTo(0.075, 9);
   });
 
-  it("fish: 0.9 kg per catch at 20, 1.2 at 50", () => {
+  it("a perch: a third heavier at mastery 20, two thirds at 50", () => {
     const { state } = newGame(3);
-    expect(fishKg(state)).toBeCloseTo(0.7, 9);
-    state.skills.fishing.mastery.fish = masteryMinutes(20);
-    expect(fishKg(state)).toBeCloseTo(0.9, 9);
-    state.skills.fishing.mastery.fish = masteryMinutes(50);
-    expect(fishKg(state)).toBeCloseTo(1.2, 9);
+    expect(fishKg(state, "perch")).toBeCloseTo(0.3, 9);
+    state.skills.fishing.mastery["fish:perch"] = masteryMinutes(20);
+    expect(fishKg(state, "perch")).toBeCloseTo(0.4, 9);
+    state.skills.fishing.mastery["fish:perch"] = masteryMinutes(50);
+    expect(fishKg(state, "perch")).toBeCloseTo(0.5, 9);
   });
 
   it("hide and fur recipes: one sinew fewer at 20, a tenth less hide at 50", () => {
@@ -383,18 +392,19 @@ describe("pool yield perks", () => {
     expect(qty(state.player.pack, "stone")).toBe(5);
   });
 
-  it("fish at a full pool and mastery 1 catches 0.7 * 1.5 kg", () => {
+  it("fish at a full pool and mastery 1 catch half again their weight", () => {
     const g = newGame(4);
     const { state, world } = g;
+    const f = aFish(g);
     placeAtSpot(state, world, state.player.region, "shore");
     state.player.tools.push({ id: "fishingSpear", durability: 100 });
     state.skills.fishing.pool = poolCapacity("fishing");
-    expect(startTask(state, world, cal, "fish")).toBe(true);
+    expect(startTask(state, world, cal, "fish", f)).toBe(true);
     run(g, 60);
     // Seed 1's roll in run() misses this cast, so the catch fails and there is
     // nothing in the pack to weigh; assert on the button's figure instead.
     expect(qty(state.player.pack, "fish")).toBe(0);
-    expect(check(state, world, cal, "fish").detail).toContain("1.0 kg per catch");
+    expect(check(state, world, cal, "fish", f).detail).toContain(`${(SPECIES_DEFS[f].yields!.meatKg * 1.5).toFixed(1)} kg per catch`);
   });
 
   it("Foraging and Fishing trade the wear perk for yield: full pool means normal wear, not zero", () => {

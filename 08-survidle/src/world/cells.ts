@@ -4,7 +4,7 @@
  * is only a cache. Region definitions live in gen.ts and are lazy too.
  */
 import type { Terrain } from "../sim/types";
-import { regionOfCell, TERRAIN_INDEX, TERRAINS, terrainAt, WORLD_H, WORLD_W } from "./terrain";
+import { fieldsAt, regionOfCell, TERRAIN_INDEX, TERRAINS, terrainAt, WORLD_H, WORLD_W } from "./terrain";
 import type { RegionDef } from "./gen";
 
 export const CHUNK = 64;
@@ -99,6 +99,14 @@ export function cellAt(world: World, idx: number): Cell {
 
 export function cellIdx(world: World, x: number, y: number): number {
   return y * world.w + x;
+}
+
+/** Sea or lake for a water cell; null on land. The sea flag is the coast field's sign, so a lake is never salt. */
+export function waterKindOf(world: World, idx: number): "lake" | "sea" | null {
+  const x = idx % world.w;
+  const y = Math.floor(idx / world.w);
+  if (terrainOf(world, x, y) !== "water") return null;
+  return fieldsAt(world.seed, x, y).sea ? "sea" : "lake";
 }
 
 export function neighbours(world: World, idx: number): number[] {

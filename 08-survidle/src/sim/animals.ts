@@ -1,14 +1,14 @@
 import type { Rng } from "../rng";
-import { regionAt, type World } from "../world/gen";
+import { regionAt, speciesHere, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { ANIMALS } from "./items";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
-import { type GameState, SPECIES, type Species } from "./types";
+import { isVoiceOnly, type Species, SPECIES_DEFS } from "./species";
+import type { GameState, RegionState } from "./types";
 
-/** Daily logistic growth rates; realistic yearly increase spread over the growing season. */
-const GROWTH: Record<Species, number> = { hare: 0.006, grouse: 0.005, deer: 0.0012, elk: 0.0006, fish: 0.003 };
 const MIGRATION = 0.03;
+/** Species whose comings and goings near the player are worth a log line. */
+const NOTABLE: Species[] = ["deer", "reindeer", "elk", "wolf", "bear"];
 
 export function density(pop: number, k: number): number {
   return k <= 0 ? 0 : Math.min(1, pop / k);
@@ -22,37 +22,47 @@ export function densityLabel(d: number): string {
   return "many";
 }
 
-/** Capacity as it stands this season: deer and elk thin out in winter. */
+/** Animals of a species in a region; none for a species the region never holds. */
+export function popOf(st: RegionState, s: Species): number {
+  return st.pop[s] ?? 0;
+}
+
+/** Capacity as it stands this season: winter thins the browsers, migrants are away. */
 export function seasonalCapacity(world: World, region: number, s: Species, cal: Calendar): number {
-  const k = regionAt(world, region).capacity[s];
-  if (cal.season === "winter" && (s === "deer" || s === "elk")) return k * 0.6;
-  return k;
+  const k = regionAt(world, region).capacity[s] ?? 0;
+  const r = SPECIES_DEFS[s].season;
+  if (r.kind === "resident") return cal.season === "winter" ? k * (r.winter ?? 1) : k;
+  return cal.month >= r.arrive && cal.month < r.leave ? k : 0;
 }
 
 export function regionDensity(state: GameState, world: World, region: number, s: Species, cal: Calendar): number {
-  return density(regionState(state, world, region).pop[s], seasonalCapacity(world, region, s, cal));
+  return density(popOf(regionState(state, world, region), s), seasonalCapacity(world, region, s, cal));
 }
 
 /** Runs once per game day at 04:00: growth, then migration. Logs notable movements near the player. */
 export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   const growing = cal.month >= 3 && cal.month <= 8;
   const here = state.player.region;
-  const before = SPECIES.map((s) => regionState(state, world, here).pop[s]);
+  const before = NOTABLE.map((s) => popOf(regionState(state, world, here), s));
   const touched = touchedRegions(state);
   const touchedSet = new Set(touched);
 
   for (const id of touched) {
     const r = regionAt(world, id);
     const st = state.regions[id];
-    for (const s of SPECIES) {
+    for (const s of speciesHere(r)) {
+      const def = SPECIES_DEFS[s];
       const k = seasonalCapacity(world, r.id, s, cal);
-      if (k <= 0) {
+      const pop = popOf(st, s);
+      if (isVoiceOnly(s)) {
+        st.pop[s] = k;
+      } else if (def.season.kind === "migrant") {
+        // A flock arrives over a few weeks and leaves the same way; next year's replaces what was taken.
+        st.pop[s] = pop + (k - pop) * 0.1;
+      } else if (k <= 0) {
         st.pop[s] = 0;
-        continue;
-      }
-      const pop = st.pop[s];
-      if (growing) {
-        st.pop[s] = Math.max(0, pop + GROWTH[s] * pop * (1 - pop / k));
+      } else if (growing) {
+        st.pop[s] = Math.max(0, pop + def.growth * pop * (1 - pop / k));
       } else if (pop > k) {
         // Winter thins a herd the land cannot feed.
         st.pop[s] = pop - (pop - k) * 0.05;
@@ -60,22 +70,22 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     }
   }
 
-  // Migration: a share of each land population leaves for a touched neighbour
+  // Migration: a share of each mammal population leaves for a touched neighbour
   // with room. Untouched country sits at its starting numbers, so nothing
-  // moves in or out of it.
+  // moves in or out of it. Birds and fish do not shuffle.
   const moves: { from: number; to: number; s: Species; n: number }[] = [];
   for (const id of touched) {
     const r = regionAt(world, id);
     const nbs = r.neighbours.filter((nb) => touchedSet.has(nb.id));
     if (!nbs.length) continue;
     const st = state.regions[id];
-    for (const s of SPECIES) {
-      if (s === "fish") continue;
-      const n = st.pop[s] * MIGRATION;
+    for (const s of speciesHere(r)) {
+      if (SPECIES_DEFS[s].kind !== "mammal") continue;
+      const n = popOf(st, s) * MIGRATION;
       if (n < 0.01) continue;
       const weights = nbs.map((nb) => {
         const k = seasonalCapacity(world, nb.id, s, cal);
-        return Math.max(0, k - state.regions[nb.id].pop[s]);
+        return Math.max(0, k - popOf(state.regions[nb.id], s));
       });
       const total = weights.reduce((a, b) => a + b, 0);
       if (total <= 0) continue;
@@ -92,21 +102,20 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     }
   }
   for (const m of moves) {
-    state.regions[m.from].pop[m.s] -= m.n;
-    state.regions[m.to].pop[m.s] += m.n;
+    state.regions[m.from].pop[m.s] = popOf(state.regions[m.from], m.s) - m.n;
+    state.regions[m.to].pop[m.s] = popOf(state.regions[m.to], m.s) + m.n;
   }
 
-  SPECIES.forEach((s, i) => {
-    if (s !== "deer" && s !== "elk") return;
-    const now = state.regions[here].pop[s];
+  NOTABLE.forEach((s, i) => {
+    const now = popOf(state.regions[here], s);
     const was = before[i];
     if (was < 0.5 && now < 0.5) return;
     const change = (now - was) / Math.max(0.5, was);
-    if (change > 0.25) log(state, `${cap(ANIMALS[s].name)} tracks are fresher around ${regionAt(world, here).name}.`, "good");
+    if (change > 0.25) log(state, `${cap(SPECIES_DEFS[s].name)} tracks are fresher around ${regionAt(world, here).name}.`, "good");
     else if (change < -0.25) {
       const gone = moves.find((m) => m.from === here && m.s === s);
       const where = gone ? ` toward ${regionAt(world, gone.to).name}` : "";
-      log(state, `The ${ANIMALS[s].name} have moved on${where}.`);
+      log(state, `The ${SPECIES_DEFS[s].name} have moved on${where}.`);
     }
   });
 }

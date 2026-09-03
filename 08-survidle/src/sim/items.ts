@@ -1,5 +1,5 @@
 import type {
-  ClothingId, ClothingSlot, ItemId, PerishableId, RecipeId, Species, SpotId,
+  ClothingId, ClothingSlot, ItemId, PerishableId, RecipeId,
   StructureId, ToolId,
 } from "./types";
 
@@ -116,27 +116,6 @@ export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
 export const MAX_SNARES = 5;
 /** Days a bough bed stays springy before it has to be laid again. */
 export const BOUGH_BED_DAYS = 14;
-
-export interface SpeciesDef {
-  name: string;
-  spot: SpotId;
-  minutes: number;
-  /** Multiplied by density (pop/K) for the success chance. */
-  odds: number;
-  meatKg: number;
-  hideKg: number;
-  bone: number;
-  sinew: number;
-  injury: number;
-}
-
-export const ANIMALS: Record<Species, SpeciesDef> = {
-  hare: { name: "hare", spot: "heath", minutes: 90, odds: 0.6, meatKg: 1.2, hideKg: 0.2, bone: 1, sinew: 0, injury: 0 },
-  grouse: { name: "grouse", spot: "forest", minutes: 60, odds: 0.6, meatKg: 0.5, hideKg: 0, bone: 0, sinew: 0, injury: 0 },
-  deer: { name: "roe deer", spot: "forest", minutes: 180, odds: 0.45, meatKg: 12, hideKg: 3, bone: 4, sinew: 3, injury: 0 },
-  elk: { name: "elk", spot: "forest", minutes: 240, odds: 0.3, meatKg: 150, hideKg: 20, bone: 8, sinew: 6, injury: 0.15 },
-  fish: { name: "fish", spot: "shore", minutes: 60, odds: 0.6, meatKg: 0.7, hideKg: 0, bone: 0, sinew: 0, injury: 0 },
-};
 
 export const FIRE_MAX_KG = 36;
 export const FIRE_LOW_KG = 3;

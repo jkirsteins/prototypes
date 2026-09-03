@@ -12,15 +12,16 @@ import { bodyStep, currentNeed, provision } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
-import { ANIMALS, ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
+import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
 import { regionState } from "./regionstate";
+import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { check, loadPack, stopTask, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, Species, StructureId, TaskId, Until, Where,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
 } from "./types";
 
 export type { IntentRequest, UntilChoice, Where } from "./types";
@@ -33,22 +34,23 @@ const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
-  chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath", fish: "shore",
+  chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
 };
 
-/** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. */
+/** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
 function groundOf(task: TaskId, arg?: string): SpotId | null {
-  if (task === "hunt") return ANIMALS[arg as Species].spot;
+  if (task === "hunt" || task === "fish") return SPECIES_DEFS[arg as Species]?.hunt?.spot ?? null;
   if (task === "build" && arg === "snare") return "heath";
   return GROUND_OF[task] ?? null;
 }
 
-function suits(world: World, cell: number, ground: SpotId): boolean {
+/** The water is part of the ground for a species that lives on one kind of it. */
+function suits(world: World, cell: number, ground: SpotId, water: "lake" | "sea" | null): boolean {
   switch (ground) {
     case "forest": return forestCell(world, cell);
     case "outcrop": return rockCell(world, cell);
     case "heath": return heathCell(world, cell);
-    case "shore": return watersideCell(world, cell);
+    case "shore": return watersideCell(world, cell, water ?? "any");
     case "camp": return true;
   }
 }
@@ -74,7 +76,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
 export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "haul") return "all";
   if (task === "chop") return ["log", "stick"];
-  if (task === "hunt") return ["rawMeat", "hide", "bone", "sinew"];
+  if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];
   const one = yieldItem(task, arg);
   return one ? [one] : [];
 }
@@ -93,13 +95,14 @@ export function resolveCell(state: GameState, world: World, task: TaskId, arg: s
   }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
+  const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
   let note = "";
   if (where !== "nearest") {
     const s = spotOf(r, where);
-    if (s && suits(world, s.cell, ground)) return { cell: s.cell, note: "" };
+    if (s && suits(world, s.cell, ground, water)) return { cell: s.cell, note: "" };
     note = `${SPOT_WORDS[where]} does not suit; going to ${SPOT_WORDS[ground]} instead`;
   }
-  if (suits(world, here, ground)) return { cell: here, note };
+  if (suits(world, here, ground, water)) return { cell: here, note };
   const s = spotOf(r, ground);
   // No such ground in this region: check at the cell under foot says so in its own words.
   return { cell: s ? s.cell : here, note };
@@ -380,8 +383,8 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   stone: () => "gathering stone",
   berries: () => "picking berries",
   split: () => "splitting a log",
-  hunt: (arg) => `hunting ${ANIMALS[arg as Species].name}`,
-  fish: () => "fishing",
+  hunt: (arg) => `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`,
+  fish: (arg) => `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`,
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,
   repair: () => "mending clothing",

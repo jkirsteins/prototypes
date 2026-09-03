@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cellAt, generateWorld, hasSpot, regionAt, regionOf, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
+import { fishSpecies } from "../src/sim/species";
+import { cellAt, generateWorld, hasSpot, regionAt, regionOf, speciesHere, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
 import { LATTICE_W } from "../src/world/terrain";
 import { findRoute, routeKm } from "../src/world/route";
 
@@ -83,9 +84,10 @@ describe("world generation", () => {
   });
 
   it("derives animal capacities from area and terrain", () => {
-    expect(start.capacity.deer).toBeGreaterThan(0);
+    expect(speciesHere(start).length).toBeGreaterThan(0);
     const dry = regionAt(world, world.start);
-    if (dry.frac.water === 0) expect(dry.capacity.fish).toBe(0);
+    // No water, no fish of any kind.
+    if (dry.frac.water === 0) expect(fishSpecies().filter((s) => dry.capacity[s])).toEqual([]);
     expect(LATTICE_W).toBeGreaterThan(100);
   });
 

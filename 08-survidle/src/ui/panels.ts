@@ -5,7 +5,8 @@ import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
-import { ANIMALS, CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, ITEM_KG, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
+import { fishSpecies, huntedLand, SPECIES_DEFS } from "../sim/species";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, feltTemperature, insulation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
@@ -15,11 +16,11 @@ import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skil
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
-import { type GameState, type Garment, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
+import type { GameState, Garment, ItemId, LogEntry, SkillId, TaskId } from "../sim/types";
 import { ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
-import { regionAt, type World } from "../world/gen";
+import { regionAt, type RegionDef, speciesHere, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
@@ -171,7 +172,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     `forest ${pct(r.forest)} <small>(spruce ${pct(f.spruce)}, pine ${pct(f.pine)}, birch ${pct(f.birch)})</small>`,
     `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
   ].join(", ");
-  const animals = SPECIES.map((s) => `${ANIMALS[s].name}: <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`).join(", ");
+  const animals = speciesHere(r).map((s) => `${SPECIES_DEFS[s].name}: <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`).join(", ");
   const myCell = cellOf(state, world);
   const spots = r.spots
     .map((s) => {
@@ -355,13 +356,19 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
   return `<h2>Do</h2><div class="tabs">${tabs}</div>${instantBtns}${opts.map(optHtml).join("")}`;
 }
 
-export const INTENT_GROUPS: { label: string; items: { id: TaskId; arg?: string }[] }[] = [
-  { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
-  { label: "Hunt", items: [...SPECIES.filter((s) => s !== "fish").map((s) => ({ id: "hunt" as TaskId, arg: s })), { id: "fish" }] },
-  { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
-  { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
-  { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
-];
+/** The Do panel's rows. The Hunt group is the region's own roster: what is not here is not offered. */
+export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
+  return [
+    { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
+    { label: "Hunt", items: [
+      ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
+      ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
+    ] },
+    { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+    { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
+    { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
+  ];
+}
 
 /**
  * What the strip would add to a plain click, in words; empty for once, leave
@@ -413,7 +420,7 @@ function stripHtml(state: GameState, world: World, ui: UiState): string {
 }
 
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
-  const groups = INTENT_GROUPS.map((g) => {
+  const groups = intentGroups(regionAt(world, state.player.region)).map((g) => {
     const rows = g.items.map(({ id, arg }) => intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, ui.where)), stripSentence(ui, id, arg))).join("");
     return `<div class="grp"><small>${g.label}</small>${rows}</div>`;
   }).join("");

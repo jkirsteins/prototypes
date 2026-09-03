@@ -4,17 +4,23 @@
  * Untouched regions sit at their starting populations, so nothing is lost
  * by not simulating them.
  */
-import { regionAt, type World } from "../world/gen";
+import { regionAt, speciesHere, type World } from "../world/gen";
 import { log } from "./log";
-import { type GameState, type RegionState, SPECIES, type Species } from "./types";
+import type { GameState, RegionState, Species } from "./types";
+
+/** Starting numbers: seven tenths of what the land can hold. */
+export function startingPop(world: World, id: number): Partial<Record<Species, number>> {
+  const r = regionAt(world, id);
+  const pop: Partial<Record<Species, number>> = {};
+  for (const s of speciesHere(r)) pop[s] = r.capacity[s]! * 0.7;
+  return pop;
+}
 
 export function newRegionState(world: World, id: number): RegionState {
   const r = regionAt(world, id);
-  const pop = {} as Record<Species, number>;
-  for (const s of SPECIES) pop[s] = r.capacity[s] * 0.7;
   return {
     wood: r.wood0,
-    pop,
+    pop: startingPop(world, id),
     campCell: r.campCell,
     structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false },
     boughBedAge: 0,
@@ -27,6 +33,20 @@ export function newRegionState(world: World, id: number): RegionState {
     orders: [],
     nextOrderId: 1,
   };
+}
+
+/**
+ * A region saved before a species existed has no number for it. Fill every
+ * touched region's missing species at their starting numbers, and drop
+ * numbers for species the catalogue no longer has. Called once after a
+ * load, with the world in hand, which fillDefaults does not have.
+ */
+export function fillPopulations(state: GameState, world: World): void {
+  for (const [key, st] of Object.entries(state.regions)) {
+    const start = startingPop(world, Number(key));
+    for (const k of Object.keys(st.pop)) if (!(k in start)) delete st.pop[k as Species];
+    for (const s of Object.keys(start) as Species[]) st.pop[s] ??= start[s];
+  }
 }
 
 export function regionState(state: GameState, world: World, id: number): RegionState {

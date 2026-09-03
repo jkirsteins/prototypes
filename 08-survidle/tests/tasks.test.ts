@@ -192,7 +192,8 @@ describe("tasks", () => {
   });
 
   it("offers every kind of task somewhere in the list, legal or not", () => {
-    const { state, world } = newGame(3);
+    // Seed 4: a starting region with a lake, so the list has a fishing row at all.
+    const { state, world } = newGame(4);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));
     for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
       expect(ids.has(id as never)).toBe(true);

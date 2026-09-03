@@ -12,12 +12,12 @@ import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
-import { SPECIES } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
 import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { fishSpecies, huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf } from "../src/world/gen";
 
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
@@ -36,11 +36,13 @@ describe("reachability: everything in the catalogue has a button", () => {
   it("every structure", () => {
     for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="build:${id}"`);
   });
-  it("every animal", () => {
-    for (const s of SPECIES) {
-      if (s === "fish") expect(html).toContain(`data-opt="fish:"`);
-      else expect(html).toContain(`data-opt="hunt:${s}"`);
-    }
+  it("every animal the region holds, and nothing it does not", () => {
+    const r = regionAt(world, state.player.region);
+    const here = huntedLand().filter((s) => r.capacity[s]);
+    expect(here.length).toBeGreaterThan(0);
+    for (const s of here) expect(html).toContain(`data-opt="hunt:${s}"`);
+    for (const s of huntedLand()) if (!r.capacity[s]) expect(html).not.toContain(`data-opt="hunt:${s}"`);
+    for (const s of fishSpecies()) expect(html.includes(`data-opt="fish:${s}"`)).toBe(Boolean(r.capacity[s]));
   });
   it("every gather, camp and move task", () => {
     for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep", "haul"]) {
@@ -241,7 +243,9 @@ describe("the Do panel", () => {
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');
     for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="intent:craft:${id}"`);
     for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="intent:build:${id}"`);
-    for (const s of SPECIES) expect(html).toContain(s === "fish" ? 'data-opt="intent:fish:"' : `data-opt="intent:hunt:${s}"`);
+    const roster = regionAt(world, state.player.region);
+    for (const s of huntedLand()) if (roster.capacity[s]) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
+    for (const s of fishSpecies()) expect(html.includes(`data-opt="intent:fish:${s}"`)).toBe(Boolean(roster.capacity[s]));
     for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }

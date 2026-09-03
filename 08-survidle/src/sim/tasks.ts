@@ -2,15 +2,15 @@ import type { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, routeKm, routeMinutes } from "../world/route";
-import { regionDensity } from "./animals";
+import { popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import {
   canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, tool, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  ANIMALS, CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RECIPES, RECIPE_IDS, STRUCTURES,
-  STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES, type SpeciesDef,
+  CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RECIPES, RECIPE_IDS, STRUCTURES,
+  STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
@@ -25,9 +25,10 @@ import {
 } from "./position";
 import { lightingInRain, SMOKE_COUGH, splitIsWet } from "./fire";
 import { discovery, regionState } from "./regionstate";
-import {
-  type GameState, type IceMode, type Order, type PausedTask, type RecipeId, SPECIES, type Species,
-  type SpotId, type StructureId, type TaskId,
+import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
+import type {
+  GameState, IceMode, Order, PausedTask, RecipeId,
+  SpotId, StructureId, TaskId,
 } from "./types";
 import { WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
@@ -139,6 +140,31 @@ export function whereIs(state: GameState, world: World, cell: number): string {
   return `a spot ${straightKm(world, cellOf(state, world), cell).toFixed(1)} km ${dir}${inRegion}`;
 }
 
+/** Whether the cell suits a species' spot: its ground, and for the shore, its water. */
+function spotSuits(world: World, at: number, spot: SpotId, water: "lake" | "sea" | null): boolean {
+  switch (spot) {
+    case "forest": return forestCell(world, at);
+    case "outcrop": return rockCell(world, at);
+    case "heath": return heathCell(world, at);
+    case "shore": return watersideCell(world, at, water ?? "any");
+    case "camp": return true;
+  }
+}
+
+const SPOT_WHAT: Record<SpotId, string> = { forest: "forest", outcrop: "rock", heath: "heath", shore: "water", camp: "camp" };
+
+/** What a kill of this species puts on the ground, and the odds of getting one. */
+function huntDetail(state: GameState, s: Species, odds: number): string {
+  const x = huntExtras(state, s);
+  const parts = [`${x.meatKg} kg meat`];
+  if (x.hideKg) parts.push(`${x.hideKg} kg hide`);
+  if (x.furKg) parts.push(`${x.furKg} kg fur`);
+  if (x.fatKg) parts.push(`${x.fatKg} kg fat`);
+  if (x.bone) parts.push(`${x.bone} bone`);
+  if (x.sinew) parts.push(`${x.sinew} sinew`);
+  return `${parts.join(", ")}; ${oddsText(odds)}`;
+}
+
 /**
  * The one place a task's legality and duration are decided. availableTasks
  * and startTask both go through it so the button and the click agree.
@@ -200,29 +226,38 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "hunt": {
       const s = arg as Species;
-      const def: SpeciesDef = ANIMALS[s];
+      const def = SPECIES_DEFS[s];
+      if (!def?.hunt || isFish(s)) return { ...opt({ group: "hunt", label: "Hunt" }), ok: false, why: "no such animal" };
       const d = regionDensity(state, world, p.region, s, cal);
-      const onGround = def.spot === "heath" ? heathCell(world, at) : forestCell(world, at);
-      const x = huntExtras(state, s);
-      const o = ground(onGround, def.spot, def.spot === "heath" ? "heath" : "forest", opt({
-        group: "hunt", label: `Hunt ${def.name}`, duration: def.minutes, repeatable: true,
-        detail: `${def.meatKg} kg meat${x.hideKg ? `, ${x.hideKg} kg hide` : ""}${x.bone ? `, ${x.bone} bone` : ""}${x.sinew ? `, ${x.sinew} sinew` : ""}; ${oddsText(huntOdds(state, world, cal, d, s))}`,
+      const o = ground(spotSuits(world, at, def.hunt.spot, waterOf(s)), def.hunt.spot, SPOT_WHAT[def.hunt.spot], opt({
+        group: "hunt", label: `Hunt ${def.name}`, duration: def.hunt.minutes, repeatable: true,
+        detail: huntDetail(state, s, huntOdds(state, world, cal, d, s)),
       }));
       if (!o.ok) return o;
       if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
       if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
-      if (st.pop[s] < 1) return { ...o, ok: false, why: `no ${def.name} here` };
+      if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
     }
     case "fish": {
-      const def = ANIMALS.fish;
-      const d = regionDensity(state, world, p.region, "fish", cal);
-      const kg = fishKg(state) * yieldFactor(state, "fishing");
-      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, world, cal, d, "fish"))}` }));
-      if (!o.ok) return o;
+      const s = arg as Species;
+      const def = SPECIES_DEFS[s];
+      if (!def?.hunt || !isFish(s)) return { ...opt({ group: "hunt", label: "Fish" }), ok: false, why: "no such fish" };
+      const water = waterOf(s) ?? "any";
+      const d = regionDensity(state, world, p.region, s, cal);
+      const kg = fishKg(state, s) * yieldFactor(state, "fishing");
+      const o = ground(watersideCell(world, at, water), "shore", "water", opt({
+        group: "hunt", label: `Fish for ${def.name}`, duration: def.hunt.minutes, repeatable: true,
+        detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, world, cal, d, s))}`,
+      }));
+      if (!o.ok) {
+        // Standing by the wrong water reads as the wrong water, not as no water at all.
+        if (watersideCell(world, at) && !watersideCell(world, at, water)) return { ...o, why: water === "lake" ? `no ${def.name} in salt water` : `no ${def.name} in a lake` };
+        return o;
+      }
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
-      if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
+      if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
     }
     case "cook": {
@@ -394,10 +429,10 @@ export function bedText(state: GameState, world: World): string {
 }
 
 export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
-  const def = ANIMALS[species];
+  const def = SPECIES_DEFS[species].hunt!;
   let odds = density * def.odds * oddsFactor(state, species);
   if (state.weather.snowCm > DEEP_SNOW_CM) odds *= 0.75;
-  if (cal.isNight) odds *= 0.7;
+  if (cal.isNight) odds *= def.night ?? 0.7;
   if (state.weather.precip !== "none") odds *= 0.85;
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
@@ -419,7 +454,8 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
   for (const id of ["chop", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
-  for (const s of SPECIES) out.push(s === "fish" ? check(state, world, cal, "fish") : check(state, world, cal, "hunt", s));
+  for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
+  for (const s of fishSpecies()) if (r.capacity[s]) out.push(check(state, world, cal, "fish", s));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
   out.push(check(state, world, cal, "light"));
@@ -738,18 +774,20 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "hunt": {
       const s = arg as Species;
-      const def = ANIMALS[s];
+      const def = SPECIES_DEFS[s];
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) log(state, "The bow snaps.", "bad");
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
-        st.pop[s] = Math.max(0, st.pop[s] - 1);
+        st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
-        const where = produce(state, world, "rawMeat", def.meatKg);
         const x = huntExtras(state, s);
+        const where = produce(state, world, "rawMeat", x.meatKg);
         if (x.hideKg) produce(state, world, "hide", x.hideKg);
+        if (x.furKg) produce(state, world, "fur", x.furKg);
+        if (x.fatKg) produce(state, world, "fat", x.fatKg);
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
-        log(state, `A ${def.name}. ${def.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
+        log(state, `A ${def.name}. ${x.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
         const injury = injuryChance(state, s);
         if (injury > 0 && rng.chance(injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
@@ -771,14 +809,16 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "fish": {
-      const d = regionDensity(state, world, p.region, "fish", cal);
-      if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish"))) log(state, "The spear shaft splits.", "bad");
-      if (rng.chance(huntOdds(state, world, cal, d, "fish"))) {
-        st.pop.fish = Math.max(0, st.pop.fish - 1);
+      const s = arg as Species;
+      const def = SPECIES_DEFS[s];
+      const d = regionDensity(state, world, p.region, s, cal);
+      if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish", s))) log(state, "The spear shaft splits.", "bad");
+      if (rng.chance(huntOdds(state, world, cal, d, s))) {
+        st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
-        const kg = fishKg(state) * yieldFactor(state, "fishing");
+        const kg = fishKg(state, s) * yieldFactor(state, "fishing");
         produce(state, world, "fish", kg);
-        log(state, `A fish, ${kg.toFixed(1)} kg.`, "good");
+        log(state, `A ${def.name}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
       return;
     }
@@ -915,8 +955,9 @@ function collectSnares(state: GameState, world: World): void {
   const n = st.snareCatch.count;
   st.snareCatch.count = 0;
   st.snareCatch.age = 0;
-  produce(state, world, "rawMeat", ANIMALS.hare.meatKg * n);
-  produce(state, world, "hide", ANIMALS.hare.hideKg * n);
+  const y = SPECIES_DEFS.hare.yields!;
+  produce(state, world, "rawMeat", y.meatKg * n);
+  produce(state, world, "fur", (y.furKg ?? 0) * n);
   produce(state, world, "bone", n);
   state.stats.animals += n;
   log(state, `${n} hare${n > 1 ? "s" : ""} in the snares at ${regionAt(world, p.region).name}.`, "good");

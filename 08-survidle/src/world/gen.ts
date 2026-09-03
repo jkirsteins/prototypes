@@ -4,14 +4,16 @@
  * scanning its own cells, never the whole world.
  */
 import { Rng, derive } from "../rng";
-import { SPECIES, type Species, type SpotId, type Terrain } from "../sim/types";
+import { SPECIES_IDS } from "../sim/species";
+import type { Habitat, Species, SpotId, Terrain } from "../sim/types";
 import { CELL_KM } from "../units";
 import { type Cell, cellAt, cellIdx, neighbours, newWorld, regionOf, terrainOf, type World } from "./cells";
 import { regionName } from "./names";
 import { findRoute, passable, routeKm } from "./route";
-import { LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
+import { fieldsAt, LATTICE, LATTICE_H, LATTICE_W, TERRAINS, WORLD_H, WORLD_W } from "./terrain";
+import { wildlifeCapacity } from "./wildlife";
 
-export { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, type Cell, type World } from "./cells";
+export { cellAt, cellIdx, neighbours, regionOf, regionPeek, terrainOf, terrainPeek, waterKindOf, type Cell, type World } from "./cells";
 export { TERRAINS, WORLD_H, WORLD_W } from "./terrain";
 
 /** A named place to walk to: its cell and the route length from camp. */
@@ -33,7 +35,11 @@ export interface RegionDef {
   rock: number;
   /** Trees worth felling when the run begins. */
   wood0: number;
-  capacity: Record<Species, number>;
+  /** Shares of the region's cells that are lake water and sea water; together they are frac.water. */
+  lake: number;
+  sea: number;
+  /** Animals the region can hold, by species; a species not here never lives here. */
+  capacity: Partial<Record<Species, number>>;
   neighbours: { id: number; km: number }[];
   spots: Spot[];
   /** The land cell nearest the centroid: camp. */
@@ -70,12 +76,18 @@ function buildRegion(world: World, id: number): RegionDef {
   const count: Record<Terrain, number> = { water: 0, fell: 0, rock: 0, bog: 0, spruce: 0, pine: 0, birch: 0, meadow: 0 };
   let sx = 0;
   let sy = 0;
+  let seaCells = 0;
+  let lakeCells = 0;
   const nb = new Set<number>();
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       if (regionOf(world, x, y) !== id) continue;
       cells.push(cellIdx(world, x, y));
       count[terrainOf(world, x, y)]++;
+      if (terrainOf(world, x, y) === "water") {
+        if (fieldsAt(world.seed, x, y).sea) seaCells++;
+        else lakeCells++;
+      }
       sx += x;
       sy += y;
       // Neighbouring regions share a 4-connected edge.
@@ -94,16 +106,14 @@ function buildRegion(world: World, id: number): RegionDef {
   const rock = frac.rock + frac.fell;
   const area = cells.length * CELL_KM * CELL_KM;
   const landCells = cells.length - count.water;
-  const capacity: Record<Species, number> = {
-    hare: area * (4 + 16 * (frac.meadow + frac.birch)),
-    grouse: area * (8 + 20 * (frac.pine + frac.spruce)),
-    deer: area * 5 * forest,
-    elk: area * (0.3 + 0.8 * (frac.spruce + frac.bog)),
-    fish: area * 60 * frac.water,
+  const lake = lakeCells / n;
+  const sea = seaCells / n;
+  const shares: Record<Habitat, number> = {
+    fell: frac.fell, rock: frac.rock, bog: frac.bog, spruce: frac.spruce, pine: frac.pine, birch: frac.birch, meadow: frac.meadow, lake, sea,
   };
-  for (const s of SPECIES) if (capacity[s] < 0.5) capacity[s] = 0;
   const cx = sx / n;
   const cy = sy / n;
+  const capacity = wildlifeCapacity(world.seed, area, shares, cx, cy);
   const campCell = nearestCell(world, cells, cx, cy, (c) => passable(c.terrain)) ?? cells[0];
   const rng = new Rng(derive(world.seed, 1000 + id));
   const r: RegionDef = {
@@ -115,6 +125,8 @@ function buildRegion(world: World, id: number): RegionDef {
     cy,
     area,
     frac,
+    lake,
+    sea,
     forest,
     rock,
     wood0: Math.round(forest * cells.length * 60),
@@ -226,4 +238,9 @@ export function spotOf(region: RegionDef, spot: SpotId): Spot | undefined {
 
 export function hasSpot(region: RegionDef, spot: SpotId): boolean {
   return region.spots.some((s) => s.id === spot);
+}
+
+/** The species with any capacity in a region, in catalogue order. */
+export function speciesHere(r: RegionDef): Species[] {
+  return SPECIES_IDS.filter((s) => (r.capacity[s] ?? 0) > 0);
 }
