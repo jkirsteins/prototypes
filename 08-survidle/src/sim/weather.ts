@@ -87,6 +87,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     if (w.precip !== "heavy") {
       w.precip = "heavy";
       ev.precipStarted = true;
+      w.wetDay = true;
     }
   } else if (w.storm && minute >= w.storm.until) {
     w.storm = null;

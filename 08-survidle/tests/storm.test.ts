@@ -4,41 +4,46 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { craftSuccess } from "../src/sim/skills";
 import { check, huntOdds } from "../src/sim/tasks";
 import type { GameState, Terrain } from "../src/sim/types";
 import { stepWeather, stormNow } from "../src/sim/weather";
-import { cellAt, regionAt, type World } from "../src/world/gen";
+import { cellAt, type World } from "../src/world/gen";
 
 const cal = calendar(0);
 
-/** The nearest cell of one of these terrains, breadth-first over the region graph from `from`. */
+/** Cap on the ring radius, in cells, a search for a terrain may walk out to. */
+const MAX_FIND_RADIUS = 400;
+
+/**
+ * The nearest cell of one of these terrains, scanning outward from `from` in
+ * growing square rings. Reads only `cellAt`, which fills terrain chunks
+ * lazily and caches them; it never touches the (much pricier) region graph.
+ */
 function findCell(world: World, from: number, terrains: Terrain[]): number {
-  const visited = new Set([from]);
-  let frontier = [from];
-  while (frontier.length) {
-    const next: number[] = [];
-    for (const id of frontier) {
-      const r = regionAt(world, id);
-      const cell = r.cells.find((c) => terrains.includes(cellAt(world, c).terrain));
-      if (cell !== undefined) return cell;
-      for (const nb of r.neighbours) {
-        if (!visited.has(nb.id)) {
-          visited.add(nb.id);
-          next.push(nb.id);
-        }
+  const cx = from % world.w;
+  const cy = Math.floor(from / world.w);
+  if (terrains.includes(cellAt(world, from).terrain)) return from;
+  for (let r = 1; r <= MAX_FIND_RADIUS; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x < 0 || x >= world.w || y < 0 || y >= world.h) continue;
+        const idx = y * world.w + x;
+        if (terrains.includes(cellAt(world, idx).terrain)) return idx;
       }
     }
-    frontier = next;
   }
-  throw new Error(`no cell of ${terrains.join("/")} reachable from region ${from}`);
+  throw new Error(`no cell of ${terrains.join("/")} within ${MAX_FIND_RADIUS} cells of the start`);
 }
 
 /** Places the player on the nearest cell of one of these terrains, sets the snow, and returns the kcal a walking hour there costs. */
 function burnForTerrain(state: GameState, world: World, terrains: Terrain[], snowCm: number): number {
   state.weather.snowCm = snowCm;
-  const cell = findCell(world, state.player.region, terrains);
+  const cell = findCell(world, cellOf(state, world), terrains);
   placeAt(state, world, cell);
   state.player.kcal = 5000;
   const k0 = state.player.kcal;
@@ -79,6 +84,25 @@ describe("storms", () => {
     }
     expect(storms).toBeGreaterThan(5);
     expect(storms).toBeLessThan(40);
+  });
+
+  it("a storm's rain still counts as the day's rain: dryDays clears and the dry warning resets", () => {
+    const { state } = newGame(1);
+    const w = state.weather;
+    const rng = new Rng(3);
+    w.dryDays = 5;
+    w.dryWarned = true;
+    w.wetDay = false;
+    const day = 10;
+    w.rolledDay = day;
+    const stormMinute = day * 1440 + 6 * 60;
+    w.storm = { from: stormMinute - 30, until: stormMinute + 600, warned: true };
+    stepWeather(w, calendar(stormMinute), rng, 1, stormMinute);
+    expect(w.wetDay).toBe(true);
+    const nextRollMinute = (day + 1) * 1440 + 14 * 60;
+    stepWeather(w, calendar(nextRollMinute), rng, 1, nextRollMinute);
+    expect(w.dryDays).toBe(0);
+    expect(w.dryWarned).toBe(false);
   });
 });
 

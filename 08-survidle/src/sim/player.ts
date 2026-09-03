@@ -125,7 +125,10 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
   return baseWalkSpeed(state, cal, weather, loadKg) * speedOf(terrain, ice);
 }
 
-const KCAL_PER_HOUR: Record<Activity, number> = { sleep: 70, rest: 100, light: 200, walk: 300, heavy: 400 };
+/** Flat kcal/h for activities that do not depend on the ground: walking is computed separately, by terrain. */
+const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 400 };
+/** Base kcal/h for walking on ground at ordinary (open-forest) speed; the ground and load scale it from here. */
+const WALK_KCAL_PER_HOUR = 300;
 
 export interface Drains { starve: number; cold: number; sick: number; thirst: number; smoke: number }
 
@@ -170,11 +173,13 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   stepGarments(state, x, dt);
 
   // Kilocalories.
-  let burn = KCAL_PER_HOUR[a];
+  let burn: number;
   if (a === "walk") {
-    burn = 300 / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
+    burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
     if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
     if (carried(p) > PACK_COMFORTABLE_KG) burn += 50;
+  } else {
+    burn = KCAL_PER_HOUR[a];
   }
   if (felt < 0) burn *= 1.3;
   if (p.sick > 0) burn *= 1.2;
