@@ -21,25 +21,50 @@ const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "
 const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
 
-// A hunt keep needs a bow and a stock of arrows, or it blocks on "needs a bow"
-// forever; both need the knife made above them (controller amendment to the
-// brief, task-9-brief.md).
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
-  keep("fill", 4),
+  keep("fill", 2),
   job("stone", { kind: "campHas", qty: 8 }),
   keep("sticks", 20),
-  job("bark", { kind: "campHas", qty: 12 }),
-  job("craft", { kind: "campHas", qty: 6 }, "cordage"),
+  // Bark and cordage are consumed the whole run through, by every "keep camp
+  // at 1" tool taken up and every spare that replaces it: a one-time job
+  // starves the chain once its batch is spent and never resumes (evidence in
+  // task-9-report.md). A keep re-fires below half its target, the way sticks
+  // and firewood already do.
+  keep("bark", 20),
+  keep("craft", 8, "cordage"),
   keep("craft", 1, "knife"),
   keep("craft", 1, "fireDrill"),
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("build", { kind: "once" }, "firePit"),
+  // Split needs logs already at hand, and only the grind at the very end of
+  // this list fells trees; ranked below fishingSpear, fish and hunt, that
+  // grind never gets a turn while those slower keeps stay live, so split
+  // sits on "no logs here" and no fire is ever lit (evidence in
+  // task-9-report.md). A one-time job seeded logs once but split then ran
+  // them out again with nothing ranked to refill them; a keep here supplies
+  // logs the whole run through, the way the bark keep feeds cordage, while
+  // staying below fill/stone/sticks/bark/cordage/knife/fireDrill/buckets so
+  // it never itself displaces the tool chain.
+  keep("chop", 4),
   keep("split", 40),
   keep("craft", 1, "fishingSpear"),
-  keep("fish", 4, "any"),
+  // A cast is an hour and often comes up empty ("nothing bites" in the log far
+  // more than a catch does), so a 4 kg target can run live for most of a day
+  // straight, holding every order below it off the schedule entirely - the
+  // same trap the water keep was in before its target came down (evidence
+  // in task-9-report.md).
+  keep("fish", 1, "any"),
+  // Raw catches are never eaten: autoEat's AUTO_EAT_ORDER wants berries, cooked
+  // fish or meat, dried meat, or fat, never a raw kg sitting in the pile. Without
+  // a cook keep the fish and hunt keeps below fill camp with food nothing ever
+  // touches, and the reference player starves beside a full larder (evidence in
+  // task-9-report.md).
+  keep("cook", 3, "fish"),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
-  keep("hunt", 6, "any"),
+  keep("hunt", 2, "any"),
+  keep("cook", 3),
+  job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
   keep("craft", 1, "axe"),
   job("build", { kind: "once" }, "leanTo"),
