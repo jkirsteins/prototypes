@@ -25,22 +25,38 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 The numbers below are names, not the sequence; they stay put so specs can
 cite them while sections are still being written. The build order is by
-impact on the idle loop, the thing that kills an away run soonest first:
-1 (in build), then A standing orders, then the baseline fixes A's build
-measured (water at camp, the thirst priority, arrows in the pack, wet
-wood, the rack as a task, tool keeps), then D species and sound, then E
-hides and clothing, then 3 camp with C the skill tiers alongside, then
-4 animals, 5 injury and the body model, 7 wind, 8 forest fire, and 6
-territory last, with B the risk forecast as soon after A as the runner
-is stable. 2 rivers is flavour and has no slot: it lands whenever there
-is room after 3, and when it does it plugs into the water features 1, C
-and 3 own rather than bringing its own. E comes straight after D because
-D's fur and fat are its inputs and because 5 (insects, burns on bare
-skin), 7 (wind through a coat) and C (clothing tiers worth the level)
-all reach for a clothing model that 1 left thin. Fire comes after 5
-because its burns are wounds in that model and after 7 because it cannot
-spread without wind; it comes before 6 because the burn's regrowth clock
-is the first of the regrowth clocks Territory generalises.
+impact on the idle loop, the thing that kills an away run soonest first,
+with one exception taken by the author: D species and sound goes next,
+because its spec and plans are done and it rewrites the hunt and fish
+branches everything after it drives. So: 1 (built), A standing orders
+(built), then D, then the baseline (the section of that name under the
+idle loop: water at camp, the thirst priority, arrows in the pack, wet
+wood, the rack as a task, tool keeps, and a start with a shore and rock),
+then B the risk forecast with the away cap as its horizon, then the first
+producers and stocks (C's basket trap, and 3's water storage and cellar,
+pulled out of their items), then E hides and clothing, then the rest of 3
+camp (siting, the shelter ladder, the buildings) with the rest of C
+alongside, then 4 animals, 5 injury and the body model, 7 wind, 8 forest
+fire, and 6 territory last. 2 rivers is flavour and has no slot: it lands
+whenever there is room after 3, and when it does it plugs into the water
+features 1, C and 3 own rather than bringing its own.
+
+Why the baseline, B and the producers come before E and 3: headless runs
+of A's runner (2026-09-03, seeds 17, 19, 42 and 79, 250 game days, a
+kitted camp with keeps for wood, fire, meat and fish) died of thirst
+between day 3 and day 23 in every set-up, and with water and fire supplied
+by hand they starved between day 67 and day 86 when the axe, spear and
+bow wore out with nothing to replace them. No run reached winter, so
+nothing that only matters in winter can be the next thing built. The
+baseline is what lets a camp hold a week; B is what makes an away death
+fair; the trap and the cellar are the first things that yield while the
+player is gone. E comes straight after them because D's fur and fat are
+its inputs and because 5 (insects, burns on bare skin), 7 (wind through a
+coat) and C (clothing tiers worth the level) all reach for a clothing
+model that 1 left thin. Fire comes after 5 because its burns are wounds
+in that model and after 7 because it cannot spread without wind; it comes
+before 6 because the burn's regrowth clock is the first of the regrowth
+clocks Territory generalises.
 
 ### 1. Body and elements
 
@@ -685,6 +701,47 @@ What the build taught, for the sub-projects after it:
   alone; the wait sleeps by the clock instead. B's forecast runs this
   runner, so a change to those thresholds moves the forecast.
 
+### The baseline
+
+Seven fixes to rules that already exist, in the order they killed the
+headless runs of A's runner. None is a new system; each is a stock, a
+priority or a keep the loop needs before any content lands on it. They
+get one spec between them.
+
+- **Water at camp.** A shore ices over from 2 cm and snow is gone on
+  many April days, so a region has days with no water at all; the fire
+  goes out when no one is at camp, since auto-feed is camp-only; and the
+  thirsty need never lights a fire to melt snow, only uses one already
+  lit. An ice hole at the shore, a water stock at camp that a keep can
+  hold ("keep camp at 6 litres", the trough or filled bucket that 3's
+  storage grows into), and a thirsty step that lights the fire the way the
+  cold step does.
+- **Thirst before hunger.** `currentNeed` returns hungry before it looks
+  at thirst, and a hunger with no food to answer it still wins, so the
+  runner works on until thirst kills it with water in reach. A need with
+  no remedy yields to one that has one.
+- **Arrows in the pack.** Unloading at camp drops everything on the back,
+  arrows included, and provisioning pockets only food, so every bow hunt
+  blocks on "needs arrows in the pack" after the first delivery. The
+  provisioning step pockets what the live order needs: arrows for the
+  bow, a vessel for the walk.
+- **Wet wood.** "Keep camp at 40 kg firewood" counts dry wood, and a log
+  split in rain is wet wood, so one run split 157 logs into 1,278 kg of
+  wet firewood and never met the keep. The keep counts wet wood toward its
+  target, or splitting waits for dry ground.
+- **The rack as a task.** Hanging meat is an instant button, so no order
+  can dry meat and a deer's 12 kg rots beside a rack that holds 6. Hanging
+  and taking down become tasks with a yield, so "dry meat, keep camp at
+  10 kg dried" is an order.
+- **Tool keeps.** A tool recipe yields no countable item, so a keep for it
+  collapses to a once job and the loop ends when the axe breaks. Tools
+  become stock in the pile, or a keep reads "camp has a working axe".
+- **A start with a shore and rock.** No start in seeds 1 to 80 has both a
+  shore and an outcrop, and most have neither, so the first tool chain
+  cannot be idled and the first camp has no water. `findStart` adds both
+  spots to its filter. 3's siting is the long answer; this is the cheap
+  insurance until it lands.
+
 ### B. The risk forecast
 
 An honest number, not a checklist: the simulation itself run forward from
@@ -698,6 +755,21 @@ stocks or the season change. The sim steps in game minutes and is
 deterministic per seed; a month is 43,200 steps per run. The spec settles
 how many runs, how the worker shares the world, and what the table shows
 before the runs finish.
+
+**The away cap is a horizon.** Offline catch-up simulates at most 24 real
+hours today, 60 game days, a constant. It becomes a dial the player sets
+per run, from 1 to 24 hours with a default near 8: the longer you are
+willing to be away, the more the world runs without you and the more the
+dice decide. The forecast's first row is that horizon, "until you are
+back", so the number covers everything that can happen while you are
+gone; tonight, a week and a month stay as the rows that say what to build
+next. The forecast cannot be exact, since weather rolls consume the random
+stream per step and every click before you leave draws from it, so it
+says "dead in 7 of 10 runs before you are back, cold on night 4", never
+"you will die". The cost is known: A's headless runs advance about a game
+day in 10 ms, so ten runs of a 10-day horizon are about a second, and the
+horizon row can recompute on every list change while the longer rows
+finish in the worker.
 
 ### C. Skill tiers
 
