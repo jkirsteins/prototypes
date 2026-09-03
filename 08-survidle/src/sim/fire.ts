@@ -4,6 +4,7 @@
  * the fire step in camp.ts, the light task and the felt temperature read.
  */
 import type { World } from "../world/gen";
+import type { Calendar } from "./calendar";
 import { addItem, qty, removeItem } from "./inventory";
 import { cellOf } from "./position";
 import { regionState, touchedRegions } from "./regionstate";
@@ -26,6 +27,45 @@ export function fireWarmth(fire: RegionState["fire"], campTask: boolean): number
   if (!fire.lit) return 0;
   const full = campTask ? 15 : 7;
   return smoky(fire) ? full / 2 : full;
+}
+
+export const SPREAD_FUEL_KG = 12;
+export const SPREAD_UNATTENDED_MINUTES = 120;
+export const DRY_DAYS = 3;
+export const SPREAD_PER_HOUR = 0.02;
+
+/** Fire season, when the ground can dry out enough to carry a fire off camp. */
+export function fireSeason(cal: Calendar): boolean {
+  return cal.season === "summer" || cal.month === 9;
+}
+
+/** Tinder-dry ground: fire season, and no rain for DRY_DAYS days running. */
+export function groundDry(w: Weather, cal: Calendar): boolean {
+  return fireSeason(cal) && w.dryDays >= DRY_DAYS;
+}
+
+/** True when the fire at this camp warms the people at it: any fire outdoors, indoors only with a hearth or lit indoors. */
+export function fireWarms(st: RegionState): boolean {
+  if (!st.fire.lit) return false;
+  if (!st.structures.cabin) return true;
+  return st.structures.hearth || st.fire.indoors;
+}
+
+export const SMOKE_COUGH = 40;
+export const SMOKE_DEADLY = 60;
+export const SMOKE_RISE_PER_HOUR = 20;
+export const SMOKE_FALL_PER_HOUR = 30;
+export const SMOKE_DRAIN_PER_HOUR = 25;
+
+/** Smoke in a closed cabin: rises with an indoor fire and no hearth while someone is there to fill the room for, clears otherwise. */
+export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
+  const filling = st.fire.lit && st.fire.indoors && !st.structures.hearth && atCamp;
+  if (filling) {
+    const rate = smoky(st.fire) ? SMOKE_RISE_PER_HOUR * 1.5 : SMOKE_RISE_PER_HOUR;
+    st.smoke = Math.min(100, st.smoke + (rate / 60) * dt);
+  } else {
+    st.smoke = Math.max(0, st.smoke - (SMOKE_FALL_PER_HOUR / 60) * dt);
+  }
 }
 
 /** Fuel the fire eats per hour in this weather; a roof over the pit keeps the rain off. */

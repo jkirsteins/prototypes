@@ -4,9 +4,11 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { feedFire } from "../src/sim/camp";
 import { burnPerHour, fireWarmth, lightingInRain, smoky } from "../src/sim/fire";
+import { hourlyHazards } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature } from "../src/sim/player";
+import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
@@ -115,5 +117,81 @@ describe("wet wood", () => {
     addItem(pile(state, st.campCell), "wetFirewood", 10);
     advance(state, world, 60);
     expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(9.5, 6);
+  });
+});
+
+describe("spread and smoke", () => {
+  it("a big fire left alone on dry August ground spreads at two percent an hour; a banked one never does", () => {
+    const { state, world } = newGame(3);
+    const july = calendar((200 - 91) * 1440 + 12 * 60);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.structures.leanTo = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 30;
+    st.fire.unattended = 200;
+    state.weather.dryDays = 4;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const wood0 = st.wood;
+    const rng = new Rng(9);
+    let hours = 0;
+    while (st.fire.lit && hours < 400) {
+      hourlyHazards(state, world, july, 18, 18, rng);
+      hours++;
+    }
+    expect(st.fire.lit).toBe(false);
+    expect(hours).toBeLessThan(400);
+    expect(st.wood).toBeLessThan(wood0);
+    expect(st.structures.leanTo).toBe(false);
+    expect(state.log.some((e) => e.text.startsWith("Smoke on the wind"))).toBe(true);
+    expect(state.log.some((e) => e.text === "The ground is tinder dry.")).toBe(true);
+    // Banked to six kilos, or ground that is not dry, or a fire someone sits at: no spread in 400 hours.
+    for (const fix of [{ fuel: 6, dry: 4, unattended: 200 }, { fuel: 30, dry: 1, unattended: 200 }, { fuel: 30, dry: 4, unattended: 30 }]) {
+      const h = newGame(3);
+      const st2 = regionState(h.state, h.world, h.state.player.region);
+      st2.structures.firePit = true;
+      st2.fire.lit = true;
+      st2.fire.fuelKg = fix.fuel;
+      st2.fire.unattended = fix.unattended;
+      h.state.weather.dryDays = fix.dry;
+      for (let k = 0; k < 400; k++) hourlyHazards(h.state, h.world, july, 18, 18, rng);
+      expect(st2.fire.lit).toBe(true);
+    }
+  });
+
+  it("a cabin gets no fire warmth without a hearth; a fire lit indoors warms, smokes, and kills a sleeper", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.structures.cabin = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 30;
+    state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
+    const cold = feltTemperature(state, world, 0);
+    st.structures.hearth = true;
+    expect(feltTemperature(state, world, 0) - cold).toBe(15);
+    st.structures.hearth = false;
+    st.fire.lit = false;
+    state.task = null;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(state.player.pack, "firewood", 30);
+    expect(check(state, world, cal, "lightIndoors").ok).toBe(true);
+    expect(check(state, world, cal, "lightIndoors").detail).toContain("fill with smoke");
+    startTask(state, world, cal, "lightIndoors");
+    advance(state, world, 15);
+    expect(st.fire.indoors).toBe(true);
+    feedFire(state, world, state.player.region, 30);
+    state.player.autoFeed = true;
+    advance(state, world, 150);
+    expect(st.smoke).toBeGreaterThan(40);
+    expect(state.log.some((e) => e.text === "The fire is smoking the place out.")).toBe(true);
+    state.player.energy = 30;
+    startTask(state, world, cal, "sleep");
+    const h0 = state.player.health;
+    advance(state, world, 240);
+    expect(state.log.some((e) => e.text === "The air is thick. You wake coughing.")).toBe(true);
+    expect(state.player.health).toBeLessThan(h0 - 50);
+    advance(state, world, 240);
+    expect(state.dead?.cause).toBe("smoke");
   });
 });

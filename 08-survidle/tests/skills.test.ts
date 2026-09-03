@@ -151,13 +151,13 @@ describe("effects", () => {
   it("Hunting 11 has 10% better odds; Fishing reads its own skill", () => {
     const { state, world } = newGame(3);
     const d = regionDensity(state, world, state.player.region, "hare", cal);
-    const base = huntOdds(state, cal, d, "hare");
+    const base = huntOdds(state, world, cal, d, "hare");
     state.skills.hunting.xp = levelMinutes(11);
-    expect(huntOdds(state, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
+    expect(huntOdds(state, world, cal, d, "hare")).toBeCloseTo(base * 1.1, 6);
     const df = regionDensity(state, world, state.player.region, "fish", cal);
-    const fish = huntOdds(state, cal, df, "fish");
+    const fish = huntOdds(state, world, cal, df, "fish");
     state.skills.fishing.xp = levelMinutes(11);
-    expect(huntOdds(state, cal, df, "fish")).toBeCloseTo(fish * 1.1, 6);
+    expect(huntOdds(state, world, cal, df, "fish")).toBeCloseTo(fish * 1.1, 6);
   });
 
   it("Crafting 11 wears the needle 10% less", () => {
@@ -204,9 +204,9 @@ describe("soft gates", () => {
     expect(gap(state, "hunt:elk")).toBe(7);
     const d = regionDensity(state, world, state.player.region, "elk", cal);
     state.skills.hunting.xp = levelMinutes(8);
-    const atLevel = huntOdds(state, cal, d, "elk");
+    const atLevel = huntOdds(state, world, cal, d, "elk");
     state.skills.hunting.xp = 0;
-    expect(huntOdds(state, cal, d, "elk")).toBeCloseTo((atLevel / 1.07) / 128, 9);
+    expect(huntOdds(state, world, cal, d, "elk")).toBeCloseTo((atLevel / 1.07) / 128, 9);
   });
 
   it("a cabin at Building 4 goes at 1 / 1.3^6 of the pace", () => {

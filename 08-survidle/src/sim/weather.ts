@@ -53,12 +53,21 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number): We
     w.offset = rng.gauss() * 4 - (cal.season === "winter" ? 3 : 0);
     w.clear = rng.chance(0.6);
     if (cal.season === "winter" && w.offset < -8) ev.coldSnap = true;
+    // A day with rain resets the drought count and its warning; a dry one runs it up.
+    if (w.wetDay) {
+      w.dryDays = 0;
+      w.dryWarned = false;
+    } else {
+      w.dryDays += 1;
+    }
+    w.wetDay = false;
   }
   const ambient = ambientTemperature(cal, w);
   if (w.precip === "none") {
     if (rng.chance((START_PER_HOUR[cal.season] / 60) * dt)) {
       w.precip = rng.chance(0.3) ? "heavy" : "light";
       ev.precipStarted = true;
+      w.wetDay = true;
     }
   } else if (rng.chance((STOP_PER_HOUR / 60) * dt)) {
     w.precip = "none";

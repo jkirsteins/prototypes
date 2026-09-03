@@ -3,7 +3,7 @@ import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
 import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
-import { fireWarmth } from "./fire";
+import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { log } from "./log";
@@ -81,7 +81,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   let felt = ambient + insulation(state);
-  if (camp) felt += fireWarmth(r.fire, campTask);
+  if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
   if (camp && campTask) felt += shelterBonus(r);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;
@@ -101,6 +101,8 @@ export function workSpeed(state: GameState, world: World): number {
   const t = state.task;
   if (t) f *= speedFactor(state, world, t.id, t.arg);
   if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;
+  const r = regionState(state, world, p.region);
+  if (atCamp(state, world) && r.smoke > SMOKE_COUGH) f *= 0.7;
   return f;
 }
 
@@ -124,7 +126,7 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 
 const KCAL_PER_HOUR: Record<Activity, number> = { sleep: 70, rest: 100, light: 200, walk: 300, heavy: 400 };
 
-export interface Drains { starve: number; cold: number; sick: number; thirst: number }
+export interface Drains { starve: number; cold: number; sick: number; thirst: number; smoke: number }
 
 /** Felt temperature at which a clothed body at rest holds half its warmth. */
 export const COMFORT_C = 5;
@@ -230,11 +232,13 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   }
 
   // Health.
-  const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst };
+  const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst, smoke: 0 };
   if (p.kcal <= 0) drains.starve = 2 * h;
   if (p.warmth < 20) drains.cold = 6 * h;
   if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
-  const total = drains.starve + drains.cold + drains.sick + drains.thirst;
+  const smoking = camp && state.task?.id === "sleep" && r.smoke > SMOKE_DEADLY;
+  if (smoking) drains.smoke = (SMOKE_DRAIN_PER_HOUR / 60) * dt;
+  const total = drains.starve + drains.cold + drains.sick + drains.thirst + drains.smoke;
   if (total > 0) {
     p.health = clamp(p.health - total, 0, 100);
   } else if (p.kcal > 1500 && p.warmth > 40 && p.sick === 0 && p.water > THIRSTY_L) {
@@ -249,6 +253,8 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "thirst", p.water < THIRSTY_L, "You are thirsty.");
   const onThinIce = cellAt(world, cellOf(state, world)).terrain === "water" && w.iceCm < ICE_SAFE_CM;
   warn(state, "thinice", onThinIce, "The ice is thin here.");
+  warn(state, "smoke", camp && r.smoke > SMOKE_COUGH, "The fire is smoking the place out.");
+  warn(state, "co", smoking, "The air is thick. You wake coughing.");
 
   return drains;
 }
@@ -268,10 +274,10 @@ function warn(state: GameState, key: string, active: boolean, text: string) {
   }
 }
 
-/** Names the death from the drains that killed: the largest of the four. */
+/** Names the death from the drains that killed: the largest of them. */
 export function causeFrom(d: Drains): DeathCause {
   const worst = (Object.entries(d) as [keyof Drains, number][]).sort((a, b) => b[1] - a[1])[0][0];
-  const named: Record<keyof Drains, DeathCause> = { starve: "starved", cold: "froze", sick: "sickness", thirst: "thirst" };
+  const named: Record<keyof Drains, DeathCause> = { starve: "starved", cold: "froze", sick: "sickness", thirst: "thirst", smoke: "smoke" };
   return named[worst];
 }
 

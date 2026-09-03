@@ -3,7 +3,7 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import { regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
-import { burnPerHour, dryWood, fuelTotal } from "./fire";
+import { burnPerHour, dryWood, fuelTotal, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
   SNARE_CATCH_MAX_AGE,
@@ -42,9 +42,15 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.fuelKg = 0;
         st.fire.wetKg = 0;
         st.fire.lit = false;
+        st.fire.indoors = false;
+        st.fire.unattended = 0;
         log(state, mine ? "The fire has gone out." : `The fire at ${name()} has gone out.`, "bad");
       }
     }
+
+    // A lit fire left with no one at camp to mind it runs its unattended clock.
+    st.fire.unattended = st.fire.lit && !atCampHere ? st.fire.unattended + dt : 0;
+    stepSmoke(st, atCampHere, dt);
 
     if (st.rack.kg > 0) {
       if (state.weather.precip === "none") st.rack.dried += dt;

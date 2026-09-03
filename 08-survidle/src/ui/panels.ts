@@ -323,7 +323,7 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
 export const INTENT_GROUPS: { label: string; items: { id: TaskId; arg?: string }[] }[] = [
   { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
   { label: "Hunt", items: [...SPECIES.filter((s) => s !== "fish").map((s) => ({ id: "hunt" as TaskId, arg: s })), { id: "fish" }] },
-  { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "melt" }, { id: "thaw" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+  { label: "Camp", items: [{ id: "split" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
   { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
   { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
 ];

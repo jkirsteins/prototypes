@@ -5,23 +5,52 @@
  * wait for the hour to turn), so advance.ts calls it every step instead.
  */
 import type { Rng } from "../rng";
-import { cellAt, neighbours, type World } from "../world/gen";
+import { cellAt, neighbours, regionAt, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { coldFeet, coldHands, frostbiteChance, FROSTBITE_MINUTES } from "./clothing";
+import { fuelTotal, groundDry, SPREAD_FUEL_KG, SPREAD_PER_HOUR, SPREAD_UNATTENDED_MINUTES } from "./fire";
 import { TOOLS } from "./items";
 import { log } from "./log";
 import { activityOf } from "./player";
 import { atCamp, cellOf } from "./position";
-import { regionState } from "./regionstate";
+import { regionState, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
 import { FREEZE_C } from "./water";
 import { ICE_THIN_CM } from "./weather";
 
 export function hourlyHazards(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
-  void cal;
   freezeVessels(state, world, ambient, rng);
   frostbite(state, felt, rng);
+  spread(state, world, cal, rng);
+}
+
+/**
+ * A big fire left unattended on tinder-dry ground can walk off camp: it eats
+ * the lean-to and the bough bed on its way, and goes out doing it. The
+ * runner banks a fire before it leaves camp (see intent.ts), so this only
+ * catches a fire left burning by hand.
+ */
+function spread(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+  if (!groundDry(state.weather, cal)) return;
+  if (!state.weather.dryWarned) {
+    state.weather.dryWarned = true;
+    log(state, "The ground is tinder dry.", "bad");
+  }
+  for (const id of touchedRegions(state)) {
+    const st = state.regions[id];
+    if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended < SPREAD_UNATTENDED_MINUTES) continue;
+    if (!rng.chance(SPREAD_PER_HOUR)) continue;
+    st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
+    st.structures.leanTo = false;
+    st.structures.boughBed = false;
+    st.fire.lit = false;
+    st.fire.fuelKg = 0;
+    st.fire.wetKg = 0;
+    st.fire.indoors = false;
+    const where = id === state.player.region ? "" : ` at ${regionAt(world, id).name}`;
+    log(state, `Smoke on the wind. The fire has spread from camp${where}.`, "bad");
+  }
 }
 
 /**

@@ -40,7 +40,7 @@ describe("player physiology", () => {
     const h = state.player.health;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, -25, 1);
     expect(h - state.player.health).toBeCloseTo(6, 0);
-    expect(causeFrom({ starve: 0, cold: 1, sick: 0, thirst: 0 })).toBe("froze");
+    expect(causeFrom({ starve: 0, cold: 1, sick: 0, thirst: 0, smoke: 0 })).toBe("froze");
   });
 
   it("a fire and a cabin at camp make the difference", () => {
@@ -48,6 +48,8 @@ describe("player physiology", () => {
     const bare = feltTemperature(state, world, -20);
     regionState(state, world, state.player.region).fire.lit = true;
     regionState(state, world, state.player.region).structures.cabin = true;
+    // A cabin's own fire needs a hearth to warm anyone; without one only the roof counts.
+    regionState(state, world, state.player.region).structures.hearth = true;
     expect(feltTemperature(state, world, -20)).toBeCloseTo(bare + 30, 5);
     // Out at the forest the fire and roof do not reach you.
     placeAtSpot(state, world, state.player.region, "forest");

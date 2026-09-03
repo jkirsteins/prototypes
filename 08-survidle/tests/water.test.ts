@@ -36,7 +36,7 @@ describe("water", () => {
     expect(workSpeed(state, world)).toBeCloseTo(0.8, 6);
     state.player.water = 0;
     const h0 = state.player.health;
-    let drains = { starve: 0, cold: 0, sick: 0, thirst: 0 };
+    let drains = { starve: 0, cold: 0, sick: 0, thirst: 0, smoke: 0 };
     for (let m = 0; m < 60; m++) drains = stepPlayer(state, world, 15, 1);
     expect(h0 - state.player.health).toBeCloseTo(4, 1);
     expect(causeFrom(drains)).toBe("thirst");

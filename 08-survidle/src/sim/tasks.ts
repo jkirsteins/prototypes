@@ -23,7 +23,7 @@ import {
   atCamp, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { lightingInRain, splitIsWet } from "./fire";
+import { lightingInRain, SMOKE_COUGH, splitIsWet } from "./fire";
 import { discovery, regionState } from "./regionstate";
 import {
   type GameState, type IceMode, type PausedTask, type RecipeId, SPECIES, type Species,
@@ -78,7 +78,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "light", "lightTorch",
+  "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch",
 ]);
 
 /** Berries ripen mid-July and are gone by mid-October. */
@@ -205,7 +205,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const x = huntExtras(state, s);
       const o = ground(onGround, def.spot, def.spot === "heath" ? "heath" : "forest", opt({
         group: "hunt", label: `Hunt ${def.name}`, duration: def.minutes, repeatable: true,
-        detail: `${def.meatKg} kg meat${x.hideKg ? `, ${x.hideKg} kg hide` : ""}${x.bone ? `, ${x.bone} bone` : ""}${x.sinew ? `, ${x.sinew} sinew` : ""}; ${oddsText(huntOdds(state, cal, d, s))}`,
+        detail: `${def.meatKg} kg meat${x.hideKg ? `, ${x.hideKg} kg hide` : ""}${x.bone ? `, ${x.bone} bone` : ""}${x.sinew ? `, ${x.sinew} sinew` : ""}; ${oddsText(huntOdds(state, world, cal, d, s))}`,
       }));
       if (!o.ok) return o;
       if (!hasTool(p, "bow")) return { ...o, ok: false, why: "needs a bow" };
@@ -217,7 +217,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const def = ANIMALS.fish;
       const d = regionDensity(state, world, p.region, "fish", cal);
       const kg = fishKg(state) * yieldFactor(state, "fishing");
-      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, cal, d, "fish"))}` }));
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish", duration: def.minutes, repeatable: true, detail: `${kg.toFixed(1)} kg per catch; ${oddsText(huntOdds(state, world, cal, d, "fish"))}` }));
       if (!o.ok) return o;
       if (!hasTool(p, "fishingSpear")) return { ...o, ok: false, why: "needs a fishing spear" };
       if (st.pop.fish < 1) return { ...o, ok: false, why: "the water is empty" };
@@ -359,8 +359,20 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!p.tools.some((t) => t.frozen)) return { ...o, ok: false, why: "nothing is frozen" };
       return o;
     }
-    case "lightIndoors":
-      return opt({ group: "camp", label: id, ok: false, why: "not yet" });
+    case "lightIndoors": {
+      const o = needCamp(opt({
+        group: "camp", label: "Light a fire indoors",
+        detail: "no smoke hole: the cabin will fill with smoke",
+        duration: 10,
+      }));
+      if (!o.ok) return o;
+      if (!st.structures.cabin) return { ...o, ok: false, why: "needs a cabin" };
+      if (st.structures.hearth) return { ...o, ok: false, why: "there is a hearth: light it there" };
+      if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
+      if (!hasTool(p, "fireDrill")) return { ...o, ok: false, why: "needs a fire drill" };
+      if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
+      return o;
+    }
   }
 }
 
@@ -377,12 +389,14 @@ export function bedText(state: GameState, world: World): string {
   return `${on}, ${under}${fire}`;
 }
 
-export function huntOdds(state: GameState, cal: Calendar, density: number, species: Species): number {
+export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
   const def = ANIMALS[species];
   let odds = density * def.odds * oddsFactor(state, species);
   if (state.weather.snowCm > DEEP_SNOW_CM) odds *= 0.75;
   if (cal.isNight) odds *= 0.7;
   if (state.weather.precip !== "none") odds *= 0.85;
+  const st = regionState(state, world, state.player.region);
+  if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
   return Math.min(0.95, odds);
 }
 
@@ -402,6 +416,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
   out.push(check(state, world, cal, "light"));
+  out.push(check(state, world, cal, "lightIndoors"));
   out.push(check(state, world, cal, "lightTorch"));
   out.push(check(state, world, cal, "split"));
   out.push(check(state, world, cal, "sharpen"));
@@ -697,7 +712,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const def = ANIMALS[s];
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) log(state, "The bow snaps.", "bad");
-      if (rng.chance(huntOdds(state, cal, d, s))) {
+      if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, st.pop[s] - 1);
         state.stats.animals++;
         const where = produce(state, world, "rawMeat", def.meatKg);
@@ -729,7 +744,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "fish": {
       const d = regionDensity(state, world, p.region, "fish", cal);
       if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish"))) log(state, "The spear shaft splits.", "bad");
-      if (rng.chance(huntOdds(state, cal, d, "fish"))) {
+      if (rng.chance(huntOdds(state, world, cal, d, "fish"))) {
         st.pop.fish = Math.max(0, st.pop.fish - 1);
         state.stats.animals++;
         const kg = fishKg(state) * yieldFactor(state, "fishing");
@@ -807,7 +822,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
       return;
     }
-    case "light": {
+    case "light":
+    case "lightIndoors": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
       wearTool(p, "fireDrill", 2 * wearFactor(state, world, "light"));
       const roof = st.structures.leanTo || st.structures.cabin;
@@ -818,6 +834,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       }
       st.fire.lit = true;
       st.fire.fuelKg += 1;
+      st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");
       return;
     }
@@ -855,7 +872,6 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "walk":
     case "rest":
     case "sleep":
-    case "lightIndoors":
       return;
   }
 }

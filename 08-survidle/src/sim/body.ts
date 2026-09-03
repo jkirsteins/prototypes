@@ -9,6 +9,7 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { eat } from "./actions";
 import type { Calendar } from "./calendar";
+import { fireWarms } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG } from "./items";
 import { log } from "./log";
@@ -79,7 +80,7 @@ function fireStep(state: GameState, world: World, cal: Calendar, at: number): St
  */
 function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
-  if (st.fire.lit || st.structures.leanTo || st.structures.cabin) return true;
+  if (fireWarms(st) || st.structures.leanTo || st.structures.cabin) return true;
   return fireStep(state, world, cal, st.campCell) !== null;
 }
 
