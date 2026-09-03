@@ -125,6 +125,18 @@ describe("save", () => {
     expect(loadGame(storage)).toBeNull();
   });
 
+  it("finishes a hunt or a cast saved against a species the catalogue no longer has, as nothing", () => {
+    // Saves written before the species catalogue carry a bare "fish" task and hunts
+    // for "grouse". SaveFile.version is still 3, so they load and their task runs on.
+    for (const task of [{ id: "fish" as const, progress: 59, duration: 60, repeat: false }, { id: "hunt" as const, arg: "grouse", progress: 59, duration: 60, repeat: false }]) {
+      const { state, world } = newGame(4);
+      state.task = { ...task };
+      expect(() => advance(state, world, 2)).not.toThrow();
+      expect(state.task).toBeNull();
+      expect(state.stats.animals).toBe(0);
+    }
+  });
+
   it("rejects garbage", () => {
     expect(deserialize("not json")).toBeNull();
     expect(deserialize("{}")).toBeNull();

@@ -775,6 +775,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "hunt": {
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
+      // A hunt saved against a species the catalogue no longer has finishes as nothing.
+      if (!def?.hunt || isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(p, "bow", wearFactor(state, world, "hunt", s))) log(state, "The bow snaps.", "bad");
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
@@ -811,6 +813,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "fish": {
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
+      // Likewise a cast saved before fishing named its fish.
+      if (!def?.hunt || !isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(p, "fishingSpear", wearFactor(state, world, "fish", s))) log(state, "The spear shaft splits.", "bad");
       if (rng.chance(huntOdds(state, world, cal, d, s))) {

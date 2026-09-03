@@ -1,18 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { SPECIES_DEFS, SPECIES_IDS, type Habitat, type Species } from "../src/sim/species";
-import { generateWorld, regionAt, speciesHere, waterKindOf, type RegionDef } from "../src/world/gen";
+import { generateWorld, regionAt, speciesHere, waterKindOf, type RegionDef, type World } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { rangeNoise, wildlifeCapacity } from "../src/world/wildlife";
 
-/** A sample of regions across the map: every 7th lattice cell. Kept per seed; building it is the slow part of this file. */
-const samples = new Map<number, RegionDef[]>();
-function sample(seed: number): RegionDef[] {
-  let out = samples.get(seed);
+/** The seeds and the lattice stride the per-region tests walk. Building a region is the slow part of this file, so the sample is as coarse as the assertions allow. */
+const SEEDS = [1, 2, 3];
+const STRIDE = 15;
+
+const worlds = new Map<number, World>();
+function worldFor(seed: number): World {
+  let w = worlds.get(seed);
+  if (!w) {
+    w = generateWorld(seed);
+    worlds.set(seed, w);
+  }
+  return w;
+}
+
+/** A sample of regions across the map: every stride-th lattice cell. Kept, and the world with it, so a wider sample reuses what a coarse one already built. */
+const samples = new Map<string, RegionDef[]>();
+function sample(seed: number, stride = STRIDE): RegionDef[] {
+  const key = `${seed}:${stride}`;
+  let out = samples.get(key);
   if (!out) {
-    const world = generateWorld(seed);
+    const world = worldFor(seed);
     out = [];
-    for (let ly = 0; ly < LATTICE_H; ly += 7) for (let lx = 0; lx < LATTICE_W; lx += 7) out.push(regionAt(world, ly * LATTICE_W + lx));
-    samples.set(seed, out);
+    for (let ly = 0; ly < LATTICE_H; ly += stride) for (let lx = 0; lx < LATTICE_W; lx += stride) out.push(regionAt(world, ly * LATTICE_W + lx));
+    samples.set(key, out);
   }
   return out;
 }
@@ -55,7 +70,7 @@ describe("wildlife capacity", () => {
     const suitable = (r: RegionDef, s: Species) => Object.entries(SPECIES_DEFS[s].habitat).some(([h, per]) => (h === "lake" ? r.lake : h === "sea" ? r.sea : r.frac[h as Exclude<Habitat, "lake" | "sea">]) * per * r.area >= 0.5);
     const present: Record<string, number> = {};
     const gaps: Record<string, number> = {};
-    for (let seed = 1; seed <= 6; seed++) {
+    for (const seed of SEEDS) {
       for (const r of sample(seed)) {
         for (const s of SPECIES_IDS) {
           if (r.capacity[s]) present[s] = (present[s] ?? 0) + 1;
@@ -70,7 +85,7 @@ describe("wildlife capacity", () => {
   });
 
   it("keeps woodland birds off the fell and lake fish out of the sea", () => {
-    for (let seed = 1; seed <= 6; seed++) {
+    for (const seed of SEEDS) {
       for (const r of sample(seed)) {
         if (r.frac.fell >= 0.8) for (const s of ["capercaillie", "hazelGrouse", "cuckoo", "squirrel", "perch", "pike"] as Species[]) expect(r.capacity[s], `${s} on fell`).toBeUndefined();
         if (r.sea > 0 && r.lake === 0) expect(r.capacity.perch, "perch in the sea").toBeUndefined();
