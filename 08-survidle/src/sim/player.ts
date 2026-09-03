@@ -44,6 +44,13 @@ export function sheltered(state: GameState, world: World): boolean {
   return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo);
 }
 
+/** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
+export function firelit(state: GameState, world: World): boolean {
+  if (state.player.torch.lit) return true;
+  const r = regionState(state, world, state.player.region);
+  return atCamp(state, world) && r.fire.lit;
+}
+
 export function insulation(state: GameState): number {
   let sum = 0;
   for (const g of state.player.clothing) sum += CLOTHING[g.id].insulation * clamp(g.durability, 0, 100) / 100;
@@ -96,7 +103,7 @@ export function workSpeed(state: GameState, world: World): number {
 export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather, loadKg = carried(state.player)): number {
   let v = 3.0;
   if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
-  if (cal.isNight) v *= 0.75;
+  if (cal.isNight && !state.player.torch.lit) v *= 0.75;
   if (loadKg > PACK_HARD_KG) v *= 0.6;
   else if (loadKg > PACK_COMFORTABLE_KG) v *= 0.8;
   if (state.player.energy < 20) v *= 0.7;

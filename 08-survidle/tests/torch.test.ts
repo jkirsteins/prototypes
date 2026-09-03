@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { hourlyEvents } from "../src/sim/events";
 import { addItem, qty, tool } from "../src/sim/inventory";
 import { ITEM_KG, RECIPES, TORCH_BURN_MINUTES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { stepPlayer } from "../src/sim/player";
+import { baseWalkSpeed, firelit, stepPlayer } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
@@ -116,5 +117,44 @@ describe("lighting a torch", () => {
     expect(html()).not.toContain("torch lit");
     state.player.torch = { lit: true, minutes: 42 };
     expect(html()).toContain("torch lit, 42 min");
+  });
+});
+
+describe("what a torch does", () => {
+  it("takes the night off your feet: 3.0 km/h with it, 2.25 without, 3.0 by day either way", () => {
+    const { state } = newGame(1);
+    const day = calendar(4 * 60);
+    const night = calendar(16 * 60);
+    const clear = { ...state.weather, snowCm: 0 };
+    expect(baseWalkSpeed(state, night, clear, 5)).toBeCloseTo(2.25);
+    state.player.torch = { lit: true, minutes: 30 };
+    expect(baseWalkSpeed(state, night, clear, 5)).toBeCloseTo(3.0);
+    expect(baseWalkSpeed(state, day, clear, 5)).toBeCloseTo(3.0);
+  });
+
+  it("keeps the wolves off, as does your own lit fire", () => {
+    const { state, world } = newGame(2);
+    const rng = new Rng(11);
+    const hits = () => {
+      let n = 0;
+      for (let i = 0; i < 500; i++) {
+        state.player.health = 100;
+        hourlyEvents(state, world, calendar(16 * 60), rng);
+        if (state.player.health < 100) n++;
+      }
+      return n;
+    };
+    expect(firelit(state, world)).toBe(false);
+    expect(hits()).toBeGreaterThan(0);
+    state.player.torch = { lit: true, minutes: 30 };
+    expect(firelit(state, world)).toBe(true);
+    expect(hits()).toBe(0);
+    state.player.torch = { lit: false, minutes: 0 };
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = true;
+    expect(firelit(state, world)).toBe(true);
+    expect(hits()).toBe(0);
+    placeAtSpot(state, world, state.player.region, "forest");
+    expect(firelit(state, world)).toBe(false);
   });
 });

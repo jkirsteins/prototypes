@@ -2,7 +2,7 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { log } from "./log";
-import { die, sheltered } from "./player";
+import { die, firelit, sheltered } from "./player";
 import type { GameState } from "./types";
 
 /** Rolled once per game hour. */
@@ -20,7 +20,7 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, rng:
   }
 
   // Wolves: the night outside, worse in winter.
-  if (cal.isNight && !sheltered(state, world)) {
+  if (cal.isNight && !sheltered(state, world) && !firelit(state, world)) {
     let chance = 0.01;
     if (cal.season === "winter") chance *= 2;
     if (rng.chance(chance)) {
