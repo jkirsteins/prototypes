@@ -5,6 +5,7 @@
  * next door are dim. The player never pans; the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
+import { fuelTotal } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
 import { discovery, SEEN, VISITED } from "../sim/regionstate";
@@ -102,7 +103,7 @@ export function lightSources(state: GameState, world: World): LightSource[] {
   const out: LightSource[] = [];
   for (const { st, cell } of visitedCamps(state)) {
     if (!st.fire.lit) continue;
-    out.push({ cell, reach: st.fire.fuelKg >= FIRE_LOW_KG ? 2 : 1 });
+    out.push({ cell, reach: fuelTotal(st.fire) >= FIRE_LOW_KG ? 2 : 1 });
   }
   if (state.player.torch.lit) out.push({ cell: cellOf(state, world), reach: 1 });
   return out;
@@ -147,7 +148,7 @@ export function flickerDelay(i: number): string {
 
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
-  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? (r.fire.fuelKg >= FIRE_LOW_KG ? "F" : "f") : ""}`).join(",");
+  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}`).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);

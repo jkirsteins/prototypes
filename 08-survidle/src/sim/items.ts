@@ -137,7 +137,6 @@ export const ANIMALS: Record<Species, SpeciesDef> = {
   fish: { name: "fish", spot: "shore", minutes: 60, odds: 0.6, meatKg: 0.7, hideKg: 0, bone: 0, sinew: 0, injury: 0 },
 };
 
-export const FIRE_BURN_KG_PER_HOUR = 3;
 export const FIRE_MAX_KG = 36;
 export const FIRE_LOW_KG = 3;
 export const RACK_MAX_KG = 6;

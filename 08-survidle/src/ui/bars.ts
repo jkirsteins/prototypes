@@ -1,8 +1,10 @@
-import { fuelTotal } from "../sim/fire";
+import { calendar } from "../sim/calendar";
+import { burnPerHour, fuelTotal } from "../sim/fire";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { regionState } from "../sim/regionstate";
 import type { GameState } from "../sim/types";
 import { WATER_FULL } from "../sim/water";
+import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
 
@@ -27,9 +29,12 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
 
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
+  const roof = st.structures.leanTo || st.structures.cabin;
+  const ambient = ambientTemperature(calendar(state.minute), state.weather);
+  const burnsFor = fmtDuration((total / burnPerHour(state.weather, ambient, roof)) * 60);
   const fireText = st.fire.wetKg > 0
-    ? `${st.fire.fuelKg.toFixed(1)} kg dry, ${st.fire.wetKg.toFixed(1)} kg wet`
-    : `${st.fire.fuelKg.toFixed(1)} kg, ${fmtDuration((total / 3) * 60)}`;
+    ? `${st.fire.fuelKg.toFixed(1)} kg dry, ${st.fire.wetKg.toFixed(1)} kg wet, ${burnsFor}`
+    : `${st.fire.fuelKg.toFixed(1)} kg, ${burnsFor}`;
   setBar("fire", total / FIRE_MAX_KG, fireText, root);
 
   const t = state.task;
