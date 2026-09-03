@@ -677,7 +677,14 @@ In `src/sim/tasks.ts` add `"lightTorch"` to `CARRIED` and to `WORK_TASKS`. Impor
     }
 ```
 
-In `availableTasks`, after `out.push(check(state, world, cal, "light"));` add `out.push(check(state, world, cal, "lightTorch"));`.
+`checkFresh` now takes the cell the work is judged at (`at`), and inside it `camp` means `at === st.campCell` and `invs` is the pack plus the pile at `at`; the case above uses those names unchanged. In `availableTasks`, after `out.push(check(state, world, cal, "light"));` add `out.push(check(state, world, cal, "lightTorch"));`.
+
+The Do panel is fronted by intents now, with the plain task list behind an "advanced" toggle, so the torch must be an intent too:
+
+- `src/ui/panels.ts`, `INTENT_GROUPS`, the Camp group: add `{ id: "lightTorch" }` right after `{ id: "light" }`.
+- `src/sim/intent.ts`, the `GERUND` table: add `lightTorch: () => "lighting a torch",` after `light`. Leave `CAMP_BOUND` alone: a torch can be lit anywhere with the drill, and `check` already refuses it where it cannot be lit.
+
+Add to the reachability tests in `tests/ui.test.ts`, in the test that renders `doHtml` ("has a settings strip, the instant buttons, and one row per intent"): `expect(html).toContain('data-opt="intent:lightTorch:"');`.
 
 In `complete`, after the `light` case:
 
@@ -718,7 +725,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/sim/types.ts src/sim/skills.ts src/sim/tasks.ts src/sim/player.ts src/ui/panels.ts tests/torch.test.ts tests/ui.test.ts
+git add src/sim/types.ts src/sim/skills.ts src/sim/tasks.ts src/sim/intent.ts src/sim/player.ts src/ui/panels.ts tests/torch.test.ts tests/ui.test.ts
 git commit -m "feat(survidle): light a torch from the fire or with the drill; it burns an hour"
 ```
 
