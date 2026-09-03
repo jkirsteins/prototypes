@@ -264,19 +264,21 @@ things. Tools and clothing are not in the pack and stay on the body.
 
 Legality (rule 5's `check`) is evaluated at the work cell wherever the
 player stands (section 6), so a blocked intent ends where it is instead of
-walking back to find out.
+walking back to find out. The fetch rule runs before that check because
+legality at camp reports "missing materials at camp", which would end the
+intent on the spot and never let a fetch run.
 
-1. **Until met.** If a load is ready, take the next step of the haul leg.
-   Otherwise end the intent: log "`<label>`: done." as `good`, clear
-   `state.intent`.
-2. **Load ready.** Take the next step of the haul leg.
-3. **Build needs fetching.** `task === "build"`, at the home camp, `check`
+1. **Build needs fetching.** `task === "build"`, at the home camp, `check`
    says "missing materials at camp", and some pile in this region other than
    the camp pile holds at least one of the missing items: walk to the
    nearest such pile (by route minutes), load the missing items first and
    then fill the pack heaviest first, walk back to camp, drop. When no pile
    holds any missing item, fall through to rule 5, which ends the intent
    with "missing materials at camp".
+2. **Until met.** If a load is ready, take the next step of the haul leg.
+   Otherwise end the intent: log "`<label>`: done." as `good`, clear
+   `state.intent`.
+3. **Load ready.** Take the next step of the haul leg.
 4. **Not at the work cell.** `walk cell:<cell>` (step "walking to the
    forest" using `whereIs`). If the walk cannot start, end the intent with
    its reason: "no way there on foot", or "the pack is too heavy to lift".

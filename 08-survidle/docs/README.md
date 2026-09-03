@@ -19,8 +19,15 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 
 ## How it plays
 
-- **One task at a time**, with a progress bar. Most tasks have a `loop`
-  button that repeats them until they cannot continue.
+- **You say what, the game does how.** Every button is an intent: "Fell a
+  tree" walks to the forest itself; a strip above the list says how long
+  (once, N times, until camp has N, forever), whether to bring the yield to
+  camp, and where. The game does the walking, the work and the hauling,
+  and when the body asks for it, the walk back to camp, a fire from what
+  is at camp, and the night's sleep; at dawn it goes back to the work.
+  Anything it cannot do (no axe, nothing left to fell, no materials) ends
+  the intent with the reason in the log. An "advanced" toggle shows the
+  raw single actions underneath, one at a time, as they were.
 - **A big north.** The world is about 540 by 390 km, the shape of the far
   north: sea and fjords to the northwest, a fell spine inland, lakes and bog
   to the east. It is generated as you touch it, so loading is instant.
@@ -42,10 +49,11 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 - **Carrying matters.** Your pack is comfortable to 25 kg and impossible past
   35. Logs weigh 20 kg and never go in the pack: they lie where they fell.
   Everything you make or kill that does not fit lands on the pile under your
-  feet, and cells with something on them are underlined on the map. "Haul
-  to camp" is a plan: load 35 kg, walk to camp, drop, walk back, repeat
-  while the pile has anything; stop anywhere and carry on later. Building
-  uses the camp pile plus your pack.
+  feet, and cells with something on them are underlined on the map. "Bring
+  it to camp" hauls a full load at a time: load 35 kg, walk to camp, drop,
+  walk back, and the rest when the work is over; "Haul to camp" under
+  advanced does the same for whatever lies where you stand. Building uses
+  the camp pile plus your pack.
 - **Body.** Food is a kilocalorie reserve. Warmth settles toward what your
   felt temperature can hold: ambient, plus clothing, fire and shelter at
   camp, plus activity, minus wetness. Below 20 warmth you lose health fast.
@@ -102,6 +110,7 @@ terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 - `src/units.ts`: the time scale and pack limits.
 - `src/sim/items.ts`: weights, foods, recipes, structures, animals.
 - `src/sim/player.ts`: kcal burn, warmth balance, energy, wetness, health.
+- `src/sim/body.ts`: when an intent sleeps, warms up, eats and provisions.
 - `src/sim/weather.ts`: the temperature curve, precipitation, snow.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
