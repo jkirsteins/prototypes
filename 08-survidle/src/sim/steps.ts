@@ -30,5 +30,8 @@ export function takeStep(state: GameState, world: World, cal: Calendar, s: Step)
   if (isRunning(state, s)) return true;
   if (!beginTask(state, world, cal, s.id, s.arg)) return false;
   it.step = s.step;
+  // A fresh rest's starting warmth, so stepTask can judge what it gained when it completes;
+  // unset for every other step so a stale reading never survives into one that is not a rest.
+  it.restFromWarmth = s.id === "rest" ? state.player.warmth : undefined;
   return true;
 }

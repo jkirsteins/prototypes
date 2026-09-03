@@ -504,6 +504,15 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     if (it.task === id && (it.arg ?? "") === (arg ?? "")) it.done++;
     else if (it.task === "night" && id === "sleep") it.done++;
     if (id === "sleep" && it.need === "sleep") it.need = null;
+    // A rest that barely warmed anyone is not worth repeating: give the need up until warmth
+    // recovers some other way, rather than resting here forever for less than a point of gain.
+    if (id === "rest" && it.need === "cold") {
+      const gained = state.player.warmth - (it.restFromWarmth ?? state.player.warmth);
+      if (gained < 1) {
+        it.coldSpent = true;
+        it.need = null;
+      }
+    }
   }
   complete(state, world, cal, rng, id, arg);
   if (repeat && !state.dead) {

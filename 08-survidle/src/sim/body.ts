@@ -35,7 +35,9 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
     || (cal.isNight && p.energy < NIGHT_SLEEP_UNDER)
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
-  const cold = p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT);
+  // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
+  if (p.warmth >= WARM_AT) it.coldSpent = false;
+  const cold = !it.coldSpent && (p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (p.kcal < HUNGRY_UNDER) return "hungry";
   return null;

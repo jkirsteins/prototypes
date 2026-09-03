@@ -217,6 +217,11 @@ a fire that is not there - a camp with none of these would only cool the
 character faster through `rest` than felling a tree does, and the runner
 does not walk into that trade for them.
 
+A rest that gains less than a point of warmth ends the need until the body
+is warm again: a shelter that cannot actually warm you (a lean-to with no
+fire, in cold deep enough that its felt temperature still settles under 45)
+does not hold you resting there forever for nothing.
+
 ### 3.3 Hungry
 
 Holds when `kcal < 1800`. Ends when `kcal >= 1800`.

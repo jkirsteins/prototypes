@@ -266,6 +266,16 @@ describe("the Do panel", () => {
     expect(html).toContain('data-act="intent" data-id="build" data-arg="leanTo"');
   });
 
+  it("a build already finished renders as a greyed row, not a fetchable one, however much sits elsewhere", () => {
+    const g = newGame(3);
+    regionState(g.state, g.world, g.state.player.region).structures.leanTo = true;
+    const r = regionAt(g.world, g.state.player.region);
+    const forest = spotOf(r, "forest")!.cell;
+    addItem(pile(g.state, forest), "log", 4);
+    const html = doHtml(g.state, g.world, calendar(g.state.minute), newUiState());
+    expect(html).toContain('class="opt off" data-opt="intent:build:leanTo"');
+  });
+
   it("the Doing panel reads the intent as a sentence with its step, and set-aside work can be finished from anywhere", () => {
     const g = newGame(21);
     const rng = new Rng(1);

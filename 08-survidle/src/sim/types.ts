@@ -123,6 +123,10 @@ export interface Intent {
   /** What the runner is doing right now, for the Doing panel. */
   step: string;
   need: BodyNeed | null;
+  /** Warmth when the current rest step began, so its gain can be judged when it completes. Unset outside a rest step. */
+  restFromWarmth?: number;
+  /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
+  coldSpent?: boolean;
 }
 
 export interface RegionState {

@@ -9,7 +9,8 @@ import { newGame } from "../src/sim/newgame";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { check, stopTask } from "../src/sim/tasks";
+import { check, stepTask, stopTask } from "../src/sim/tasks";
+import { takeStep } from "../src/sim/steps";
 import type { TaskId } from "../src/sim/types";
 import { cellAt, regionAt, spotOf } from "../src/world/gen";
 
@@ -262,6 +263,49 @@ describe("the work tier", () => {
     expect(until(g, () => state.intent === null, 500)).toBe(true);
     expect(state.log.some((e) => e.text === "lean-to: missing materials at camp. You stop.")).toBe(true);
   });
+
+  it("a build already finished is never offered a fetch, whatever sits elsewhere in the region", () => {
+    const { state, world } = newGame(3);
+    const region = state.player.region;
+    const r = regionAt(world, region);
+    const forest = spotOf(r, "forest")!.cell;
+    regionState(state, world, region).structures.leanTo = true;
+    addItem(pile(state, forest), "log", 4);
+    const o = intentOption(state, world, cal, "build", "leanTo", "nearest");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("already built here");
+    expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
+  });
+
+  it("a cabin with no fire pit is never offered a fetch either, even with plenty of logs nearby", () => {
+    const { state, world } = newGame(3);
+    const region = state.player.region;
+    const r = regionAt(world, region);
+    const forest = spotOf(r, "forest")!.cell;
+    addItem(pile(state, forest), "log", 40);
+    const o = intentOption(state, world, cal, "build", "cabin", "nearest");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("build the fire pit first");
+  });
+
+  it("the fetch detail names what the nearest pile actually holds, not just the first thing missing", () => {
+    const { state, world } = newGame(3);
+    const region = state.player.region;
+    const camp = regionState(state, world, region).campCell;
+    const r = regionAt(world, region);
+    const forest = spotOf(r, "forest")!.cell;
+    const heath = spotOf(r, "heath")!.cell;
+    // Cordage is satisfied at camp; sticks and logs are both missing, sitting at different spots.
+    addItem(pile(state, camp), "cordage", 2);
+    addItem(pile(state, heath), "stick", 8);
+    addItem(pile(state, forest), "log", 4);
+    // Standing at the forest makes its log pile the nearer source (0 km, against the heath's positive distance).
+    placeAtSpot(state, world, region, "forest");
+    const o = intentOption(state, world, cal, "build", "leanTo", "nearest");
+    expect(o.ok).toBe(true);
+    expect(o.detail).toContain("4 logs");
+    expect(o.detail).not.toContain("sticks");
+  });
 });
 
 describe("a camp-bound delivery already at camp", () => {
@@ -290,6 +334,26 @@ describe("a camp-bound delivery already at camp", () => {
     expect(qty(pile(state, camp), "firewood")).toBe(20);
     expect(qty(pile(state, camp), "log")).toBe(2);
     expect(state.log.some((e) => e.text === "Split a log: done.")).toBe(true);
+  });
+});
+
+describe("a rest's gain, not just its completion, decides whether cold is spent", () => {
+  it("a rest that gains at least a point of warmth is not marked spent, even if the need still reads cold when it ends", () => {
+    const { state, world } = newGame(3);
+    const camp = regionState(state, world, state.player.region).campCell;
+    state.intent = {
+      task: "chop", cell: camp, campCell: camp,
+      until: { kind: "forever" }, deliver: "leave", done: 0, step: "", need: "cold",
+    };
+    const it = state.intent;
+    state.player.warmth = 20;
+    expect(takeStep(state, world, cal, { id: "rest", step: "resting to warm up" })).toBe(true);
+    expect(it.restFromWarmth).toBe(20);
+    // Warmth climbs during the rest but stays under WARM_AT, so the need would still read "cold" throughout.
+    state.player.warmth = 25;
+    for (let m = 0; m < 60; m++) stepTask(state, world, cal, new Rng(1), 1);
+    expect(state.task).toBeNull();
+    expect(it.coldSpent).toBeFalsy();
   });
 });
 

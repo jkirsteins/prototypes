@@ -117,17 +117,23 @@ export function resolveCell(state: GameState, world: World, task: TaskId, arg: s
 
 /**
  * A build blocked at its own cell for want of materials gets one allowance:
- * something it needs sits elsewhere in the region and can be walked to. The
- * one place this is decided, so intentOption and startIntent never disagree
- * about whether the button may be pressed.
+ * something it needs sits elsewhere in the region and can be walked to. Only
+ * when that is the actual reason it is blocked - "already built here" or
+ * "build the fire pit first" get no allowance, fetching would not help
+ * either. The one place this is decided, so intentOption and startIntent
+ * never disagree about whether the button may be pressed.
  */
-function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined): { ok: boolean; detail: string } {
-  if (task !== "build" || arg === "snare") return { ok: false, detail: "" };
+function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
+  if (task !== "build" || arg === "snare" || why !== "missing materials at camp") return { ok: false, detail: "" };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
   if (!canFetch(state, world, sid, campCell)) return { ok: false, detail: "" };
   const { missing, sources } = fetchSources(state, world, sid, campCell, cellOf(state, world));
-  return { ok: true, detail: `fetching ${itemLabel(missing[0].item, missing[0].qty)} from ${whereIs(state, world, sources[0].cell)} first` };
+  const src = sources[0];
+  // Name what the nearest pile actually holds, not just the first thing missing overall.
+  const need = missing.find((n) => qty(src.inv, n.item) > 1e-9 || (n.alt !== undefined && qty(src.inv, n.alt) > 1e-9))!;
+  const item = qty(src.inv, need.item) > 1e-9 ? need.item : need.alt!;
+  return { ok: true, detail: `fetching ${itemLabel(item, need.qty)} from ${whereIs(state, world, src.cell)} first` };
 }
 
 /** The button: legality judged where the work would be done, so ground is never the reason. */
@@ -135,7 +141,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
   const { cell } = resolveCell(state, world, task, arg, where);
   const o = check(state, world, cal, task, arg, cell);
   if (o.ok) return o;
-  const fa = fetchAllowance(state, world, task, arg);
+  const fa = fetchAllowance(state, world, task, arg, o.why);
   return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail } : o;
 }
 
@@ -145,7 +151,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const { cell, note } = resolveCell(state, world, req.task, req.arg, req.where);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
-    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg).ok) return false;
+    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) return false;
   }
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"

@@ -109,6 +109,14 @@ describe("the body tier", () => {
     expect(state.intent?.step).toBe("walking to camp to warm up");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
+    // The fire actually raises warmth: the rest runs to completion and gains real ground, so it is not "spent".
+    expect(until(g, () => state.task?.id !== "rest", 200)).toBe(true);
+    expect(state.player.warmth).toBeGreaterThan(45);
+    expect(state.intent?.coldSpent).toBeFalsy();
+    // Cold again: the need re-enters normally, not stuck spent from the rest that worked.
+    state.player.warmth = 29;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("cold");
     // Between the entry and the exit the need still holds; at the exit it lets go.
     state.player.warmth = 40;
     advance(state, world, 1);
@@ -140,6 +148,32 @@ describe("the body tier", () => {
     advance(state, world, 1);
     expect(state.intent?.need).toBe("cold");
     expect(state.intent?.step).toBe("walking to camp to warm up");
+  });
+
+  it("cold with a lean-to and no fire in deep cold: a rest that cannot help gives the need up", () => {
+    const { g, state, world, camp } = felling(17);
+    const st = regionState(state, world, state.player.region);
+    st.structures.leanTo = true;
+    // Far below any target the shelter alone can reach, so the rest that follows cannot gain a point.
+    state.weather.offset = -25;
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    state.player.warmth = 29;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("cold");
+    expect(until(g, () => state.task?.id === "rest")).toBe(true);
+    expect(cellOf(state, world)).toBe(camp);
+    expect(until(g, () => state.task?.id !== "rest", 200)).toBe(true);
+    expect(state.intent?.need).toBeNull();
+    expect(state.intent?.coldSpent).toBe(true);
+    // Spent, not stuck: the chop resumes rather than resting forever for nothing.
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    // Warm again some other way (not by resting here): coldSpent lets go once warmth clears WARM_AT.
+    state.player.warmth = 80;
+    advance(state, world, 1);
+    expect(state.intent?.coldSpent).toBe(false);
+    state.player.warmth = 29;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("cold");
   });
 
   it("hungry, it eats from the pack and keeps working; with food only at camp it goes there", () => {
