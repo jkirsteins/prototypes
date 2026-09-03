@@ -5,6 +5,7 @@
  * next door are dim. The player never pans; the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
+import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
 import { discovery, SEEN, VISITED } from "../sim/regionstate";
 import type { GameState, Terrain } from "../sim/types";
@@ -82,9 +83,59 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
   return { terrain: best, region: regionPeek(world, x0 + (z >> 1), y0 + (z >> 1)), seen };
 }
 
+export interface LightSource { cell: number; reach: number }
+
+/** Where light is on the map tonight: every visited camp's lit fire, two rings when it is well fed, one when low. */
+export function lightSources(state: GameState, world: World): LightSource[] {
+  const out: LightSource[] = [];
+  for (const [idText, st] of Object.entries(state.regions)) {
+    if (!st.fire.lit || discovery(state, Number(idText)) !== VISITED) continue;
+    out.push({ cell: st.campCell, reach: st.fire.fuelKg >= FIRE_LOW_KG ? 2 : 1 });
+  }
+  void world;
+  return out;
+}
+
+/**
+ * Ring per lit glyph: 0 is the source, 1 and 2 the squares around it with
+ * ring 2's corners cut so the glow is round. A glyph reached twice takes
+ * the nearer ring. Rings shrink with zoom: whole at one cell per glyph,
+ * the source alone at three, nothing beyond.
+ */
+export function litRings(sources: LightSource[], toGlyph: (cell: number) => number, z: number): Map<number, number> {
+  const rings = new Map<number, number>();
+  const reachAt = z === 1 ? 2 : z === 3 ? 0 : -1;
+  if (reachAt < 0) return rings;
+  for (const s of sources) {
+    const g = toGlyph(s.cell);
+    if (g < 0) continue;
+    const reach = Math.min(s.reach, reachAt);
+    const gx = g % VIEW_W;
+    const gy = Math.floor(g / VIEW_W);
+    for (let dy = -reach; dy <= reach; dy++) {
+      for (let dx = -reach; dx <= reach; dx++) {
+        const d = Math.max(Math.abs(dx), Math.abs(dy));
+        if (d === 2 && Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
+        const x = gx + dx;
+        const y = gy + dy;
+        if (x < 0 || y < 0 || x >= VIEW_W || y >= VIEW_H) continue;
+        const i = y * VIEW_W + x;
+        const prev = rings.get(i);
+        if (prev === undefined || d < prev) rings.set(i, d);
+      }
+    }
+  }
+  return rings;
+}
+
+/** A negative animation delay under 1.1 s, fixed per glyph index, so neighbouring flames are out of step. */
+export function flickerDelay(i: number): string {
+  return `-${(((i * 2654435761) >>> 0) % 1100) / 1000}s`;
+}
+
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
-  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? "F" : ""}`).join(",");
+  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? (r.fire.fuelKg >= FIRE_LOW_KG ? "F" : "f") : ""}`).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -132,6 +183,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const g = toGlyph(Number(k));
     if (g >= 0) pileGlyphs.add(g);
   }
+  const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z) : new Map<number, number>();
 
   // Region, ground and discovery per glyph, then borders between glyphs.
   const regions = new Int32Array(VIEW_W * VIEW_H);
@@ -167,6 +219,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const cls = ["c"];
     let glyph = " ";
     let title = "";
+    let style = "";
     if (reg < 0) {
       cls.push("void");
     } else if (seen === 0) {
@@ -193,6 +246,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         cls.push("pl");
         title += ", something lies here";
       }
+      const ring = rings.get(i);
+      if (ring !== undefined) {
+        cls.push(`lit-${ring}`);
+        style = ` style="--fd:${flickerDelay(i)}"`;
+      }
     }
     const m = markerAt.get(i);
     if (m) {
@@ -201,7 +259,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (m.cls === "mk-player") title = `you, ${title}`;
     }
     const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
-    parts.push(`<span class="${cls.join(" ")}"${act} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    parts.push(`<span class="${cls.join(" ")}"${act}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
   parts.push(`<i class="shade"></i></div>`);
   parts.push(
