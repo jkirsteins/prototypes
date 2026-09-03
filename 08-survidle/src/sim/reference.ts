@@ -2,9 +2,10 @@
  * The reference player: the set-up a competent player writes on day one,
  * run headless. It is the baseline's gate (reaches 1 December on four
  * seeds) and, later, the survivor loop's instrument. The list is ordered
- * as the tool chain is, because the runner never gathers a prerequisite on
- * its own: the knife before the drill, the buckets before the water keep
- * can be met, and the water keep at the top so it is served first.
+ * food-first: the water keep at the top, then whatever a first cooked meal
+ * needs, in the order it needs it - the runner never gathers a prerequisite
+ * on its own, so the knife comes before the drill and the vessel before the
+ * water keep can ever do anything with it.
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
@@ -21,49 +22,61 @@ const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "
 const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
 
+/**
+ * Rebuilt food-first (controller ruling on task-9-report.md's original,
+ * tool-chain-first list): the water keep stays first, then everything the
+ * first cooked meal needs, in the order it needs it - stone, sticks, bark
+ * and cordage as raw stock; the knife and fire drill as the tools that turn
+ * stock into everything else; a fire pit to hold the fire; a small chop keep
+ * feeding a small firewood keep so the fire is fed without either
+ * outranking the food chain; the fishing spear; a small fish keep; and the
+ * two cook keeps that turn a catch into something autoEat's AUTO_EAT_ORDER
+ * will actually touch (evidence: task-9-report.md, "raw catches are never
+ * eaten"). Every keep in this stretch is sized small on purpose - the
+ * water keep, the fish keep and the hunt keep were each found running live
+ * for most of a day at their original targets, holding every order below
+ * them off the schedule (task-9-report.md).
+ *
+ * Snares come right after: cheap protein once cordage and the knife exist,
+ * needing nothing the fish chain does not already have. Crafting a snare
+ * and setting it are two different tasks (craft yields the item, build
+ * places it on the heath), so both are here.
+ *
+ * Everything after is the second-order kit - buckets to grow the water
+ * keep's reach, the bow and arrows for a second meat source, the drying
+ * rack and dried-meat keep for a winter reserve, the axe spare, the
+ * lean-to - and the felling grind is last, as it was: the always-available
+ * fallback that soaks up whatever time nothing above it needs.
+ */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
   job("stone", { kind: "campHas", qty: 8 }),
-  keep("sticks", 20),
-  // Bark and cordage are consumed the whole run through, by every "keep camp
-  // at 1" tool taken up and every spare that replaces it: a one-time job
-  // starves the chain once its batch is spent and never resumes (evidence in
-  // task-9-report.md). A keep re-fires below half its target, the way sticks
-  // and firewood already do.
-  keep("bark", 20),
-  keep("craft", 8, "cordage"),
+  keep("sticks", 10),
+  keep("bark", 12),
+  keep("craft", 4, "cordage"),
   keep("craft", 1, "knife"),
   keep("craft", 1, "fireDrill"),
+  // A vessel, not "the second-order kit": with the shore iced (April, every
+  // seed so far) the fill keep cannot even open an ice hole without one
+  // ("needs a vessel" - check("fill") - the ice-hole step is inside the
+  // fill task, gated on holds > 0), and thirstyStep's own direct-drink path
+  // needs an already-open hole too. Ranked with buckets after cook (as
+  // asked) the water keep sits on "needs a vessel" the whole run and seed
+  // 17 dies of thirst day 3 (evidence: task-9-report.md). Water stays
+  // first in rank; what it depends on has to be this early too.
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("build", { kind: "once" }, "firePit"),
-  // Split needs logs already at hand, and only the grind at the very end of
-  // this list fells trees; ranked below fishingSpear, fish and hunt, that
-  // grind never gets a turn while those slower keeps stay live, so split
-  // sits on "no logs here" and no fire is ever lit (evidence in
-  // task-9-report.md). A one-time job seeded logs once but split then ran
-  // them out again with nothing ranked to refill them; a keep here supplies
-  // logs the whole run through, the way the bark keep feeds cordage, while
-  // staying below fill/stone/sticks/bark/cordage/knife/fireDrill/buckets so
-  // it never itself displaces the tool chain.
-  keep("chop", 4),
+  keep("chop", 3),
   keep("split", 40),
   keep("craft", 1, "fishingSpear"),
-  // A cast is an hour and often comes up empty ("nothing bites" in the log far
-  // more than a catch does), so a 4 kg target can run live for most of a day
-  // straight, holding every order below it off the schedule entirely - the
-  // same trap the water keep was in before its target came down (evidence
-  // in task-9-report.md).
   keep("fish", 1, "any"),
-  // Raw catches are never eaten: autoEat's AUTO_EAT_ORDER wants berries, cooked
-  // fish or meat, dried meat, or fat, never a raw kg sitting in the pile. Without
-  // a cook keep the fish and hunt keeps below fill camp with food nothing ever
-  // touches, and the reference player starves beside a full larder (evidence in
-  // task-9-report.md).
-  keep("cook", 3, "fish"),
+  keep("cook", 1, "fish"),
+  keep("cook", 1),
+  keep("craft", 1, "snare"),
+  job("build", { kind: "times", n: 5 }, "snare"),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
-  keep("cook", 3),
   job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
   keep("craft", 1, "axe"),
