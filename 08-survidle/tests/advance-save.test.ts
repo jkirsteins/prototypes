@@ -60,6 +60,35 @@ describe("save", () => {
     expect(file!.state).toEqual(expected);
   });
 
+  it("a new game starts with the new body fields, and an old save gets them filled", () => {
+    const { state } = newGame(8);
+    expect(state.player.water).toBe(2.5);
+    expect(state.player.autoDrink).toBe(true);
+    expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
+    expect(state.weather.iceCm).toBe(0);
+    expect(state.weather.storm).toBeNull();
+    const st = state.regions[state.player.region];
+    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 });
+    expect(st.smoke).toBe(0);
+    expect(st.structures.hearth).toBe(false);
+    const raw = JSON.parse(serialize(state));
+    delete raw.state.player.water;
+    delete raw.state.player.frostbite;
+    delete raw.state.weather.iceCm;
+    delete raw.state.weather.storm;
+    delete raw.state.regions[state.player.region].fire.wetKg;
+    delete raw.state.regions[state.player.region].smoke;
+    delete raw.state.regions[state.player.region].structures.hearth;
+    const back = deserialize(JSON.stringify(raw))!.state;
+    expect(back.player.water).toBe(2.5);
+    expect(back.player.frostbite).toEqual({ feet: 0, hands: 0 });
+    expect(back.weather.iceCm).toBe(0);
+    expect(back.weather.storm).toBeNull();
+    expect(back.regions[state.player.region].fire.wetKg).toBe(0);
+    expect(back.regions[state.player.region].smoke).toBe(0);
+    expect(back.regions[state.player.region].structures.hearth).toBe(false);
+  });
+
   it("stores, loads, and removes the save on death", () => {
     const storage = new MemStorage();
     const { state } = newGame(9);

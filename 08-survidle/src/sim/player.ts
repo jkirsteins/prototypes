@@ -12,7 +12,7 @@ import type { DeathCause, GameState, RegionState, Task, TaskId, Terrain, Weather
 import { DEEP_SNOW_CM } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
-const CAMP_TASKS = new Set<TaskId>(["rest", "night", "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen"]);
+const CAMP_TASKS = new Set<TaskId>(["rest", "night", "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors"]);
 
 export type Activity = "sleep" | "rest" | "light" | "walk" | "heavy";
 
@@ -20,7 +20,7 @@ export function activityOf(task: Task | null): Activity {
   if (!task) return "rest";
   switch (task.id) {
     case "sleep": return "sleep";
-    case "rest": case "night": case "craft": case "cook": case "repair": case "sharpen": case "light": case "lightTorch": return "rest";
+    case "rest": case "night": case "craft": case "cook": case "repair": case "sharpen": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": return "rest";
     case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": return "light";
     case "travel": case "walk": case "haul": return "walk";
     case "chop": case "split": case "build": return "heavy";
@@ -253,6 +253,9 @@ export function die(state: GameState, cause: DeathCause): void {
     froze: "The cold took you.",
     wolves: "The wolves finished it.",
     sickness: "The fever won.",
+    thirst: "Thirst took you.",
+    smoke: "The smoke took you in your sleep.",
+    drowned: "The ice gave way. The lake kept you.",
   }[cause];
   log(state, text, "bad");
 }

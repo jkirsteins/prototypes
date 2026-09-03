@@ -320,6 +320,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const minutes = Math.min(600, Math.max(60, minutesUntilDawn(state.minute), toRested));
       return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${bedText(state, world)}`, duration: minutes });
     }
+    case "melt": case "thaw": case "lightIndoors":
+      return opt({ group: "camp", label: id, ok: false, why: "not yet" });
   }
 }
 
@@ -747,6 +749,9 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "walk":
     case "rest":
     case "sleep":
+    case "melt":
+    case "thaw":
+    case "lightIndoors":
       return;
   }
 }

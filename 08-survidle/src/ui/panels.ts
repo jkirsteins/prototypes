@@ -386,7 +386,10 @@ function bestSkill(state: GameState): string {
 
 export function deathHtml(state: GameState, world: World, cal: Calendar): string {
   const d = state.dead!;
-  const cause = { starved: "You starved.", froze: "You froze.", wolves: "The wolves had you.", sickness: "The fever took you." }[d.cause];
+  const cause = {
+    starved: "You starved.", froze: "You froze.", wolves: "The wolves had you.", sickness: "The fever took you.",
+    thirst: "Thirst took you.", smoke: "The smoke took you in your sleep.", drowned: "The ice gave way. The lake kept you.",
+  }[d.cause];
   const s = state.stats;
   return `<div class="box">
 <h1>Dead</h1>

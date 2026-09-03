@@ -8,11 +8,11 @@ export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4,
   firewood: 1, hide: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
-  fish: 1, cookedFish: 1, berries: 1,
+  fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
 };
 
 export const KG_ITEMS = new Set<ItemId>([
-  "firewood", "hide", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries",
+  "firewood", "hide", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
 ]);
 
 export const ITEM_NAMES: Record<ItemId, string> = {
@@ -20,6 +20,7 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches",
   firewood: "firewood", hide: "hide", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
+  wetFirewood: "wet firewood",
 };
 
 export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries";
@@ -47,23 +48,25 @@ export const TOOLS: Record<ToolId, { name: string; kg: number }> = {
   fishingSpear: { name: "fishing spear", kg: 1.0 },
   fireDrill: { name: "fire drill", kg: 0.3 },
   needle: { name: "bone needle", kg: 0.01 },
+  barkBucket: { name: "bark bucket", kg: 0.3 },
+  waterskin: { name: "waterskin", kg: 0.4 },
 };
 
 /**
  * `insulation` is worn all day; `sleep` counts only while asleep or resting,
  * for what you wrap round yourself when you lie down.
  */
-export const CLOTHING: Record<ClothingId, { name: string; slot: ClothingSlot; insulation: number; sleep?: number; kg: number }> = {
-  woolCoat: { name: "wool coat", slot: "coat", insulation: 8, kg: 1.5 },
-  woolTrousers: { name: "wool trousers", slot: "trousers", insulation: 4, kg: 0.8 },
-  leatherBoots: { name: "leather boots", slot: "boots", insulation: 3, kg: 1.2 },
-  woolHat: { name: "wool hat", slot: "hat", insulation: 2, kg: 0.2 },
-  hideCoat: { name: "hide coat", slot: "coat", insulation: 12, kg: 3 },
-  hideTrousers: { name: "hide trousers", slot: "trousers", insulation: 6, kg: 1.8 },
-  hideBoots: { name: "hide boots", slot: "boots", insulation: 4, kg: 1.4 },
-  furHat: { name: "fur hat", slot: "hat", insulation: 3, kg: 0.4 },
-  furMittens: { name: "fur mittens", slot: "mittens", insulation: 2, kg: 0.3 },
-  hideBlanket: { name: "hide blanket", slot: "blanket", insulation: 0, sleep: 8, kg: 3 },
+export const CLOTHING: Record<ClothingId, { name: string; slot: ClothingSlot; insulation: number; sleep?: number; kg: number; material: "wool" | "hide" }> = {
+  woolCoat: { name: "wool coat", slot: "coat", insulation: 8, kg: 1.5, material: "wool" },
+  woolTrousers: { name: "wool trousers", slot: "trousers", insulation: 4, kg: 0.8, material: "wool" },
+  leatherBoots: { name: "leather boots", slot: "boots", insulation: 3, kg: 1.2, material: "hide" },
+  woolHat: { name: "wool hat", slot: "hat", insulation: 2, kg: 0.2, material: "wool" },
+  hideCoat: { name: "hide coat", slot: "coat", insulation: 12, kg: 3, material: "hide" },
+  hideTrousers: { name: "hide trousers", slot: "trousers", insulation: 6, kg: 1.8, material: "hide" },
+  hideBoots: { name: "hide boots", slot: "boots", insulation: 4, kg: 1.4, material: "hide" },
+  furHat: { name: "fur hat", slot: "hat", insulation: 3, kg: 0.4, material: "hide" },
+  furMittens: { name: "fur mittens", slot: "mittens", insulation: 2, kg: 0.3, material: "hide" },
+  hideBlanket: { name: "hide blanket", slot: "blanket", insulation: 0, sleep: 8, kg: 3, material: "hide" },
 };
 
 export interface Need { item: ItemId; qty: number; /** an acceptable substitute */ alt?: ItemId }
@@ -93,6 +96,8 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   furHat: { name: "fur hat", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furHat" } },
   furMittens: { name: "fur mittens", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 120, out: { clothing: "furMittens" } },
   hideBlanket: { name: "hide blanket", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 240, out: { clothing: "hideBlanket" } },
+  barkBucket: { name: "bark bucket", needs: [{ item: "bark", qty: 4 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 20, out: { tool: "barkBucket" } },
+  waterskin: { name: "waterskin", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 60, out: { tool: "waterskin" } },
 };
 export const RECIPE_IDS = Object.keys(RECIPES) as RecipeId[];
 

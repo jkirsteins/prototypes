@@ -20,7 +20,7 @@ export type CountItem =
 /** Items measured in kilograms. */
 export type KgItem =
   | "firewood" | "hide" | "rawMeat" | "cookedMeat" | "driedMeat"
-  | "fish" | "cookedFish" | "berries";
+  | "fish" | "cookedFish" | "berries" | "wetFirewood";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
@@ -36,15 +36,15 @@ export interface Inventory {
   stacks: Partial<Record<PerishableId, Stack[]>>;
 }
 
-export type ToolId = "axe" | "knife" | "bow" | "fishingSpear" | "fireDrill" | "needle";
-export interface Tool { id: ToolId; durability: number }
+export type ToolId = "axe" | "knife" | "bow" | "fishingSpear" | "fireDrill" | "needle" | "barkBucket" | "waterskin";
+export interface Tool { id: ToolId; durability: number; /** water carried, vessels only */ litres?: number; frozen?: boolean }
 
 export type ClothingId =
   | "woolCoat" | "woolTrousers" | "leatherBoots" | "woolHat"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
   | "hideBlanket";
 export type ClothingSlot = "coat" | "trousers" | "boots" | "hat" | "mittens" | "blanket";
-export interface Garment { id: ClothingId; durability: number }
+export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 soaked */ wet?: number }
 
 export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed";
 
@@ -52,7 +52,7 @@ export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
   | "snare" | "needle" | "axe" | "torch"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
-  | "hideBlanket";
+  | "hideBlanket" | "barkBucket" | "waterskin";
 
 /** Where inside a region the player stands. Every region has a camp. */
 export type SpotId = "camp" | "forest" | "outcrop" | "shore" | "heath";
@@ -61,7 +61,8 @@ export const SPOTS: SpotId[] = ["camp", "forest", "outcrop", "shore", "heath"];
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build"
-  | "light" | "lightTorch" | "travel" | "walk" | "haul" | "night" | "rest" | "sleep";
+  | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors"
+  | "travel" | "walk" | "haul" | "night" | "rest" | "sleep";
 
 export interface Task {
   id: TaskId;
@@ -135,16 +136,20 @@ export interface RegionState {
   pop: Record<Species, number>;
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean };
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean };
   /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
   boughBedAge: number;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
-  fire: { lit: boolean; fuelKg: number };
+  fire: { lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number };
   /** Raw meat on the rack and how many dry minutes it has had. */
   rack: { kg: number; dried: number };
   /** Hares hanging in snares, and the age of the oldest. */
   snareCatch: { count: number; age: number };
+  /** Smoke thickness at camp, 0..100; rises with an indoor fire and no hearth. */
+  smoke: number;
+  /** Minutes since it last rained here; wood split while this is low comes out wet. */
+  logsWet: number;
 }
 
 export interface Player {
@@ -169,6 +174,14 @@ export interface Player {
   pack: Inventory;
   autoEat: boolean;
   autoFeed: boolean;
+  /** Litres of water in the body, 0..3. */
+  water: number;
+  autoDrink: boolean;
+  /** Minutes spent frostbitten in each extremity. */
+  frostbite: { feet: number; hands: number };
+  /** Lost to frostbite for good. */
+  toes: boolean;
+  fingers: boolean;
 }
 
 export interface Weather {
@@ -179,11 +192,19 @@ export interface Weather {
   snowCm: number;
   /** The day index whose dawn roll has happened. */
   rolledDay: number;
+  /** A storm window: from and until in minutes; warned records the one-hour warning was logged. */
+  storm: { from: number; until: number; warned: boolean } | null;
+  /** Days running with no precipitation, for the drought warning. */
+  dryDays: number;
+  wetDay: boolean;
+  dryWarned: boolean;
+  /** Ice thickness on standing water, in centimetres. */
+  iceCm: number;
 }
 
 export interface LogEntry { minute: number; text: string; kind?: "bad" | "good" }
 
-export type DeathCause = "starved" | "froze" | "wolves" | "sickness";
+export type DeathCause = "starved" | "froze" | "wolves" | "sickness" | "thirst" | "smoke" | "drowned";
 
 export interface RunStats { trees: number; animals: number; structures: number; km: number }
 

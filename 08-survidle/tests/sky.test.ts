@@ -9,7 +9,7 @@ import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, updateSky } from "../src/ui/sky";
 
-const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0 };
+const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
 const at = (hour: number) => calendar((hour - 8) * 60);
 
