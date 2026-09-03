@@ -1,8 +1,13 @@
 import "./style.css";
 import { Rng } from "./rng";
+import { mountControl } from "./audio/control";
+import { createAudioEngine } from "./audio/engine";
+import { SLOTS } from "./audio/manifest";
+import { createScheduler } from "./audio/scheduler";
 import { addFirewood, drop, dropAll, eat, loadRack, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar } from "./sim/calendar";
+import { setCueSink } from "./sim/cues";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { newGame } from "./sim/newgame";
@@ -35,6 +40,8 @@ let state: GameState;
 let world: World;
 const ui = newUiState();
 let awayInfo: { seconds: number; capped: boolean } | null = null;
+const audio = createAudioEngine(SLOTS);
+const sounds = createScheduler(audio);
 
 function fresh(seed = (Math.random() * 0xffffffff) >>> 0) {
   const g = newGame(seed);
@@ -55,7 +62,9 @@ function boot() {
     fillPopulations(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
     if (elapsed > 30 && !state.dead) {
+      setCueSink(null);
       ui.away = catchUp(state, world, elapsed, speed);
+      setCueSink((c) => sounds.cue(c));
       awayInfo = { seconds: Math.min(elapsed, MAX_OFFLINE_SECONDS), capped: elapsed > MAX_OFFLINE_SECONDS };
       saveGame(state);
     }
@@ -107,7 +116,9 @@ function frame(now: number) {
   if (!state.dead && !ui.away) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
+      setCueSink(null);
       ui.away = catchUp(state, world, dtSec, speed);
+      setCueSink((c) => sounds.cue(c));
       awayInfo = { seconds: Math.min(dtSec, MAX_OFFLINE_SECONDS), capped: dtSec > MAX_OFFLINE_SECONDS };
     } else {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed);
@@ -116,6 +127,8 @@ function frame(now: number) {
     lastReal = now;
   }
   render();
+  const cal = calendar(state.minute);
+  sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
     lastSave = now;
     saveGame(state);
@@ -255,6 +268,14 @@ function zoomBy(delta: number) {
 }
 
 boot();
+setCueSink((c) => sounds.cue(c));
+mountControl(document.getElementById("sound")!, audio);
+document.addEventListener("click", () => audio.unlock(), { capture: true });
+document.addEventListener("keydown", () => audio.unlock(), { capture: true });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") audio.suspend();
+  else audio.resume();
+});
 document.addEventListener("click", onClick);
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "+" || ev.key === "=") zoomBy(-1);

@@ -122,6 +122,11 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .tag.bad { border-color: var(--bad); }
 .tag.good { border-color: var(--good); }
 
+/* Sound */
+#sound { display: flex; gap: 12px; align-items: center; padding: 6px 10px; }
+#sound input[type="range"] { width: 120px; }
+#sound button.off { color: var(--dim); text-decoration: line-through; }
+
 /* Clock */
 #clock .clockrow { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
 #clock .line { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; }
