@@ -76,40 +76,61 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 The numbers below are names, not the sequence; they stay put so specs can
 cite them while sections are still being written. The build order is by
-impact on the idle loop, the thing that kills an away run soonest first,
-with one exception taken by the author: D species and sound goes next,
-because its spec and plans are done and it rewrites the hunt and fish
-branches everything after it drives. So: 1 (built), A standing orders
-(built), then D, then the baseline (the section of that name under the
-idle loop: water at camp, the thirst priority, arrows in the pack, wet
-wood, the rack as a task, tool keeps, and a start with a shore and rock),
-then B the risk forecast with the away cap as its horizon, then F the
-survivor loop (a run that ends is the first thing a returning player
-needs, and the cellar is what its decay rules make worth building), then
-the first producers and stocks (C's basket trap, and 3's water storage
-and cellar, pulled out of their items), then E hides and clothing, then the rest of 3
-camp (siting, the shelter ladder, the buildings) with the rest of C
-alongside, then 4 animals, 5 injury and the body model, 7 wind, 8 forest
-fire, and 6 territory last. 2 rivers is flavour and has no slot: it lands
-whenever there is room after 3, and when it does it plugs into the water
-features 1, C and 3 own rather than bringing its own.
+reason to return, soonest first: what kills an away run soonest, then
+what makes the death worth coming back from, then what makes the next
+death fair, then content. So: 1 (built), A standing orders (built), D's
+species half (built), then the baseline (the section of that name under
+the idle loop: water at camp, the thirst priority, arrows in the pack,
+wet wood, the rack as a task, tool keeps, and a start with a shore and
+rock), then F's core (the world saved instead of the person, the journal,
+the dim map, cumulative days and placement, the season spine, the
+reference player; not its ramp), then B the risk forecast with the away
+cap as its horizon, then the first producers and stocks (C's basket trap,
+and 3's water storage and cellar, pulled out of their items), then E
+hides and clothing with D's sound half beside it, then the rest of 3 camp
+(siting, the shelter ladder, the buildings) with the rest of C alongside,
+then 4 animals, 5 injury and the body model, 7 wind, 8 forest fire, and 6
+territory last. F's ramp is not one slot: its parts land inside C (the
+tool tiers that make the arrival axe the best one), 5 (permanent damage),
+4 and 6 (depletion and fed wolves), each when its sub-project does, and
+the reference player says when the ramp is enough. 2 rivers is flavour
+and has no slot: it lands whenever there is room after 3, and when it
+does it plugs into the water features 1, C and 3 own rather than bringing
+its own.
 
-Why the baseline, B and the producers come before E and 3: headless runs
-of A's runner (2026-09-03, seeds 17, 19, 42 and 79, 250 game days, a
-kitted camp with keeps for wood, fire, meat and fish) died of thirst
-between day 3 and day 23 in every set-up, and with water and fire supplied
-by hand they starved between day 67 and day 86 when the axe, spear and
-bow wore out with nothing to replace them. No run reached winter, so
-nothing that only matters in winter can be the next thing built. The
-baseline is what lets a camp hold a week; B is what makes an away death
-fair; the trap and the cellar are the first things that yield while the
-player is gone. E comes straight after them because D's fur and fat are
-its inputs and because 5 (insects, burns on bare skin), 7 (wind through a
-coat) and C (clothing tiers worth the level) all reach for a clothing
-model that 1 left thin. Fire comes after 5 because its burns are wounds
-in that model and after 7 because it cannot spread without wind; it comes
-before 6 because the burn's regrowth clock is the first of the regrowth
-clocks Territory generalises.
+Why the baseline is first: headless runs of A's runner (2026-09-03, seeds
+17, 19, 42 and 79, 250 game days, a kitted camp with keeps for wood,
+fire, meat and fish) died of thirst between day 3 and day 23 in every
+set-up, and with water and fire supplied by hand they starved between day
+67 and day 86 when the axe, spear and bow wore out with nothing to
+replace them. No run reached winter, so nothing that only matters in
+winter can be the next thing built. The baseline is what lets a camp hold
+a week.
+
+Why F's core comes before B: a first run dies inside 20 days by design,
+so death is the first thing a returning player meets, and today it is a
+deletion. F's core is the smaller build (a save shape, a log the game
+already writes, a fog level, a counter) and it turns that death into a
+chapter. B is the larger and riskier build (a worker running the real
+sim several times over) and its calibration wants F's reference player
+already in place. B is still what makes an away death fair, which is why
+it comes before any content: the trap and the cellar are the first things
+that yield while the player is gone, and they come after the death they
+can cause is a foreseeable one.
+
+Why D's sound half waits: the species half earned its early slot because
+the roster is what the orders hunt. Beds, calls and footsteps are truth
+with no reason to return, and the rule at the end of this file says that
+waits behind what has one. It lands beside E, when the content it
+decorates exists.
+
+Why E and 3 come after: E comes straight after the producers because D's
+fur and fat are its inputs and because 5 (insects, burns on bare skin), 7
+(wind through a coat) and C (clothing tiers worth the level) all reach
+for a clothing model that 1 left thin. Fire comes after 5 because its
+burns are wounds in that model and after 7 because it cannot spread
+without wind; it comes before 6 because the burn's regrowth clock is the
+first of the regrowth clocks Territory generalises.
 
 ### 1. Body and elements
 
@@ -871,12 +892,14 @@ suitable region, a season, yields and calls; wolves, bear and wolverine
 as populations; hunt or fish for a chosen species or for whatever is
 about; fur as its own item. Later: snares that take grouse, bear and
 wolverine that act (4), seals on the coast, grayling and salmon with the
-rivers. The sound half is next: beds for the ground, water, weather and
-hearth, calls from the species here at their hours, footsteps and the
-axe, one-shot cues that 7's thunder and 8's crackle plug into. It is here
-beside the idle loop because the roster is what B's forecast and A's
-orders hunt, and it lands right after A because it rewrites the hunt and
-fish branches that A's runner drives.
+rivers. The sound half waits for E: beds for the ground, water, weather
+and hearth, calls from the species here at their hours, footsteps and the
+axe, one-shot cues that 7's thunder and 8's crackle plug into. Sound is
+truth with no reason to return, so it lands when there is content to
+decorate. The species half is here beside the idle loop because the
+roster is what B's forecast and A's orders hunt, and it landed right
+after A because it rewrites the hunt and fish branches that A's runner
+drives.
 
 ### E. Hides and clothing
 
@@ -1034,7 +1057,11 @@ or a scrap of tanned hide so the first mend does not wait on a deer.
 ### F. The survivor loop
 
 Not specced. The high-level guidance is here so the spec has something
-to argue with; the numbers are first targets, not rulings.
+to argue with; the numbers are first targets, not rulings. It builds in
+two parts: the core, which is one slot right after the baseline (the
+world saved instead of the person, the journal, the dim map, cumulative
+days and placement, the season spine, the reference player), and the
+ramp, whose parts land inside the sub-projects that own them.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -1064,6 +1091,13 @@ difficulty number:
 - Winter, every year, and the second one with a worse axe and an older
   body.
 
+None of these exists yet. The stone axe recipe outputs the same `axe` the
+survivor arrived with, so today a replaced tool is as good as the first;
+C's tool tiers are where the arrival axe becomes the best one. Permanent
+damage is 5's, depletion and regrowth are 4's and 6's. Each lands when
+its sub-project does, and the ramp is complete when the reference player
+dies in its second year.
+
 The test of the ramp is B's forecast: a month number that reads zero for
 a camp in its second year means the ramp is missing, and that is a
 balance bug to fix before content.
@@ -1075,6 +1109,14 @@ it, and every rung of it is derived from play, never from a discrete
 action the player takes for the heir. There is no "write in the journal"
 button.
 
+- **The season spine** is the year the journal is written against and
+  the goal ladder inside a run: a threshold every 30 to 45 game days
+  (berries, the rut, first frost, lake freeze, first snow, the dark, the
+  cold snap, ice-out), each announced in the log ahead and named when it
+  arrives, and a season panel that says which is next and what it asks
+  for. The weather and wildlife already move by date, so this is log
+  lines and a panel, and it is core because a run needs something to
+  reach before winter.
 - **The journal** is the log the game already writes. A survivor who
   lived three days leaves three days; one who lived a season leaves
   where the elk were in October and the night the wolves came. The heir
