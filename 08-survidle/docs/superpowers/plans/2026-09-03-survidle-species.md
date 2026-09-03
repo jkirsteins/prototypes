@@ -76,7 +76,7 @@ import { monthName } from "../src/sim/calendar";
 
 describe("the species catalogue", () => {
   it("has about thirty species, each with somewhere to live", () => {
-    expect(SPECIES_IDS.length).toBeGreaterThanOrEqual(28);
+    expect(SPECIES_IDS.length).toBeGreaterThanOrEqual(30);
     for (const s of SPECIES_IDS) {
       const def = SPECIES_DEFS[s];
       const weights = Object.values(def.habitat);
@@ -134,6 +134,9 @@ describe("the species catalogue", () => {
     expect(seasonFactor(SPECIES_DEFS.mallard, 9)).toBe(0);
     expect(seasonFactor(SPECIES_DEFS.loon, 3)).toBe(0);
     expect(seasonFactor(SPECIES_DEFS.loon, 4)).toBe(1);
+    // A denned bear is a migrant to the rule.
+    expect(seasonFactor(SPECIES_DEFS.bear, 0)).toBe(0);
+    expect(seasonFactor(SPECIES_DEFS.bear, 6)).toBe(1);
   });
 
   it("sorts species into extras classes", () => {
@@ -141,6 +144,8 @@ describe("the species catalogue", () => {
     expect(extrasClass("fox")).toBe("fur");
     expect(extrasClass("deer")).toBe("big");
     expect(extrasClass("wolf")).toBe("big");
+    expect(extrasClass("bear")).toBe("big");
+    expect(extrasClass("wolverine")).toBe("fur");
     expect(extrasClass("capercaillie")).toBe("bird");
     expect(extrasClass("pike")).toBe("fish");
     expect(extrasClass("loon")).toBeNull();
@@ -310,6 +315,11 @@ export const SPECIES_DEFS = {
   wolf: { name: "wolf", kind: "mammal", habitat: { spruce: 0.08, pine: 0.06, bog: 0.05, birch: 0.04, fell: 0.02 }, range: 0.35, season: resident(), growth: 0.0005,
     hunt: { spot: "forest", minutes: 240, odds: 0.25, injury: 0.35, level: 12 }, yields: { meatKg: 25, furKg: 3, bone: 6, sinew: 4 },
     calls: [{ sound: "wolf", when: "night", weight: 1 }] },
+  wolverine: { name: "wolverine", kind: "mammal", habitat: { fell: 0.03, spruce: 0.03, rock: 0.02, bog: 0.02 }, range: 0.4, season: resident(), growth: 0.0005,
+    hunt: { spot: "outcrop", minutes: 240, odds: 0.2, injury: 0, level: 10 }, yields: { meatKg: 8, furKg: 1.5, bone: 3, sinew: 2 } },
+  // Denned November to March: absent the way a migrant is, and the same rule says so.
+  bear: { name: "brown bear", kind: "mammal", habitat: { spruce: 0.15, pine: 0.1, bog: 0.1, birch: 0.08 }, range: 0.5, season: migrant(3, 10), growth: 0.0006,
+    hunt: { spot: "forest", minutes: 300, odds: 0.25, injury: 0.5, level: 15 }, yields: { meatKg: 80, furKg: 8, bone: 8, sinew: 5 } },
 
   // Game birds, all taken with the bow.
   willowGrouse: { name: "willow grouse", kind: "bird", habitat: { bog: 12, birch: 8, meadow: 4, fell: 2 }, range: 0.9, season: resident(), growth: 0.005,
@@ -408,12 +418,13 @@ export function seasonFactor(def: SpeciesDef, month: number): number {
   return month >= r.arrive && month < r.leave ? 1 : 0;
 }
 
-/** Which mastery extras a hunted species gets, by what it is and what it yields. */
+/** Which mastery extras a hunted species gets: an animal that can hurt you or gives hide is big game; otherwise fur makes a fur-bearer. */
 export function extrasClass(s: Species): "fur" | "big" | "bird" | "fish" | null {
   const def = SPECIES_DEFS[s];
   if (!def.hunt || !def.yields) return null;
   if (def.kind === "fish") return "fish";
   if (def.kind === "bird") return "bird";
+  if (def.hunt.injury > 0 || def.yields.hideKg) return "big";
   return def.yields.furKg ? "fur" : "big";
 }
 ```
@@ -736,7 +747,7 @@ import type { GameState, RegionState } from "./types";
 
 const MIGRATION = 0.03;
 /** Species whose comings and goings near the player are worth a log line. */
-const NOTABLE: Species[] = ["deer", "reindeer", "elk", "wolf"];
+const NOTABLE: Species[] = ["deer", "reindeer", "elk", "wolf", "bear"];
 
 export function density(pop: number, k: number): number {
   return k <= 0 ? 0 : Math.min(1, pop / k);

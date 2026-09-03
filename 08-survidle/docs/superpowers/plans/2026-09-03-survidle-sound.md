@@ -697,7 +697,8 @@ export interface AudioEngine {
   unlock(): void;
   ready(): boolean;
   setLoops(targets: Record<Slot, number>, indoors: boolean): void;
-  play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number }): void;
+  /** delay is real seconds before the start: a thunderclap after its flash, once the wind sub-project brings one. */
+  play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number; delay?: number }): void;
   settings(): AudioSettings;
   update(s: Partial<AudioSettings>): void;
   suspend(): void;
@@ -832,7 +833,8 @@ export interface AudioEngine {
   ready(): boolean;
   /** Once per frame: every loop fades toward its target gain over about two seconds; absent slots fade out. */
   setLoops(targets: Record<Slot, number>, indoors: boolean): void;
-  play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number }): void;
+  /** delay is real seconds before the start: a thunderclap after its flash, once the wind sub-project brings one. */
+  play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number; delay?: number }): void;
   settings(): AudioSettings;
   update(s: Partial<AudioSettings>): void;
   /** A hidden tab: hold the loops. */
@@ -914,7 +916,7 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     return buffers.get(file) ?? null;
   };
 
-  const play = (slot: Slot, opts: { gain?: number; pan?: number; rate?: number } = {}): void => {
+  const play = (slot: Slot, opts: { gain?: number; pan?: number; rate?: number; delay?: number } = {}): void => {
     if (!ctx || suspended) return;
     const def = slots[slot];
     const buf = pickFile(slot);
@@ -935,7 +937,7 @@ export function createAudioEngine(slots: Record<Slot, SlotDef>, storage: Storage
     } else {
       g.connect(bus);
     }
-    src.start();
+    src.start(ctx.currentTime + Math.max(0, opts.delay ?? 0));
   };
 
   const setLoops = (targets: Record<Slot, number>, indoors: boolean): void => {
@@ -1050,7 +1052,7 @@ import { regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 
 function fakeEngine() {
-  const played: { slot: string; opts?: { gain?: number; pan?: number; rate?: number } }[] = [];
+  const played: { slot: string; opts?: { gain?: number; pan?: number; rate?: number; delay?: number } }[] = [];
   const loops: Record<string, number>[] = [];
   const engine: AudioEngine = {
     unlock() {}, ready: () => true,

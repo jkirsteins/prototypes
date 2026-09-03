@@ -14,6 +14,7 @@ file as `2026-MM-DD-survidle-<name>-design.md`.
 - Starvation: 6000 kcal full, 100 to 400 an hour burned, and only 2 health
   an hour once empty, so it is slow.
 - Wolves: one percent per night hour outside shelter, twice that in winter.
+  D makes that the local wolf density: no wolves, quiet nights.
 - Fever: rare, four times likelier soaked and cold, slow unless untreated.
 
 What is already hard and stays: fishing barely breaks even on calories, a
@@ -24,8 +25,9 @@ is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
 The numbers below are names, not the sequence; they stay put so specs can
 cite them while sections are still being written. The build order is:
-1 (in build), then A standing orders, then 2 rivers, 3 camp, 4 animals,
-5 injury and the body model, 7 wind, 8 forest fire, and 6 territory last,
+1 (in build), then A standing orders, then D species and sound, then 2
+rivers, 3 camp, 4 animals, 5 injury and the body model, 7 wind, 8 forest
+fire, and 6 territory last,
 with B the risk forecast as soon after A as the runner is stable and C
 the skill tiers alongside 3. Fire comes after 5 because its burns are
 wounds in that model and after 7 because it cannot spread without wind;
@@ -123,7 +125,9 @@ the flood can take. Every building is an answer to a threat from 1, 2, 4,
 Predators that attack in their own country by day, not only wolves at
 night. Bear, wolverine, fox and ravens that take meat from the rack, the
 pile and the shelter. Hunting genuinely poor without good tools.
-Populations per region already grow, thin and migrate; this makes them act.
+Populations per region already grow, thin and migrate; D gives every one
+of these animals a population with a range and a season, bear and
+wolverine included; this makes them act.
 
 ### 5. Injury, disease, insects, mind
 
@@ -615,11 +619,27 @@ content tiers. Soft gates throughout, never "locked":
   20 and 50 become the concrete rewards.
 - **Hunting and crafting** already key per species and per recipe. They
   need more rungs, not a new mechanism: more animals with a real spread of
-  yield and danger, and tool and clothing tiers worth the level.
+  yield and danger (D's roster, with a recommended level, yields and
+  mastery extras per species), and tool and clothing tiers worth the level.
 - **Buildings that produce, honestly.** A chicken coop lays real eggs at a
   real rate and eats real feed. Belongs with the camp build-out
   (sub-project 3), listed here because it is what an idle stock looks like
   in this game: a hut that yields wood per hour does not exist.
+
+### D. Species and sound
+
+Specced and planned: `2026-09-03-survidle-species-and-sound-design.md`,
+plans `2026-09-03-survidle-species.md` and `2026-09-03-survidle-sound.md`.
+About thirty species in one catalogue, each with a habitat, a range that
+does not cover every suitable region, a season, yields and calls; wolves,
+bear and wolverine as populations; hunt or fish for a chosen species or
+for whatever is about; fur as its own item. Then the sound of the place:
+beds for the ground, water, weather and hearth, calls from the species
+here at their hours, footsteps and the axe, one-shot cues that 7's
+thunder and 8's crackle plug into. It is here beside the idle loop because
+the roster is what B's forecast and A's orders hunt, and it lands right
+after A because it rewrites the hunt and fish branches that A's runner
+drives.
 
 ## Rules that hold across all eight
 

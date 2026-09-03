@@ -10,7 +10,9 @@ the ground under foot and the weather, calls from the species that live
 here at the hours they call, and the sound of the work.
 
 Extends `2026-09-02-survidle-design.md`, `2026-09-02-survidle-skills-design.md`
-and `2026-09-03-survidle-body-and-elements-design.md`.
+and `2026-09-03-survidle-body-and-elements-design.md`. In the realism
+roadmap's build order it lands right after A, standing orders, as the base
+of sub-project 4 and the animals rung of C.
 
 ## Decisions confirmed with the author
 
@@ -105,6 +107,13 @@ Mammals. Fur-bearers yield fur; deer and bigger yield hide.
 | reindeer | wild reindeer | fell 3, rock 2, bog 1.5, pine 1 | 0.6 | resident | outcrop, 200, 0.4, 0.05, level 6 | meat 40, hide 5, bone 5, sinew 4 |
 | elk | elk | spruce 1.0, bog 0.8, birch 0.5, pine 0.3 | 0.8 | resident, winter 0.6 | forest, 240, 0.3, 0.15, level 8 | meat 150, hide 20, bone 8, sinew 6 |
 | wolf | wolf | spruce 0.08, pine 0.06, bog 0.05, birch 0.04, fell 0.02 | 0.35 | resident | forest, 240, 0.25, 0.35, level 12 | meat 25, fur 3, bone 6, sinew 4 |
+| wolverine | wolverine | fell 0.03, spruce 0.03, rock 0.02, bog 0.02 | 0.4 | resident | outcrop, 240, 0.2, 0, level 10 | meat 8, fur 1.5, bone 3, sinew 2 |
+| bear | brown bear | spruce 0.15, pine 0.1, bog 0.1, birch 0.08 | 0.5 | denned November to March (the migrant rule, April to October) | forest, 300, 0.25, 0.5, level 15 | meat 80, fur 8, bone 8, sinew 5 |
+
+Bear and wolverine are populations that do nothing yet: they are hunted,
+listed and counted so that the roadmap's sub-project 4 has them to make
+act (raids on the rack and the pile, attacks by day). A denned bear is
+absent the way a migrant is; the same rule expresses both.
 
 Game birds. All hunted with the bow from the `heath` or `forest` spot; the
 sea birds from the `shore`.
@@ -314,10 +323,12 @@ and Building count their keys as today.
 
 `EXTRAS`, by class:
 
-- Fur-bearers (hare, squirrel, fox, beaver): at 20 "the pelt comes off
-  whole, half again the fur"; at 50 "a bone more".
-- Big game (deer, reindeer, elk, wolf): at 20 "a sinew more"; at 50 "half
-  the chance of a hurt". As today.
+- Fur-bearers (hare, squirrel, fox, beaver, wolverine): at 20 "the pelt
+  comes off whole, half again the fur"; at 50 "a bone more".
+- Big game (deer, reindeer, elk, wolf, bear): at 20 "a sinew more"; at 50
+  "half the chance of a hurt". As today. The rule that sorts a mammal: an
+  injury chance above 0 or a hide yield makes it big game; otherwise a fur
+  yield makes it a fur-bearer.
 - Game birds: at 20 "an arrow is never lost on a miss"; at 50 "a quarter
   better odds".
 - Fish: at 20 "a third more per catch"; at 50 "two thirds more per catch".
@@ -387,7 +398,8 @@ export interface AudioEngine {
   unlock(): void;
   /** Once per rAF: fade every loop toward its target gain over 2 s. */
   setLoops(targets: Record<Slot, number>, indoors: boolean): void;
-  play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number }): void;
+  /** delay is real seconds before the sound starts: a thunderclap after its flash, later. */
+  play(slot: Slot, opts?: { gain?: number; pan?: number; rate?: number; delay?: number }): void;
   settings(): AudioSettings;
   update(s: Partial<AudioSettings>): void;
 }
@@ -471,7 +483,10 @@ The sim calls `cue` at: chop completion (`treeFalls`), a hunt attempt
 resolving (`arrow`), a cast resolving (`spear`), a fire or torch lit, a
 thin-ice cell crossed, a fall through the ice, a tool breaking, and the
 wolf attack. `main.ts` installs the engine as the sink at boot and sets it
-to null around `catchUp`, so a night away does not play at dismiss.
+to null around `catchUp`, so a night away does not play at dismiss. The
+sink is module-global: the roadmap's risk forecast (B) must run `advance`
+in a worker or with the sink set to null, or its rehearsed nights would
+sound.
 
 ### 4.5 The scheduler
 
@@ -574,8 +589,12 @@ as later steps.
 ## 8. What this does not do
 
 - Snares still catch hares only. Snaring grouse is a later step.
-- No bear, no lynx, no wolverine, no seals. Bears want hibernation and a
-  hazard of their own.
+- Bear and wolverine do not act: no raids, no attacks by day. That is
+  sub-project 4 of the realism roadmap, which this roster is the base of.
+  No lynx, no seals.
+- The `insects` bed follows its own June-to-August rule; sub-project 5's
+  mosquito load per cell can drive it once that exists. Sub-project 8's
+  `burnt` and `thicket` grounds become two more habitat keys per species.
 - No per-species tracks on the map, and no sightings; density is the only
   information, as today.
 - No fishing net or line; the spear is the one method, so the catch is
