@@ -5,12 +5,12 @@ import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
 import { addItem, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { cellOf, placeAtSpot } from "../src/sim/position";
+import { cellOf, kmBetween, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { check, stopTask } from "../src/sim/tasks";
 import type { TaskId } from "../src/sim/types";
-import { regionAt, spotOf } from "../src/world/gen";
+import { cellAt, regionAt, spotOf } from "../src/world/gen";
 
 const cal = calendar(0);
 
@@ -203,6 +203,35 @@ describe("the work tier", () => {
   it("a build with materials nowhere in the region does not start; the button already says why", () => {
     const { state, world } = newGame(3);
     expect(intentOption(state, world, cal, "build", "leanTo", "nearest").why).toBe("missing materials at camp");
+    expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
+    expect(state.intent).toBeNull();
+  });
+
+  it("a build whose only missing material sits on a pile with no route from camp does not start", () => {
+    // Seed 0's starting region has a water cell (impassable, so kmBetween from camp is null)
+    // that still carries the region's tag; seed 3's region (used above) has no water at all.
+    const { state, world } = newGame(0);
+    const region = state.player.region;
+    const camp = regionState(state, world, region).campCell;
+    const cx = camp % world.w;
+    const cy = Math.floor(camp / world.w);
+    let stranded: number | null = null;
+    for (let dy = -80; dy <= 80 && stranded === null; dy++) {
+      for (let dx = -80; dx <= 80; dx++) {
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
+        const c = y * world.w + x;
+        if (cellAt(world, c).region !== region || cellAt(world, c).terrain !== "water") continue;
+        stranded = c;
+        break;
+      }
+    }
+    expect(stranded).not.toBeNull();
+    expect(kmBetween(world, camp, stranded!)).toBeNull();
+    addItem(pile(state, camp), "stick", 8);
+    addItem(pile(state, camp), "cordage", 2);
+    addItem(pile(state, stranded!), "log", 4);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
     expect(state.intent).toBeNull();
   });

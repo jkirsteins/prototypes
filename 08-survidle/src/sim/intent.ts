@@ -264,13 +264,32 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   return walkTo(state, world, cal, it, it.campCell, " with the load");
 }
 
-/** Some pile in this region, other than camp's, holds a material the build still lacks. */
-function canFetch(state: GameState, world: World, sid: StructureId, campCell: number): boolean {
+interface FetchSources {
+  /** Needs of the build that neither the pack nor the camp pile can meet. */
+  missing: Need[];
+  /** An inventory holds something the build is missing. */
+  wanted: (inv: Inventory) => boolean;
+  /** This region's non-camp piles that hold something missing, reachable from `from`, nearest first. */
+  sources: { cell: number; inv: Inventory; km: number }[];
+}
+
+/** What a build still needs and where in the region it might be found, from one shared cell so canFetch and fetchStep never disagree. */
+function fetchSources(state: GameState, world: World, sid: StructureId, campCell: number, from: number): FetchSources {
   const campInvs = [state.player.pack, pile(state, campCell)];
   const missing = STRUCTURES[sid].needs.filter((n) => resolveNeed(campInvs, n) === null);
-  if (!missing.length) return false;
-  return pilesIn(state, world, state.player.region)
-    .some((x) => x.cell !== campCell && missing.some((n) => qty(x.inv, n.item) > 1e-9 || (n.alt !== undefined && qty(x.inv, n.alt) > 1e-9)));
+  const wanted = (inv: Inventory) => missing.some((n) => qty(inv, n.item) > 1e-9 || (n.alt !== undefined && qty(inv, n.alt) > 1e-9));
+  const sources = pilesIn(state, world, state.player.region)
+    .filter((x) => x.cell !== campCell && wanted(x.inv))
+    .map((x) => ({ ...x, km: kmBetween(world, from, x.cell) }))
+    .filter((x): x is { cell: number; inv: Inventory; km: number } => x.km !== null)
+    .sort((a, b) => a.km - b.km);
+  return { missing, wanted, sources };
+}
+
+/** Some pile in this region, other than camp's, holds a material the build still lacks and can be walked to from here. */
+function canFetch(state: GameState, world: World, sid: StructureId, campCell: number): boolean {
+  const { missing, sources } = fetchSources(state, world, sid, campCell, cellOf(state, world));
+  return missing.length > 0 && sources.length > 0;
 }
 
 /** Moves the missing materials of a build from this region's piles to camp, one load at a time. Undefined when there is nothing to fetch. */
@@ -280,22 +299,15 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   if ((st.build[sid] ?? 0) > 0) return "none";
   const p = state.player;
   const campInvs = [p.pack, pile(state, it.campCell)];
-  const needs: Need[] = STRUCTURES[sid].needs;
-  if (canConsume(campInvs, needs)) return "none";
-  const missing = needs.filter((n) => resolveNeed(campInvs, n) === null);
-  const wanted = (inv: Inventory) => missing.some((n) => qty(inv, n.item) > 1e-9 || (n.alt !== undefined && qty(inv, n.alt) > 1e-9));
+  if (canConsume(campInvs, STRUCTURES[sid].needs)) return "none";
   const here = cellOf(state, world);
+  const { missing, wanted, sources } = fetchSources(state, world, sid, it.campCell, here);
   if (wanted(p.pack)) {
     if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with materials");
     dropEverything(state, world);
     it.step = "laying out materials at camp";
     return "again";
   }
-  const sources = pilesIn(state, world, p.region)
-    .filter((x) => x.cell !== it.campCell && wanted(x.inv))
-    .map((x) => ({ ...x, km: kmBetween(world, here, x.cell) }))
-    .filter((x): x is { cell: number; inv: Inventory; km: number } => x.km !== null)
-    .sort((a, b) => a.km - b.km);
   if (!sources.length) return "none";
   const src = sources[0];
   if (here !== src.cell) return walkTo(state, world, cal, it, src.cell, " for materials");
