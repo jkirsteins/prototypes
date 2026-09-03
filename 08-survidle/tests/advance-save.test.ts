@@ -28,7 +28,8 @@ describe("advance", () => {
     state.player.autoEat = false;
     advance(state, world, 1440 * 12);
     expect(state.dead).not.toBeNull();
-    expect(["starved", "froze"]).toContain(state.dead!.cause);
+    // Never drinks either: away from any shore or vessel, thirst can win the race.
+    expect(["starved", "froze", "thirst"]).toContain(state.dead!.cause);
     expect(state.task).toBeNull();
   });
 

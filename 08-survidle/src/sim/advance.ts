@@ -10,6 +10,7 @@ import { log } from "./log";
 import { causeFrom, die, stepPlayer } from "./player";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
+import { autoDrink } from "./water";
 import { ambientTemperature, stepWeather } from "./weather";
 
 export const MAX_STEP = 1;
@@ -53,6 +54,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   stepCamp(state, world, ambient, dt);
   const drains = stepPlayer(state, world, ambient, dt);
   autoEat(state, world, rng);
+  autoDrink(state, world);
 
   const hour = Math.floor(state.minute / 60);
   if (hour > state.lastHour) {

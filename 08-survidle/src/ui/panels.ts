@@ -12,6 +12,7 @@ import {
   availableTasks, check, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
 import { type GameState, type ItemId, type LogEntry, type SkillId, SPECIES, type TaskId } from "../sim/types";
+import { THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type World } from "../world/gen";
@@ -53,16 +54,19 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
+  if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   return `<h2>You <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food")}
 ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}
 ${bar("wet", "wet", "Wet")}
+${bar("water", "water", "Water")}
 <div class="statuses">${tags.join("")}</div>
 <div>
   <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under 1800 kcal">auto-eat: ${p.autoEat ? "on" : "off"}</button>
   <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">auto-feed fire: ${p.autoFeed ? "on" : "off"}</button>
+  <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">auto-drink: ${p.autoDrink ? "on" : "off"}</button>
 </div>
 <div style="margin-top:8px">
   ${ui.confirmAbandon
@@ -268,7 +272,15 @@ function instantHtml(state: GameState, world: World): string {
   const rack = st.structures.dryingRack && camp
     ? `<button class="mini" data-act="rack" ${raw <= 0 || st.rack.kg >= RACK_MAX_KG ? "disabled" : ""}>hang raw meat to dry <small>${fmtKg(Math.min(raw, RACK_MAX_KG - st.rack.kg))}</small></button>`
     : "";
-  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${rack}</div>`;
+  const atSource = waterSource(state, world);
+  const short = p.water < WATER_FULL - 1e-9;
+  const drink = short && (atSource || vesselLitres(p) > 0)
+    ? `<button class="mini" data-act="drink">drink <small>${p.water.toFixed(1)} of ${WATER_FULL.toFixed(1)} l</small></button>`
+    : "";
+  const fill = atSource && p.tools.some((t) => (TOOLS[t.id].litres ?? 0) > (t.litres ?? 0))
+    ? `<button class="mini" data-act="fill">fill vessels</button>`
+    : "";
+  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${rack}${drink}${fill}</div>`;
 }
 
 export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: UiState, instant = true): string {

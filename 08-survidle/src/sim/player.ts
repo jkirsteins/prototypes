@@ -9,6 +9,7 @@ import { atCamp } from "./position";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import type { DeathCause, GameState, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import { THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM } from "./weather";
 
 /** Tasks done at camp, by the fire and under the roof. */
@@ -94,6 +95,7 @@ export function workSpeed(state: GameState, world: World): number {
   let f = 1;
   if (p.energy < 20) f *= 0.5;
   if (p.injured > 0) f *= 0.7;
+  if (p.water < THIRSTY_L) f *= 0.8;
   const t = state.task;
   if (t) f *= speedFactor(state, world, t.id, t.arg);
   return f;
@@ -117,7 +119,7 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 
 const KCAL_PER_HOUR: Record<Activity, number> = { sleep: 70, rest: 100, light: 200, walk: 300, heavy: 400 };
 
-export interface Drains { starve: number; cold: number; sick: number }
+export interface Drains { starve: number; cold: number; sick: number; thirst: number }
 
 /** Felt temperature at which a clothed body at rest holds half its warmth. */
 export const COMFORT_C = 5;
@@ -153,6 +155,8 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   if (felt < 0) burn *= 1.3;
   if (p.sick > 0) burn *= 1.2;
   p.kcal = clamp(p.kcal - burn * h, 0, KCAL_FULL);
+
+  const thirst = stepWater(state, felt, dt);
 
   // Warmth settles toward the level the felt temperature can hold, with a
   // time constant of about an hour and a half: a body in balance, not a leak.
@@ -202,14 +206,14 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   }
 
   // Health.
-  const drains: Drains = { starve: 0, cold: 0, sick: 0 };
+  const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst };
   if (p.kcal <= 0) drains.starve = 2 * h;
   if (p.warmth < 20) drains.cold = 6 * h;
   if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
-  const total = drains.starve + drains.cold + drains.sick;
+  const total = drains.starve + drains.cold + drains.sick + drains.thirst;
   if (total > 0) {
     p.health = clamp(p.health - total, 0, 100);
-  } else if (p.kcal > 1500 && p.warmth > 40 && p.sick === 0) {
+  } else if (p.kcal > 1500 && p.warmth > 40 && p.sick === 0 && p.water > THIRSTY_L) {
     p.health = clamp(p.health + 1 * h, 0, 100);
   }
 
@@ -218,6 +222,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "warm", p.warmth < 30, "You are shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "You are soaked through.");
   warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");
+  warn(state, "thirst", p.water < THIRSTY_L, "You are thirsty.");
 
   return drains;
 }
@@ -237,11 +242,11 @@ function warn(state: GameState, key: string, active: boolean, text: string) {
   }
 }
 
-/** Names the death from the drains that killed. */
+/** Names the death from the drains that killed: the largest of the four. */
 export function causeFrom(d: Drains): DeathCause {
-  if (d.cold >= d.starve && d.cold >= d.sick) return "froze";
-  if (d.starve >= d.sick) return "starved";
-  return "sickness";
+  const worst = (Object.entries(d) as [keyof Drains, number][]).sort((a, b) => b[1] - a[1])[0][0];
+  const named: Record<keyof Drains, DeathCause> = { starve: "starved", cold: "froze", sick: "sickness", thirst: "thirst" };
+  return named[worst];
 }
 
 export function die(state: GameState, cause: DeathCause): void {

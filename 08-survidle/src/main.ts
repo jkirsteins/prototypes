@@ -11,6 +11,7 @@ import { cellOf } from "./sim/position";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
+import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
@@ -159,6 +160,12 @@ function onClick(ev: Event) {
     case "rack":
       loadRack(state, world);
       break;
+    case "drink":
+      drink(state, world);
+      break;
+    case "fill":
+      fillVessels(state, world);
+      break;
     case "take":
     case "drop": {
       const item = target.dataset.item as ItemId;
@@ -175,6 +182,9 @@ function onClick(ev: Event) {
       break;
     case "toggle-feed":
       state.player.autoFeed = !state.player.autoFeed;
+      break;
+    case "toggle-drink":
+      state.player.autoDrink = !state.player.autoDrink;
       break;
     case "abandon":
       ui.confirmAbandon = true;

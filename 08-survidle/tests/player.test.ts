@@ -40,7 +40,7 @@ describe("player physiology", () => {
     const h = state.player.health;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, -25, 1);
     expect(h - state.player.health).toBeCloseTo(6, 0);
-    expect(causeFrom({ starve: 0, cold: 1, sick: 0 })).toBe("froze");
+    expect(causeFrom({ starve: 0, cold: 1, sick: 0, thirst: 0 })).toBe("froze");
   });
 
   it("a fire and a cabin at camp make the difference", () => {

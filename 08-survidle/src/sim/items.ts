@@ -41,7 +41,7 @@ export const SPOIL_HOURS: Record<PerishableId, number> = {
   rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72,
 };
 
-export const TOOLS: Record<ToolId, { name: string; kg: number }> = {
+export const TOOLS: Record<ToolId, { name: string; kg: number; litres?: number }> = {
   axe: { name: "axe", kg: 1.5 },
   knife: { name: "knife", kg: 0.2 },
   bow: { name: "bow", kg: 0.8 },

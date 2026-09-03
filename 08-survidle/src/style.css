@@ -12,6 +12,7 @@
   --warmth: #e0743a;
   --energy: #5aa9e6;
   --wet: #4a8fd9;
+  --water: #3b7dd8;
   --fire: #ff8c3a;
   --border: #3b6fd1;
 }
@@ -89,6 +90,7 @@ small, .dim { color: var(--dim); }
 .bar.warmth .fill { background: var(--warmth); }
 .bar.energy .fill { background: var(--energy); }
 .bar.wet .fill { background: var(--wet); }
+.bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }
 .bar.task .fill { background: #3c8f4a; transition: none; }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
