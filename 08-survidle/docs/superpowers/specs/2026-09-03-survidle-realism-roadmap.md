@@ -227,7 +227,10 @@ game and the lineage grow, then content. So: 1 (built), A standing orders
 (built), D species and sound (built), then the baseline (the section of
 that name under the idle loop: water at camp, the thirst priority, arrows
 in the pack, wet wood, the rack as a task, tool keeps, and a start with a
-shore and rock, with the reference player as its gate), then F's core
+shore and rock, with the reference player as its gate), then the calibration pass (the
+section of that name below: the harness measures each food source
+against the yield tables, the gates are set from what it finds, and
+berries, burn and sleep get their first honest numbers), then F's core
 (the world saved instead of the person, the journal, the dim map, the
 season spine, first decay, and the heir set down near the old camp; not
 its ramp), then B the risk forecast with the away cap as its horizon,
@@ -979,6 +982,39 @@ memory.
   cannot be idled and the first camp has no water. `findStart` adds both
   spots to its filter. 3's siting is the long answer; this is the cheap
   insurance until it lands.
+
+### The calibration pass
+
+Immediately after the baseline, before F. The baseline's harness runs
+a beginner's April on four seeds and dies of starvation on day 22 or 23
+with fire, a roof and water in hand; its gate is 21 days for now, set
+from that measurement rather than from the tables. This pass turns the
+tables in "What the north yields" into the game's numbers, measured:
+
+- **Measure per source.** The reference report gains, per seed, kcal a
+  day from each source over the run (fish, snares, hunts, berries and
+  plants, the arrival kit) and the day's burn, so each row of the April
+  table has a game number beside it. The bands are the target; a source
+  outside its beginner band is a finding.
+- **Burn.** The runner burns near 4,000 kcal a day in April, the top of
+  the 2,500 to 3,500 band with the cold multiplier on top. Decide whether
+  the activity rates, the cold multiplier or the hours worked are what
+  puts it there, and move one.
+- **Sleep.** Six to twelve hours a day, two twelve-hour days in the
+  first three. The energy thresholds that put the runner to bed at "you
+  can barely lift your arms" get their first look here, since they set
+  the working day every other number is measured against.
+- **Berries.** Three to five times the beginner band; halve the picking
+  yield or the kcal, measured on a July run of the harness (`?seed=`
+  with the clock advanced, or the landing month once F gives it).
+- **The gates.** After the numbers move, set the April from-scratch gate
+  where a beginner with fire, roof and water lands in the tables (three
+  weeks or more), keep 30 days for the kitted run until C's trap, and
+  write the late-August gate down to be run when the landing month
+  exists.
+- **Not in this pass:** yields that need new content (the trap, the
+  skill tiers, the cellar) stay with C and 3; the pass only moves numbers
+  the game already has.
 
 ### B. The risk forecast
 

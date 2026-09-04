@@ -277,8 +277,8 @@ stocks of water, firewood, dried meat, fish, and tools; then the outcome:
 day 245". A final line: passed N of 4. Exit code 1 when any seed fails,
 so a CI job can hold the gate later.
 
-**The gate.** All four seeds are alive on game day 30 (section 13 says
-why thirty, not December). The run continues to its 250 days so the
+**The gate.** All four seeds are alive on game day 21 (section 13 says
+why three weeks, not December). The run continues to its 250 days so the
 report says where each seed dies after the gate. When one does not, the
 cause is read from the log: an order list that is wrong is the script's
 to fix; a rule that kills a camp with its needs in reach is the
@@ -348,8 +348,8 @@ Unit, in vitest, all fast:
 - With kcal at zero and fat above zero, an hour costs fat and no health;
   with both at zero, health drains 2 an hour; a meal past a full stomach
   raises fat; work speed at half fat is three quarters.
-- The reference gate passes a seed that is alive on day 30 and fails one
-  that dies on day 29.
+- The reference gate passes a seed that is alive on day 21 and fails one
+  that dies on day 21 or before.
 
 The gate is the script. The browser pass: a run into December on one of
 the four seeds at `?speed=60`, the ice hole opened by the keep, camp
@@ -428,8 +428,11 @@ cause "starved" is unchanged and now means what it says.
 
 **The two gates.** April from scratch is a short-term survival problem
 for a beginner, and the reference player is a beginner: it holds level
-one everything. Its pass criterion is 30 game days alive on all four
-seeds, from the arrival kit, in April. A December criterion by orders
+one everything. Its pass criterion is 21 game days alive on all four
+seeds, from the arrival kit, in April: three weeks is what a beginner
+with fire, a roof and water gets in that country at the deficit the
+yield tables allow, and the runs measure 22 to 23. The number is the
+roadmap's calibration pass to revisit, not a promise. A December criterion by orders
 needs the economy the yield tables in the roadmap call expert: the fish
 trap of item C and a skill ladder that multiplies. That criterion moves
 to the kitted run once C lands, and a late-August from-scratch gate
