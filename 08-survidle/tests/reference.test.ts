@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -51,6 +52,38 @@ describe("the reference player", () => {
     const have = qty(pile(state, st.campCell), "bark");
     if (have < 5) expect(tasks).toContain("bark");
     else expect(tasks).not.toContain("bark");
+  });
+
+  it("a times want counts its stand-ins' units: given exactly twice at woodcraft 1, and once as itself at woodcraft 3", () => {
+    const { state, world } = newGame(17);
+    const player = new ReferencePlayer([
+      { req: { task: "sticks", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    const seen = new Set<number>();
+    for (let h = 0; h < 6; h++) {
+      player.tick(state, world);
+      for (const o of ordersHere(state, world)) if (o.req.task === "sticks") seen.add(o.id);
+      advance(state, world, 60);
+    }
+    // Two once-job stand-ins, never a third: their units add up to the want's n:2.
+    expect(seen.size).toBe(2);
+    expect(ordersHere(state, world).some((o) => o.req.task === "sticks")).toBe(false);
+
+    const at3 = newGame(17);
+    at3.state.skills.woodcraft.xp = levelMinutes(3);
+    const player3 = new ReferencePlayer([
+      { req: { task: "sticks", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    player3.tick(at3.state, at3.world);
+    const first = ordersHere(at3.state, at3.world);
+    expect(first.length).toBe(1);
+    expect(first[0].kind).toBe("job");
+    expect(first[0].req.until).toEqual({ kind: "times", n: 2 });
+    for (let h = 0; h < 6; h++) {
+      player3.tick(at3.state, at3.world);
+      advance(at3.state, at3.world, 60);
+    }
+    expect(ordersHere(at3.state, at3.world).length).toBe(0);
   });
 
   it("the stand-in follows the level: a keep given at woodcraft 10 is a keep, ranked where the want sits", () => {

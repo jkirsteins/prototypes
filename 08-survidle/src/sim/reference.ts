@@ -131,35 +131,43 @@ export const OPENING_TICK_MINUTES = 60;
  * drops off is given again when the want is unmet; a want given as its
  * own kind that drops off is a finished job and is never given twice, or
  * the knife would be made again. A keep given as a keep stays for good.
+ * A `times` want's own probe reads `done`, which a fresh probe never
+ * carries, so a once-job stand-in's units are banked in `completed` when
+ * it drops off and fed back as the probe's `done` - otherwise a five-times
+ * build never reads as met and keeps being given past its count.
  */
 export class ReferencePlayer {
-  /** Order id per want index, for the orders still on the list. */
-  private given = new Map<number, number>();
+  /** Order id and, for a count-based stand-in, the units it stands for - per want index, for the orders still on the list. */
+  private given = new Map<number, { id: number; units?: number }>();
   /** Whether the standing order for a want is its own kind (true) or a stand-in (false). */
   private trueKind = new Map<number, boolean>();
   private finished = new Set<number>();
+  /** Units a want's dropped once/times stand-ins have completed so far, per want index. */
+  private completed = new Map<number, number>();
 
   constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS) {}
 
   tick(state: GameState, world: World): void {
     const list = ordersHere(state, world);
-    for (const [i, id] of [...this.given]) {
-      if (list.some((o) => o.id === id)) continue;
+    for (const [i, g] of [...this.given]) {
+      if (list.some((o) => o.id === g.id)) continue;
       if (this.trueKind.get(i)) this.finished.add(i);
+      else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);
     }
     for (let i = 0; i < this.wants.length; i++) {
       if (this.finished.has(i) || this.given.has(i)) continue;
       const w = this.wants[i];
-      const probe: Order = { id: -1, kind: w.kind, req: w.req, done: 0, minutes: 0, skipped: "" };
+      const probe: Order = { id: -1, kind: w.kind, req: w.req, done: this.completed.get(i) ?? 0, minutes: 0, skipped: "" };
       if (orderMet(state, world, probe, false)) continue;
       const best = withinLadder(state, w.req, w.kind);
       const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
+      const units = !standIn ? undefined : best.req.until.kind === "once" ? 1 : best.req.until.kind === "times" ? best.req.until.n : undefined;
       let rank = 0;
       for (const j of this.given.keys()) if (j < i) rank++;
       const o = giveOrder(state, world, best.req, best.kind, rank);
-      this.given.set(i, o.id);
+      this.given.set(i, { id: o.id, units });
       this.trueKind.set(i, !standIn);
     }
   }
