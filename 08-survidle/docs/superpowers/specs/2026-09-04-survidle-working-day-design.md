@@ -120,7 +120,9 @@ keep refills from bark.
 pass's April run (one death by cold on seed 79 on day 16), the knife goes
 back to its old place after the lean-to and only the snares move, to
 right after the knife. The report decides; the spec names both orders so
-the plan can measure them.
+the plan can measure them. The fallback is the order in the tree: the
+knife after the lean-to, the snares right after it, the bucket after
+them, the fish keep after the cook keeps.
 
 ## 3. Measure, record, stop
 
@@ -151,9 +153,9 @@ The stop rule reads the deaths:
 - At dawn the marker is clear and the runner is back on its order.
 - A manual chop started by hand past ten hours keeps going: no intent, no
   need.
-- The reference list's order: the knife is the first order after the light
-  keep; the snares follow it; the fish keep follows the cook keeps; the
-  count is unchanged.
+- The reference list's order: the knife is the first order after the
+  lean-to; the snares follow the knife; the bucket follows them; the fish
+  keep follows the cook keeps; the count is unchanged.
 
 `npm test` is at 9.1 seconds against a ten-second budget; the day-long
 test is one run of one seed and stays alone in its file.

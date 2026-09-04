@@ -185,12 +185,13 @@ the roadmap, and where each note lands:
   first snow, and April stays the hard opening a first run dies in.
 - **Water is not treated.** Drinking from a lake carries no risk; boiling
   it (hot stones in a bark bucket) is a disease rule for 5.
-- **The runner sleeps 7.7 to 10.8 hours a day** in the April reference
-  runs, two of the four seeds inside the seven to nine band the
-  calibration pass set and two over it. The energy model that puts it
-  to bed at "you can barely lift your arms" had its look in that pass,
-  and the working day sets the rest of it: a spent body rests by the
-  fire after ten hours and sleeps at nightfall.
+- **The runner sleeps 6.4 to 9.0 hours a day** in the April reference
+  runs: seeds 17 and 19 inside the seven to nine band the calibration
+  pass set, seed 42 at its top at 9.0 and seed 79 under it at 6.4. The
+  thresholds that put the body to bed set the working day that every
+  other number is measured against, and that working day caps the sleep
+  in turn: a spent body rests by the fire after ten hours and sleeps at
+  nightfall.
 - **A kill is a preservation problem before it is food.** Realistic
   storage for game meat: fresh in warm air, hours to a day before it is
   risky; held at 4 C or under, three to five days; cooked or hot-smoked
@@ -247,22 +248,17 @@ rests by the fire after ten hours, the reference list sets snares before
 it fells a tree, a body at open water drinks before it rests, a waiting
 catch brings the runner home by day, and a thirsty runner with an axe
 cuts the ice hole it walks to - a bark bucket before the roof was
-measured there and rejected; built), then what the deaths pull forward,
-next: C's basket trap for the gate day, where the April survivors now
-starve, and 3's water storage beside it for the horizon's thirst rows,
-in whichever order the author takes them, then F's core (the world saved instead of the person, the
+measured there and rejected, and the deaths after the gate name the trap
+and the water storage as the next food and water items, in their slot;
+built), then F's core (the world saved instead of the person, the
 journal with its daily forecast field, the dim map, the season spine,
 first decay, and the heir set down near the old camp; not its ramp), then
 B the risk forecast with the away cap as its horizon,
 then the rest of F in impact order (the landing month, latitude by row
 with the landing moving north, the goals list, the Lineage tree, and the
 death site with the corpse run and its search order), then the first
-producers and stocks (the cellar, and whatever of 3's water storage the
-step marked next above leaves; that water storage and the basket trap
-were pulled out of this slot into that step, because the April survivors
-starve on days 40 to 48 with an empty camp and a stocked camp with nobody
-in it still ends on thirst), then E
-hides and clothing, then the rest of
+producers and stocks (C's basket trap, and 3's water storage and cellar,
+pulled out of their items), then E hides and clothing, then the rest of
 3 camp (siting, the shelter ladder, the buildings) with the rest of C
 alongside and F's trails and the cellar's keep, then 4 animals, 5 injury
 and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
@@ -1301,17 +1297,17 @@ reordering, the knife and a bark bucket before the roof, was measured and
 rejected the same way: both orders froze two seeds, and the roof by night
 two is what the opening cannot spare.
 
-The four diagnoses and what each got. The sticky sleep need held a rested
-body in bed all morning - one seed lay from 06:41 to 13:20 at full energy
-and went to wolves on day four - so the need now holds only through the
-night, or while energy is under 60. A spent body standing at open water
-drinks its fill before it rests, a rested body that is thirsty at
-nightfall drinks first, and a sleep set aside for the fire clears the
-sticky need, where before a thirsty body would rest instead of drink. A
-catch waiting in a snare and the heath in reach brings the runner back by
-day, where before every catch went to a fox. And a thirsty runner with an
-axe cuts the hole it walks to, where before the thirst chain could only
-use an ice hole already cut and nothing cut one.
+The four diagnoses and what each got. A rested body wakes with the dawn:
+the sticky sleep need held one in bed all morning - one seed lay from
+06:41 to 13:20 at full energy and went to wolves on day four - so the
+need holds only through the night, or while energy is under 60. A spent
+body drinks its fill before it sits: at open water it drinks before it
+rests, a rested body that is thirsty at nightfall drinks first, and a
+sleep set aside for the fire clears the sticky need. A catch in the
+snares brings the runner back by day when the heath is in reach, so the
+catch is the runner's and not the fox's. And a thirsty runner with an axe
+cuts the ice hole it walks to, so the thirst chain reaches water nobody
+has opened yet.
 
 `npm run reference` at the April gate, day 26 with the food clause,
 passes 4 of 4. Seed 17 stands fed at health 97 with 3,600 kcal of food at
@@ -1322,9 +1318,10 @@ or thirst at all: all four starve, on days 48, 43, 40 and 40.
 
 The gate week, averaged over the four seeds: base 1,680, work 1,846
 (activity 1,206, walk 640), cold 57, 3,584 a day, 9.6 hours at work and
-7.8 asleep. Base sits in its share on every seed and cold under it; work
-is over its share on all four; the day is over the 2,500 to 3,500 band on
-three seeds and inside it on seed 79 at 3,421. Sleep reads 6.4 to 9.0
+7.8 asleep. Base sits in its share on every seed, and cold is under its
+share on three seeds and in band on seed 19 at 105; work is over its
+share on all four; the day is over the 2,500 to 3,500 band on three
+seeds and inside it on seed 79 at 3,421. Sleep reads 6.4 to 9.0
 hours, seeds 17 and 19 inside the seven to nine band, seed 79 under it at
 6.4 and seed 42 over it at 9.0.
 
@@ -1349,18 +1346,17 @@ drill, the snare, the bow and its arrows - have already claimed.
 holds longer than its band asks. Manual holds 5 to 7 days against 0 to 2,
 jobs and grinds 5 to 22 against 1 to 2, and keeps 15 days to past 30
 against 3 to 5, keeps on seed 42 being alive when the run ends. What ends
-the other eleven is cold on eight rows and thirst on three. So a stocked
-camp with nobody in it still outlives the ladder's ask at every stage.
+the other eleven is cold on eight rows and thirst on three, where the
+pass read thirst on seven and cold on five: the ice hole the thirst chain
+now cuts turned thirst endings into cold ones. So a stocked camp with
+nobody in it still outlives the ladder's ask at every stage.
 The bands did not move.
 
 The stop rule's reading: April is green on the food clause, 4 of 4 where
 it read 0 of 4 through the pass, and nothing ends a run before the gate
-day now. What ends them after it is one thing. The survivors starve, on
-days 40 to 48, with an empty camp and the snares the source that carried
-most of them that far; so if the standing order continues past the gate,
-C's basket trap is the next food item. The horizon's thirst rows are the
-other reading - three of twelve, on a stocked camp with nobody in it -
-and those are item 3's water storage.
+day now, so F core is next; the survivors starve on days 40 to 48 and the
+horizon rows end in cold and thirst, which is what the trap and the water
+storage answer in their slot.
 
 ### B. The risk forecast
 
