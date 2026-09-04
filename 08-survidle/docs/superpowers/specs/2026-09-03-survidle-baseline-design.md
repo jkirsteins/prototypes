@@ -238,8 +238,8 @@ but every entry must be one the panel offers.
 6. Build a fire pit.
 7. Make a fire drill, once.
 8. Light the fire, keep it lit.
-9. Fell trees, keep camp at 3 logs, bringing it to camp.
-10. Split a log, keep camp at 40 kg firewood.
+9. Fell trees, keep camp at 4 logs, bringing it to camp.
+10. Split a log, keep camp at 60 kg firewood, a day's burn.
 11. Build a lean-to.
 12. Make a stone knife, once.
 13. Make a bark bucket, until camp has 2.

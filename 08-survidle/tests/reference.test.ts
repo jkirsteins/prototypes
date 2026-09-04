@@ -40,4 +40,9 @@ describe("the reference player", () => {
     expect(passesGate(31, REFERENCE_TARGET_DAY)).toBe(true);
     expect(passesGate(29, REFERENCE_TARGET_DAY)).toBe(false);
   });
+
+  it("the gate's boundary is exact: a death on day 30 fails, a death on day 31 passes", () => {
+    expect(passesGate(30, REFERENCE_TARGET_DAY)).toBe(false);
+    expect(passesGate(31, REFERENCE_TARGET_DAY)).toBe(true);
+  });
 });
