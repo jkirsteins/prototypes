@@ -7,17 +7,20 @@
  * before what needs it: water at the top, where it waits on its own
  * vessel; then everything a fire and a roof need, in the order they need
  * it, worked with the arrival axe alone; then the knife and what it
- * unlocks.
+ * unlocks. The list is the wants; the player script below gives each as
+ * the best kind the skill has earned, since a from-scratch survivor has
+ * only once jobs until a skill reaches 3 and no keeps for weeks.
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar } from "./calendar";
 import { addItem, freshTool, listItems, pile } from "./inventory";
 import { TOOLS } from "./items";
+import { giveOrder, withinLadder } from "./ladder";
 import { newGame } from "./newgame";
-import { addOrder } from "./orders";
+import { orderMet, ordersHere } from "./orders";
 import { regionState } from "./regionstate";
-import type { DeathCause, GameState, IntentRequest, OrderKind } from "./types";
+import type { DeathCause, GameState, IntentRequest, Order, OrderKind } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
@@ -102,7 +105,7 @@ export function passesGate(deathDay: number | null, targetDay: number): boolean 
  * whether the seven fixes let an already-established camp hold, separately
  * from whether the from-scratch list can bootstrap one in time.
  */
-function kitOut(state: GameState, world: World): void {
+export function kitOut(state: GameState, world: World): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
@@ -118,11 +121,65 @@ function kitOut(state: GameState, world: World): void {
   st.structures.firePit = true;
 }
 
-export function setUpReference(seed: number, kitted = false): { state: GameState; world: World } {
+/** How often the player script looks at the list: the cost of playing by hand is the idle time between looks. */
+export const OPENING_TICK_MINUTES = 60;
+
+/**
+ * The player script (idle curve spec, section 2.5): the reference list is
+ * what a competent player wants, and this gives each want as the best
+ * kind the skill has earned, ranked where the want sits. A stand-in that
+ * drops off is given again when the want is unmet; a want given as its
+ * own kind that drops off is a finished job and is never given twice, or
+ * the knife would be made again. A keep given as a keep stays for good.
+ */
+export class ReferencePlayer {
+  /** Order id per want index, for the orders still on the list. */
+  private given = new Map<number, number>();
+  /** Whether the standing order for a want is its own kind (true) or a stand-in (false). */
+  private trueKind = new Map<number, boolean>();
+  private finished = new Set<number>();
+
+  constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS) {}
+
+  tick(state: GameState, world: World): void {
+    const list = ordersHere(state, world);
+    for (const [i, id] of [...this.given]) {
+      if (list.some((o) => o.id === id)) continue;
+      if (this.trueKind.get(i)) this.finished.add(i);
+      this.given.delete(i);
+      this.trueKind.delete(i);
+    }
+    for (let i = 0; i < this.wants.length; i++) {
+      if (this.finished.has(i) || this.given.has(i)) continue;
+      const w = this.wants[i];
+      const probe: Order = { id: -1, kind: w.kind, req: w.req, done: 0, minutes: 0, skipped: "" };
+      if (orderMet(state, world, probe, false)) continue;
+      const best = withinLadder(state, w.req, w.kind);
+      const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
+      let rank = 0;
+      for (const j of this.given.keys()) if (j < i) rank++;
+      const o = giveOrder(state, world, best.req, best.kind, rank);
+      this.given.set(i, o.id);
+      this.trueKind.set(i, !standIn);
+    }
+  }
+}
+
+export function setUpReference(seed: number, kitted = false): { state: GameState; world: World; player: ReferencePlayer } {
   const g = newGame(seed);
   if (kitted) kitOut(g.state, g.world);
-  for (const o of REFERENCE_ORDERS) addOrder(g.state, g.world, o.req, o.kind);
-  return g;
+  return { ...g, player: new ReferencePlayer() };
+}
+
+/** Advances `minutes`, the player looking at the list every OPENING_TICK_MINUTES. */
+export function stepReference(ref: { state: GameState; world: World; player: ReferencePlayer }, minutes: number): void {
+  let left = minutes;
+  while (left > 0 && !ref.state.dead) {
+    ref.player.tick(ref.state, ref.world);
+    const dt = Math.min(OPENING_TICK_MINUTES, left);
+    advance(ref.state, ref.world, dt);
+    left -= dt;
+  }
 }
 
 export interface ReferenceReport {
@@ -147,11 +204,12 @@ function checkpoint(state: GameState, world: World, day: number): ReferenceRepor
 
 /** Runs the set-up a day at a time for `days` days or until death, whichever is first. */
 export function runReference(seed: number, days: number, kitted = false): ReferenceReport {
-  const { state, world } = setUpReference(seed, kitted);
+  const ref = setUpReference(seed, kitted);
+  const { state, world } = ref;
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
   for (let d = 1; d <= days && !state.dead; d++) {
-    advance(state, world, 1440);
+    stepReference(ref, 1440);
     const day = calendar(state.minute).day;
     for (const c of CHECKPOINT_DAYS) {
       if (day >= c && !seen.has(c)) {
