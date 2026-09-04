@@ -154,7 +154,7 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 /** Flat kcal/h for activities that do not depend on the ground: walking is computed separately, by terrain. */
 const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 400 };
 /** Base kcal/h for walking on ground at ordinary (open-forest) speed; the ground and load scale it from here. */
-const WALK_KCAL_PER_HOUR = 300;
+export const WALK_KCAL_PER_HOUR = 200;
 /**
  * The body's resting burn, every hour of the day asleep or not: the sleep
  * rate, which over 24 hours is 1,680 kcal, a fit adult's resting burn.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
-import { BASE_KCAL_PER_HOUR } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { APRIL, BERRY, BURN, LATE_AUGUST, SLEEP_HOURS, sourceBand, tableFor, verdict } from "../src/sim/tables";
 
 describe("the tables", () => {
@@ -48,6 +48,15 @@ describe("the constants sit in their real bands", () => {
 
   it("an hour's picking at level one is what a hand picker takes", () => {
     expect(verdict(BERRY_PICK_KG, BERRY.pickKgPerHour)).toBe("in band");
+  });
+
+  // A walk's rate above base times the hours a day's walking takes is a part of
+  // the work share, not the whole of it, so it has no band of its own here. What
+  // it does have is a floor: below 200 kcal/h a walk costs less than steady work
+  // standing still, which no body does.
+  it("the walking rate stays between its floor and a porter's pace", () => {
+    expect(WALK_KCAL_PER_HOUR).toBeGreaterThanOrEqual(200);
+    expect(WALK_KCAL_PER_HOUR).toBeLessThanOrEqual(300);
   });
 
   it("the burn shares add up to the day band", () => {

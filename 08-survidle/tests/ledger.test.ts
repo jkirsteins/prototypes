@@ -7,7 +7,7 @@ import { addItem, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
-import { BASE_KCAL_PER_HOUR, COLD_BURN_FACTOR, stepPlayer } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, COLD_BURN_FACTOR, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { deserialize, serialize } from "../src/sim/save";
@@ -149,11 +149,11 @@ describe("burn in buckets", () => {
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
     for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
     const dry = today(state).burn.walk;
-    expect(dry).toBeCloseTo(300 - 70, 6);
+    expect(dry).toBeCloseTo(WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
     expect(today(state).burn.activity).toBe(0);
     state.weather.snowCm = 40;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
-    expect(today(state).burn.walk - dry).toBeCloseTo(600 - 70, 6);
+    expect(today(state).burn.walk - dry).toBeCloseTo(2 * WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
   });
 
   it("sickness adds its own bucket on top of the cold one", () => {

@@ -1132,10 +1132,12 @@ of 4,000 against 3,000 moves all of them. No row or tier of its own.
 Expected: the ladder's horizon checks re-run after the numbers move and
 land in their bands, and the gates reset as this section says.
 
-Immediately after the delegation ladder, before F, so it measures the
-beginner once, with the by-hand opening in place. The baseline's harness runs
-a beginner's April on four seeds and dies of starvation on day 22 or 23
-with fire, a roof and water in hand; its gate is 21 days for now, set
+Built: `2026-09-04-survidle-calibration-pass-design.md`, plan
+`2026-09-04-survidle-calibration-pass.md`. Immediately after the
+delegation ladder, before F, so it measures the beginner once, with the
+by-hand opening in place. The baseline's harness runs a beginner's April
+on four seeds and dies of starvation on day 22 or 23 with fire, a roof
+and water in hand; its gate is 21 days for now, set
 from that measurement rather than from the tables. This pass turns the
 tables in "What the north yields" into the game's numbers, measured:
 
@@ -1180,6 +1182,24 @@ tables in "What the north yields" into the game's numbers, measured:
 - **Not in this pass:** yields that need new content (the trap, the
   skill tiers, the cellar) stay with C and 3; the pass only moves numbers
   the game already has.
+
+Measured, before any number moved, the April week before day 21 averaged
+over the four seeds 17, 19, 42 and 79 (the last two die first, so theirs
+is the week before the death): base 1,470, work 2,342 (activity 1,016,
+walk 1,327), cold 120, 3,932 a day, 10.8 hours at work and 9.2 asleep.
+The lever by the rule in the spec's section 3.2 was work, and inside it
+the walk half, the larger of the two: `WALK_KCAL_PER_HOUR`, 300 kcal an
+hour before and 200 after. 200 is the rule's floor; the arithmetic that
+would land activity plus walk on 1,200 asked for 40, and the floor caught
+it, because below 200 a walk would cost less than standing work. After
+it the same week reads base 1,470, work 1,772 (activity 1,015, walk 757),
+cold 85, 3,327 a day. The day is inside its 2,500 to 3,500 band, where it
+was 432 over the top of it, and work sits 72 kcal above the 1,700 top of
+its share, down from 642: the floor is what holds it there and not the
+rounding, so what remains of the excess is activity's and the working
+day's, which the sleep budget sets. Cold fell with it to 85, just under
+the 100 floor of its share, since the cold increment is a share of the
+burn it sits on and the walk half of that burn is what moved.
 
 ### B. The risk forecast
 
