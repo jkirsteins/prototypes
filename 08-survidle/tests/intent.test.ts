@@ -203,6 +203,20 @@ describe("the work tier", () => {
     expect(state.stats.trees).toBe(2);
   });
 
+  it("a gather stops once the shortfall is in the pack, not once it is already home", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const camp = regionState(state, world, state.player.region).campCell;
+    startIntent(state, world, cal, rng(), req("stone", { until: { kind: "campHas", qty: 8 } }));
+    expect(until(g, () => state.intent === null, 8000)).toBe(true);
+    const total = qty(pile(state, camp), "stone");
+    // A gather yields 3 stone a trip at level 1: the third trip crosses 8 and
+    // stops there, delivering what is in hand rather than working past it
+    // for a fourth trip's worth (a rare flint bonus can add one more).
+    expect(total).toBeGreaterThanOrEqual(8);
+    expect(total).toBeLessThan(12);
+  });
+
   it("work with no countable yield turns until camp has N into once", () => {
     const { state, world } = newGame(3);
     startIntent(state, world, cal, rng(), req("rest", { until: { kind: "campHas", qty: 5 } }));

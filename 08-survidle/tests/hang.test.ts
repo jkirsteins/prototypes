@@ -24,7 +24,10 @@ function rackCamp() {
   const st = regionState(state, world, state.player.region);
   placeAt(state, world, st.campCell);
   st.structures.dryingRack = true;
-  addItem(state.player.pack, "driedMeat", 3);
+  // Fat, not dried meat: a driedMeat keep's untilMet now counts the pack as
+  // well as the camp pile, so pack food of the same item the keep targets
+  // would read as the shortfall already in hand and never let the rack run.
+  addItem(state.player.pack, "fat", 3);
   return { g, state, world, st, camp: pile(state, st.campCell) };
 }
 

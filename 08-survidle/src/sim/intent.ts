@@ -249,13 +249,25 @@ export function intentSentence(state: GameState, world: World, cal: Calendar, it
   return parts.join(", ");
 }
 
+/**
+ * A campHas intent stops as soon as the shortfall is in hand: the camp
+ * pile, the pack, and, working away from camp, the pile at the work cell
+ * too - so a gather stops the trip it crosses the target instead of
+ * grinding on until a full pack forces it home. The order itself still
+ * judges the camp pile alone (orderMet): a keep is a promise about camp,
+ * and it is the live intent's job to decide when the work in hand is done.
+ */
 function untilMet(state: GameState, it: Intent): boolean {
   if (it.task === "haul") return isEmpty(pile(state, it.cell));
   const u = it.until;
   switch (u.kind) {
     case "once": return it.done >= 1;
     case "times": return it.done >= u.n;
-    case "campHas": return qty(pile(state, it.campCell), u.item) >= u.qty - 1e-9;
+    case "campHas": {
+      let have = qty(pile(state, it.campCell), u.item) + qty(state.player.pack, u.item);
+      if (it.cell !== it.campCell) have += qty(pile(state, it.cell), u.item);
+      return have >= u.qty - 1e-9;
+    }
     case "forever": return false;
   }
 }
