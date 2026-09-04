@@ -57,3 +57,26 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
   if (!gate.ok) throw new Error(gate.why);
   return addOrder(state, world, req, kind, rank);
 }
+
+/** Trees a player fells per click when the grind is shut but a count is open. */
+export const GRIND_STAND_IN = 5;
+
+/**
+ * What a player gives instead when the kind they want is shut: the best
+ * kind the skill has earned, aimed at the same target. A keep is a keep at
+ * 10, a camp-has job at 3, a once job below; a grind is itself at 5, a
+ * GRIND_STAND_IN-times job at 3, a once job below; a counted job is itself
+ * at 3 and a once job below. The player script and the stage set-ups use
+ * it; the Do panel shows the gate instead and lets the player choose.
+ */
+export function withinLadder(state: GameState, req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: OrderKind } {
+  const n = normalizeOrder(req, kind);
+  if (orderGate(state, n.req, n.kind).ok) return n;
+  const level = skillLevel(state, gateSkill(n.req.task, n.req.arg)!);
+  const once = { req: { ...n.req, until: { kind: "once" as const } }, kind: "job" as const };
+  if (level < RUNG_LEVEL.job) return once;
+  if (n.kind === "grind") return { req: { ...n.req, until: { kind: "times", n: GRIND_STAND_IN } }, kind: "job" };
+  // A keep, at 3 or 5: the same target as a job that drops off when met.
+  // "Keep it lit" has nothing to count and falls to light once.
+  return normalizeOrder({ ...n.req, until: n.req.until.kind === "campHas" ? n.req.until : { kind: "once" } }, "job");
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gateSkill, giveOrder, NOT_ORDERS, normalizeOrder, orderGate } from "../src/sim/ladder";
+import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderGate, withinLadder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
@@ -110,5 +110,59 @@ describe("giving an order", () => {
     const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
     expect(o.kind).toBe("keep");
     expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["split", "sticks"]);
+  });
+});
+
+describe("the stand-in for a shut kind", () => {
+  const keep = req("split", { kind: "campHas", qty: 40 });
+  const grind = req("chop", { kind: "forever" });
+  const times = req("chop", { kind: "times", n: 3 });
+  const once = req("chop", { kind: "once" });
+
+  it("at level 1 everything is a once job", () => {
+    const { state } = newGame(3);
+    expect(withinLadder(state, keep, "keep")).toEqual({ req: { ...keep, until: { kind: "once" } }, kind: "job" });
+    expect(withinLadder(state, grind, "grind")).toEqual({ req: { ...grind, until: { kind: "once" } }, kind: "job" });
+    expect(withinLadder(state, times, "job")).toEqual({ req: { ...times, until: { kind: "once" } }, kind: "job" });
+    expect(withinLadder(state, once, "job")).toEqual({ req: once, kind: "job" });
+  });
+
+  it("at 3 a keep is a camp-has job to the same target and a grind is a five-times job", () => {
+    const { state } = newGame(3);
+    setLevel(state, "woodcraft", 3);
+    expect(withinLadder(state, keep, "keep")).toEqual({ req: keep, kind: "job" });
+    expect(withinLadder(state, grind, "grind")).toEqual({ req: { ...grind, until: { kind: "times", n: GRIND_STAND_IN } }, kind: "job" });
+    expect(withinLadder(state, times, "job")).toEqual({ req: times, kind: "job" });
+    expect(GRIND_STAND_IN).toBe(5);
+  });
+
+  it("at 5 a grind is itself and a keep is still a job; at 10 a keep is a keep", () => {
+    const { state } = newGame(3);
+    setLevel(state, "woodcraft", 5);
+    expect(withinLadder(state, grind, "grind")).toEqual({ req: grind, kind: "grind" });
+    expect(withinLadder(state, keep, "keep").kind).toBe("job");
+    setLevel(state, "woodcraft", 10);
+    expect(withinLadder(state, keep, "keep")).toEqual({ req: keep, kind: "keep" });
+  });
+
+  it("keep it lit below building 10 is light once", () => {
+    const { state } = newGame(3);
+    const lit = req("light", { kind: "campHas", qty: 1 });
+    expect(withinLadder(state, lit, "keep")).toEqual({ req: { ...lit, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "building", 3);
+    expect(withinLadder(state, lit, "keep")).toEqual({ req: { ...lit, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "building", 10);
+    expect(withinLadder(state, lit, "keep")).toEqual({ req: lit, kind: "keep" });
+  });
+
+  it("the stand-in always passes the gate", () => {
+    const { state } = newGame(3);
+    for (const l of [1, 3, 5, 10]) {
+      setLevel(state, "woodcraft", l);
+      for (const [r, k] of [[keep, "keep"], [grind, "grind"], [times, "job"], [once, "job"]] as const) {
+        const s = withinLadder(state, r, k);
+        expect(orderGate(state, s.req, s.kind), `${k} at ${l}`).toEqual({ ok: true });
+      }
+    }
   });
 });
