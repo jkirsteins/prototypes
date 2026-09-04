@@ -21,16 +21,16 @@ export function monthName(month: number): string {
   return MONTH_FULL[((month % 12) + 12) % 12];
 }
 
-/** 0 at new, 0.5 at full, in [0, 1). */
-export function moonPhase(minute: number): number {
-  const days = (minute + START_MINUTE_OF_DAY) / 1440;
+/** 0 at new, 0.5 at full, in [0, 1). The moon runs on the date, so a later start opens on a later phase. */
+export function moonPhase(minute: number, startDoy = START_DOY): number {
+  const days = (minute + START_MINUTE_OF_DAY) / 1440 + (startDoy - START_DOY);
   const p = ((days - NEW_MOON_DAY) / SYNODIC_DAYS) % 1;
   return p < 0 ? p + 1 : p;
 }
 
 /** Lit share of the disc, 0 at new to 1 at full. */
-export function moonIllumination(minute: number): number {
-  return (1 - Math.cos(2 * Math.PI * moonPhase(minute))) / 2;
+export function moonIllumination(minute: number, startDoy = START_DOY): number {
+  return (1 - Math.cos(2 * Math.PI * moonPhase(minute, startDoy))) / 2;
 }
 
 export interface Calendar {
@@ -54,11 +54,12 @@ export interface Calendar {
   moonLight: number;
 }
 
-export function calendar(minute: number): Calendar {
+/** The calendar at a minute of a run that began at 08:00 on `startDoy` (1 April unless the harness or the browser says otherwise). */
+export function calendar(minute: number, startDoy = START_DOY): Calendar {
   const abs = minute + START_MINUTE_OF_DAY;
   const dayIndex = Math.floor(abs / 1440);
   const hour = (abs - dayIndex * 1440) / 60;
-  const dayOfYear = (((START_DOY + dayIndex) % 365) + 365) % 365;
+  const dayOfYear = (((startDoy + dayIndex) % 365) + 365) % 365;
   let month = 0;
   let d = dayOfYear;
   while (d >= MONTH_DAYS[month]) {
@@ -80,8 +81,8 @@ export function calendar(minute: number): Calendar {
     sunrise,
     sunset,
     isNight: hour < sunrise || hour >= sunset,
-    moon: moonPhase(minute),
-    moonLight: moonIllumination(minute),
+    moon: moonPhase(minute, startDoy),
+    moonLight: moonIllumination(minute, startDoy),
   };
 }
 
@@ -113,10 +114,10 @@ export function fmtDate(cal: Calendar): string {
 }
 
 /** Minutes from `minute` until the next sunrise. */
-export function minutesUntilDawn(minute: number): number {
-  const cal = calendar(minute);
+export function minutesUntilDawn(minute: number, startDoy = START_DOY): number {
+  const cal = calendar(minute, startDoy);
   const today = cal.sunrise * 60 - cal.hour * 60;
   if (today > 0) return today;
-  const tomorrow = calendar(minute + 1440);
+  const tomorrow = calendar(minute + 1440, startDoy);
   return (24 - cal.hour) * 60 + tomorrow.sunrise * 60;
 }

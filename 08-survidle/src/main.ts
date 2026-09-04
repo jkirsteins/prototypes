@@ -36,6 +36,9 @@ const params = new URLSearchParams(location.search);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
 const speed = Math.max(0.1, Number(params.get("speed")) || 1);
 const forcedSeed = params.get("seed");
+/** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
+const forcedDay = params.get("day");
+const startDoy = forcedDay === null ? undefined : Math.max(0, Math.min(364, Number(forcedDay) || 0));
 
 let state: GameState;
 let world: World;
@@ -44,8 +47,8 @@ let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
 
-function fresh(seed = (Math.random() * 0xffffffff) >>> 0) {
-  const g = newGame(seed);
+function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
+  const g = newGame(seed, startDoy);
   state = g.state;
   world = g.world;
   ui.selected = null;
@@ -56,7 +59,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0) {
 }
 
 function boot() {
-  const saved = forcedSeed ? null : loadGame();
+  const saved = forcedSeed || forcedDay !== null ? null : loadGame();
   if (saved) {
     state = saved.state;
     world = generateWorld(state.seed);
@@ -70,7 +73,7 @@ function boot() {
       saveGame(state);
     }
   } else {
-    fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined);
+    fresh(forcedSeed ? Number(forcedSeed) >>> 0 : undefined, startDoy);
   }
 }
 
@@ -78,7 +81,7 @@ let lastMapKey = "";
 function render() {
   // Arriving where you were looking ends the looking.
   if (ui.selected === state.player.region) ui.selected = null;
-  const cal = calendar(state.minute);
+  const cal = calendar(state.minute, state.startDoy);
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
@@ -128,7 +131,7 @@ function frame(now: number) {
     lastReal = now;
   }
   render();
-  const cal = calendar(state.minute);
+  const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
     lastSave = now;
@@ -141,7 +144,7 @@ function onClick(ev: Event) {
   const target = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
   if (!target) return;
   const act = target.dataset.act;
-  const cal = calendar(state.minute);
+  const cal = calendar(state.minute, state.startDoy);
   const rng = new Rng(state.rng);
   switch (act) {
     case "task": {

@@ -39,7 +39,7 @@ export function advance(state: GameState, world: World, dtMinutes: number): void
 
 function step(state: GameState, world: World, rng: Rng, dt: number): void {
   state.minute += dt;
-  const cal = calendar(state.minute);
+  const cal = calendar(state.minute, state.startDoy);
 
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
   const ambient = ambientTemperature(cal, state.weather);

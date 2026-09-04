@@ -10,19 +10,31 @@
  * the gate. It answers a different question (does an established camp
  * hold?) from the from-scratch run (can the list bootstrap one in time?),
  * so it stays a diagnostic, not a second gate (spec 13).
+ *
+ * --start=<doy>, anywhere in the args, opens the run on that day of year
+ * instead of 1 April: 200 is 20 July, 235 is 24 August. It is a harness aid
+ * for reading the tables against a summer or autumn start, not a second gate.
  */
+import { calendar, fmtDate } from "../src/sim/calendar";
 import { REFERENCE_SEEDS, REFERENCE_TARGET_DAY, runReference, weekLines } from "../src/sim/reference";
 
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
-const args = rawArgs.map(Number).filter((n) => Number.isFinite(n));
+const startArg = rawArgs.find((a) => a.startsWith("--start="));
+const startDoy = startArg ? Number(startArg.slice("--start=".length)) : undefined;
+if (startArg && !(Number.isInteger(startDoy) && startDoy! >= 0 && startDoy! < 365)) {
+  console.error("--start takes a day of year, 0 to 364: 90 is 1 April, 200 is 20 July, 235 is 24 August");
+  process.exit(2);
+}
+const args = rawArgs.filter((a) => !a.startsWith("--")).map(Number).filter((n) => Number.isFinite(n));
 const days = args.length >= 2 ? args[args.length - 1] : 250;
 const seeds = args.length >= 2 ? args.slice(0, -1) : args.length === 1 ? args : REFERENCE_SEEDS;
 
 function runBlock(seed: number, kit: boolean): boolean {
   const t0 = performance.now();
-  const r = runReference(seed, days, kit);
-  console.log(`seed ${seed}${kit ? " (kitted)" : ""}: start found at ring ${r.startRing}`);
+  const r = runReference(seed, days, { kitted: kit, startDoy });
+  const from = startDoy === undefined ? "" : ` (from ${fmtDate(calendar(0, startDoy))})`;
+  console.log(`seed ${seed}${kit ? " (kitted)" : ""}${from}: start found at ring ${r.startRing}`);
   for (const c of r.checkpoints) {
     const stocks = Object.entries(c.stocks).map(([k, v]) => `${k} ${v}`).join(", ") || "nothing";
     console.log(`  day ${c.day}: kcal ${c.kcal}, water ${c.water} l, warmth ${c.warmth}, health ${c.health}; camp: ${stocks}; tools: ${c.tools.join(", ") || "none"}`);

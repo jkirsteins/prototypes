@@ -8,7 +8,7 @@
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
-import { calendar } from "./calendar";
+import { calendar, START_DOY } from "./calendar";
 import { withinLadder } from "./ladder";
 import { type WeekAverage, weekBefore } from "./ledger";
 import { newGame } from "./newgame";
@@ -39,8 +39,8 @@ export function setSkillLevel(state: GameState, skill: SkillId, level: number): 
 }
 
 /** A stocked camp at the stage's levels, the wants given once as what those levels allow. */
-export function setUpStage(seed: number, stage: HorizonStage): { state: GameState; world: World } {
-  const g = newGame(seed);
+export function setUpStage(seed: number, stage: HorizonStage, startDoy = START_DOY): { state: GameState; world: World } {
+  const g = newGame(seed, startDoy);
   kitOut(g.state, g.world);
   for (const s of SKILL_IDS) setSkillLevel(g.state, s, stage.levels[s] ?? 1);
   for (const w of REFERENCE_ORDERS) {
@@ -63,10 +63,10 @@ export interface StageReport {
   dayOfYear: number;
 }
 
-export function runStage(seed: number, stage: HorizonStage, maxDays: number): StageReport {
-  const { state, world } = setUpStage(seed, stage);
+export function runStage(seed: number, stage: HorizonStage, maxDays: number, startDoy = START_DOY): StageReport {
+  const { state, world } = setUpStage(seed, stage, startDoy);
   for (let d = 1; d <= maxDays && !state.dead; d++) advance(state, world, 1440);
-  const end = calendar(state.dead ? state.dead.minute : state.minute);
+  const end = calendar(state.dead ? state.dead.minute : state.minute, state.startDoy);
   const days = state.dead ? end.day - 1 : maxDays;
   const inBand = days >= stage.band[0] && days <= stage.band[1];
   return { seed, stage: stage.id, days, capped: !state.dead, cause: state.dead?.cause ?? null, inBand, week: weekBefore(state.ledger, end.day), dayOfYear: end.dayOfYear };

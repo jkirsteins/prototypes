@@ -1,5 +1,6 @@
 import { derive } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
+import { calendar, fmtDate, START_DOY } from "./calendar";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS } from "./items";
 import { creditYield } from "./ledger";
@@ -8,6 +9,7 @@ import { FAT_FULL } from "./player";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState } from "./types";
+import { seasonalMean } from "./weather";
 
 /** The stomach a survivor arrives with, in kcal. */
 export const START_KCAL = 5000;
@@ -15,13 +17,16 @@ export const START_KCAL = 5000;
 export const ARRIVAL_DRIED_MEAT_KG = 1;
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
-export function newGame(seed: number): { state: GameState; world: World } {
+export function newGame(seed: number, startDoy = START_DOY): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
+  // The weather opens for the season: past the thaw there is no ice and no snow.
+  const warm = seasonalMean(startDoy) > 0;
   const state: GameState = {
     seed,
+    startDoy,
     minute: 0,
     rng: derive(seed, 99),
     player: {
@@ -56,7 +61,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
     },
     regions: {},
     discovered: {},
-    weather: { precip: "none", clear: true, offset: 0, snowCm: 3, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
+    weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
     task: null,
     log: [],
     dead: null,
@@ -72,6 +77,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
   };
   enterRegion(state, world, world.start);
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
-  log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
+  if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
+  else log(state, `${fmtDate(calendar(0, startDoy))}. You wake at ${start.name} with an axe, wool on your back and a kilo of dried meat.`);
   return { state, world };
 }

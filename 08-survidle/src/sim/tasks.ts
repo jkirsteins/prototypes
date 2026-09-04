@@ -530,7 +530,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "sleep": {
       // Until dawn or until rested, whichever is later, and never past the cap.
       const toRested = ((100 - p.energy) / ENERGY_RATE.sleep) * 60;
-      const minutes = Math.min(SLEEP_CAP_MINUTES, Math.max(60, minutesUntilDawn(state.minute), toRested));
+      const minutes = Math.min(SLEEP_CAP_MINUTES, Math.max(60, minutesUntilDawn(state.minute, state.startDoy), toRested));
       return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 9 h; ${bedText(state, world)}`, duration: minutes });
     }
     case "melt": {

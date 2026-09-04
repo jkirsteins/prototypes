@@ -292,6 +292,8 @@ export interface SkillState {
 
 export interface GameState {
   seed: number;
+  /** Day of year the run began on, 0-based; 1 April unless the harness or the browser says otherwise. */
+  startDoy: number;
   minute: number;
   rng: number;
   player: Player;

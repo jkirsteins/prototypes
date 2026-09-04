@@ -1,7 +1,7 @@
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
-import { calendar } from "./calendar";
+import { calendar, START_DOY } from "./calendar";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
@@ -37,6 +37,7 @@ export function deserialize(text: string): SaveFile | null {
  * region: by not having it yet.
  */
 function fillDefaults(state: GameState): void {
+  state.startDoy ??= START_DOY;
   state.skills ??= newSkills();
   state.intent ??= null;
   state.ledger ??= [];
@@ -163,7 +164,7 @@ export function catchUp(state: GameState, world: World, realSecondsElapsed: numb
   const before = state.log.length;
   const firstMinute = state.minute;
   const region = state.player.region;
-  const cal = calendar(state.minute);
+  const cal = calendar(state.minute, state.startDoy);
   // The whole order is copied: a job that finishes while away is removed with
   // its counters, and its "until" is what says how many completions that took.
   const snap = ordersHere(state, world).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));

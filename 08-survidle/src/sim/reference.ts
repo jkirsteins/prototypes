@@ -13,7 +13,7 @@
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
-import { calendar } from "./calendar";
+import { calendar, START_DOY } from "./calendar";
 import { addItem, freshTool, listItems, pile } from "./inventory";
 import { FOODS, TOOLS } from "./items";
 import { giveOrder, withinLadder } from "./ladder";
@@ -184,8 +184,8 @@ export class ReferencePlayer {
   }
 }
 
-export function setUpReference(seed: number, kitted = false): { state: GameState; world: World; player: ReferencePlayer } {
-  const g = newGame(seed);
+export function setUpReference(seed: number, kitted = false, startDoy = START_DOY): { state: GameState; world: World; player: ReferencePlayer } {
+  const g = newGame(seed, startDoy);
   if (kitted) kitOut(g.state, g.world);
   return { ...g, player: new ReferencePlayer() };
 }
@@ -216,7 +216,7 @@ function checkpoint(state: GameState, world: World, day: number): ReferenceRepor
   const stocks: Record<string, number> = {};
   for (const { item, qty } of listItems(camp)) stocks[item] = Math.round(qty * 10) / 10;
   return {
-    day, dayOfYear: calendar(state.minute).dayOfYear, kcal: Math.round(p.kcal), water: Math.round(p.water * 10) / 10, warmth: Math.round(p.warmth), health: Math.round(p.health),
+    day, dayOfYear: calendar(state.minute, state.startDoy).dayOfYear, kcal: Math.round(p.kcal), water: Math.round(p.water * 10) / 10, warmth: Math.round(p.warmth), health: Math.round(p.health),
     stocks, tools: p.tools.map((t) => `${TOOLS[t.id].name} ${Math.round(t.durability)}`),
     week: weekBefore(state.ledger, day),
   };
@@ -251,14 +251,14 @@ export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
 }
 
 /** Runs the set-up a day at a time for `days` days or until death, whichever is first. */
-export function runReference(seed: number, days: number, kitted = false): ReferenceReport {
-  const ref = setUpReference(seed, kitted);
+export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {
+  const ref = setUpReference(seed, opts.kitted ?? false, opts.startDoy ?? START_DOY);
   const { state, world } = ref;
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
   for (let d = 1; d <= days && !state.dead; d++) {
     stepReference(ref, 1440);
-    const day = calendar(state.minute).day;
+    const day = calendar(state.minute, state.startDoy).day;
     for (const c of CHECKPOINT_DAYS) {
       if (day >= c && !seen.has(c)) {
         seen.add(c);
@@ -266,7 +266,7 @@ export function runReference(seed: number, days: number, kitted = false): Refere
       }
     }
   }
-  const day = calendar(state.dead ? state.dead.minute : state.minute).day;
+  const day = calendar(state.dead ? state.dead.minute : state.minute, state.startDoy).day;
   // A death landing exactly on a checkpoint day is already recorded by the loop above.
   if (state.dead && checkpoints[checkpoints.length - 1]?.day !== day) checkpoints.push(checkpoint(state, world, day));
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };

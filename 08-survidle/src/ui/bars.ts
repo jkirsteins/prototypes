@@ -30,7 +30,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
   const roof = st.structures.leanTo || st.structures.cabin;
-  const ambient = ambientTemperature(calendar(state.minute), state.weather);
+  const ambient = ambientTemperature(calendar(state.minute, state.startDoy), state.weather);
   const burnsFor = fmtDuration((total / burnPerHour(state.weather, ambient, roof)) * 60);
   const fireText = st.fire.wetKg > 0
     ? `${st.fire.fuelKg.toFixed(1)} kg dry, ${st.fire.wetKg.toFixed(1)} kg wet, ${burnsFor}`
