@@ -233,23 +233,27 @@ but every entry must be one the panel offers.
 12. Make a stone knife, once.
 13. Make a bark bucket, until camp has 2.
 14. Make a fishing spear, once.
-15. Fish for anything, keep camp at 1 kg fish, bringing it to camp.
-16. Cook fish, keep camp at 1 kg; cook meat, keep camp at 1 kg.
-17. Make a snare, keep camp at 1; set snares, five times.
-18. Make a bow, once; make arrows, keep camp at 10.
-19. Hunt anything, keep camp at 2 kg raw meat, bringing it to camp.
-20. Build a drying rack; hang meat, keep camp at 10 kg dried meat.
+15. Cook fish, keep camp at 1 kg; cook meat, keep camp at 1 kg.
+16. Build a drying rack; hang meat, keep camp at 10 kg dried meat.
+17. Fish for anything, keep camp at 1 kg fish, bringing it to camp.
+18. Make a snare, keep camp at 1; set snares, five times.
+19. Make a bow, once; make arrows, keep camp at 10.
+20. Hunt anything, keep camp at 2 kg raw meat, bringing it to camp.
 21. Make a stone axe, keep camp at 1 axe.
 22. Fell trees, forever, bringing it to camp.
 
 The runner never gathers a prerequisite on its own, so the list is
 ordered as a competent day one is: water at the top, where it waits for
 its bucket; then everything a fire and a roof need, in dependency order,
-with the arrival axe; then the knife and what it unlocks. Tools the
-survivor holds are once jobs, since the first one made is taken up and a
-keep would craft a second; the axe stays a keep because the arrival axe
-wears out and the spare is the point. Auto-eat, auto-feed and
-auto-drink stay on, as they are for every player.
+with the arrival axe; then the knife and what it unlocks. The scheduler
+is greedy top-down, so a competent player ranks eating what is already
+caught above catching more of it: the cook keeps sit above the fish
+keep, and the rack job and the dried-meat keep sit above the hunt keep,
+right after the cook keeps - both block harmlessly with nothing to cook
+or hang. Tools the survivor holds are once jobs, since the first one
+made is taken up and a keep would craft a second; the axe stays a keep
+because the arrival axe wears out and the spare is the point. Auto-eat,
+auto-feed and auto-drink stay on, as they are for every player.
 
 **What it prints.** Per seed, one block: the ring the start took; then a
 line at day 30, 90 and 245 with kcal, water, warmth, health, and camp

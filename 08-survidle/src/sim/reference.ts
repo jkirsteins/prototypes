@@ -31,11 +31,15 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * fire pit; the fire drill (needing no knife); the keep that lights the
  * fire and relights it; two trees split into firewood to feed it; and the
  * lean-to. Then the knife and what it unlocks come before the drill and
- * the vessel before the water keep can ever do anything with it. Tools the
- * survivor holds are once jobs, since the first one made is taken up and a
- * keep would craft a second; the axe stays a keep because the arrival axe
- * wears out and the spare is the point. Auto-eat, auto-feed and auto-drink
- * stay on, as they are for every player.
+ * the vessel before the water keep can ever do anything with it. The
+ * scheduler is greedy top-down, so a competent player ranks eating what is
+ * already caught above catching more of it: the cook keeps sit above the
+ * fish keep, and the rack job and the dried-meat keep sit above the hunt
+ * keep, right after the cook keeps - both block harmlessly with nothing to
+ * cook or hang. Tools the survivor holds are once jobs, since the first one
+ * made is taken up and a keep would craft a second; the axe stays a keep
+ * because the arrival axe wears out and the spare is the point. Auto-eat,
+ * auto-feed and auto-drink stay on, as they are for every player.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -52,16 +56,16 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "once" }, "knife"),
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("craft", { kind: "once" }, "fishingSpear"),
-  keep("fish", 1, "any"),
   keep("cook", 1, "fish"),
   keep("cook", 1),
+  job("build", { kind: "once" }, "dryingRack"),
+  keep("hang", 10),
+  keep("fish", 1, "any"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
-  job("build", { kind: "once" }, "dryingRack"),
-  keep("hang", 10),
   keep("craft", 1, "axe"),
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
