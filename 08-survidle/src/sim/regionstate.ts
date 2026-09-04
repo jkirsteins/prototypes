@@ -76,17 +76,15 @@ export function discovery(state: GameState, id: number): 0 | 1 | 2 {
 /** Entering a region discovers it and shows its neighbours from a distance. */
 export function enterRegion(state: GameState, world: World, id: number): void {
   const before = discovery(state, id);
-  // Empty only for the very first region ever discovered in this world: the
-  // landing spot, which the record already carries in the survivor's landed
-  // date. A later survivor landing into a world already explored still gets
-  // an entered line for new ground.
-  const landing = Object.keys(state.discovered).length === 0;
   state.discovered[id] = VISITED;
   regionState(state, world, id);
   const r = regionAt(world, id);
   for (const nb of r.neighbours) {
     if (!state.discovered[nb.id]) state.discovered[nb.id] = SEEN;
   }
-  if (before !== VISITED && state.minute > 0) log(state, `New ground: ${r.name}.`, "good");
-  if (before !== VISITED && !landing) record(state, { kind: "entered", region: r.name });
+  // A landing happens at minute 0, so this also keeps a heir's arrival out of the record, the same as the log line.
+  if (before !== VISITED && state.minute > 0) {
+    log(state, `New ground: ${r.name}.`, "good");
+    record(state, { kind: "entered", region: r.name });
+  }
 }

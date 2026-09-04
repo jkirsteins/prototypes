@@ -47,6 +47,8 @@ describe("the record's seams", () => {
 
   it("records a region entered once and a build finished", () => {
     const { state, world } = newGame(8);
+    // Past minute 0, the same as the log line's own guard: minute 0 is the landing, never recorded.
+    state.minute = 60;
     const r = regionAt(world, state.player.region);
     const other = r.neighbours[0].id;
     enterRegion(state, world, other);
