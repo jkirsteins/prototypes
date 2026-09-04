@@ -1100,6 +1100,27 @@ numbers they are measured in, and are re-run then. The
 horizon is the check-in interval, and it is what "increasingly idle"
 means here: the camp holds longer, and the ramp still ends it.
 
+`npm run reference` runs the from-scratch player through the hourly
+script on four seeds and passes 2 of 4 on the April gate. Seed 17 and
+seed 19 reach day 21 and die of starvation on day 24; seed 42 dies of
+wolves on day 3; seed 79 dies of thirst on day 2. Before the ladder,
+giving every order on day one passed all four seeds, dying of starvation
+on day 22 or 23. The two early deaths trace to the once jobs: a once job
+is a single trip and drops off the list, so the by-hand player walks
+about twice the minutes of the old scheduler in the first two days, which
+pushes the first lit fire 12 to 24 hours later, and with no vessel and no
+fire in reach when the shore ices over on day 2 there is nothing left to
+drink. Seed 42's wolves are a dehydration death: water hits zero at day 2
+12h, sleep outranks thirst overnight, health falls from 78 to 21 and
+never climbs past 11, and wolves take the last 11 points at camp on the
+night of day 3. `npm run horizon` runs the same four seeds through the
+three stages on a stocked camp with no player: manual holds 1 to 5 days,
+freezing or thirst; jobs and grinds hold 4 to 6 days, thirst or freezing;
+keeps hold 6 to 13 days, thirst on every seed. Eleven of the twelve rows
+sit over their provisional band; only manual on seed 42 lands inside it.
+That gap is the calibration pass's material, and the bands stay as
+written until the pass moves the numbers they are measured in.
+
 ### The calibration pass
 
 **Curve.** The pass is what makes every band honest: the horizon bands

@@ -25,7 +25,11 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   orders. "Keep camp at 40 kg firewood" triggers when the pile drops under
   20 and splits back up to 40; "Fell trees, forever, bringing it to camp"
   soaks up every spare hour. Jobs ("build a cabin", "make 20 arrows") drop
-  off when done. The list is ranked: each free minute the game serves the
+  off when done. Each kind is earned per skill: a job (N times or until
+  camp has N) opens at level 3 in the task's skill, a grind (forever) at 5,
+  a keep (keep camp at N) at 10, and a once job is always open. A row below
+  its skill's level greys and names the level that opens it. The list is
+  ranked: each free minute the game serves the
   highest order that is unmet and can start, finishes any load it owes
   camp first, and never switches mid-task. A blocked order shows why
   ("needs an axe", "missing materials at camp") and waits; a job placed
@@ -133,6 +137,8 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   50 and 95 percent it gives skill-wide perks. Gates are soft: a button
   says "Hunting 8" and stays live, but under it the odds halve per level
   short and an elk can hurt you; a craft under level can spoil the piece.
+  The skills panel marks the three order-kind rungs (3, 5, 10) on each
+  skill and reads how far off the next one is, "jobs 3, 8 h to go".
 - **Away.** Close the tab and the world keeps going. On return the elapsed
   time is simulated, up to 24 real hours (60 game days), and a panel tells
   you what happened, and, above the log, what each order did while you
@@ -169,6 +175,12 @@ problem for a beginner with fire, a roof and water at the deficit the yield
 tables allow. The calibration pass on the roadmap revisits this number. `npm run
 reference -- --kitted` runs a diagnostic that starts with tools and a
 fire already in hand instead of from scratch. It is not part of `npm test`.
+
+`npm run horizon` runs a stocked camp with no player forward for up to 30
+days on the same four seeds, at each stage of the delegation ladder in
+turn (manual only, jobs and grinds, keeps), and reports the day and cause
+of the first death. It checks how long an idle camp holds at each stage,
+against the roadmap's provisional bands. It is not part of `npm test`.
 
 ## Where the numbers live
 
