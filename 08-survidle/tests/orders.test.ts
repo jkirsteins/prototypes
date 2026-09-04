@@ -127,6 +127,16 @@ describe("when an order is met", () => {
     expect(orderMet(state, world, o, false)).toBe(false);
   });
 
+  it("a keep on a kit item counts the pack too, since that is where camp's kit sits while an order carries it out", () => {
+    const { state, world } = newGame(3);
+    const snares = addOrder(state, world, { task: "craft", arg: "snare", until: { kind: "campHas", qty: 1 }, deliver: "leave", where: "nearest" }, "keep");
+    addItem(state.player.pack, "snare", 1);
+    expect(orderMet(state, world, snares, true)).toBe(true);
+    const arrows = addOrder(state, world, { task: "craft", arg: "arrows", until: { kind: "campHas", qty: 10 }, deliver: "leave", where: "nearest" }, "keep");
+    addItem(state.player.pack, "arrow", 10);
+    expect(orderMet(state, world, arrows, true)).toBe(true);
+  });
+
   it("a grind is never met; jobs are met by their until, and a build by the structure standing", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);

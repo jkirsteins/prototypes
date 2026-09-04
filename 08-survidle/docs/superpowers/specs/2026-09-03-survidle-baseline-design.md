@@ -167,6 +167,8 @@ after its first delivery. Vessels are tools on the body and need nothing.
 The same kit pocketing covers a set-snares job: snares from the camp
 pile, up to what the order still needs, so the heath build does not
 block on "needs a snare" when its material is sitting at camp instead.
+A kit item in the pack still counts as camp's stock for a keep, since
+the pack is where camp's kit is while it is in use.
 
 ## 5. Wet wood
 

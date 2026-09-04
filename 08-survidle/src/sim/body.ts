@@ -259,6 +259,14 @@ function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it:
 /** Arrows a bow hunt carries out of camp. */
 export const ARROWS_TO_CARRY = 10;
 
+/**
+ * Items an order carries out of camp to do its work, rather than gathering
+ * or crafting toward a stock left there: a keep on one of these is still a
+ * promise about camp, but the pack is where camp's kit sits while a live
+ * order has it out, so a keep on it has to count the pack too.
+ */
+export const KIT_ITEMS = new Set<ItemId>(["arrow", "snare"]);
+
 /** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job. */
 export function orderKit(state: GameState): ItemId[] {
   const it = state.intent;

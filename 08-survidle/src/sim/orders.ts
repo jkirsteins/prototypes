@@ -8,6 +8,7 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
+import { KIT_ITEMS } from "./body";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
@@ -69,15 +70,19 @@ export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
 /**
  * Whether the order asks for nothing right now. A keep is unmet under half
  * its target when idle and until the target once it is the live order, so
- * one low fire does not send the runner home to split a single log. Only
- * the camp pile counts: a keep is a promise about camp.
+ * one low fire does not send the runner home to split a single log. The
+ * camp pile counts: a keep is a promise about camp. A kit item (arrow,
+ * snare) counts the pack too - a live order can only be carrying it
+ * because that pile is where camp's own kit is while it is in use, so a
+ * keep that carries its own stock out must not read itself as unmet the
+ * moment it does.
  */
 export function orderMet(state: GameState, world: World, o: Order, live: boolean): boolean {
   const st = regionState(state, world, state.player.region);
   const camp = pile(state, st.campCell);
   const keep = keepTarget(o);
   if (keep) {
-    const have = qty(camp, keep.item);
+    const have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
     return live ? have >= keep.qty - 1e-9 : have >= keep.qty / 2 - 1e-9;
   }
   if (o.kind === "grind") return false;
