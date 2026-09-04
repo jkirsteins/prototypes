@@ -86,10 +86,14 @@ function kitOut(state: GameState, world: World): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
+  // One bucket in hand, empty: the fill task needs a vessel in hand, judged
+  // at the shore where the camp pile is out of reach (spec 2.2). The second
+  // sits at camp as capacity, same as a from-scratch camp would build up.
+  p.tools.push(freshTool("barkBucket"));
   addItem(p.pack, "arrow", 10);
   addItem(p.pack, "driedMeat", 5);
   const camp = pile(state, st.campCell);
-  addItem(camp, "barkBucket", 2);
+  addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);
   st.structures.firePit = true;
 }
