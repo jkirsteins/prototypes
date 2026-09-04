@@ -1,8 +1,9 @@
 /**
  * The reference player: the set-up a competent player writes on day one,
- * run headless. It is the baseline's gate (alive on game day
- * REFERENCE_TARGET_DAY, three weeks, on four seeds, from scratch, in
- * April) and, later, the survivor loop's instrument. The runner never
+ * run headless. It is the baseline's gate (alive and fed on
+ * REFERENCE_TARGET_DAY, derived from the reserve and the burn band, on
+ * four seeds, from scratch, in April) and, later, the survivor loop's
+ * instrument. The runner never
  * gathers a prerequisite on its own, so the list orders every dependency
  * before what needs it: water at the top, where it waits on its own
  * vessel; then everything a fire and a roof need, in the order they need
@@ -14,14 +15,15 @@
 import type { World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY } from "./calendar";
-import { addItem, freshTool, listItems, pile } from "./inventory";
-import { FOODS, TOOLS } from "./items";
+import { addItem, freshTool, listItems, pile, qty } from "./inventory";
+import { FOODS, type FoodId, TOOLS } from "./items";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
-import { newGame } from "./newgame";
+import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
+import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
-import { BURN, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { APRIL, BURN, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import type { DeathCause, GameState, IntentRequest, Order, OrderKind } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
@@ -85,13 +87,45 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
 
 /** The reference seeds. */
 export const REFERENCE_SEEDS = [17, 19, 42, 79];
-/** The gate: alive on this game day, from the arrival kit, in April (section 13).
- * Three weeks: a beginner with fire, a roof and water at the deficit the yield
- * tables allow. The calibration pass on the roadmap revisits this number. */
-export const REFERENCE_TARGET_DAY = 21;
+/**
+ * The April gate (spec 7.1): the day a beginner who eats the least the
+ * tables allow and burns the most runs out of fat. Derived, so it moves
+ * when the burn band, the reserve or the kit moves and not otherwise.
+ */
+export const REFERENCE_TARGET_DAY = Math.floor(
+  (FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg) / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
+);
+/** The kitted camp's gate: a month, until C's trap moves it to December. */
+export const KITTED_TARGET_DAY = 30;
+/** The food clause: kcal at camp that counts as a beginner's day of food, the middle of the April band. */
+export const FOOD_CLAUSE_KCAL = 500;
 /** The day 1 December falls on from a 1 April start; kept as a late checkpoint, not a gate. */
 export const DECEMBER_DAY = 245;
-const CHECKPOINT_DAYS = [REFERENCE_TARGET_DAY, 90, DECEMBER_DAY];
+
+export type Gate = { kind: "day"; day: number } | { kind: "firstSnow" };
+
+/** A spring start is measured on its target day; a start from July on is measured at the first snow (spec 7.3). */
+export function gateFor(startDoy: number, kitted: boolean): Gate {
+  if (startDoy >= 181) return { kind: "firstSnow" };
+  return { kind: "day", day: kitted ? KITTED_TARGET_DAY : REFERENCE_TARGET_DAY };
+}
+
+/** kcal of food lying at this region's camp. */
+export function campFoodKcal(state: GameState, world: World): number {
+  const camp = pile(state, regionState(state, world, state.player.region).campCell);
+  let kcal = 0;
+  for (const f of Object.keys(FOODS) as FoodId[]) kcal += qty(camp, f) * FOODS[f].kcalPerKg;
+  return kcal;
+}
+
+/** The food clause at a checkpoint: the stomach above zero, or a beginner's day of food at camp. */
+export function fed(kcal: number, food: number): boolean {
+  return kcal > 0 || food >= FOOD_CLAUSE_KCAL;
+}
+
+function checkpointDays(gate: Gate): number[] {
+  return gate.kind === "day" ? [gate.day, 90, DECEMBER_DAY] : [90, DECEMBER_DAY];
+}
 
 /**
  * The gate's pass criterion: not dead on or before the target day. A run
@@ -204,10 +238,28 @@ export function stepReference(ref: { state: GameState; world: World; player: Ref
 export interface ReferenceReport {
   seed: number;
   startRing: number;
-  /** Day, kcal, water, warmth, health and camp stocks at each checkpoint reached, with the week before it. */
-  checkpoints: { day: number; dayOfYear: number; kcal: number; water: number; warmth: number; health: number; stocks: Record<string, number>; tools: string[]; week: WeekAverage }[];
+  /** Day, kcal, water, warmth, health, food, fed and camp stocks at each checkpoint reached, with the week before it. */
+  checkpoints: {
+    day: number;
+    dayOfYear: number;
+    kcal: number;
+    water: number;
+    warmth: number;
+    health: number;
+    food: number;
+    fed: boolean;
+    stocks: Record<string, number>;
+    tools: string[];
+    week: WeekAverage;
+  }[];
   outcome: { kind: "died"; day: number; cause: DeathCause } | { kind: "reached"; day: number };
   passed: boolean;
+  /** The gate this run was measured against (spec 7.3). */
+  gate: Gate;
+  /** The gate's day, resolved: the target day for a "day" gate, the day of first snow for a "firstSnow" gate, or null if snow never fell. */
+  gateDay: number | null;
+  /** The day the first snow fell, if it did within `days`. */
+  firstSnowDay: number | null;
 }
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
@@ -215,8 +267,10 @@ function checkpoint(state: GameState, world: World, day: number): ReferenceRepor
   const camp = pile(state, regionState(state, world, p.region).campCell);
   const stocks: Record<string, number> = {};
   for (const { item, qty } of listItems(camp)) stocks[item] = Math.round(qty * 10) / 10;
+  const food = campFoodKcal(state, world);
   return {
     day, dayOfYear: calendar(state.minute, state.startDoy).dayOfYear, kcal: Math.round(p.kcal), water: Math.round(p.water * 10) / 10, warmth: Math.round(p.warmth), health: Math.round(p.health),
+    food: Math.round(food), fed: fed(p.kcal, food),
     stocks, tools: p.tools.map((t) => `${TOOLS[t.id].name} ${Math.round(t.durability)}`),
     week: weekBefore(state.ledger, day),
   };
@@ -252,14 +306,23 @@ export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
 
 /** Runs the set-up a day at a time for `days` days or until death, whichever is first. */
 export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {
-  const ref = setUpReference(seed, opts.kitted ?? false, opts.startDoy ?? START_DOY);
+  const kitted = opts.kitted ?? false;
+  const startDoy = opts.startDoy ?? START_DOY;
+  const ref = setUpReference(seed, kitted, startDoy);
   const { state, world } = ref;
+  const gate = gateFor(startDoy, kitted);
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
+  let firstSnowDay: number | null = null;
   for (let d = 1; d <= days && !state.dead; d++) {
     stepReference(ref, 1440);
     const day = calendar(state.minute, state.startDoy).day;
-    for (const c of CHECKPOINT_DAYS) {
+    if (gate.kind === "firstSnow" && firstSnowDay === null && state.weather.snowCm > 0) {
+      firstSnowDay = day;
+      seen.add(day);
+      checkpoints.push(checkpoint(state, world, day));
+    }
+    for (const c of checkpointDays(gate)) {
       if (day >= c && !seen.has(c)) {
         seen.add(c);
         checkpoints.push(checkpoint(state, world, day));
@@ -270,6 +333,10 @@ export function runReference(seed: number, days: number, opts: { kitted?: boolea
   // A death landing exactly on a checkpoint day is already recorded by the loop above.
   if (state.dead && checkpoints[checkpoints.length - 1]?.day !== day) checkpoints.push(checkpoint(state, world, day));
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
-  const passed = passesGate(state.dead ? day : null, REFERENCE_TARGET_DAY);
-  return { seed, startRing: world.startRing, checkpoints, outcome, passed };
+  const gateDay = gate.kind === "day" ? gate.day : firstSnowDay;
+  // The checkpoint taken as the gate day rolled over is the first at or past it: a
+  // death after the gate comes later in the list, and a death before it fails passesGate.
+  const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
+  const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
+  return { seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay };
 }

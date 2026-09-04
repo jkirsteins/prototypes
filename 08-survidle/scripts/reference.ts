@@ -1,22 +1,26 @@
 /**
  * The reference player's verdict: one block per seed, then passed N of M.
  * Run: npm run reference, or npx vite-node scripts/reference.ts 17 19 42 79 250
- * (seeds, then days). Exit code 1 when any seed fails. The gate is REFERENCE_TARGET_DAY.
+ * (seeds, then days). Exit code 1 when any seed fails. The gate is gateFor's
+ * result for the run's start and kit: REFERENCE_TARGET_DAY in spring from
+ * scratch, KITTED_TARGET_DAY in spring kitted, first snow from July on.
  *
  * --kitted, anywhere in the args, also runs the audit's kitted camp (spec 8):
  * the arrival kit plus the from-scratch list's own tools and structures,
- * already in hand. It prints as a second block per seed, with no pass line
- * of its own and no effect on the exit code - the from-scratch run is still
- * the gate. It answers a different question (does an established camp
- * hold?) from the from-scratch run (can the list bootstrap one in time?),
- * so it stays a diagnostic, not a second gate (spec 13).
+ * already in hand. It prints as a second block per seed, with its own pass
+ * line at its own gate (30 days) but no effect on the exit code - the
+ * from-scratch run is still the gate. It answers a different question (does
+ * an already-established camp hold?) from the from-scratch run (can the
+ * list bootstrap one in time?), so it stays a diagnostic, not a second gate
+ * (spec 13).
  *
  * --start=<doy>, anywhere in the args, opens the run on that day of year
  * instead of 1 April: 200 is 20 July, 235 is 24 August. It is a harness aid
- * for reading the tables against a summer or autumn start, not a second gate.
+ * for reading the tables against a summer or autumn start, not a second
+ * gate; a start from July on (spec 7.3) is measured at the first snow.
  */
 import { calendar, fmtDate } from "../src/sim/calendar";
-import { REFERENCE_SEEDS, REFERENCE_TARGET_DAY, runReference, weekLines } from "../src/sim/reference";
+import { REFERENCE_SEEDS, runReference, weekLines } from "../src/sim/reference";
 
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
@@ -37,12 +41,12 @@ function runBlock(seed: number, kit: boolean): boolean {
   console.log(`seed ${seed}${kit ? " (kitted)" : ""}${from}: start found at ring ${r.startRing}`);
   for (const c of r.checkpoints) {
     const stocks = Object.entries(c.stocks).map(([k, v]) => `${k} ${v}`).join(", ") || "nothing";
-    console.log(`  day ${c.day}: kcal ${c.kcal}, water ${c.water} l, warmth ${c.warmth}, health ${c.health}; camp: ${stocks}; tools: ${c.tools.join(", ") || "none"}`);
+    console.log(`  day ${c.day}: kcal ${c.kcal}, water ${c.water} l, warmth ${c.warmth}, health ${c.health}, food at camp ${c.food} kcal, fed: ${c.fed ? "yes" : "no"}; camp: ${stocks}; tools: ${c.tools.join(", ") || "none"}`);
     for (const line of weekLines(c.week, c.dayOfYear)) console.log(`    ${line}`);
   }
   const outcome = r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `reached day ${r.outcome.day}`;
-  // The kitted block is a diagnostic (spec 13): it prints the outcome with no pass line of its own.
-  const passLine = !kit && r.passed ? `alive on day ${REFERENCE_TARGET_DAY}, ` : "";
+  const gateText = r.gate.kind === "day" ? `day ${r.gate.day}` : r.firstSnowDay === null ? "first snow (none yet)" : `first snow, day ${r.firstSnowDay}`;
+  const passLine = r.passed ? `alive and fed at ${gateText}, ` : `gate ${gateText}: failed, `;
   console.log(`  ${passLine}${outcome}`);
   console.log(`  (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return r.passed;
