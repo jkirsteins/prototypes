@@ -430,7 +430,16 @@ storehouse to go.
 **The buildings.** The cabin made properly expensive for one person.
 Woodshed, smokehouse, raised cache or cellar, storehouse, tool shed,
 palisade, a chimney or vent as part of a shelter, roofs with a snow load
-they can fail under, water storage. Every building is an answer to a
+they can fail under, water storage. The woodshed comes with the rule it
+exists for: wood gets wet by lying in the rain, not by being split in
+it. Today a log split in rain, or within six hours of it, comes out wet
+unless the camp has a roof, which gives the right day-to-day result and
+the wrong story. The honest model is a firewood pile that takes on water
+in rain at a camp with no cover and dries in sun, wind or by the fire,
+with a roof (the lean-to's overhang, then the woodshed) keeping the pile
+dry, and splitting allowed anywhere in any weather since a soaked log is
+dry inside. The split-in-rain rule and its roof exception go when that
+lands. Every building is an answer to a
 threat from 1, 4, 7 or 8, and its cost is tuned against that threat.
 Water storage and the cellar are the two that answer what A's build
 measured, and they come first.
@@ -1014,6 +1023,21 @@ tables in "What the north yields" into the game's numbers, measured:
   exists. Add a food-at-checkpoint clause too - kcal above zero, or a
   floor on food at camp - so the gate measures the loop the list runs
   rather than the fat reserve alone.
+- **The fuel keep, and the trip.** "Keep the fire lit" is a keep on a
+  flag because lighting makes nothing the pile can count; the honest
+  order is "keep the fire at N kg", a keep on the fuel itself, whose task
+  is light when the fire is out and feed when it is low, so the player
+  chooses how big a fire to hold and pays its burn rate. What it asks of
+  the runner is judgement, not a safety net: leaving camp for a trip
+  longer than the fire will last, it banks the fire first, coals covered
+  to burn low and long, which is what keeps the spread rule honest (a
+  big fire left alone on dry ground walks off camp) and what a person
+  does; far from camp and delayed, it lets the fire go out rather than
+  rush back, since nobody walks three kilometres home to feed a fire;
+  home again, it relights from the embers in minutes if any are left and
+  from the drill if not. The order's row says which of those it is doing.
+  This lands with the pass because its cost is hours of work the gate
+  measures.
 - **Not in this pass:** yields that need new content (the trap, the
   skill tiers, the cellar) stay with C and 3; the pass only moves numbers
   the game already has.
