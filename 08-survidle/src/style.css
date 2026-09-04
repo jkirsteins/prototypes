@@ -349,6 +349,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 #overlay h1 { margin: 0 0 8px; font-size: 20px; }
 #overlay .box button.act { width: auto; display: inline-block; margin-top: 12px; }
+.grave { margin: 4px 0; }
+.season { margin-bottom: 6px; }
+#overlay .box input[data-name] { width: 14em; }
 
 @media (max-width: 1300px) {
   #app { grid-template-columns: 1fr 1fr; }

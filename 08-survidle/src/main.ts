@@ -8,13 +8,16 @@ import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
+import { since } from "./sim/epitaph";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { giveOrder, orderGate } from "./sim/ladder";
+import { beginAgain, land, rerollName } from "./sim/landing";
 import { newGame } from "./sim/newgame";
 import { moveOrder, removeOrder } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
+import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
@@ -25,8 +28,8 @@ import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
-  awayHtml, clockHtml, deathHtml, doHtml, gearHtml, inventoryHtml, logHtml,
-  regionHtml, skillsHtml, statsHtml, taskHtml,
+  awayHtml, cemeteryHtml, clockHtml, doHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
+  regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel, stripRequest, type UiState } from "./ui/render";
 import { updateSky } from "./ui/sky";
@@ -68,8 +71,9 @@ function boot() {
     world = generateWorld(state.seed);
     fillPopulations(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
-    if (elapsed > 30 && !state.dead) {
+    if (elapsed > 30 && !state.dead && !state.landing) {
       setCueSink(null);
+      ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, elapsed, speed);
       setCueSink((c) => sounds.cue(c));
       awayInfo = { seconds: Math.min(elapsed, MAX_OFFLINE_SECONDS), capped: elapsed > MAX_OFFLINE_SECONDS };
@@ -100,15 +104,22 @@ function render() {
   setPanel("actions", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
+  setPanel("journal", journalHtml(state, cal));
   updateBars(state, world);
   updateSky(state, cal, ambient);
 
   const overlay = document.getElementById("overlay")!;
-  if (state.dead) {
-    setPanel("overlay", deathHtml(state, world, cal));
+  if (ui.cemetery) {
+    setPanel("overlay", cemeteryHtml(state, ui));
     overlay.hidden = false;
   } else if (ui.away) {
-    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false));
+    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay)));
+    overlay.hidden = false;
+  } else if (state.landing) {
+    setPanel("overlay", landingHtml(state, world));
+    overlay.hidden = false;
+  } else if (state.dead) {
+    setPanel("overlay", tombstoneHtml(state, world));
     overlay.hidden = false;
   } else {
     overlay.hidden = true;
@@ -120,10 +131,11 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !ui.away) {
+  if (!state.dead && !state.landing && !ui.away) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
+      ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, dtSec, speed);
       setCueSink((c) => sounds.cue(c));
       awayInfo = { seconds: Math.min(dtSec, MAX_OFFLINE_SECONDS), capped: dtSec > MAX_OFFLINE_SECONDS };
@@ -135,7 +147,7 @@ function frame(now: number) {
   }
   render();
   const cal = calendar(state.minute, state.startDoy);
-  sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !ui.away && document.visibilityState !== "hidden");
+  sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
     lastSave = now;
     saveGame(state);
@@ -214,7 +226,37 @@ function onClick(ev: Event) {
     case "abandon-yes":
       abandon(state, regionAt(world, state.player.region).name);
       break;
-    case "restart":
+    case "begin-again":
+      beginAgain(state, world);
+      break;
+    case "reroll-name":
+      rerollName(state);
+      break;
+    case "land":
+      land(state, world);
+      break;
+    case "cemetery":
+      ui.cemetery = true;
+      ui.confirmLeave = false;
+      break;
+    case "cemetery-open":
+      ui.cemetery = true;
+      ui.cemeteryOpen = Number(target.dataset.index);
+      break;
+    case "cemetery-close":
+      ui.cemetery = false;
+      ui.cemeteryOpen = null;
+      ui.confirmLeave = false;
+      break;
+    case "leave-world":
+      ui.confirmLeave = true;
+      break;
+    case "leave-world-no":
+      ui.confirmLeave = false;
+      break;
+    case "leave-world-yes":
+      ui.cemetery = false;
+      ui.confirmLeave = false;
       clearSave();
       fresh();
       break;
@@ -291,8 +333,15 @@ document.addEventListener("keydown", (ev) => {
 // focus (a redraw between keystrokes is what used to eat the field's focus).
 document.addEventListener("input", (ev) => {
   const el = ev.target as HTMLInputElement;
-  if (!el.matches("[data-strip-n]")) return;
-  commitStripN(ui, el.value);
+  if (el.matches("[data-strip-n]")) {
+    commitStripN(ui, el.value);
+  } else if (el.matches("[data-name]") && state.landing) {
+    const t = el.value.trim();
+    const i = t.indexOf(" ");
+    state.landing.name = i < 0
+      ? { first: t || state.landing.name.first, last: state.landing.name.last }
+      : { first: t.slice(0, i), last: t.slice(i + 1).trim() };
+  }
 });
 document.addEventListener("change", (ev) => {
   const el = ev.target as HTMLInputElement;

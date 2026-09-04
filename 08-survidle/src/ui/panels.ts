@@ -9,13 +9,18 @@ import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventor
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
+import { entry, epitaph, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
+import { daysInWords, landingDate } from "../sim/landing";
 import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
+import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
-import { DEATH_LINES, FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
+import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
+import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
-import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
+import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
+import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
@@ -525,25 +530,60 @@ export function logHtml(state: GameState): string {
     .join("")}</div>`;
 }
 
-function bestSkill(state: GameState): string {
-  const best = SKILL_IDS.map((id) => ({ id, l: skillLevel(state, id) })).sort((a, b) => b.l - a.l)[0];
-  return `Best skill: ${SKILL_NAMES[best.id]} ${best.l}.`;
+/** The entry's later lines (the epitaph itself is shown separately), one row per line. */
+function entryLinesHtml(lines: string[]): string {
+  return `<div class="entries">${lines.map((l) => `<div class="e">${esc(l)}</div>`).join("")}</div>`;
 }
 
-export function deathHtml(state: GameState, world: World, cal: Calendar): string {
-  const d = state.dead!;
-  const cause = DEATH_LINES[d.cause];
-  const s = state.stats;
-  const story = state.log.filter((e) => e.minute <= d.minute && e.text !== DEATH_LINES[d.cause]).slice(-3);
+export function tombstoneHtml(state: GameState, _world: World): string {
+  const rec = current(state);
+  const next = landingDate(worldDate(state, state.dead!.minute)).date;
+  const lines = entry(rec);
   return `<div class="box">
-<h1>Dead</h1>
-<p>${cause} ${fmtDate(cal)}, day ${cal.day} of the run, at ${esc(regionAt(world, state.player.region).name)}.</p>
-${story.length ? `<div class="entries">${story.map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`).join("")}</div>` : ""}
-<p>${s.trees} trees felled. ${s.animals} animals taken. ${s.structures} things built. ${s.km.toFixed(1)} km walked.</p>
-<p>${bestSkill(state)}</p>
-<p class="dim">The save is gone. There is no coming back from this one.</p>
-<button class="act" data-act="restart">Begin again, somewhere new</button>
+<h1>${esc(fmtName(rec.name))}</h1>
+<p>${esc(epitaph(rec))}</p>
+${entryLinesHtml(lines.slice(1))}
+<p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
+<button class="act" data-act="begin-again">Begin again</button>
+<button class="mini" data-act="cemetery">cemetery</button>
 </div>`;
+}
+
+export function landingHtml(state: GameState, world: World): string {
+  const l = state.landing!;
+  const last = current(state);
+  return `<div class="box">
+<h1>${esc(fmtWorldDate(l.date))}</h1>
+<p>${esc(daysInWords(l.gapDays))} days after ${esc(fmtName(last.name))} died. A boat puts you ashore at ${esc(regionAt(world, l.region).name)}.</p>
+<p><label>Your name <input data-name value="${esc(fmtName(l.name))}" /></label> <button class="mini" data-act="reroll-name">another name</button></p>
+<button class="act" data-act="land">Land</button>
+</div>`;
+}
+
+export function cemeteryHtml(state: GameState, ui: UiState): string {
+  const rows = [...state.survivors].reverse().map((s) => {
+    const open = ui.cemeteryOpen === s.index;
+    const lines = open ? entryLinesHtml(entry(s).slice(1)) : "";
+    return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
+  });
+  const leave = ui.confirmLeave
+    ? `<button class="mini danger" data-act="leave-world-yes">Leave this world for good? Yes, everyone here is forgotten</button> <button class="mini" data-act="leave-world-no">no</button>`
+    : `<button class="mini" data-act="leave-world">leave this world</button>`;
+  return `<div class="box">
+<h1>Cemetery</h1>
+${rows.join("")}
+<p>${leave}</p>
+<button class="act" data-act="cemetery-close">Close</button>
+</div>`;
+}
+
+export function journalHtml(state: GameState, cal: Calendar): string {
+  const n = nextThreshold(state, cal);
+  const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
+  const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
+  const mine = entry(current(state));
+  const ancestors = state.survivors.slice(0, -1).reverse().map((s) => `<div class="e"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(fmtName(s.name))}</button> ${esc(epitaph(s).slice(fmtName(s.name).length + 2))}</div>`);
+  return `<h2>Journal</h2>${season}${entryLinesHtml(mine)}${ancestors.length ? `<h3>Before you</h3><div class="entries">${ancestors.join("")}</div>` : ""}<button class="mini" data-act="cemetery">cemetery</button>`;
 }
 
 function awayOrderLine(o: AwayOrder): string {
@@ -552,7 +592,7 @@ function awayOrderLine(o: AwayOrder): string {
   return `<div class="e ${o.skipped && !o.gone ? "bad" : ""}">${esc(o.label)}: ${esc([did, now].filter(Boolean).join("; "))}.</div>`;
 }
 
-export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean): string {
+export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean, sinceLine: string): string {
   const h = Math.floor(realSeconds / 3600);
   const m = Math.floor((realSeconds % 3600) / 60);
   const gameMin = realSeconds * GAME_MINUTES_PER_REAL_SECOND;
@@ -562,6 +602,7 @@ export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean
   return `<div class="box">
 <h1>While you were away</h1>
 <p>${h ? `${h} h ` : ""}${m} min of the clock; ${fmtDuration(gameMin)} in the north${capped ? " (a day is as much as the world runs on without you)" : ""}.</p>
+<p>${esc(sinceLine)}</p>
 ${moved}${orders}
 ${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
 <button class="act" data-act="dismiss">Continue</button>

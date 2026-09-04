@@ -7,6 +7,7 @@ import { startIntent } from "../src/sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, moveOrder } from "../src/sim/orders";
+import { die } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
@@ -15,7 +16,7 @@ import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
-import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
+import { actionsHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel, stripRequest } from "../src/ui/render";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
@@ -198,12 +199,13 @@ describe("panels", () => {
     expect(document.querySelector(`#inventory [data-act="take"][data-item="water"]`)).toBeNull();
   });
 
-  it("death screen names the cause and offers a restart", () => {
+  it("tombstone names the cause through the epitaph and offers to begin again, never a restart", () => {
     const { state, world } = newGame(21);
-    state.dead = { cause: "froze", minute: 5000 };
-    setPanel("overlay", deathHtml(state, world, calendar(5000)));
-    expect(document.querySelector("#overlay")!.textContent).toContain("The cold took you");
-    expect(document.querySelector(`#overlay [data-act="restart"]`)).not.toBeNull();
+    die(state, "froze", regionAt(world, state.player.region).name);
+    setPanel("overlay", tombstoneHtml(state, world));
+    expect(document.querySelector("#overlay")!.textContent).toContain("Died of cold");
+    expect(document.querySelector(`#overlay [data-act="begin-again"]`)).not.toBeNull();
+    expect(document.querySelector(`#overlay [data-act="restart"]`)).toBeNull();
   });
 
   it("skills panel lists six rows with level, hours to next, pool share and active perks", () => {
@@ -219,35 +221,6 @@ describe("panels", () => {
     expect(h).toContain("pool 30%");
     expect(h).toContain("half the tool wear");
     expect(h).toContain("5% faster");
-  });
-
-  it("death screen names the best skill", () => {
-    const { state, world } = newGame(21);
-    state.skills.hunting.xp = levelMinutes(12);
-    state.dead = { cause: "froze", minute: state.minute };
-    setPanel("overlay", deathHtml(state, world, calendar(state.minute)));
-    expect(document.querySelector("#overlay")!.textContent).toContain("Hunting 12");
-  });
-
-  it("the death screen tells the last three lines before the end", () => {
-    const { state, world } = newGame(3);
-    state.log.push({ minute: 100, text: "You are thirsty.", kind: "bad" });
-    state.log.push({ minute: 200, text: "You are starving.", kind: "bad" });
-    state.log.push({ minute: 300, text: "You can barely lift your arms. Sleep.", kind: "bad" });
-    state.dead = { cause: "thirst", minute: 301 };
-    const html = deathHtml(state, world, calendar(301));
-    expect(html).toContain("Thirst took you.");
-    expect(html).toMatch(/You are thirsty\..*You are starving\..*You can barely lift your arms\. Sleep\./s);
-  });
-
-  it("a froze death excludes its own death line from the story, not just the cause paragraph", () => {
-    const { state, world } = newGame(3);
-    state.log.push({ minute: 250, text: "You are shivering hard. Find warmth.", kind: "bad" });
-    state.log.push({ minute: 300, text: "The cold took you.", kind: "bad" });
-    state.dead = { cause: "froze", minute: 300 };
-    const html = deathHtml(state, world, calendar(300));
-    expect(html).toContain("The cold took you.");
-    expect((html.match(/The cold took you\./g) ?? []).length).toBe(1);
   });
 
   it("commitStripN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its strip field has focus", () => {

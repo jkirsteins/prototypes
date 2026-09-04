@@ -12,6 +12,14 @@ export interface UiState {
   /** What happened while the tab was closed, until dismissed. */
   away: AwaySummary | null;
   confirmAbandon: boolean;
+  /** The cemetery overlay is open. */
+  cemetery: boolean;
+  /** Survivor index whose entry is expanded in the cemetery, or null for none. */
+  cemeteryOpen: number | null;
+  /** The cemetery's "leave this world" button is showing its confirm step. */
+  confirmLeave: boolean;
+  /** The day catchUp was called on, so the away report's since-line reads from where the player left off. */
+  awayFromDay: number;
   /** Index into ZOOMS: 0 is one cell per glyph. */
   zoom: number;
   /** The settings strip: what the next intent clicked will do. */
@@ -24,7 +32,8 @@ export interface UiState {
 
 export function newUiState(): UiState {
   return {
-    tab: "gather", selected: null, away: null, confirmAbandon: false, zoom: 0,
+    tab: "gather", selected: null, away: null, confirmAbandon: false,
+    cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
     until: "once", n: 10, deliver: "leave", where: "nearest", advanced: false,
   };
 }
@@ -44,7 +53,7 @@ export function setPanel(id: string, html: string, root: ParentNode = document):
   const el = root.querySelector<HTMLElement>(`#${id}`);
   if (!el) return false;
   const focused = document.activeElement;
-  if (focused?.hasAttribute("data-strip-n") && el.contains(focused)) return false;
+  if (focused && (focused.hasAttribute("data-strip-n") || focused.hasAttribute("data-name")) && el.contains(focused)) return false;
   last.set(id, html);
   el.innerHTML = html;
   return true;

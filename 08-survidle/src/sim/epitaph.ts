@@ -29,6 +29,14 @@ export function fmtWorldDate(d: WorldDate): string {
   return `${day + 1} ${MONTHS[m]}, year ${d.year}`;
 }
 
+/** The month name a day-of-year falls in, from the same table `fmtWorldDate` uses. */
+export function monthOfDoy(doy: number): string {
+  let m = 0;
+  let day = doy;
+  while (day >= MONTH_DAYS[m]) { day -= MONTH_DAYS[m]; m++; }
+  return MONTHS[m];
+}
+
 const ORDINAL = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
 function nth(n: number): string { return ORDINAL[n] ?? `${n}th`; }
 
