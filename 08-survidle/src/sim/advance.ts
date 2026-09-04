@@ -68,8 +68,6 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     }
   }
 
-  const who: Presence | null = nobody ? null : { region: state.player.region, atCamp: atCamp(state, world) };
-
   if (!nobody) {
     stepTask(state, world, cal, rng, dt);
     runOrders(state, world, cal, rng);
@@ -79,6 +77,11 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
       log(state, "Too tired to stand, you sleep where you are.");
     }
   }
+
+  // Read after the task step above: a walk, an order or an intent can move
+  // the body within this same minute, and the world half should see where
+  // it landed, the same place stepCamp used to read state.player itself.
+  const who: Presence | null = nobody ? null : { region: state.player.region, atCamp: atCamp(state, world) };
 
   stepCamp(state, world, ambient, dt, who);
 
