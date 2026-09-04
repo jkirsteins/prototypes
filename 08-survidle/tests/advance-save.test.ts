@@ -116,15 +116,15 @@ describe("save", () => {
     expect(back.regions[state.player.region].logsWet).toBe(1440);
   });
 
-  it("stores, loads, and removes the save on death", () => {
+  it("stores, loads, and keeps the save on death", () => {
     const storage = new MemStorage();
     const { state } = newGame(9);
     saveGame(state, storage, 5);
     expect(loadGame(storage)?.state.seed).toBe(9);
     state.dead = { cause: "starved", minute: 10 };
     saveGame(state, storage, 6);
-    expect(storage.getItem(SAVE_KEY)).toBeNull();
-    expect(loadGame(storage)).toBeNull();
+    expect(storage.getItem(SAVE_KEY)).not.toBeNull();
+    expect(loadGame(storage)?.state.dead?.cause).toBe("starved");
   });
 
   it("finishes a hunt or a cast saved against a species the catalogue no longer has, as nothing", () => {
@@ -209,5 +209,36 @@ describe("save", () => {
     catchUp(long.state, long.world, MAX_OFFLINE_SECONDS * 3);
     // A real second is a game minute, so the cap in game minutes equals the cap in seconds.
     expect(long.state.minute).toBeLessThanOrEqual(MAX_OFFLINE_SECONDS);
+  });
+});
+
+describe("the world save", () => {
+  it("keeps the file when the survivor is dead", () => {
+    const store = new MemStorage();
+    const { state } = newGame(8);
+    state.dead = { cause: "froze", minute: state.minute };
+    saveGame(state, store);
+    expect(store.getItem(SAVE_KEY)).not.toBeNull();
+    expect(loadGame(store)!.state.dead!.cause).toBe("froze");
+  });
+
+  it("writes version 5 and reads 4 by wrapping the survivor as the first of the world", () => {
+    const { state } = newGame(8);
+    expect(JSON.parse(serialize(state)).version).toBe(5);
+    const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
+    v4.version = 4;
+    delete v4.state.survivors;
+    delete v4.state.year;
+    delete v4.state.landing;
+    delete v4.state.spine;
+    const file = deserialize(JSON.stringify(v4))!;
+    expect(file.state.year).toBe(1);
+    expect(file.state.landing).toBeNull();
+    expect(file.state.survivors).toHaveLength(1);
+    expect(file.state.survivors[0].index).toBe(1);
+    expect(file.state.survivors[0].name.first.length).toBeGreaterThan(0);
+    expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
+    expect(file.state.spine).toEqual({ fired: {}, announced: {} });
+    for (const st of Object.values(file.state.regions)) expect(st.structureAge).toEqual({});
   });
 });

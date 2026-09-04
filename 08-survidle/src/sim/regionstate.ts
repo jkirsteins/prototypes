@@ -24,6 +24,7 @@ export function newRegionState(world: World, id: number): RegionState {
     campCell: r.campCell,
     structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false },
     boughBedAge: 0,
+    structureAge: {},
     build: {},
     fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 },
     rack: { kg: 0, dried: 0 },

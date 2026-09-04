@@ -369,6 +369,7 @@ export const DEATH_LINES: Record<DeathCause, string> = {
   thirst: "Thirst took you.",
   smoke: "The smoke took you in your sleep.",
   drowned: "The ice gave way. The lake kept you.",
+  gaveUp: "You gave up.",
 };
 
 export function die(state: GameState, cause: DeathCause): void {

@@ -91,10 +91,10 @@ describe("tools as items", () => {
     expect(itemLabel("fishingSpear", 1)).toBe("1 fishing spears");
   });
 
-  it("saves are version 4 and a version 3 file still loads", () => {
+  it("saves are version 5 and a version 3 file still loads", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state));
-    expect(raw.version).toBe(4);
+    expect(raw.version).toBe(5);
     raw.version = 3;
     expect(deserialize(JSON.stringify(raw))).not.toBeNull();
   });

@@ -7,6 +7,7 @@ import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
+import { newRecord } from "./record";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, Inventory, LogEntry, TaskId } from "./types";
@@ -15,17 +16,17 @@ export const SAVE_KEY = "survidle.save";
 /** Away longer than this is simulated as this. */
 export const MAX_OFFLINE_SECONDS = 24 * 3600;
 
-export interface SaveFile { version: 4; savedAt: number; state: GameState }
+export interface SaveFile { version: 5; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 4, savedAt: now, state };
+  const file: SaveFile = { version: 5, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if ((file?.version !== 3 && file?.version !== 4) || !file.state || typeof file.savedAt !== "number") return null;
+    if ((file?.version !== 3 && file?.version !== 4 && file?.version !== 5) || !file.state || typeof file.savedAt !== "number") return null;
     fillDefaults(file.state);
     return file as unknown as SaveFile;
   } catch {
@@ -43,6 +44,13 @@ function fillDefaults(state: GameState): void {
   state.skills ??= newSkills();
   state.intent ??= null;
   state.ledger ??= [];
+  state.year ??= 1;
+  state.landing ??= null;
+  state.spine ??= { fired: {}, announced: {} };
+  // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
+  // Task 2 replaces this
+  state.survivors ??= [newRecord(1, { first: "First", last: "Survivor" }, { year: 1, doy: state.startDoy }, 0)];
+  for (const st of Object.values(state.regions)) st.structureAge ??= {};
   if (state.intent) {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;
@@ -131,10 +139,6 @@ function fillDefaults(state: GameState): void {
 }
 
 export function saveGame(state: GameState, storage: Storage = localStorage, now = Date.now()): void {
-  if (state.dead) {
-    storage.removeItem(SAVE_KEY);
-    return;
-  }
   storage.setItem(SAVE_KEY, serialize(state, now));
 }
 

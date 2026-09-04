@@ -200,6 +200,8 @@ export interface RegionState {
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean };
   /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
   boughBedAge: number;
+  /** Minutes since the lean-to and the rack were built or mended; each falls after a season. */
+  structureAge: Partial<Record<"leanTo" | "dryingRack", number>>;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
   fire: { lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number };
@@ -278,7 +280,58 @@ export interface Weather {
 
 export interface LogEntry { minute: number; text: string; kind?: "bad" | "good" }
 
-export type DeathCause = "starved" | "froze" | "wolves" | "sickness" | "thirst" | "smoke" | "drowned";
+export type DeathCause = "starved" | "froze" | "wolves" | "sickness" | "thirst" | "smoke" | "drowned" | "gaveUp";
+
+export interface WorldDate { year: number; doy: number }
+
+export type ThresholdId = "berries" | "rut" | "firstFrost" | "lakeFreeze" | "firstSnow" | "dark" | "coldSnap" | "iceOut";
+
+/** What a life record's line names, before the day and date it happened are attached. */
+export type LifeEventBody =
+  | { kind: "threshold"; id: ThresholdId }
+  | { kind: "firstKill"; species: Species }
+  | { kind: "built"; structure: StructureId }
+  | { kind: "entered"; region: string }
+  | { kind: "toolWorn"; tool: ToolId }
+  | { kind: "frostbite"; part: "toes" | "fingers" }
+  | { kind: "storm" }
+  | { kind: "repaired"; structure: StructureId }
+  | { kind: "abandoned" };
+
+export type LifeEvent = LifeEventBody & { day: number; date: WorldDate };
+
+export interface Died {
+  day: number;
+  date: WorldDate;
+  cause: DeathCause;
+  region: string;
+  kmFromCamp: number;
+  packFoodKg: number;
+  campFoodKcal: number;
+  campFirewoodKg: number;
+  after: { threshold: ThresholdId; nights: number } | null;
+}
+
+/** One survivor's whole life, kept after death: the journal, the epitaph and the away report read this, not the log. */
+export interface LifeRecord {
+  name: { first: string; last: string };
+  index: number;
+  landed: WorldDate;
+  gapDays: number;
+  events: LifeEvent[];
+  worst: { day: number; warmth: number; wolves: boolean } | null;
+  forecast: (number | null)[];
+  died: Died | null;
+}
+
+/** Set between "Begin again" and the name being confirmed: where the next survivor lands and how long the world sat empty. */
+export interface Landing {
+  cell: number;
+  region: number;
+  date: WorldDate;
+  gapDays: number;
+  name: { first: string; last: string };
+}
 
 export interface RunStats { trees: number; animals: number; structures: number; km: number }
 
@@ -322,4 +375,12 @@ export interface GameState {
   intent: Intent | null;
   /** One record per game day of kcal made, eaten and burned: the calibration ledger. */
   ledger: DayLedger[];
+  /** Every survivor of this world, the living one last. */
+  survivors: LifeRecord[];
+  /** World year the current survivor landed in, 1 for the first. */
+  year: number;
+  /** Set between "Begin again" and the name being confirmed. */
+  landing: Landing | null;
+  /** The season spine's memory: the year each threshold last fired and was last announced. */
+  spine: { fired: Partial<Record<ThresholdId, number>>; announced: Partial<Record<ThresholdId, number>> };
 }
