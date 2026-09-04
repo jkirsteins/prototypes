@@ -7,6 +7,7 @@ import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventor
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
+import { orderGate, type Gate } from "../sim/ladder";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
@@ -21,7 +22,7 @@ import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, w
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type RegionDef, speciesHere, type World } from "../world/gen";
-import { esc, type UiState } from "./render";
+import { esc, stripRequest, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
@@ -428,11 +429,15 @@ function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string
   return parts.join(", ");
 }
 
-function intentRowHtml(o: TaskOption, extra: string): string {
+function intentRowHtml(o: TaskOption, extra: string, gate: Gate): string {
   const arg = o.arg ?? "";
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
   const detail = [o.detail, extra].filter(Boolean).join("; ");
+  // A shut rung is the promise of the rung, not a hidden row: the same data-opt, the reason, and nothing to click.
+  if (!gate.ok) {
+    return `<div data-opt="intent:${o.id}:${esc(arg)}" class="opt off"><span class="act">${esc(o.label)}${rec}<small>${esc(gate.why)}</small>${bar}</span></div>`;
+  }
   if (!o.ok) {
     return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${detail ? ` - ${esc(detail)}` : ""}</small>${bar}</button></div>`;
   }
@@ -458,7 +463,10 @@ function stripHtml(state: GameState, world: World, ui: UiState): string {
 
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const groups = intentGroups(regionAt(world, state.player.region)).map((g) => {
-    const rows = g.items.map(({ id, arg }) => intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, ui.where)), stripSentence(ui, id, arg))).join("");
+    const rows = g.items.map(({ id, arg }) => {
+      const { req, kind } = stripRequest(ui, id, arg);
+      return intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, ui.where)), stripSentence(ui, id, arg), orderGate(state, req, kind));
+    }).join("");
     return `<div class="grp"><small>${g.label}</small>${rows}</div>`;
   }).join("");
   const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;

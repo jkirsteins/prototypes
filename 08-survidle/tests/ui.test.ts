@@ -16,7 +16,7 @@ import { ambientTemperature } from "../src/sim/weather";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
 import { actionsHtml, deathHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
-import { commitStripN, newUiState, resetPanels, setPanel } from "../src/ui/render";
+import { commitStripN, newUiState, resetPanels, setPanel, stripRequest } from "../src/ui/render";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
 
@@ -266,6 +266,9 @@ describe("panels", () => {
 describe("the Do panel", () => {
   const { state, world } = newGame(21);
   const cal = calendar(state.minute);
+  // Woodcraft 5 keeps chop's row open at the grind and job rungs the strip tests below reach for;
+  // the ladder gate is Task 6's own subject elsewhere, not what these rows are about.
+  state.skills.woodcraft.xp = levelMinutes(5);
 
   it("has a settings strip, the instant buttons, and one row per intent, judged at the work's place", () => {
     const html = doHtml(state, world, cal, newUiState());
@@ -387,6 +390,8 @@ describe("the Do panel", () => {
 describe("the Orders panel", () => {
   it("the strip offers keep, and a blocked row is still a button", () => {
     const { state, world } = newGame(3);
+    // Woodcraft 10 opens the keep rung, so split's row is blocked by "no logs here", not the ladder gate.
+    state.skills.woodcraft.xp = levelMinutes(10);
     const ui = { ...newUiState(), until: "keep" as const, n: 40 };
     const html = doHtml(state, world, calendar(0), ui);
     expect(html).toContain('data-k="until" data-v="keep"');
@@ -462,5 +467,41 @@ describe("the Orders panel", () => {
     const html = taskHtml(state, world, calendar(state.minute));
     expect(html).toContain("Waiting at camp");
     expect(html).toContain('id="bar-task"');
+  });
+});
+
+describe("the Do panel and the ladder", () => {
+  it("the strip's settings become a request and a kind", () => {
+    const ui = { ...newUiState(), until: "keep" as const, n: 40, deliver: "camp" as const, where: "nearest" as const };
+    expect(stripRequest(ui, "split", undefined)).toEqual({ req: { task: "split", arg: undefined, until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, kind: "keep" });
+    expect(stripRequest({ ...ui, until: "forever" }, "chop", undefined).kind).toBe("grind");
+    expect(stripRequest({ ...ui, until: "times", n: 3 }, "chop", undefined)).toMatchObject({ req: { until: { kind: "times", n: 3 } }, kind: "job" });
+    expect(stripRequest({ ...ui, until: "once" }, "chop", undefined)).toMatchObject({ req: { until: { kind: "once" } }, kind: "job" });
+    expect(stripRequest({ ...ui, until: "campHas", n: 8 }, "stone", undefined)).toMatchObject({ req: { until: { kind: "campHas", qty: 8 } }, kind: "job" });
+  });
+
+  it("a shut kind greys the row with the reason and no button; once is never greyed", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute);
+    const keep = { ...newUiState(), until: "keep" as const, n: 40 };
+    let html = doHtml(state, world, cal, keep);
+    const row = html.slice(html.indexOf('data-opt="intent:split:"'), html.indexOf("</div>", html.indexOf('data-opt="intent:split:"')));
+    expect(row).toContain("keeps at Woodcraft 10, you are 1");
+    expect(row).not.toContain("<button");
+    expect(row).toContain("opt off");
+    html = doHtml(state, world, cal, { ...newUiState(), until: "once" });
+    expect(html.slice(html.indexOf('data-opt="intent:split:"'), html.indexOf("</div>", html.indexOf('data-opt="intent:split:"')))).not.toContain("keeps at");
+    state.skills.woodcraft.xp = levelMinutes(10);
+    html = doHtml(state, world, cal, keep);
+    expect(html.slice(html.indexOf('data-opt="intent:split:"'), html.indexOf("</div>", html.indexOf('data-opt="intent:split:"')))).not.toContain("keeps at");
+  });
+
+  it("every gated row still carries its data-opt, so nothing is hidden", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute);
+    const open = doHtml(state, world, cal, { ...newUiState(), until: "once" });
+    const shut = doHtml(state, world, cal, { ...newUiState(), until: "keep", n: 5 });
+    const opts = (h: string) => [...h.matchAll(/data-opt="intent:[^"]*"/g)].map((m) => m[0]).sort();
+    expect(opts(shut)).toEqual(opts(open));
   });
 });

@@ -10,14 +10,15 @@ import { calendar } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
+import { giveOrder, orderGate } from "./sim/ladder";
 import { newGame } from "./sim/newgame";
-import { addOrder, moveOrder, removeOrder } from "./sim/orders";
+import { moveOrder, removeOrder } from "./sim/orders";
 import { feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { fillPopulations } from "./sim/regionstate";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
-import type { GameState, ItemId, OrderKind, TaskId, UntilChoice } from "./sim/types";
+import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
@@ -27,7 +28,7 @@ import {
   awayHtml, clockHtml, deathHtml, doHtml, gearHtml, inventoryHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml,
 } from "./ui/panels";
-import { commitStripN, newUiState, resetPanels, setPanel, type UiState } from "./ui/render";
+import { commitStripN, newUiState, resetPanels, setPanel, stripRequest, type UiState } from "./ui/render";
 import { updateSky } from "./ui/sky";
 import { generateWorld, type World } from "./world/gen";
 
@@ -217,12 +218,9 @@ function onClick(ev: Event) {
       lastReal = performance.now();
       break;
     case "intent": {
-      const kind: OrderKind = ui.until === "keep" ? "keep" : ui.until === "forever" ? "grind" : "job";
-      const until: UntilChoice = ui.until === "times" ? { kind: "times", n: ui.n }
-        : ui.until === "campHas" || ui.until === "keep" ? { kind: "campHas", qty: ui.n }
-        : ui.until === "forever" ? { kind: "forever" }
-        : { kind: "once" };
-      addOrder(state, world, { task: target.dataset.id as TaskId, arg: target.dataset.arg || undefined, until, deliver: ui.deliver, where: ui.where }, kind);
+      const { req, kind } = stripRequest(ui, target.dataset.id as TaskId, target.dataset.arg || undefined);
+      // The row is greyed with no button when the gate is shut; this is the belt to that brace.
+      if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
       break;
     }
     case "strip": {
@@ -242,7 +240,7 @@ function onClick(ev: Event) {
       // Located work names its cell; carried work has none, so it resolves through
       // "nearest" - camp for camp-bound work, wherever the player stands for craft.
       const where: Where = target.dataset.cell !== undefined ? { cell: Number(target.dataset.cell) } : "nearest";
-      addOrder(state, world, { task: id, arg, until: { kind: "once" }, deliver: "leave", where }, "job");
+      giveOrder(state, world, { task: id, arg, until: { kind: "once" }, deliver: "leave", where }, "job");
       break;
     }
     case "order-up":

@@ -79,6 +79,26 @@
           }
         }
       }
+    },
+    {
+      "includes": ["08-survidle/src/main.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "./sim/orders": {
+                    "importNames": ["addOrder"],
+                    "message": "An order the player gives goes through giveOrder in src/sim/ladder.ts, which reads the delegation ladder's gate first. addOrder is the raw mutator for tests and the stage set-ups."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

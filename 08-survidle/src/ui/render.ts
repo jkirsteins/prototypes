@@ -1,6 +1,7 @@
+import { NOT_ORDERS } from "../sim/ladder";
 import type { AwaySummary } from "../sim/save";
 import type { TaskGroup } from "../sim/tasks";
-import type { SpotId } from "../sim/types";
+import type { IntentRequest, OrderKind, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
@@ -60,4 +61,20 @@ export function commitStripN(ui: UiState, value: string): void {
 
 export function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/**
+ * The strip's settings as the order a click on a Do row gives: what main.ts
+ * hands to giveOrder. A NOT_ORDERS task (night, rest, sleep, a runner step)
+ * ignores the strip: it is a move the Do panel starts directly, not
+ * something the ladder gates, so it is always the once job the click means.
+ */
+export function stripRequest(ui: UiState, id: TaskId, arg: string | undefined): { req: IntentRequest; kind: OrderKind } {
+  if (NOT_ORDERS.includes(id)) return { req: { task: id, arg, until: { kind: "once" }, deliver: ui.deliver, where: ui.where }, kind: "job" };
+  const kind: OrderKind = ui.until === "keep" ? "keep" : ui.until === "forever" ? "grind" : "job";
+  const until: UntilChoice = ui.until === "times" ? { kind: "times", n: ui.n }
+    : ui.until === "campHas" || ui.until === "keep" ? { kind: "campHas", qty: ui.n }
+    : ui.until === "forever" ? { kind: "forever" }
+    : { kind: "once" };
+  return { req: { task: id, arg, until, deliver: ui.deliver, where: ui.where }, kind };
 }
