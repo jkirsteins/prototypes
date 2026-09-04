@@ -1232,11 +1232,16 @@ sleep where you are." and then the queued Sleep.
 Opened on 20 July, the berries row reads 750 to 2,025 kcal a day against
 the late-August plants band of 300 to 800 for a beginner: seed 79 at 750
 is in band, seed 42 at 1,140 and seed 17 at 2,025 are over, and seed 19
-outlived the run to day 61 with no first snow to be measured at. A day on
-berries alone is 2,000 kcal, four kilos at 500 a kilo, the ceiling doing
-what the tables say a berry season is worth for one person - so seed 17's
-2,025 is a picker eating to the refusal every day, and the finding is
-that the gut's ceiling and the table's 800 top do not agree about what a
+outlived the run to day 61 with no first snow to be measured at. Those
+are the ledger's gross picked yield, kilos times 500, credited when the
+berry goes in the basket rather than when it goes down, so the yield side
+is not halved by the gut. What the gut takes is less: a day on berries
+alone is 1,500 kcal, the first two kilos at 500 a kilo and the next two
+at half credit, past which the body will not take another - the ceiling
+doing what the tables say a berry season is worth for one person. So seed
+17's 2,025 is a picker filling the basket to about four kilos a day,
+right at the refusal, and absorbing 1,500 of it; the finding is that the
+ceiling and the table's 800 top, 1.6 kg picked, do not agree about what a
 day of picking is worth. In the browser on seed 17 the run opens "20 Jul.
 You wake at Hareskog ...", the Do panel offers "Pick berries ... 0.7 kg
 berries, mid-July to mid-October" ungreyed, an hour of it puts 0.7 kg in

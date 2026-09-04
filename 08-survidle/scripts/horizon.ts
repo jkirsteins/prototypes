@@ -2,8 +2,8 @@
  * The horizon checks: how long a stocked camp holds at each stage of the
  * ladder, on the reference seeds. Run: npm run horizon, or
  * npx vite-node scripts/horizon.ts 17 19 42 79 30 (seeds, then max days).
- * A stage outside its band is a finding, not a failure: the bands are
- * provisional until the calibration pass, so the exit code is always 0.
+ * The bands are steered by, not hit: a row outside its band is a finding
+ * for the roadmap, so the exit code is always 0.
  *
  * --start=<doy>, anywhere in the args, opens each stage's camp on that day
  * of year instead of 1 April: 200 is 20 July, 235 is 24 August.
@@ -33,4 +33,4 @@ for (const stage of HORIZON_STAGES) {
     if (r.week) for (const line of weekLines(r.week, r.dayOfYear)) console.log(`    ${line}`);
   }
 }
-console.log("(provisional until the calibration pass)");
+console.log("(bands steered by, not hit: a row outside its band is a finding)");
