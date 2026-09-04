@@ -12,6 +12,7 @@ import { KIT_ITEMS } from "./body";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
+import { normalizeOrder } from "./ladder";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
@@ -25,25 +26,16 @@ export function ordersHere(state: GameState, world: World): Order[] {
 }
 
 /**
- * Appends. A keep or a camp-has without a countable yield is a once job; a
- * grind is always forever. "Keep it lit" is the one keep exempt from that
- * fallback: light has no stock to count, but the fire going out is itself
- * the thing worth watching for, so it stays a standing keep rather than a
- * job that fires once and never runs again.
+ * Appends, or inserts at `rank` when one is given. The kind and the until
+ * are the normalised ones (see normalizeOrder in ladder.ts). This is the
+ * raw mutator: the Do panel and the player script go through giveOrder,
+ * which reads the ladder's gate first.
  */
-export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind): Order {
+export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: number): Order {
   const st = regionState(state, world, state.player.region);
-  let k = kind;
-  let r = req;
-  const lightKeep = kind === "keep" && req.task === "light";
-  if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg) && !lightKeep) {
-    k = "job";
-    r = { ...req, until: { kind: "once" } };
-  }
-  // Keyed on the converted kind: a fallback to "job" above must never be undone here.
-  if (k === "grind") r = { ...req, until: { kind: "forever" } };
-  const o: Order = { id: st.nextOrderId++, kind: k, req: r, done: 0, minutes: 0, skipped: "" };
-  st.orders.push(o);
+  const n = normalizeOrder(req, kind);
+  const o: Order = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "" };
+  st.orders.splice(rank === undefined ? st.orders.length : Math.min(rank, st.orders.length), 0, o);
   return o;
 }
 

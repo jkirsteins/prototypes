@@ -5,9 +5,11 @@
  * are earned per skill, at RUNG_LEVEL. The gate reads the level at the
  * moment an order is given, on the kind the order is actually added as.
  */
+import type { World } from "../world/gen";
 import { yieldItem } from "./intent";
+import { addOrder } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, SKILL_NAMES, skillLevel, skillOf } from "./skills";
-import type { GameState, IntentRequest, OrderKind, SkillId, TaskId } from "./types";
+import type { GameState, IntentRequest, Order, OrderKind, SkillId, TaskId } from "./types";
 
 /** Tasks that train no skill but can still be ordered take the skill of the work they serve. */
 const GATE_SKILL: Partial<Record<TaskId, SkillId>> = { haul: "woodcraft", melt: "building", thaw: "building" };
@@ -47,4 +49,11 @@ export function orderGate(state: GameState, req: IntentRequest, kind: OrderKind)
   const at = RUNG_LEVEL[n.kind];
   if (level >= at) return { ok: true };
   return { ok: false, why: `${RUNG_WORD[n.kind]} at ${SKILL_NAMES[skill]} ${at}, you are ${level}`, skill, level, at };
+}
+
+/** The door the Do panel and the player script use: the gate, then addOrder. */
+export function giveOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: number): Order {
+  const gate = orderGate(state, req, kind);
+  if (!gate.ok) throw new Error(gate.why);
+  return addOrder(state, world, req, kind, rank);
 }

@@ -634,3 +634,28 @@ describe("the away report", () => {
     expect(regionState(s2, world, s2.player.region).orders[0].done).toBeGreaterThan(a.done);
   });
 });
+
+describe("rank", () => {
+  const sticks: IntentRequest = { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" };
+  const bark: IntentRequest = { task: "bark", until: { kind: "once" }, deliver: "camp", where: "nearest" };
+  const stone: IntentRequest = { task: "stone", until: { kind: "once" }, deliver: "camp", where: "nearest" };
+
+  it("without a rank an order is appended", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, sticks, "job");
+    addOrder(state, world, bark, "job");
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["sticks", "bark"]);
+  });
+
+  it("with a rank it is inserted there, and a rank past the end appends", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, sticks, "job");
+    addOrder(state, world, bark, "job");
+    addOrder(state, world, stone, "job", 0);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "bark"]);
+    addOrder(state, world, { ...stone, task: "berries" }, "job", 99);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "bark", "berries"]);
+    addOrder(state, world, { ...stone, task: "chop" }, "job", 2);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "chop", "bark", "berries"]);
+  });
+});

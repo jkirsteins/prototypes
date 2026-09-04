@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { gateSkill, NOT_ORDERS, normalizeOrder, orderGate } from "../src/sim/ladder";
+import { gateSkill, giveOrder, NOT_ORDERS, normalizeOrder, orderGate } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
+import { ordersHere } from "../src/sim/orders";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
 
@@ -92,5 +93,22 @@ describe("the gate", () => {
     for (const t of [req("berries", { kind: "campHas", qty: 2 }), req("fish", { kind: "campHas", qty: 1 }, "any"), req("craft", { kind: "campHas", qty: 4 }, "cordage"), req("hang", { kind: "campHas", qty: 10 })]) {
       expect(orderGate(state, t, "keep"), t.task).toEqual({ ok: true });
     }
+  });
+});
+
+describe("giving an order", () => {
+  it("a shut gate throws with the reason and adds nothing", () => {
+    const { state, world } = newGame(3);
+    expect(() => giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep")).toThrow("keeps at Woodcraft 10, you are 1");
+    expect(ordersHere(state, world)).toEqual([]);
+  });
+
+  it("an open gate adds the order at the rank given", () => {
+    const { state, world } = newGame(3);
+    giveOrder(state, world, req("sticks", { kind: "once" }), "job");
+    setLevel(state, "woodcraft", 10);
+    const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
+    expect(o.kind).toBe("keep");
+    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["split", "sticks"]);
   });
 });
