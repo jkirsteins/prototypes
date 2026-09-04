@@ -1,12 +1,13 @@
 /**
  * The reference player: the set-up a competent player writes on day one,
- * run headless. It is the baseline's gate (alive on game day 30 on four
- * seeds, from scratch, in April) and, later, the survivor loop's
- * instrument. The runner never gathers a prerequisite on its own, so the
- * list orders every dependency before what needs it: water at the top,
- * where it waits on its own vessel; then everything a fire and a roof
- * need, in the order they need it, worked with the arrival axe alone;
- * then the knife and what it unlocks.
+ * run headless. It is the baseline's gate (alive on game day
+ * REFERENCE_TARGET_DAY, three weeks, on four seeds, from scratch, in
+ * April) and, later, the survivor loop's instrument. The runner never
+ * gathers a prerequisite on its own, so the list orders every dependency
+ * before what needs it: water at the top, where it waits on its own
+ * vessel; then everything a fire and a roof need, in the order they need
+ * it, worked with the arrival axe alone; then the knife and what it
+ * unlocks.
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
@@ -25,25 +26,25 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
 
 /**
  * The runner never gathers a prerequisite on its own, so the list is
- * ordered as a competent day one is: water at the top, where it waits for
- * its bucket; then everything a fire and a roof need, in dependency order,
- * with the arrival axe - stone, sticks, bark and cordage as raw stock; the
- * fire pit; the fire drill (needing no knife); the keep that lights the
- * fire and relights it; two trees split into firewood to feed it; and the
- * lean-to. Then the knife and what it unlocks come before the drill and
- * the vessel before the water keep can ever do anything with it. The
- * scheduler is greedy top-down, so a competent player ranks eating what is
- * already caught above catching more of it: the cook keeps sit above the
- * fish keep, and the rack job and the dried-meat keep sit above the hunt
- * keep, right after the cook keeps - both block harmlessly with nothing to
- * cook or hang. The snare craft and its five-times build sit above the fish
- * keep too, right after the hang keep: snares are the passive food a
- * competent player sets before spending hours at the shore, and ranked
- * below an always-unmet fish keep they never get made at all. Tools the
- * survivor holds are once jobs, since the first one made is taken up and a
- * keep would craft a second; the axe stays a keep because the arrival axe
- * wears out and the spare is the point. Auto-eat, auto-feed and auto-drink
- * stay on, as they are for every player.
+ * ordered as a competent day one is: water at the top, waiting for its
+ * bucket; then the fire-and-roof chain, worked with the arrival axe alone
+ * - stone for the ring, sticks, bark and cordage as raw stock, the fire
+ * pit, the fire drill, the keep that lights the fire and relights it, one
+ * tree felled, a day's firewood split from it, and the lean-to. Then the
+ * knife and what it unlocks. The scheduler is greedy top-down, so a
+ * competent player ranks eating what is already caught above catching more
+ * of it: the cook keeps sit above the fish keep, and the rack job and the
+ * dried-meat keep sit above the hunt keep, right after the cook keeps -
+ * both block harmlessly with nothing to cook or hang. The snare craft and
+ * its five-times build sit above the fish keep too, right after the hang
+ * keep: snares are the passive food a competent player sets before
+ * spending hours at the shore, and ranked below an always-unmet fish keep
+ * they never get made at all. Tools the survivor holds are once jobs,
+ * since the first one made is taken up and a keep would craft a second;
+ * the axe stays a keep because the arrival axe wears out and the spare is
+ * the point. Auto-eat, auto-feed and auto-drink stay on, as they are for
+ * every player. The felling grind, needing the axe kept just above it,
+ * runs last and forever.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),

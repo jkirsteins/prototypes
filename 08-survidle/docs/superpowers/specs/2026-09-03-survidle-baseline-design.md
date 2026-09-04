@@ -12,8 +12,8 @@ things. None is a new system: each is a stock, a priority or a keep the
 idle loop needs before any content lands on it.
 
 The gate: the reference player, a scripted set-up from the true arrival
-kit, reaches 1 December on all four seeds. A rule gap the script finds
-joins this baseline; content waits behind it.
+kit, is alive on game day 21 on all four seeds (section 13). A rule gap
+the script finds joins this baseline; content waits behind it.
 
 ## Decisions confirmed with the author
 
@@ -271,11 +271,12 @@ wears out and the spare is the point. Auto-eat,
 auto-feed and auto-drink stay on, as they are for every player.
 
 **What it prints.** Per seed, one block: the ring the start took; then a
-line at day 30, 90 and 245 with kcal, water, warmth, health, and camp
-stocks of water, firewood, dried meat, fish, and tools; then the outcome:
-"died day N, <cause>" from the death record, or "reached 1 December,
-day 245". A final line: passed N of 4. Exit code 1 when any seed fails,
-so a CI job can hold the gate later.
+line at day 21, 90 and 245 (`REFERENCE_TARGET_DAY`, then the late
+checkpoints) with kcal, water, warmth, health, and camp stocks of water,
+firewood, dried meat, fish, and tools; then the outcome: "died day N,
+<cause>" from the death record, or "reached day N", with an "alive on
+day 21, " prefix when the seed passed. A final line: passed N of 4. Exit
+code 1 when any seed fails, so a CI job can hold the gate later.
 
 **The gate.** All four seeds are alive on game day 21 (section 13 says
 why three weeks, not December). The run continues to its 250 days so the
@@ -438,6 +439,13 @@ trap of item C and a skill ladder that multiplies. That criterion moves
 to the kitted run once C lands, and a late-August from-scratch gate
 (reach the first snow) follows the landing month in item F. Until then
 `--kitted` stays a diagnostic with no pass line.
+
+**What the gate measures today.** At the day-21 checkpoint no seed holds
+any food at camp, and every seed starves on day 22 or 23: the pass is the
+fat reserve's, not the order list's, with a one-to-two-day margin that
+random drift can flip. The calibration pass on the roadmap adds a
+food-at-checkpoint clause, kcal above zero or a floor on food at camp, so
+the gate measures the loop rather than the fat reserve alone.
 
 ## 14. Out of scope
 

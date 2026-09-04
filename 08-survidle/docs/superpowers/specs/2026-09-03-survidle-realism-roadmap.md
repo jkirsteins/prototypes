@@ -1011,7 +1011,9 @@ tables in "What the north yields" into the game's numbers, measured:
   where a beginner with fire, roof and water lands in the tables (three
   weeks or more), keep 30 days for the kitted run until C's trap, and
   write the late-August gate down to be run when the landing month
-  exists.
+  exists. Add a food-at-checkpoint clause too - kcal above zero, or a
+  floor on food at camp - so the gate measures the loop the list runs
+  rather than the fat reserve alone.
 - **Not in this pass:** yields that need new content (the trap, the
   skill tiers, the cellar) stay with C and 3; the pass only moves numbers
   the game already has.
