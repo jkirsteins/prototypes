@@ -219,28 +219,36 @@ rank order at the start camp with `addOrder`. It is the list a competent
 player writes on day one; the script owns it and the plan may tune it,
 but every entry must be one the panel offers.
 
-1. Fill vessels, keep camp at 4 litres of water, bringing it to camp.
+1. Fill vessels, keep camp at 2 litres of water, bringing it to camp.
 2. Gather stone, until camp has 8, bringing it to camp.
-3. Gather sticks, keep camp at 20 sticks, bringing it to camp.
-4. Strip bark, until camp has 12, bringing it to camp.
-5. Make cordage, until camp has 6.
-6. Make a stone knife, keep camp at 1 knife.
-7. Make a fire drill, keep camp at 1 fire drill.
-8. Make a bark bucket, until camp has 2.
-9. Build a fire pit.
+3. Gather sticks, keep camp at 10 sticks, bringing it to camp.
+4. Strip bark, keep camp at 12, bringing it to camp.
+5. Make cordage, keep camp at 4.
+6. Build a fire pit.
+7. Make a fire drill, once.
+8. Light the fire, keep it lit.
+9. Fell trees, keep camp at 3 logs, bringing it to camp.
 10. Split a log, keep camp at 40 kg firewood.
-11. Make a fishing spear, keep camp at 1 fishing spear.
-12. Fish for anything, keep camp at 4 kg fish, bringing it to camp.
-13. Hunt anything, keep camp at 6 kg raw meat, bringing it to camp.
-14. Hang meat to dry, keep camp at 10 kg dried meat.
-15. Make a stone axe, keep camp at 1 axe.
-16. Build a lean-to.
-17. Fell trees, forever, bringing it to camp.
+11. Build a lean-to.
+12. Make a stone knife, once.
+13. Make a bark bucket, until camp has 2.
+14. Make a fishing spear, once.
+15. Fish for anything, keep camp at 1 kg fish, bringing it to camp.
+16. Cook fish, keep camp at 1 kg; cook meat, keep camp at 1 kg.
+17. Make a snare, keep camp at 1; set snares, five times.
+18. Make a bow, once; make arrows, keep camp at 10.
+19. Hunt anything, keep camp at 2 kg raw meat, bringing it to camp.
+20. Build a drying rack; hang meat, keep camp at 10 kg dried meat.
+21. Make a stone axe, keep camp at 1 axe.
+22. Fell trees, forever, bringing it to camp.
 
 The runner never gathers a prerequisite on its own, so the list is
-ordered as the chain is: the knife before the drill, the buckets before
-the water keep can be met, and the water keep at the top so it is the
-first thing served once a bucket exists. Auto-eat, auto-feed and
+ordered as a competent day one is: water at the top, where it waits for
+its bucket; then everything a fire and a roof need, in dependency order,
+with the arrival axe; then the knife and what it unlocks. Tools the
+survivor holds are once jobs, since the first one made is taken up and a
+keep would craft a second; the axe stays a keep because the arrival axe
+wears out and the spare is the point. Auto-eat, auto-feed and
 auto-drink stay on, as they are for every player.
 
 **What it prints.** Per seed, one block: the ring the start took; then a
@@ -310,12 +318,57 @@ Unit, in vitest, all fast:
   prints the ring each start was found at, so a seed that took the
   ring-40 fallback shows it.
 - The reference list adds as named and holds three days (section 8).
+- A gather intent "until camp has 8 stone" stops after the eighth stone
+  is in the pack and delivers it, never gathering past the target.
+- "Light the fire, keep it lit" is a keep; it is met while the fire is
+  lit and relights after the fire goes out; with no drill it blocks with
+  "needs a fire drill".
+- The fire drill recipe needs no knife.
 
 The gate is the script. The browser pass: a run into December on one of
 the four seeds at `?speed=60`, the ice hole opened by the keep, camp
 water frozen and thawed, a spare axe taken up, and the rack fed by order.
 
-## 12. Out of scope
+## 12. What the reference run added
+
+The first run of the gate died on every seed inside five days, and the
+timeline on seed 17 put the first fire at hour 54 with the fire pit built
+at hour 11 and the drill at hour 23. Nothing physical was slow. Three
+rules were, and they join the baseline:
+
+**A gather stops when the shortfall is in hand.** An intent's "until camp
+has N" counted the camp pile only, so away from camp the runner gathered
+until the pack was heavy and walked home with fifteen stone for eight and
+ninety-six bark for twelve: five hours on stone, eight on bark, out of
+fifty-four. `untilMet` for a `campHas` intent now counts the camp pile,
+the pack, and the pile at the work cell when the work is not at camp; the
+work stops at the target and the delivery carries it home. Orders keep
+judging the camp pile alone (`orderMet`): a keep is still a promise
+about camp, and the live intent is what decides when to stop working.
+
+**"Keep the fire lit" is an order.** The runner lit a fire for cold, a
+storm or bedtime, never because cooking needed one: drill, pit and
+firewood sat at camp for eight hours until the sleep step lit it. A keep
+whose task is `light` is allowed (the one keep without a countable
+yield, beside the build job), met while this camp's fire is lit, unmet
+when it is out; its task is `light` at camp, and it blocks with the
+light task's own reasons (no pit, no drill, no dry wood, too wet). The
+order strip offers it as "keep it lit". After a storm puts the fire out
+the keep relights it, so the cook keeps below it are never blocked for a
+day.
+
+**The fire drill needs no knife.** A hand drill is a stick spun on a
+board; the arrival axe notches the board. The recipe's `tool: "knife"`
+goes, and the drill lands on day one instead of behind the stone trip.
+The fire pit keeps its six stones: the stone trip is a morning, not the
+problem.
+
+With the three, the reference day one is stone, sticks, bark, cordage,
+the pit, the drill, the fire, two trees and the lean-to, and the first
+fire lands on the first day. Drinking water carries no risk in this
+game; boiling it is a disease rule for sub-project 5, not this one.
+
+## 13. Out of scope
 
 - A trough, a cellar, a storehouse: 3's.
 - The risk forecast reading any of this: B's.
