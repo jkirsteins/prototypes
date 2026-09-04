@@ -149,6 +149,27 @@ describe("the working day", () => {
     expect(currentNeed(state, world, calendar(state.minute), it)).toBe("sleep");
   });
 
+  it("a sleep already in progress lets go by day once the body is rested, but not by night or while it is tired", () => {
+    const { state, world } = felling();
+    const it = state.intent!;
+    it.need = "sleep";
+    state.minute = 25 * 60; // day 2, 09:00: a full day after the 08:00 day-1 start.
+    let cal = calendar(state.minute);
+    expect(cal.hour).toBe(9);
+    expect(cal.isNight).toBe(false);
+    state.player.energy = 100;
+    expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
+    // Still tired, still daylight: the sticky clause's other exit is energy, not the clock.
+    state.player.energy = 40;
+    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+    // Rested again, but now night: the clock keeps it.
+    state.player.energy = 100;
+    state.minute = 14 * 60; // 22:00 on day 1.
+    cal = calendar(state.minute);
+    expect(cal.isNight).toBe(true);
+    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+  });
+
   it("a sleep set aside clears the sleep need, so the next minute decides afresh", () => {
     const { state, world } = felling();
     const it = state.intent!;

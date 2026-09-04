@@ -68,7 +68,9 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   // the fire gives back enough to carry it past the night clause otherwise.
   // A thirsty one drinks first and this clause lays it down after; a body
   // with no energy left sleeps parched, which is what a collapse is.
-  const sleep = it.need === "sleep"
+  // The sticky clause below only carries a sleep already in progress; it needs
+  // its own exit or a rested body keeps sleeping into the morning it woke in.
+  const sleep = (it.need === "sleep" && (cal.isNight || p.energy < NIGHT_SLEEP_UNDER))
     || p.energy <= SLEEP_AT
     || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || (spent && !thirsty)))
     || (it.task === "night" && it.done < 1);
