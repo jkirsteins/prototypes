@@ -14,6 +14,7 @@ import { TOOLS } from "./items";
 import { log } from "./log";
 import { activityOf } from "./player";
 import { atCamp, cellOf } from "./position";
+import { record } from "./record";
 import { regionState, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
@@ -69,6 +70,7 @@ function frostbite(state: GameState, felt: number, rng: Rng): void {
     const alreadyNumb = p.frostbite.feet > 0;
     if (alreadyNumb && !p.toes) {
       p.toes = true;
+      record(state, { kind: "frostbite", part: "toes" });
       log(state, "You will not get those toes back.", "bad");
     }
     p.frostbite.feet = FROSTBITE_MINUTES;
@@ -78,6 +80,7 @@ function frostbite(state: GameState, felt: number, rng: Rng): void {
     const alreadyNumb = p.frostbite.hands > 0;
     if (alreadyNumb && !p.fingers) {
       p.fingers = true;
+      record(state, { kind: "frostbite", part: "fingers" });
       log(state, "You will not get those fingers back.", "bad");
     }
     p.frostbite.hands = FROSTBITE_MINUTES;

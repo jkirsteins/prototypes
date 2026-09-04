@@ -13,7 +13,7 @@ import type { FoodId } from "./sim/items";
 import { giveOrder, orderGate } from "./sim/ladder";
 import { newGame } from "./sim/newgame";
 import { moveOrder, removeOrder } from "./sim/orders";
-import { feltTemperature } from "./sim/player";
+import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { fillPopulations } from "./sim/regionstate";
 import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
@@ -30,7 +30,7 @@ import {
 } from "./ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel, stripRequest, type UiState } from "./ui/render";
 import { updateSky } from "./ui/sky";
-import { generateWorld, type World } from "./world/gen";
+import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
@@ -212,8 +212,7 @@ function onClick(ev: Event) {
       ui.confirmAbandon = false;
       break;
     case "abandon-yes":
-      clearSave();
-      fresh();
+      abandon(state, regionAt(world, state.player.region).name);
       break;
     case "restart":
       clearSave();

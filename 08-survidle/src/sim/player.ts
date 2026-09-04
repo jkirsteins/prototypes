@@ -9,6 +9,7 @@ import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { log } from "./log";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
+import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import type { DeathCause, GameState, IceMode, Player, RegionState, Task, TaskId, Terrain, Weather } from "./types";
@@ -369,12 +370,19 @@ export const DEATH_LINES: Record<DeathCause, string> = {
   thirst: "Thirst took you.",
   smoke: "The smoke took you in your sleep.",
   drowned: "The ice gave way. The lake kept you.",
-  gaveUp: "You gave up.",
+  gaveUp: "You sat down by the cold fire and did not get up.",
 };
 
-export function die(state: GameState, cause: DeathCause): void {
+export function die(state: GameState, cause: DeathCause, regionName = ""): void {
   if (state.dead) return;
+  fillDied(state, cause, regionName);
   state.dead = { cause, minute: state.minute };
   state.task = null;
   log(state, DEATH_LINES[cause], "bad");
+}
+
+/** Giving up: a death like any other, named gave up, with its own line in the record. */
+export function abandon(state: GameState, regionName = ""): void {
+  record(state, { kind: "abandoned" });
+  die(state, "gaveUp", regionName);
 }

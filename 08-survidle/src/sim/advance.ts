@@ -1,5 +1,5 @@
 import { Rng } from "../rng";
-import type { World } from "../world/gen";
+import { regionAt, type World } from "../world/gen";
 import { autoEat } from "./actions";
 import { dailyAnimals } from "./animals";
 import { calendar } from "./calendar";
@@ -10,6 +10,7 @@ import { runIntent } from "./intent";
 import { log } from "./log";
 import { runOrders } from "./orders";
 import { causeFrom, die, feltTemperature, stepPlayer } from "./player";
+import { record } from "./record";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { autoDrink } from "./water";
@@ -41,11 +42,13 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
   state.minute += dt;
   const cal = calendar(state.minute, state.startDoy);
 
+  const hadStorm = state.weather.storm !== null;
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
   const ambient = ambientTemperature(cal, state.weather);
   if (ev.coldSnap) log(state, `A cold snap. ${Math.round(ambient)} C and falling.`, "bad");
   if (ev.precipStarted) log(state, ambient <= 0 ? "Snow begins to fall." : "Rain sets in.");
   if (ev.precipStopped) log(state, state.weather.snowCm > 0 && ambient <= 0 ? "The snow stops." : "The rain stops.");
+  if (hadStorm && state.weather.storm === null && !state.dead) record(state, { kind: "storm" });
   if (state.weather.storm && !state.weather.storm.warned && stormComing(state.weather, state.minute)) {
     state.weather.storm.warned = true;
     log(state, "The sky is closing in from the west.", "bad");
@@ -75,5 +78,5 @@ function step(state: GameState, world: World, rng: Rng, dt: number): void {
     dailyCamp(state, world, cal, rng);
   }
 
-  if (state.player.health <= 0 && !state.dead) die(state, causeFrom(drains));
+  if (state.player.health <= 0 && !state.dead) die(state, causeFrom(drains), regionAt(world, state.player.region).name);
 }

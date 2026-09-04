@@ -17,6 +17,7 @@ import {
 import { creditYield } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed, die, ENERGY_RATE, walkSpeed, workSpeed } from "./player";
+import { hasEvent, record } from "./record";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
   masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
@@ -844,7 +845,7 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
   cue("fallThrough");
   const p = state.player;
   if (rng.chance(0.6)) {
-    die(state, "drowned");
+    die(state, "drowned", regionAt(world, state.player.region).name);
     return;
   }
   placeAt(state, world, land);
@@ -942,6 +943,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
       if (wearTool(state, "axe", wearFactor(state, world, "chop"))) {
+        record(state, { kind: "toolWorn", tool: "axe" });
         cue("toolBreaks");
         log(state, "The axe head splits on the last stroke. It is done for.", "bad");
       }
@@ -982,6 +984,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (!def?.hunt || isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(state, "bow", wearFactor(state, world, "hunt", s))) {
+        record(state, { kind: "toolWorn", tool: "bow" });
         cue("toolBreaks");
         log(state, "The bow snaps.", "bad");
       }
@@ -989,6 +992,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
+        if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const x = huntExtras(state, s);
         const where = produce(state, world, "rawMeat", x.meatKg);
         if (x.hideKg) produce(state, world, "hide", x.hideKg);
@@ -1026,6 +1030,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (!def?.hunt || !isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(state, "fishingSpear", wearFactor(state, world, "fish", s))) {
+        record(state, { kind: "toolWorn", tool: "fishingSpear" });
         cue("toolBreaks");
         log(state, "The spear shaft splits.", "bad");
       }
@@ -1033,6 +1038,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
+        if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
         produce(state, world, "fish", kg);
         // Raw fish is not eaten; the yield is what it cooks to.
@@ -1107,13 +1113,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (sid === "boughBed") st.boughBedAge = 0;
       }
       state.stats.structures++;
+      if (sid !== "snare") record(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
       return;
     }
     case "light":
     case "lightIndoors": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
-      wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"));
+      if (wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       const roof = st.structures.leanTo || st.structures.cabin;
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
       if (lr.failChance > 0 && rng.chance(lr.failChance)) {

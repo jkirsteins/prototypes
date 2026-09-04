@@ -6,6 +6,7 @@
  */
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { log } from "./log";
+import { record } from "./record";
 import type { GameState, RegionState, Species } from "./types";
 
 /** Starting numbers: seven tenths of what the land can hold. */
@@ -75,6 +76,11 @@ export function discovery(state: GameState, id: number): 0 | 1 | 2 {
 /** Entering a region discovers it and shows its neighbours from a distance. */
 export function enterRegion(state: GameState, world: World, id: number): void {
   const before = discovery(state, id);
+  // Empty only for the very first region ever discovered in this world: the
+  // landing spot, which the record already carries in the survivor's landed
+  // date. A later survivor landing into a world already explored still gets
+  // an entered line for new ground.
+  const landing = Object.keys(state.discovered).length === 0;
   state.discovered[id] = VISITED;
   regionState(state, world, id);
   const r = regionAt(world, id);
@@ -82,4 +88,5 @@ export function enterRegion(state: GameState, world: World, id: number): void {
     if (!state.discovered[nb.id]) state.discovered[nb.id] = SEEN;
   }
   if (before !== VISITED && state.minute > 0) log(state, `New ground: ${r.name}.`, "good");
+  if (before !== VISITED && !landing) record(state, { kind: "entered", region: r.name });
 }
