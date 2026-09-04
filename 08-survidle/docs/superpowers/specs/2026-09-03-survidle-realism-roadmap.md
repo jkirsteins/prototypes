@@ -234,10 +234,10 @@ game and the lineage grow, then content. So: 1 (built), A standing orders
 (built), D species and sound (built), then the baseline (the section of
 that name under the idle loop: water at camp, the thirst priority, arrows
 in the pack, wet wood, the rack as a task, tool keeps, and a start with a
-shore and rock, with the reference player as its gate), then the
+shore and rock, with the reference player as its gate; built), then the
 delegation ladder (the section of that name below: order kinds earned per
 skill, jobs at 3, grinds at 5, keeps at 10, with the first horizon
-checks), then the calibration pass (the section of that name below: the
+checks; built), then the calibration pass (the section of that name below: the
 harness measures each food source against the yield tables, the gates
 are set from what it finds, and berries, burn and sleep get their first
 honest numbers), then F's core (the world saved instead of the person, the
@@ -1022,7 +1022,8 @@ row 2: the competent set-up at no Lineage dies of the axe by first frost.
 Expected: the April gate, 21 days for now, with the reference player
 alive on it at no Lineage.
 
-Specced: `2026-09-03-survidle-baseline-design.md`. Seven fixes to rules
+Built: `2026-09-03-survidle-baseline-design.md`, plan
+`2026-09-03-survidle-baseline.md`. Seven fixes to rules
 that already exist, in the order they killed the headless runs of A's
 runner. None is a new system; each is a stock, a
 priority or a keep the loop needs before any content lands on it. They
@@ -1071,14 +1072,16 @@ memory.
 
 **Curve.** Section 2 of the curve spec whole: jobs at 3, grinds at 5,
 keeps at 10, and horizon rows 1 to 3. Expected: the from-scratch reference
-player alive on the April gate with the intents opening, and the three
-bands, provisional until the pass.
+player alive on the April gate playing by hand, and the three bands,
+provisional until the pass. Measured: 2 of 4, and eleven of twelve rows
+over their bands, both in the paragraph at the end of the section.
 
-Specced: `2026-09-04-survidle-idle-curve-design.md`. Right after the
-baseline, before the calibration pass, so the pass measures a beginner
-whose opening is final. Automation is earned per skill, the
-way the genre earns it: below woodcraft 3 the player points with intents,
-jobs come at 3 (about a working day), grinds at 5 (about an hour of real
+Built: `2026-09-04-survidle-idle-curve-design.md` (sections 2 and 3),
+plan `2026-09-04-survidle-ladder.md`. Right after the baseline, before
+the calibration pass, so the pass measures a beginner whose opening is
+final. Automation is earned per skill, the way the genre earns it: a once
+job, one unit of work per click, is the manual rung and is never gated;
+jobs with a count or a target come at 3 (about a working day), grinds at 5 (about an hour of real
 time at the skill), keeps at 10 (about five hours, near a first death).
 The level curve and the recommended levels do not move; the gates are set
 per rung. The orders form greys a kind the skill has not earned and says
@@ -1130,7 +1133,7 @@ Expected: the ladder's horizon checks re-run after the numbers move and
 land in their bands, and the gates reset as this section says.
 
 Immediately after the delegation ladder, before F, so it measures the
-beginner once, with the intents opening in place. The baseline's harness runs
+beginner once, with the by-hand opening in place. The baseline's harness runs
 a beginner's April on four seeds and dies of starvation on day 22 or 23
 with fire, a roof and water in hand; its gate is 21 days for now, set
 from that measurement rather than from the tables. This pass turns the
