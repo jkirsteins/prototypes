@@ -429,6 +429,305 @@ git commit -m "docs(survidle): the working day measured, the gates' standing, an
 
 ---
 
+### Task 4: Checking the snares
+
+Spec 5.1. A chore in the runner: a catch waiting and the heath in reach sends the runner there by day.
+
+**Files:**
+- Modify: `src/sim/types.ts` (`BodyNeed`)
+- Modify: `src/sim/body.ts` (`currentNeed`, `bodyStep`, a new `snaresWaiting`)
+- Test: `tests/workday.test.ts`
+
+**Interfaces:**
+- Consumes: `regionState(state, world, region).snareCatch.count`; `spotOf(regionAt(world, region), "heath")` from `../world/gen`; `check(state, world, cal, "walk", \`cell:${cell}\`)`; `walkStep`; `collectSnares` runs on arrival from `tasks.ts` (the `spotHere(...) === "heath"` line).
+- Produces: `BodyNeed` includes `"snares"`; `snaresWaiting(state, world, cal): number | null` exported from body.ts (the heath cell to walk to, or null).
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `tests/workday.test.ts`:
+
+```ts
+import { snaresWaiting } from "../src/sim/body";
+import { currentNeed } from "../src/sim/body";
+import { regionState } from "../src/sim/regionstate";
+import { regionAt, spotOf } from "../src/world/gen";
+
+describe("checking the snares", () => {
+  it("a catch waiting and the heath in reach is a chore by day, and it ends on arrival", () => {
+    const { state, world } = felling();
+    const st = regionState(state, world, state.player.region);
+    const heath = spotOf(regionAt(world, state.player.region), "heath")!.cell;
+    expect(snaresWaiting(state, world, calendar(state.minute))).toBeNull();
+    st.snareCatch = { count: 2, age: 0 };
+    expect(snaresWaiting(state, world, calendar(state.minute))).toBe(heath);
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("snares");
+    expect(state.intent?.step).toContain("check the snares");
+    // Walk there: the catch comes with you and the chore is over.
+    for (let m = 0; m < 600 && st.snareCatch.count > 0; m += 15) advance(state, world, 15);
+    expect(st.snareCatch.count).toBe(0);
+    expect(state.intent?.need ?? null).not.toBe("snares");
+    expect(state.log.some((e) => /hares? in the snares/.test(e.text))).toBe(true);
+  });
+
+  it("the chore waits for daylight and yields to thirst", () => {
+    const { state, world } = felling();
+    const st = regionState(state, world, state.player.region);
+    st.snareCatch = { count: 1, age: 0 };
+    state.minute = 14 * 60; // 22:00
+    const night = calendar(state.minute);
+    expect(night.isNight).toBe(true);
+    expect(snaresWaiting(state, world, night)).toBeNull();
+    state.minute = 0;
+    state.player.water = 0.5;
+    state.player.energy = 100;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+  });
+});
+```
+
+If `felling()`'s seed 17 region has no heath spot, use `newGame(3)` (its start region has one; `tests/intent.test.ts` relies on it) with `kitOut` and the same grind. If the arrival log line's wording differs from "hare in the snares" / "hares in the snares", read `collectSnares` and match it.
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `npx vitest run tests/workday.test.ts`
+Expected: FAIL: `snaresWaiting` is not exported.
+
+- [ ] **Step 3: The chore**
+
+`src/sim/types.ts`: `export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "snares" | "spent" | "home";`
+
+`src/sim/body.ts`, after `spentNow`:
+
+```ts
+/**
+ * A catch hanging in the snares and the heath in reach by day: the cell to
+ * walk to, or null. Arriving on the heath collects the catch, so the chore
+ * ends where it is done. A person checks their snares on the way past,
+ * which puts this above the evening's rest and below eating and drinking.
+ */
+export function snaresWaiting(state: GameState, world: World, cal: Calendar): number | null {
+  if (cal.isNight) return null;
+  const st = regionState(state, world, state.player.region);
+  if (st.snareCatch.count <= 0) return null;
+  const heath = spotOf(regionAt(world, state.player.region), "heath");
+  if (!heath) return null;
+  if (cellOf(state, world) === heath.cell) return null;
+  return check(state, world, cal, "walk", `cell:${heath.cell}`).ok ? heath.cell : null;
+}
+```
+
+with `spotOf` added to the `../world/gen` import. In `currentNeed`, after the hungry line and before `if (spent) ...`:
+
+```ts
+  if (snaresWaiting(state, world, cal) !== null) return "snares";
+```
+
+In `bodyStep`, a case before `default`:
+
+```ts
+    case "snares": {
+      const cell = snaresWaiting(state, world, cal);
+      return cell === null ? null : walkStep(state, world, cell, " to check the snares");
+    }
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `npx vitest run tests/workday.test.ts tests/needs.test.ts tests/body.test.ts tests/camp.test.ts`, then `npm test` (report the runtime), `npm run build`, biome.
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add 08-survidle/src/sim/types.ts 08-survidle/src/sim/body.ts 08-survidle/tests/workday.test.ts
+git commit -m "feat(survidle): a catch in the snares brings the runner back to the heath by day"
+```
+
+---
+
+### Task 5: Cutting the ice hole in the thirst chain
+
+Spec 5.2.
+
+**Files:**
+- Modify: `src/sim/body.ts` (`shoreForWater` neighbourhood: new `iceHoleSite`; `canQuench`; `thirstyStep`)
+- Test: `tests/workday.test.ts` or `tests/needs.test.ts`
+
+**Interfaces:**
+- Consumes: `hasTool(p, "axe")`, `watersideCell`, `straightKm`, `iceHoleOpen(state, cell)` from `./water`, `ICE_SHORE_CM`, the `iceHole` task (`check(state, world, cal, "iceHole")` passes at a waterside cell with ice at or over `ICE_SHORE_CM`, no hole open there, and an axe near).
+- Produces: `iceHoleSite(state, world, cal): number | null` exported from body.ts.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `tests/workday.test.ts`:
+
+```ts
+import { iceHoleSite } from "../src/sim/body";
+import { placeAtSpot } from "../src/sim/position";
+import { ICE_SHORE_CM, iceHoleOpen } from "../src/sim/water";
+
+describe("cutting the ice hole", () => {
+  it("an iced shore, no hole and an axe in hand is a source: the runner walks there, cuts, and drinks", () => {
+    const { state, world } = felling();
+    state.weather.iceCm = ICE_SHORE_CM + 1;
+    state.player.water = 0.5;
+    state.player.energy = 100;
+    for (const t of state.player.tools) if (t.id === "barkBucket") t.litres = 0;
+    const cal = calendar(state.minute);
+    const site = iceHoleSite(state, world, cal);
+    expect(site).not.toBeNull();
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+    expect(state.intent?.step).toContain("ice hole");
+    for (let m = 0; m < 480 && !iceHoleOpen(state, site!); m += 15) advance(state, world, 15);
+    expect(iceHoleOpen(state, site!)).toBe(true);
+    for (let m = 0; m < 120 && state.player.water < 1; m += 15) advance(state, world, 15);
+    expect(state.player.water).toBeGreaterThan(1);
+  });
+
+  it("without an axe the iced shore is no source", () => {
+    const { state, world } = felling();
+    state.weather.iceCm = ICE_SHORE_CM + 1;
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    expect(iceHoleSite(state, world, calendar(state.minute))).toBeNull();
+  });
+});
+```
+
+`kitOut` gives a bucket in hand; the test empties it so the drink does not come from the vessel. If `felling()`'s camp pile holds water (kitOut adds a bucket at camp, empty), fine; if `drink` finds camp water first, set the camp pile's water to zero in the test.
+
+- [ ] **Step 2: Run the test to see it fail**
+
+Run: `npx vitest run tests/workday.test.ts`
+Expected: FAIL: `iceHoleSite` is not exported.
+
+- [ ] **Step 3: The site and the step**
+
+In `src/sim/body.ts`, after `shoreForWater`:
+
+```ts
+/**
+ * Where a hole could be cut: the shore is iced, no hole is open in this
+ * region, and the runner holds an axe. The nearest waterside cell a walk
+ * can reach, the cell under foot included; null when any of that fails.
+ */
+export function iceHoleSite(state: GameState, world: World, cal: Calendar): number | null {
+  if (state.weather.iceCm < ICE_SHORE_CM) return null;
+  const st = regionState(state, world, state.player.region);
+  if (st.iceHole) return null;
+  if (!hasTool(state.player, "axe")) return null;
+  const here = cellOf(state, world);
+  if (watersideCell(world, here)) return here;
+  const r = regionAt(world, state.player.region);
+  const candidates = r.cells.filter((c) => watersideCell(world, c)).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  for (const cell of candidates) if (check(state, world, cal, "walk", `cell:${cell}`).ok) return cell;
+  return null;
+}
+```
+
+`canQuench` gains `|| iceHoleSite(state, world, cal) !== null` after the `shoreForWater` line. `thirstyStep`, after the `shoreCell` walk and before the camp branches:
+
+```ts
+  const site = iceHoleSite(state, world, cal);
+  if (site !== null) {
+    if (site !== cellOf(state, world)) return walkStep(state, world, site, " to open an ice hole");
+    return { id: "iceHole", step: "opening an ice hole" };
+  }
+```
+
+Check `iceHoleOpen` and `st.iceHole` agree on what "open" means (`water.ts` reads `st.iceHole?.cell`); `iceHoleSite` returns null once any hole is open in the region because `shoreForWater` then walks to it.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `npx vitest run tests/workday.test.ts tests/needs.test.ts tests/water.test.ts tests/ice.test.ts`, then `npm test` (runtime), `npm run build`, biome.
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add 08-survidle/src/sim/body.ts 08-survidle/tests/workday.test.ts
+git commit -m "feat(survidle): a thirsty runner with an axe cuts the ice hole it walks to"
+```
+
+---
+
+### Task 6: The knife and a bucket on day one
+
+Spec 5.3. The list, then the measurement that decides its fallback.
+
+**Files:**
+- Modify: `src/sim/reference.ts` (`REFERENCE_ORDERS`, the doc comment)
+- Test: `tests/reference.test.ts`
+
+- [ ] **Step 1: Write the failing test**
+
+In `tests/reference.test.ts`, replace the "a competent day two" test with:
+
+```ts
+  it("a competent day one: the knife and one bucket right after the fire is lit, before the felling; the second bucket and the snares after the roof", () => {
+    const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
+    const at = (s: string) => tasks.findIndex((t) => t.startsWith(s));
+    expect(at("craft:knife:job:once")).toBe(at("light::keep") + 1);
+    expect(tasks[at("craft:knife:job:once") + 1]).toBe("craft:barkBucket:job:campHas");
+    expect(REFERENCE_ORDERS[at("craft:knife:job:once") + 1].req.until).toEqual({ kind: "campHas", qty: 1 });
+    expect(at("chop::keep")).toBe(at("craft:knife:job:once") + 2);
+    const lean = at("build:leanTo:job:once");
+    expect(tasks[lean + 1]).toBe("craft:barkBucket:job:campHas");
+    expect(REFERENCE_ORDERS[lean + 1].req.until).toEqual({ kind: "campHas", qty: 2 });
+    expect(tasks[lean + 2]).toBe("craft:snare:keep:campHas");
+    expect(tasks[lean + 3]).toBe("build:snare:job:times");
+    expect(REFERENCE_ORDERS.length).toBe(28);
+  });
+```
+
+- [ ] **Step 2: Run the test to see it fail**
+
+Run: `npx vitest run tests/reference.test.ts`
+
+- [ ] **Step 3: The list**
+
+`REFERENCE_ORDERS` becomes the spec 5.3 order: after `keep("light", 1)` insert `job("craft", { kind: "once" }, "knife")` and `job("craft", { kind: "campHas", qty: 1 }, "barkBucket")`; after the lean-to keep `job("craft", { kind: "campHas", qty: 2 }, "barkBucket")` followed by the two snare entries; remove the knife from its old place after the lean-to. The count becomes 28. Extend the doc comment with one sentence: a competent day one makes a knife and a bucket before it fells a tree, because the shore ices over on the second morning and a bucket at camp is the only water that does not.
+
+- [ ] **Step 4: Run the tests, then the measurement**
+
+Run: `npx vitest run tests/reference.test.ts tests/horizon.test.ts tests/ladder.test.ts`, then `npm test` (runtime), `npm run build`, biome. The checkpoint-dedup fixture may need re-seeding; the brief's rule applies (a seed that dies on `REFERENCE_TARGET_DAY`, comment says only why).
+
+Then `npm run reference > <scratch>/april-bucket.txt`. Read the four death lines. Against the run before it (the stop-rule paragraph in the roadmap: 17 starved 25, 19 starved 30, 42 wolves 4, 79 thirst 3, no cold deaths), if two or more seeds now die of cold, or one dies of cold before day 16, apply the fallback: the knife and the first bucket back after the lean-to (the old order), keep the second bucket and the snares as they are, update the test to that order, re-run the suite and the April run once more, and say which order stands and why with both runs' death lines.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add 08-survidle/src/sim/reference.ts 08-survidle/tests/reference.test.ts
+git commit -m "feat(survidle): the reference player makes a knife and a bucket before it fells a tree"
+```
+
+---
+
+### Task 7: Measure again, amend the roadmap
+
+Spec 5.4. Docs only, plus the runs. The roadmap already carries a paragraph "Pulled forward after the pass: the working day and snares on day two" with the numbers of the first measurement; this task amends it rather than adding a second.
+
+- [ ] **Step 1: The runs**
+
+```
+npm run reference > <scratch>/april-final.txt
+npm run reference -- --kitted 17 19 42 79 60 > <scratch>/kitted-final.txt
+npm run horizon > <scratch>/horizon-final.txt
+```
+
+- [ ] **Step 2: The roadmap**
+
+In the "Pulled forward after the pass" paragraph(s) of the calibration section: keep the sentence on the primary list order's rejection; replace the first measurement's numbers with this run's (per seed death or standing, the gate-week burn buckets and hours, the yields per source including snares now, the kitted standing, the twelve horizon rows); add one sentence per diagnosis and its answer (the snare chore, the ice-hole cut, the knife and bucket on day one, and the dawn-sleep clause that held a rested body in bed), in the section's voice, no dates, no plan-task numbers; and re-read the stop rule: green, or what still ends the runs and which item the standing order pulls next (the basket trap for starvation at the gate day; item 3's water storage if thirst still ends the opening). Update the build-order paragraph's working-day step to name what it now includes.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add 08-survidle/docs/superpowers/specs/2026-09-03-survidle-realism-roadmap.md
+git commit -m "docs(survidle): the second measurement - the snares checked, the hole cut, the bucket on day one - and what the deaths say next"
+```
+
 ## Self-review against the spec
 
 - 1.1 the number: Task 1 (field, default, save).

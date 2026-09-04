@@ -158,7 +158,75 @@ The stop rule reads the deaths:
 `npm test` is at 9.1 seconds against a ten-second budget; the day-long
 test is one run of one seed and stays alone in its file.
 
-## 5. Out of scope
+## 5. What the first measurement pulled next
+
+Measured with the working day and the day-two snares in place, the April
+run read: two seeds starve near the gate day, one dies of thirst on day 3
+and one of wolves on day 4 after a dehydrated night. Three diagnoses
+named the causes, and the author chose the answers:
+
+- **Snares are set and catch, and nothing collects.** Collection is a side
+  effect of walking onto the heath, and after the fifth snare nothing on
+  the list goes there, so a fox takes every catch. The answer is a chore
+  in the runner (5.1), not an order.
+- **The thirst chain cannot cut an ice hole.** The shore ices on day 2,
+  the runner carries the axe that cuts a hole, and the chain only walks to
+  a hole that is already cut. The answer is the cut in the chain (5.2).
+- **No vessel until day three or four.** The knife and the bucket sit
+  behind the lean-to. The answer is the knife and one bucket on day one
+  (5.3), measured against the cold the way section 2 was.
+
+### 5.1 Checking the snares
+
+`BodyNeed` gains `"snares"`. It holds in `currentNeed` after hunger and
+before "spent", by day only, when the region's `snareCatch.count` is
+above zero and a walk to the region's heath spot is open. Its step is the
+walk to the heath ("to check the snares"); arriving on a heath cell
+already collects the catch through `collectSnares`, so the chore ends the
+minute the runner stands there. A person checks their snares on the way
+past, so the chore sits above the evening's rest and below eating and
+drinking. Manual play is untouched: a player who set snares by hand walks
+back by hand.
+
+### 5.2 Cutting the ice hole
+
+The thirst chain gains a site to cut: when the shore is iced, no hole is
+open, and the runner holds an axe, the nearest waterside cell a walk can
+reach is a source. `canQuench` counts it; `thirstyStep` walks there ("to
+open an ice hole") and, standing on it, takes the ice-hole task the manual
+panel already offers (twenty minutes with the axe, and the hole skins over
+by morning). The next minute the hole is open and the chain drinks from it
+as it does today. A runner without an axe is where it was.
+
+### 5.3 The knife and a bucket on day one
+
+The knife and one bark bucket move to right after the fire is lit, before
+the felling and the lean-to; the second bucket and the snares stay where
+section 2's fallback put them, after the lean-to:
+
+```
+keep fill 2, stone 8, sticks 10, bark 12, cordage 4,
+fire pit, fire drill, keep light 1,
+craft knife (once), craft bark bucket (campHas 1),
+keep chop 4, keep split 60, lean-to,
+craft bark bucket (campHas 2),
+keep craft 1 snare, set snare (times 5),
+fishing spear, keep cook 1 fish, keep cook 1, keep fish 1 any, keep berries 2,
+drying rack, keep hang 10,
+bow, keep arrows 10, keep hunt 2 any, keep axe 1, chop forever
+```
+
+The roof slips by the knife's 45 minutes and a bucket's 20. The fallback
+is section 2's: if the measured April run shows cold deaths rising
+against the run before it (none), the knife and the bucket go back after
+the lean-to and only the ice-hole cut and the snare chore stand.
+
+### 5.4 Measure again
+
+The three runs of section 3, the roadmap paragraph amended with the new
+numbers, and the stop rule read again.
+
+## 6. Out of scope
 
 - The horizon's thirst rows, unless the stop rule names them.
 - The gate, the bands and the survivor rows.
