@@ -1,12 +1,12 @@
 /**
  * The reference player: the set-up a competent player writes on day one,
- * run headless. It is the baseline's gate (reaches 1 December on four
- * seeds) and, later, the survivor loop's instrument. The runner never
- * gathers a prerequisite on its own, so the list orders every dependency
- * before what needs it: water at the top, where it waits on its own
- * vessel; then everything a fire and a roof need, in the order they need
- * it, worked with the arrival axe alone; then the knife and what it
- * unlocks.
+ * run headless. It is the baseline's gate (alive on game day 30 on four
+ * seeds, from scratch, in April) and, later, the survivor loop's
+ * instrument. The runner never gathers a prerequisite on its own, so the
+ * list orders every dependency before what needs it: water at the top,
+ * where it waits on its own vessel; then everything a fire and a roof
+ * need, in the order they need it, worked with the arrival axe alone;
+ * then the knife and what it unlocks.
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
@@ -74,10 +74,23 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
-/** The reference seeds, and the day 1 December falls on from a 1 April start. */
+/** The reference seeds. */
 export const REFERENCE_SEEDS = [17, 19, 42, 79];
+/** The gate: alive on this game day, from the arrival kit, in April (section 13). */
+export const REFERENCE_TARGET_DAY = 30;
+/** The day 1 December falls on from a 1 April start; kept as a late checkpoint, not a gate. */
 export const DECEMBER_DAY = 245;
-const CHECKPOINT_DAYS = [30, 90, DECEMBER_DAY];
+const CHECKPOINT_DAYS = [REFERENCE_TARGET_DAY, 90, DECEMBER_DAY];
+
+/**
+ * The gate's pass criterion: not dead on or before the target day. A run
+ * that dies after it still passed, since it was alive when the target
+ * day rolled over; the report says where it dies after that. `deathDay`
+ * is null for a run still alive when it stopped.
+ */
+export function passesGate(deathDay: number | null, targetDay: number): boolean {
+  return deathDay === null || deathDay > targetDay;
+}
 
 /**
  * The audit's kitted camp (spec 8, "Decisions confirmed with the author"): the
@@ -146,5 +159,6 @@ export function runReference(seed: number, days: number, kitted = false): Refere
   }
   const day = calendar(state.dead ? state.dead.minute : state.minute).day;
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
-  return { seed, startRing: world.startRing, checkpoints, outcome, passed: !state.dead && day >= DECEMBER_DAY };
+  const passed = passesGate(state.dead ? day : null, REFERENCE_TARGET_DAY);
+  return { seed, startRing: world.startRing, checkpoints, outcome, passed };
 }

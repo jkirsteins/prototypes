@@ -5,13 +5,13 @@
  *
  * --kitted, anywhere in the args, also runs the audit's kitted camp (spec 8):
  * the arrival kit plus the from-scratch list's own tools and structures,
- * already in hand. It prints as a second block per seed and a second verdict
- * line, and never affects the exit code - the from-scratch run is still the
- * gate. It answers a different question (does an established camp hold?)
- * from the from-scratch run (can the list bootstrap one in time?), so it is
- * a flag, not a second gate.
+ * already in hand. It prints as a second block per seed, with no pass line
+ * of its own and no effect on the exit code - the from-scratch run is still
+ * the gate. It answers a different question (does an established camp
+ * hold?) from the from-scratch run (can the list bootstrap one in time?),
+ * so it stays a diagnostic, not a second gate (spec 13).
  */
-import { DECEMBER_DAY, REFERENCE_SEEDS, runReference } from "../src/sim/reference";
+import { REFERENCE_SEEDS, REFERENCE_TARGET_DAY, runReference } from "../src/sim/reference";
 
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
@@ -27,8 +27,10 @@ function runBlock(seed: number, kit: boolean): boolean {
     const stocks = Object.entries(c.stocks).map(([k, v]) => `${k} ${v}`).join(", ") || "nothing";
     console.log(`  day ${c.day}: kcal ${c.kcal}, water ${c.water} l, warmth ${c.warmth}, health ${c.health}; camp: ${stocks}; tools: ${c.tools.join(", ") || "none"}`);
   }
-  if (r.outcome.kind === "died") console.log(`  died day ${r.outcome.day}, ${r.outcome.cause}`);
-  else console.log(`  reached ${r.outcome.day >= DECEMBER_DAY ? "1 December" : `day ${r.outcome.day}`}, day ${r.outcome.day}`);
+  const outcome = r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `reached day ${r.outcome.day}`;
+  // The kitted block is a diagnostic (spec 13): it prints the outcome with no pass line of its own.
+  const passLine = !kit && r.passed ? `alive on day ${REFERENCE_TARGET_DAY}, ` : "";
+  console.log(`  ${passLine}${outcome}`);
   console.log(`  (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return r.passed;
 }
@@ -38,9 +40,7 @@ for (const seed of seeds) if (runBlock(seed, false)) passed++;
 console.log(`passed ${passed} of ${seeds.length}`);
 
 if (kitted) {
-  let kitPassed = 0;
-  for (const seed of seeds) if (runBlock(seed, true)) kitPassed++;
-  console.log(`kitted: passed ${kitPassed} of ${seeds.length}`);
+  for (const seed of seeds) runBlock(seed, true);
 }
 
 process.exit(passed === seeds.length ? 0 : 1);

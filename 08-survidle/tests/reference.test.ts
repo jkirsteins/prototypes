@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { pile, qty } from "../src/sim/inventory";
 import { ordersHere } from "../src/sim/orders";
-import { REFERENCE_ORDERS, setUpReference } from "../src/sim/reference";
+import { passesGate, REFERENCE_ORDERS, REFERENCE_TARGET_DAY, setUpReference } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 
 describe("the reference player", () => {
@@ -33,5 +33,11 @@ describe("the reference player", () => {
     const camp = pile(state, regionState(state, world, state.player.region).campCell);
     expect(qty(camp, "water") + qty(camp, "ice")).toBeGreaterThan(0);
     expect(calendar(state.minute).day).toBe(4);
+  });
+
+  it("the gate passes a seed alive on day 30 and fails one that dies on day 29", () => {
+    expect(passesGate(null, REFERENCE_TARGET_DAY)).toBe(true);
+    expect(passesGate(31, REFERENCE_TARGET_DAY)).toBe(true);
+    expect(passesGate(29, REFERENCE_TARGET_DAY)).toBe(false);
   });
 });
