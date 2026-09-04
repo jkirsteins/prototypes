@@ -153,7 +153,12 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 
 /** Flat kcal/h for activities that do not depend on the ground: walking is computed separately, by terrain. */
 const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 400 };
-/** Base kcal/h for walking on ground at ordinary (open-forest) speed; the ground and load scale it from here. */
+/**
+ * Base kcal/h for walking on ground at ordinary (open-forest) speed; the
+ * ground and load scale it from here. Walking at three kilometres an hour
+ * is 200 to 250 kcal/h for a fit adult, so below 200 a walk would cost less
+ * than steady work standing still.
+ */
 export const WALK_KCAL_PER_HOUR = 200;
 /**
  * The body's resting burn, every hour of the day asleep or not: the sleep
@@ -179,6 +184,9 @@ export const SNOW_DAMP_MAX = 30;
 export function warmthTarget(felt: number): number {
   return clamp(50 + (felt - COMFORT_C) * 5, 0, 100);
 }
+
+/** Energy an hour: asleep, on a task, at camp work (the rest activity class on a task), and the explicit rest task. */
+export const ENERGY_RATE = { sleep: 12.5, task: -7, camp: -4, rest: 6, restSpent: 4 };
 
 /**
  * One step of the body: kcal, warmth, energy, wetness, clothing wear, health.
@@ -243,8 +251,14 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   p.warmth = clamp(p.warmth + (target - p.warmth) * WARMTH_RATE * dt, 0, 100);
 
   // Energy.
-  // A working day of ten hours plus six awake costs about what eight hours of sleep restores.
-  const energyRate = a === "sleep" ? 12.5 : a === "rest" && state.task?.id === "rest" ? (p.energy < 20 ? 4 : 6) : a === "rest" ? -4 : -8;
+  // The budget balances at eight hours: twelve on a task and four of camp
+  // work drain exactly what eight asleep restore, so a working day ends
+  // tired and a grind day needs nine, and the collapse threshold is what
+  // real overwork does rather than the end of every third day.
+  const energyRate = a === "sleep" ? ENERGY_RATE.sleep
+    : a === "rest" && state.task?.id === "rest" ? (p.energy < 20 ? ENERGY_RATE.restSpent : ENERGY_RATE.rest)
+    : a === "rest" ? ENERGY_RATE.camp
+    : ENERGY_RATE.task;
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.

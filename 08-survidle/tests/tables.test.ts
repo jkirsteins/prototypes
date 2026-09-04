@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
-import { BASE_KCAL_PER_HOUR, WALK_KCAL_PER_HOUR } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, ENERGY_RATE, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { APRIL, BERRY, BURN, LATE_AUGUST, SLEEP_HOURS, sourceBand, tableFor, verdict } from "../src/sim/tables";
+import { SLEEP_CAP_MINUTES } from "../src/sim/tasks";
 
 describe("the tables", () => {
   it("carry the roadmap's April and late-August rows", () => {
@@ -63,5 +64,10 @@ describe("the constants sit in their real bands", () => {
     expect(BURN.base.lo + BURN.work.lo + BURN.cold.lo).toBeGreaterThanOrEqual(BURN.day.lo - 100);
     expect(BURN.base.hi + BURN.work.hi + BURN.cold.hi).toBeLessThanOrEqual(BURN.day.hi + 300);
     expect(SLEEP_HOURS).toEqual({ lo: 7, hi: 9 });
+  });
+
+  it("the energy budget balances: twelve hours on a task and four of camp work drain what eight hours asleep restore", () => {
+    expect(12 * -ENERGY_RATE.task + 4 * -ENERGY_RATE.camp).toBeCloseTo(8 * ENERGY_RATE.sleep, 6);
+    expect(verdict(SLEEP_CAP_MINUTES / 60, SLEEP_HOURS)).toBe("in band");
   });
 });

@@ -1201,6 +1201,17 @@ day's, which the sleep budget sets. Cold fell with it to 85, just under
 the 100 floor of its share, since the cold increment is a share of the
 burn it sits on and the walk half of that burn is what moved.
 
+With the budget balanced (a task at 7 energy an hour, sleep capped at
+nine) the same week reads base 1,680, work 2,260 (activity 1,296, walk
+964), cold 202, 4,141 a day, 13.0 hours at work and 8.7 asleep; work
+sits 560 over its share, cold in its share. Three of the four seeds
+reach day 21 now, not Task 6's two - seed 42 crosses over as well - and
+on those three, activity 1,425 outweighs walk 862, so the survivors'
+weeks would have named the activity rates; walk stands because a walk
+at three kilometres an hour is 200 to 250 kcal an hour by the MET
+tables while chopping at 400 and gathering at 200 already sit at
+theirs.
+
 ### B. The risk forecast
 
 **Curve.** The horizon curve's instrument: the forecast's first row is

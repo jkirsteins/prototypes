@@ -16,7 +16,7 @@ import {
 } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
-import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, die, ENERGY_RATE, walkSpeed, workSpeed } from "./player";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
   masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
@@ -243,6 +243,9 @@ function kitInReach(state: GameState, world: World, item: ItemId, invs: Inventor
   const st = regionState(state, world, state.player.region);
   return cellOf(state, world) === st.campCell && qty(pile(state, st.campCell), item) >= 1;
 }
+
+/** No one sleeps past nine hours: a night's sleep for a working adult, the top of the real band. */
+export const SLEEP_CAP_MINUTES = 540;
 
 /**
  * The one place a task's legality and duration are decided. availableTasks
@@ -525,10 +528,10 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
     case "sleep": {
-      // Until dawn or until rested, whichever is later; no one sleeps round the clock.
-      const toRested = ((100 - p.energy) / 12.5) * 60;
-      const minutes = Math.min(600, Math.max(60, minutesUntilDawn(state.minute), toRested));
-      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 10 h; ${bedText(state, world)}`, duration: minutes });
+      // Until dawn or until rested, whichever is later, and never past the cap.
+      const toRested = ((100 - p.energy) / ENERGY_RATE.sleep) * 60;
+      const minutes = Math.min(SLEEP_CAP_MINUTES, Math.max(60, minutesUntilDawn(state.minute), toRested));
+      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 9 h; ${bedText(state, world)}`, duration: minutes });
     }
     case "melt": {
       const o = needCamp(opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true }));

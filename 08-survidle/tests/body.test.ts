@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { minutesToCamp } from "../src/sim/body";
-import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
-import { baseWalkSpeed } from "../src/sim/player";
+import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { check } from "../src/sim/tasks";
 import { PACK_COMFORTABLE_KG } from "../src/units";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
@@ -588,5 +589,39 @@ describe("the runner in the elements", () => {
     advance(state, world, 1);
     expect(state.intent?.need).toBe("thirsty");
     expect(state.intent?.step).toMatch(/^walking to .+ for water$/);
+  });
+});
+
+describe("the sleep cap", () => {
+  it("a spent body at midday sleeps nine hours, not until dawn", () => {
+    const { state, world } = newGame(1);
+    // 13:00 on 1 April: dawn is seventeen hours off, the body needs eight.
+    state.minute = 5 * 60;
+    state.player.energy = 0;
+    const o = check(state, world, calendar(state.minute), "sleep");
+    expect(o.ok).toBe(true);
+    expect(o.duration).toBe(540);
+  });
+
+  it("a body at 60 at 22:00 sleeps until dawn, which is under the cap", () => {
+    const { state, world } = newGame(1);
+    // 22:00 on 1 April: dawn is eight and a half hours off, inside the cap; the body needs about three.
+    state.minute = 14 * 60;
+    state.player.energy = 60;
+    const o = check(state, world, calendar(state.minute), "sleep");
+    expect(o.duration).toBeCloseTo(minutesUntilDawn(state.minute), 3);
+    expect(o.duration).toBeLessThanOrEqual(540);
+  });
+
+  it("an hour on a task costs seven energy; an hour of camp work four", () => {
+    const { state, world } = newGame(1);
+    state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
+    const e0 = state.player.energy;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    expect(e0 - state.player.energy).toBeCloseTo(7, 6);
+    state.task = { id: "craft", arg: "cordage", progress: 0, duration: 60, repeat: false };
+    const e1 = state.player.energy;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    expect(e1 - state.player.energy).toBeCloseTo(4, 6);
   });
 });
