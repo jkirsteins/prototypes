@@ -10,6 +10,8 @@ import { addOrder } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { huntedLand } from "../src/sim/species";
+import { check } from "../src/sim/tasks";
+import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -152,5 +154,62 @@ describe("snares in the pack", () => {
     expect(qty(p.pack, "snare")).toBe(2);
     expect(qty(pile(state, st.campCell), "snare")).toBe(0);
     expect(until(g, () => st.structures.snares >= 1, 600)).toBe(true);
+  });
+});
+
+describe("a kit at camp counts only while standing there", () => {
+  it("at camp with a bow in hand and arrows only in the camp pile, chooseOrder picks the hunt and the runner leaves with arrows in the pack", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    placeAt(state, world, st.campCell);
+    addItem(p.pack, "bow", 1);
+    takeUp(state, world, "bow");
+    addItem(pile(state, st.campCell), "arrow", 12);
+    addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" }, "keep");
+    advance(state, world, 1);
+    expect(state.intent?.task).toBe("hunt");
+    expect(state.intent?.orderId).not.toBeNull();
+    expect(qty(p.pack, "arrow")).toBe(10);
+    // Pocketed at the start, not just for a moment: still in the pack once hunting is under way.
+    expect(until(g, () => state.task?.id === "hunt", 200)).toBe(true);
+    expect(qty(p.pack, "arrow")).toBe(10);
+  });
+
+  it("at camp with snares only in the camp pile, chooseOrder picks the set-snares job and the heath build succeeds", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "snare", 2);
+    addOrder(state, world, { task: "build", arg: "snare", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    expect(state.intent?.task).toBe("build");
+    expect(state.intent?.orderId).not.toBeNull();
+    expect(qty(p.pack, "snare")).toBe(2);
+    expect(qty(pile(state, st.campCell), "snare")).toBe(0);
+    expect(until(g, () => st.structures.snares >= 1, 600)).toBe(true);
+  });
+
+  it("away from camp, the reasons stay needs arrows in the pack and needs a snare, whatever sits at camp", () => {
+    const { state, world } = newGame(17);
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    const r = regionAt(world, p.region);
+    addItem(p.pack, "bow", 1);
+    takeUp(state, world, "bow");
+    addItem(pile(state, st.campCell), "arrow", 12);
+    const forest = spotOf(r, "forest")!.cell;
+    placeAt(state, world, forest);
+    expect(forest).not.toBe(st.campCell);
+    expect(check(state, world, cal, "hunt", "any").why).toBe("needs arrows in the pack");
+
+    addItem(pile(state, st.campCell), "snare", 2);
+    const heath = spotOf(r, "heath")!.cell;
+    placeAt(state, world, heath);
+    expect(heath).not.toBe(st.campCell);
+    expect(check(state, world, cal, "build", "snare").why).toBe("needs a snare");
   });
 });

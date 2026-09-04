@@ -29,7 +29,7 @@ import { lightingInRain, SMOKE_COUGH, splitIsWet } from "./fire";
 import { discovery, regionState } from "./regionstate";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
 import type {
-  GameState, IceMode, Order, PausedTask, RecipeId,
+  GameState, IceMode, Inventory, ItemId, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
 } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
@@ -229,6 +229,21 @@ export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: 
 }
 
 /**
+ * Whether a kit item - arrows for a hunt, a snare for a set-snares job -
+ * counts as in reach: in `invs` (the pack, or the pack and the work
+ * cell's pile) like any other material, or in the camp pile while the
+ * player is standing right on the camp cell. Only there, because leaving
+ * camp is what pockets it (provisionKit) - a kit sitting at camp is not
+ * "in reach" of work done anywhere else, but it is on the way out, so the
+ * judging rule has to see what the pocketing rule is about to move.
+ */
+function kitInReach(state: GameState, world: World, item: ItemId, invs: Inventory[]): boolean {
+  if (totalQty(invs, item) >= 1) return true;
+  const st = regionState(state, world, state.player.region);
+  return cellOf(state, world) === st.campCell && qty(pile(state, st.campCell), item) >= 1;
+}
+
+/**
  * The one place a task's legality and duration are decided. availableTasks
  * and startTask both go through it so the button and the click agree.
  * `at` judges the task at another cell of this region, for an intent that
@@ -334,7 +349,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         // Ground, then tool, then animal. Kinds live here but none of them keeps to this ground: the forest is where a hunt starts.
         if (kinds.length && !c.length) return ground(false, "forest", "forest", o);
         if (!toolNear(p, "bow", invs)) return { ...o, ok: false, why: "needs a bow" };
-        if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
+        if (!kitInReach(state, world, "arrow", [p.pack])) return { ...o, ok: false, why: "needs arrows in the pack" };
         if (!kinds.length) return { ...o, ok: false, why: "nothing about" };
         return o;
       }
@@ -348,7 +363,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       }));
       if (!o.ok) return o;
       if (!toolNear(p, "bow", invs)) return { ...o, ok: false, why: "needs a bow" };
-      if (totalQty([p.pack], "arrow") < 1) return { ...o, ok: false, why: "needs arrows in the pack" };
+      if (!kitInReach(state, world, "arrow", [p.pack])) return { ...o, ok: false, why: "needs arrows in the pack" };
       // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
       const gone = absence(def, cal, state.weather.iceCm);
       if (gone) return { ...o, ok: false, why: gone };
@@ -432,7 +447,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;
         if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: "five snares is enough here" };
-        if (!canConsume(invs, def.needs)) return { ...o2, ok: false, why: "needs a snare" };
+        if (!kitInReach(state, world, "snare", invs)) return { ...o2, ok: false, why: "needs a snare" };
         return o2;
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
