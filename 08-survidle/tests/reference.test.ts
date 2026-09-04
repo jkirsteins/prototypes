@@ -50,12 +50,25 @@ describe("the reference player", () => {
     expect(axe.kind).toBe("keep");
   });
 
-  it("the list keeps two kilos of berries at camp, after the cook keeps and before the rack", () => {
-    const i = REFERENCE_ORDERS.findIndex((o) => o.req.task === "berries");
-    expect(i).toBeGreaterThan(0);
-    expect(REFERENCE_ORDERS[i]).toMatchObject({ kind: "keep", req: { until: { kind: "campHas", qty: 2 } } });
-    expect(REFERENCE_ORDERS[i - 1].req).toMatchObject({ task: "cook" });
-    expect(REFERENCE_ORDERS[i + 1].req).toMatchObject({ task: "build", arg: "dryingRack" });
+  it("a competent day two: chop right after the fire is lit, the knife and the snares right after the lean-to", () => {
+    const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
+    const at = (s: string) => tasks.findIndex((t) => t.startsWith(s));
+    expect(at("light::keep")).toBeGreaterThan(-1);
+    expect(at("chop::keep")).toBe(at("light::keep") + 1);
+    expect(at("build:leanTo:job:once")).toBeGreaterThan(at("chop::keep"));
+    expect(at("craft:knife:job:once")).toBe(at("build:leanTo:job:once") + 1);
+    expect(at("craft:snare:keep")).toBe(at("craft:knife:job:once") + 1);
+    expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
+  });
+
+  it("the fish keep follows the cook keeps and comes before the berries keep and the rack", () => {
+    const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
+    const cook = tasks.lastIndexOf("cook:");
+    expect(tasks[cook - 1]).toBe("cook:fish");
+    expect(tasks[cook + 1]).toBe("fish:any");
+    expect(tasks[cook + 2]).toBe("berries:");
+    expect(tasks[cook + 3]).toBe("build:dryingRack");
+    expect(REFERENCE_ORDERS.length).toBe(27);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -228,8 +241,8 @@ describe("the reference player", () => {
   });
 
   it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 54 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    const r = runReference(54, 30);
+    // Seed 5 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
+    const r = runReference(5, 30);
     expect(r.outcome).toEqual({ kind: "died", day: REFERENCE_TARGET_DAY, cause: "starved" });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);

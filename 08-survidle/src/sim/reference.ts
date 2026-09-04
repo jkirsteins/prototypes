@@ -38,22 +38,26 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * - stone for the ring, sticks, bark and cordage as raw stock, the fire
  * pit, the fire drill, the keep that lights the fire and relights it, one
  * tree felled, a day's firewood split from it, and the lean-to. Then the
- * knife and what it unlocks. The scheduler is greedy top-down, so a
- * competent player ranks eating what is already caught above catching more
- * of it: the cook keeps sit above the fish keep, and the rack job and the
- * dried-meat keep sit above the hunt keep, right after the cook keeps -
- * both block harmlessly with nothing to cook or hang. The snare craft and
- * its five-times build sit above the fish keep too, right after the hang
- * keep: snares are the passive food a competent player sets before
- * spending hours at the shore, and ranked below an always-unmet fish keep
- * they never get made at all. Tools the survivor holds are once jobs,
- * since the first one made is taken up and a keep would craft a second;
- * the axe stays a keep because the arrival axe wears out and the spare is
- * the point. Auto-eat, auto-feed and auto-drink stay on, as they are for
- * every player. The felling grind, needing the axe kept just above it,
- * runs last and forever. Two kilos of berries at camp sit with the cook
- * keeps: in season they are the cheapest kcal there is, and out of it the
- * keep blocks harmlessly on nothing ripe.
+ * knife and the snares, right after the lean-to: a competent day two sets
+ * snares before spending hours at anything else (the knife is two stone,
+ * a stick and a cordage, each snare a stick and two cordage, and five
+ * snares where hares live are the beginner's whole small-game band for a
+ * few minutes of work), but a roof over the fire outranks them, since
+ * shelter from the cold is what keeps a beginner alive long enough to set
+ * a snare at all. Then what the knife unlocks beyond the snares. The
+ * scheduler is greedy top-down, so a competent player ranks eating what is
+ * already caught above catching more of it: the cook keeps sit above the
+ * fish keep, and the rack job and the dried-meat keep sit above the hunt
+ * keep, right after the cook keeps - both block harmlessly with nothing to
+ * cook or hang. The fish keep sits right after the cook keeps so the spear
+ * is used the day it exists. Tools the survivor holds are once jobs, since
+ * the first one made is taken up and a keep would craft a second; the axe
+ * stays a keep because the arrival axe wears out and the spare is the
+ * point. Auto-eat, auto-feed and auto-drink stay on, as they are for every
+ * player. The felling grind, needing the axe kept just above it, runs
+ * last and forever. Two kilos of berries at camp sit with the cook keeps:
+ * in season they are the cheapest kcal there is, and out of it the keep
+ * blocks harmlessly on nothing ripe.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -68,16 +72,16 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("split", 60),
   job("build", { kind: "once" }, "leanTo"),
   job("craft", { kind: "once" }, "knife"),
+  keep("craft", 1, "snare"),
+  job("build", { kind: "times", n: 5 }, "snare"),
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("craft", { kind: "once" }, "fishingSpear"),
   keep("cook", 1, "fish"),
   keep("cook", 1),
+  keep("fish", 1, "any"),
   keep("berries", 2),
   job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
-  keep("craft", 1, "snare"),
-  job("build", { kind: "times", n: 5 }, "snare"),
-  keep("fish", 1, "any"),
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
