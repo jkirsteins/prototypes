@@ -90,7 +90,8 @@ export interface Recipe {
 export const RECIPES: Record<RecipeId, Recipe> = {
   cordage: { name: "cordage", needs: [{ item: "bark", qty: 3 }], minutes: 20, out: { item: "cordage", qty: 1 } },
   knife: { name: "stone knife", needs: [{ item: "stone", qty: 2 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 1 }], minutes: 45, out: { item: "knife", qty: 1 } },
-  fireDrill: { name: "fire drill", needs: [{ item: "stick", qty: 2 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 30, out: { item: "fireDrill", qty: 1 } },
+  // A hand drill is a stick spun on a board; the arrival axe notches the board, so no knife is needed to make one.
+  fireDrill: { name: "fire drill", needs: [{ item: "stick", qty: 2 }, { item: "cordage", qty: 1 }], minutes: 30, out: { item: "fireDrill", qty: 1 } },
   bow: { name: "bow", needs: [{ item: "log", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 180, out: { item: "bow", qty: 1 } },
   arrows: { name: "arrows x5", needs: [{ item: "stick", qty: 5 }, { item: "stone", qty: 3 }, { item: "sinew", qty: 1, alt: "cordage" }], tool: "knife", minutes: 60, out: { item: "arrow", qty: 5 } },
   fishingSpear: { name: "fishing spear", needs: [{ item: "stick", qty: 1 }, { item: "stone", qty: 1 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 30, out: { item: "fishingSpear", qty: 1 } },

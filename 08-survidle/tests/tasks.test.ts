@@ -114,24 +114,26 @@ describe("tasks", () => {
     expect(state.log.some((e) => e.text.includes(`You reach ${regionAt(world, nb.id).name}`))).toBe(true);
   });
 
-  it("crafts through the chain: cordage, knife, fire drill", () => {
+  it("crafts through the chain: cordage, a fire drill that needs no knife, then the knife itself", () => {
     const g = newGame(3);
     const { state, world } = g;
-    addItem(state.player.pack, "bark", 3);
+    addItem(state.player.pack, "bark", 6);
     addItem(state.player.pack, "stone", 2);
     addItem(state.player.pack, "stick", 3);
     expect(check(state, world, cal, "craft", "knife").ok).toBe(false);
     startTask(state, world, cal, "craft", "cordage");
     done(g);
     expect(qty(state.player.pack, "cordage")).toBe(1);
-    expect(check(state, world, cal, "craft", "fireDrill").why).toContain("knife");
-    startTask(state, world, cal, "craft", "knife");
-    done(g);
-    expect(tool(state.player, "knife")).toBeDefined();
-    addItem(state.player.pack, "cordage", 1);
+    // A hand drill is a stick spun on a board; the arrival axe notches the board.
+    expect(check(state, world, cal, "craft", "fireDrill").ok).toBe(true);
     startTask(state, world, cal, "craft", "fireDrill");
     done(g);
     expect(tool(state.player, "fireDrill")).toBeDefined();
+    startTask(state, world, cal, "craft", "cordage");
+    done(g);
+    startTask(state, world, cal, "craft", "knife");
+    done(g);
+    expect(tool(state.player, "knife")).toBeDefined();
   });
 
   it("builds a fire pit at camp, lights it and cooks", () => {
