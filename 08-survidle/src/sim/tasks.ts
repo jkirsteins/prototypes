@@ -750,6 +750,10 @@ export function setAside(state: GameState, world: World): void {
       state.paused[key] = { id: t.id, arg: t.arg, fraction, cell: LOCATED.has(t.id) ? cellOf(state, world) : -1 };
     }
   }
+  // The sticky sleep need lives only as long as the sleep it started. A sleep
+  // set aside never reaches the completion that clears it, so clearing it here
+  // leaves the next minute to decide bed or otherwise afresh.
+  if (t.id === "sleep" && state.intent?.need === "sleep") state.intent.need = null;
   state.task = null;
 }
 

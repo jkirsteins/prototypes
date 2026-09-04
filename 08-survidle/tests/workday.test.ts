@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { currentNeed, NIGHT_SLEEP_UNDER, spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
+import { placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { deserialize, serialize } from "../src/sim/save";
-import { startTask } from "../src/sim/tasks";
+import { beginTask, setAside, startTask } from "../src/sim/tasks";
+import type { GameState } from "../src/sim/types";
+import { drink, THIRSTY_L, WATER_FULL } from "../src/sim/water";
+import { stormComing, stormNow } from "../src/sim/weather";
 
 const LINE = "A day's work done. You rest by the fire.";
 
@@ -17,7 +21,24 @@ function felling() {
   kitOut(g.state, g.world);
   g.state.player.energy = 100;
   addOrder(g.state, g.world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+  // One minute is enough for the order to become a live intent to read needs against.
+  advance(g.state, g.world, 1);
   return g;
+}
+
+/** The day's work counted as done, so the spent marker holds on the next reading. */
+function workedTheDay(state: GameState): void {
+  today(state).workMin = state.player.workHours * 60;
+}
+
+/** The first minute from here that is night with no storm about, so only the clause under test can hold. */
+function calmNight(state: GameState): number {
+  let m = state.minute;
+  for (let i = 0; i < 4000; i++) {
+    if (calendar(m).isNight && !stormNow(state.weather, m) && !stormComing(state.weather, m)) return m;
+    m += 15;
+  }
+  throw new Error("no calm night within the search");
 }
 
 describe("the working day", () => {
@@ -99,5 +120,47 @@ describe("the working day", () => {
     expect(state.task?.id).toBe("chop");
     expect(state.player.restUntil).toBeUndefined();
     expect(START_MINUTE_OF_DAY).toBe(480);
+  });
+
+  it("a spent body drinks its fill before it sits down for the evening", () => {
+    const { state, world } = felling();
+    const it = state.intent!;
+    workedTheDay(state);
+    placeAtSpot(state, world, state.player.region, "shore");
+    state.player.water = 1.5;
+    expect(state.player.water).toBeLessThan(WATER_FULL - 0.5);
+    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("thirsty");
+    expect(drink(state, world)).toBe(true);
+    expect(state.player.water).toBe(WATER_FULL);
+    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("spent");
+  });
+
+  it("at night a rested spent body gets up to drink, and goes to bed once it is full", () => {
+    const { state, world } = felling();
+    const it = state.intent!;
+    workedTheDay(state);
+    placeAtSpot(state, world, state.player.region, "shore");
+    state.minute = calmNight(state);
+    state.player.energy = 100;
+    expect(state.player.energy).toBeGreaterThanOrEqual(NIGHT_SLEEP_UNDER);
+    state.player.water = THIRSTY_L / 2;
+    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("thirsty");
+    state.player.water = WATER_FULL;
+    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("sleep");
+  });
+
+  it("a sleep set aside clears the sleep need, so the next minute decides afresh", () => {
+    const { state, world } = felling();
+    const it = state.intent!;
+    const cal = calendar(state.minute);
+    expect(beginTask(state, world, cal, "sleep")).toBe(true);
+    it.need = "sleep";
+    setAside(state, world);
+    expect(state.task).toBeNull();
+    expect(it.need).toBeNull();
+    // Rested, watered and in daylight: nothing sends this body back to bed.
+    state.player.energy = 100;
+    state.player.water = WATER_FULL;
+    expect(currentNeed(state, world, calendar(state.minute), it)).not.toBe("sleep");
   });
 });

@@ -22,7 +22,7 @@ import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
-import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, waterSource } from "./water";
+import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { stormComing, stormNow, walkableIce } from "./weather";
 
 export const SLEEP_AT = 20;
@@ -62,11 +62,15 @@ export function spentNow(state: GameState): boolean {
 export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
   const spent = spentNow(state);
+  // Read once, before the sleep clauses, because thirst now has a say in them.
+  const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
   // A spent body goes to bed at nightfall whatever its energy: an evening by
   // the fire gives back enough to carry it past the night clause otherwise.
+  // A thirsty one drinks first and this clause lays it down after; a body
+  // with no energy left sleeps parched, which is what a collapse is.
   const sleep = it.need === "sleep"
     || p.energy <= SLEEP_AT
-    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || spent))
+    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || (spent && !thirsty)))
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
   if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
@@ -74,9 +78,12 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (p.warmth >= WARM_AT) it.coldSpent = false;
   const cold = !it.coldSpent && (p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
-  if (p.water < THIRSTY_L && canQuench(state, world, cal)) return "thirsty";
+  if (thirsty) return "thirsty";
   if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
-  if (spent) return "spent";
+  // A day's work done is no reason to sit down parched: at the water, drink
+  // your fill before walking back to the fire. Away from it the stores keep,
+  // since the auto-drink reaches a vessel or the camp pile without getting up.
+  if (spent) return p.water < WATER_FULL - 0.5 && waterSource(state, world) ? "thirsty" : "spent";
   if (homeBeforeDark(state, world, cal, it)) return "home";
   return null;
 }
