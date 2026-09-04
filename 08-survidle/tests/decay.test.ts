@@ -4,6 +4,8 @@ import { calendar } from "../src/sim/calendar";
 import { needsMending } from "../src/sim/camp";
 import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { addOrder } from "../src/sim/orders";
+import { placeAtSpot } from "../src/sim/position";
 import { hasEvent } from "../src/sim/record";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
@@ -53,6 +55,24 @@ describe("structure decay", () => {
     expect(o.duration).toBe(60);
     startTask(state, world, calendar(0), "mend", "leanTo");
     advance(state, world, 120);
+    expect(st.structureAge.leanTo).toBeLessThan(2 * 1440);
+    expect(needsMending(st, "leanTo")).toBe(false);
+    expect(hasEvent(state, (e) => e.kind === "repaired" && e.structure === "leanTo")).toBe(true);
+  });
+
+  it("a mend order walks the runner to camp instead of reading skipped forever", () => {
+    const { state, world, st } = camp();
+    st.structureAge.leanTo = 61 * 1440;
+    addItem(pile(state, st.campCell), "stick", 2);
+    placeAtSpot(state, world, state.player.region, "forest");
+    const o = addOrder(state, world, { task: "mend", arg: "leanTo", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    // A few minutes in, the order is already routed to the work, not left
+    // reading "walk to camp" while a fallback wait happens to carry the
+    // player home for an unrelated reason.
+    advance(state, world, 3);
+    expect(o.skipped).toBe("");
+    expect(state.intent?.task).toBe("mend");
+    advance(state, world, 600);
     expect(st.structureAge.leanTo).toBeLessThan(2 * 1440);
     expect(needsMending(st, "leanTo")).toBe(false);
     expect(hasEvent(state, (e) => e.kind === "repaired" && e.structure === "leanTo")).toBe(true);

@@ -51,6 +51,7 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng, who: Pr
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
     st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
     st.structures.leanTo = false;
+    delete st.structureAge.leanTo;
     st.structures.boughBed = false;
     st.fire.lit = false;
     st.fire.fuelKg = 0;
