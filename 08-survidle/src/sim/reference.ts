@@ -37,28 +37,30 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * bucket; then the fire-and-roof chain, worked with the arrival axe alone
  * - stone for the ring, sticks, bark and cordage as raw stock, the fire
  * pit, the fire drill, the keep that lights the fire and relights it, one
- * tree felled, a day's firewood split from it, and the lean-to. Shelter
- * from the cold is what keeps a beginner alive long enough to do anything
- * else: a knife and a bucket made before the roof, ahead of the felling,
- * cost two of April's four seeds a cold death inside the first sixteen
- * days when measured, so both wait for the lean-to like the snares do.
- * The knife, both buckets and the snares follow the lean-to (the knife is
- * two stone, a stick and a cordage, each snare a stick and two cordage,
- * and five snares where hares live are the beginner's whole small-game
- * band for a few minutes of work). Then what the knife unlocks beyond the
- * snares. The scheduler is greedy top-down, so a competent player ranks
- * eating what is already caught above catching more of it: the cook keeps
- * sit above the fish keep, and the rack job and the dried-meat keep sit
- * above the hunt keep, right after the cook keeps - both block harmlessly
- * with nothing to cook or hang. The fish keep sits right after the cook
- * keeps so the spear is used the day it exists. Tools the survivor holds
- * are once jobs, since the first one made is taken up and a keep would
- * craft a second; the axe stays a keep because the arrival axe wears out
- * and the spare is the point. Auto-eat, auto-feed and auto-drink stay on,
- * as they are for every player. The felling grind, needing the axe kept
- * just above it, runs last and forever. Two kilos of berries at camp sit
- * with the cook keeps: in season they are the cheapest kcal there is, and
- * out of it the keep blocks harmlessly on nothing ripe.
+ * tree felled, a day's firewood split from it, and the lean-to. Then the
+ * knife and the snares, right after the lean-to: a competent day two sets
+ * snares before spending hours at anything else (the knife is two stone,
+ * a stick and a cordage, each snare a stick and two cordage, and five
+ * snares where hares live are the beginner's whole small-game band for a
+ * few minutes of work), but a roof over the fire outranks them, since
+ * shelter from the cold is what keeps a beginner alive long enough to set
+ * a snare at all. A knife and a bucket ahead of the lean-to cost two seeds
+ * a cold death on days 4 and 5 when measured: a roof by the second night
+ * is what the opening cannot spare. Then what the knife unlocks beyond
+ * the snares. The scheduler is greedy top-down, so a competent player
+ * ranks eating what is already caught above catching more of it: the cook
+ * keeps sit above the fish keep, and the rack job and the dried-meat keep
+ * sit above the hunt keep, right after the cook keeps - both block
+ * harmlessly with nothing to cook or hang. The fish keep sits right after
+ * the cook keeps so the spear is used the day it exists. Tools the
+ * survivor holds are once jobs, since the first one made is taken up and
+ * a keep would craft a second; the axe stays a keep because the arrival
+ * axe wears out and the spare is the point. Auto-eat, auto-feed and
+ * auto-drink stay on, as they are for every player. The felling grind,
+ * needing the axe kept just above it, runs last and forever. Two kilos
+ * of berries at camp sit with the cook keeps:
+ * in season they are the cheapest kcal there is, and out of it the keep
+ * blocks harmlessly on nothing ripe.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -73,10 +75,9 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("split", 60),
   job("build", { kind: "once" }, "leanTo"),
   job("craft", { kind: "once" }, "knife"),
-  job("craft", { kind: "campHas", qty: 1 }, "barkBucket"),
-  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
+  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("craft", { kind: "once" }, "fishingSpear"),
   keep("cook", 1, "fish"),
   keep("cook", 1),
