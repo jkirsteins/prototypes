@@ -7,7 +7,7 @@ import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventor
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
-import { orderGate, type Gate } from "../sim/ladder";
+import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { DEATH_LINES, FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
@@ -419,12 +419,13 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
 /**
  * What the strip would add to a plain click, in words; empty for once, leave
  * it, nearest. Mirrors startIntent's own coercions, so the row never
- * promises what the click would not actually do: night ignores the strip
- * entirely (forced to once, leave it), and camp has always delivers to camp
- * whatever the strip's own "bring it" choice says.
+ * promises what the click would not actually do: a NOT_ORDERS task ignores
+ * the strip entirely (forced to once, leave it, same as stripRequest), and
+ * camp has always delivers to camp whatever the strip's own "bring it"
+ * choice says.
  */
 function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string {
-  if (id === "night") return "";
+  if (NOT_ORDERS.includes(id)) return "";
   const parts: string[] = [];
   const item = yieldItem(id, arg);
   if (ui.until === "times") parts.push(`${ui.n} times`);

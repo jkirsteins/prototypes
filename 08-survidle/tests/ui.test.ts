@@ -266,8 +266,9 @@ describe("panels", () => {
 describe("the Do panel", () => {
   const { state, world } = newGame(21);
   const cal = calendar(state.minute);
-  // Woodcraft 5 keeps chop's row open at the grind and job rungs the strip tests below reach for;
-  // the ladder gate is Task 6's own subject elsewhere, not what these rows are about.
+  // Woodcraft 5 keeps chop's row open at the grind and job rungs the strip tests below reach for.
+  // The ladder gate has its own tests; these rows are about the strip sentence, so woodcraft is
+  // past the gates they use.
   state.skills.woodcraft.xp = levelMinutes(5);
 
   it("has a settings strip, the instant buttons, and one row per intent, judged at the work's place", () => {
@@ -312,6 +313,11 @@ describe("the Do panel", () => {
     expect(nightRow).not.toBe("");
     expect(nightRow).not.toContain("forever");
     expect(nightRow).not.toContain("bringing it to camp");
+    // rest is a NOT_ORDERS task too: stripRequest forces it to a once job, so its row
+    // must not promise "forever" either, the same as night's.
+    const restRow = html.match(/<div class="opt"[^>]*data-opt="intent:rest:"[\s\S]*?<\/div>/)?.[0] ?? "";
+    expect(restRow).not.toBe("");
+    expect(restRow).not.toContain("forever");
   });
 
   it("until camp has N always says bringing it to camp, even when the strip's own bring-it choice is leave it", () => {

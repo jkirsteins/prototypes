@@ -32,9 +32,7 @@ describe("the reference player", () => {
     expect(axe.kind).toBe("keep");
   });
 
-  // Cordage needs bark, not sticks (see RECIPES.cordage in items.ts), so the
-  // want that feeds it here is bark, not the sticks task the brief named -
-  // sticks cannot supply cordage's ingredient no matter how long the player ticks.
+  // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
   it("a want whose stand-in dropped off is given again while unmet, and a finished true job is not", () => {
     const { state, world } = newGame(17);
     const player = new ReferencePlayer([
@@ -84,6 +82,27 @@ describe("the reference player", () => {
       advance(at3.state, at3.world, 60);
     }
     expect(ordersHere(at3.state, at3.world).length).toBe(0);
+  });
+
+  it("a times want that reaches its rung mid-count keeps only its remainder, not a fresh n", () => {
+    const { state, world } = newGame(17);
+    const player = new ReferencePlayer([
+      { req: { task: "sticks", until: { kind: "times", n: 3 }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    const seen = new Set<number>();
+    for (let h = 0; h < 2; h++) {
+      player.tick(state, world);
+      for (const o of ordersHere(state, world)) if (o.req.task === "sticks") seen.add(o.id);
+      advance(state, world, 60);
+    }
+    // Two once-job stand-ins complete before the skill reaches the rung.
+    expect(seen.size).toBe(2);
+
+    state.skills.woodcraft.xp = levelMinutes(3);
+    player.tick(state, world);
+    const standing = ordersHere(state, world).find((o) => o.req.task === "sticks")!;
+    expect(standing.kind).toBe("job");
+    expect(standing.req.until).toEqual({ kind: "times", n: 1 });
   });
 
   it("the stand-in follows the level: a keep given at woodcraft 10 is a keep, ranked where the want sits", () => {

@@ -164,9 +164,14 @@ export class ReferencePlayer {
       const best = withinLadder(state, w.req, w.kind);
       const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
       const units = !standIn ? undefined : best.req.until.kind === "once" ? 1 : best.req.until.kind === "times" ? best.req.until.n : undefined;
+      const banked = this.completed.get(i) ?? 0;
+      // A times want reaching its rung mid-count must not restart at n: what
+      // it already banked from once-job stand-ins comes off the top, or the
+      // fresh order over-builds by however much those stand-ins covered.
+      const req = !standIn && best.req.until.kind === "times" && banked > 0 ? { ...best.req, until: { kind: "times" as const, n: best.req.until.n - banked } } : best.req;
       let rank = 0;
       for (const j of this.given.keys()) if (j < i) rank++;
-      const o = giveOrder(state, world, best.req, best.kind, rank);
+      const o = giveOrder(state, world, req, best.kind, rank);
       this.given.set(i, { id: o.id, units });
       this.trueKind.set(i, !standIn);
     }

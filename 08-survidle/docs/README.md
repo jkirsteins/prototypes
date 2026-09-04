@@ -25,20 +25,19 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   orders. "Keep camp at 40 kg firewood" triggers when the pile drops under
   20 and splits back up to 40; "Fell trees, forever, bringing it to camp"
   soaks up every spare hour. Jobs ("build a cabin", "make 20 arrows") drop
-  off when done. Each kind is earned per skill: a job (N times or until
-  camp has N) opens at level 3 in the task's skill, a grind (forever) at 5,
-  a keep (keep camp at N) at 10, and a once job is always open. A row below
+  off when done. Each kind is earned per skill: a job (N times or until camp
+  has N) opens at level 3 in the task's skill, a grind (forever) at 5, a
+  keep (keep camp at N) at 10, and a once job is always open. A row below
   its skill's level greys and names the level that opens it. The list is
-  ranked: each free minute the game serves the
-  highest order that is unmet and can start, finishes any load it owes
-  camp first, and never switches mid-task. A blocked order shows why
-  ("needs an axe", "missing materials at camp") and waits; a job placed
-  above the grind that will haul its logs in is how a cabin gets built
-  while you are away. With orders but nothing to do, you wait at camp,
-  where the nights are by the fire. The game does the walking, the work,
-  the hauling, and when the body asks for it, the walk back to camp, a
-  fire from what is at camp, and the night's sleep. An "advanced" toggle
-  shows the raw single actions underneath, one at a time.
+  ranked: each free minute the game serves the highest order that is unmet
+  and can start, finishes any load it owes camp first, and never switches
+  mid-task. A blocked order shows why ("needs an axe", "missing materials at
+  camp") and waits; a job placed above the grind that will haul its logs in
+  is how a cabin gets built while you are away. With orders but nothing to
+  do, you wait at camp, where the nights are by the fire. The game does the
+  walking, the work, the hauling, and when the body asks for it, the walk
+  back to camp, a fire from what is at camp, and the night's sleep. An
+  "advanced" toggle shows the raw single actions underneath, one at a time.
 - **Orders belong to a camp.** Walk into a new region and its list is
   empty; come back and the old list resumes.
 - **A big north.** The world is about 540 by 390 km, the shape of the far

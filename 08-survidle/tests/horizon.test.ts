@@ -61,4 +61,16 @@ describe("the horizon stages", () => {
     expect(r.cause).not.toBeNull();
     expect(r.inBand).toBe(r.days >= 0 && r.days <= 2);
   });
+
+  it("a capped run reads inBand off the cap, not just the lower bound", () => {
+    const manual = runStage(17, stage("manual"), 0);
+    expect(manual.capped).toBe(true);
+    expect(manual.days).toBe(0);
+    expect(manual.inBand).toBe(true);
+
+    const keeps = runStage(17, stage("keeps"), 1);
+    expect(keeps.capped).toBe(true);
+    expect(keeps.days).toBe(1);
+    expect(keeps.inBand).toBe(false);
+  });
 });

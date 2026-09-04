@@ -63,6 +63,6 @@ export function runStage(seed: number, stage: HorizonStage, maxDays: number): St
   const { state, world } = setUpStage(seed, stage);
   for (let d = 1; d <= maxDays && !state.dead; d++) advance(state, world, 1440);
   const days = state.dead ? calendar(state.dead.minute).day - 1 : maxDays;
-  const inBand = !state.dead ? days >= stage.band[0] : days >= stage.band[0] && days <= stage.band[1];
+  const inBand = days >= stage.band[0] && days <= stage.band[1];
   return { seed, stage: stage.id, days, capped: !state.dead, cause: state.dead?.cause ?? null, inBand };
 }
