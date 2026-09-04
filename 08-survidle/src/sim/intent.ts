@@ -249,7 +249,7 @@ export function intentSentence(state: GameState, world: World, cal: Calendar, it
   if (u.kind === "times") parts.push(`${it.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(u.item, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
-  if (it.deliver === "camp" && it.task !== "haul") parts.push("bringing it to camp");
+  if (it.deliver === "camp" && it.task !== "haul" && yieldItem(it.task, it.arg) !== null) parts.push("bringing it to camp");
   return parts.join(", ");
 }
 

@@ -110,7 +110,7 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
-  if (!keep && u.kind !== "campHas" && o.req.deliver === "camp" && o.req.task !== "haul") parts.push("bringing it to camp");
+  if (!keep && u.kind !== "campHas" && o.req.deliver === "camp" && o.req.task !== "haul" && yieldItem(o.req.task, o.req.arg) !== null) parts.push("bringing it to camp");
   if (typeof o.req.where === "string" && o.req.where !== "nearest") parts.push(`at ${SPOT_WORDS[o.req.where]}`);
   return parts.join(", ");
 }

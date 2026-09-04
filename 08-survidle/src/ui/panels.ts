@@ -8,7 +8,7 @@ import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
-import { DEATH_LINES, feltTemperature, insulation, starvation } from "../sim/player";
+import { DEATH_LINES, FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
@@ -72,7 +72,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   return `<h2>You <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food")}
-<div class="dim">fat: ${(p.fat / 9000).toFixed(1)} kg</div>
+<div class="dim">fat: ${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg</div>
 ${bar("water", "water", "Water")}
 ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}

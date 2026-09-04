@@ -155,6 +155,19 @@ describe("snares in the pack", () => {
     expect(qty(pile(state, st.campCell), "snare")).toBe(0);
     expect(until(g, () => st.structures.snares >= 1, 600)).toBe(true);
   });
+
+  it("a hand-started set-snares intent with no order reads the times target off the intent itself", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "snare", 5);
+    startIntent(state, world, cal, new Rng(1), { task: "build", arg: "snare", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" });
+    expect(state.intent?.orderId).toBeNull();
+    expect(qty(p.pack, "snare")).toBe(5);
+    expect(qty(pile(state, st.campCell), "snare")).toBe(0);
+  });
 });
 
 describe("a kit at camp counts only while standing there", () => {

@@ -176,7 +176,7 @@ fire already in hand instead of from scratch. It is not part of `npm test`.
 - `src/sim/items.ts`: weights, foods, recipes, structures.
 - `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls.
 - `src/world/wildlife.ts`: how a region's habitat and a species' range become a capacity.
-- `src/sim/player.ts`: kcal burn, warmth balance, energy, wetness, health.
+- `src/sim/player.ts`: kcal burn, warmth balance, energy, wetness, health, the fat reserve.
 - `src/sim/body.ts`: when an intent sleeps, warms up, eats and provisions.
 - `src/sim/weather.ts`: the temperature curve, precipitation, snow.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.

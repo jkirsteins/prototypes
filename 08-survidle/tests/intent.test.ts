@@ -12,7 +12,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { candidateWeight, check, stepTask, stopTask } from "../src/sim/tasks";
 import { takeStep } from "../src/sim/steps";
-import type { TaskId } from "../src/sim/types";
+import type { Intent, TaskId } from "../src/sim/types";
 import { cellAt, regionAt, spotOf } from "../src/world/gen";
 
 const cal = calendar(0);
@@ -231,6 +231,19 @@ describe("the work tier", () => {
     expect(intentSentence(state, world, cal, state.intent!)).toBe("Gather sticks, 0 of 5 done");
     startIntent(state, world, cal, rng(), req("bark", { until: { kind: "forever" } }));
     expect(intentSentence(state, world, cal, state.intent!)).toBe("Strip bark, forever");
+  });
+
+  it("a live light keep never claims to bring the fire to camp", () => {
+    const { state, world } = newGame(3);
+    const camp = regionState(state, world, state.player.region).campCell;
+    // Built by hand rather than through startIntent: lighting needs a fire pit in
+    // place, and this test is only about the sentence a light intent reads as.
+    const light: Intent = {
+      task: "light", cell: camp, campCell: camp,
+      until: { kind: "once" }, deliver: "camp", done: 0,
+      step: "lighting the fire", need: null, orderId: null, windDown: false,
+    };
+    expect(intentSentence(state, world, cal, light)).toBe("Light the fire");
   });
 
   it("a build fetches what is missing from this region's piles, one load at a time, then builds", () => {

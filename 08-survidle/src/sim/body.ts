@@ -275,11 +275,9 @@ export function orderKit(state: GameState): ItemId[] {
   return [];
 }
 
-/** How many snares this session's set-snares order still needs: its times target minus what it has already set, floored at one and capped at MAX_SNARES so a stray target never over-pockets. An order-less build (no orderId) has no target to read, so it takes one. */
-function snaresWanted(state: GameState, world: World, it: Intent): number {
-  if (it.orderId === null) return 1;
-  const o = regionState(state, world, state.player.region).orders.find((x) => x.id === it.orderId);
-  const left = o && o.req.until.kind === "times" ? o.req.until.n - o.done : 1;
+/** How many snares this intent still needs: its times target minus what it has already set, floored at one and capped at MAX_SNARES so a stray target never over-pockets. An intent with no times target (a once build, or one started by hand) has no target to read, so it takes one. */
+function snaresWanted(it: Intent): number {
+  const left = it.until.kind === "times" ? it.until.n - it.done : 1;
   return Math.min(MAX_SNARES, Math.max(1, left));
 }
 
@@ -301,7 +299,7 @@ export function provisionKit(state: GameState, world: World): number {
     return transfer(camp, pack, "arrow", Math.min(want, qty(camp, "arrow")));
   }
   if (kit.includes("snare")) {
-    const want = snaresWanted(state, world, it) - qty(pack, "snare");
+    const want = snaresWanted(it) - qty(pack, "snare");
     if (want <= 0) return 0;
     return transfer(camp, pack, "snare", Math.min(want, qty(camp, "snare")));
   }

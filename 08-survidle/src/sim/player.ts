@@ -78,6 +78,9 @@ export function beddingInsulation(state: GameState): number {
 /** Degrees the bed under you gives while you sleep on it; a bed is laid at camp. */
 export const BOUGH_BED_C = 4;
 
+/** Kilocalories in a kilogram of body fat, 9 kcal a gram: the unit the fat reserve is weighed in. */
+export const FAT_KCAL_PER_KG = 9000;
+
 /**
  * A fit adult's fat, in kilocalories: about nine kilos at 9 kcal a gram.
  * At a total fast of 3,000 kcal a day that is 27 days before it is gone,
