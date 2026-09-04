@@ -36,10 +36,14 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * already caught above catching more of it: the cook keeps sit above the
  * fish keep, and the rack job and the dried-meat keep sit above the hunt
  * keep, right after the cook keeps - both block harmlessly with nothing to
- * cook or hang. Tools the survivor holds are once jobs, since the first one
- * made is taken up and a keep would craft a second; the axe stays a keep
- * because the arrival axe wears out and the spare is the point. Auto-eat,
- * auto-feed and auto-drink stay on, as they are for every player.
+ * cook or hang. The snare craft and its five-times build sit above the fish
+ * keep too, right after the hang keep: snares are the passive food a
+ * competent player sets before spending hours at the shore, and ranked
+ * below an always-unmet fish keep they never get made at all. Tools the
+ * survivor holds are once jobs, since the first one made is taken up and a
+ * keep would craft a second; the axe stays a keep because the arrival axe
+ * wears out and the spare is the point. Auto-eat, auto-feed and auto-drink
+ * stay on, as they are for every player.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -60,9 +64,9 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("cook", 1),
   job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
-  keep("fish", 1, "any"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
+  keep("fish", 1, "any"),
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),

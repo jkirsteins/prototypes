@@ -235,8 +235,8 @@ but every entry must be one the panel offers.
 14. Make a fishing spear, once.
 15. Cook fish, keep camp at 1 kg; cook meat, keep camp at 1 kg.
 16. Build a drying rack; hang meat, keep camp at 10 kg dried meat.
-17. Fish for anything, keep camp at 1 kg fish, bringing it to camp.
-18. Make a snare, keep camp at 1; set snares, five times.
+17. Make a snare, keep camp at 1; set snares, five times.
+18. Fish for anything, keep camp at 1 kg fish, bringing it to camp.
 19. Make a bow, once; make arrows, keep camp at 10.
 20. Hunt anything, keep camp at 2 kg raw meat, bringing it to camp.
 21. Make a stone axe, keep camp at 1 axe.
@@ -250,9 +250,13 @@ is greedy top-down, so a competent player ranks eating what is already
 caught above catching more of it: the cook keeps sit above the fish
 keep, and the rack job and the dried-meat keep sit above the hunt keep,
 right after the cook keeps - both block harmlessly with nothing to cook
-or hang. Tools the survivor holds are once jobs, since the first one
-made is taken up and a keep would craft a second; the axe stays a keep
-because the arrival axe wears out and the spare is the point. Auto-eat,
+or hang. The snare craft and its five-times build sit above the fish
+keep too, right after the hang keep: snares are the passive food a
+competent player sets before spending hours at the shore, and ranked
+below an always-unmet fish keep they never get made at all. Tools the
+survivor holds are once jobs, since the first one made is taken up and a
+keep would craft a second; the axe stays a keep because the arrival axe
+wears out and the spare is the point. Auto-eat,
 auto-feed and auto-drink stay on, as they are for every player.
 
 **What it prints.** Per seed, one block: the ring the start took; then a
