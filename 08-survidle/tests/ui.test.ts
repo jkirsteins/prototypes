@@ -505,3 +505,21 @@ describe("the Do panel and the ladder", () => {
     expect(opts(shut)).toEqual(opts(open));
   });
 });
+
+describe("the skills panel and the rungs", () => {
+  it("lists the three rungs per skill, marks the earned ones, and says how far the next is", () => {
+    const { state } = newGame(21);
+    let html = skillsHtml(state);
+    const wood = html.slice(html.indexOf("<b>Woodcraft</b>"), html.indexOf("<b>Foraging</b>"));
+    expect(wood).toContain('<span class="">jobs 3');
+    expect(wood).toContain("jobs 3, 8 h to go");
+    expect(wood).toContain('<span class="">grinds 5</span>');
+    expect(wood).toContain('<span class="">keeps 10</span>');
+    state.skills.woodcraft.xp = levelMinutes(5) + 60;
+    html = skillsHtml(state);
+    const wood5 = html.slice(html.indexOf("<b>Woodcraft</b>"), html.indexOf("<b>Foraging</b>"));
+    expect(wood5).toContain('<span class="on">jobs 3</span>');
+    expect(wood5).toContain('<span class="on">grinds 5</span>');
+    expect(wood5).toContain("keeps 10, 5 d 9 h to go");
+  });
+});

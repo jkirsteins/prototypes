@@ -13,7 +13,7 @@ import { DEATH_LINES, FAT_KCAL_PER_KG, feltTemperature, insulation, starvation }
 import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
-import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
+import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, skillLevel, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
 } from "../sim/tasks";
@@ -119,10 +119,19 @@ export function skillsHtml(state: GameState): string {
     const toNext = next ? `${fmtDuration(next - s.xp)} to ${l + 1}` : "at the cap";
     const pool = poolShare(state, id);
     const perks = poolPerks(pool, id);
+    let nextShown = false;
+    const rungs = RUNG_ORDER.map((k) => {
+      const at = RUNG_LEVEL[k];
+      if (l >= at) return `<span class="on">${RUNG_WORD[k]} ${at}</span>`;
+      // Only the next shut rung says how far it is; the ones past it read as marks.
+      const toGo = nextShown ? "" : `, ${fmtDuration(levelMinutes(at) - s.xp)} to go`;
+      nextShown = true;
+      return `<span class="">${RUNG_WORD[k]} ${at}${toGo}</span>`;
+    }).join(" ");
     return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}</span></div>
 <div class="bar dur"><div class="fill" style="width:${Math.round(share * 100)}%"></div></div>
 <div class="bar pool"><div class="fill" style="width:${Math.round(pool * 100)}%"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
-${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}</div>`;
+${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}<div class="rungs"><small>${rungs}</small></div></div>`;
   });
   return `<h2>Skills</h2>${rows.join("")}`;
 }
