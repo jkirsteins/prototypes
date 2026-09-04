@@ -168,18 +168,24 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 
 `npm run reference` runs the day-one order list a competent player would
-write, headless, on four seeds, about ten seconds; the gate is alive three
-weeks (game day 21) from the arrival kit, in April - a short-term survival
+write, headless, on four seeds, about ten seconds; the gate is alive and
+fed on game day 26 from the arrival kit, in April - a short-term survival
 problem for a beginner with fire, a roof and water at the deficit the yield
-tables allow. The calibration pass on the roadmap revisits this number. `npm run
+tables allow, with the day derived from that deficit and the food clause
+on top so the gate measures the loop rather than the fat reserve. `npm run
 reference -- --kitted` runs a diagnostic that starts with tools and a
-fire already in hand instead of from scratch. It is not part of `npm test`.
+fire already in hand instead of from scratch, and `npm run reference --
+--start=<doy>` opens the run on that day of year instead of 1 April (200
+is 20 July, 235 is 24 August); a start from July on is measured at the
+first snow rather than at a day. It is not part of `npm test`.
 
 `npm run horizon` runs a stocked camp with no player forward for up to 30
 days on the same four seeds, at each stage of the delegation ladder in
 turn (manual only, jobs and grinds, keeps), and reports the day and cause
 of the first death. It checks how long an idle camp holds at each stage,
-against the roadmap's provisional bands. It is not part of `npm test`.
+against the roadmap's provisional bands. `npm run horizon -- --start=<doy>`
+opens each stage's camp on that day of year instead of 1 April (200 is
+20 July, 235 is 24 August). It is not part of `npm test`.
 
 ## Where the numbers live
 

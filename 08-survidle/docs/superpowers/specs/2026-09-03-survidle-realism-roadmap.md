@@ -240,7 +240,7 @@ skill, jobs at 3, grinds at 5, keeps at 10, with the first horizon
 checks; built), then the calibration pass (the section of that name below: the
 harness measures each food source against the yield tables, the gates
 are set from what it finds, and berries, burn and sleep get their first
-honest numbers), then F's core (the world saved instead of the person, the
+honest numbers; built), then F's core (the world saved instead of the person, the
 journal with its daily forecast field, the dim map, the season spine,
 first decay, and the heir set down near the old camp; not its ramp), then
 B the risk forecast with the away cap as its horizon,
@@ -1122,7 +1122,8 @@ freezing or thirst; jobs and grinds hold 4 to 6 days, thirst or freezing;
 keeps hold 6 to 13 days, thirst on every seed. Eleven of the twelve rows
 sit over their provisional band; only manual on seed 42 lands inside it.
 That gap is the calibration pass's material, and the bands stay as
-written until the pass moves the numbers they are measured in.
+written until the pass moves the numbers they are measured in. Re-run
+after the calibration pass: see the pass's section.
 
 ### The calibration pass
 
@@ -1130,26 +1131,31 @@ written until the pass moves the numbers they are measured in.
 and the survivor rows are in kcal and days the sim produces, and a burn
 of 4,000 against 3,000 moves all of them. No row or tier of its own.
 Expected: the ladder's horizon checks re-run after the numbers move and
-land in their bands, and the gates reset as this section says.
+land in their bands, and the gates reset as this section says. Measured:
+2 of twelve horizon rows in their bands, and 0 of 4 on each of the three
+gates, in the paragraphs at the end of the section.
 
 Built: `2026-09-04-survidle-calibration-pass-design.md`, plan
 `2026-09-04-survidle-calibration-pass.md`. Immediately after the
 delegation ladder, before F, so it measures the beginner once, with the
 by-hand opening in place. The baseline's harness runs a beginner's April
-on four seeds and dies of starvation on day 22 or 23 with fire, a roof
-and water in hand; its gate is 21 days for now, set
-from that measurement rather than from the tables. This pass turns the
-tables in "What the north yields" into the game's numbers, measured:
+on four seeds with fire, a roof and water in hand. Its gate is day 26,
+derived from the tables' deficit rather than from the harness's own
+measurement, with a food clause on top; the runs against it read 0 of 4,
+seed by seed in the standings at the end of this section. This pass turns
+the tables in "What the north yields" into the game's numbers, measured:
 
 - **Measure per source.** The reference report gains, per seed, kcal a
   day from each source over the run (fish, snares, hunts, berries and
   plants, the arrival kit) and the day's burn, so each row of the April
   table has a game number beside it. The bands are the target; a source
   outside its beginner band is a finding.
-- **Burn.** The runner burns near 4,000 kcal a day in April, the top of
-  the 2,500 to 3,500 band with the cold multiplier on top. Decide whether
-  the activity rates, the cold multiplier or the hours worked are what
-  puts it there, and move one.
+- **Burn.** The runner burns over the 2,500 to 3,500 band in April, with
+  the cold multiplier on top. Decide whether the activity rates, the cold
+  multiplier or the hours worked are what puts it there, and move one.
+  The lever the rule picked was the walk rate; where each bucket sits
+  after it, and after the sleep budget moved the working day, is in the
+  measured paragraphs at the end of this section.
 - **Sleep.** Six to twelve hours a day, two twelve-hour days in the
   first three. The energy thresholds that put the runner to bed at "you
   can barely lift your arms" get their first look here, since they set
@@ -1211,6 +1217,52 @@ weeks would have named the activity rates; walk stands because a walk
 at three kilometres an hour is 200 to 250 kcal an hour by the MET
 tables while chopping at 400 and gathering at 200 already sit at
 theirs.
+
+The sleep budget holds where the April gate is measured: the runner
+sleeps 8.2 to 9.6 hours a day there, seed 19 at 8.2 and seed 42 at 8.9
+inside the seven to nine band, seed 79 at 9.4 and seed 17 at 9.6 just
+over it, and no week over ten remains. What still averages over ten is
+the kitted and the late-August runs - the kitted seed 19 at 10.4, and
+every late-August seed between 9.6 and 10.4 - and none of it is a night
+over nine, because the cap is on the sleep option and the collapse takes
+that same option. A week over ten is more than one sleep a day; the
+browser pass showed the pair back to back, "Too tired to stand, you
+sleep where you are." and then the queued Sleep.
+
+Opened on 20 July, the berries row reads 750 to 2,025 kcal a day against
+the late-August plants band of 300 to 800 for a beginner: seed 79 at 750
+is in band, seed 42 at 1,140 and seed 17 at 2,025 are over, and seed 19
+outlived the run to day 61 with no first snow to be measured at. A day on
+berries alone is 2,000 kcal, four kilos at 500 a kilo, the ceiling doing
+what the tables say a berry season is worth for one person - so seed 17's
+2,025 is a picker eating to the refusal every day, and the finding is
+that the gut's ceiling and the table's 800 top do not agree about what a
+day of picking is worth. In the browser on seed 17 the run opens "20 Jul.
+You wake at Hareskog ...", the Do panel offers "Pick berries ... 0.7 kg
+berries, mid-July to mid-October" ungreyed, an hour of it puts 0.7 kg in
+the pack with "eat 0.2 kg berries +100 kcal" beside it, and eating on
+past two kilos logs "Your stomach is turning." once while past four greys
+the button to "not another berry today" and logs "You cannot face another
+berry."
+
+`npm run reference` measures the April gate at day 26 with the food
+clause and passes 0 of 4: seed 17 starved on day 22, seed 19 starved on
+day 26, seed 42 starved on day 25, seed 79 froze on day 16. The kitted
+run passes 0 of 4 at 30 days: seed 17 to thirst on day 22, seed 19
+starved on day 31, seed 42 starved on day 27, seed 79 froze on day 13.
+From 24 August only seed 19 lived to see a first snow, on day 24, and
+starved on day 33; the other three died before one fell, on days 19, 31
+and 50, so 0 of 4 were alive and fed for it. Seven of those twelve deaths
+are starvation, four are cold and one is thirst, which says the deficit
+the gates are catching is food. Nothing was tuned to move them.
+
+`npm run horizon` after the pass: manual holds 3 to 5 days, jobs and
+grinds 3 to 7, keeps 4 to 11; 2 of twelve rows sit in their band - keeps
+on seed 17 at 4 days and seed 42 at 5, against 3 to 5 - and what ends
+them is thirst on seven rows and cold on five. Ten rows sit over their
+band where eleven did before, so a stocked camp with nobody in it still
+outlives what the ladder asks of it at every stage. The bands did not
+move.
 
 ### B. The risk forecast
 
