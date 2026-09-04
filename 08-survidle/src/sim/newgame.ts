@@ -1,5 +1,6 @@
 import { derive } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
+import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS } from "./items";
@@ -58,6 +59,7 @@ export function newGame(seed: number, startDoy = START_DOY): { state: GameState;
       toes: false,
       fingers: false,
       berriesToday: { day: 1, kg: 0 },
+      workHours: WORK_HOURS_DEFAULT,
     },
     regions: {},
     discovered: {},

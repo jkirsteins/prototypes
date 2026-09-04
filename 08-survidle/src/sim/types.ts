@@ -159,7 +159,7 @@ export interface Order {
 }
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
-export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "home";
+export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "spent" | "home";
 
 /**
  * What the player set out to do. The runner re-reads the world every minute
@@ -252,6 +252,10 @@ export interface Player {
   fingers: boolean;
   /** Kilos of berries eaten today, for the gut's ceiling: full credit to two, half to four, none past it. */
   berriesToday: { day: number; kg: number };
+  /** Hours of task work a day before the body calls it a day and rests by the fire; a default the panel may expose later. */
+  workHours: number;
+  /** Set when the day's work is done: the minute of the next dawn, until which the runner rests. */
+  restUntil?: number;
 }
 
 export interface Weather {

@@ -9,11 +9,12 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
 import { regionAt, type World } from "../world/gen";
 import { eat, edible } from "./actions";
-import type { Calendar } from "./calendar";
+import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, SPREAD_FUEL_KG } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES } from "./items";
+import { today } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
@@ -33,12 +34,39 @@ export const PROVISION_KG = 2;
 /** Densest first, so two kilos carry the most days. */
 const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"];
 
+/** Hours of task work a day before the body calls it a day: a camp-builder's working day, with the evening by the fire. */
+export const WORK_HOURS_DEFAULT = 10;
+
+/**
+ * A day's work is done. The ledger already counts every minute awake on a
+ * task other than rest, wait, night or sleep, so the runner reads the same
+ * number the report prints. The first time the count reaches the working
+ * day, the marker is set to the next dawn and the log says so once; it
+ * holds until then and clears itself, and the day roll starts the count
+ * again. The marker lives on the player, not the intent, so an order
+ * switching intents in the evening does not start the day over.
+ */
+export function spentNow(state: GameState): boolean {
+  const p = state.player;
+  if (p.restUntil !== undefined) {
+    if (state.minute < p.restUntil) return true;
+    p.restUntil = undefined;
+  }
+  if (today(state).workMin < p.workHours * 60) return false;
+  p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
+  log(state, "A day's work done. You rest by the fire.");
+  return true;
+}
+
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
 export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
+  const spent = spentNow(state);
+  // A spent body goes to bed at nightfall whatever its energy: an evening by
+  // the fire gives back enough to carry it past the night clause otherwise.
   const sleep = it.need === "sleep"
     || p.energy <= SLEEP_AT
-    || (cal.isNight && p.energy < NIGHT_SLEEP_UNDER)
+    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || spent))
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
   if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
@@ -48,6 +76,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (p.water < THIRSTY_L && canQuench(state, world, cal)) return "thirsty";
   if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
+  if (spent) return "spent";
   if (homeBeforeDark(state, world, cal, it)) return "home";
   return null;
 }
@@ -221,16 +250,18 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
 }
 
 /** Walk to this region's camp, make a fire if the means are here, then sleep or rest. */
-function campStep(state: GameState, world: World, cal: Calendar, it: Intent, need: "sleep" | "cold"): Step {
+function campStep(state: GameState, world: World, cal: Calendar, it: Intent, need: "sleep" | "cold" | "spent"): Step {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const here = cellOf(state, world);
   if (here !== st.campCell) {
-    const why = need === "sleep" ? " for the night" : " to warm up";
+    const why = need === "sleep" ? " for the night" : need === "cold" ? " to warm up" : " for the evening";
     if (check(state, world, cal, "walk", `cell:${st.campCell}`).ok) return walkStep(state, world, st.campCell, why);
     const s: Step = need === "sleep"
       ? { id: "sleep", step: "sleeping where you stand; no way to camp" }
-      : { id: "rest", step: "resting to warm up; no way to camp" };
+      : need === "cold"
+        ? { id: "rest", step: "resting to warm up; no way to camp" }
+        : { id: "rest", step: "resting after the day's work; no way to camp" };
     if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. You sleep where you are.", "bad");
     return s;
   }
@@ -241,7 +272,8 @@ function campStep(state: GameState, world: World, cal: Calendar, it: Intent, nee
     if (!isRunning(state, s) && st.campCell !== it.campCell) log(state, `You turn in at camp in ${regionAt(world, p.region).name}.`);
     return s;
   }
-  return { id: "rest", step: st.fire.lit ? "warming up by the fire" : "resting to warm up" };
+  if (need === "cold") return { id: "rest", step: st.fire.lit ? "warming up by the fire" : "resting to warm up" };
+  return { id: "rest", step: st.fire.lit ? "resting by the fire after the day's work" : "resting after the day's work" };
 }
 
 /** Eat what is in reach; else go where the food is; else nothing. */

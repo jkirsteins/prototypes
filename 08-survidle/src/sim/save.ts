@@ -1,6 +1,7 @@
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
+import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, START_DOY } from "./calendar";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
@@ -85,6 +86,7 @@ function fillDefaults(state: GameState): void {
   p.toes ??= false;
   p.fingers ??= false;
   p.berriesToday ??= { day: 0, kg: 0 };
+  p.workHours ??= WORK_HOURS_DEFAULT;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;
