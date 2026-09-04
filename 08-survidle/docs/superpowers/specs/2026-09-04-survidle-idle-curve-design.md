@@ -187,7 +187,8 @@ the first death read as the horizon. A set-up whose horizon falls outside
 its band is a finding, in the same sense as a food source outside its
 kcal band in the calibration pass. The bands are steered by, not hit.
 The checks land with the ladder for the first three rows and with each
-producer for the last.
+producer for the last. The first three are provisional until the
+calibration pass moves the kcal and the burn they are measured in.
 
 ## 4. The survivor ladder
 
@@ -212,9 +213,12 @@ second year. The carry cap at half is F's and stays: every survivor still
 earns half of everything, and the keeps-from-birth rung needs level 10,
 which a half carry of a level 14 ancestor gives.
 
-The reference player checks the ladder at two settings, no Lineage and
-full, and a row whose heir at full Lineage dies in the same band as the
-survivor before is a finding: the tree bought nothing.
+Row 1 is the tester's first run and is read from the beacon; the
+reference player is a competent set-up and at no Lineage is row 2's
+survivor, which is where the baseline's runs die today. The reference
+player checks rows 2 on at two settings, no Lineage and full, and a row
+whose heir at full Lineage dies in the same band as the survivor before
+is a finding: the tree bought nothing.
 
 ## 5. The skill wall and the tree
 
@@ -314,11 +318,14 @@ costs the save nothing.
 Nothing in the roadmap's build order moves. What changes is what each
 slot contains:
 
-1. **The calibration pass**, as specced.
-2. **The ladder** (section 2) and the first three horizon checks (3), a
-   small item of its own, right after the pass and before F's core. It
-   lands here because its cost is in the reference player, which the
-   pass has just calibrated, and because F's carry reads the rungs.
+1. **The ladder** (section 2) and the first three horizon checks (3), a
+   small item of its own, right after the baseline. It goes before the
+   pass so the pass measures a beginner whose opening is final, once; the
+   gates are levels on a curve that does not move, and calibration only
+   changes the real time it takes to reach them.
+2. **The calibration pass**, as specced, which makes the bands honest.
+   The three horizon checks are provisional until it runs and are re-run
+   after it.
 3. **F's core**, with the daily forecast field in the journal (6) added to
    its list; the views draw once B exists.
 4. **B**, whose month number fills the series.

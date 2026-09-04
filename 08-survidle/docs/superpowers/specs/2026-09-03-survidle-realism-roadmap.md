@@ -234,13 +234,13 @@ game and the lineage grow, then content. So: 1 (built), A standing orders
 (built), D species and sound (built), then the baseline (the section of
 that name under the idle loop: water at camp, the thirst priority, arrows
 in the pack, wet wood, the rack as a task, tool keeps, and a start with a
-shore and rock, with the reference player as its gate), then the calibration pass (the
-section of that name below: the harness measures each food source
-against the yield tables, the gates are set from what it finds, and
-berries, burn and sleep get their first honest numbers), then the
+shore and rock, with the reference player as its gate), then the
 delegation ladder (the section of that name below: order kinds earned per
 skill, jobs at 3, grinds at 5, keeps at 10, with the first horizon
-checks), then F's core (the world saved instead of the person, the
+checks), then the calibration pass (the section of that name below: the
+harness measures each food source against the yield tables, the gates
+are set from what it finds, and berries, burn and sleep get their first
+honest numbers), then F's core (the world saved instead of the person, the
 journal with its daily forecast field, the dim map, the season spine,
 first decay, and the heir set down near the old camp; not its ramp), then
 B the risk forecast with the away cap as its horizon,
@@ -302,6 +302,12 @@ first of the regrowth clocks Territory generalises.
 
 ### 1. Body and elements
 
+**Curve.** Survivor row 1: thirst, cold and hunger are what a first
+survivor dies of under day 20, and this item owns them. No tier and no
+horizon band of its own; its fog lands with 7 and belongs to row 3's
+winter. Expected: a tester's first death inside 20 game days with one of
+the three as its cause, read from the beacon.
+
 Specced and in build: `2026-09-03-survidle-body-and-elements-design.md`.
 That spec holds water, ice, wet clothing and frostbite, wet wood, smoke,
 storms and exhaustion. Fog, described below, is not in it: it lands
@@ -353,6 +359,10 @@ sub-project 6.
 
 ### 2. Rivers (flavour, no slot)
 
+**Curve.** No row, no band, no tier: flavour. Expected to move nothing,
+which is why it has no slot. The salmon run, when it lands, is a fishing
+tier at 15 under C's methods.
+
 Rivers are kept for the look of the north, not for a threat or a stock:
 a line on the map from the elevation the world already has, water
 running off the fells to the lakes and the sea, blue in summer and white
@@ -392,6 +402,14 @@ stand beside them:
   item.
 
 ### 3. Camp build-out
+
+**Curve.** Horizon rows 4 and 5: the shelter ladder and the buildings
+are what let the heir's camp hold ten to twenty days, and the cellar and
+the water storage are two of the three producers that take it to the away
+cap. Survivor rows 2 and 3: a roof is "winter under a roof". Tiers:
+building 3 and 5 for the shelter ladder's new rungs, 10 for the cabin as
+now, 15 for the cellar. Expected: a cabin-and-cellar heir holds ten to
+twenty game days; a stocked cellar camp reaches the away cap.
 
 Camp today is two rungs, a lean-to at 4 hours for +5 and a cabin at 60
 hours and 40 logs for +15, with nothing between, and A's build shows the
@@ -456,6 +474,13 @@ measured, and they come first.
 
 ### 4. Animals as agents
 
+**Curve.** Survivor rows 3 and 4: predators at the rack and a hunted-out
+haul are two of winter's killers, and fed wolves are part of the second
+winter. Tiers: hunting by species at 5, 10 and 15 from D's roster, the
+bear den at its recommended level. Expected: with 4, 5 and 6 in, the
+reference player at full Lineage dies in its second year; unguarded meat
+at the rack is a horizon drop the forecast shows.
+
 Predators that attack in their own country by day, not only wolves at
 night. Bear, wolverine, fox and ravens that take meat from the rack, the
 pile and the shelter. Hunting genuinely poor without good tools.
@@ -471,6 +496,12 @@ meat, the fat E's tanning wants and a fur. A den missed in autumn is a
 bear beside your camp in April.
 
 ### 5. Injury, disease, insects, mind
+
+**Curve.** Survivor row 4: permanent damage is the second winter's
+ramp, a body slower each year. Insect season shortens a July horizon
+without smoke and clothing. No tier. Expected: an heir at full Lineage
+still dies in year two, and no set-up reads a zero month forecast after
+its first winter.
 
 Wounds that need care and go septic. Parasites and disease from bad meat or
 an untreated wound. Mosquito, black fly and tick season that makes places
@@ -593,6 +624,14 @@ what a wound needs before it says what it took.
 
 ### 6. Territory
 
+**Curve.** Survivor rows 3 and 4: the cut-out and hunted-out haul is
+winter's third killer and the year-two ramp, and the moving camp is row
+4's step north. Horizon: depletion is what keeps the producers row a
+ceiling, since a camp that holds sixty days empties its haul. No tier.
+Expected: a stationary two-year camp's month number falls under the
+regrowth clocks. Last in the order because every other ramp must exist
+first.
+
 Every gathered resource depletes per region and regrows at a rate that
 rewards spreading work over the neighbours, so the land near camp thins but
 never dies. Moving camp, or shifting stock to it. Snow that buries
@@ -630,6 +669,11 @@ does nothing by day in clear weather, when the sun steers you, and
 everything in fog, at night under overcast, and on a fell in cloud.
 
 ### 7. Wind and thunder
+
+**Curve.** Survivor row 3: the cold snap and the dark with wind through
+a coat are winter's, and the felt temperature is the number. No tier of
+its own; E's coat grades read it. Expected: the winter reference set-up's
+horizon drops under a gale without a windbreak and holds with one.
 
 There is no wind in the game. A storm is a window of heavy rain lasting 6
 to 18 hours with a flat -6 C felt-temperature penalty standing in for it,
@@ -727,6 +771,12 @@ above ships with wind itself against being left as a field for the
 sub-projects that want it.
 
 ### 8. Forest fire
+
+**Curve.** Horizon rows 2 to 5: a fire that walks off camp ends a set-up
+at any stage, so it is a ceiling on every band from the first grind on,
+as the camp fire's spread rule already is. Survivor row 2 in a dry July.
+No tier. Expected: the month number reads the dry-day count, and no camp
+is lost to a banked fire.
 
 The one threat that changes the map. Its inputs all exist: a dry-day count
 on the weather, storms, a camp fire that can already walk off camp, a torch
@@ -923,6 +973,10 @@ it is what happens when the set-up fails, and why the player starts again.
 
 ### A. Standing orders
 
+**Curve.** The horizon curve runs on it: a job is the first rung, a
+grind the crude one, a keep the manager, and the ladder decides when each
+is earned. Expected: the bands in the delegation ladder section.
+
 Built: `2026-09-03-survidle-standing-orders-design.md`, plan
 `2026-09-03-survidle-standing-orders.md`. A ranked list of orders per
 camp: keeps ("keep camp at 40 kg firewood", unmet under half the target
@@ -961,6 +1015,12 @@ What the build taught, for the sub-projects after it:
   runner, so a change to those thresholds moves the forecast.
 
 ### The baseline
+
+**Curve.** Horizon row 4's floor: water at camp, the rack, the tool
+keeps and arrows are what a set-up needs to hold a week at all. Survivor
+row 2: the competent set-up at no Lineage dies of the axe by first frost.
+Expected: the April gate, 21 days for now, with the reference player
+alive on it at no Lineage.
 
 Specced: `2026-09-03-survidle-baseline-design.md`. Seven fixes to rules
 that already exist, in the order they killed the headless runs of A's
@@ -1007,9 +1067,49 @@ memory.
   spots to its filter. 3's siting is the long answer; this is the cheap
   insurance until it lands.
 
+### The delegation ladder
+
+**Curve.** Section 2 of the curve spec whole: jobs at 3, grinds at 5,
+keeps at 10, and horizon rows 1 to 3. Expected: the from-scratch reference
+player alive on the April gate with the intents opening, and the three
+bands, provisional until the pass.
+
+Specced: `2026-09-04-survidle-idle-curve-design.md`. Right after the
+baseline, before the calibration pass, so the pass measures a beginner
+whose opening is final. Automation is earned per skill, the
+way the genre earns it: below woodcraft 3 the player points with intents,
+jobs come at 3 (about a working day), grinds at 5 (about an hour of real
+time at the skill), keeps at 10 (about five hours, near a first death).
+The level curve and the recommended levels do not move; the gates are set
+per rung. The orders form greys a kind the skill has not earned and says
+which level earns it. A task that maps to no skill names its gate skill
+(`haul` follows woodcraft), asserted the way card coverage is. The
+reference player's beginner gains an opening of intents for the first day
+and adds each kind the day its gate opens, so the April gate measures a
+player who can exist. When F's carry lands, carried hours give the level
+and the level gives the rung, with no separate unlock node.
+
+With it land the first three checks of the horizon curve: a scripted
+set-up at each stage (manual only; jobs and grinds; keeps) run forward on
+four seeds, and the day of the first death read as how long the camp
+holds. The bands are nothing, one to two game days, three to five; the
+heir with carried keeps and the baseline should hold ten to twenty, and
+the producers up to the away cap, each checked when it lands. The three
+that land here are provisional until the calibration pass moves the
+numbers they are measured in, and are re-run then. The
+horizon is the check-in interval, and it is what "increasingly idle"
+means here: the camp holds longer, and the ramp still ends it.
+
 ### The calibration pass
 
-Immediately after the baseline, before F. The baseline's harness runs
+**Curve.** The pass is what makes every band honest: the horizon bands
+and the survivor rows are in kcal and days the sim produces, and a burn
+of 4,000 against 3,000 moves all of them. No row or tier of its own.
+Expected: the ladder's horizon checks re-run after the numbers move and
+land in their bands, and the gates reset as this section says.
+
+Immediately after the delegation ladder, before F, so it measures the
+beginner once, with the intents opening in place. The baseline's harness runs
 a beginner's April on four seeds and dies of starvation on day 22 or 23
 with fire, a roof and water in hand; its gate is 21 days for now, set
 from that measurement rather than from the tables. This pass turns the
@@ -1057,32 +1157,14 @@ tables in "What the north yields" into the game's numbers, measured:
   skill tiers, the cellar) stay with C and 3; the pass only moves numbers
   the game already has.
 
-### The delegation ladder
-
-Specced: `2026-09-04-survidle-idle-curve-design.md`. Right after the
-calibration pass, before F's core. Automation is earned per skill, the
-way the genre earns it: below woodcraft 3 the player points with intents,
-jobs come at 3 (about a working day), grinds at 5 (about an hour of real
-time at the skill), keeps at 10 (about five hours, near a first death).
-The level curve and the recommended levels do not move; the gates are set
-per rung. The orders form greys a kind the skill has not earned and says
-which level earns it. A task that maps to no skill names its gate skill
-(`haul` follows woodcraft), asserted the way card coverage is. The
-reference player's beginner gains an opening of intents for the first day
-and adds each kind the day its gate opens, so the April gate measures a
-player who can exist. When F's carry lands, carried hours give the level
-and the level gives the rung, with no separate unlock node.
-
-With it land the first three checks of the horizon curve: a scripted
-set-up at each stage (manual only; jobs and grinds; keeps) run forward on
-four seeds, and the day of the first death read as how long the camp
-holds. The bands are nothing, one to two game days, three to five; the
-heir with carried keeps and the baseline should hold ten to twenty, and
-the producers up to the away cap, each checked when it lands. The
-horizon is the check-in interval, and it is what "increasingly idle"
-means here: the camp holds longer, and the ramp still ends it.
-
 ### B. The risk forecast
+
+**Curve.** The horizon curve's instrument: the forecast's first row is
+the check-in interval, and the month number logged daily is the evolution
+view's series. Survivor rows 2 on: the falling month number is the
+plateau signal before every death. Expected: the forecast's horizon
+matches the harness's for the same set-up within its band, and no set-up
+in its second year reads zero.
 
 An honest number, not a checklist: the simulation itself run forward from
 the current state in a worker, several times with different dice, and the
@@ -1112,6 +1194,13 @@ horizon row can recompute on every list change while the longer rows
 finish in the worker.
 
 ### C. Skill tiers
+
+**Curve.** The skill wall's content: the tiers at 3, 5, 10, 15, 20 and
+30 (wood by species, fishing by method, tool grades) are what a rung, a
+carry and a rate node buy. Horizon row 5: the basket trap is the first
+producer. Survivor row 2: the tool tiers make the arrival axe the best
+one, which is the axe ramp. Expected: the trap's hourly rate takes a
+stocked camp to the away cap, and a replaced axe is worse than the first.
 
 Levels are a percent per level today, so a level 1 and a level 15
 woodcutter do the same work, one a little faster. Melvor's ladder is
@@ -1156,6 +1245,11 @@ the levels, the sub-projects fill them.
 
 ### D. Species and sound
 
+**Curve.** Tiers: hunting and fishing by species, each at its
+recommended level, the roster filling 5, 10, 15 and 20 as it grows.
+Survivor row 2: an elk is the row's goal; rows 3 and 4: the bear den in
+January. Expected: each hunting tier has a species worth the level.
+
 Built: `2026-09-03-survidle-species-and-sound-design.md`, plans
 `2026-09-03-survidle-species.md` and `2026-09-03-survidle-sound.md`. The
 species half: about thirty species in one catalogue, each with a
@@ -1173,6 +1267,13 @@ what B's forecast and A's orders hunt, and it landed right after A
 because it rewrites the hunt and fish branches that A's runner drives.
 
 ### E. Hides and clothing
+
+**Curve.** Survivor row 3: a coat worth the level is what makes
+winter's cold snap survivable, and its wear is a ramp of its own. Tiers:
+crafting 5 for the hide blanket, 8 to 10 for coat, trousers and boots as
+now, 15 for the fur grades. Expected: the winter reference set-up in wool
+dies in the cold snap and in fur holds, and a coat worn through is a
+forecast drop the player sees.
 
 Clothing is named in 1 (wet garments, frostbite), 5 (insects, burns on
 whatever is not covered), 7 ("a warmer clothing rung so winter stays
@@ -1326,6 +1427,12 @@ and a wrapped set does not; and whether the starting kit gets a rawhide
 or a scrap of tanned hide so the first mend does not wait on a deer.
 
 ### F. The survivor loop
+
+**Curve.** The survivor ladder whole, and the tree that moves it: rows 1
+to 4 are F's goals paying the nodes that carry, hurry, land nearer and
+warn sooner; the evolution view; and the long tail's content, the season
+spine, the goals and the march north. Expected: each row's heir at full
+Lineage outlives the survivor before it, and never outlives the ramp.
 
 Not specced. The high-level guidance is here so the spec has something
 to argue with; the numbers are first targets, not rulings. It is the item
@@ -1604,3 +1711,8 @@ save of the world with a person in it, and a lineage beside them.
   anything on the ramp.
 - A sub-project that adds truth and no reason to come back waits behind
   one that does.
+- Every item carries a curve line, the paragraph under its heading: which
+  horizon stage and which survivor row of the idle curve spec it serves,
+  the tier levels it fills, and the number it is expected to move, which
+  the reference player checks when the item lands. An item that cannot
+  write that line waits.
