@@ -60,10 +60,10 @@ or pile as `produce` decides, which is what "make a spare" means.
 
 **Vessels.** A bucket or waterskin in a pile is empty and is the camp's
 water capacity (section 2). A vessel in hand is the carried one, as
-today. The fill task needs a vessel in hand, so the take-up rule applies
-to it: with one bucket at camp and none in hand, a fill takes the bucket
-up and camp has no capacity left, which is why the reference list makes
-two.
+today. The fill task needs a vessel in hand: it is judged at the shore,
+where the camp pile is out of reach, so a bucket lying at camp is
+capacity only, not a vessel the fill order will fetch - with none in
+hand, the order blocks on "needs a vessel".
 
 ## 2. Water at camp
 
@@ -200,7 +200,10 @@ order strip like every other task.
 `findStart` requires, beside its current filter, that the region's spots
 include both `shore` and `outcrop`. The fallback at ring 40 stays. The
 reference script prints, per seed, the ring the search stopped at, so a
-seed that fell through to the fallback is seen, not guessed at.
+seed that fell through to the fallback is seen, not guessed at. Not every
+seed finds a qualifying region within those 40 rings; a seed that does
+not takes the fallback and is printed as having done so, not promised a
+shore-and-outcrop start it never reached.
 
 This is the cheap insurance the roadmap describes; 3's siting is the long
 answer and F's placement question waits on it.
@@ -302,8 +305,10 @@ Unit, in vitest, all fast:
   why.
 - Hang moves `min(room, raw)` onto the rack over its minutes; a keep on
   dried meat is met when the rack drops it.
-- Every seed 1 to 80 starts in a region with a shore and an outcrop;
-  the test prints any seed that took the fallback.
+- The five seeds the baseline runs from - 17, 19, 42, 79 and 3 - each
+  start in a region with a shore and an outcrop; the reference script
+  prints the ring each start was found at, so a seed that took the
+  ring-40 fallback shows it.
 - The reference list adds as named and holds three days (section 8).
 
 The gate is the script. The browser pass: a run into December on one of
