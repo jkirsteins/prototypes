@@ -21,7 +21,7 @@ const AHEAD_DAYS = 7;
 
 export const NAMES: Record<ThresholdId, string> = {
   berries: "The berries", rut: "The rut", firstFrost: "First frost", firstSnow: "First snow",
-  lakeFreeze: "The lake freezes", dark: "The dark", coldSnap: "The cold snap", iceOut: "Ice-out",
+  lakeFreeze: "Lake freeze-up", dark: "The dark", coldSnap: "The cold snap", iceOut: "Ice-out",
 };
 
 /** Thresholds whose name reads as a plural subject: "The berries are near.", not "is near." */
@@ -111,7 +111,7 @@ export function stepSpine(state: GameState, cal: Calendar, who: Presence | null)
   }
 }
 
-/** The next threshold not yet fired this year, by expected date, and how far off it is; negative when overdue. */
+/** The next threshold not yet fired this year, by expected date, and how far off it is: 0 to 364; past its expected day it reads the days to next year's. */
 export function nextThreshold(state: GameState, cal: Calendar): { id: ThresholdId; inDays: number } {
   let best: { id: ThresholdId; inDays: number } | null = null;
   for (const id of THRESHOLDS) {

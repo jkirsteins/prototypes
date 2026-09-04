@@ -37,11 +37,15 @@ describe("the season spine", () => {
   it("announces a week ahead and records the arrival for a living survivor", () => {
     const { state } = newGame(17, 185);
     const who = { region: state.player.region, atCamp: true };
-    stepSpine(state, calendar(5 * 1440, state.startDoy), who);
+    state.minute = 5 * 1440;
+    stepSpine(state, calendar(state.minute, state.startDoy), who);
     expect(state.log.some((e) => e.text.startsWith("The berries are near."))).toBe(true);
     expect(current(state).events.some((e) => e.kind === "threshold")).toBe(false);
-    stepSpine(state, calendar(10 * 1440, state.startDoy), who);
-    expect(current(state).events.some((e) => e.kind === "threshold" && e.id === "berries")).toBe(true);
+    state.minute = 10 * 1440;
+    const arrival = calendar(state.minute, state.startDoy);
+    stepSpine(state, arrival, who);
+    const fired = current(state).events.find((e) => e.kind === "threshold" && e.id === "berries");
+    expect(fired?.day).toBe(arrival.day);
     expect(state.log.some((e) => e.text.startsWith("The berries. Day "))).toBe(true);
   });
 
