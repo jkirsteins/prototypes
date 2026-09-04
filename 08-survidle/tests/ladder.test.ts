@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderGate, withinLadder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
-import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
+import { levelMinutes, RUNG_LINE, SKILL_IDS, train } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
+import { placeAtSpot } from "../src/sim/position";
+import { startTask } from "../src/sim/tasks";
+import { calendar } from "../src/sim/calendar";
+import { Rng } from "../src/rng";
 
 const req = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string): IntentRequest =>
   ({ task, arg, until, deliver: "camp", where: "nearest" });
@@ -164,5 +168,39 @@ describe("the stand-in for a shut kind", () => {
         expect(orderGate(state, s.req, s.kind), `${k} at ${l}`).toEqual({ ok: true });
       }
     }
+  });
+});
+
+describe("the rung log lines", () => {
+  it("each rung is announced once as the level crosses it, after the level line", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    expect(startTask(state, world, calendar(state.minute), "sticks", undefined, false, new Rng(1))).toBe(true);
+    state.skills.woodcraft.xp = levelMinutes(3) - 1;
+    train(state, world, 1);
+    const texts = state.log.map((e) => e.text);
+    expect(texts).toContain("Woodcraft 3.");
+    expect(texts).toContain(RUNG_LINE.job("Woodcraft"));
+    expect(texts.indexOf("Woodcraft 3.")).toBeLessThan(texts.indexOf(RUNG_LINE.job("Woodcraft")));
+    train(state, world, 1);
+    expect(state.log.filter((e) => e.text === RUNG_LINE.job("Woodcraft")).length).toBe(1);
+  });
+
+  it("a jump across two rungs announces both", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "forest");
+    expect(startTask(state, world, calendar(state.minute), "sticks", undefined, false, new Rng(1))).toBe(true);
+    state.skills.woodcraft.xp = levelMinutes(3) - 1;
+    train(state, world, levelMinutes(5) - levelMinutes(3) + 1);
+    const texts = state.log.map((e) => e.text);
+    expect(texts).toContain(RUNG_LINE.job("Woodcraft"));
+    expect(texts).toContain(RUNG_LINE.grind("Woodcraft"));
+    expect(texts).not.toContain(RUNG_LINE.keep("Woodcraft"));
+  });
+
+  it("the lines name the kind and the skill", () => {
+    expect(RUNG_LINE.job("Woodcraft")).toBe("You know woodcraft well enough to set a task and walk away: jobs with a count or a target from Woodcraft.");
+    expect(RUNG_LINE.grind("Fishing")).toBe("Fishing is second nature now: grinds, work that never ends, from Fishing.");
+    expect(RUNG_LINE.keep("Building")).toBe("You keep count of building without thinking: keeps from Building.");
   });
 });

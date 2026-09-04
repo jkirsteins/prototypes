@@ -40,6 +40,13 @@ export const RUNG_WORD: Record<OrderKind, string> = { job: "jobs", grind: "grind
 /** Crude before smart: the order the rungs open in. */
 export const RUNG_ORDER: OrderKind[] = ["job", "grind", "keep"];
 
+/** What the log says as each rung opens, once per skill per survivor. */
+export const RUNG_LINE: Record<OrderKind, (skill: string) => string> = {
+  job: (s) => `You know ${s.toLowerCase()} well enough to set a task and walk away: jobs with a count or a target from ${s}.`,
+  grind: (s) => `${s} is second nature now: grinds, work that never ends, from ${s}.`,
+  keep: (s) => `You keep count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
+};
+
 export const MASTERY_CAP = 99;
 /** Level L needs 2 (L-1)^2 hours: 120 (L-1)^2 minutes. */
 export const SKILL_LEVEL_MINUTES = 120;
@@ -321,7 +328,11 @@ export function train(state: GameState, world: World, dt: number): void {
   const before = level(s.xp);
   s.xp += dt;
   const after = level(s.xp);
-  if (after > before) log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
+  if (after > before) {
+    log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
+    // Once per survivor by construction: a level is crossed once, and the heir is a new state.
+    for (const k of RUNG_ORDER) if (before < RUNG_LEVEL[k] && after >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
+  }
   const mBefore = masteryLevel(s.mastery[key] ?? 0);
   s.mastery[key] = (s.mastery[key] ?? 0) + dt;
   const mAfter = masteryLevel(s.mastery[key]);
