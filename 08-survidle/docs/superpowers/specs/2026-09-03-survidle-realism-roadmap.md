@@ -185,11 +185,12 @@ the roadmap, and where each note lands:
   first snow, and April stays the hard opening a first run dies in.
 - **Water is not treated.** Drinking from a lake carries no risk; boiling
   it (hot stones in a bark bucket) is a disease rule for 5.
-- **The runner sleeps six to twelve hours a day** in the reference runs,
-  two twelve-hour days in its first three; the energy model that puts
-  it to bed at "you can barely lift your arms" deserves a look in 5's
-  body model, since a person building a shelter does not sleep half the
-  day.
+- **The runner sleeps 7.7 to 10.8 hours a day** in the April reference
+  runs, two of the four seeds inside the seven to nine band the
+  calibration pass set and two over it. The energy model that puts it
+  to bed at "you can barely lift your arms" had its look in that pass,
+  and the working day sets the rest of it: a spent body rests by the
+  fire after ten hours and sleeps at nightfall.
 - **A kill is a preservation problem before it is food.** Realistic
   storage for game meat: fresh in warm air, hours to a day before it is
   risky; held at 4 C or under, three to five days; cooked or hot-smoked
@@ -240,15 +241,26 @@ skill, jobs at 3, grinds at 5, keeps at 10, with the first horizon
 checks; built), then the calibration pass (the section of that name below: the
 harness measures each food source against the yield tables, the gates
 are set from what it finds, and berries, burn and sleep get their first
-honest numbers; built), then F's core (the world saved instead of the person, the
+honest numbers; built), then the working day and snares on day two (the
+paragraph of that name at the end of the calibration pass: a spent body
+rests by the fire after ten hours, and the reference list sets snares
+before it fells a tree; built), then what the deaths pull forward, next:
+the opening's water, an ice hole cut inside the runner's thirst chain
+and the bark bucket earlier in the reference list, ahead of 3's water
+storage, and C's basket trap for the gate day beside it, in whichever
+order the author takes them, then F's core (the world saved instead of the person, the
 journal with its daily forecast field, the dim map, the season spine,
 first decay, and the heir set down near the old camp; not its ramp), then
 B the risk forecast with the away cap as its horizon,
 then the rest of F in impact order (the landing month, latitude by row
 with the landing moving north, the goals list, the Lineage tree, and the
 death site with the corpse run and its search order), then the first
-producers and stocks (C's basket trap, and 3's water storage and cellar,
-pulled out of their items), then E hides and clothing, then the rest of
+producers and stocks (3's water storage and cellar, pulled out of their
+items; the basket trap and the opening's water - an ice hole in the
+thirst chain, and an earlier bark bucket - left this slot for the step
+marked next above, because the reference runs die of thirst on day 3 and
+starve at the gate day, and the list holds neither before then), then E
+hides and clothing, then the rest of
 3 camp (siting, the shelter ladder, the buildings) with the rest of C
 alongside and F's trails and the cellar's keep, then 4 animals, 5 injury
 and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
@@ -1274,6 +1286,70 @@ them is thirst on seven rows and cold on five. Ten rows sit over their
 band where eleven did before, so a stocked camp with nobody in it still
 outlives what the ladder asks of it at every stage. The bands did not
 move.
+
+Pulled forward after the pass: the working day and snares on day two
+(`2026-09-04-survidle-working-day-design.md`). The spec's primary list
+order was measured and rejected - it froze three of the four seeds by day
+five, because it left the roof behind the knife and the snares - so the
+fallback order stands: the knife after the lean-to, the snares right
+after the knife, the fish keep after the cook keeps.
+
+`npm run reference` after the working day: the four seeds' week block
+(day 26 for seed 19, the death week for the other three) averages base
+1,563, work 1,734 (activity 1,202, walk 532), cold 77, 3,374 a day, 10.0
+hours at work and 9.0 asleep, against the pass's after-sleep week of base
+1,680, work 2,260 (activity 1,296, walk 964), cold 202, 4,141 a day, 13.0
+hours and 8.7. Two of those four weeks are the two- and three-day
+openings of seeds that die on days 3 and 4, so the like-for-like number
+is the pair that reach the gate week: seeds 17 and 19 read base 1,680,
+work 1,937 (activity 1,486, walk 451), cold 48, 3,665 a day, 10.1 hours
+at work and 8.7 asleep. The day is inside its 2,500 to 3,500 band on the
+two openings, at 2,846 and 3,319, and over it on the two gate weeks, at
+3,650 and 3,680; work is over its share on three of the four seeds; sleep
+reads 7.7 to 10.8 hours, two seeds inside the seven to nine band and two
+over it. The working day the runs now show is ten hours, where the
+balanced budget read thirteen.
+
+The yields, per source, where a seed has one: seed 17 lives on fish at
+143 kcal a day, in band, and seed 19 on fish at 500, over it; seeds 42
+and 79 die on the arrival kit alone, at 1,167 and 1,750 a day. Snares,
+hunts and berries read 0 on every seed, inside their April bands, though
+both seeds that reach the gate week hold a set snare at camp: the list
+sets it on day two now and it catches nothing in April.
+
+The April gate at day 26 with the food clause passes 0 of 4: seed 17
+starved on day 25, seed 19 starved on day 30, seed 42 went to wolves on
+day 4, and seed 79 to thirst on day 3. Seed 19 stands at the gate day
+alive, health 99, 2.1 l of water in hand and 0 kcal, so what fails it
+there is the food clause; the two that die in the opening never reach
+that clause at all. The kitted run at 30 days passes 1 of 4 where it
+passed 0 of 4 before: seed 79 is alive and fed on day 30 and starves on
+day 35, seed 17 starves on day 30, seed 42 on day 29, and seed 19 stands
+on day 30 unfed and starves on day 34.
+
+`npm run horizon` after the working day: 0 of twelve rows sit in their
+band, where 2 did after the pass. Manual holds 3 to 6 days against 0 to
+2, jobs and grinds 3 to 4 against 1 to 2, and keeps 8 to 23 against 3 to
+5 - the two rows that were in band, keeps on seed 17 at 4 days and seed
+42 at 5, now hold 23 and 17. What ends them is thirst on five rows, cold
+on four, wolves on two and sickness on one. So a stocked camp with nobody
+in it outlives the ladder's ask further than it did, and the working day
+is why: a body that rests by the fire after ten hours and sleeps at
+nightfall spends less. The bands did not move.
+
+The stop rule's reading is mixed, because the runs hold two deaths and
+not one. Two seeds starve near the gate day, seed 17 the day before it
+and seed 19 four days after, and two die in the vessel-less opening, on
+day 3 of thirst and on day 4 to wolves after a dehydrated night. So the
+opening is water: the runner holds no vessel until the bark bucket, and
+its thirst chain can only use an ice hole that is already cut, while
+nothing cuts one until the fill keep has a vessel to fill - which pulls
+water items next, an ice hole cut inside the runner's thirst chain and
+the bark bucket earlier in the reference list, both ahead of item 3's
+water storage. And the gate day is food: the two April deaths that reach
+the gate week are starvation with an empty camp, and so are all four
+kitted deaths, which is C's basket trap, after that. Those are the two
+candidates the deaths name; which is built first is the author's call.
 
 ### B. The risk forecast
 
