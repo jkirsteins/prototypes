@@ -3,6 +3,7 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
 
 export type Season = "spring" | "summer" | "autumn" | "winter";
@@ -311,4 +312,6 @@ export interface GameState {
   piles: Record<number, Inventory>;
   route: Route | null;
   intent: Intent | null;
+  /** One record per game day of kcal made, eaten and burned: the calibration ledger. */
+  ledger: DayLedger[];
 }

@@ -3,6 +3,11 @@ import type { Season } from "./types";
 /** The run begins on 1 April at 08:00. Day-of-year is 0-based. */
 export const START_DOY = 90;
 export const START_MINUTE_OF_DAY = 8 * 60;
+
+/** Days survived, 1-based, from the minute alone: the ledger's key, cheap enough to read every minute. */
+export function dayNumber(minute: number): number {
+  return Math.floor((minute + START_MINUTE_OF_DAY) / 1440) + 1;
+}
 export const LATITUDE_DEG = 62;
 export const SYNODIC_DAYS = 29.530588;
 /** Day index of a new moon, chosen so the run's first full moon is 3 April. */

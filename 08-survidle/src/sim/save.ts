@@ -39,6 +39,7 @@ export function deserialize(text: string): SaveFile | null {
 function fillDefaults(state: GameState): void {
   state.skills ??= newSkills();
   state.intent ??= null;
+  state.ledger ??= [];
   if (state.intent) {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;

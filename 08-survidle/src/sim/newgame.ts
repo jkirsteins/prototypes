@@ -1,6 +1,7 @@
 import { derive } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { addItem, emptyInventory } from "./inventory";
+import { today } from "./ledger";
 import { log } from "./log";
 import { FAT_FULL } from "./player";
 import { enterRegion } from "./regionstate";
@@ -60,8 +61,10 @@ export function newGame(seed: number): { state: GameState; world: World } {
     piles: {},
     route: null,
     intent: null,
+    ledger: [],
   };
   enterRegion(state, world, world.start);
+  today(state);
   log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
   return { state, world };
 }
