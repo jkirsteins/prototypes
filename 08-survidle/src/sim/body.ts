@@ -179,6 +179,24 @@ function shoreForWater(state: GameState, world: World, cal: Calendar): number | 
   return null;
 }
 
+/**
+ * Where a hole could be cut: the shore is iced, no hole is open in this
+ * region, and the runner holds an axe. The nearest waterside cell a walk
+ * can reach, the cell under foot included; null when any of that fails.
+ */
+export function iceHoleSite(state: GameState, world: World, cal: Calendar): number | null {
+  if (state.weather.iceCm < ICE_SHORE_CM) return null;
+  const st = regionState(state, world, state.player.region);
+  if (st.iceHole) return null;
+  if (!hasTool(state.player, "axe")) return null;
+  const here = cellOf(state, world);
+  if (watersideCell(world, here)) return here;
+  const r = regionAt(world, state.player.region);
+  const candidates = r.cells.filter((c) => watersideCell(world, c)).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  for (const cell of candidates) if (check(state, world, cal, "walk", `cell:${cell}`).ok) return cell;
+  return null;
+}
+
 /** Camp water in reach: litres in the camp pile, and camp under foot or a walk there open. */
 function campWaterReady(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
@@ -201,6 +219,7 @@ function canQuench(state: GameState, world: World, cal: Calendar): boolean {
   return vesselLitres(state.player) > 0
     || waterSource(state, world)
     || shoreForWater(state, world, cal) !== null
+    || iceHoleSite(state, world, cal) !== null
     || campWaterReady(state, world, cal)
     || campMeltReady(state, world, cal);
 }
@@ -210,6 +229,11 @@ function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null
   if (drink(state, world)) return null;
   const shoreCell = shoreForWater(state, world, cal);
   if (shoreCell !== null) return walkStep(state, world, shoreCell, " for water");
+  const site = iceHoleSite(state, world, cal);
+  if (site !== null) {
+    if (site !== cellOf(state, world)) return walkStep(state, world, site, " to open an ice hole");
+    return { id: "iceHole", step: "opening an ice hole" };
+  }
   const st = regionState(state, world, state.player.region);
   const atCamp = cellOf(state, world) === st.campCell;
   if (campWaterReady(state, world, cal)) return atCamp ? null : walkStep(state, world, st.campCell, " for water");

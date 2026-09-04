@@ -74,6 +74,9 @@ describe("the need order", () => {
     placeAt(state, world, st.campCell);
     state.weather.iceCm = 10;
     state.weather.snowCm = 20;
+    // No axe: an iced shore in reach would otherwise be a hole to cut, and
+    // this test wants the melt path that runs when a hole is not an option.
+    p.tools = p.tools.filter((t) => t.id !== "axe");
     st.structures.firePit = true;
     addItem(p.pack, "fireDrill", 1);
     takeUp(state, world, "fireDrill");

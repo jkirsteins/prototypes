@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { currentNeed, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { currentNeed, iceHoleSite, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
@@ -11,7 +11,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
-import { drink, THIRSTY_L, WATER_FULL } from "../src/sim/water";
+import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
 
@@ -219,5 +219,38 @@ describe("checking the snares", () => {
     state.player.energy = 100;
     advance(state, world, 1);
     expect(state.intent?.need).toBe("thirsty");
+  });
+});
+
+describe("cutting the ice hole", () => {
+  it("an iced shore, no hole and an axe in hand is a source: the runner walks there, cuts, and drinks", () => {
+    const { state, world } = felling();
+    state.weather.iceCm = ICE_SHORE_CM + 1;
+    state.player.water = 0.5;
+    state.player.energy = 100;
+    for (const t of state.player.tools) if (t.id === "barkBucket") t.litres = 0;
+    const cal = calendar(state.minute);
+    const site = iceHoleSite(state, world, cal);
+    expect(site).not.toBeNull();
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+    expect(state.intent?.step).toContain("ice hole");
+    // The nearest waterside cell is recomputed from the runner's own moving
+    // position every tick, same as shoreForWater's candidate list, so the
+    // cell it settles on cutting can differ from the one first read at a
+    // standstill; a hole open anywhere in the region is the actual claim.
+    const st = regionState(state, world, state.player.region);
+    for (let m = 0; m < 480 && !st.iceHole; m += 15) advance(state, world, 15);
+    expect(st.iceHole).not.toBeNull();
+    expect(iceHoleOpen(state, st.iceHole!.cell)).toBe(true);
+    for (let m = 0; m < 120 && state.player.water < 1; m += 15) advance(state, world, 15);
+    expect(state.player.water).toBeGreaterThan(1);
+  });
+
+  it("without an axe the iced shore is no source", () => {
+    const { state, world } = felling();
+    state.weather.iceCm = ICE_SHORE_CM + 1;
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    expect(iceHoleSite(state, world, calendar(state.minute))).toBeNull();
   });
 });

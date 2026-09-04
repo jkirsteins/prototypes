@@ -341,6 +341,12 @@ describe("the runner in the elements", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    // An axe in hand would otherwise make the iced shore a hole to cut; stow
+    // it in the pack (a task that needs it, like chop, still finds it there
+    // and takes it back up) after chop is running so the fallback under
+    // test at the next low reading is the melt, not the cut.
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    addItem(state.player.pack, "axe", 1);
     state.player.water = 0.8;
     advance(state, world, 1);
     expect(state.intent?.step).toBe("walking to camp for water");
@@ -489,6 +495,10 @@ describe("the runner in the elements", () => {
     state.minute = 320 * 1440 - START_MINUTE_OF_DAY + Math.round((sunset - 0.1) * 60);
     state.player.water = 0.5;
     state.weather.iceCm = 3;
+    // An axe in hand would otherwise make the iced shore a hole to cut,
+    // which is quenchable and would beat the case this test wants.
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    addItem(state.player.pack, "axe", 1);
     advance(state, world, 1);
     expect(state.intent?.need).not.toBe("thirsty");
     expect(state.intent?.need).toBe("home");
