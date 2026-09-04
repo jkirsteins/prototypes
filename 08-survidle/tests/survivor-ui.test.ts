@@ -49,9 +49,13 @@ describe("the cemetery and the journal", () => {
     const { state, world } = dead();
     beginAgain(state, world);
     land(state, world, { first: "Ilze", last: "Berg" });
+    const ui = { ...newUiState(), cemetery: true };
+    // Ilze is alive: the cemetery lists only the dead, so she is absent and Veikko alone is present.
+    const beforeDying = cemeteryHtml(state, ui);
+    expect(beforeDying).not.toContain("Ilze Berg");
+    expect(beforeDying).toContain(fmtName(state.survivors[0].name));
     advance(state, world, 1440);
     die(state, "starved", regionAt(world, state.player.region).name);
-    const ui = { ...newUiState(), cemetery: true };
     const html = cemeteryHtml(state, ui);
     const first = html.indexOf("Ilze Berg");
     const second = html.indexOf(fmtName(state.survivors[0].name));
@@ -61,6 +65,14 @@ describe("the cemetery and the journal", () => {
     expect(html).not.toContain('data-act="leave-world-yes"');
     expect(cemeteryHtml(state, { ...ui, confirmLeave: true })).toContain('data-act="leave-world-yes"');
     expect(cemeteryHtml(state, { ...ui, cemeteryOpen: 1 })).toContain(epitaph(state.survivors[0]));
+  });
+
+  it("a world with one living survivor shows an empty cemetery with just the leave-world control", () => {
+    const { state } = newGame(17);
+    const html = cemeteryHtml(state, { ...newUiState(), cemetery: true });
+    expect(html).not.toContain(fmtName(current(state).name));
+    expect(html).toContain("No one has died here yet.");
+    expect(html).toContain('data-act="leave-world"');
   });
 
   it("the journal opens with the season panel and the current life, then the ancestors", () => {

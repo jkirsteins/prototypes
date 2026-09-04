@@ -9,7 +9,7 @@ import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventor
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
-import { entry, epitaph, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
+import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
 import { daysInWords, landingDate } from "../sim/landing";
 import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { fmtName } from "../sim/names";
@@ -561,7 +561,8 @@ export function landingHtml(state: GameState, world: World): string {
 }
 
 export function cemeteryHtml(state: GameState, ui: UiState): string {
-  const rows = [...state.survivors].reverse().map((s) => {
+  const dead = [...state.survivors].filter((s) => s.died !== null).reverse();
+  const rows = dead.map((s) => {
     const open = ui.cemeteryOpen === s.index;
     const lines = open ? entryLinesHtml(entry(s).slice(1)) : "";
     return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
@@ -571,7 +572,7 @@ export function cemeteryHtml(state: GameState, ui: UiState): string {
     : `<button class="mini" data-act="leave-world">leave this world</button>`;
   return `<div class="box">
 <h1>Cemetery</h1>
-${rows.join("")}
+${rows.length ? rows.join("") : `<p class="dim">No one has died here yet.</p>`}
 <p>${leave}</p>
 <button class="act" data-act="cemetery-close">Close</button>
 </div>`;
@@ -582,7 +583,7 @@ export function journalHtml(state: GameState, cal: Calendar): string {
   const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
   const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
   const mine = entry(current(state));
-  const ancestors = state.survivors.slice(0, -1).reverse().map((s) => `<div class="e"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(fmtName(s.name))}</button> ${esc(epitaph(s).slice(fmtName(s.name).length + 2))}</div>`);
+  const ancestors = state.survivors.slice(0, -1).reverse().map((s) => `<div class="e"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(fmtName(s.name))}</button> ${esc(epitaphTail(s))}</div>`);
   return `<h2>Journal</h2>${season}${entryLinesHtml(mine)}${ancestors.length ? `<h3>Before you</h3><div class="entries">${ancestors.join("")}</div>` : ""}<button class="mini" data-act="cemetery">cemetery</button>`;
 }
 

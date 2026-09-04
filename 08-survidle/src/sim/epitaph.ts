@@ -47,15 +47,20 @@ function foodClause(kg: number): string {
   return kg < 1 ? `${Math.round(kg * 1000)} g of dried meat in the pack` : `${Math.round(kg * 10) / 10} kg of food in the pack`;
 }
 
-export function epitaph(rec: LifeRecord): string {
+/** The epitaph after the name: what the cemetery and the journal show once the name has its own button or heading. */
+export function epitaphTail(rec: LifeRecord): string {
   const d = rec.died;
-  if (!d) return `${fmtName(rec.name)}. Landed ${fmtWorldDate(rec.landed)}.`;
+  if (!d) return `Landed ${fmtWorldDate(rec.landed)}.`;
   const when = d.after ? ` on the ${nth(d.after.nights)} night after ${THRESHOLD_NAMES[d.after.threshold]}` : "";
   const where = d.kmFromCamp < 0.2 ? "at camp" : `${d.kmFromCamp} km from camp`;
   const wood = d.campFirewoodKg > 0 ? `${d.campFirewoodKg} kg of firewood at camp` : "no firewood at camp";
   // A night-after clause reads as its own phrase and wants a comma before where; with nothing to say there, "at camp" reads straight on from the cause.
   const sep = when ? ", " : " ";
-  return `${fmtName(rec.name)}. Day ${d.day}. ${CAUSE_CLAUSE[d.cause]}${when}${sep}${where}, with ${foodClause(d.packFoodKg)} and ${wood}.`;
+  return `Day ${d.day}. ${CAUSE_CLAUSE[d.cause]}${when}${sep}${where}, with ${foodClause(d.packFoodKg)} and ${wood}.`;
+}
+
+export function epitaph(rec: LifeRecord): string {
+  return `${fmtName(rec.name)}. ${epitaphTail(rec)}`;
 }
 
 function eventLine(e: LifeEvent): string | null {
