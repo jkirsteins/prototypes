@@ -112,6 +112,82 @@ What is already hard and stays: fishing barely breaks even on calories, a
 bow needs cordage, a log, a knife and arrows need sinew from a kill, a deer
 is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
 
+## What the north yields: the calibration tables
+
+The reference player (the baseline's harness, `npm run reference`) is
+the instrument; these are the bands it is measured against. They are
+order-of-magnitude estimates for a lone person, gross kcal a day
+averaged over a week or two, not measured Nordic figures, and they are
+the author's rulings on what the game should give. Skill is the wide
+axis: on hunting and on knowing where fish are, an expert is five to ten
+times a beginner, not a percent a level.
+
+April, inland boreal forest:
+
+| source | beginner | experienced local |
+|---|---|---|
+| plants, roots, overwintered food | 0 to 150 | 100 to 400 |
+| hook, line, spear fishing | 0 to 400 | 300 to 1,200 |
+| passive fishing: nets, traps | 0 to 500 | 800 to 2,500 |
+| small-game traps | 0 to 150 | 200 to 700 |
+| active small-game hunting | 0 to 100 | 150 to 600 |
+| large game, primitive weapons, averaged over weeks | about 0 | 300 to 1,500 |
+| birds, eggs, opportunistic | 0 to 100 | 50 to 300 |
+| mixed total | 200 to 800 | 1,500 to 3,500 |
+
+Late August, the same country:
+
+| source | beginner | experienced local |
+|---|---|---|
+| berries and plants | 300 to 800 | 600 to 1,200 |
+| fishing | 200 to 700 | 700 to 1,500 |
+| small game, trapping | 0 to 200 | 200 to 700 |
+| large game, averaged | about 0 | 300 to 1,500 |
+| mixed total | 700 to 1,500 | 2,000 to 4,000 |
+
+Against a burn of 2,500 to 3,500 a day living outside in the cold, a
+beginner in April runs a deficit whatever they do; the game's job is to
+make that deficit take weeks to kill, not days. What the tables say for
+the roadmap, and where each note lands:
+
+- **Exposure decides the first days, food the weeks after.** Fire on the
+  first evening and a roof by the second night are the baseline's
+  eighth item; the starvation clock of weeks is its section 13. A run
+  that dies inside five days now is a bug, not a season.
+- **Passive fishing is the prize.** A trap or net at a known spot is the
+  one source that reaches a person's whole need, and it works while the
+  survivor does something else. That is C's basket trap and 2's weir,
+  and it is why C's trap is the first producer on the order below.
+- **Hunting is deceptively bad for one person.** A kill is weeks of food
+  and the days between are zero; a society shares and stores, a lone
+  survivor starves in the gaps. 4 and C keep the bow lumpy and make
+  drying and the cellar (3) what turns a kill into weeks.
+- **Traps change the economics but hares are lean.** Fat, not protein,
+  is the limiting nutrient after winter; D's fat item and E's tallow are
+  where that lives, and a hare-only diet should not sustain a body.
+- **Berries are three to five times too rich today.** A kilo an hour at
+  500 kcal a kilo is 2,000 to 4,000 a day of picking against a beginner
+  band of 300 to 800. To be fixed when the late-August gate exists, so
+  the fix is measured.
+- **The skill ladder is too flat for what skill is worth.** A percent a
+  level cannot make the five-to-tenfold expert; C's tiers and the
+  recommended-level gates are where the multiplier belongs, above all on
+  where to fish and how to stalk.
+- **The second gate is late August.** The landing month in F gives a
+  late-August start; a from-scratch reference run there should reach the
+  first snow, and April stays the hard opening a first run dies in.
+- **Water is not treated.** Drinking from a lake carries no risk; boiling
+  it (hot stones in a bark bucket) is a disease rule for 5.
+- **The runner sleeps six to twelve hours a day** in the reference runs,
+  two twelve-hour days in its first three; the energy model that puts
+  it to bed at "you can barely lift your arms" deserves a look in 5's
+  body model, since a person building a shelter does not sleep half the
+  day.
+- **Knowledge is the ancient hunter's real advantage**: which creek has
+  fish in April, where animals cross, which lake is still safe. F's
+  journal, dim map and trails are that knowledge accruing across
+  survivors, and the risk forecast (B) is the modern stand-in for it.
+
 ## The eight sub-projects, in order
 
 The numbers below are names, not the sequence; they stay put so specs can

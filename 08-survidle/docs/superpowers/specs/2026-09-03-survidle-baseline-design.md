@@ -271,7 +271,9 @@ stocks of water, firewood, dried meat, fish, and tools; then the outcome:
 day 245". A final line: passed N of 4. Exit code 1 when any seed fails,
 so a CI job can hold the gate later.
 
-**The gate.** All four seeds reach 1 December. When one does not, the
+**The gate.** All four seeds are alive on game day 30 (section 13 says
+why thirty, not December). The run continues to its 250 days so the
+report says where each seed dies after the gate. When one does not, the
 cause is read from the log: an order list that is wrong is the script's
 to fix; a rule that kills a camp with its needs in reach is the
 baseline's, and it is added to this spec as an eighth item before any
@@ -337,6 +339,11 @@ Unit, in vitest, all fast:
   lit and relights after the fire goes out; with no drill it blocks with
   "needs a fire drill".
 - The fire drill recipe needs no knife.
+- With kcal at zero and fat above zero, an hour costs fat and no health;
+  with both at zero, health drains 2 an hour; a meal past a full stomach
+  raises fat; work speed at half fat is three quarters.
+- The reference gate passes a seed that is alive on day 30 and fails one
+  that dies on day 29.
 
 The gate is the script. The browser pass: a run into December on one of
 the four seeds at `?speed=60`, the ice hole opened by the keep, camp
@@ -381,7 +388,49 @@ the pit, the drill, the fire, two trees and the lean-to, and the first
 fire lands on the first day. Drinking water carries no risk in this
 game; boiling it is a disease rule for sub-project 5, not this one.
 
-## 13. Out of scope
+## 13. The starvation clock, and the two gates
+
+An empty stomach killed the reference player in about two days: the
+kilocalorie reserve is 6,000 and, at zero, health drains 2 an hour. That
+is the one number in the game that contradicts what the north actually
+does to a fed, sheltered person: with fire, a roof and water, a beginner
+lasts weeks at a calorie deficit, and food becomes the main problem
+gradually. So:
+
+**A fat reserve behind the stomach.** `Player.fat`, in kilocalories,
+starting at 80,000 (a fit adult's fat, about nine kilos at 9 kcal a
+gram). While `kcal` is above zero nothing changes. At zero, the hour's
+burn is drawn from `fat` instead of from health; health drains from
+starvation only once fat is gone too, at the 2 an hour it does today. A
+meal eaten past a full stomach stores the surplus as fat, up to the
+start value; auto-eat never does that, since it eats under 1,800.
+Total fasting at 3,000 kcal a day is 27 days to the end of the fat.
+
+**What a thin body costs.** The share of fat gone is a multiplier the
+body already has slots for: work speed and hunting and fishing odds fall
+by that share times a half (a body at half its fat works and shoots at
+three quarters), and the felt temperature loses up to 4 C at the end,
+since a starving body has no insulation and no fuel. `workSpeed` and
+`oddsFactor` read it through one function, `starvation(p)`, in
+`player.ts`. The log says "You are getting thin." at three quarters,
+"Your ribs show." at half, "You are wasting away." at a quarter, each
+once. The stats panel shows the reserve in kilos of fat, a real
+quantity.
+
+**Persistence.** `fat` defaults to the start value on load; the death
+cause "starved" is unchanged and now means what it says.
+
+**The two gates.** April from scratch is a short-term survival problem
+for a beginner, and the reference player is a beginner: it holds level
+one everything. Its pass criterion is 30 game days alive on all four
+seeds, from the arrival kit, in April. A December criterion by orders
+needs the economy the yield tables in the roadmap call expert: the fish
+trap of item C and a skill ladder that multiplies. That criterion moves
+to the kitted run once C lands, and a late-August from-scratch gate
+(reach the first snow) follows the landing month in item F. Until then
+`--kitted` stays a diagnostic with no pass line.
+
+## 14. Out of scope
 
 - A trough, a cellar, a storehouse: 3's.
 - The risk forecast reading any of this: B's.
