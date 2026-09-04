@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
-import { addItem, pile, qty } from "../src/sim/inventory";
-import { beginAgain, land, landingCell, landingDate } from "../src/sim/landing";
+import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
+import { addItem, herePile, pile, qty } from "../src/sim/inventory";
+import { beginAgain, demoteFog, land, landingCell, landingDate } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { current } from "../src/sim/record";
-import { DIM, discovery, regionState } from "../src/sim/regionstate";
+import { DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
 import { seasonalMean } from "../src/sim/weather";
+import { mapHtml } from "../src/ui/map";
+import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { CELL_KM } from "../src/units";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
 
@@ -88,5 +90,28 @@ describe("the landing", () => {
     expect(current(state).gapDays).toBe(90);
     expect(state.player.health).toBe(100);
     expect(state.log[0].text).toMatch(/^\d+ July, year 1\. Ninety days after .* died\. You land at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
+  });
+});
+
+describe("the dim map", () => {
+  it("draws a dim region's ground and name only: no pile, no tooltip for one, until it is visited again", () => {
+    document.body.innerHTML = `<div id="map"></div>`;
+    resetPanels();
+    const { state, world } = newGame(17);
+    const cal = calendar(0);
+    const ui = newUiState();
+    addItem(herePile(state, world), "stone", 2);
+
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+
+    demoteFog(state);
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(0);
+    expect(document.querySelector("#map .c[title*='something lies here']")).toBeNull();
+
+    enterRegion(state, world, state.player.region);
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
   });
 });

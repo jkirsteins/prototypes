@@ -256,7 +256,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (snow && t === "meadow") glyph = "*";
       // Only regions already built get named; building one here would fill its chunks for a tooltip.
       title = seen === VISITED ? (world.regions.get(reg)?.name ?? "known country") : seen === DIM ? (world.regions.get(reg)?.name ?? "known once") : "seen from a distance";
-      if (pileGlyphs.has(i)) {
+      if (pileGlyphs.has(i) && seen === VISITED) {
         cls.push("pl");
         title += ", something lies here";
       }
