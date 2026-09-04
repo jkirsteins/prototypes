@@ -264,7 +264,8 @@ export function runReference(seed: number, days: number, kitted = false): Refere
     }
   }
   const day = calendar(state.dead ? state.dead.minute : state.minute).day;
-  if (state.dead) checkpoints.push(checkpoint(state, world, day));
+  // A death landing exactly on a checkpoint day is already recorded by the loop above.
+  if (state.dead && checkpoints[checkpoints.length - 1]?.day !== day) checkpoints.push(checkpoint(state, world, day));
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
   const passed = passesGate(state.dead ? day : null, REFERENCE_TARGET_DAY);
   return { seed, startRing: world.startRing, checkpoints, outcome, passed };

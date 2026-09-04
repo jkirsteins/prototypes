@@ -4,7 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
-import { OPENING_TICK_MINUTES, passesGate, REFERENCE_ORDERS, REFERENCE_TARGET_DAY, ReferencePlayer, setUpReference, stepReference, weekLines } from "../src/sim/reference";
+import { OPENING_TICK_MINUTES, passesGate, REFERENCE_ORDERS, REFERENCE_TARGET_DAY, ReferencePlayer, runReference, setUpReference, stepReference, weekLines } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes } from "../src/sim/skills";
 
@@ -154,5 +154,13 @@ describe("the reference player", () => {
     expect(lines[3]).toContain("work/day 11.2 h");
     const none = weekLines({ ...week, days: 0 }, 115);
     expect(none[0]).toContain("no full day yet");
+  });
+
+  it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
+    // Seed 43 dies on day 21, the REFERENCE_TARGET_DAY checkpoint, and is the fastest of the seeds found to.
+    const r = runReference(43, 25);
+    expect(r.outcome).toEqual({ kind: "died", day: 21, cause: "starved" });
+    const days = r.checkpoints.map((c) => c.day);
+    expect(new Set(days).size).toBe(days.length);
   });
 });
