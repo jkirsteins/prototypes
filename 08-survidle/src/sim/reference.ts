@@ -76,8 +76,10 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
 
 /** The reference seeds. */
 export const REFERENCE_SEEDS = [17, 19, 42, 79];
-/** The gate: alive on this game day, from the arrival kit, in April (section 13). */
-export const REFERENCE_TARGET_DAY = 30;
+/** The gate: alive on this game day, from the arrival kit, in April (section 13).
+ * Three weeks: a beginner with fire, a roof and water at the deficit the yield
+ * tables allow. The calibration pass on the roadmap revisits this number. */
+export const REFERENCE_TARGET_DAY = 21;
 /** The day 1 December falls on from a 1 April start; kept as a late checkpoint, not a gate. */
 export const DECEMBER_DAY = 245;
 const CHECKPOINT_DAYS = [REFERENCE_TARGET_DAY, 90, DECEMBER_DAY];

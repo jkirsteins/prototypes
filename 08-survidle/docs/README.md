@@ -163,9 +163,10 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
 terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 
 `npm run reference` runs the day-one order list a competent player would
-write, headless, on four seeds, about ten seconds; the gate is alive on
-game day 30, from the arrival kit, in April - a short-term survival
-problem for a beginner, not the whole run to December. `npm run
+write, headless, on four seeds, about ten seconds; the gate is alive three
+weeks (game day 21) from the arrival kit, in April - a short-term survival
+problem for a beginner with fire, a roof and water at the deficit the yield
+tables allow. The calibration pass on the roadmap revisits this number. `npm run
 reference -- --kitted` runs a diagnostic that starts with tools and a
 fire already in hand instead of from scratch. It is not part of `npm test`.
 

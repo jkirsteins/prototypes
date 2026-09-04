@@ -1,7 +1,7 @@
 /**
  * The reference player's verdict: one block per seed, then passed N of M.
  * Run: npm run reference, or npx vite-node scripts/reference.ts 17 19 42 79 250
- * (seeds, then days). Exit code 1 when any seed fails.
+ * (seeds, then days). Exit code 1 when any seed fails. The gate is REFERENCE_TARGET_DAY.
  *
  * --kitted, anywhere in the args, also runs the audit's kitted camp (spec 8):
  * the arrival kit plus the from-scratch list's own tools and structures,
