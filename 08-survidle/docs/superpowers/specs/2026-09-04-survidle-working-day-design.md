@@ -221,6 +221,14 @@ is section 2's: if the measured April run shows cold deaths rising
 against the run before it (none), the knife and the bucket go back after
 the lean-to and only the ice-hole cut and the snare chore stand.
 
+**Measured and rejected.** With the snare chore and the ice-hole cut in
+place and the list as section 2 left it, the April gate passed on all four
+seeds with the food clause, the first time it has. This order then cost
+two seeds to the cold on days 4 and 5, and the fallback two more on days
+9 and 10. A roof by the second night is what the opening cannot spare;
+the ice-hole cut answers the shore icing without a vessel, so the bucket
+can wait behind the lean-to. The list stands as section 2 left it.
+
 ### 5.4 Measure again
 
 The three runs of section 3, the roadmap paragraph amended with the new
