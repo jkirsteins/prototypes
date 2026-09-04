@@ -23,12 +23,19 @@ export function ordersHere(state: GameState, world: World): Order[] {
   return regionState(state, world, state.player.region).orders;
 }
 
-/** Appends. A keep or a camp-has without a countable yield is a once job; a grind is always forever. */
+/**
+ * Appends. A keep or a camp-has without a countable yield is a once job; a
+ * grind is always forever. "Keep it lit" is the one keep exempt from that
+ * fallback: light has no stock to count, but the fire going out is itself
+ * the thing worth watching for, so it stays a standing keep rather than a
+ * job that fires once and never runs again.
+ */
 export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind): Order {
   const st = regionState(state, world, state.player.region);
   let k = kind;
   let r = req;
-  if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg)) {
+  const lightKeep = kind === "keep" && req.task === "light";
+  if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg) && !lightKeep) {
     k = "job";
     r = { ...req, until: { kind: "once" } };
   }
@@ -53,9 +60,9 @@ export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 
   [list[i], list[j]] = [list[j], list[i]];
 }
 
-/** The stock a keep holds and its target, or null for any other order. */
+/** The stock a keep holds and its target, or null for any other order - including "keep it lit", which holds no stock at all. */
 export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
-  if (o.kind !== "keep" || o.req.until.kind !== "campHas") return null;
+  if (o.kind !== "keep" || o.req.until.kind !== "campHas" || o.req.task === "light") return null;
   return { item: yieldItem(o.req.task, o.req.arg)!, qty: o.req.until.qty };
 }
 
@@ -77,6 +84,7 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
   if (o.req.task === "build" && o.req.arg !== "snare") {
     return st.structures[o.req.arg as Exclude<StructureId, "snare">] === true;
   }
+  if (o.req.task === "light") return st.fire.lit;
   const u = o.req.until;
   switch (u.kind) {
     case "once": return o.done >= 1;
@@ -93,6 +101,7 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   const keep = keepTarget(o);
   const u = o.req.until;
   if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}`);
+  else if (o.kind === "keep" && o.req.task === "light") parts.push("keep it lit");
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");

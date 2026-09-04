@@ -417,10 +417,11 @@ function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string
   const item = yieldItem(id, arg);
   if (ui.until === "times") parts.push(`${ui.n} times`);
   else if (ui.until === "campHas") parts.push(item ? `until camp has ${itemLabel(item, ui.n)}` : "once");
-  else if (ui.until === "keep") parts.push(item ? `keep camp at ${itemLabel(item, ui.n)}` : "once");
+  // Light holds no stock, so "keep camp at N" has no N to show: the keep is the fire staying lit.
+  else if (ui.until === "keep") parts.push(item ? `keep camp at ${itemLabel(item, ui.n)}` : id === "light" ? "keep it lit" : "once");
   else if (ui.until === "forever") parts.push("forever");
   if (item && (ui.deliver === "camp" || ui.until === "campHas" || ui.until === "keep")) parts.push("bringing it to camp");
-  else if (!item && ui.deliver === "camp") parts.push("bringing it to camp");
+  else if (!item && ui.deliver === "camp" && id !== "light") parts.push("bringing it to camp");
   if (ui.where !== "nearest") parts.push(`at ${SPOT_NAMES[ui.where]}`);
   return parts.join(", ");
 }

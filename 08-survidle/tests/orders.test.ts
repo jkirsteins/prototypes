@@ -94,6 +94,14 @@ describe("the list", () => {
     const o = addOrder(state, world, { task: "chop", until: { kind: "times", n: 3 }, deliver: "leave", where: "nearest" }, "grind");
     expect(o.req.until).toEqual({ kind: "forever" });
   });
+
+  it("a keep whose task is light is allowed, the one keep besides the build job with no countable yield", () => {
+    const { state, world } = newGame(3);
+    const o = addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(o.kind).toBe("keep");
+    expect(o.req.until).toEqual({ kind: "campHas", qty: 1 });
+    expect(keepTarget(o)).toBeNull();
+  });
 });
 
 describe("when an order is met", () => {
@@ -141,6 +149,20 @@ describe("when an order is met", () => {
     st.structures.firePit = true;
     expect(orderMet(state, world, build, false)).toBe(true);
   });
+
+  it("a light keep is met while the fire is lit, live or idle alike, unmet the moment it goes out", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const o = addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, o, true)).toBe(false);
+    st.fire.lit = true;
+    expect(orderMet(state, world, o, false)).toBe(true);
+    expect(orderMet(state, world, o, true)).toBe(true);
+    st.fire.lit = false;
+    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, o, true)).toBe(false);
+  });
 });
 
 describe("what an order says", () => {
@@ -156,6 +178,12 @@ describe("what an order says", () => {
     expect(countWord("chop", 14)).toBe("trees");
     expect(countWord("split", 1)).toBe("log");
     expect(countWord("repair", 3)).toBe("times");
+  });
+
+  it("a light keep reads as keeping it lit, not a number that means nothing", () => {
+    const { state, world } = newGame(3);
+    const o = addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(orderSentence(state, world, cal, o)).toBe("Light the fire, keep it lit");
   });
 });
 
@@ -481,6 +509,30 @@ describe("a set-up camp", () => {
     // The counters are the completions: minutes in the work, none from walks or hauls.
     expect(trees.minutes).toBeGreaterThan(0);
     expect(qty(pile(state, st.campCell), "log")).toBeGreaterThan(0);
+  });
+});
+
+describe("the fire keep", () => {
+  it("lights the fire, stays met while it burns, and relights once it goes out", () => {
+    const g = campWith(21, { firewood: 5 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    const keep = addOrder(state, world, req("light", { until: { kind: "campHas", qty: 1 }, deliver: "camp" }), "keep");
+    expect(until(g, () => st.fire.lit, 200)).toBe(true);
+    expect(keep.kind).toBe("keep");
+    // A storm douses it; fresh wood stands in for whatever it left unburnt.
+    st.fire.lit = false;
+    addItem(pile(state, st.campCell), "firewood", 5);
+    expect(until(g, () => st.fire.lit, 200)).toBe(true);
+  });
+
+  it("with no fire drill the row reads needs a fire drill", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    const o = addOrder(state, world, req("light", { until: { kind: "campHas", qty: 1 }, deliver: "camp" }), "keep");
+    advance(state, world, 1);
+    expect(o.skipped).toBe("needs a fire drill");
   });
 });
 
