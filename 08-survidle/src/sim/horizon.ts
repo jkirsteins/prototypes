@@ -1,0 +1,68 @@
+/**
+ * The horizon curve (idle curve spec, section 3): how long a camp holds
+ * without the player, per stage. A stage is a skill profile on a stocked
+ * camp; its list is the reference wants, each given once as the best kind
+ * that profile has earned, and no player script, since the player is
+ * away. The day of the first death is the horizon. The bands are steered
+ * by, not hit, and are provisional until the calibration pass.
+ */
+import type { World } from "../world/gen";
+import { advance } from "./advance";
+import { calendar } from "./calendar";
+import { withinLadder } from "./ladder";
+import { newGame } from "./newgame";
+import { addOrder } from "./orders";
+import { kitOut, REFERENCE_ORDERS } from "./reference";
+import { levelMinutes, SKILL_IDS } from "./skills";
+import type { DeathCause, GameState, SkillId } from "./types";
+
+export interface HorizonStage {
+  id: "manual" | "grinds" | "keeps";
+  label: string;
+  /** Level per skill; a skill not named is at 1. */
+  levels: Partial<Record<SkillId, number>>;
+  /** Whole game days the camp should hold, inclusive. */
+  band: [number, number];
+}
+
+const ALL_AT_5: Partial<Record<SkillId, number>> = Object.fromEntries(SKILL_IDS.map((s) => [s, 5]));
+
+export const HORIZON_STAGES: HorizonStage[] = [
+  { id: "manual", label: "manual only", levels: {}, band: [0, 2] },
+  { id: "grinds", label: "jobs and grinds", levels: ALL_AT_5, band: [1, 2] },
+  { id: "keeps", label: "keeps in woodcraft and building", levels: { ...ALL_AT_5, woodcraft: 10, building: 10 }, band: [3, 5] },
+];
+
+export function setSkillLevel(state: GameState, skill: SkillId, level: number): void {
+  state.skills[skill].xp = levelMinutes(level);
+}
+
+/** A stocked camp at the stage's levels, the wants given once as what those levels allow. */
+export function setUpStage(seed: number, stage: HorizonStage): { state: GameState; world: World } {
+  const g = newGame(seed);
+  kitOut(g.state, g.world);
+  for (const s of SKILL_IDS) setSkillLevel(g.state, s, stage.levels[s] ?? 1);
+  for (const w of REFERENCE_ORDERS) {
+    const best = withinLadder(g.state, w.req, w.kind);
+    addOrder(g.state, g.world, best.req, best.kind);
+  }
+  return g;
+}
+
+export interface StageReport {
+  seed: number;
+  stage: HorizonStage["id"];
+  /** Whole game days held before the death, or maxDays when still alive. */
+  days: number;
+  capped: boolean;
+  cause: DeathCause | null;
+  inBand: boolean;
+}
+
+export function runStage(seed: number, stage: HorizonStage, maxDays: number): StageReport {
+  const { state, world } = setUpStage(seed, stage);
+  for (let d = 1; d <= maxDays && !state.dead; d++) advance(state, world, 1440);
+  const days = state.dead ? calendar(state.dead.minute).day - 1 : maxDays;
+  const inBand = !state.dead ? days >= stage.band[0] : days >= stage.band[0] && days <= stage.band[1];
+  return { seed, stage: stage.id, days, capped: !state.dead, cause: state.dead?.cause ?? null, inBand };
+}
