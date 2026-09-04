@@ -109,6 +109,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "berries": case "stone": return "foraging";
     case "hunt": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
+    case "mend": return "building";
     case "fish": return "fishing";
     case "craft": case "repair": case "sharpen": return "crafting";
     case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": return "building";
@@ -129,6 +130,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "lightIndoors": return "light";
     case "hunt": return arg === "any" ? null : `hunt:${arg}`;
     case "build": return arg === "snare" ? "snare" : `build:${arg}`;
+    case "mend": return `mend:${arg}`;
     case "craft": return `craft:${arg}`;
     case "cook": return `cook:${arg ?? "rawMeat"}`;
     case "fill": case "iceHole": return id;

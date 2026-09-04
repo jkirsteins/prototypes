@@ -7,11 +7,11 @@ import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventor
 import { burnPerHour, dryWood, fuelTotal, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
-  SNARE_CATCH_MAX_AGE,
+  SNARE_CATCH_MAX_AGE, STRUCTURE_LIFE_DAYS,
 } from "./items";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
-import { type GameState, PERISHABLES } from "./types";
+import { type GameState, type RegionState, PERISHABLES } from "./types";
 import { THAW_L_PER_HOUR } from "./water";
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
@@ -156,6 +156,15 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
       }
     }
+    for (const sid of ["leanTo", "dryingRack"] as const) {
+      if (!st.structures[sid]) continue;
+      st.structureAge[sid] = (st.structureAge[sid] ?? 0) + 1440;
+      if (st.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid]! * 1440) continue;
+      st.structures[sid] = false;
+      delete st.structureAge[sid];
+      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; }
+      log(state, sid === "leanTo" ? `The lean-to at ${r.name} has fallen in.` : `The rack at ${r.name} has rotted through.`, "bad");
+    }
     if (st.iceHole) {
       st.iceHole = null;
       if (who && id === who.region) log(state, "The ice hole has skinned over.");
@@ -163,4 +172,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     const forestCells = r.forest * r.cells.length;
     st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);
   }
+}
+
+/** Past two thirds of its life a lean-to needs re-roofing and a rack relashing; the camp panel says so. */
+export function needsMending(st: RegionState, id: "leanTo" | "dryingRack"): boolean {
+  return st.structures[id] && (st.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id]! * 1440 * 2) / 3;
 }

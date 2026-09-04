@@ -118,6 +118,7 @@ const COUNT_WORDS: Partial<Record<TaskId, [string, string]>> = {
   fish: ["cast", "casts"],
   cook: ["meal", "meals"],
   craft: ["piece", "pieces"],
+  mend: ["mend", "mends"],
 };
 
 /** The word a completion count of this work takes: "14 trees", "1 log", "3 times". */

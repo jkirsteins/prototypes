@@ -36,6 +36,9 @@ describe("reachability: everything in the catalogue has a button", () => {
   it("every structure", () => {
     for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="build:${id}"`);
   });
+  it("every mend, even a lean-to and a rack not yet built", () => {
+    for (const id of ["leanTo", "dryingRack"]) expect(html).toContain(`data-opt="mend:${id}"`);
+  });
   it("every animal the region holds, and nothing it does not", () => {
     const r = regionAt(world, state.player.region);
     const here = huntedLand().filter((s) => r.capacity[s]);
@@ -58,6 +61,15 @@ describe("reachability: everything in the catalogue has a button", () => {
     addItem(rich.state.player.pack, "bark", 3);
     const h = allActions(rich.state, rich.world);
     expect(h).toContain(`data-act="task" data-id="craft" data-arg="cordage"`);
+  });
+  it("offers a real mend button once a lean-to stands worn and the sticks are in reach", () => {
+    const worn = newGame(21);
+    const st = regionState(worn.state, worn.world, worn.state.player.region);
+    st.structures.leanTo = true;
+    st.structureAge.leanTo = 61 * 1440;
+    addItem(worn.state.player.pack, "stick", 2);
+    const h = allActions(worn.state, worn.world);
+    expect(h).toContain(`data-act="task" data-id="mend" data-arg="leanTo"`);
   });
   it("names the ground to stand on when work is greyed", () => {
     expect(html).toMatch(/Fell a tree.*forest/s);

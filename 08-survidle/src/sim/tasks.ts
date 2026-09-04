@@ -5,13 +5,14 @@ import { findRoute, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
+import { needsMending } from "./camp";
 import { cue } from "./cues";
 import {
   addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, MEND, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -83,7 +84,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang",
+  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -97,6 +98,7 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "light": case "lightIndoors": return "fireDrill";
     case "fill": return "barkBucket";
     case "iceHole": return "axe";
+    case "mend": return null;
     default: return null;
   }
 }
@@ -463,6 +465,17 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
       return o;
     }
+    case "mend": {
+      const sid = arg as "leanTo" | "dryingRack";
+      const def = MEND[sid];
+      const name = STRUCTURES[sid].name;
+      const o = needCamp(opt({ group: "camp", label: `Mend the ${name}`, detail: `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another season" : "relash it for another season"}`, duration: def.minutes, repeatable: false }));
+      if (!o.ok) return o;
+      if (!st.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };
+      if (!needsMending(st, sid)) return { ...o, ok: false, why: "stands well enough" };
+      if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
+      return o;
+    }
     case "light": {
       const roof = st.structures.leanTo || st.structures.cabin;
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
@@ -624,6 +637,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "iceHole"));
   for (const id of RECIPE_IDS) out.push(check(state, world, cal, "craft", id));
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
+  for (const sid of ["leanTo", "dryingRack"] as const) out.push(check(state, world, cal, "mend", sid));
   for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
   out.push(check(state, world, cal, "haul"));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
@@ -1111,10 +1125,19 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         st.structures[sid] = true;
         delete st.build[sid];
         if (sid === "boughBed") st.boughBedAge = 0;
+        if (sid === "leanTo" || sid === "dryingRack") st.structureAge[sid] = 0;
       }
       state.stats.structures++;
       if (sid !== "snare") record(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
+      return;
+    }
+    case "mend": {
+      const sid = arg as "leanTo" | "dryingRack";
+      consume(invs, MEND[sid].needs);
+      st.structureAge[sid] = 0;
+      record(state, { kind: "repaired", structure: sid });
+      log(state, `The ${STRUCTURES[sid].name} is mended.`, "good");
       return;
     }
     case "light":

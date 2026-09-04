@@ -466,6 +466,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   repair: () => "mending clothing",
   sharpen: () => "sharpening the axe",
   build: (arg) => `building the ${STRUCTURES[arg as StructureId].name}`,
+  mend: (arg) => `mending the ${STRUCTURES[arg as StructureId].name}`,
   light: () => "lighting the fire",
   lightTorch: () => "lighting a torch",
   rest: () => "resting",

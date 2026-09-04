@@ -127,6 +127,15 @@ export const MAX_SNARES = 5;
 /** Days a bough bed stays springy before it has to be laid again. */
 export const BOUGH_BED_DAYS = 14;
 
+/** Days a lean-to or a drying rack stands before the weather takes it down. */
+export const STRUCTURE_LIFE_DAYS: Partial<Record<StructureId, number>> = { leanTo: 90, dryingRack: 90 };
+
+/** What re-roofing a lean-to or relashing a rack takes, resetting its age. */
+export const MEND: Record<"leanTo" | "dryingRack", { needs: Need[]; minutes: number }> = {
+  leanTo: { needs: [{ item: "stick", qty: 2 }], minutes: 60 },
+  dryingRack: { needs: [{ item: "cordage", qty: 1 }], minutes: 60 },
+};
+
 export const FIRE_MAX_KG = 36;
 export const FIRE_LOW_KG = 3;
 export const RACK_MAX_KG = 6;

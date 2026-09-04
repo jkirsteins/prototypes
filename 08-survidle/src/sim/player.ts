@@ -19,7 +19,7 @@ import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>([
   "rest", "night", "wait", // a waiting body burns at the camp rate too, the same as rest and night
-  "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors", "hang",
+  "sleep", "craft", "cook", "split", "repair", "build", "mend", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors", "hang",
 ]);
 
 /** Awake hours that are not work: the ledger counts everything else on a task as a working minute. */
@@ -34,7 +34,7 @@ export function activityOf(task: Task | null): Activity {
     case "rest": case "night": case "wait": case "craft": case "cook": case "repair": case "sharpen": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": return "rest";
     case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": case "fill": case "hang": return "light";
     case "travel": case "walk": case "haul": return "walk";
-    case "chop": case "split": case "build": case "iceHole": return "heavy";
+    case "chop": case "split": case "build": case "mend": case "iceHole": return "heavy";
   }
 }
 

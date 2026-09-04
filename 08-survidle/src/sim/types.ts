@@ -67,14 +67,14 @@ export const SPOTS: SpotId[] = ["camp", "forest", "outcrop", "shore", "heath"];
 
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
-  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build"
+  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split",
-  "hunt", "fish", "cook", "craft", "repair", "sharpen", "build",
+  "hunt", "fish", "cook", "craft", "repair", "sharpen", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep",
 ];
