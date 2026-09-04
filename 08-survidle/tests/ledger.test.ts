@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { dayNumber, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { eat } from "../src/sim/actions";
+import { calendar, dayNumber, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { addItem, qty } from "../src/sim/inventory";
+import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { BASE_KCAL_PER_HOUR, COLD_BURN_FACTOR, stepPlayer } from "../src/sim/player";
-import { cellOf, placeAt } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { kitOut } from "../src/sim/reference";
 import { deserialize, serialize } from "../src/sim/save";
+import { beginTask } from "../src/sim/tasks";
 import { cellAt } from "../src/world/gen";
 
 describe("the day number", () => {
@@ -180,5 +186,35 @@ describe("burn in buckets", () => {
     state.task = { id: "wait", progress: 0, duration: 60, repeat: false };
     for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
     expect(today(state).workMin).toBe(0);
+  });
+});
+
+describe("yield and intake", () => {
+  it("the arrival kit is a kilo of dried meat, credited on day 1; the kitted camp adds five more", () => {
+    const { state, world } = newGame(1);
+    expect(state.ledger[0].yield.kit).toBe(FOODS.driedMeat.kcalPerKg);
+    kitOut(state, world);
+    expect(state.ledger[0].yield.kit).toBe(6 * FOODS.driedMeat.kcalPerKg);
+  });
+
+  it("eating credits the kcal the stomach and the fat received", () => {
+    const { state, world } = newGame(1);
+    addItem(state.player.pack, "driedMeat", 1);
+    eat(state, world, "driedMeat", new Rng(1));
+    expect(today(state).eaten).toBeCloseTo(0.15 * FOODS.driedMeat.kcalPerKg, 6);
+  });
+
+  it("a berry pick credits the kilos picked at the berry's kcal", () => {
+    const { state, world } = newGame(3);
+    // 120 days on from 1 April is the end of July, in season.
+    state.minute = 120 * 1440;
+    const cal = calendar(state.minute);
+    placeAtSpot(state, world, state.player.region, "heath");
+    expect(beginTask(state, world, cal, "berries")).toBe(true);
+    const before = qty(state.player.pack, "berries");
+    advance(state, world, 61);
+    const picked = qty(state.player.pack, "berries") - before;
+    expect(picked).toBeGreaterThan(0);
+    expect(today(state).yield.berries).toBeCloseTo(picked * FOODS.berries.kcalPerKg, 6);
   });
 });

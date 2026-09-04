@@ -15,8 +15,9 @@ import type { World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar } from "./calendar";
 import { addItem, freshTool, listItems, pile } from "./inventory";
-import { TOOLS } from "./items";
+import { FOODS, TOOLS } from "./items";
 import { giveOrder, withinLadder } from "./ladder";
+import { creditYield } from "./ledger";
 import { newGame } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
 import { regionState } from "./regionstate";
@@ -115,6 +116,7 @@ export function kitOut(state: GameState, world: World): void {
   p.tools.push(freshTool("barkBucket"));
   addItem(p.pack, "arrow", 10);
   addItem(p.pack, "driedMeat", 5);
+  creditYield(state, "kit", 5 * FOODS.driedMeat.kcalPerKg);
   const camp = pile(state, st.campCell);
   addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);

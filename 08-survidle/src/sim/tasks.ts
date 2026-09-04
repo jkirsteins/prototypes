@@ -11,9 +11,10 @@ import {
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  CLOTHING, ITEM_KG, ITEM_NAMES, MAX_SNARES, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
+import { creditYield } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import {
@@ -291,7 +292,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "stone":
       return ground(rockCell(world, at), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
     case "berries": {
-      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(1 * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
+      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(BERRY_PICK_KG * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
       return o;
@@ -955,7 +956,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       }
       return;
     }
-    case "berries": produce(state, world, "berries", 1 * yieldFactor(state, "foraging")); return;
+    case "berries": {
+      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging");
+      produce(state, world, "berries", kg);
+      creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
+      return;
+    }
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
@@ -981,6 +987,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (x.hideKg) produce(state, world, "hide", x.hideKg);
         if (x.furKg) produce(state, world, "fur", x.furKg);
         if (x.fatKg) produce(state, world, "fat", x.fatKg);
+        creditYield(state, "hunt", x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg);
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
         log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
@@ -1021,6 +1028,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         state.stats.animals++;
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
         produce(state, world, "fish", kg);
+        // Raw fish is not eaten; the yield is what it cooks to.
+        creditYield(state, "fish", kg * FOODS.cookedFish.kcalPerKg);
         log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
       return;
@@ -1183,6 +1192,7 @@ function collectSnares(state: GameState, world: World): void {
   st.snareCatch.age = 0;
   const y = SPECIES_DEFS.hare.yields!;
   produce(state, world, "rawMeat", y.meatKg * n);
+  creditYield(state, "snare", y.meatKg * n * FOODS.rawMeat.kcalPerKg);
   produce(state, world, "fur", (y.furKg ?? 0) * n);
   produce(state, world, "bone", n);
   state.stats.animals += n;

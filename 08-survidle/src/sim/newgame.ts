@@ -1,19 +1,25 @@
 import { derive } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { addItem, emptyInventory } from "./inventory";
-import { today } from "./ledger";
+import { FOODS } from "./items";
+import { creditYield } from "./ledger";
 import { log } from "./log";
 import { FAT_FULL } from "./player";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState } from "./types";
 
+/** The stomach a survivor arrives with, in kcal. */
+export const START_KCAL = 5000;
+/** Dried meat in the arrival pack, in kilos. */
+export const ARRIVAL_DRIED_MEAT_KG = 1;
+
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
 export function newGame(seed: number): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
   const pack = emptyInventory();
-  addItem(pack, "driedMeat", 1);
+  addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   const state: GameState = {
     seed,
     minute: 0,
@@ -23,7 +29,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
       y: Math.floor(start.campCell / world.w) + 0.5,
       region: world.start,
       health: 100,
-      kcal: 5000,
+      kcal: START_KCAL,
       fat: FAT_FULL,
       warmth: 80,
       energy: 90,
@@ -64,7 +70,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
     ledger: [],
   };
   enterRegion(state, world, world.start);
-  today(state);
+  creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
   log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
   return { state, world };
 }

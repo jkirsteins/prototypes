@@ -40,6 +40,8 @@ export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickC
 };
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
 export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
+/** Kilos an hour's picking takes at a patch, before the foraging pool's factor. */
+export const BERRY_PICK_KG = 1;
 
 export const KCAL_FULL = 6000;
 

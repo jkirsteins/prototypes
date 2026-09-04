@@ -7,6 +7,7 @@ import { clamp, PACK_HARD_KG } from "../units";
 import type { World } from "../world/gen";
 import { feedFire } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
+import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
 import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
@@ -36,6 +37,7 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     p.kcal = KCAL_FULL;
     p.fat = clamp(p.fat + (gain - room), 0, FAT_FULL);
   }
+  creditEaten(state, gain);
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
     log(state, "The raw meat turns your stomach. A fever follows.", "bad");
