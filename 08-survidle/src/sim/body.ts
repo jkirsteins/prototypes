@@ -1,8 +1,8 @@
 /**
- * The body tier of an intent: sleep, storm, cold, thirst, hunger, in that
- * order, and what to do about each. Every step is an ordinary task; the fire
- * steps are guarded by check, so a missing drill or an under-level pit is
- * skipped, never an error.
+ * The body tier of an intent: sleep, storm, cold, thirst, hunger, snares,
+ * spent, home, in that order, and what to do about each. Every step is an
+ * ordinary task; the fire steps are guarded by check, so a missing drill or
+ * an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
