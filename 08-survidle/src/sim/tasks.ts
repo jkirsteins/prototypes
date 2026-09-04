@@ -25,7 +25,7 @@ import {
   atCamp, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { lightingInRain, SMOKE_COUGH, splitIsWet } from "./fire";
+import { lightingInRain, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { discovery, regionState } from "./regionstate";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
 import type {
@@ -297,10 +297,11 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "split": {
-      const o = opt({ group: "camp", label: "Split a log", detail: "one log into 20 kg of firewood", duration: 15, repeatable: true });
+      const sheltered = splitSheltered(state, world);
+      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15, repeatable: true });
       if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
-      if (splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
+      if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
     }
     case "hang": {
@@ -957,7 +958,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "berries": produce(state, world, "berries", 1 * yieldFactor(state, "foraging")); return;
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
-      produce(state, world, splitIsWet(state, world) ? "wetFirewood" : "firewood", ITEM_KG.log);
+      const wet = !splitSheltered(state, world) && splitIsWet(state, world);
+      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
       return;
     }
     case "hunt": {

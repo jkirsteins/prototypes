@@ -177,6 +177,12 @@ the pack is where camp's kit is while it is in use.
 dry and finished in rain: that log comes out wet, as today. Nothing
 changes in what the keep counts.
 
+At the camp cell, with a lean-to or a cabin built, splitting is allowed
+in any weather and the wood comes out dry, since the roof keeps the rain
+off the block; the detail text says "under the roof" when that is why.
+Away from camp, and at a camp with no roof yet, the wait and the wet
+output stand exactly as above.
+
 The runner reads the block as it reads any other: the firewood keep shows
 "waiting for dry weather" and the next order runs. A rainy day with
 nothing else to do is a day waiting at camp, which is what the runner

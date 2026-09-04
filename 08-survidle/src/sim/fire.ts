@@ -110,6 +110,12 @@ export function splitIsWet(state: GameState, world: World): boolean {
   return regionState(state, world, state.player.region).logsWet < WET_AFTER_RAIN_MINUTES;
 }
 
+/** True at the camp cell with a lean-to or cabin built: the roof keeps the rain off the block, so a split there is never wet. */
+export function splitSheltered(state: GameState, world: World): boolean {
+  const st = regionState(state, world, state.player.region);
+  return cellOf(state, world) === st.campCell && (st.structures.leanTo || st.structures.cabin);
+}
+
 /** Dries up to `perHour * dt / 60` kg total, drawn from whichever of `invs` has wet stock first. */
 function dryBudget(invs: Inventory[], perHour: number, dt: number): void {
   let budget = (perHour / 60) * dt;

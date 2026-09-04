@@ -147,6 +147,29 @@ describe("splitting waits for dry weather", () => {
     st.logsWet = 6 * 60;
     expect(check(state, world, calendar(0), "split").ok).toBe(true);
   });
+
+  it("is allowed in the rain at a camp with a lean-to, and the wood comes out dry", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "log", 1);
+    state.weather.precip = "heavy";
+    st.structures.leanTo = true;
+    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: true, detail: "one log into 20 kg of firewood, under the roof" });
+    startTask(state, world, cal, "split");
+    advance(state, world, 15);
+    expect(qty(state.player.pack, "firewood") + qty(pile(state, st.campCell), "firewood")).toBeCloseTo(20, 6);
+    expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBe(0);
+  });
+
+  it("still waits for dry weather at the same camp with no roof", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "log", 1);
+    state.weather.precip = "heavy";
+    expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
+  });
 });
 
 describe("spread and smoke", () => {
