@@ -183,6 +183,34 @@ the roadmap, and where each note lands:
   it to bed at "you can barely lift your arms" deserves a look in 5's
   body model, since a person building a shelter does not sleep half the
   day.
+- **A kill is a preservation problem before it is food.** Realistic
+  storage for game meat: fresh in warm air, hours to a day before it is
+  risky; held at 4 C or under, three to five days; cooked or hot-smoked
+  but moist, about four days; thoroughly dried, one to two months; salt
+  cured and dried, weeks to months; frozen, indefinitely. Drying raw at
+  low heat leaves pathogens alive; dryness does the preserving and smoke
+  the surface. What the game has and what it lacks:
+  - Raw meat and fish keep 36 hours above 0 C and do not age at or
+    below it, so April is already the freezer the north is; cooked keeps
+    72 hours. Both are a little generous and both are fine.
+  - There is no cool tier between "frozen" and "warm": a stack ages the
+    same at 2 C as at 20 C. The cellar (3) is that tier, three to five
+    days at 4 C, and the raised cache is the frozen one above the snow
+    and the animals (4).
+  - The rack dries 6 kg in two dry days with no heat. A deer is 15 to 25
+    kg and rots in 36 hours, so one kill needs three rack cycles and
+    loses most of itself: racks should hold a day's cutting, or a camp
+    should build more than one (3). Rack-dried raw meat should carry a
+    sickness chance that the smokehouse (3) removes, and dried meat in
+    the open should last a month or two, not for ever; F's decay table
+    already says a month, and the cellar is where it keeps.
+  - Salt does not exist. The coast can make it (sea water reduced over a
+    fire with hot stones in a bucket, a day for a handful), and that is a
+    coastal camp's reason to exist in 3 or C, not a baseline item.
+  - Fat is the first thing to eat and the first thing to lose: the most
+    perishable parts go first, then thin slices to the rack and the
+    smoke. D's fat item and the hang task already make that a choice the
+    log can show.
 - **Knowledge is the ancient hunter's real advantage**: which creek has
   fish in April, where animals cross, which lake is still safe. F's
   journal, dim map and trails are that knowledge accruing across
