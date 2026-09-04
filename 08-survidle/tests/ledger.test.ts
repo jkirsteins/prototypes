@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
 import { dayNumber, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
+import { BASE_KCAL_PER_HOUR, COLD_BURN_FACTOR, stepPlayer } from "../src/sim/player";
+import { cellOf, placeAt } from "../src/sim/position";
 import { deserialize, serialize } from "../src/sim/save";
+import { cellAt } from "../src/world/gen";
 
 describe("the day number", () => {
   it("is 1 at the start, 2 from midnight of the first night", () => {
@@ -79,5 +83,102 @@ describe("the ledger", () => {
     delete raw.state.ledger;
     const file = deserialize(JSON.stringify(raw))!;
     expect(file.state.ledger).toEqual([]);
+  });
+});
+
+/** The nearest open-forest cell to the player, for a walk with a known terrain divisor. */
+function forestCell(g: ReturnType<typeof newGame>): number {
+  const { state, world } = g;
+  const here = cellOf(state, world);
+  const hx = here % world.w;
+  const hy = Math.floor(here / world.w);
+  for (let r = 0; r < 40; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const x = hx + dx;
+        const y = hy + dy;
+        if (x < 0 || y < 0 || x >= world.w || y >= world.h) continue;
+        const t = cellAt(world, y * world.w + x).terrain;
+        if (t === "spruce" || t === "pine" || t === "birch") return y * world.w + x;
+      }
+    }
+  }
+  throw new Error("no forest near the start");
+}
+
+describe("burn in buckets", () => {
+  it("an hour asleep in the warm is base and nothing else", () => {
+    const { state, world } = newGame(1);
+    state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    const b = today(state).burn;
+    expect(b.base).toBeCloseTo(BASE_KCAL_PER_HOUR, 6);
+    expect(b.activity).toBeCloseTo(0, 6);
+    expect(b.walk).toBe(0);
+    expect(b.cold).toBe(0);
+    expect(b.sick).toBe(0);
+    expect(today(state).sleepMin).toBe(60);
+    expect(today(state).workMin).toBe(0);
+  });
+
+  it("an hour of heavy work at minus thirty is base, the rate above base, and the cold share of both", () => {
+    const { state, world } = newGame(1);
+    state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
+    const k0 = state.player.kcal;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, -30, 1);
+    const b = today(state).burn;
+    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.activity).toBeCloseTo(330, 6);
+    expect(b.walk).toBe(0);
+    expect(b.cold).toBeCloseTo(400 * (COLD_BURN_FACTOR - 1), 6);
+    expect(b.sick).toBe(0);
+    expect(b.base + b.activity + b.cold).toBeCloseTo(k0 - state.player.kcal, 6);
+    expect(today(state).workMin).toBe(60);
+  });
+
+  it("a walk puts everything above base in the walk bucket, and deep snow doubles it", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    placeAt(state, world, forestCell(g));
+    state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    const dry = today(state).burn.walk;
+    expect(dry).toBeCloseTo(300 - 70, 6);
+    expect(today(state).burn.activity).toBe(0);
+    state.weather.snowCm = 40;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    expect(today(state).burn.walk - dry).toBeCloseTo(600 - 70, 6);
+  });
+
+  it("sickness adds its own bucket on top of the cold one", () => {
+    const { state, world } = newGame(1);
+    state.player.sick = 600;
+    state.task = null;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, -30, 1);
+    const b = today(state).burn;
+    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.activity).toBeCloseTo(30, 6);
+    expect(b.cold).toBeCloseTo(100 * 0.3, 6);
+    expect(b.sick).toBeCloseTo(100 * 1.3 * 0.2, 6);
+  });
+
+  it("over two hours of the real loop the buckets sum to what the stomach and the fat lost", () => {
+    const { state, world } = newGame(17);
+    const k0 = state.player.kcal + state.player.fat;
+    advance(state, world, 120);
+    const d = today(state);
+    const burned = d.burn.base + d.burn.activity + d.burn.walk + d.burn.cold + d.burn.sick;
+    expect(burned).toBeCloseTo(k0 - (state.player.kcal + state.player.fat) + d.eaten, 3);
+  });
+
+  it("an idle hour is neither sleep nor work", () => {
+    const { state, world } = newGame(1);
+    state.task = null;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    expect(today(state).sleepMin).toBe(0);
+    expect(today(state).workMin).toBe(0);
+    state.task = { id: "wait", progress: 0, duration: 60, repeat: false };
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    expect(today(state).workMin).toBe(0);
   });
 });

@@ -6,6 +6,7 @@ import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from
 import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
+import { creditBurn, creditTime } from "./ledger";
 import { log } from "./log";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { regionState } from "./regionstate";
@@ -19,6 +20,9 @@ const CAMP_TASKS = new Set<TaskId>([
   "rest", "night", "wait", // a waiting body burns at the camp rate too, the same as rest and night
   "sleep", "craft", "cook", "split", "repair", "build", "light", "lightTorch", "sharpen", "melt", "thaw", "lightIndoors", "hang",
 ]);
+
+/** Awake hours that are not work: the ledger counts everything else on a task as a working minute. */
+const IDLE_TASKS = new Set<TaskId>(["rest", "night", "wait", "sleep"]);
 
 export type Activity = "sleep" | "rest" | "light" | "walk" | "heavy";
 
@@ -151,6 +155,16 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 400 };
 /** Base kcal/h for walking on ground at ordinary (open-forest) speed; the ground and load scale it from here. */
 const WALK_KCAL_PER_HOUR = 300;
+/**
+ * The body's resting burn, every hour of the day asleep or not: the sleep
+ * rate, which over 24 hours is 1,680 kcal, a fit adult's resting burn.
+ * The ledger's base bucket; what an activity costs is counted above it.
+ */
+export const BASE_KCAL_PER_HOUR = KCAL_PER_HOUR.sleep;
+/** Burn under a felt temperature below zero, as a multiple of the burn before it. */
+export const COLD_BURN_FACTOR = 1.3;
+/** Burn while sick, as a multiple of the burn before it. */
+export const SICK_BURN_FACTOR = 1.2;
 
 export interface Drains { starve: number; cold: number; sick: number; thirst: number; smoke: number }
 
@@ -194,7 +208,8 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   };
   stepGarments(state, x, dt);
 
-  // Kilocalories.
+  // Kilocalories, in the ledger's buckets: base for every hour, the activity
+  // or the walk above it, then the cold and the sickness increments on top.
   let burn: number;
   if (a === "walk") {
     burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
@@ -203,10 +218,19 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   } else {
     burn = KCAL_PER_HOUR[a];
   }
-  if (felt < 0) burn *= 1.3;
-  if (p.sick > 0) burn *= 1.2;
+  const above = burn - BASE_KCAL_PER_HOUR;
+  const afterCold = felt < 0 ? burn * COLD_BURN_FACTOR : burn;
+  const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;
+  creditBurn(state, {
+    base: BASE_KCAL_PER_HOUR * h,
+    activity: a === "walk" ? 0 : above * h,
+    walk: a === "walk" ? above * h : 0,
+    cold: (afterCold - burn) * h,
+    sick: (afterSick - afterCold) * h,
+  });
+  creditTime(state, a === "sleep" ? "sleep" : state.task && !IDLE_TASKS.has(state.task.id) ? "work" : "idle", dt);
   // Below zero, the shortfall comes out of the fat reserve instead of health.
-  const kcalBurn = burn * h;
+  const kcalBurn = afterSick * h;
   const shortfall = Math.max(0, kcalBurn - p.kcal);
   p.kcal = clamp(p.kcal - kcalBurn, 0, KCAL_FULL);
   if (shortfall > 0) p.fat = clamp(p.fat - shortfall, 0, FAT_FULL);
