@@ -218,6 +218,8 @@ export interface Player {
   health: number;
   /** Kilocalorie reserve, 0..6000. */
   kcal: number;
+  /** Body fat reserve in kilocalories, 0..FAT_FULL: what an empty stomach draws on before health does. */
+  fat: number;
   warmth: number;
   energy: number;
   wetness: number;

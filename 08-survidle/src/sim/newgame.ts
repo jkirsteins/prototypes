@@ -2,6 +2,7 @@ import { derive } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { addItem, emptyInventory } from "./inventory";
 import { log } from "./log";
+import { FAT_FULL } from "./player";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState } from "./types";
@@ -22,6 +23,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
       region: world.start,
       health: 100,
       kcal: 5000,
+      fat: FAT_FULL,
       warmth: 80,
       energy: 90,
       wetness: 0,

@@ -10,7 +10,7 @@ import { log } from "./log";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
-import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import type { DeathCause, GameState, IceMode, Player, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
@@ -78,6 +78,19 @@ export function beddingInsulation(state: GameState): number {
 /** Degrees the bed under you gives while you sleep on it; a bed is laid at camp. */
 export const BOUGH_BED_C = 4;
 
+/**
+ * A fit adult's fat, in kilocalories: about nine kilos at 9 kcal a gram.
+ * At a total fast of 3,000 kcal a day that is 27 days before it is gone,
+ * the reserve behind the kilocalorie stomach that lets a fed, sheltered
+ * beginner last weeks rather than days.
+ */
+export const FAT_FULL = 80000;
+
+/** Share of the fat reserve gone, 0 (full) to 1 (empty): what a thin body costs elsewhere. */
+export function starvation(p: Player): number {
+  return 1 - clamp(p.fat, 0, FAT_FULL) / FAT_FULL;
+}
+
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
@@ -92,6 +105,8 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
   if (stormNow(state.weather, state.minute)) felt -= 6;
+  // A starving body has no insulation and no fuel: up to 4 C gone at the end of the fat.
+  felt -= 4 * starvation(p);
   return felt;
 }
 
@@ -102,6 +117,7 @@ export function workSpeed(state: GameState, world: World): number {
   if (p.energy < 20) f *= 0.5;
   if (p.injured > 0) f *= 0.7;
   if (p.water < THIRSTY_L) f *= 0.8;
+  f *= 1 - 0.5 * starvation(p);
   const t = state.task;
   if (t) f *= speedFactor(state, world, t.id, t.arg);
   if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;
@@ -186,7 +202,11 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   }
   if (felt < 0) burn *= 1.3;
   if (p.sick > 0) burn *= 1.2;
-  p.kcal = clamp(p.kcal - burn * h, 0, KCAL_FULL);
+  // Below zero, the shortfall comes out of the fat reserve instead of health.
+  const kcalBurn = burn * h;
+  const shortfall = Math.max(0, kcalBurn - p.kcal);
+  p.kcal = clamp(p.kcal - kcalBurn, 0, KCAL_FULL);
+  if (shortfall > 0) p.fat = clamp(p.fat - shortfall, 0, FAT_FULL);
 
   const thirst = stepWater(state, felt, dt);
 
@@ -246,7 +266,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 
   // Health.
   const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst, smoke: 0 };
-  if (p.kcal <= 0) drains.starve = 2 * h;
+  if (p.kcal <= 0 && p.fat <= 0) drains.starve = 2 * h;
   if (p.warmth < 20) drains.cold = 6 * h;
   if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
   const smoking = camp && state.task?.id === "sleep" && r.smoke > SMOKE_DEADLY;
@@ -260,6 +280,9 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 
   // Milestone warnings, once per crossing.
   warn(state, "kcal", p.kcal <= 1200, "You are starving.");
+  warn(state, "thin", p.fat < 0.75 * FAT_FULL, "You are getting thin.");
+  warn(state, "ribs", p.fat < 0.5 * FAT_FULL, "Your ribs show.");
+  warn(state, "wasting", p.fat < 0.25 * FAT_FULL, "You are wasting away.");
   warn(state, "warm", p.warmth < 30, "You are shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "You are soaked through.");
   warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");

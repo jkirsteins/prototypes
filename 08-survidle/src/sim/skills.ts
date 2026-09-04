@@ -5,6 +5,7 @@
  */
 import type { World } from "../world/gen";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
+import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
 import type { GameState, ItemId, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
@@ -292,6 +293,7 @@ export function oddsFactor(state: GameState, species: Species): number {
   let f = (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
   if (state.player.frostbite.hands > 0) f *= 0.5;
   if (state.player.fingers) f *= 0.9;
+  f *= 1 - 0.5 * starvation(state.player);
   if (!fishing) f *= huntExtras(state, species).oddsFactor;
   return f;
 }

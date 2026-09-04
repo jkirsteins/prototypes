@@ -4,6 +4,7 @@ import { advance } from "./advance";
 import { calendar } from "./calendar";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
+import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, LogEntry, TaskId } from "./types";
@@ -74,6 +75,7 @@ function fillDefaults(state: GameState): void {
   }
   const p = state.player;
   p.torch ??= { lit: false, minutes: 0 };
+  p.fat ??= FAT_FULL;
   p.water ??= 2.5;
   p.autoDrink ??= true;
   p.frostbite ??= { feet: 0, hands: 0 };

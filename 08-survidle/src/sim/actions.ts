@@ -3,11 +3,12 @@
  * putting down. Tasks with a duration live in tasks.ts.
  */
 import type { Rng } from "../rng";
-import { PACK_HARD_KG } from "../units";
+import { clamp, PACK_HARD_KG } from "../units";
 import type { World } from "../world/gen";
 import { feedFire } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { atCamp } from "./position";
+import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS, RACK_MAX_KG } from "./items";
 import { log } from "./log";
@@ -26,7 +27,15 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     if (left <= 1e-9) break;
     left -= removeItem(inv, food, left);
   }
-  p.kcal = Math.min(KCAL_FULL, p.kcal + kg * def.kcalPerKg);
+  // Past a full stomach the surplus is stored as fat, up to its own cap.
+  const gain = kg * def.kcalPerKg;
+  const room = KCAL_FULL - p.kcal;
+  if (gain <= room) {
+    p.kcal += gain;
+  } else {
+    p.kcal = KCAL_FULL;
+    p.fat = clamp(p.fat + (gain - room), 0, FAT_FULL);
+  }
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
     log(state, "The raw meat turns your stomach. A fever follows.", "bad");

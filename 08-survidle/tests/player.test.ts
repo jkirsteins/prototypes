@@ -24,9 +24,10 @@ describe("player physiology", () => {
     expect(k1 - state.player.kcal).toBeCloseTo(400, 0);
   });
 
-  it("starves at 2 health per hour with an empty reserve", () => {
+  it("starves at 2 health per hour with kcal and fat both empty", () => {
     const { state, world } = newGame(1);
     state.player.kcal = 0;
+    state.player.fat = 0;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
     expect(state.player.health).toBeCloseTo(98, 1);
   });
