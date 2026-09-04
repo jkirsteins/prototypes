@@ -336,8 +336,8 @@ costs the save nothing.
 
 ## 7. Sequencing
 
-Nothing in the roadmap's build order moves. What changes is what each
-slot contains:
+The roadmap's build order, as the roadmap has it, and what each slot
+contains:
 
 1. **The ladder** (section 2) and the first three horizon checks (3), a
    small item of its own, right after the baseline. It goes before the
@@ -347,13 +347,19 @@ slot contains:
 2. **The calibration pass**, as specced, which makes the bands honest.
    The three horizon checks are provisional until it runs and are re-run
    after it.
-3. **F's core**, with the daily forecast field in the journal (6) added to
-   its list; the views draw once B exists.
-4. **B**, whose month number fills the series.
-5. **The rest of F**, with the tree as section 5.3 has it and the
+3. **F's core**, with the life record the journal reads and the daily
+   forecast field (6) added to its list; the views draw once B exists.
+   The gap between survivors sets the heir's landing month, so the
+   reference player runs from every month from here on.
+4. **The first producers**: C's basket trap, 3's water storage and the
+   turf hut, which add horizon rows 4 and 5 and make survivor row 2
+   reachable, since every run starves on days 40 to 48 without them.
+5. **B**, whose month number fills the series.
+6. **The rest of F**, with the tree as section 5.3 has it and the
    survivor ladder (4) as the reference player's check per row.
-6. **C, D and E** place their tiers at the levels of 5.4 as they land.
-7. **The producers** add the last horizon row's check as they land.
+7. **C, D and E** place their tiers at the levels of 5.4 as they land.
+8. **The remaining producers** add the last horizon row's check as they
+   land.
 
 ## 8. Out of scope
 

@@ -181,9 +181,10 @@ the roadmap, and where each note lands:
   level cannot make the five-to-tenfold expert; C's tiers and the
   recommended-level gates are where the multiplier belongs, above all on
   where to fish and how to stalk.
-- **The second gate is late August.** The landing month in F gives a
-  late-August start; a from-scratch reference run there should reach the
-  first snow, and April stays the hard opening a first run dies in.
+- **The second gate is late August.** The gap between survivors in F's
+  core lands the heir of a spring death in late summer or autumn; a
+  from-scratch reference run from late August should reach the first
+  snow, and April stays the hard opening a first run dies in.
 - **Water is not treated.** Drinking from a lake carries no risk; boiling
   it (hot stones in a bark bucket) is a disease rule for 5.
 - **The runner sleeps 6.4 to 9.0 hours a day** in the April reference
@@ -251,17 +252,20 @@ catch brings the runner home by day, and a thirsty runner with an axe
 cuts the ice hole it walks to - a bark bucket before the roof was
 measured there and rejected, and the deaths after the gate name the trap
 and the water storage as the next food and water items, in their slot;
-built), then F's core (the world saved instead of the person, the
-journal with its daily forecast field, the dim map, the season spine,
-first decay, and the heir set down near the old camp; not its ramp), then
-B the risk forecast with the away cap as its horizon,
-then the rest of F in impact order (the landing month, latitude by row
-with the landing moving north, the goals list, the Lineage tree, and the
-death site with the corpse run and its search order), then the first
-producers and stocks (C's basket trap, and 3's water storage and cellar,
-pulled out of their items), then E hides and clothing, then the rest of
-3 camp (siting, the shelter ladder, the buildings) with the rest of C
-alongside and F's trails and the cellar's keep, then 4 animals, 5 injury
+built), then F's core (the world saved instead of the person, the life
+record and the journal read from it with its daily forecast field, the
+epitaph and the cemetery, the dim map, the season spine, first decay,
+the gap between survivors that sets the heir's month, and the heir set
+down near the old camp; not its ramp), then the first producers and
+stocks (C's basket trap, and 3's water storage and turf hut, pulled out
+of their items), then B the risk forecast with the away cap as its
+horizon, then the rest of F in impact order (latitude by row with the
+landing moving north, the goals list, the Lineage tree with the chosen
+landing month as an Arrival node, and the death site with the corpse
+run and its search order), then E hides and clothing, then the rest of
+3 camp (siting, the rest of the shelter ladder, the buildings with the
+cellar first) with the rest of C alongside and F's trails and the
+cellar's keep, then 4 animals, 5 injury
 and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
 territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
@@ -292,14 +296,20 @@ sim several times over) and its calibration wants the reference player,
 which lands with the baseline, already in place. B is still what makes an
 away death fair, which is why it comes before any content.
 
-Why the rest of F comes before any producer: the thirty-day gate measures
-the survivor loop, and the re-run rate is its first bar. The landing
-month and the latitude are what make the second run a different game
-from the first; the goals and the tree are what the second run is for;
-the corpse run is what a death leaves reachable. The trap and the cellar
-yield while the player is gone, which is worth more once there are runs
-to be gone from, and they come after the death they can cause is a
-foreseeable one.
+Why the first producers come before B and before the rest of F: the
+working day's measurement has every April seed starving on days 40 to
+48 and the kitted run dying of hunger and thirst by day 49, so the
+survivor ladder's row 2, the axe or the first cold snap at day 60 to
+150, is a row nobody can reach. A forecast calibrated against that
+world always reads "starved, day 45", and goals and a tree tuned against
+runs that never see first frost are tuned against the wrong game. The
+trap, the water storage and the turf hut are each a table row and one
+rate or rule, and the death the trap can cause while the player is away
+is November ice, months past where any run ends today. The rest of F
+still comes before the cellar and the shelter ladder's other rungs: the
+latitude is what makes the second run a different game from the first,
+the goals and the tree are what the second run is for, and the corpse
+run is what a death leaves reachable.
 
 Why D landed whole and early: the species half because the roster is
 what the orders hunt, and the sound half beside it because the cue sink
@@ -1182,8 +1192,8 @@ the tables in "What the north yields" into the game's numbers, measured:
 - **The gates.** After the numbers move, set the April from-scratch gate
   where a beginner with fire, roof and water lands in the tables (three
   weeks or more), keep 30 days for the kitted run until C's trap, and
-  write the late-August gate down to be run when the landing month
-  exists. Add a food-at-checkpoint clause too - kcal above zero, or a
+  write the late-August gate down to be run when F's core sets the gap
+  between survivors, since the gap is what lands an heir in August. Add a food-at-checkpoint clause too - kcal above zero, or a
   floor on food at camp - so the gate measures the loop the list runs
   rather than the fat reserve alone.
 - **The fuel keep, and the trip.** "Keep the fire lit" is a keep on a
@@ -1398,7 +1408,11 @@ says "dead in 7 of 10 runs before you are back, cold on night 4", never
 "you will die". The cost is known: A's headless runs advance about a game
 day in 10 ms, so ten runs of a 10-day horizon are about a second, and the
 horizon row can recompute on every list change while the longer rows
-finish in the worker.
+finish in the worker. The dial is a net where the runner has none, and
+it stays on purpose: a world that runs on for a day after a player who
+meant to be gone eight hours is what turns an idle player away, and the
+game has to sell. The forecast row is what makes the setting a choice
+rather than a mercy.
 
 ### C. Skill tiers
 
@@ -1645,12 +1659,16 @@ Not specced. The high-level guidance is here so the spec has something
 to argue with; the numbers are first targets, not rulings. It is the item
 the thirty-day gate measures, and it builds in three parts. The core is
 one slot after the calibration pass and the delegation ladder: the world
-saved instead of the person, the journal with a daily field for B's
-month number, the epitaph and the cemetery, the dim map, the season
-spine, first decay, and the heir set down near the old camp. The lineage lands
-after B, in impact order: the
-landing month, latitude by row, the goals list, the Lineage tree, and the
-death site with the corpse run and its search order. The ramp's parts
+saved instead of the person, the life record and the journal read from
+it with a daily field for B's month number, the epitaph and the
+cemetery, the dim map, the season spine, first decay, the gap between
+survivors, and the heir set down near the old camp. The lineage lands
+after the first producers and B, in impact order: latitude by row, the
+goals list, the Lineage tree with the chosen landing month as an Arrival
+node, and the death site with the corpse run and its search order. The
+landing month is not an item of its own: the gap between survivors
+rolls it from the first death on, so the reference player runs from
+every month as soon as the core lands. The ramp's parts
 land inside the sub-projects that own them. Trails and the cellar's keep
 land with 3, because each needs a camp that can be sited and stocked. The
 reference player is F's instrument and lands with the baseline.
@@ -1707,8 +1725,13 @@ in the world. Three levers, cheapest first:
 - **The landing month.** The boat lands in any month the coast is open.
   A July landing is a sprint to winter through abundance; an October
   landing is winter first in a wool coat. The season spine already
-  handles a year starting anywhere. The reference player gains a set-up
-  per season.
+  handles a year starting anywhere. The gap between survivors is what
+  rolls it: an heir lands months after the death, so the month is set by
+  when the last survivor died and how long the world ran without anyone,
+  and the first survivor alone keeps April. The gap is the most
+  consequential number in F's core and its spec strikes it first. The
+  reference player gains a set-up per season, and the Arrival node buys
+  a chosen month in place of the roll.
 - **Latitude by row.** Latitude is one number today, 62 N. It becomes a
   function of the map row, about 61 N at the south edge and 67 N at the
   top: steeper than the real north, and nobody will measure it.
@@ -1779,7 +1802,16 @@ for the next one. There is no "write in the journal" button.
   it asks for. The weather and wildlife already move by date, so this is
   log lines and a panel, and it is core because a run needs something to
   reach before winter.
-- **The journal** is the log the game already writes. A survivor who
+- **The life record** is what the journal, the epitaph and the dim map
+  read, and it is new: the log the game writes is capped at 300 lines
+  (`LOG_CAP` in `src/sim/log.ts`), so at death it holds the last two
+  days of a life that may have run a season. The record is a typed,
+  uncapped stream per survivor, written at the seams the kcal ledger
+  already writes at: a season threshold reached, the first kill of a
+  species, a build finished, a night's lowest warmth, a region entered,
+  the daily forecast number, the death. It is saved with the world, one
+  per survivor, and the log stays what it is, a scrolling window.
+- **The journal** is the life record read as prose. A survivor who
   lived three days leaves three days; one who lived a season leaves
   where the elk were in October and the night the wolves came. The heir
   reads it at the start.
@@ -1820,14 +1852,15 @@ paragraph would be generic, cost money per death, add latency to the one
 screen that has to be instant, and break the anonymous-beacon posture.
 Templates over a deterministic event selector are enough:
 
-- **The selector** reads the log and picks the notable events from a
-  short fixed list: days survived, each season threshold reached, the
+- **The selector** reads the life record and picks the notable events
+  from a short fixed list: days survived, each season threshold reached, the
   first kill of each species, what was built, the worst night (lowest
   warmth, wolves at the fire), the last three days, and the cause. It is
   deterministic from the log, so a test asserts the epitaph of a seeded
   run, and it is one module: the same selector writes the away report's
   "what happened" line, so the check-in loop and the survivor loop share
-  it rather than each growing its own summary.
+  it rather than each growing its own summary. It reads the life record
+  and never the log, which is why the record is in the core.
 - **The epitaph** is one line, the tombstone: "Day 87. Died of cold on
   the fourth night of the cold snap, 2.1 km from camp, with 400 g of
   dried meat in the pack and 6 kg of firewood at camp." It is written at
@@ -1853,9 +1886,9 @@ Templates over a deterministic event selector are enough:
   achievement list better than a total of days does; that is its whole
   job.
 
-It lands in F's core because the journal is already there and the
-epitaph is the journal's summary; the selector, the templates and the
-list are the cost, and none of it waits on the lineage.
+It lands in F's core because the life record lands there and the
+epitaph is its summary; the selector, the templates and the list are
+the cost, and none of it waits on the lineage.
 
 **Decay between survivors** is where the balance lives and where the
 roof and the cellar earn their place. The gap is months, so decay is per
@@ -1867,9 +1900,13 @@ cellar; a tool rusts to a wear penalty and is still a tool; the fire pit
 stays; a trail fades in two years unwalked; the dim map never fades,
 since it is knowledge; the journal is forever.
 
-**Where the heir is set down.** On the coast within a day's walk of the
-old camp from the first death; Arrival nodes bring it closer, then to
-camp itself. The first survivor keeps the baseline's start with a shore
+**Where the heir is set down, and when.** On the coast within a day's
+walk of the old camp from the first death; Arrival nodes bring it
+closer, then to camp itself. The gap between the death and the landing
+is months, run by the away catch-up as decay, and it is what sets the
+heir's month: a survivor who died in May leaves an heir landing in late
+summer or autumn, with winter first. The first survivor keeps the
+baseline's start with a shore
 and an outcrop. After that the landing is chosen by the old camp and by
 how far north the lineage has reached, and the good land is always
 further up, so camping at the landing is never the best camp for long.
