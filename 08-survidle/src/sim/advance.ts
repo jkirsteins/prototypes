@@ -11,7 +11,8 @@ import { log } from "./log";
 import { runOrders } from "./orders";
 import { atCamp } from "./position";
 import { causeFrom, die, type Drains, feltTemperature, stepPlayer } from "./player";
-import { record } from "./record";
+import { current, record } from "./record";
+import { stepSpine } from "./spine";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
 import { autoDrink } from "./water";
@@ -103,6 +104,8 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     state.lastDay = cal.dayIndex;
     dailyAnimals(state, world, cal, rng, who);
     dailyCamp(state, world, cal, rng, who);
+    stepSpine(state, cal, who);
+    if (!nobody) current(state).forecast.push(null);
   }
 
   if (!nobody && drains && state.player.health <= 0 && !state.dead) {

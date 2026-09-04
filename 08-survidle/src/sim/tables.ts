@@ -63,6 +63,10 @@ export function tableFor(dayOfYear: number): YieldTable {
   return dayOfYear < MIDSUMMER_DOY ? APRIL : LATE_AUGUST;
 }
 
+/** The window the berries ripen and run out, doy-of-year, used by the pick task and the season spine alike. */
+export const BERRY_FROM_DOY = 195;
+export const BERRY_TO_DOY = 288;
+
 /** Which table rows a ledger source answers to. The kit answers to none. */
 export const SOURCE_ROWS: Record<YieldSource, TableRow[]> = {
   fish: ["fishing"],

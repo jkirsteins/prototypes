@@ -31,6 +31,7 @@ import {
 import { lightingInRain, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { discovery, regionState } from "./regionstate";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
+import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import type {
   GameState, IceMode, Inventory, ItemId, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
@@ -105,7 +106,7 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
 
 /** Berries ripen mid-July and are gone by mid-October. */
 export function berrySeason(cal: Calendar): boolean {
-  return cal.dayOfYear >= 195 && cal.dayOfYear <= 288;
+  return cal.dayOfYear >= BERRY_FROM_DOY && cal.dayOfYear <= BERRY_TO_DOY;
 }
 
 function needsList(needs: { item: string; qty: number; alt?: string }[]): string {
