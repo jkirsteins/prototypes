@@ -51,9 +51,16 @@ export const LATE_AUGUST: YieldTable = {
   },
 };
 
+/**
+ * The day the year turns from the spring table to the late-summer one, and
+ * the same line the gate is drawn on: a run starting on or after it is
+ * measured at the first snow rather than on a target day.
+ */
+export const MIDSUMMER_DOY = 182;
+
 /** The table a checkpoint is read against: April until midsummer, late August after. */
 export function tableFor(dayOfYear: number): YieldTable {
-  return dayOfYear < 182 ? APRIL : LATE_AUGUST;
+  return dayOfYear < MIDSUMMER_DOY ? APRIL : LATE_AUGUST;
 }
 
 /** Which table rows a ledger source answers to. The kit answers to none. */

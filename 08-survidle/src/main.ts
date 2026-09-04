@@ -38,7 +38,10 @@ const speed = Math.max(0.1, Number(params.get("speed")) || 1);
 const forcedSeed = params.get("seed");
 /** Test aid beside seed: the day of year the run begins on, for a summer or autumn pass. Not a game feature. */
 const forcedDay = params.get("day");
-const startDoy = forcedDay === null ? undefined : Math.max(0, Math.min(364, Number(forcedDay) || 0));
+// Anything that is not a day of year is no day of year: a blank or misspelt
+// ?day= leaves the run alone rather than opening it on 1 January in the snow.
+const forcedDayN = forcedDay === null || forcedDay.trim() === "" ? Number.NaN : Number(forcedDay);
+const startDoy = Number.isInteger(forcedDayN) && forcedDayN >= 0 && forcedDayN < 365 ? forcedDayN : undefined;
 
 let state: GameState;
 let world: World;
@@ -59,7 +62,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
 }
 
 function boot() {
-  const saved = forcedSeed || forcedDay !== null ? null : loadGame();
+  const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
     state = saved.state;
     world = generateWorld(state.seed);

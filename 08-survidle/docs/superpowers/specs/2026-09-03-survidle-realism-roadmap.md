@@ -1211,23 +1211,29 @@ With the budget balanced (a task at 7 energy an hour, sleep capped at
 nine) the same week reads base 1,680, work 2,260 (activity 1,296, walk
 964), cold 202, 4,141 a day, 13.0 hours at work and 8.7 asleep; work
 sits 560 over its share, cold in its share. Three of the four seeds
-reach day 21 now, not Task 6's two - seed 42 crosses over as well - and
-on those three, activity 1,425 outweighs walk 862, so the survivors'
-weeks would have named the activity rates; walk stands because a walk
-at three kilometres an hour is 200 to 250 kcal an hour by the MET
-tables while chopping at 400 and gathering at 200 already sit at
+reach day 21 now, not the two of the first measurement - seed 42 crosses
+over as well - and on those three, activity 1,425 outweighs walk 862, so
+the survivors' weeks would have named the activity rates; walk stands
+because a walk at three kilometres an hour is 200 to 250 kcal an hour by
+the MET tables while chopping at 400 and gathering at 200 already sit at
 theirs.
 
 The sleep budget holds where the April gate is measured: the runner
 sleeps 8.2 to 9.6 hours a day there, seed 19 at 8.2 and seed 42 at 8.9
 inside the seven to nine band, seed 79 at 9.4 and seed 17 at 9.6 just
-over it, and no week over ten remains. What still averages over ten is
-the kitted and the late-August runs - the kitted seed 19 at 10.4, and
-every late-August seed between 9.6 and 10.4 - and none of it is a night
-over nine, because the cap is on the sleep option and the collapse takes
-that same option. A week over ten is more than one sleep a day; the
-browser pass showed the pair back to back, "Too tired to stand, you
-sleep where you are." and then the queued Sleep.
+over it, and no week over ten remains. That seeds 42 and 79 are measured
+at the gate at all is the balanced budget's doing: it ended the day-3
+wolves and the day-2 thirst that took them in the opening, both
+dehydration deaths, and they reach days 25 and 16 now. So the ladder's
+expectation that at most 2 of 4 pass until the opening changes no longer
+holds, and what the gate's 0 of 4 is measuring is the food clause. What
+still averages over ten is the kitted and the late-August runs - the
+kitted seed 19 at 10.4, and every late-August seed between 9.6 and 10.4
+- and none of it is a night over nine, because the cap is on the sleep
+option and the collapse takes that same option. A week over ten is more
+than one sleep a day; the browser pass showed the pair back to back,
+"Too tired to stand, you sleep where you are." and then the queued
+Sleep.
 
 Opened on 20 July, the berries row reads 750 to 2,025 kcal a day against
 the late-August plants band of 300 to 800 for a beginner: seed 79 at 750

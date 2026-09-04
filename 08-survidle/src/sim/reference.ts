@@ -3,14 +3,14 @@
  * run headless. It is the baseline's gate (alive and fed on
  * REFERENCE_TARGET_DAY, derived from the reserve and the burn band, on
  * four seeds, from scratch, in April) and, later, the survivor loop's
- * instrument. The runner never
- * gathers a prerequisite on its own, so the list orders every dependency
- * before what needs it: water at the top, where it waits on its own
- * vessel; then everything a fire and a roof need, in the order they need
- * it, worked with the arrival axe alone; then the knife and what it
- * unlocks. The list is the wants; the player script below gives each as
- * the best kind the skill has earned, since a from-scratch survivor has
- * only once jobs until a skill reaches 3 and no keeps for weeks.
+ * instrument. The runner never gathers a prerequisite on its own, so the
+ * list orders every dependency before what needs it: water at the top,
+ * where it waits on its own vessel; then everything a fire and a roof
+ * need, in the order they need it, worked with the arrival axe alone;
+ * then the knife and what it unlocks. The list is the wants; the player
+ * script below gives each as the best kind the skill has earned, since a
+ * from-scratch survivor has only once jobs until a skill reaches 3 and no
+ * keeps for weeks.
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
@@ -23,7 +23,7 @@ import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
 import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
-import { APRIL, BURN, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import type { DeathCause, GameState, IntentRequest, Order, OrderKind } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
@@ -106,7 +106,7 @@ export type Gate = { kind: "day"; day: number } | { kind: "firstSnow" };
 
 /** A spring start is measured on its target day; a start from July on is measured at the first snow (spec 7.3). */
 export function gateFor(startDoy: number, kitted: boolean): Gate {
-  if (startDoy >= 181) return { kind: "firstSnow" };
+  if (startDoy >= MIDSUMMER_DOY) return { kind: "firstSnow" };
   return { kind: "day", day: kitted ? KITTED_TARGET_DAY : REFERENCE_TARGET_DAY };
 }
 
@@ -311,13 +311,16 @@ export function runReference(seed: number, days: number, opts: { kitted?: boolea
   const ref = setUpReference(seed, kitted, startDoy);
   const { state, world } = ref;
   const gate = gateFor(startDoy, kitted);
+  // A start late enough to open with snow already lying has no first snow to
+  // wait for, and reading the check on day 1 would call the ground the fall.
+  const openedBare = state.weather.snowCm === 0;
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
   let firstSnowDay: number | null = null;
   for (let d = 1; d <= days && !state.dead; d++) {
     stepReference(ref, 1440);
     const day = calendar(state.minute, state.startDoy).day;
-    if (gate.kind === "firstSnow" && firstSnowDay === null && state.weather.snowCm > 0) {
+    if (gate.kind === "firstSnow" && openedBare && firstSnowDay === null && state.weather.snowCm > 0) {
       firstSnowDay = day;
       seen.add(day);
       checkpoints.push(checkpoint(state, world, day));
@@ -330,8 +333,10 @@ export function runReference(seed: number, days: number, opts: { kitted?: boolea
     }
   }
   const day = calendar(state.dead ? state.dead.minute : state.minute, state.startDoy).day;
-  // A death landing exactly on a checkpoint day is already recorded by the loop above.
-  if (state.dead && checkpoints[checkpoints.length - 1]?.day !== day) checkpoints.push(checkpoint(state, world, day));
+  // The last day always gets a checkpoint, so a run capped alive reports a week
+  // as a death does; one landing exactly on a checkpoint day is already recorded
+  // by the loop above.
+  if (checkpoints[checkpoints.length - 1]?.day !== day) checkpoints.push(checkpoint(state, world, day));
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
   const gateDay = gate.kind === "day" ? gate.day : firstSnowDay;
   // The checkpoint taken as the gate day rolled over is the first at or past it: a

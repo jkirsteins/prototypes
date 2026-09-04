@@ -18,6 +18,8 @@
  * instead of 1 April: 200 is 20 July, 235 is 24 August. It is a harness aid
  * for reading the tables against a summer or autumn start, not a second
  * gate; a start from July on (spec 7.3) is measured at the first snow.
+ * That day is the morning the check ran, the day after the fall, and a
+ * start that opens with snow already lying has no first snow to report.
  */
 import { calendar, fmtDate } from "../src/sim/calendar";
 import { REFERENCE_SEEDS, runReference, weekLines } from "../src/sim/reference";

@@ -24,7 +24,7 @@ import {
 } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes } from "../src/sim/skills";
-import { APRIL, BURN } from "../src/sim/tables";
+import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 
 describe("the reference player", () => {
   it("at level 1 the first tick gives every want as a once job, ranked as the list", () => {
@@ -184,19 +184,33 @@ describe("the reference player", () => {
   it("the gate for a start is the target day in spring and the first snow from July on", () => {
     expect(gateFor(START_DOY, false)).toEqual({ kind: "day", day: REFERENCE_TARGET_DAY });
     expect(gateFor(START_DOY, true)).toEqual({ kind: "day", day: KITTED_TARGET_DAY });
-    expect(gateFor(180, false)).toEqual({ kind: "day", day: REFERENCE_TARGET_DAY });
-    expect(gateFor(181, false)).toEqual({ kind: "firstSnow" });
+    expect(gateFor(MIDSUMMER_DOY - 1, false)).toEqual({ kind: "day", day: REFERENCE_TARGET_DAY });
+    expect(gateFor(MIDSUMMER_DOY, false)).toEqual({ kind: "firstSnow" });
     expect(gateFor(235, true)).toEqual({ kind: "firstSnow" });
   });
 
-  it("a run that dies before its gate day fails, with the checkpoint taken at the death", () => {
+  it("a run short of its gate day fails, with a checkpoint and its week on the last day either way", () => {
     const r = runReference(17, 2);
     expect(r.gate).toEqual({ kind: "day", day: REFERENCE_TARGET_DAY });
     expect(r.passed).toBe(false);
-    expect(r.checkpoints.length).toBe(r.outcome.kind === "died" ? 1 : 0);
+    expect(r.checkpoints.length).toBe(1);
+    expect(r.checkpoints[0].day).toBe(r.outcome.day);
+    if (r.outcome.kind === "reached") {
+      // Two days stepped: the day is 3, and the week before it holds the records for days 1 and 2.
+      expect(r.outcome.day).toBe(3);
+      expect(r.checkpoints[0].week.days).toBe(2);
+      expect(r.checkpoints[0].week.burn.base).toBeGreaterThan(0);
+    }
   });
 
-  it("a checkpoint carries the week before it, and weekLines reads it against the table", () => {
+  it("a start that opens with snow on the ground has no first snow to report", () => {
+    // Mid-November: the seasonal mean there is below zero, so newGame lays snow on day 1.
+    const r = runReference(17, 1, { startDoy: 320 });
+    expect(r.gate).toEqual({ kind: "firstSnow" });
+    expect(r.firstSnowDay).toBeNull();
+  });
+
+  it("weekLines reads a week against the table for its date", () => {
     const week = { days: 7, yield: { fish: 310, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
     const lines = weekLines(week, 115);
     expect(lines[0]).toContain("fish 310 (in band)");
@@ -214,10 +228,9 @@ describe("the reference player", () => {
   });
 
   it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 11 dies on day 26, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    // Re-seeded from 30 (which died on the old target day, 21) when the derived target day moved to 26.
+    // Seed 11 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
     const r = runReference(11, 30);
-    expect(r.outcome).toEqual({ kind: "died", day: 26, cause: "starved" });
+    expect(r.outcome).toEqual({ kind: "died", day: REFERENCE_TARGET_DAY, cause: "starved" });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
   });
