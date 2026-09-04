@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
-import { regionAt, type World } from "../world/gen";
+import { regionAt, spotOf, type World } from "../world/gen";
 import { eat, edible } from "./actions";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
@@ -58,6 +58,22 @@ export function spentNow(state: GameState): boolean {
   return true;
 }
 
+/**
+ * A catch hanging in the snares and the heath in reach by day: the cell to
+ * walk to, or null. Arriving on the heath collects the catch, so the chore
+ * ends where it is done. A person checks their snares on the way past,
+ * which puts this above the evening's rest and below eating and drinking.
+ */
+export function snaresWaiting(state: GameState, world: World, cal: Calendar): number | null {
+  if (cal.isNight) return null;
+  const st = regionState(state, world, state.player.region);
+  if (st.snareCatch.count <= 0) return null;
+  const heath = spotOf(regionAt(world, state.player.region), "heath");
+  if (!heath) return null;
+  if (cellOf(state, world) === heath.cell) return null;
+  return check(state, world, cal, "walk", `cell:${heath.cell}`).ok ? heath.cell : null;
+}
+
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
 export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
@@ -82,6 +98,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (thirsty) return "thirsty";
   if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
+  if (snaresWaiting(state, world, cal) !== null) return "snares";
   // A day's work done is no reason to sit down parched: at the water, drink
   // your fill before walking back to the fire. Away from it the stores keep,
   // since the auto-drink reaches a vessel or the camp pile without getting up.
@@ -135,6 +152,10 @@ export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng
     case "thirsty": return thirstyStep(state, world, cal);
     case "storm": return stormStep(state, world, cal);
     case "home": return homeStep(state, world, cal);
+    case "snares": {
+      const cell = snaresWaiting(state, world, cal);
+      return cell === null ? null : walkStep(state, world, cell, " to check the snares");
+    }
     default: return campStep(state, world, cal, it, need);
   }
 }
