@@ -18,9 +18,10 @@ belong.
 
 ## Decisions confirmed with the author
 
-- **Manual first, per skill.** Below a skill's gate the player points with
-  intents; the orders list accepts a kind of order only once the skill has
-  earned it. Nothing new is clicked: the intent layer is the manual phase.
+- **Manual first, per skill.** Every click on the Do panel is an order,
+  so "manual" is a once job: one unit of work, then it drops off the list.
+  Once jobs are never gated. Jobs with a count or a camp-has target,
+  grinds and keeps are earned per skill. Nothing new is clicked.
 - **The rungs are jobs at 3, grinds at 5, keeps at 10.** The level curve
   does not move, so the recommended levels do not move either.
 - **Unlocks are carried by Lineage.** Until F lands they are per survivor.
@@ -77,13 +78,13 @@ and the view (6).
 ### 2.1 The rungs
 
 Per skill, the orders list accepts an order kind once the skill is at its
-gate. Below it the player points with intents, which is the game as it
-opens today.
+gate. Below it the player points, one unit of work per click: a once job,
+which is how the game opens today.
 
 | rung | level | practice hours | real time at that skill all day | genre analogue |
 |---|---|---|---|---|
-| manual only | 1 | 0 | 0 | the opening clicks |
-| one-off jobs | 3 | 8 | about a working day, 10 min | first builder, first session |
+| once jobs | 1 | 0 | 0 | the opening clicks |
+| jobs with a count or a target | 3 | 8 | about a working day, 10 min | first builder, first session |
 | grinds | 5 | 32 | about 3 game days, 1 hour | dumb automation, first day |
 | keeps | 10 | 162 | about 5 hours | the manager, near the first death |
 
@@ -114,6 +115,12 @@ what is hauled is logs. Any task added later that maps to no skill names
 its gate skill beside its definition, the way a card names its discovery
 route in the card prototypes; a task with neither does not ship.
 
+A once job is a job whose until is "once", and a keep or a camp-has job
+whose task yields nothing countable falls back to a once job today; the
+gate reads the kind after that fallback, so "build a cabin" given as a
+keep is a once job and never gated. A task that resolves to no skill and
+has no gate entry cannot be ordered at all.
+
 The gate reads the skill's level at the moment the order is added, and an
 order once added stays: a keep given at woodcraft 10 is not withdrawn if
 the heir lands with less (it will not, since the carry is what gave the
@@ -143,21 +150,31 @@ woodcraft to 10 has jobs, grinds and keeps in woodcraft from birth.
 ### 2.5 The reference player
 
 The harness's beginner gives orders from day one today. Under the ladder
-a from-scratch survivor has only intents until woodcraft 3, about a
-working day, and only jobs until 5. The reference script gains an
-opening: it queues intents for the first day (water, sticks, a fire,
-chopping) and adds each order kind the day the gate opens, so the April
-gate measures a player who can exist. The kitted variant, when it is
+a from-scratch survivor has only once jobs until a skill reaches 3, and
+no keeps for weeks. The reference list stays as written, as the wants of
+a competent player, and a player script serves it the way a present
+player would: once an hour it walks the list top down, gives each want
+as the best kind the skill has earned (a keep as a keep at 10, as a
+camp-has job at 3, as a once job below; a grind as a grind at 5, as a
+five-times job at 3, as a once job below), ranked where the want sits,
+and re-gives a want whose stand-in dropped off when it is unmet again.
+The hour between ticks is the cost of playing by hand. The April gate
+then measures a player who can exist. The kitted variant, when it is
 used, is a survivor whose lineage carried the rungs, which is what a kit
-means from F on.
+means from F on; until F, it is the same script on a stocked camp.
 
 ### 2.6 Tests
 
-- `addOrder` refuses a kind below the gate with the reason, and accepts it
-  at the gate; a table test over the six skills and three rungs.
-- `haul` gates on woodcraft; every task with a null `skillOf` has a gate
-  entry, asserted over `TASK_IDS` the way `POLICY_COVERAGE` is asserted
+- `giveOrder`, the door the Do panel and the player script use, refuses a
+  kind below the gate with the reason and accepts it at the gate; a table
+  test over the six skills and three rungs. A once job is accepted at
+  level 1 in every skill. `addOrder` stays the raw mutator underneath, for
+  tests and the stage set-ups, and `main.ts` is lint-banned from it.
+- `haul` gates on woodcraft; every task that can be ordered has a gate
+  skill, asserted over `TASK_IDS` the way `POLICY_COVERAGE` is asserted
   over cards.
+- The stand-in for a gated want is the best kind earned, at each of the
+  four levels 1, 3, 5 and 10.
 - The unlock log line fires once per rung per skill per survivor.
 - The reference player, from scratch, on the four seeds: alive on the
   April gate's day with the opening in place.
@@ -183,7 +200,11 @@ game days, the goals list and the march north, all F's.
 
 Each row is a harness check: a scripted set-up at that stage, run
 forward on four seeds the way the reference player is, and the day of
-the first death read as the horizon. A set-up whose horizon falls outside
+the first death read as the horizon. A stage is a skill profile, every
+skill at 1, every skill at 5, or woodcraft and building at 10 with the
+rest at 5, set on a stocked camp; its list is the reference wants, each
+given once as the best kind that profile has earned, and no player
+script, since the player is away. A set-up whose horizon falls outside
 its band is a finding, in the same sense as a food source outside its
 kcal band in the calibration pass. The bands are steered by, not hit.
 The checks land with the ladder for the first three rows and with each
