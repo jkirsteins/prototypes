@@ -49,7 +49,9 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * the axe stays a keep because the arrival axe wears out and the spare is
  * the point. Auto-eat, auto-feed and auto-drink stay on, as they are for
  * every player. The felling grind, needing the axe kept just above it,
- * runs last and forever.
+ * runs last and forever. Two kilos of berries at camp sit with the cook
+ * keeps: in season they are the cheapest kcal there is, and out of it the
+ * keep blocks harmlessly on nothing ripe.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -68,6 +70,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "once" }, "fishingSpear"),
   keep("cook", 1, "fish"),
   keep("cook", 1),
+  keep("berries", 2),
   job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
   keep("craft", 1, "snare"),

@@ -52,6 +52,7 @@ export function newGame(seed: number): { state: GameState; world: World } {
       frostbite: { feet: 0, hands: 0 },
       toes: false,
       fingers: false,
+      berriesToday: { day: 1, kg: 0 },
     },
     regions: {},
     discovered: {},

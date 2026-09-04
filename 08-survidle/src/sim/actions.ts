@@ -5,6 +5,8 @@
 import type { Rng } from "../rng";
 import { clamp, PACK_HARD_KG } from "../units";
 import type { World } from "../world/gen";
+import { berriesRefused } from "./berries";
+import { dayNumber } from "./calendar";
 import { feedFire } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { creditEaten } from "./ledger";
@@ -13,23 +15,43 @@ import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS, RACK_MAX_KG } from "./items";
 import { log } from "./log";
+import { BERRY } from "./tables";
 import type { GameState, ItemId } from "./types";
+
+/** A food the body will take right now: everything but berries past the day's ceiling. */
+export function edible(state: GameState, food: FoodId): boolean {
+  return food !== "berries" || !berriesRefused(state.player, state.minute);
+}
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
 export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boolean {
   const p = state.player;
   const def = FOODS[food];
+  if (!edible(state, food)) return false;
   const invs = [p.pack, herePile(state, world)];
   const have = totalQty(invs, food);
   if (have <= 1e-9) return false;
-  const kg = Math.min(def.portionKg, have);
+  let kg = Math.min(def.portionKg, have);
+  let gain = kg * def.kcalPerKg;
+  if (food === "berries") {
+    const day = dayNumber(state.minute);
+    if (p.berriesToday.day !== day) p.berriesToday = { day, kg: 0 };
+    const before = p.berriesToday.kg;
+    kg = Math.min(kg, BERRY.refuseKg - before);
+    // Past two kilos the gut absorbs half; past four it will not take another.
+    const full = Math.max(0, Math.min(kg, BERRY.fullCreditKg - before));
+    gain = (full + (kg - full) / 2) * def.kcalPerKg;
+    const after = before + kg;
+    p.berriesToday.kg = after;
+    if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "Your stomach is turning.", "bad");
+    if (after >= BERRY.refuseKg - 1e-9) log(state, "You cannot face another berry.", "bad");
+  }
   let left = kg;
   for (const inv of invs) {
     if (left <= 1e-9) break;
     left -= removeItem(inv, food, left);
   }
   // Past a full stomach the surplus is stored as fat, up to its own cap.
-  const gain = kg * def.kcalPerKg;
   const room = KCAL_FULL - p.kcal;
   if (gain <= room) {
     p.kcal += gain;

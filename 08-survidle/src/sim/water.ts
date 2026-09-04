@@ -5,6 +5,7 @@
  */
 import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
+import { berriesOverloaded } from "./berries";
 import { addItem, carried, pile, qty, removeItem } from "./inventory";
 import { TOOLS } from "./items";
 import { type Activity, activityOf } from "./player";
@@ -27,7 +28,7 @@ export function waterLossPerHour(state: GameState, felt: number): number {
   if (a === "walk" && carried(p) > PACK_COMFORTABLE_KG) a = "heavy";
   let l = LOSS_PER_HOUR[a];
   if (felt > 20 || felt < -10) l *= 1.3;
-  if (p.sick > 0) l *= 1.2;
+  if (p.sick > 0 || berriesOverloaded(p, state.minute)) l *= 1.2;
   return l;
 }
 

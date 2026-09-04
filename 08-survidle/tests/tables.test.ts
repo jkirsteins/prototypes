@@ -49,6 +49,7 @@ describe("the constants sit in their real bands", () => {
 
   it("an hour's picking at level one is what a hand picker takes", () => {
     expect(verdict(BERRY_PICK_KG, BERRY.pickKgPerHour)).toBe("in band");
+    expect(BERRY_PICK_KG).toBe(0.7);
   });
 
   // A walk's rate above base times the hours a day's walking takes is a part of

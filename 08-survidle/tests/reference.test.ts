@@ -32,6 +32,14 @@ describe("the reference player", () => {
     expect(axe.kind).toBe("keep");
   });
 
+  it("the list keeps two kilos of berries at camp, after the cook keeps and before the rack", () => {
+    const i = REFERENCE_ORDERS.findIndex((o) => o.req.task === "berries");
+    expect(i).toBeGreaterThan(0);
+    expect(REFERENCE_ORDERS[i]).toMatchObject({ kind: "keep", req: { until: { kind: "campHas", qty: 2 } } });
+    expect(REFERENCE_ORDERS[i - 1].req).toMatchObject({ task: "cook" });
+    expect(REFERENCE_ORDERS[i + 1].req).toMatchObject({ task: "build", arg: "dryingRack" });
+  });
+
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
   it("a want whose stand-in dropped off is given again while unmet, and a finished true job is not", () => {
     const { state, world } = newGame(17);
@@ -157,8 +165,8 @@ describe("the reference player", () => {
   });
 
   it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 2 dies on day 21, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    const r = runReference(2, 25);
+    // Seed 30 dies on day 21, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
+    const r = runReference(30, 25);
     expect(r.outcome).toEqual({ kind: "died", day: 21, cause: "starved" });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);

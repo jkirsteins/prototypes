@@ -40,14 +40,14 @@ export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickC
 };
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
 export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
-/** Kilos an hour's picking takes at a patch, before the foraging pool's factor. */
-export const BERRY_PICK_KG = 1;
+/** Kilos an hour's picking takes at a patch by hand, before the foraging pool's factor: a beginner picker, near the real kilo an hour at the top of the pool. */
+export const BERRY_PICK_KG = 0.7;
 
 export const KCAL_FULL = 6000;
 
 /** Hours above 0 C before a stack is thrown away. */
 export const SPOIL_HOURS: Record<PerishableId, number> = {
-  rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72,
+  rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72, berries: 72,
 };
 
 export const TOOLS: Record<ToolId, { name: string; kg: number; litres?: number }> = {

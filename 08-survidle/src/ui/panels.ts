@@ -1,5 +1,6 @@
 import { itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
+import { berriesRefused } from "../sim/berries";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
@@ -371,7 +372,8 @@ function instantHtml(state: GameState, world: World): string {
       const have = invs.reduce((a, inv) => a + qty(inv, f), 0);
       if (have <= 1e-9) return "";
       const def = FOODS[f];
-      return `<button class="mini" data-act="eat" data-food="${f}">eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}</small></button>`;
+      const refused = f === "berries" && berriesRefused(p, state.minute);
+      return `<button class="mini" data-act="eat" data-food="${f}" ${refused ? "disabled" : ""}>eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>${refused ? "not another berry today" : `+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}`}</small></button>`;
     })
     .join(" ");
   const st = regionState(state, world, p.region);

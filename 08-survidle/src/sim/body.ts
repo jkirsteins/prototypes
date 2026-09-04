@@ -8,7 +8,7 @@ import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
 import { regionAt, type World } from "../world/gen";
-import { eat } from "./actions";
+import { eat, edible } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, SPREAD_FUEL_KG } from "./fire";
@@ -55,9 +55,9 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
 /** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */
 export function canFeed(state: GameState, world: World, cal: Calendar, it: Intent): boolean {
   const p = state.player;
-  if (AUTO_EAT_ORDER.some((f) => qty(p.pack, f) > 1e-9)) return true;
+  if (AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(p.pack, f) > 1e-9)) return true;
   const camp = pile(state, it.campCell);
-  if (!AUTO_EAT_ORDER.some((f) => qty(camp, f) > 1e-9)) return false;
+  if (!AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(camp, f) > 1e-9)) return false;
   return cellOf(state, world) === it.campCell || check(state, world, cal, "walk", `cell:${it.campCell}`).ok;
 }
 
@@ -251,7 +251,7 @@ function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it:
   }
   if (cellOf(state, world) === it.campCell) return null;
   const camp = pile(state, it.campCell);
-  if (!AUTO_EAT_ORDER.some((f) => qty(camp, f) > 1e-9)) return null;
+  if (!AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(camp, f) > 1e-9)) return null;
   if (!check(state, world, cal, "walk", `cell:${it.campCell}`).ok) return null;
   return walkStep(state, world, it.campCell, " to eat");
 }

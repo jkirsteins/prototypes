@@ -37,6 +37,20 @@ describe("inventory", () => {
     expect(qty(frozen, "rawMeat")).toBe(1);
   });
 
+  it("berries keep three days in the warm and do not age in the cold", () => {
+    const warm = emptyInventory();
+    addItem(warm, "berries", 2);
+    ageStacks(warm, 71 * 60, 10);
+    expect(qty(warm, "berries")).toBeCloseTo(2, 6);
+    const lost = ageStacks(warm, 2 * 60, 10);
+    expect(lost.berries).toBeCloseTo(2, 6);
+    expect(qty(warm, "berries")).toBe(0);
+    const cold = emptyInventory();
+    addItem(cold, "berries", 2);
+    ageStacks(cold, 1000 * 60, -5);
+    expect(qty(cold, "berries")).toBeCloseTo(2, 6);
+  });
+
   it("routes produce to the pack until it is comfortable, and logs to the ground", () => {
     const { state, world } = newGame(1);
     expect(produce(state, world, "log", 1)).toBe("pile");

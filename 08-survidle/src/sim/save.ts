@@ -82,6 +82,7 @@ function fillDefaults(state: GameState): void {
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
   p.fingers ??= false;
+  p.berriesToday ??= { day: 0, kg: 0 };
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;

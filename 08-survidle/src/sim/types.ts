@@ -31,8 +31,8 @@ export type KgItem =
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
-export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish";
-export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish"];
+export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "berries";
+export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "berries"];
 
 export interface Stack { kg: number; age: number }
 
@@ -250,6 +250,8 @@ export interface Player {
   /** Lost to frostbite for good. */
   toes: boolean;
   fingers: boolean;
+  /** Kilos of berries eaten today, for the gut's ceiling: full credit to two, half to four, none past it. */
+  berriesToday: { day: number; kg: number };
 }
 
 export interface Weather {
