@@ -13,7 +13,7 @@ import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, SPREAD_FUEL_KG } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, type FoodId, ITEM_KG } from "./items";
+import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
@@ -259,27 +259,45 @@ function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it:
 /** Arrows a bow hunt carries out of camp. */
 export const ARROWS_TO_CARRY = 10;
 
-/** What the live order needs in the pack beside food: arrows for a bow hunt. Nothing else yet. */
+/** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job. */
 export function orderKit(state: GameState): ItemId[] {
   const it = state.intent;
   if (it?.task === "hunt" && hasTool(state.player, "bow")) return ["arrow"];
+  if (it?.task === "build" && it.arg === "snare") return ["snare"];
   return [];
 }
 
+/** How many snares this session's set-snares order still needs: its times target minus what it has already set, floored at one and capped at MAX_SNARES so a stray target never over-pockets. An order-less build (no orderId) has no target to read, so it takes one. */
+function snaresWanted(state: GameState, world: World, it: Intent): number {
+  if (it.orderId === null) return 1;
+  const o = regionState(state, world, state.player.region).orders.find((x) => x.id === it.orderId);
+  const left = o && o.req.until.kind === "times" ? o.req.until.n - o.done : 1;
+  return Math.min(MAX_SNARES, Math.max(1, left));
+}
+
 /**
- * Pockets the live order's kit - arrows for a bow hunt - from the camp pile, up to
- * ARROWS_TO_CARRY, when standing at the intent's camp cell. Returns how many it moved,
- * so a start that turns out illegal can hand them straight back.
+ * Pockets the live order's kit - arrows for a bow hunt, snares for a set-snares job -
+ * from the camp pile, when standing at the intent's camp cell. Returns how many it
+ * moved, so a start that turns out illegal can hand them straight back.
  */
 export function provisionKit(state: GameState, world: World): number {
   const it = state.intent;
-  if (!it || cellOf(state, world) !== it.campCell || !orderKit(state).includes("arrow")) return 0;
+  if (!it || cellOf(state, world) !== it.campCell) return 0;
+  const kit = orderKit(state);
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
-  const want = ARROWS_TO_CARRY - qty(pack, "arrow");
-  if (want <= 0) return 0;
-  // Arrows are 0.05 kg each; ten weigh half a kilo, never worth a pack-room guard.
-  return transfer(camp, pack, "arrow", Math.min(want, qty(camp, "arrow")));
+  if (kit.includes("arrow")) {
+    const want = ARROWS_TO_CARRY - qty(pack, "arrow");
+    if (want <= 0) return 0;
+    // Arrows are 0.05 kg each; ten weigh half a kilo, never worth a pack-room guard.
+    return transfer(camp, pack, "arrow", Math.min(want, qty(camp, "arrow")));
+  }
+  if (kit.includes("snare")) {
+    const want = snaresWanted(state, world, it) - qty(pack, "snare");
+    if (want <= 0) return 0;
+    return transfer(camp, pack, "snare", Math.min(want, qty(camp, "snare")));
+  }
+  return 0;
 }
 
 /**

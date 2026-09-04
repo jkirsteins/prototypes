@@ -210,13 +210,17 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
     campCell: regionState(state, world, state.player.region).campCell,
     until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
   };
-  // A bow hunt's arrows must be in the pack before the check below, which reads the pack
-  // only; food and vessels stay in the camp pile until the intent actually starts.
+  // A bow hunt's arrows, or a set-snares job's snares, must be in the pack before the
+  // check below, which reads the pack only; food and vessels stay in the camp pile
+  // until the intent actually starts.
   const pocketed = provisionKit(state, world);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
     if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
-      if (pocketed > 0) transfer(state.player.pack, pile(state, state.intent.campCell), "arrow", pocketed);
+      if (pocketed > 0) {
+        const kit = orderKit(state)[0];
+        if (kit) transfer(state.player.pack, pile(state, state.intent.campCell), kit, pocketed);
+      }
       state.intent = prevIntent;
       return false;
     }

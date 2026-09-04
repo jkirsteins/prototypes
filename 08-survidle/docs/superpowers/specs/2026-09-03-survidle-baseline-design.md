@@ -164,6 +164,9 @@ before it walks to the pile.
 `dropEverything` at camp leaves arrows in the pack when the live order is
 such a hunt, so a bow hunt does not block on "needs arrows in the pack"
 after its first delivery. Vessels are tools on the body and need nothing.
+The same kit pocketing covers a set-snares job: snares from the camp
+pile, up to what the order still needs, so the heath build does not
+block on "needs a snare" when its material is sitting at camp instead.
 
 ## 5. Wet wood
 

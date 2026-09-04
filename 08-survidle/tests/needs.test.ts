@@ -6,6 +6,7 @@ import { calendar } from "../src/sim/calendar";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { addOrder } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { huntedLand } from "../src/sim/species";
@@ -133,5 +134,23 @@ describe("arrows in the pack", () => {
     expect(ok).toBe(false);
     expect(state.intent).toBe(before);
     expect(qty(pile(state, st.campCell), "arrow")).toBe(12);
+  });
+});
+
+describe("snares in the pack", () => {
+  it("a set-snares order pockets what is at camp before it leaves, and the heath build succeeds", () => {
+    const g = newGame(17);
+    const { state, world } = g;
+    const p = state.player;
+    const st = regionState(state, world, p.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "snare", 2);
+    const o = addOrder(state, world, { task: "build", arg: "snare", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
+    // Bound to the order (as the scheduler binds it once it picks the order), the way
+    // the arrows test above starts its hunt directly rather than through chooseOrder.
+    startIntent(state, world, cal, new Rng(1), o.req, o.id);
+    expect(qty(p.pack, "snare")).toBe(2);
+    expect(qty(pile(state, st.campCell), "snare")).toBe(0);
+    expect(until(g, () => st.structures.snares >= 1, 600)).toBe(true);
   });
 });
