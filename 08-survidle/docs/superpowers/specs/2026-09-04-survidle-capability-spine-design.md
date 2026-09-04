@@ -43,7 +43,9 @@ make, automate or survive. A row has a name the player can remember, the
 tier it sits on, what it receives from outside its own skill, what it
 gives to something outside its own skill, and what it leaves limiting,
 because automation moves a bottleneck and never removes the problem.
-"Survivor" is the idle curve's ladder row where it first matters. "Owner"
+"Survivor" is the idle curve's ladder row where it first matters, read
+from that spec's tier table (its section 5.4), which derives from the
+code curve: a tier is placed by practice hours, never by a survivor's age. "Owner"
 is the roadmap item that builds it; "built" means it is in the tree today.
 
 | capability | tier | receives | gives | leaves limiting | survivor | owner |
@@ -59,20 +61,20 @@ is the roadmap item that builds it; "built" means it is in the tree today.
 | bone needle | Crafting 1 | bone (Hunting) | tailored clothing, the waterskin | the first kill comes first | 2 | built |
 | bow | Crafting 5 | a log (Woodcraft), cordage, a knife; sinew (Hunting) for arrows | roe deer and elk | arrows, sinew, a lumpy larder | 2 | built |
 | tailored hide clothing | Crafting 8 | hide and sinew (Hunting), the needle | winter under wool is winter under hide; the shell 7's wind reads | wear, mending, a deer every eight days | 2 to 3 | built; E deepens |
-| cabin | Building 10 | 40 logs, 12 stone, 8 cordage (Woodcraft, Foraging) | +15 C, and the hearth, storehouse, cellar and smokehouse attach here | sixty hours, a winter's firewood | 3 | built |
-| reading water | Fishing 3 | D's ranges per shore | the shore says what it holds and where; the local rate; where to site a camp and set a trap | nothing passive yet | 2 | C |
+| cabin | Building 10 | 40 logs, 12 stone, 8 cordage (Woodcraft, Foraging) | +15 C, and the hearth, storehouse, cellar and smokehouse attach here | sixty hours, a winter's firewood | 2 to 3 | built |
+| reading water | Fishing 3 | D's ranges per shore | the shore says what it holds and where; the local rate; where to site a camp and set a trap | nothing passive yet | 1 to 2 | C |
 | fibres and resin | Foraging 3 and 5 | the season: nettle and willow in summer, resin from pine | a second source of cordage (Crafting); glue for arrows, a wound seal (5), a torch that burns longer | season, drying | 2 | C |
-| basket trap | Fishing 5 | stakes (Woodcraft), fibre (Foraging), Crafting; a read shore | passive fish: the first food a camp makes without you | emptying, hauling, the rack's 6 kg, November ice, 4's raiders | 2 | C, producers slot; producer |
+| basket trap | Fishing 5 | stakes (Woodcraft), fibre (Foraging), Crafting; a read shore | passive fish: the first food a camp makes without you | emptying, hauling, the rack's 6 kg, November ice, 4's raiders | 1 to 2 | C, producers slot; producer |
 | water storage | Building 3 | a vessel (Crafting), a camp | a week of water, the water keep as a stock | freezing, the walk to fill it | 2 | 3, producers slot; producer |
 | turf hut | Building 5 | poles, sticks, birch bark or bog turf (Woodcraft, Foraging) | a hearth: fire inside is legal, and the roof E's smoking needs; +10 C | re-turfing in a year or two | 2 to 3 | 3, producers slot |
 | scrape and tan | Crafting 3 and 5 | hide (Hunting), birch bark (Woodcraft), a vessel or pit (Crafting, Building) | tanned hide that every tailored piece needs; fat (D) for the tallow light | five days in the pit, a spoiled tan is the hide gone | 3 | E |
 | smoking | Crafting 5 | a roof with a hearth (Building), fuel (Woodcraft) | hide that keeps half its warmth soaked; rack-dried meat without the sickness roll | six hours, fuel | 3 | E and 3 |
-| net | Fishing 10 | cordage in quantity (Woodcraft, Foraging), a read shore | surplus that scales | spoilage becomes the limit | 3 | C |
+| net | Fishing 10 | cordage in quantity (Woodcraft, Foraging), a read shore | surplus that scales | spoilage becomes the limit | 2 to 3 | C |
 | stalking | Hunting 10 | wind (7) | odds by where you stand; the elk approached | the wind's side | 3 | 4 and 7 |
 | dug-out | Building 5 | 12 logs, turf, an elk's shoulder blade (Hunting) | near 0 C unheated: a third of a cabin's firewood, and a cool store before the cellar | damp on bedding and hide, a slope or nothing | 3 | 3 |
 | cellar | Building 15 | a digging tool (Hunting's bone), logs, the cabin | three to five days at 4 C: a large kill becomes weeks | the walk back to the one store, stocking it | 3 to 4 | 3 |
 | smokehouse | Building 15 | fuel (Woodcraft), the hearth, a surplus worth smoking (Hunting, Fishing) | durable stock; expeditions of days; the elk economically whole | fuel, capacity, supply | 4 | 3; the first named project |
-| seasonal water | Fishing 15 | the season spine (F) | whitefish in the October shallows and burbot under the ice, named on the season panel | the season itself | 3 | C and D |
+| seasonal water | Fishing 15 | the season spine (F) | whitefish in the October shallows and burbot under the ice, named on the season panel | the season itself | 2 to 3 | C and D |
 | fur shell | Crafting 12 to 15 | tanned fur (D, E), tailoring | the cold snap survived in the open; wind blocked through the shell | wear, a bear or a wolverine per parka | 4 | E |
 | trail | hauling repeated | twenty walks of the same route | a route the router prefers; distant resources within economic reach; the heir's road | fades in two years unwalked | 3 to 4 | F |
 | known water, crossings, stands | Knowledge, F's tree | hours at a cell, written as observations | the heir lands knowing the bend, the saddle, the birch | what the last survivor never walked | 2 on | F |

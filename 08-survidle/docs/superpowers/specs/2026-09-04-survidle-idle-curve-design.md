@@ -81,21 +81,35 @@ Per skill, the orders list accepts an order kind once the skill is at its
 gate. Below it the player points, one unit of work per click: a once job,
 which is how the game opens today.
 
-| rung | level | practice hours | real time at that skill all day | genre analogue |
-|---|---|---|---|---|
-| once jobs | 1 | 0 | 0 | the opening clicks |
-| jobs with a count or a target | 3 | 8 | about a working day, 10 min | first builder, first session |
-| grinds | 5 | 32 | about 3 game days, 1 hour | dumb automation, first day |
-| keeps | 10 | 162 | about 5 hours | the manager, near the first death |
+Every table in this spec that says when a level arrives is generated from
+the code's curve by `scripts/curve-table.ts` and asserted verbatim by
+`tests/curve-table.test.ts`, on two stated assumptions: a working day of
+10 hours, which is where the working-day item rests the body and near the
+9.6 the calibration pass measured, and a main skill that takes 40 percent
+of it, 4 hours a day, with the other 6 spread over the five side skills at
+1.2 each. Tier placement follows those practice hours, never a survivor's
+age; a table typed by hand paced the game against an imaginary curve
+once, which is why the numbers are not typed again.
 
-Jobs at 3 gives every skill its automation inside the first session, the
-genre's timing. Grinds at 5 is the "you have been at this an hour" mark.
-Keeps at 10 line up with the cabin's recommended building level, so the
-same number means "seasoned" everywhere; level 10 in one skill is about 5
-real hours of that skill alone against a first life of about 8, so a
-first survivor earns keeps in one or two skills and the heir carries them.
-Six skills times three rungs is a two or three survivor arc, which is the
-four to six survivors of the thirty-day target.
+| rung | level | practice hours | game days at 4 h a day | real time | genre analogue |
+|---|---|---|---|---|---|
+| once jobs | 1 | 0 | 0 | 0 | the opening clicks |
+| jobs with a count or a target | 3 | 8 | 2 | 48 min | first builder, first session |
+| grinds | 5 | 32 | 8 | 3 h | dumb automation, first day |
+| keeps | 10 | 162 | 41 | 16 h | the manager, the second survivor |
+
+Jobs at 3 gives a skill its automation inside the first session, the
+genre's timing. Grinds at 5 is the "you have been at this a week" mark,
+eight game days in the main skill, three real hours of sim. Keeps at 10
+line up with the cabin's recommended building level, so the same number
+means "seasoned" everywhere; they cost 162 hours, 41 days at the
+main-skill share, 16 real hours of sim, which is past where a first
+survivor dies. A first survivor earns keeps only by putting the whole day
+into one skill for 16 days; on the ladder's shares the keep is the second
+survivor's rung, on day 41 in the skill it works most and on day 135 in
+a side skill, and the heir carries it from there. Six skills times three
+rungs is a two or three survivor arc, which is the four to six survivors
+of the thirty-day target.
 
 Grinds come before keeps on purpose. A grind ("fell trees forever") is
 crude automation that wears tools and depletes the haul; a keep ("keep
@@ -237,7 +251,7 @@ table's "hours of attention" bar.
 | survivor | dies of | game days | attention | what the survivor learns the game is | pays into Lineage | the heir starts with |
 |---|---|---|---|---|---|---|
 | 1 | the basics: thirst, cold, hunger, before any keep | under 20 | about 1 hour | existence: fire, a roof, water, snares, in that order | a fire through a night, a week of water | the dim map, landing near the old camp, a quarter carry in one skill, so jobs from birth |
-| 2 | the arrival axe wearing out, or the first cold snap | to first frost, 60 to 150 | 1 to 5 hours | surplus: the trap and the rack mean the day is not spent on today's calories | live 30 and 100 days, first frost, an elk | a half carry in two skills, so keeps from birth; warnings a week sooner; the cabin stands |
+| 2 | the arrival axe wearing out, or the first cold snap | to first frost, 60 to 150 | 1 to 5 hours | surplus: the trap and the rack mean the day is not spent on today's calories | live 30 and 100 days, first frost, an elk | a half carry in two skills, so keeps from birth in the one it worked most and grinds in the other; warnings a week sooner; the cabin stands |
 | 3 | winter: the dark, the cold snap, a hunted-out haul | to 1 December, day 245 | 5 to 10 hours | materials: an elk is hide, sinew, bone and fat, and Crafting blooms | winter under a roof, live 245 | a chosen landing month, a kit variant, the cellar keeps |
 | 4 to 6 | the second winter: an older body and a worse axe | a full year | 10 to 20 hours | infrastructure, then range: the camp is a machine, and everything it makes is for going somewhere it could not | live 365, the second winter | the step north |
 
@@ -269,19 +283,26 @@ is a finding: the tree bought nothing.
 Death is one wall. The second is content: the bow at crafting 5, the
 cabin at building 10, each species' hunting level, C's tiers. A run that
 survives must still stall against it, or levels are decoration. The
-quadratic curve already stalls a run. What one life reaches in its main
-skill, at about 40 percent of its working hours:
+quadratic curve already stalls a run. What one life reaches, in its main
+skill at 4 hours a day and in a side skill at 1.2, from the code curve
+(section 2.1 says how the table is made):
 
-| survivor lives | hours in the main skill | level reached |
-|---|---|---|
-| 20 days | 100 | 5 |
-| 100 days | 480 | 7 |
-| 245 days | 1,200 | 11 |
-| a year | 1,750 | 13 |
-| two years | 3,500 | 18 |
+| survivor lives | hours in the main skill | level reached | hours in a side skill | level reached |
+|---|---|---|---|---|
+| 20 days | 80 | 7 | 24 | 4 |
+| 100 days | 400 | 15 | 120 | 8 |
+| 245 days | 980 | 23 | 294 | 13 |
+| a year | 1460 | 28 | 438 | 15 |
+| two years | 2920 | 39 | 876 | 21 |
 
-So the wall exists, and today it is invisible and immovable: nothing on
-the tree lifts it and the player never sees it. Two fixes, both taken.
+So the wall exists, and it is higher up than this spec first said: an
+earlier version of this table, typed by hand, had a 245-day survivor at
+11 and a year at 13, and every tier was placed against that. The real
+curve reaches the top of the content, 30, in the main skill in a second
+year, and never in a side skill in two; the plateau past 25 is steep,
+since level 28 to 29 is 110 hours, 27 days at the main-skill share. The
+wall is invisible and immovable today: nothing on the tree lifts it and
+the player never sees it. Two fixes, both taken.
 
 ### 5.2 The plateau signal
 
@@ -301,11 +322,20 @@ F's Carry branch becomes two ladders per skill, separate nodes:
 - **Rate.** "Woodcraft comes twice as fast", then four times. Practice
   minutes in the skill count double, then quadruple, for every survivor
   of the lineage from then on. With a quadratic curve a doubled rate is
-  1.4 times the level in the same hours, so the reach across survivors
-  with one doubling each runs about 5, 7, 10, 14, 20 before the longer
-  lives add their own. The square root is what keeps it from running
-  away. Mastery and the pool are not rated: they are per action and cap
-  at 100 hours a key, and rating them would fill the pool in a life.
+  1.4 times the level in the same hours. Read against the real curve and
+  the survivor ladder's day bands (20, 150, 245 and 365 days in the main
+  skill, at rates of 1, 2, 4 and 4), the reach across survivors with one
+  doubling each runs about 7, 25, 45, 50: the third survivor at four
+  times the rate holds the whole of the content in its main skill by
+  1 December, and the fourth hits the cap. That is a pacing finding, not
+  a ruling: the ladder was sized against the hand-typed table section 5.1
+  replaced, which put the same reach at 5, 7, 10, 14, 20. The node stays
+  and its multipliers are re-derived from the generated tables when the
+  rest of F specs the tree; the candidates are a smaller step (one and a
+  half, then two) or a rate that counts only the hours under the last
+  tier the lineage opened. Mastery and the pool are not rated: they are
+  per action and cap at 100 hours a key, and rating them would fill the
+  pool in a life.
 
 Six skills times four nodes is 24 nodes in this branch alone, and a
 lineage that hurried woodcraft and carried hunting plays differently from
@@ -324,10 +354,36 @@ read the skill level, and an heir at full Lineage still dies of them.
 
 ### 5.4 Content tiers on the reach
 
-Each skill gets a tier at about 3, 5, 10, 15, 20 and 30, so survivor N
-opens tier N of every skill they pursue. The tiers are C's list, placed:
-wood by species (spruce, pine, birch, dead standing pine), fishing by
-method (spear, basket trap, net, weir), hunting by species (D's roster
+Each skill gets a tier at about 3, 5, 10, 15, 20 and 30. Which survivor
+opens which is read from practice hours, not from the tier's number: the
+table below derives it from the code curve, the main-skill share and the
+survivor ladder's day bands, and a tier is placed by the row it lands in.
+
+| tier | practice hours | game days in the main skill | reached by survivor | in a side skill by day |
+|---|---|---|---|---|
+| 3 | 8 | 2 | 1 | 7 |
+| 5 | 32 | 8 | 1 | 27 |
+| 10 | 162 | 41 | 2 | 135 |
+| 15 | 392 | 98 | 2 | 327 |
+| 20 | 722 | 181 | 3 | 602 |
+| 30 | 1682 | 421 | a second year or the tree | never in two years |
+
+So the first survivor opens 3 and 5 in the skill it works most, the
+second opens 10 and 15 there and 5 and 10 at the side, the third opens
+20, and 30 is a full year in one skill with the tree's carry behind it,
+or a second year without. Read against the capability spine's rows this
+moves no tier: the trap at Fishing 5 is the first or second survivor's,
+which is where the surplus revelation belongs; the cabin at Building 10
+is the second survivor's late or the third's, since Building is a side
+skill for most; the cellar and the smokehouse at Building 15 are the
+fourth's on the side share, which is the infrastructure row; the net,
+stalking and seasonal water fall to the second or third; and the weir and
+local mastery at 20 and 30 are the top of the arc. What the table
+changed is the claim that survivor N opens tier N: two tiers a survivor
+in the main skill, one at the side, and the sixth needs the tree. The
+tiers are C's list, placed: wood by species (spruce, pine, birch, dead
+standing pine), fishing by method and by water (spear, reading water,
+basket trap, net, seasonal water, weir), hunting by species (D's roster
 with its recommended levels), tool and clothing grades (E's coat and
 trousers, C's stone and bone tools). Today nothing sits above 10, so a
 surviving run hits the real wall at the top of the content, not the top
