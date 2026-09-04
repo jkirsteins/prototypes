@@ -70,6 +70,14 @@ export type TaskId =
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep";
 
+/** Every task, for tables that must cover them all. Keep in step with TaskId. */
+export const TASK_IDS: TaskId[] = [
+  "chop", "sticks", "bark", "stone", "berries", "split",
+  "hunt", "fish", "cook", "craft", "repair", "sharpen", "build",
+  "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
+  "travel", "walk", "haul", "night", "wait", "rest", "sleep",
+];
+
 export interface Task {
   id: TaskId;
   /** Species for hunt and fish, recipe for craft, structure for build, region for travel, spot for walk, food for cook. */

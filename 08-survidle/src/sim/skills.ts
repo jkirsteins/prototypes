@@ -8,7 +8,7 @@ import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, t
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
-import type { GameState, ItemId, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
+import type { GameState, ItemId, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
@@ -29,6 +29,17 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
 };
 
 export const SKILL_CAP = 50;
+
+/**
+ * The delegation ladder (idle curve spec, section 2): the level a skill
+ * must reach before its orders may be given as each kind. A once job is
+ * the manual rung and is never gated.
+ */
+export const RUNG_LEVEL: Record<OrderKind, number> = { job: 3, grind: 5, keep: 10 };
+export const RUNG_WORD: Record<OrderKind, string> = { job: "jobs", grind: "grinds", keep: "keeps" };
+/** Crude before smart: the order the rungs open in. */
+export const RUNG_ORDER: OrderKind[] = ["job", "grind", "keep"];
+
 export const MASTERY_CAP = 99;
 /** Level L needs 2 (L-1)^2 hours: 120 (L-1)^2 minutes. */
 export const SKILL_LEVEL_MINUTES = 120;

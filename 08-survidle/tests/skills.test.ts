@@ -8,6 +8,8 @@ import {
   level, levelMinutes, MASTERY_KEYS, masteryKey, masteryLevel, masteryMinutes, newSkills, poolCapacity,
   RECOMMENDED, SKILL_IDS, skillOf, skillLevel, speedFactor, spoiledNeeds, wearFactor, yieldFactor,
 } from "../src/sim/skills";
+import { TASK_IDS } from "../src/sim/types";
+import { RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../src/sim/skills";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { availableTasks, check, huntOdds, startTask, stepTask, stopTask } from "../src/sim/tasks";
@@ -488,5 +490,19 @@ describe("options carry progression", () => {
     state.skills.hunting.xp = levelMinutes(8);
     expect(availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!.recommended!.under).toBe(false);
     expect(availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "hare")!.recommended).toBeUndefined();
+  });
+});
+
+describe("the rungs", () => {
+  it("jobs open at 3, grinds at 5, keeps at 10, in that order", () => {
+    expect(RUNG_LEVEL).toEqual({ job: 3, grind: 5, keep: 10 });
+    expect(RUNG_ORDER).toEqual(["job", "grind", "keep"]);
+    expect(RUNG_WORD).toEqual({ job: "jobs", grind: "grinds", keep: "keeps" });
+  });
+
+  it("TASK_IDS lists every task once", () => {
+    expect(new Set(TASK_IDS).size).toBe(TASK_IDS.length);
+    for (const id of ["chop", "haul", "fill", "wait", "sleep", "night", "melt", "thaw"]) expect(TASK_IDS).toContain(id);
+    expect(TASK_IDS.length).toBe(28);
   });
 });
