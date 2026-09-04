@@ -97,9 +97,9 @@ describe("bough bed and blanket in play", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     st.structures.boughBed = true;
-    for (let d = 0; d < 13; d++) dailyCamp(state, world, calendar(state.minute), new Rng(1));
+    for (let d = 0; d < 13; d++) dailyCamp(state, world, calendar(state.minute), new Rng(1), { region: state.player.region, atCamp: true });
     expect(st.structures.boughBed).toBe(true);
-    for (let d = 0; d < 2; d++) dailyCamp(state, world, calendar(state.minute), new Rng(1));
+    for (let d = 0; d < 2; d++) dailyCamp(state, world, calendar(state.minute), new Rng(1), { region: state.player.region, atCamp: true });
     expect(st.structures.boughBed).toBe(false);
     expect(state.log.some((e) => e.text.includes("bough bed"))).toBe(true);
     addItem(state.player.pack, "stick", 12);

@@ -29,26 +29,26 @@ describe("animals", () => {
     const before = total("hare");
     const beforeDeer = total("deer");
     // Skip growth by doing one day in November.
-    dailyAnimals(state, world, calendar(1440 * 220), rng);
+    dailyAnimals(state, world, calendar(1440 * 220), rng, { region: state.player.region, atCamp: true });
     expect(total("hare")).toBeCloseTo(before, 6);
     expect(total("deer")).toBeCloseTo(beforeDeer, 6);
     // A summer day grows.
     const summerBefore = total("hare");
-    dailyAnimals(state, world, calendar(1440 * 90), rng);
+    dailyAnimals(state, world, calendar(1440 * 90), rng, { region: state.player.region, atCamp: true });
     expect(total("hare")).toBeGreaterThan(summerBefore);
   });
 
   it("never exceeds capacity by much and thins deer in winter", () => {
     const { state, world } = newGame(5);
     const rng = new Rng(2);
-    for (let d = 0; d < 120; d++) dailyAnimals(state, world, calendar(1440 * d), rng);
+    for (let d = 0; d < 120; d++) dailyAnimals(state, world, calendar(1440 * d), rng, { region: state.player.region, atCamp: true });
     for (const id of Object.keys(state.regions).map(Number)) {
       const r = regionAt(world, id);
       for (const s of SPECIES_IDS) expect(popOf(regionState(state, world, id), s)).toBeLessThanOrEqual((r.capacity[s] ?? 0) * 1.05 + 1);
     }
     const sumDeer = () => Object.values(state.regions).reduce((a, r) => a + popOf(r, "deer"), 0);
     const deerBefore = sumDeer();
-    for (let d = 260; d < 300; d++) dailyAnimals(state, world, calendar(1440 * d), rng);
+    for (let d = 260; d < 300; d++) dailyAnimals(state, world, calendar(1440 * d), rng, { region: state.player.region, atCamp: true });
     expect(sumDeer()).toBeLessThan(deerBefore);
   });
 
@@ -100,9 +100,9 @@ describe("seasons", () => {
     const k = regionAt(world, id).capacity.mallard!;
     st.pop.mallard = 0;
     const rng = new Rng(3);
-    for (let d = 0; d < 10; d++) dailyAnimals(state, world, calendar(1440 * (30 + d)), rng);   // May
+    for (let d = 0; d < 10; d++) dailyAnimals(state, world, calendar(1440 * (30 + d)), rng, { region: state.player.region, atCamp: true });   // May
     expect(popOf(st, "mallard")).toBeGreaterThan(k * 0.5);
-    for (let d = 0; d < 30; d++) dailyAnimals(state, world, calendar(1440 * (200 + d)), rng);  // mid October on
+    for (let d = 0; d < 30; d++) dailyAnimals(state, world, calendar(1440 * (200 + d)), rng, { region: state.player.region, atCamp: true });  // mid October on
     expect(popOf(st, "mallard")).toBeLessThan(k * 0.1);
   });
 
@@ -111,7 +111,7 @@ describe("seasons", () => {
     const id = regionWith(state, world, "raven");
     const st = regionState(state, world, id);
     st.pop.raven = 0;
-    dailyAnimals(state, world, calendar(1440 * 70), new Rng(1));
+    dailyAnimals(state, world, calendar(1440 * 70), new Rng(1), { region: state.player.region, atCamp: true });
     expect(popOf(st, "raven")).toBe(regionAt(world, id).capacity.raven);
     const deerId = regionWith(state, world, "deer");
     expect(seasonalCapacity(world, deerId, "deer", calendar(1440 * 275))).toBeCloseTo(regionAt(world, deerId).capacity.deer! * 0.6, 9);
@@ -124,7 +124,7 @@ describe("seasons", () => {
     const rng = new Rng(4);
     const before: Record<number, Partial<Record<Species, number>>> = {};
     for (const [id, st] of Object.entries(state.regions)) before[Number(id)] = { ...st.pop };
-    dailyAnimals(state, world, calendar(1440 * 220), rng);   // November: no growth
+    dailyAnimals(state, world, calendar(1440 * 220), rng, { region: state.player.region, atCamp: true });   // November: no growth
     for (const [key, st] of Object.entries(state.regions)) {
       const id = Number(key);
       for (const s of Object.keys(st.pop) as Species[]) {

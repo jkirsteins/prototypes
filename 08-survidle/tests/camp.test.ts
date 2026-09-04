@@ -17,12 +17,12 @@ describe("camp", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 6;
     addItem(pile(state, st.campCell), "firewood", 10);
-    for (let m = 0; m < 65; m++) stepCamp(state, world, 5, 1);
+    for (let m = 0; m < 65; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     expect(st.fire.lit).toBe(true);
     // 6 kg minus 3 kg burnt, then topped up from the pile when it dropped to 3 kg.
     expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
     state.player.autoFeed = false;
-    for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1);
+    for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     expect(st.fire.lit).toBe(false);
     expect(state.log.some((e) => e.text.includes("gone out"))).toBe(true);
   });
@@ -33,7 +33,7 @@ describe("camp", () => {
     st.structures.dryingRack = true;
     addItem(state.player.pack, "rawMeat", 3);
     expect(loadRack(state, world)).toBeCloseTo(3);
-    for (let m = 0; m < 48 * 60; m++) stepCamp(state, world, -5, 1);
+    for (let m = 0; m < 48 * 60; m++) stepCamp(state, world, -5, 1, { region: state.player.region, atCamp: true });
     expect(st.rack.kg).toBe(0);
     expect(qty(pile(state, st.campCell), "driedMeat")).toBeCloseTo(1);
   });
@@ -49,7 +49,7 @@ describe("camp", () => {
     st.pop.hare = r.capacity.hare;
     let caught = 0;
     for (let d = 0; d < 20; d++) {
-      dailyCamp(state, world, calendar(1440 * d), rng);
+      dailyCamp(state, world, calendar(1440 * d), rng, { region: state.player.region, atCamp: true });
       caught = Math.max(caught, st.snareCatch.count);
       st.snareCatch.count = 0;
     }
@@ -57,7 +57,7 @@ describe("camp", () => {
     st.snareCatch.count = 2;
     st.snareCatch.age = 0;
     st.structures.snares = 0;
-    for (let d = 0; d < 3; d++) dailyCamp(state, world, calendar(1440 * d), rng);
+    for (let d = 0; d < 3; d++) dailyCamp(state, world, calendar(1440 * d), rng, { region: state.player.region, atCamp: true });
     expect(st.snareCatch.count).toBe(0);
   });
 

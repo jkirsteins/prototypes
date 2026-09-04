@@ -6,6 +6,7 @@
  */
 import type { Rng } from "../rng";
 import { cellAt, neighbours, regionAt, type World } from "../world/gen";
+import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { coldFeet, coldHands, frostbiteChance, FROSTBITE_MINUTES } from "./clothing";
 import { fuelTotal, groundDry, SPREAD_FUEL_KG, SPREAD_PER_HOUR, SPREAD_UNATTENDED_MINUTES } from "./fire";
@@ -21,11 +22,15 @@ import type { GameState } from "./types";
 import { campWaterCapacity, FREEZE_C } from "./water";
 import { ICE_THIN_CM } from "./weather";
 
-export function hourlyHazards(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
+export function hourlyHazards(state: GameState, world: World, _cal: Calendar, ambient: number, felt: number, rng: Rng): void {
   freezeVessels(state, world, ambient, rng);
-  freezeCamps(state, world, ambient, rng);
   frostbite(state, felt, rng);
-  spread(state, world, cal, rng);
+}
+
+/** The hour's rolls against camp and land rather than the body: run with nobody home too. */
+export function hourlyWorld(state: GameState, world: World, cal: Calendar, ambient: number, rng: Rng, who: Presence | null): void {
+  freezeCamps(state, world, ambient, rng, who);
+  spread(state, world, cal, rng, who);
 }
 
 /**
@@ -34,7 +39,7 @@ export function hourlyHazards(state: GameState, world: World, cal: Calendar, amb
  * runner banks a fire before it leaves camp (see intent.ts), so this only
  * catches a fire left burning by hand.
  */
-function spread(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+function spread(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   if (!groundDry(state.weather, cal)) return;
   if (!state.weather.dryWarned) {
     state.weather.dryWarned = true;
@@ -51,7 +56,7 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng): void {
     st.fire.fuelKg = 0;
     st.fire.wetKg = 0;
     st.fire.indoors = false;
-    const where = id === state.player.region ? "" : ` at ${regionAt(world, id).name}`;
+    const where = id === who?.region ? "" : ` at ${regionAt(world, id).name}`;
     log(state, `Smoke on the wind. The fire has spread from camp${where}.`, "bad");
   }
 }
@@ -124,9 +129,8 @@ function freezeVessels(state: GameState, world: World, ambient: number, rng: Rng
 }
 
 /** Water left at camp in frost with no fire: it freezes, and a full bucket may split. */
-function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng): void {
+function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng, who: Presence | null): void {
   if (ambient >= FREEZE_C) return;
-  const p = state.player;
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     if (st.fire.lit) continue;
@@ -143,8 +147,8 @@ function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng):
       if (!full || !rng.chance(1 / 3)) continue;
       removeItem(camp, "barkBucket", 1);
       removeItem(camp, "ice", Math.min(TOOLS.barkBucket.litres!, qty(camp, "ice")));
-      log(state, id === p.region ? "A bucket at camp has split in the frost." : `A bucket at camp in ${regionAt(world, id).name} has split in the frost.`, "bad");
+      log(state, id === who?.region ? "A bucket at camp has split in the frost." : `A bucket at camp in ${regionAt(world, id).name} has split in the frost.`, "bad");
     }
-    log(state, id === p.region ? "The water at camp has frozen." : `The water at camp in ${regionAt(world, id).name} has frozen.`, "bad");
+    log(state, id === who?.region ? "The water at camp has frozen." : `The water at camp in ${regionAt(world, id).name} has frozen.`, "bad");
   }
 }

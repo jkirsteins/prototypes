@@ -1,5 +1,6 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, type World } from "../world/gen";
+import type { Presence } from "./advance";
 import { popOf, regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
@@ -9,18 +10,16 @@ import {
   SNARE_CATCH_MAX_AGE,
 } from "./items";
 import { log } from "./log";
-import { atCamp } from "./position";
 import { regionState, touchedRegions } from "./regionstate";
 import { type GameState, PERISHABLES } from "./types";
 import { THAW_L_PER_HOUR } from "./water";
 
-/** Fires, racks and rot, every minute, everywhere. */
-export function stepCamp(state: GameState, world: World, ambient: number, dt: number): void {
-  const p = state.player;
+/** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
+export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    const mine = id === p.region;
-    const atCampHere = mine && atCamp(state, world);
+    const mine = who !== null && id === who.region;
+    const atCampHere = mine && who!.atCamp;
     const name = () => regionAt(world, id).name;
 
     st.logsWet = state.weather.precip !== "none" ? 0 : st.logsWet + dt;
@@ -34,7 +33,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.wetKg = Math.max(0, st.fire.wetKg - perMin * dt * share);
         st.fire.fuelKg = Math.max(0, st.fire.fuelKg - perMin * dt * (1 - share));
       }
-      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere && p.autoFeed) {
+      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere && state.player.autoFeed) {
         feedFire(state, world, id, FIRE_MAX_KG - fuelTotal(st.fire));
       }
       const outOfFuel = fuelTotal(st.fire) <= 0;
@@ -76,15 +75,16 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
   }
-  dryWood(state, world, dt);
+  dryWood(state, dt, who);
   for (const k of Object.keys(state.piles)) {
     const cell = Number(k);
     const inv = state.piles[cell];
     if (!inv) continue;
     const region = cellAt(world, cell).region;
-    reportSpoil(state, ageStacks(inv, dt, ambient), region === p.region ? "" : ` at ${regionAt(world, region).name}`);
+    reportSpoil(state, ageStacks(inv, dt, ambient), region === who?.region ? "" : ` at ${regionAt(world, region).name}`);
   }
-  reportSpoil(state, ageStacks(p.pack, dt, ambient), " in your pack");
+  // Nobody is carrying a pack with nobody home.
+  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in your pack");
   tidyPiles(state);
 }
 
@@ -127,7 +127,7 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
 }
 
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
-export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
     const r = regionAt(world, id);
     const st = state.regions[id];
@@ -158,7 +158,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     }
     if (st.iceHole) {
       st.iceHole = null;
-      if (id === state.player.region) log(state, "The ice hole has skinned over.");
+      if (who && id === who.region) log(state, "The ice hole has skinned over.");
     }
     const forestCells = r.forest * r.cells.length;
     st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);

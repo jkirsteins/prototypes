@@ -1,5 +1,6 @@
 import type { Rng } from "../rng";
 import { regionAt, speciesHere, type World } from "../world/gen";
+import type { Presence } from "./advance";
 import { type Calendar, monthName } from "./calendar";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
@@ -52,11 +53,11 @@ export function regionDensity(state: GameState, world: World, region: number, s:
   return density(popOf(regionState(state, world, region), s), seasonalCapacity(world, region, s, cal, state.weather.iceCm));
 }
 
-/** Runs once per game day at 04:00: growth, then migration. Logs notable movements near the player. */
-export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+/** Runs once per game day at 04:00: growth, then migration. Logs notable movements near the player; nothing to notice with nobody home. */
+export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   const growing = cal.month >= 3 && cal.month <= 8;
-  const here = state.player.region;
-  const before = NOTABLE.map((s) => popOf(regionState(state, world, here), s));
+  const here = who?.region;
+  const before = here !== undefined ? NOTABLE.map((s) => popOf(regionState(state, world, here), s)) : [];
   const touched = touchedRegions(state);
   const touchedSet = new Set(touched);
 
@@ -120,6 +121,7 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
   }
 
   NOTABLE.forEach((s, i) => {
+    if (here === undefined) return;
     const now = popOf(state.regions[here], s);
     const was = before[i];
     if (was < 0.5 && now < 0.5) return;

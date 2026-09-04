@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { hourlyHazards } from "../src/sim/hazards";
+import { hourlyHazards, hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, produce, qty, takeUp } from "../src/sim/inventory";
 import { itemLabel, take } from "../src/sim/actions";
 import { newGame } from "../src/sim/newgame";
@@ -192,7 +192,7 @@ describe("water at camp", () => {
     // Under half the capacity, so no bucket rolls a split and the numbers are exact.
     addItem(camp, "barkBucket", 2);
     addItem(camp, "water", 1.5);
-    hourlyHazards(state, world, cal, -8, -8, new Rng(1));
+    hourlyWorld(state, world, cal, -8, new Rng(1), { region: state.player.region, atCamp: true });
     expect(qty(camp, "water")).toBe(0);
     expect(qty(camp, "ice")).toBeCloseTo(1.5, 5);
     expect(qty(camp, "barkBucket")).toBe(2);
@@ -212,7 +212,7 @@ describe("water at camp", () => {
     addItem(camp, "water", 3);
     // Capacity is one bucket's 2 l; 3 l is over half of that, so the split rolls.
     // Rng(7)'s first draw is 0.0117, under the one-in-three chance, so it fires.
-    hourlyHazards(state, world, cal, -8, -8, new Rng(7));
+    hourlyWorld(state, world, cal, -8, new Rng(7), { region: state.player.region, atCamp: true });
     expect(qty(camp, "barkBucket")).toBe(0);
     expect(qty(camp, "ice")).toBeCloseTo(1, 5);
     expect(state.log.some((l) => l.text === "A bucket at camp has split in the frost.")).toBe(true);
@@ -224,7 +224,7 @@ describe("water at camp", () => {
     addItem(camp, "water", 2);
     st.fire.lit = true;
     st.fire.fuelKg = 10;
-    hourlyHazards(state, world, cal, -8, -8, new Rng(1));
+    hourlyWorld(state, world, cal, -8, new Rng(1), { region: state.player.region, atCamp: true });
     expect(qty(camp, "water")).toBe(2);
   });
 

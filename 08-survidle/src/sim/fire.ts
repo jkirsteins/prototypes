@@ -4,9 +4,9 @@
  * the fire step in camp.ts, the light task and the felt temperature read.
  */
 import { cellAt, type World } from "../world/gen";
+import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
-import { cellOf } from "./position";
 import { regionState, touchedRegions } from "./regionstate";
 import type { GameState, Inventory, RegionState, Weather } from "./types";
 
@@ -143,19 +143,17 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number): void {
  * weather, none in rain. Every other pile, and the pack away from any camp,
  * dries at 0.5 an hour in dry weather, none in rain.
  */
-export function dryWood(state: GameState, world: World, dt: number): void {
+export function dryWood(state: GameState, dt: number, who: Presence | null): void {
   const w = state.weather;
   const dry = w.precip === "none";
-  const p = state.player;
-  const here = cellOf(state, world);
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     const sheltered = st.fire.lit || st.structures.cabin;
     const perHour = sheltered ? 2 : st.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
     if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];
-    const atThisCamp = id === p.region && here === st.campCell;
-    const invs = [campPile, atThisCamp ? p.pack : undefined].filter((x): x is Inventory => x !== undefined);
+    const atThisCamp = who !== null && id === who.region && who.atCamp;
+    const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
     dryBudget(invs, perHour, dt);
   }
   if (!dry) return;
@@ -166,7 +164,6 @@ export function dryWood(state: GameState, world: World, dt: number): void {
     const isCampPile = touchedRegions(state).some((id) => state.regions[id].campCell === cell);
     if (!isCampPile) dryBudget([inv], 0.5, dt);
   }
-  // Away from every camp, the pack dries in the open like any other stack.
-  const st = regionState(state, world, p.region);
-  if (here !== st.campCell) dryBudget([p.pack], 0.5, dt);
+  // Away from every camp, the pack dries in the open like any other stack; nobody carries one with nobody home.
+  if (who && !who.atCamp) dryBudget([state.player.pack], 0.5, dt);
 }

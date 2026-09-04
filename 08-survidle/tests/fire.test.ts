@@ -4,7 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { feedFire } from "../src/sim/camp";
 import { burnPerHour, fireSeason, fireWarmth, lightingInRain, smoky } from "../src/sim/fire";
-import { hourlyHazards } from "../src/sim/hazards";
+import { hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature } from "../src/sim/player";
@@ -205,7 +205,7 @@ describe("spread and smoke", () => {
     const rng = new Rng(9);
     let hours = 0;
     while (st.fire.lit && hours < 400) {
-      hourlyHazards(state, world, july, 18, 18, rng);
+      hourlyWorld(state, world, july, 18, rng, { region: state.player.region, atCamp: false });
       hours++;
     }
     expect(st.fire.lit).toBe(false);
@@ -223,7 +223,7 @@ describe("spread and smoke", () => {
       st2.fire.fuelKg = fix.fuel;
       st2.fire.unattended = fix.unattended;
       h.state.weather.dryDays = fix.dry;
-      for (let k = 0; k < 400; k++) hourlyHazards(h.state, h.world, july, 18, 18, rng);
+      for (let k = 0; k < 400; k++) hourlyWorld(h.state, h.world, july, 18, rng, { region: h.state.player.region, atCamp: true });
       expect(st2.fire.lit).toBe(true);
     }
   });
