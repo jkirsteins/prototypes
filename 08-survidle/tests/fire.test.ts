@@ -170,6 +170,16 @@ describe("splitting waits for dry weather", () => {
     state.weather.precip = "heavy";
     expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: false, why: "waiting for dry weather" });
   });
+
+  it("judges the split at the camp cell, not wherever the player is standing", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "log", 1);
+    st.structures.leanTo = true;
+    state.weather.precip = "heavy";
+    placeAtSpot(state, world, state.player.region, "shore");
+    expect(check(state, world, calendar(0), "split", undefined, st.campCell)).toMatchObject({ ok: true, detail: "one log into 20 kg of firewood, under the roof" });
+  });
 });
 
 describe("spread and smoke", () => {

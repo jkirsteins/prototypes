@@ -3,7 +3,7 @@
  * will not let you light and eats what you lit. Every rule here is a number
  * the fire step in camp.ts, the light task and the felt temperature read.
  */
-import type { World } from "../world/gen";
+import { cellAt, type World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
 import { cellOf } from "./position";
@@ -110,10 +110,16 @@ export function splitIsWet(state: GameState, world: World): boolean {
   return regionState(state, world, state.player.region).logsWet < WET_AFTER_RAIN_MINUTES;
 }
 
-/** True at the camp cell with a lean-to or cabin built: the roof keeps the rain off the block, so a split there is never wet. */
-export function splitSheltered(state: GameState, world: World): boolean {
-  const st = regionState(state, world, state.player.region);
-  return cellOf(state, world) === st.campCell && (st.structures.leanTo || st.structures.cabin);
+/**
+ * True when `at` is the camp cell of its own region, with a lean-to or
+ * cabin built: the roof keeps the rain off the block, so a split there is
+ * never wet. Takes the cell being judged rather than reading the player's
+ * own position, since checkFresh judges a task at a cell the player has
+ * not necessarily walked to yet.
+ */
+export function splitSheltered(state: GameState, world: World, at: number): boolean {
+  const st = regionState(state, world, cellAt(world, at).region);
+  return at === st.campCell && (st.structures.leanTo || st.structures.cabin);
 }
 
 /** Dries up to `perHour * dt / 60` kg total, drawn from whichever of `invs` has wet stock first. */
