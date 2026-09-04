@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { eat } from "../src/sim/actions";
 import { calendar, dayNumber, START_MINUTE_OF_DAY } from "../src/sim/calendar";
-import { addItem, qty } from "../src/sim/inventory";
+import { addItem, qty, weight } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
@@ -89,6 +89,19 @@ describe("the ledger", () => {
     delete raw.state.ledger;
     const file = deserialize(JSON.stringify(raw))!;
     expect(file.state.ledger).toEqual([]);
+  });
+
+  it("a save from before berries were perishable loads them as a stack, weighed once", () => {
+    const { state } = newGame(1);
+    const bare = weight(state.player.pack);
+    const raw = JSON.parse(serialize(state));
+    raw.state.player.pack.items.berries = 1.5;
+    delete raw.state.player.pack.stacks.berries;
+    const pack = deserialize(JSON.stringify(raw))!.state.player.pack;
+    expect(qty(pack, "berries")).toBe(1.5);
+    expect(pack.stacks.berries).toEqual([{ kg: 1.5, age: 0 }]);
+    expect(pack.items.berries).toBeUndefined();
+    expect(weight(pack)).toBeCloseTo(bare + 1.5, 9);
   });
 });
 

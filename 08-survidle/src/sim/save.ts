@@ -2,12 +2,13 @@ import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY } from "./calendar";
+import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
-import type { GameState, LogEntry, TaskId } from "./types";
+import type { GameState, Inventory, LogEntry, TaskId } from "./types";
 
 export const SAVE_KEY = "survidle.save";
 /** Away longer than this is simulated as this. */
@@ -90,6 +91,17 @@ function fillDefaults(state: GameState): void {
     t.litres ??= 0;
     t.frozen ??= false;
   }
+  // Berries joined the perishables, so a save that holds them as a plain count
+  // holds kilos that weigh but that qty, listItems and eating never see. Moving
+  // them into one fresh stack is what addItem would have done with the pick.
+  const stackBerries = (inv: Inventory): void => {
+    inv.stacks ??= {};
+    const kg = inv.items.berries ?? 0;
+    if (kg > 0) addItem(inv, "berries", kg);
+    delete inv.items.berries;
+  };
+  stackBerries(p.pack);
+  for (const inv of Object.values(state.piles)) stackBerries(inv);
   const w = state.weather;
   w.storm ??= null;
   w.dryDays ??= 0;
