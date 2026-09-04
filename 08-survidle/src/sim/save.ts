@@ -1,3 +1,4 @@
+import { derive, Rng } from "../rng";
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
@@ -8,6 +9,7 @@ import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
 import { newRecord } from "./record";
+import { rollName } from "./names";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, Inventory, LogEntry, TaskId } from "./types";
@@ -48,8 +50,7 @@ function fillDefaults(state: GameState): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
-  // Task 2 replaces this
-  state.survivors ??= [newRecord(1, { first: "First", last: "Survivor" }, { year: 1, doy: state.startDoy }, 0)];
+  state.survivors ??= [newRecord(1, rollName(new Rng(derive(state.seed, 7)), []), { year: 1, doy: state.startDoy }, 0)];
   for (const st of Object.values(state.regions)) st.structureAge ??= {};
   if (state.intent) {
     state.intent.orderId ??= null;

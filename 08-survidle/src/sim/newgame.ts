@@ -1,4 +1,4 @@
-import { derive } from "../rng";
+import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, fmtDate, START_DOY } from "./calendar";
@@ -8,6 +8,7 @@ import { creditYield } from "./ledger";
 import { log } from "./log";
 import { FAT_FULL } from "./player";
 import { newRecord } from "./record";
+import { rollName } from "./names";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState } from "./types";
@@ -82,8 +83,7 @@ export function newGame(seed: number, startDoy = START_DOY): { state: GameState;
     lastHour: 0,
     lastDay: 0,
     piles: {},
-    // Task 2 replaces this
-    survivors: [newRecord(1, { first: "First", last: "Survivor" }, { year: 1, doy: startDoy }, 0)],
+    survivors: [newRecord(1, rollName(new Rng(derive(seed, 7)), []), { year: 1, doy: startDoy }, 0)],
     year: 1,
     landing: null,
     spine: { fired: {}, announced: {} },
