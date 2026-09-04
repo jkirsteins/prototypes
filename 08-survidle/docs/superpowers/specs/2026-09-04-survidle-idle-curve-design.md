@@ -211,6 +211,22 @@ The checks land with the ladder for the first three rows and with each
 producer for the last. The first three are provisional until the
 calibration pass moves the kcal and the burn they are measured in.
 
+### 3.1 The rhythm
+
+The horizon grows in one repeating step: a new capability makes a new
+surplus or a new reach; the surplus or the reach makes a new bottleneck;
+the bottleneck is what the next capability answers. The trap makes fish
+surplus, surplus makes spoilage the limit, spoilage is the rack's 6 kg
+and then the smokehouse and the cellar. The elk makes 150 kg and 20 kg
+of hide, which make preservation and tanning the limit, which make the
+cellar and the pit. Clothing and stored food make distance the limit,
+and distance makes the hide tent and the second camp. The build order
+follows the same step: a capability is promoted when the one before it
+made its bottleneck the measured cause of death in the reference runs,
+never because its dependency graph is elegant. The capability spine
+(`2026-09-04-survidle-capability-spine-design.md`) lists the steps and
+what each leaves limiting.
+
 ## 4. The survivor ladder
 
 Each survivor dies of the next ramp out, and the tree pays for the step
@@ -218,12 +234,17 @@ behind it. Gates are game days on the season spine; attention hours are
 what falls out of days times cadence, and are the check against the gate
 table's "hours of attention" bar.
 
-| survivor | dies of | game days | attention | pays into Lineage | the heir starts with |
-|---|---|---|---|---|---|
-| 1 | the basics: thirst, cold, hunger, before any keep | under 20 | about 1 hour | a fire through a night, a week of water | the dim map, landing near the old camp, a quarter carry in one skill, so jobs from birth |
-| 2 | the arrival axe wearing out, or the first cold snap | to first frost, 60 to 150 | 1 to 5 hours | live 30 and 100 days, first frost, an elk | a half carry in two skills, so keeps from birth; warnings a week sooner; the cabin stands |
-| 3 | winter: the dark, the cold snap, a hunted-out haul | to 1 December, day 245 | 5 to 10 hours | winter under a roof, live 245 | a chosen landing month, a kit variant, the cellar keeps |
-| 4 to 6 | the second winter: an older body and a worse axe | a full year | 10 to 20 hours | live 365, the second winter | the step north |
+| survivor | dies of | game days | attention | what the survivor learns the game is | pays into Lineage | the heir starts with |
+|---|---|---|---|---|---|---|
+| 1 | the basics: thirst, cold, hunger, before any keep | under 20 | about 1 hour | existence: fire, a roof, water, snares, in that order | a fire through a night, a week of water | the dim map, landing near the old camp, a quarter carry in one skill, so jobs from birth |
+| 2 | the arrival axe wearing out, or the first cold snap | to first frost, 60 to 150 | 1 to 5 hours | surplus: the trap and the rack mean the day is not spent on today's calories | live 30 and 100 days, first frost, an elk | a half carry in two skills, so keeps from birth; warnings a week sooner; the cabin stands |
+| 3 | winter: the dark, the cold snap, a hunted-out haul | to 1 December, day 245 | 5 to 10 hours | materials: an elk is hide, sinew, bone and fat, and Crafting blooms | winter under a roof, live 245 | a chosen landing month, a kit variant, the cellar keeps |
+| 4 to 6 | the second winter: an older body and a worse axe | a full year | 10 to 20 hours | infrastructure, then range: the camp is a machine, and everything it makes is for going somewhere it could not | live 365, the second winter | the step north |
+
+The fifth column is the row read from the player's side: each survivor
+dies of the next ramp, and each also ends knowing something about the
+game the last one did not. A row whose heir learns nothing new is a
+finding of the same kind as one where the tree bought nothing.
 
 Row 1 and the axe half of row 2 exist today (A's headless runs die of
 the axe at day 67 to 86). The cold snap, winter and the second winter
@@ -316,6 +337,15 @@ E), and this spec only fixes the levels they sit at.
 Recommended levels are soft, as C rules: under the tier the work is slow
 and the odds are punished, never locked. The tier is where it becomes
 worth doing.
+
+Every tier has a name the player can remember and a log line when it
+opens, the way the rungs of section 2.3 do: "Reading water: the shore
+tells you what it holds." A tier whose best name is "+X%" is not a tier;
+the percent a level between tiers is where that lives. A tier names the
+skill it receives from and the thing outside its skill it gives, and the
+capability spine's coverage test asserts both over every tier, producer,
+rung and capability-unlocking structure in the tree; a species is not a
+tier and is not asserted.
 
 ## 6. The evolution view
 

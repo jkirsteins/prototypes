@@ -259,7 +259,12 @@ the gap between survivors that sets the heir's month, and the heir set
 down near the old camp; not its ramp), then the first producers and
 stocks (C's basket trap, and 3's water storage and turf hut, pulled out
 of their items), then B the risk forecast with the away cap as its
-horizon, then the rest of F in impact order (latitude by row with the
+horizon, then the first tester round: with B in, the set the hybrid's
+bet needs exists (a death that persists, a producer, a camp that holds,
+orders, a forecast that makes away risk legible), so twenty testers and
+the beacon go in there, as a kill-or-continue check of the hybrid and
+not the commercial gate, before any content deepens a loop that has not
+earned it; then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
 run and its search order), then E hides and clothing, then the rest of
@@ -273,7 +278,12 @@ tool tiers that make the arrival axe the best one), 5 (permanent damage),
 the reference player says when the ramp is enough. 2 rivers is flavour
 and has no slot: it lands whenever there is room after 3, and when it
 does it plugs into the water features 1, C and 3 own rather than bringing
-its own.
+its own. A capability is promoted in this order when the one before it
+made its bottleneck the measured cause of death, never because its
+dependency graph is elegant (the idle curve's rhythm, its section 3):
+the smokehouse is the first named cross-skill project on the spine and
+still waits behind the producers until the trap has made spoilage the
+limit.
 G music and H the mind have no slot before the gate: H is the first
 content after it and G lands with H, since alone music moves nothing.
 The edge of the world, the last section before the rules, is not an item.
@@ -457,15 +467,15 @@ the choice mean something.
 pays back in a different currency. Warmth is the shelter term of the
 felt-temperature sum, as the lean-to's +5 and the cabin's +15 are today.
 
-| rung | build | gives | costs it back | where it stands |
-|---|---|---|---|---|
-| snow shelter | 2 h, no materials, deep snow | about 0 C inside, out of the wind | melts in a thaw; winter only | wherever 7's drifts put deep snow |
-| lean-to | as today: 4 h, 8 sticks, 4 logs, 2 cordage | +5, halves wetting | open front | anywhere |
-| rock shelter | nothing; the site gives it | the lean-to's roof and wind wall, no snow load, no fire spread from bare rock | cold rock, so no more than a lean-to's warmth; smoke pools under the overhang by the closed-cabin rule; a bear den in winter (4) | fell edge and boulder field cells the world generates |
-| turf hut | 2 days: poles, 20 sticks, birch bark or bog turf for the roof | +10, blocks rain, a hearth with a smoke hole so a fire inside is legal | the roof rots in a year or two and is re-turfed; heavy in bark, light in logs | where bark or turf is within reach |
-| dug-out | 30 h: 12 logs for the roof, turf over, and a digging tool, an elk's shoulder blade from D's bone yield | +12, and the earth holds it near 0 C unheated, so a winter costs a third of a cabin's firewood | damp: bedding and hide inside wear as if in rain; floods on flat ground, so a dry slope or nothing | a slope that is neither rock nor bog |
-| cabin | as today: 60 h, 40 logs, 12 stone, 8 cordage | +15, blocks everything; the hearth, storehouse and cellar attach here | the cost | forest within haul |
-| hide tent | E's hides, 6 of them sewn, and poles cut on site | +8 with a hearth inside; 15 kg in the pack | wears like clothing; poles are cut fresh each pitch | walks with you; it is the shelter 6's moving camp needs and a multi-day hunt uses before that |
+| rung | build | gives | what it enables | costs it back | where it stands |
+|---|---|---|---|---|---|
+| snow shelter | 2 h, no materials, deep snow | about 0 C inside, out of the wind | a night on the fell in January; nothing else | melts in a thaw; winter only | wherever 7's drifts put deep snow |
+| lean-to | as today: 4 h, 8 sticks, 4 logs, 2 cordage | +5, halves wetting | a fire in front, drying, sleep, a little stock under the overhang | open front; no fire inside, so nothing smokes | anywhere |
+| rock shelter | nothing; the site gives it | the lean-to's roof and wind wall, no snow load, no fire spread from bare rock | what the lean-to enables, for a walk instead of a build | cold rock, so no more than a lean-to's warmth; smoke pools under the overhang by the closed-cabin rule; a bear den in winter (4) | fell edge and boulder field cells the world generates |
+| turf hut | 2 days: poles, 20 sticks, birch bark or bog turf for the roof | +10, blocks rain, a hearth with a smoke hole so a fire inside is legal | fire inside, so E's smoking has its roof; clothing dries by the hearth; a first winter | the roof rots in a year or two and is re-turfed; heavy in bark, light in logs | where bark or turf is within reach |
+| dug-out | 30 h: 12 logs for the roof, turf over, and a digging tool, an elk's shoulder blade from D's bone yield | +12, and the earth holds it near 0 C unheated, so a winter costs a third of a cabin's firewood | a cool store before the cellar exists, and hours the runner does not spend on firewood | damp: bedding and hide inside wear as if in rain, so nothing dries here; floods on flat ground, so a dry slope or nothing | a slope that is neither rock nor bog |
+| cabin | as today: 60 h, 40 logs, 12 stone, 8 cordage | +15, blocks everything; the hearth, storehouse and cellar attach here | the storehouse, the cellar, the smokehouse, a shelf that keeps instruments dry, and the long orders a camp that stands can hold | the cost | forest within haul |
+| hide tent | E's hides, 6 of them sewn, and poles cut on site | +8 with a hearth inside; 15 kg in the pack | a camp that walks: the multi-day hunt, the second camp, the push north | wears like clothing; poles are cut fresh each pitch | walks with you; it is the shelter 6's moving camp needs and a multi-day hunt uses before that |
 
 The rungs that carry the item: the turf hut is the missing middle, the
 rung a player reaches in the first fortnight and winters in when the
@@ -1423,6 +1433,21 @@ producer. Survivor row 2: the tool tiers make the arrival axe the best
 one, which is the axe ramp. Expected: the trap's hourly rate takes a
 stocked camp to the away cap, and a replaced axe is worse than the first.
 
+Each skill answers one economic question, and a tier is judged by its
+skill's question; a tier that does not answer it is in the wrong skill.
+The capability spine (`2026-09-04-survidle-capability-spine-design.md`)
+is the list of tiers this item fills, and its coverage test is what
+keeps a tier from landing as a percent.
+
+| skill | what it makes true |
+|---|---|
+| Woodcraft | trees become differentiated material, fuel and structure |
+| Foraging | more of the world becomes a resource |
+| Hunting | animals become bundles of inputs, not meals |
+| Fishing | food becomes predictable, then passive |
+| Crafting | raw material becomes capability |
+| Building | a capability becomes infrastructure that persists |
+
 Levels are a percent per level today, so a level 1 and a level 15
 woodcutter do the same work, one a little faster. Melvor's ladder is
 content tiers. Soft gates throughout, never "locked":
@@ -1435,22 +1460,40 @@ content tiers. Soft gates throughout, never "locked":
   under it the felling is slow and blunts the axe. Per-species mastery
   already exists (`chop:spruce`, `chop:pine`, `chop:birch`); its extras at
   20 and 50 become the concrete rewards.
-- **Fishing by method.** The spear is the one method today, D's spec
-  says so, and fishing barely breaks even on calories. The rungs are
-  methods, not species: spear, then a basket trap, then a net. The trap
-  is stakes and cordage set in lake shallows, a Crafting task at a
-  recommended Fishing level; once set it catches while you are away at
-  an hourly rate keyed to Fishing level and season, and a standing order
-  "empty the trap, dry the fish" makes it a stock. It is the first food
-  producer a camp runs without you. It has upkeep the game already knows
-  how to charge: ice takes it in November, so it is rebuilt each spring,
-  and 4's animals raid it. Whitefish in the shallows in October is its
-  seasonal event; the salmon run waits for 2's weir, which is the river
-  form of the same trap.
+- **Fishing by method and by water, never by fish.** The spear is the
+  one method today, D's spec says so, and fishing barely breaks even on
+  calories. The fish carry a recommended level each in the tree (pike at
+  3, trout at 3, char at 4) and it buys nothing but dice: the same spear
+  on the same shore with the odds halved per level short. That level
+  comes off the six fish rows. A species keeps its odds, its kilos, its
+  water and its season, and is reached by a method, a place and a time
+  of year: the spear reaches pike and trout, the trap whitefish, the net
+  char, the ice hole burbot, the weir salmon. The ladder is spear at 1;
+  reading water at 3, where a shore says what it holds and where ("pike
+  in the reeds, whitefish off the point") and fishes at the local rate
+  where an unread shore fishes at the beginner band, which is where the
+  tables' five-to-tenfold expert lives and what 3's siting and the trap's
+  placement read; the basket trap at 5; the net at 10; seasonal water at
+  15, the whitefish shallows in October and burbot under the ice named
+  on the season panel; the weir at 20 with 2's rivers; local mastery at
+  30. If a per-species ladder is wanted it takes the form of recognition,
+  char water reading at 5 and burbot's winter holes at 10, never the
+  form of dice. The trap is stakes and cordage set in lake shallows, a
+  Crafting task at its Fishing tier; once set it catches while you are
+  away at an hourly rate keyed to Fishing level and season, and a
+  standing order "empty the trap, dry the fish" makes it a stock. It is
+  the first food producer a camp runs without you. It has upkeep the
+  game already knows how to charge: ice takes it in November, so it is
+  rebuilt each spring, and 4's animals raid it. The salmon run waits for
+  2's weir, which is the river form of the same trap.
 - **Hunting and crafting** already key per species and per recipe. They
   need more rungs, not a new mechanism: more animals with a real spread of
   yield and danger (D's roster, with a recommended level, yields and
   mastery extras per species), and tool and clothing tiers worth the level.
+  A hunted species keeps its level because it passes the test a fish does
+  not: a deer at 4 is hide, sinew and bone for Crafting, and an elk at 8
+  is a preservation problem for 3. Stalking at Hunting 10, odds by where
+  you stand to the wind, is the tier 7 gives Hunting.
 - **Buildings that produce, honestly.** A chicken coop lays real eggs at a
   real rate and eats real feed. Belongs with the camp build-out
   (sub-project 3), listed here because it is what an idle stock looks like
@@ -1757,21 +1800,37 @@ reach the first frost, winter under a roof, take an elk, live 30, 100,
 245 and 365 days. Side goals that pull the set-up off course turn the
 list into a checklist. The first three are the tutorial: hold a fire
 through a night, hold a week of water, reach the first frost. Thirty to
-forty goals for the gate.
+forty goals for the gate. A goal may be a project, a job whose bill of
+materials is visible on its row with what camp has against each line and
+"no outcrop known" when the dim map has no source for one, when the
+building is one a good run wants anyway; the spine's section 4 says what
+a project is, and the smokehouse is the first named one.
 
 **Lineage.** One level, owned by the player and not the world, so it
 survives a new seed. It is earned by goals and by nothing else: no real
 money, no time. It is spent on a tree of four branches. A node earns its
 place by what it does to a bar in the gate table, the re-run rate or the
 hours of attention; one that moves neither is a badge and does not
-belong here:
+belong here. Knowledge is the branch the player should think Lineage is
+about, and it is listed first; Experience holds the carry and rate
+ladders, which are infrastructure, since they move the delegation clock
+across lives, and are not what the tree is for:
 
+- **Knowledge.** The dim map, trails, the death site marked, the journal
+  read earlier, the season spine's warnings a week sooner, and the
+  payloads that make the world legible: known water (which shore holds
+  what, read at the local rate from the first day), animal crossings
+  (the saddle the elk use in the rut), birch stands, safe ice and the
+  rapids that never freeze, a valley that traps cold under an inversion,
+  old camps. Each is a per-cell observation the last survivor made by
+  being there (hours observed, known fish, the season it was seen, the
+  ice), written into the life record and carried by the journal. It is
+  never a mastery key: mastery stays on activities and species, and time
+  at a cell reveals knowledge without becoming a second mastery system.
 - **Arrival.** Set down nearer the old camp, then at it. A chosen
   landing month instead of a roll. A kit variant: a knife and a net, a
   bucket.
-- **Knowledge.** The dim map, trails, the death site marked, the journal
-  read earlier, the season spine's warnings a week sooner.
-- **Carry and rate, per skill.** Two ladders per skill, separate nodes.
+- **Experience: carry and rate, per skill.** Two ladders per skill, separate nodes.
   Carry: "Woodcraft carries a quarter", then a half, capped at half so
   every survivor still earns half of everything; the carried hours give
   the level and the level gives the delegation rung. Rate: "Woodcraft
@@ -2126,6 +2185,11 @@ cross a floor.
   ice. No abstract points.
 - Every new threat has a warning the player can read in the log before it
   kills, and a death cause that names it.
+- Survival decides what happens; idle decides how the player commands it;
+  Lineage makes death a continuation and not a reversal. When the genres
+  disagree, survival wins on outcomes and idle wins on interaction. The
+  runner never makes an action safer; it removes repeated execution the
+  player has learned. The two bullets after this one are its children.
 - Intents never plan around a new threat on the player's behalf; they carry
   it out and report. The player prepares, or does not.
 - Each sub-project ships with the browser pass that shows a run through
@@ -2135,7 +2199,25 @@ cross a floor.
   person except through the Lineage tree, and the tree never buys
   anything on the ramp.
 - A sub-project that adds truth and no reason to come back waits behind
-  one that does.
+  one that does. Inside an item the same test is per mechanic: simulation
+  earns its complexity by changing a decision, and truth that changes no
+  preparation, order, route, build, stock or risk stays behind truth that
+  does, the way rivers keep their crossings for last.
+- Progress is capabilities, not numbers. Levels, mastery, pools and the
+  tree's carry and rate ladders improve rates between tiers; every major
+  tier names something the survivor can newly do, recognise, make,
+  automate or survive, with a name the player can remember and a log line
+  when it opens. A tier whose best name is "+X%" is not a tier.
+- Every major capability connects systems: it depends on something
+  outside its own skill and makes something outside its own skill more
+  useful. The capability spine
+  (`2026-09-04-survidle-capability-spine-design.md`) is the list, its
+  coverage test is the guard, and its two exceptions, the fire and the
+  delegation rungs, are the only ones.
+- Automation moves bottlenecks and never removes the survival problem.
+  Every producer and every standing order takes away one repeated chore
+  and leaves a limiting resource, capacity, season, distance, maintenance
+  cost or risk, and the spine's row for it says which.
 - The rules hold on every floor of the tower, when there are floors.
 - Every item carries a curve line, the paragraph under its heading: which
   horizon stage and which survivor row of the idle curve spec it serves,
