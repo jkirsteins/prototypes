@@ -1,11 +1,12 @@
 /**
  * The reference player: the set-up a competent player writes on day one,
  * run headless. It is the baseline's gate (reaches 1 December on four
- * seeds) and, later, the survivor loop's instrument. The list is ordered
- * food-first: the water keep at the top, then whatever a first cooked meal
- * needs, in the order it needs it - the runner never gathers a prerequisite
- * on its own, so the knife comes before the drill and the vessel before the
- * water keep can ever do anything with it.
+ * seeds) and, later, the survivor loop's instrument. The runner never
+ * gathers a prerequisite on its own, so the list orders every dependency
+ * before what needs it: water at the top, where it waits on its own
+ * vessel; then everything a fire and a roof need, in the order they need
+ * it, worked with the arrival axe alone; then the knife and what it
+ * unlocks.
  */
 import type { World } from "../world/gen";
 import { advance } from "./advance";
@@ -23,28 +24,18 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
 
 /**
- * Ordered food-first: the water keep stays first, then everything the
- * first cooked meal needs, in the order it needs it - stone, sticks, bark
- * and cordage as raw stock; the knife and fire drill as the tools that turn
- * stock into everything else; a fire pit to hold the fire; a small chop keep
- * feeding a small firewood keep so the fire is fed without either
- * outranking the food chain; the fishing spear; a small fish keep; and the
- * two cook keeps that turn a catch into something autoEat's AUTO_EAT_ORDER
- * will actually touch - a raw catch left in the pack or the pile is never
- * eaten on its own. Every keep in this stretch is sized small on purpose:
- * an uncapped water, fish or hunt keep runs live for most of a day at its
- * original target, holding every order below it off the schedule.
- *
- * Snares come right after: cheap protein once cordage and the knife exist,
- * needing nothing the fish chain does not already have. Crafting a snare
- * and setting it are two different tasks (craft yields the item, build
- * places it on the heath), so both are here.
- *
- * Everything after is the second-order kit - the bow and arrows for a
- * second meat source, the drying rack and dried-meat keep for a winter
- * reserve, the axe spare, the lean-to - and the felling grind is last, as
- * it was: the always-available fallback that soaks up whatever time
- * nothing above it needs.
+ * The runner never gathers a prerequisite on its own, so the list is
+ * ordered as a competent day one is: water at the top, where it waits for
+ * its bucket; then everything a fire and a roof need, in dependency order,
+ * with the arrival axe - stone, sticks, bark and cordage as raw stock; the
+ * fire pit; the fire drill (needing no knife); the keep that lights the
+ * fire and relights it; two trees split into firewood to feed it; and the
+ * lean-to. Then the knife and what it unlocks come before the drill and
+ * the vessel before the water keep can ever do anything with it. Tools the
+ * survivor holds are once jobs, since the first one made is taken up and a
+ * keep would craft a second; the axe stays a keep because the arrival axe
+ * wears out and the spare is the point. Auto-eat, auto-feed and auto-drink
+ * stay on, as they are for every player.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -52,20 +43,14 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("sticks", 10),
   keep("bark", 12),
   keep("craft", 4, "cordage"),
-  job("craft", { kind: "once" }, "knife"),
-  job("craft", { kind: "once" }, "fireDrill"),
-  // A vessel, not "the second-order kit": with the shore iced (April, every
-  // seed so far) the fill keep cannot even open an ice hole without one
-  // ("needs a vessel" - check("fill") - the ice-hole step is inside the
-  // fill task, gated on holds > 0), and thirstyStep's own direct-drink path
-  // needs an already-open hole too. Ranked after cook instead, the water
-  // keep sits on "needs a vessel" the whole run and starves for thirst by
-  // day 3. Water stays first in rank; what it depends on has to be this
-  // early too.
-  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("build", { kind: "once" }, "firePit"),
+  job("craft", { kind: "once" }, "fireDrill"),
+  keep("light", 1),
   keep("chop", 3),
   keep("split", 40),
+  job("build", { kind: "once" }, "leanTo"),
+  job("craft", { kind: "once" }, "knife"),
+  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("craft", { kind: "once" }, "fishingSpear"),
   keep("fish", 1, "any"),
   keep("cook", 1, "fish"),
@@ -78,7 +63,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
   keep("craft", 1, "axe"),
-  job("build", { kind: "once" }, "leanTo"),
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
