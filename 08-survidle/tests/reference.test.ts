@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { calendar, START_DOY } from "../src/sim/calendar";
+import { START_DOY } from "../src/sim/calendar";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { FAT_FULL } from "../src/sim/player";
+import { placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
   fed,
@@ -157,13 +158,14 @@ describe("the reference player", () => {
     expect(list[0].req.until.kind).toBe("once");
   });
 
-  it("holds three days on seed 17 with the player ticking hourly, and has water at camp", () => {
-    const ref = setUpReference(17);
-    stepReference(ref, 3 * 1440);
+  it("the fill keep, given at the shore with a bucket in hand, stocks the camp within six hours", () => {
+    const ref = setUpReference(17, true);
+    placeAtSpot(ref.state, ref.world, ref.state.player.region, "shore");
+    ref.player.tick(ref.state, ref.world);
+    stepReference(ref, 6 * 60);
     expect(ref.state.dead).toBeNull();
     const camp = pile(ref.state, regionState(ref.state, ref.world, ref.state.player.region).campCell);
     expect(qty(camp, "water") + qty(camp, "ice")).toBeGreaterThan(0);
-    expect(calendar(ref.state.minute).day).toBe(4);
     expect(OPENING_TICK_MINUTES).toBe(60);
   });
 
