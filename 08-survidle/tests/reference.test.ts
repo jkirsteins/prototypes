@@ -4,7 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
-import { OPENING_TICK_MINUTES, passesGate, REFERENCE_ORDERS, REFERENCE_TARGET_DAY, ReferencePlayer, setUpReference, stepReference } from "../src/sim/reference";
+import { OPENING_TICK_MINUTES, passesGate, REFERENCE_ORDERS, REFERENCE_TARGET_DAY, ReferencePlayer, setUpReference, stepReference, weekLines } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes } from "../src/sim/skills";
 
@@ -137,5 +137,22 @@ describe("the reference player", () => {
   it("the gate's boundary is exact: a death on day 21 fails, a death on day 22 passes", () => {
     expect(passesGate(21, REFERENCE_TARGET_DAY)).toBe(false);
     expect(passesGate(22, REFERENCE_TARGET_DAY)).toBe(true);
+  });
+
+  it("a checkpoint carries the week before it, and weekLines reads it against the table", () => {
+    const week = { days: 7, yield: { fish: 310, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
+    const lines = weekLines(week, 115);
+    expect(lines[0]).toContain("fish 310 (in band)");
+    expect(lines[0]).toContain("kit 0");
+    expect(lines[0]).toContain("vs April");
+    expect(lines[1]).toContain("eaten/day 290");
+    expect(lines[1]).toContain("net +20");
+    expect(lines[2]).toContain("burn/day 3140 (in band)");
+    expect(lines[2]).toContain("work 1260 (in band");
+    expect(lines[2]).toContain("cold 200 (in band)");
+    expect(lines[3]).toContain("sleep/day 8.4 h (in band)");
+    expect(lines[3]).toContain("work/day 11.2 h");
+    const none = weekLines({ ...week, days: 0 }, 115);
+    expect(none[0]).toContain("no full day yet");
   });
 });

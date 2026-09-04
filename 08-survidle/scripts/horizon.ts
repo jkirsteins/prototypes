@@ -6,7 +6,7 @@
  * provisional until the calibration pass, so the exit code is always 0.
  */
 import { HORIZON_STAGES, runStage } from "../src/sim/horizon";
-import { REFERENCE_SEEDS } from "../src/sim/reference";
+import { REFERENCE_SEEDS, weekLines } from "../src/sim/reference";
 
 const args = process.argv.slice(2).map(Number).filter((n) => Number.isFinite(n));
 const maxDays = args.length >= 2 ? args[args.length - 1] : 30;
@@ -20,6 +20,7 @@ for (const stage of HORIZON_STAGES) {
     const cause = r.cause ?? "alive";
     const verdict = r.inBand ? "in band" : r.days < stage.band[0] ? "under" : "over";
     console.log(`${stage.label.padEnd(34)} ${String(seed).padEnd(5)} ${held.padEnd(9)} ${cause.padEnd(21)} ${`${stage.band[0]}-${stage.band[1]}`.padEnd(6)} ${verdict}`);
+    if (r.week) for (const line of weekLines(r.week, r.dayOfYear)) console.log(`    ${line}`);
   }
 }
 console.log("(provisional until the calibration pass)");

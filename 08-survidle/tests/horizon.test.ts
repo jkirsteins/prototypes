@@ -73,4 +73,11 @@ describe("the horizon stages", () => {
     expect(keeps.days).toBe(1);
     expect(keeps.inBand).toBe(false);
   });
+
+  it("a stage report carries the week before its death", () => {
+    const r = runStage(17, stage("manual"), 6);
+    expect(r.week).not.toBeNull();
+    expect(r.week!.days).toBe(r.days >= 7 ? 7 : Math.max(0, r.days));
+    expect(r.dayOfYear).toBeGreaterThanOrEqual(90);
+  });
 });

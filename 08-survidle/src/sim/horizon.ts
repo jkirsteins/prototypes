@@ -10,6 +10,7 @@ import type { World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar } from "./calendar";
 import { withinLadder } from "./ladder";
+import { type WeekAverage, weekBefore } from "./ledger";
 import { newGame } from "./newgame";
 import { addOrder } from "./orders";
 import { kitOut, REFERENCE_ORDERS } from "./reference";
@@ -57,12 +58,16 @@ export interface StageReport {
   capped: boolean;
   cause: DeathCause | null;
   inBand: boolean;
+  /** The week before the death, or before the cap. */
+  week: WeekAverage | null;
+  dayOfYear: number;
 }
 
 export function runStage(seed: number, stage: HorizonStage, maxDays: number): StageReport {
   const { state, world } = setUpStage(seed, stage);
   for (let d = 1; d <= maxDays && !state.dead; d++) advance(state, world, 1440);
-  const days = state.dead ? calendar(state.dead.minute).day - 1 : maxDays;
+  const end = calendar(state.dead ? state.dead.minute : state.minute);
+  const days = state.dead ? end.day - 1 : maxDays;
   const inBand = days >= stage.band[0] && days <= stage.band[1];
-  return { seed, stage: stage.id, days, capped: !state.dead, cause: state.dead?.cause ?? null, inBand };
+  return { seed, stage: stage.id, days, capped: !state.dead, cause: state.dead?.cause ?? null, inBand, week: weekBefore(state.ledger, end.day), dayOfYear: end.dayOfYear };
 }

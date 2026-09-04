@@ -11,7 +11,7 @@
  * hold?) from the from-scratch run (can the list bootstrap one in time?),
  * so it stays a diagnostic, not a second gate (spec 13).
  */
-import { REFERENCE_SEEDS, REFERENCE_TARGET_DAY, runReference } from "../src/sim/reference";
+import { REFERENCE_SEEDS, REFERENCE_TARGET_DAY, runReference, weekLines } from "../src/sim/reference";
 
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
@@ -26,6 +26,7 @@ function runBlock(seed: number, kit: boolean): boolean {
   for (const c of r.checkpoints) {
     const stocks = Object.entries(c.stocks).map(([k, v]) => `${k} ${v}`).join(", ") || "nothing";
     console.log(`  day ${c.day}: kcal ${c.kcal}, water ${c.water} l, warmth ${c.warmth}, health ${c.health}; camp: ${stocks}; tools: ${c.tools.join(", ") || "none"}`);
+    for (const line of weekLines(c.week, c.dayOfYear)) console.log(`    ${line}`);
   }
   const outcome = r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `reached day ${r.outcome.day}`;
   // The kitted block is a diagnostic (spec 13): it prints the outcome with no pass line of its own.

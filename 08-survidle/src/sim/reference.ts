@@ -17,10 +17,11 @@ import { calendar } from "./calendar";
 import { addItem, freshTool, listItems, pile } from "./inventory";
 import { FOODS, TOOLS } from "./items";
 import { giveOrder, withinLadder } from "./ladder";
-import { creditYield } from "./ledger";
+import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
 import { newGame } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
 import { regionState } from "./regionstate";
+import { BURN, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import type { DeathCause, GameState, IntentRequest, Order, OrderKind } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
@@ -200,8 +201,8 @@ export function stepReference(ref: { state: GameState; world: World; player: Ref
 export interface ReferenceReport {
   seed: number;
   startRing: number;
-  /** Day, kcal, water, warmth, health and camp stocks at each checkpoint reached. */
-  checkpoints: { day: number; kcal: number; water: number; warmth: number; health: number; stocks: Record<string, number>; tools: string[] }[];
+  /** Day, kcal, water, warmth, health and camp stocks at each checkpoint reached, with the week before it. */
+  checkpoints: { day: number; dayOfYear: number; kcal: number; water: number; warmth: number; health: number; stocks: Record<string, number>; tools: string[]; week: WeekAverage }[];
   outcome: { kind: "died"; day: number; cause: DeathCause } | { kind: "reached"; day: number };
   passed: boolean;
 }
@@ -212,9 +213,38 @@ function checkpoint(state: GameState, world: World, day: number): ReferenceRepor
   const stocks: Record<string, number> = {};
   for (const { item, qty } of listItems(camp)) stocks[item] = Math.round(qty * 10) / 10;
   return {
-    day, kcal: Math.round(p.kcal), water: Math.round(p.water * 10) / 10, warmth: Math.round(p.warmth), health: Math.round(p.health),
+    day, dayOfYear: calendar(state.minute).dayOfYear, kcal: Math.round(p.kcal), water: Math.round(p.water * 10) / 10, warmth: Math.round(p.warmth), health: Math.round(p.health),
     stocks, tools: p.tools.map((t) => `${TOOLS[t.id].name} ${Math.round(t.durability)}`),
+    week: weekBefore(state.ledger, day),
   };
+}
+
+const r0 = (n: number) => String(Math.round(n));
+
+/**
+ * The week before a checkpoint against the table for its date (spec 2.2):
+ * yield a day per source with its band, intake and the net of the two,
+ * burn by bucket, and the hours. Four lines, indented by the caller.
+ */
+export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
+  if (week.days === 0) return ["week: no full day yet"];
+  const table = tableFor(dayOfYear);
+  const yields = YIELD_SOURCES.map((s) => {
+    const b = sourceBand(table, s, "beginner");
+    return `${s} ${r0(week.yield[s])}${b ? ` (${verdict(week.yield[s], b)})` : ""}`;
+  }).join(", ");
+  const made = YIELD_SOURCES.reduce((a, s) => a + week.yield[s], 0);
+  const net = made - week.eaten;
+  const b = week.burn;
+  const work = b.activity + b.walk;
+  const total = b.base + work + b.cold + b.sick;
+  const sleepH = week.sleepMin / 60;
+  return [
+    `week (${week.days} d): yield/day ${yields}; vs ${table.name}`,
+    `eaten/day ${r0(week.eaten)}, net ${net >= 0 ? "+" : ""}${r0(net)}`,
+    `burn/day ${r0(total)} (${verdict(total, BURN.day)}) = base ${r0(b.base)} (${verdict(b.base, BURN.base)}) + work ${r0(work)} (${verdict(work, BURN.work)}: activity ${r0(b.activity)}, walk ${r0(b.walk)}) + cold ${r0(b.cold)} (${verdict(b.cold, BURN.cold)}) + sick ${r0(b.sick)}`,
+    `sleep/day ${sleepH.toFixed(1)} h (${verdict(sleepH, SLEEP_HOURS)}), work/day ${(week.workMin / 60).toFixed(1)} h`,
+  ];
 }
 
 /** Runs the set-up a day at a time for `days` days or until death, whichever is first. */
@@ -234,6 +264,7 @@ export function runReference(seed: number, days: number, kitted = false): Refere
     }
   }
   const day = calendar(state.dead ? state.dead.minute : state.minute).day;
+  if (state.dead) checkpoints.push(checkpoint(state, world, day));
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
   const passed = passesGate(state.dead ? day : null, REFERENCE_TARGET_DAY);
   return { seed, startRing: world.startRing, checkpoints, outcome, passed };
