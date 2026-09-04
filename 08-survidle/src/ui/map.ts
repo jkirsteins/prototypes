@@ -8,7 +8,7 @@ import type { Calendar } from "../sim/calendar";
 import { fuelTotal } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
-import { discovery, SEEN, VISITED } from "../sim/regionstate";
+import { DIM, discovery, SEEN, VISITED } from "../sim/regionstate";
 import type { GameState, RegionState, Terrain } from "../sim/types";
 import { iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
@@ -47,7 +47,7 @@ export function viewOrigin(state: GameState, world: World, zoom: number): { x0: 
   return { x0, y0 };
 }
 
-interface Block { terrain: Terrain; region: number; seen: 0 | 1 | 2 }
+interface Block { terrain: Terrain; region: number; seen: 0 | 1 | 2 | 3 }
 
 /**
  * What a glyph shows for its block: the commonest ground among a 3 by 3
@@ -61,7 +61,7 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
   }
   const counts = new Map<Terrain, number>();
   const step = Math.max(1, Math.floor(z / 3));
-  let seen: 0 | 1 | 2 = 0;
+  let seen: 0 | 1 | 2 | 3 = 0;
   for (let j = step >> 1; j < z; j += step) {
     for (let i = step >> 1; i < z; i += step) {
       const reg = regionPeek(world, x0 + i, y0 + j);
@@ -238,7 +238,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
-      if (seen === SEEN) cls.push("dim");
+      if (seen === SEEN || seen === DIM) cls.push("dim");
       if (drawBorders) {
         if (gx > 0 && regions[i - 1] !== reg) cls.push("bl");
         if (gx < VIEW_W - 1 && regions[i + 1] !== reg) cls.push("br");
@@ -255,7 +255,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       }
       if (snow && t === "meadow") glyph = "*";
       // Only regions already built get named; building one here would fill its chunks for a tooltip.
-      title = seen === VISITED ? (world.regions.get(reg)?.name ?? "known country") : "seen from a distance";
+      title = seen === VISITED ? (world.regions.get(reg)?.name ?? "known country") : seen === DIM ? (world.regions.get(reg)?.name ?? "known once") : "seen from a distance";
       if (pileGlyphs.has(i)) {
         cls.push("pl");
         title += ", something lies here";

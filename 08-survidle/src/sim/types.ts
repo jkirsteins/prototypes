@@ -356,8 +356,8 @@ export interface GameState {
   player: Player;
   /** State of every region touched so far, by region id. */
   regions: Record<number, RegionState>;
-  /** Fog of war: 1 seen from next door, 2 visited. Absent means unknown. */
-  discovered: Record<number, 1 | 2>;
+  /** Fog of war: 1 seen from next door, 2 visited, 3 dim (visited once, since forgotten). Absent means unknown. */
+  discovered: Record<number, 1 | 2 | 3>;
   weather: Weather;
   task: Task | null;
   log: LogEntry[];

@@ -113,6 +113,18 @@ export function fmtDate(cal: Calendar): string {
   return `${cal.dayOfMonth} ${MONTH_NAMES[cal.month]}`;
 }
 
+/**
+ * The open coast, the days a boat can land: a month after the air's mean
+ * crosses 0 C in spring, since the sea lags the air, until the day it
+ * crosses back in autumn, since no boat runs into freeze-up. With the
+ * mean as weather.ts has it: 6 May to 3 November.
+ */
+export const COAST_OPEN_FROM = 125;
+export const COAST_OPEN_TO = 306;
+export function coastOpen(doy: number): boolean {
+  return doy >= COAST_OPEN_FROM && doy < COAST_OPEN_TO;
+}
+
 /** Minutes from `minute` until the next sunrise. */
 export function minutesUntilDawn(minute: number, startDoy = START_DOY): number {
   const cal = calendar(minute, startDoy);

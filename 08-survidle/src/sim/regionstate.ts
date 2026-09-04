@@ -68,9 +68,10 @@ export function touchedRegions(state: GameState): number[] {
 
 export const SEEN = 1;
 export const VISITED = 2;
+export const DIM = 3;
 
-export function discovery(state: GameState, id: number): 0 | 1 | 2 {
-  return (state.discovered[id] ?? 0) as 0 | 1 | 2;
+export function discovery(state: GameState, id: number): 0 | 1 | 2 | 3 {
+  return state.discovered[id] ?? 0;
 }
 
 /** Entering a region discovers it and shows its neighbours from a distance. */
@@ -84,7 +85,7 @@ export function enterRegion(state: GameState, world: World, id: number): void {
   }
   // A landing happens at minute 0, so this also keeps a heir's arrival out of the record, the same as the log line.
   if (before !== VISITED && state.minute > 0) {
-    log(state, `New ground: ${r.name}.`, "good");
+    log(state, before === DIM ? `Known ground: ${r.name}, from the journal.` : `New ground: ${r.name}.`, "good");
     record(state, { kind: "entered", region: r.name });
   }
 }
