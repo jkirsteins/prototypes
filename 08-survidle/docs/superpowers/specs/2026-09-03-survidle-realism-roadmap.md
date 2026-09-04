@@ -8,7 +8,8 @@ players come back: to the tab several times a day, and to the game after
 every death. This roadmap names the work in eight sub-projects, each with
 its own spec, plan and build, in the order they should land, and the
 lettered items under "The idle loop" that make it a game people return
-to. Each spec lives beside this file as
+to, and, last, the content that waits on the gate. Each spec lives beside
+this file as
 `2026-MM-DD-survidle-<name>-design.md`.
 
 ## What we are optimising for
@@ -269,6 +270,9 @@ the reference player says when the ramp is enough. 2 rivers is flavour
 and has no slot: it lands whenever there is room after 3, and when it
 does it plugs into the water features 1, C and 3 own rather than bringing
 its own.
+G music and H the mind have no slot before the gate: H is the first
+content after it and G lands with H, since alone music moves nothing.
+The edge of the world, the last section before the rules, is not an item.
 
 Why the baseline is first: headless runs of A's runner (2026-09-03, seeds
 17, 19, 42 and 79, 250 game days, a kitted camp with keeps for wood,
@@ -614,10 +618,10 @@ the fall through ice (sub-project 1), burns from a fire tended tired and from 8'
 the axe takes shins and feet, the elk takes torsos and legs, the ice takes
 the whole body cold and the feet first.
 
-**The mind.** Loneliness is a slow course too: weeks without a change of
-region or a finished build raise it, a warm cabin and a full store lower
-it; high loneliness widens the odds of every mistake (the axe, the fire
-left big, the thin ice taken) rather than adding a bar to watch.
+**The mind.** Is H's, under the idle loop: named conditions in this
+body panel, a hidden sum, and G's music as a remedy. Loneliness was first
+written here as a course the panel never showed; H shows it, because a
+hidden multiplier on mistakes is a threat with no warning.
 
 **Insects.** June to August, bog and shore cells carry a mosquito load by
 warmth and wind; working there without smoke or a hood costs energy and
@@ -626,9 +630,11 @@ smoke from a smudge fire at camp clears the camp; ticks in tall grass on
 the heath seed a fever course a week later. This is why camp on a windy
 shore beats camp in the bog.
 
-**What this sub-project explicitly does not do.** No pain or morale bar;
-no permanent stats beyond the loss table; no medicine the north did not
-have. The player learns the body from the body panel, which shows each
+**What this sub-project explicitly does not do.** No pain bar, and no
+morale bar in H's sense either, since the mind is conditions and a
+number the panel never draws; no permanent stats beyond the loss table;
+no medicine the north did not have. The player learns the body from the
+body panel, which shows each
 part with its wounds, their age and care, and from the log, which says
 what a wound needs before it says what it took.
 
@@ -1895,6 +1901,187 @@ the weather, the daylight and D's ranges read latitude from the row; the
 save (`src/sim/save.ts`) stops being a save of the person and becomes a
 save of the world with a person in it, and a lineage beside them.
 
+### G. Music
+
+**Curve.** Horizon: no row of its own; the evening grind fills the hours
+the working day leaves, which today are spent waiting at camp. Survivor
+row 3: the dark is row 3's killer and H's winter course is what music
+answers. Tiers: Music 3 for a job of N evenings, 5 for the grind, 10 for
+the keep on spirits, with a mastery per instrument and the zither's
+recipe at Crafting 10. Expected: a winter set-up with the grind holds
+its odds through the dark where the same set-up without it drifts by H's
+number; the reference player checks it when H lands, since alone music
+moves nothing. It has no slot before the gate and lands with H.
+
+The fire is the game's one warm place and nothing happens there. After
+the working day the survivor sits by it until sleep, and the log has
+nothing to say about those hours. Music is what people did with them,
+and it is the remedy H needs a task for.
+
+**A seventh skill.** Music joins the six, with the same rungs and the
+same rule: a minute played is a minute of practice, in Music and in the
+instrument's mastery. A level widens what a session reaches, the way a
+Hunting level widens the odds. The Lineage tree gets its carry and rate
+nodes like any skill, and the idle curve's counts (six skills times
+three rungs, six times four nodes) become seven when G lands. The skills
+spec's "six skills and what trains them" gains a row.
+
+**Instruments, from what the north gives.** Each is a Crafting recipe
+and a tool in the pack that wears like one: damp kills a drum's skin,
+frost cracks a flute, and a whistle lasts a season. Keeping them dry is
+the reason the cabin has a shelf.
+
+- **Voice.** Nothing to make, from the first night. The weakest reach
+  and the only one that needs no hands, so a survivor with a splinted
+  arm can still sing.
+- **Willow whistle.** A willow stick in the sap weeks, late May to early
+  June, when the bark slips off whole; a knife and a quarter of an hour.
+  Dries out and goes silent by autumn.
+- **Bone flute.** The wing bone of a crane, a knife, two hours. The
+  oldest instrument found anywhere is one of these. Cranes are a bog
+  bird and a summer one, so the bone is a June find.
+- **Frame drum.** A hoop of green wood bent and bound, a hide from E
+  stretched wet and dried tight, sinew, four hours. The drum the whole
+  north kept. The loudest reach and the one the dark answers to.
+- **Zither.** A hollowed board or a split log with five sinew strings,
+  the kantele's shape, twenty hours at Crafting 10. The top of the
+  ladder: it reaches every condition H has.
+
+**Playing.** "Play by the fire" is a rest-class task at camp that needs a
+lit fire, takes an evening, recovers energy the way rest does, and eases
+H's conditions by name: voice reaches loneliness, the whistle and the
+flute reach loneliness and grief, the drum reaches fear and the dark, the
+zither reaches all of them. What it eases and by how much is the level,
+the mastery and the instrument. The rungs are the ordinary ones: "play
+by the fire" once, "play N evenings" as a job at 3, "play, forever" as a
+grind at 5 that takes the evening after the working day, and "keep
+spirits up" at 10, which plays until no condition is above mild. The
+runner plays only when ordered. A survivor away with no music order
+sits by the fire as now, and H's courses run.
+
+**What G does not do.** No audience and no effect on animals, unless the
+spec rules that a drum at night does what a torch does; no ballads, no
+lyrics, no story beats; no recordings of its own beyond what D's engine
+already takes, and the recordings are their own asset question.
+
+### H. The mind
+
+**Curve.** Survivor row 3: the dark is row 3's killer, and a mind that
+fails in it is the truthful reason a winter set-up with wood and meat
+still dies. Row 4: grief for what the body lost, and a fear of the
+animal that took it. No tier of its own; the remedies are G's tiers and
+3's roof. Expected: a set-up that reaches December without a roof, a
+fire every night and something to do reads a lower month number through
+the dark than the one that has them, and the reference player in a
+lean-to in the January dark dies of a mistake the log named first. It
+is the first content after the gate.
+
+Sub-project 5 hid the mind: loneliness as a course the panel never
+shows, widening the odds of every mistake. That breaks the rule that
+every threat has a warning the player can read before it kills, and it
+gives an idle game nothing an order can keep. H replaces it. The line
+under 5 that ruled out a morale bar stands in one sense: there is no bar.
+
+**The shape.** Named conditions, in the body panel beside the wounds,
+each with a kind, a cause, an age, a strength and a remedy: "afraid of
+wolves, since the night of 3 November, at Wolf Fell after dark", "alone
+40 days", "the dark, 4 hours of light". A number under them, `spirits`,
+sums the strengths and is never drawn; the log speaks for it ("you are
+low", "you have not been this well since October"), and G's keep reads
+it the way a keep on firewood reads the pile, with the panel showing
+kept or not kept and never the number. Fear is reserved for fearful
+things, and each has a source that exists or is ordered:
+
+- **An animal, after it hurt you.** 4's agents: a bear, an elk in the
+  rut, the wolves. The fear names the species and the region and holds
+  at night. A kill of that species at the level, by day, clears it.
+- **Fog on the fell,** after 6's veil has lost you once. Clears with a
+  walk by a line or a compass in hand.
+- **The dark.** The polar night at the top rows, and December anywhere:
+  a course whose strength is the hours of daylight missing, the reason
+  3's cabin and the wood pile matter beyond warmth.
+- **The dead of your own lineage.** At their death sites and at the
+  cemetery, at night. The ghost of the north is your own, and F's corpse
+  run is walked by day or it is walked afraid.
+- **Bandits.** Beyond the edge only. The north holds one person, and
+  this is the one source that would break it.
+
+Loneliness stays: weeks without a change of region or a finished build,
+eased by voice, a new region, a finished build. Grief is new: a part
+lost to 5, a cabin lost to 8, with a strength by the loss, fading by
+time and eased by music. "Low spirits" is the sum's readout, a line that
+appears when the number is under a threshold, and it is the only place
+the number shows through.
+
+**What a condition does.** Everything goes through 5's capability
+functions, never a bar: `oddsFactor()` widens with fear and the dark,
+sleep recovers less, and a fearful survivor refuses the task at its
+source at night, which the runner reports the way it reports a blocked
+order ("would not hunt the wolf ground after dark"). The mind is never a
+death cause; it kills through the axe, the fire and the ice, and the
+death cause names the mistake while the log named the state the day
+before. There is no kcal drain and no health drain, since those are what
+bars do.
+
+**Remedies.** A fire, a roof, a full store and daylight lower every
+course; G's music by name; time for grief; facing the source for fear.
+While away, a keep on spirits makes music an away order; without one the
+courses run and B's forecast shows the odds drift as a row, so an away
+death in the dark is one the forecast showed.
+
+**What H does not do.** No bar, no therapy, no companions, no medicine
+the north did not have, and no condition without a source in the world.
+
+## Beyond the gate: the edge of the world
+
+Not an item. It carries no curve line, has no slot, and waits on the
+thirty-day gate. It is here because it is the shape the proper game's
+content takes once the north is played out, and because two decisions
+below fix what the north has to leave open.
+
+**The reveal.** The march north is F's ascension and the road here. Past
+the polar coast at the top row the sea ends at a wall, and the north is
+one floor of a tower. The pitch stays survival; the tower is the twist
+the Steam page does not show, the way Universal Paperclips is a clicker
+until it is not. The verbs never change: orders, skills, the tree, the
+forecast, the mind, the lineage all carry over untouched. What changes
+per floor is a table.
+
+**Floors.** A fixed count, set when it is designed, so the arc stays
+finite and ends at both ends: the ground under the lowest floor and the
+sky above the highest. Down is warmer and older ground, a desert first.
+Up is the silo, then the wasteland above it, then space. Each floor is
+all-encompassing, a terraformed capsule if that is what it takes, and it
+is a vehicle for a biome, not a change of rules. Biomes stay one line
+each until a floor is designed:
+
+- **Down.** Desert: water is the ramp, the day kills and the night
+  freezes, the species are few and the shade is the camp. Steppe or
+  temperate floors if the count allows.
+- **Up.** The silo: no weather, no wildlife, a finite store and the air
+  itself the reserve. The wasteland: the north's rules with the sky
+  hostile. Space: the last floor, where the arc ends.
+
+**What holds on every floor.** The rules below, all of them: real
+quantities, a warning before every death, a runner that adds nothing,
+permadeath, a world that persists and a person who does not, and one
+lineage across the whole tower. Each floor is a world saved the way the
+north is, so a survivor who takes the stair leaves a camp behind that the
+next one can walk back down to.
+
+**What a floor costs.** A climate curve, terrain thresholds and a
+geography, a species table with ranges and yields, the yield tables and
+a calibration pass against them, and sound beds. That is 1, D, the
+baseline and the calibration pass over again, and nothing else. Down
+comes before up, because a desert keeps every table the north has and
+only changes the numbers, while the silo needs content the sim has no
+words for yet.
+
+**What the north must leave open.** Latitude by row already puts a wall
+at the top; F's landing must never claim the coast goes on. And the
+lineage is owned by the player and not the world, which is what lets it
+cross a floor.
+
 ## Rules that hold across all eight
 
 - Every quantity stays real: litres, kilocalories, degrees, minutes,
@@ -1912,6 +2099,7 @@ save of the world with a person in it, and a lineage beside them.
   anything on the ramp.
 - A sub-project that adds truth and no reason to come back waits behind
   one that does.
+- The rules hold on every floor of the tower, when there are floors.
 - Every item carries a curve line, the paragraph under its heading: which
   horizon stage and which survivor row of the idle curve spec it serves,
   the tier levels it fills, and the number it is expected to move, which
