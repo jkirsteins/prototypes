@@ -62,6 +62,20 @@ hour, so an evening by the fire would otherwise carry a body past the
 night clause's 60 and leave it sitting up all night. Sleep already runs
 until dawn or the cap.
 
+**Water before rest.** A person drinks their fill before sitting down for
+the evening: a spent body standing at open water drinks and only then
+walks back to the fire, so the spent need yields to thirst while
+`water < WATER_FULL - 0.5` and a source is under foot. Away from the
+water the stores keep, since the auto-drink reaches a vessel or the camp
+pile without getting up. A rested body that is thirsty at nightfall gets
+up to drink first: the `cal.isNight && spent` clause holds only while the
+thirst is answered or unanswerable, and the energy clause is untouched -
+sleep outranks thirst for a body that has collapsed. A sleep set aside
+for the fire ends the night's decision rather than freezing it: the
+intent's sleep need is cleared when the task is set aside, so the next
+minute decides bed or otherwise afresh, and the sticky need lives only as
+long as the sleep that started it.
+
 ### 1.3 What does not change
 
 - Manual clicks. The need lives in the intent runner; a player who keeps
