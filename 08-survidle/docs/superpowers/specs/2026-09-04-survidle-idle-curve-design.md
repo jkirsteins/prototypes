@@ -1,0 +1,339 @@
+# Survidle: the idle curve
+
+The roadmap (`2026-09-03-survidle-realism-roadmap.md`) sets the thirty-day
+gate and the two loops that carry it, the check-in and the survivor. What
+it does not say is how much of the player's attention each hour of the
+game asks for, and how that falls as the game goes on. Idle games have a
+known shape for that, and this spec fits Survidle to it: a short manual
+phase, automation earned per skill, check-ins that stretch as the camp
+holds longer, each survivor dying of the next ramp out, and a tree that
+starts the heir further along. It also gives skills their own wall, so a
+run that survives still stalls, and it names the view that shows the
+curve to the player.
+
+Everything here is measured against the roadmap's gate table. A rung, a
+band or a node earns its place by what it does to the re-run rate or the
+hours of attention, and one that moves neither is a badge and does not
+belong.
+
+## Decisions confirmed with the author
+
+- **Manual first, per skill.** Below a skill's gate the player points with
+  intents; the orders list accepts a kind of order only once the skill has
+  earned it. Nothing new is clicked: the intent layer is the manual phase.
+- **The rungs are jobs at 3, grinds at 5, keeps at 10.** The level curve
+  does not move, so the recommended levels do not move either.
+- **Unlocks are carried by Lineage.** Until F lands they are per survivor.
+- **Each survivor dies of the next ramp out**, and the tree pays for the
+  step behind it. Gates are game days on the season spine; attention hours
+  are the derived check.
+- **Skills have their own wall.** Per skill, the tree has a carry ladder
+  and a rate ladder, separate nodes, and content tiers sit on the reach
+  they buy.
+- **The "never raw percentages" rule for tree nodes is dropped.** The
+  impact test above replaces it.
+- **The forecast over a life is drawn**, in the journal, on the epitaph
+  and between runs per ancestor.
+
+## 1. The genre curve, and where Survidle sits
+
+An idle game runs three phases per cycle and one across cycles. The
+active phase is manual, no automation, and lasts minutes: A Dark Room
+gives its first builder in about ten, Kittens Game has the player clicking
+catnip for twenty to forty, Cookie Clicker for under two. The automation
+phase unlocks one resource at a time, usually behind having gathered some
+by hand, and sessions shrink from an hour to ten minutes while check-ins
+go from every few minutes to a few times a day; offline progress is capped,
+commonly at 8 to 24 hours. The wall is where progress slows until a reset
+with a permanent bonus is the better move; the first reset lands inside
+the first day of play, and each cycle after it is longer and starts more
+automated. The long tail is weeks of a few short check-ins a day, kept
+alive by content.
+
+Survidle's pieces map onto it:
+
+- The survivor is the cycle. "First death inside two hours of attention"
+  is the genre's first-reset timing, and the Lineage tree is the permanent
+  bonus. A game day is 24 real minutes, so a first survivor who dies on
+  day 20 is 8 real hours of sim time and one or two of attention.
+- The 60 game-day away cap is 24 real hours, Melvor's offline cap.
+- The genre's wall is a soft one, gains per session dropping until the
+  player resets. Survidle has no voluntary reset: a run ends only in
+  death, and the ramp is what ends it. Its wall is B's month number
+  falling once the axe is worn, the haul is cut out and winter is near.
+  That falling number is the "time to prestige" feeling, and the player's
+  answer is to prepare the heir: stock the cache, build the cabin, close
+  goals for Lineage. The genre stretches the check-in interval by making
+  the number go up faster; Survidle stretches it by making the camp hold
+  longer, and the ramp still ends every set-up.
+
+What the roadmap lacked and this spec adds: the gate that makes
+automation earned (section 2), the pacing number and its bands (3), the
+per-survivor gates (4), the skill wall and the nodes that move it (5),
+and the view (6).
+
+## 2. The delegation ladder
+
+### 2.1 The rungs
+
+Per skill, the orders list accepts an order kind once the skill is at its
+gate. Below it the player points with intents, which is the game as it
+opens today.
+
+| rung | level | practice hours | real time at that skill all day | genre analogue |
+|---|---|---|---|---|
+| manual only | 1 | 0 | 0 | the opening clicks |
+| one-off jobs | 3 | 8 | about a working day, 10 min | first builder, first session |
+| grinds | 5 | 32 | about 3 game days, 1 hour | dumb automation, first day |
+| keeps | 10 | 162 | about 5 hours | the manager, near the first death |
+
+Jobs at 3 gives every skill its automation inside the first session, the
+genre's timing. Grinds at 5 is the "you have been at this an hour" mark.
+Keeps at 10 line up with the cabin's recommended building level, so the
+same number means "seasoned" everywhere; level 10 in one skill is about 5
+real hours of that skill alone against a first life of about 8, so a
+first survivor earns keeps in one or two skills and the heir carries them.
+Six skills times three rungs is a two or three survivor arc, which is the
+four to six survivors of the thirty-day target.
+
+Grinds come before keeps on purpose. A grind ("fell trees forever") is
+crude automation that wears tools and depletes the haul; a keep ("keep
+camp at 40 kg firewood") is the manager that stops when met. The genre
+orders them crude then smart.
+
+The level curve stays 2(L-1)^2 hours. It also prices the recommended
+levels (the bow at crafting 5, the cabin at building 10, each species'
+hunting level), and moving the formula to make a gate quicker would move
+all of those. The gates are set per rung and the formula is left alone.
+
+### 2.2 Which skill gates an order
+
+An order's skill is `skillOf(task, arg)` in `src/sim/skills.ts`. A task
+that maps to no skill needs a named gate: `haul` follows woodcraft, since
+what is hauled is logs. Any task added later that maps to no skill names
+its gate skill beside its definition, the way a card names its discovery
+route in the card prototypes; a task with neither does not ship.
+
+The gate reads the skill's level at the moment the order is added, and an
+order once added stays: a keep given at woodcraft 10 is not withdrawn if
+the heir lands with less (it will not, since the carry is what gave the
+level, but the rule is stated so nothing has to check). The gate is on
+adding, not on running.
+
+### 2.3 What the player sees
+
+The orders form shows every kind for every task and greys the ones the
+skill has not earned, with the reason in the row: "jobs at Woodcraft 3,
+you are 2" and "keeps at Woodcraft 10". A greyed kind is the promise of
+the rung; nothing is hidden. The skills panel shows the three rungs per
+skill as three marks on the level line, so the plateau signal of section
+5 and the rung are read off the same line.
+
+The first unlock of each rung in a run gets a log line: "You know the
+woods well enough to set a task and walk away: jobs from Woodcraft." A
+line per rung per skill per survivor, eighteen at most, none repeated.
+
+### 2.4 The carry
+
+Until F lands the gate is per survivor. When F's carry nodes land
+(section 5.3) the heir's carried hours give the level and the level gives
+the rung; there is no separate "unlock carried" node. An heir who carries
+woodcraft to 10 has jobs, grinds and keeps in woodcraft from birth.
+
+### 2.5 The reference player
+
+The harness's beginner gives orders from day one today. Under the ladder
+a from-scratch survivor has only intents until woodcraft 3, about a
+working day, and only jobs until 5. The reference script gains an
+opening: it queues intents for the first day (water, sticks, a fire,
+chopping) and adds each order kind the day the gate opens, so the April
+gate measures a player who can exist. The kitted variant, when it is
+used, is a survivor whose lineage carried the rungs, which is what a kit
+means from F on.
+
+### 2.6 Tests
+
+- `addOrder` refuses a kind below the gate with the reason, and accepts it
+  at the gate; a table test over the six skills and three rungs.
+- `haul` gates on woodcraft; every task with a null `skillOf` has a gate
+  entry, asserted over `TASK_IDS` the way `POLICY_COVERAGE` is asserted
+  over cards.
+- The unlock log line fires once per rung per skill per survivor.
+- The reference player, from scratch, on the four seeds: alive on the
+  April gate's day with the opening in place.
+
+## 3. The horizon curve
+
+The medium-term pacing number is the safe-away horizon: how long the camp
+holds without the player, which B's forecast reads live and the harness
+reads headless. It is the check-in interval. "Increasingly idle" means it
+grows with progress: the rungs grow it first, the producers after.
+
+| stage | what the player has | camp holds | real time | check-in cadence |
+|---|---|---|---|---|
+| first hour | manual only | nothing | 0 | present |
+| first survivor, jobs and grinds | wood and food on grinds | 1 to 2 game days | 30 to 60 min | hourly |
+| first survivor, keeps | keeps in one or two skills | 3 to 5 game days | 1 to 2 hours | a few times a session |
+| heir, carried keeps and the baseline | keeps from birth, water, rack, stocks | 10 to 20 game days | 4 to 8 hours | two or three a day |
+| producers | trap, cellar, water storage | to the away cap, 60 game days | 24 hours | daily |
+
+The last row is a ceiling and never a resting state: the ramp ends every
+set-up. The long tail's content is the season thresholds every 30 to 45
+game days, the goals list and the march north, all F's.
+
+Each row is a harness check: a scripted set-up at that stage, run
+forward on four seeds the way the reference player is, and the day of
+the first death read as the horizon. A set-up whose horizon falls outside
+its band is a finding, in the same sense as a food source outside its
+kcal band in the calibration pass. The bands are steered by, not hit.
+The checks land with the ladder for the first three rows and with each
+producer for the last.
+
+## 4. The survivor ladder
+
+Each survivor dies of the next ramp out, and the tree pays for the step
+behind it. Gates are game days on the season spine; attention hours are
+what falls out of days times cadence, and are the check against the gate
+table's "hours of attention" bar.
+
+| survivor | dies of | game days | attention | pays into Lineage | the heir starts with |
+|---|---|---|---|---|---|
+| 1 | the basics: thirst, cold, hunger, before any keep | under 20 | about 1 hour | a fire through a night, a week of water | the dim map, landing near the old camp, a quarter carry in one skill, so jobs from birth |
+| 2 | the arrival axe wearing out, or the first cold snap | to first frost, 60 to 150 | 1 to 5 hours | live 30 and 100 days, first frost, an elk | a half carry in two skills, so keeps from birth; warnings a week sooner; the cabin stands |
+| 3 | winter: the dark, the cold snap, a hunted-out haul | to 1 December, day 245 | 5 to 10 hours | winter under a roof, live 245 | a chosen landing month, a kit variant, the cellar keeps |
+| 4 to 6 | the second winter: an older body and a worse axe | a full year | 10 to 20 hours | live 365, the second winter | the step north |
+
+Row 1 and the axe half of row 2 exist today (A's headless runs die of
+the axe at day 67 to 86). The cold snap, winter and the second winter
+need the ramps C (tool tiers), 4 and 6 (depletion) and 5 (the body) own,
+and each row becomes checkable when its ramp lands, the way the roadmap
+already says the ramp is complete when the reference player dies in its
+second year. The carry cap at half is F's and stays: every survivor still
+earns half of everything, and the keeps-from-birth rung needs level 10,
+which a half carry of a level 14 ancestor gives.
+
+The reference player checks the ladder at two settings, no Lineage and
+full, and a row whose heir at full Lineage dies in the same band as the
+survivor before is a finding: the tree bought nothing.
+
+## 5. The skill wall and the tree
+
+### 5.1 Two walls
+
+Death is one wall. The second is content: the bow at crafting 5, the
+cabin at building 10, each species' hunting level, C's tiers. A run that
+survives must still stall against it, or levels are decoration. The
+quadratic curve already stalls a run. What one life reaches in its main
+skill, at about 40 percent of its working hours:
+
+| survivor lives | hours in the main skill | level reached |
+|---|---|---|
+| 20 days | 100 | 5 |
+| 100 days | 480 | 7 |
+| 245 days | 1,200 | 11 |
+| a year | 1,750 | 13 |
+| two years | 3,500 | 18 |
+
+So the wall exists, and today it is invisible and immovable: nothing on
+the tree lifts it and the player never sees it. Two fixes, both taken.
+
+### 5.2 The plateau signal
+
+"Woodcraft 9, next level in 6 days" on the skills panel, the hours to the
+next level converted to days at this survivor's recent rate in the skill,
+next to the rung marks of section 2.3. On a run with a two-week forecast
+that line is the genre's "the next upgrade costs more than this session
+earns", in the game's own unit.
+
+### 5.3 The tree, per skill
+
+F's Carry branch becomes two ladders per skill, separate nodes:
+
+- **Carry.** "Woodcraft carries a quarter", then a half. Capped at half,
+  as F rules. The carried hours give the level and the level gives the
+  rung.
+- **Rate.** "Woodcraft comes twice as fast", then four times. Practice
+  minutes in the skill count double, then quadruple, for every survivor
+  of the lineage from then on. With a quadratic curve a doubled rate is
+  1.4 times the level in the same hours, so the reach across survivors
+  with one doubling each runs about 5, 7, 10, 14, 20 before the longer
+  lives add their own. The square root is what keeps it from running
+  away. Mastery and the pool are not rated: they are per action and cap
+  at 100 hours a key, and rating them would fill the pool in a life.
+
+Six skills times four nodes is 24 nodes in this branch alone, and a
+lineage that hurried woodcraft and carried hunting plays differently from
+the reverse. The tree's size for the gate goes from about twenty nodes to
+about forty. The other three branches (Arrival, Knowledge, Settlement)
+are as F has them.
+
+The roadmap's rule that nodes are "things a lineage would know or hold,
+never raw percentages" is dropped. It was specific and did no work. The
+rule that replaces it is the one the roadmap applies to everything else:
+a node earns its place by what it does to a bar in the gate table.
+
+The rule that the tree never buys anything on the ramp stays. Carry and
+rate move the skill wall; the axe, the body, the land and winter do not
+read the skill level, and an heir at full Lineage still dies of them.
+
+### 5.4 Content tiers on the reach
+
+Each skill gets a tier at about 3, 5, 10, 15, 20 and 30, so survivor N
+opens tier N of every skill they pursue. The tiers are C's list, placed:
+wood by species (spruce, pine, birch, dead standing pine), fishing by
+method (spear, basket trap, net, weir), hunting by species (D's roster
+with its recommended levels), tool and clothing grades (E's coat and
+trousers, C's stone and bone tools). Today nothing sits above 10, so a
+surviving run hits the real wall at the top of the content, not the top
+of the curve; each tier lands inside the sub-project that owns it (C, D,
+E), and this spec only fixes the levels they sit at.
+
+Recommended levels are soft, as C rules: under the tier the work is slow
+and the odds are punished, never locked. The tier is where it becomes
+worth doing.
+
+## 6. The evolution view
+
+B's month number, logged once a game day into the survivor's log, so the
+journal keeps the series. Three places draw it:
+
+- **The journal**, as a line over the life so far, days on the x axis.
+- **The epitaph's long form** in the cemetery, the whole life: rising
+  while the set-up builds, falling as the ramp bites, ending at the death.
+- **The tree screen between runs**, every ancestor's line side by side,
+  so "prepare for the heir" is visible as a curve that ends higher each
+  time.
+
+B produces the number and F keeps the series. Until B lands the series is
+empty and the views draw nothing; the log field and the drawing are F's,
+the number is B's. One line a day is at most 730 numbers a survivor and
+costs the save nothing.
+
+## 7. Sequencing
+
+Nothing in the roadmap's build order moves. What changes is what each
+slot contains:
+
+1. **The calibration pass**, as specced.
+2. **The ladder** (section 2) and the first three horizon checks (3), a
+   small item of its own, right after the pass and before F's core. It
+   lands here because its cost is in the reference player, which the
+   pass has just calibrated, and because F's carry reads the rungs.
+3. **F's core**, with the daily forecast field in the journal (6) added to
+   its list; the views draw once B exists.
+4. **B**, whose month number fills the series.
+5. **The rest of F**, with the tree as section 5.3 has it and the
+   survivor ladder (4) as the reference player's check per row.
+6. **C, D and E** place their tiers at the levels of 5.4 as they land.
+7. **The producers** add the last horizon row's check as they land.
+
+## 8. Out of scope
+
+- A click-per-action manual layer. The intent layer is the manual phase.
+- A per-life level cap. The quadratic curve is the wall, the rate node
+  moves it, and the plateau signal makes it visible; a hard cap would be a
+  third mechanism for the same job.
+- Rating mastery or the pool.
+- Any change to the level formula or to the recommended levels.
+- Tier content itself: which species, tools and methods sit at each tier
+  is C's, D's and E's; this spec fixes only the levels.

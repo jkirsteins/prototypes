@@ -96,6 +96,13 @@ Calibration targets for the sim, to steer by rather than to hit exactly:
 - Something new to read in the log every game day, and a season
   threshold to prepare for every 30 to 45 game days: berries, the rut,
   first frost, lake freeze, first snow, the dark, the cold snap, ice-out.
+- The idle curve (`2026-09-04-survidle-idle-curve-design.md`) sets the
+  rest of the pacing: automation earned per skill inside the first
+  session, a safe-away horizon that grows from an hour to the away cap as
+  rungs and producers land, each survivor dying of the next ramp out (the
+  basics under day 20, the axe or the first cold snap by first frost,
+  winter by day 245, the second winter after a full year), and a skill
+  wall that the tree moves so a run that survives still stalls.
 
 
 ## What kills you today
@@ -230,10 +237,13 @@ in the pack, wet wood, the rack as a task, tool keeps, and a start with a
 shore and rock, with the reference player as its gate), then the calibration pass (the
 section of that name below: the harness measures each food source
 against the yield tables, the gates are set from what it finds, and
-berries, burn and sleep get their first honest numbers), then F's core
-(the world saved instead of the person, the journal, the dim map, the
-season spine, first decay, and the heir set down near the old camp; not
-its ramp), then B the risk forecast with the away cap as its horizon,
+berries, burn and sleep get their first honest numbers), then the
+delegation ladder (the section of that name below: order kinds earned per
+skill, jobs at 3, grinds at 5, keeps at 10, with the first horizon
+checks), then F's core (the world saved instead of the person, the
+journal with its daily forecast field, the dim map, the season spine,
+first decay, and the heir set down near the old camp; not its ramp), then
+B the risk forecast with the away cap as its horizon,
 then the rest of F in impact order (the landing month, latitude by row
 with the landing moving north, the goals list, the Lineage tree, and the
 death site with the corpse run and its search order), then the first
@@ -930,6 +940,11 @@ night, the body tier serving it as any intent; a region with no orders
 has no intent. The away report gives one line per order of the camp you
 left: what it did, what it is blocked on, and which jobs finished.
 
+The delegation ladder (the section of that name below) decides which of
+the three kinds a skill's orders may take: none below level 3, jobs from
+3, grinds from 5, keeps from 10, per skill, with the intent layer as the
+manual phase under them. The list is otherwise as built.
+
 What the build taught, for the sub-projects after it:
 
 - A set-up camp with no water in reach dies of thirst in about thirty
@@ -1042,6 +1057,31 @@ tables in "What the north yields" into the game's numbers, measured:
   skill tiers, the cellar) stay with C and 3; the pass only moves numbers
   the game already has.
 
+### The delegation ladder
+
+Specced: `2026-09-04-survidle-idle-curve-design.md`. Right after the
+calibration pass, before F's core. Automation is earned per skill, the
+way the genre earns it: below woodcraft 3 the player points with intents,
+jobs come at 3 (about a working day), grinds at 5 (about an hour of real
+time at the skill), keeps at 10 (about five hours, near a first death).
+The level curve and the recommended levels do not move; the gates are set
+per rung. The orders form greys a kind the skill has not earned and says
+which level earns it. A task that maps to no skill names its gate skill
+(`haul` follows woodcraft), asserted the way card coverage is. The
+reference player's beginner gains an opening of intents for the first day
+and adds each kind the day its gate opens, so the April gate measures a
+player who can exist. When F's carry lands, carried hours give the level
+and the level gives the rung, with no separate unlock node.
+
+With it land the first three checks of the horizon curve: a scripted
+set-up at each stage (manual only; jobs and grinds; keeps) run forward on
+four seeds, and the day of the first death read as how long the camp
+holds. The bands are nothing, one to two game days, three to five; the
+heir with carried keeps and the baseline should hold ten to twenty, and
+the producers up to the away cap, each checked when it lands. The
+horizon is the check-in interval, and it is what "increasingly idle"
+means here: the camp holds longer, and the ramp still ends it.
+
 ### B. The risk forecast
 
 An honest number, not a checklist: the simulation itself run forward from
@@ -1105,6 +1145,14 @@ content tiers. Soft gates throughout, never "locked":
   real rate and eats real feed. Belongs with the camp build-out
   (sub-project 3), listed here because it is what an idle stock looks like
   in this game: a hut that yields wood per hour does not exist.
+
+**Where the tiers sit.** The idle curve spec places a tier at about 3, 5,
+10, 15, 20 and 30 in every skill, so the Nth survivor of a lineage opens
+the Nth tier of each skill it pursues, and a run that survives stalls at
+the top of the content rather than the top of the curve. Nothing sits
+above 10 today. The wood species, the fishing methods, D's roster and the
+tool and clothing grades take those levels as they land; the spec fixes
+the levels, the sub-projects fill them.
 
 ### D. Species and sound
 
@@ -1282,9 +1330,10 @@ or a scrap of tanned hide so the first mend does not wait on a deer.
 Not specced. The high-level guidance is here so the spec has something
 to argue with; the numbers are first targets, not rulings. It is the item
 the thirty-day gate measures, and it builds in three parts. The core is
-one slot right after the baseline: the world saved instead of the person,
-the journal, the epitaph and the cemetery, the dim map, the season spine,
-first decay, and the heir set down near the old camp. The lineage lands
+one slot after the calibration pass and the delegation ladder: the world
+saved instead of the person, the journal with a daily field for B's
+month number, the epitaph and the cemetery, the dim map, the season
+spine, first decay, and the heir set down near the old camp. The lineage lands
 after B, in impact order: the
 landing month, latitude by row, the goals list, the Lineage tree, and the
 death site with the corpse run and its search order. The ramp's parts
@@ -1375,21 +1424,33 @@ forty goals for the gate.
 
 **Lineage.** One level, owned by the player and not the world, so it
 survives a new seed. It is earned by goals and by nothing else: no real
-money, no time. It is spent on a tree of four branches, whose nodes are
-things a lineage would know or hold, never raw percentages:
+money, no time. It is spent on a tree of four branches. A node earns its
+place by what it does to a bar in the gate table, the re-run rate or the
+hours of attention; one that moves neither is a badge and does not
+belong here:
 
 - **Arrival.** Set down nearer the old camp, then at it. A chosen
   landing month instead of a roll. A kit variant: a knife and a net, a
   bucket.
 - **Knowledge.** The dim map, trails, the death site marked, the journal
   read earlier, the season spine's warnings a week sooner.
-- **Carry, per skill.** A node per skill: "Woodcraft carries a quarter",
-  then a half. The player chooses what the lineage keeps. Capped at
-  half, so every survivor still earns half of everything.
+- **Carry and rate, per skill.** Two ladders per skill, separate nodes.
+  Carry: "Woodcraft carries a quarter", then a half, capped at half so
+  every survivor still earns half of everything; the carried hours give
+  the level and the level gives the delegation rung. Rate: "Woodcraft
+  comes twice as fast", then four times, practice minutes counted double
+  and then quadruple for every survivor from then on. The level curve is
+  quadratic, so a doubled rate is 1.4 times the level in the same hours,
+  and the reach across survivors with a doubling each runs about 5, 7,
+  10, 14, 20; the square root keeps it from running away. Mastery and the
+  pool are not rated. This is the branch that moves the skill wall, and
+  a lineage that hurried woodcraft and carried hunting plays differently
+  from the reverse.
 - **Settlement.** Slower decay: the cabin stands a lifetime, the cellar
   keeps, tools rust less.
 
-About twenty nodes for the gate. The tree is spendable, and that does not
+About forty nodes for the gate, most of them the per-skill ladders. The
+tree is spendable, and that does not
 break the rule that the heir's start is derived from play: that rule is
 about the world, and the tree sits one level above it. Inside the world
 there is still no button for the heir. The journal, the map, the trails
@@ -1408,6 +1469,13 @@ for the next one. There is no "write in the journal" button.
   lived three days leaves three days; one who lived a season leaves
   where the elk were in October and the night the wolves came. The heir
   reads it at the start.
+- **The forecast over a life.** B's month number, logged once a game day
+  into the journal, drawn as a line over the life: in the journal so far,
+  in the cemetery entry whole, rising while the set-up builds and falling
+  as the ramp bites, and on the tree screen between runs with every
+  ancestor's line side by side, so preparing for the heir is visible as a
+  curve that ends higher each time. F keeps the series and draws it; B
+  makes the number, and until B lands the views draw nothing.
 - **The map.** Cells the last survivor touched stay dim for the heir
   instead of black. Where they walked is where the map is.
 - **Trails.** Traffic wears a path: a route walked twenty times hauling
@@ -1505,8 +1573,10 @@ cause reported. It is built with the baseline, as that spec's gate, and
 it is F's because F is what it measures from then on. Its pass criterion
 moves with the roadmap: reaches 1 December before winter content, from
 every landing month once the month is rolled; dies in year two after the
-ramp lands, at full Lineage as well as at none; and never reads a zero
-month forecast. It is the test that keeps "no set-up holds forever" true
+ramp lands, at full Lineage as well as at none; never reads a zero
+month forecast; and, per the idle curve's survivor ladder, each survivor
+dies in its band and an heir at full Lineage outlives the survivor before
+it, since a row where the tree bought nothing is a finding. It is the test that keeps "no set-up holds forever" true
 as content is added under it.
 
 **What this asks of the sub-projects around it.** 3's siting and cellar
