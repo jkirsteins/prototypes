@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import { generateWorld, hasSpot, regionAt } from "../src/world/gen";
 
 describe("the start", () => {
-  // A terrain pre-screen keeps findStart cheap for these seeds, but seeds 4
-  // and 10 still fall to the ring-40 fallback and lack an outcrop; Task 9's
-  // sweep script covers the wider seed range.
+  // These five are the seeds the baseline actually starts a run from: the
+  // four reference seeds the gate is measured on, plus seed 3, which many
+  // fixtures elsewhere rely on for its own shore. Not every seed clears
+  // findStart's terrain pre-screen inside 40 rings - some fall to the
+  // ring-40 fallback and lack an outcrop - so this only promises the start
+  // for the seeds the baseline depends on, not for seeds in general.
   it("has a shore and an outcrop on the reference seeds and seed 3", () => {
     const fallen: number[] = [];
     for (const seed of [17, 19, 42, 79, 3]) {

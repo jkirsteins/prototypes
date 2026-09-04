@@ -35,10 +35,10 @@ describe("wet wood", () => {
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
-    const dry_before = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
+    const dryBefore = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
     advance(state, world, 60);
     const after = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
-    expect(dry_before - after).toBeCloseTo(2, 0);
+    expect(dryBefore - after).toBeCloseTo(2, 0);
     state.weather.precip = "heavy";
     advance(state, world, 60);
     const afterRain = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");

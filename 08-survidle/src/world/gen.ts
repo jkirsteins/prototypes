@@ -215,11 +215,12 @@ function nearestCell(world: World, cells: number[], cx: number, cy: number, ok: 
  * samples say could pass: cheap next to a full region build. Sampled over
  * the same 3x3 lattice neighbourhood buildRegion scans, since a region's
  * jittered seed point can put most of its area outside its own lattice
- * square. The forest floor sits well under the exact filter's 0.45: this
- * anchor sits on the ridge itself, so the box around a candidate near it
- * mixes in enough bare rock to read a genuinely forested region as low as
- * 0.25-0.30, and a 9x9 grid is too coarse even at that floor to avoid
- * missing real starts (checked against an exhaustive search).
+ * square. That box spans neighbouring squares too, so the rock and water a
+ * genuine start needs for its outcrop and its shore dilute the box's own
+ * forest fraction, reading as low as 0.25-0.30 for a region that turns out
+ * genuinely forested (checked against an exhaustive search). The forest
+ * floor sits well under the exact filter's 0.45, and the grid samples at
+ * 15x15, to avoid missing real starts to that dilution.
  */
 function looksLikeStart(seed: number, lx: number, ly: number): boolean {
   const x0 = Math.max(0, (lx - 1) * LATTICE);
@@ -248,9 +249,11 @@ function looksLikeStart(seed: number, lx: number, ly: number): boolean {
 const STARTS = new Map<number, { id: number; ring: number }>();
 
 /**
- * The run starts on the fell edge: the anchor itself sits on the ridge, and
- * the search spirals out from it for the first lattice cell whose region is
- * mostly forest, with a shore for water and an outcrop for stone within it.
+ * The search anchor sits a little east of map centre, in forest country:
+ * rock and water for an outcrop and a shore are usually within a few
+ * rings of it. The search spirals out from the anchor for the first
+ * lattice cell whose region is mostly forest, with a shore for water and
+ * an outcrop for stone within it.
  */
 function findStart(world: World): { id: number; ring: number } {
   const cached = STARTS.get(world.seed);

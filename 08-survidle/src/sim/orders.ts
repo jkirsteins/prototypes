@@ -162,7 +162,7 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       // full: qty + ice (both 0) trivially clears ">= cap - eps" either way, so
       // without this guard a camp with no bucket at all reads as "at capacity"
       // and the keep never gets the chance to run at all, let alone report the
-      // truer "needs a vessel" (evidence: task-9-report.md).
+      // truer "needs a vessel".
       if (cap > 0 && cap < keep.qty && qty(camp, "water") + qty(camp, "ice") >= cap - 1e-9) {
         markSkipped(state, world, cal, o, `camp holds ${cap % 1 === 0 ? cap : cap.toFixed(1)} litres; more vessels at camp would hold more`);
         continue;

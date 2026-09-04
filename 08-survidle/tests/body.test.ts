@@ -574,7 +574,8 @@ describe("the runner in the elements", () => {
   it("a region with no named shore spot but real waterside cells still finds water to walk to", () => {
     // findStart requires a shore spot, so no starting region can ever lack one; this
     // stands the player in seed 2's region 94 instead, whose frac.water (2.0%) sits
-    // under placeSpots' 2% floor for naming a "shore" spot, though it still borders water.
+    // at placeSpots' 2% floor for naming a "shore" spot (share <= 0.02 gets none),
+    // though it still borders water.
     const g = newGame(2);
     const { state, world } = g;
     const r = regionAt(world, 94);

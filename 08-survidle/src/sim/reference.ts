@@ -23,30 +23,28 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
 
 /**
- * Rebuilt food-first (controller ruling on task-9-report.md's original,
- * tool-chain-first list): the water keep stays first, then everything the
+ * Ordered food-first: the water keep stays first, then everything the
  * first cooked meal needs, in the order it needs it - stone, sticks, bark
  * and cordage as raw stock; the knife and fire drill as the tools that turn
  * stock into everything else; a fire pit to hold the fire; a small chop keep
  * feeding a small firewood keep so the fire is fed without either
  * outranking the food chain; the fishing spear; a small fish keep; and the
  * two cook keeps that turn a catch into something autoEat's AUTO_EAT_ORDER
- * will actually touch (evidence: task-9-report.md, "raw catches are never
- * eaten"). Every keep in this stretch is sized small on purpose - the
- * water keep, the fish keep and the hunt keep were each found running live
- * for most of a day at their original targets, holding every order below
- * them off the schedule (task-9-report.md).
+ * will actually touch - a raw catch left in the pack or the pile is never
+ * eaten on its own. Every keep in this stretch is sized small on purpose:
+ * an uncapped water, fish or hunt keep runs live for most of a day at its
+ * original target, holding every order below it off the schedule.
  *
  * Snares come right after: cheap protein once cordage and the knife exist,
  * needing nothing the fish chain does not already have. Crafting a snare
  * and setting it are two different tasks (craft yields the item, build
  * places it on the heath), so both are here.
  *
- * Everything after is the second-order kit - buckets to grow the water
- * keep's reach, the bow and arrows for a second meat source, the drying
- * rack and dried-meat keep for a winter reserve, the axe spare, the
- * lean-to - and the felling grind is last, as it was: the always-available
- * fallback that soaks up whatever time nothing above it needs.
+ * Everything after is the second-order kit - the bow and arrows for a
+ * second meat source, the drying rack and dried-meat keep for a winter
+ * reserve, the axe spare, the lean-to - and the felling grind is last, as
+ * it was: the always-available fallback that soaks up whatever time
+ * nothing above it needs.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -60,10 +58,10 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   // seed so far) the fill keep cannot even open an ice hole without one
   // ("needs a vessel" - check("fill") - the ice-hole step is inside the
   // fill task, gated on holds > 0), and thirstyStep's own direct-drink path
-  // needs an already-open hole too. Ranked with buckets after cook (as
-  // asked) the water keep sits on "needs a vessel" the whole run and seed
-  // 17 dies of thirst day 3 (evidence: task-9-report.md). Water stays
-  // first in rank; what it depends on has to be this early too.
+  // needs an already-open hole too. Ranked after cook instead, the water
+  // keep sits on "needs a vessel" the whole run and starves for thirst by
+  // day 3. Water stays first in rank; what it depends on has to be this
+  // early too.
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("build", { kind: "once" }, "firePit"),
   keep("chop", 3),

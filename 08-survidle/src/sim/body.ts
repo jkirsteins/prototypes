@@ -101,7 +101,7 @@ export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng
   }
 }
 
-/** The nearest waterside cell in this region to fetch water from, not this cell, not iced over, and a walk there can start. Null otherwise. */
+/** The nearest waterside cell in this region open to fetch water from - the cut ice hole when the shore is iced over, else the nearest open shore - not this cell, and a walk there can start. Null otherwise. */
 function shoreForWater(state: GameState, world: World, cal: Calendar): number | null {
   const here = cellOf(state, world);
   const st = regionState(state, world, state.player.region);
