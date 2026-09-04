@@ -22,9 +22,10 @@ import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledg
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
 import { FAT_FULL } from "./player";
+import { current } from "./record";
 import { regionState } from "./regionstate";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import type { DeathCause, GameState, IntentRequest, Order, OrderKind } from "./types";
+import type { DeathCause, GameState, IntentRequest, LifeRecord, Order, OrderKind } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
@@ -267,6 +268,8 @@ export interface ReferenceReport {
   gateDay: number | null;
   /** The day the first snow fell, if it did within `days`. */
   firstSnowDay: number | null;
+  /** The life record, for the selector: epitaph, entry and since read this. */
+  record: LifeRecord;
 }
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
@@ -350,5 +353,5 @@ export function runReference(seed: number, days: number, opts: { kitted?: boolea
   // death after the gate comes later in the list, and a death before it fails passesGate.
   const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
   const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
-  return { seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay };
+  return { seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, record: current(state) };
 }
