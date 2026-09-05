@@ -80,7 +80,10 @@ forever. Loop Hero is the nearest structural match: an expedition ends,
 what came home builds the camp, the camp persists. What Survidle keeps
 from Melvor is the in-run part, the skill ladder, mastery and pools,
 and standing orders. The unproven combination is brutal plus idle:
-nobody has shown players accepting death while the tab is closed. That
+nobody has shown players accepting death while the tab is closed. A
+death that a player accepts is one that happened in their care and not
+to their account, and that is I's job: the survivor is a person the
+player chose, left alone and kept. That
 is why B is not optional, why every away death has to be one the
 forecast showed, and why the re-run rate is the first bar above.
 Punishing is the aim; unfair is the failure mode.
@@ -268,13 +271,19 @@ filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
 pass checks from then on), then
 3's siting (camp as a chosen cell, pulled out of 3 the way
-the hut and the trough were), then the first tester round: with B and
-siting in, the set the hybrid's bet needs exists (a death that persists,
+the hut and the trough were), then the first half of I the survivor
+(the section of that name below: the away report in third person by
+name, three candidates per boat, the four body axes and the first
+quirks, the card and the face), then the first tester round: with B,
+siting and a survivor the tester chose in, the set the hybrid's bet
+needs exists (a death that persists,
 a producer, a camp that holds and was chosen, orders, a forecast that
-makes away risk legible), so twenty testers go in there, as a kill-or-continue check of the hybrid and
+makes away risk legible, a person to lose), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the save sync if the round asks for it (the section of
 that name below: a code on the settings panel and the two-device rule);
+then the second half of I (the found places, and the card reading the
+earned traits as their items land);
 then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
@@ -2443,6 +2452,101 @@ death in the dark is one the forecast showed.
 
 **What H does not do.** No bar, no therapy, no companions, no medicine
 the north did not have, and no condition without a source in the world.
+
+### I. The survivor
+
+**Curve.** Survivor rows 1 to 4: the person the rows are measured on.
+No tier of its own; the found places open tiers early. Expected: the
+re-run bar, two thirds starting a new survivor within a day of a first
+death, since the heir is someone the player chose. The tester round
+measures it. The first half lands after siting and before the round;
+the second with the rest of F, after it.
+
+A death while the tab is closed is accepted when it happened in the
+player's care and not to their account. Today the survivor is a name
+and a set of bars, and the away report says "you". This item makes the
+survivor a person the player is given, leaves alone, and keeps as a
+prize: how old they are, what they are like, what they know, and what
+happened to them.
+
+**The first half, before the round.**
+
+- **The away report and the log while away are in third person, by
+  name.** "Veikko set the snares, then sat by the fire through the
+  storm." While you are here the log says "you"; while you are gone the
+  survivor is someone else. This is the cheapest line in the item and
+  most of the feeling.
+- **Three candidates per boat.** The landing screen shows three people
+  and the player picks one; the other two are gone. Asking for the next
+  boat costs a week of the gap, so the landing shifts a week and the
+  world decays a week more, with no limit: a player who waits until
+  October for a strong one lands in the snow, and that is a story. The
+  first survivor's boat works the same way.
+- **Four body axes**, rolled per person and shown as grades, never
+  numbers. Points exist under the hood and the card shows words.
+
+| axis | what it sets | shown as |
+|---|---|---|
+| strength | comfortable and maximum pack load (25 / 35 kg today), the working day's length before the body rests, and burn per working hour, so a strong survivor hauls the cabin's logs in fewer trips and eats for it | "carries 30 kg all day, 42 at a push; works twelve hours" |
+| build | body mass, so the landing fat reserve, warmth loss and resting burn: a heavy survivor lands with more weeks of fat, sleeps warmer, and burns more a day | "84 kg, sleeps warm" |
+| hands | craft spoil odds and tool wear | "clumsy", "steady hands" |
+| eyes | the vision ring and hunting odds by day | "poor sight", "eagle-eyed" |
+
+  Strength and build cut both ways by physiology; hands and eyes are a
+  spread with no downside, and no point budget balances the four, since
+  the choice of three does that. Every number stays a real quantity:
+  kilograms, hours, kilocalories, cells.
+
+- **Quirks, four to six kinds in the first cut**, one or two per
+  person, each naming a capability or a fear with a source and never a
+  modifier: coast-born reads any shore from day one and fears the fell
+  in cloud, forest-born the reverse; sleeps light, wakes at wolves and
+  loses energy on windy nights; big eater, burns more and works faster;
+  steady by the fire, lights in rain more often. A quirk earns its place
+  if two people with different quirks write different order lists.
+- **The card.** On the landing screen for each candidate: face, name,
+  grades, quirks. In the journal for the living survivor: the same, plus
+  days old, what they know, what they fear, what they have lost, and the
+  three best stories from the life record by the selector the epitaph
+  uses. On the tombstone whole, and in the cemetery under it. A copy
+  button puts the card on the clipboard as plain text, which is how
+  stories leave the game before presentation exists.
+- **The face.** An 8x8 pixel portrait, a mirrored four-column half in
+  four or five colours from a small northern palette, drawn from
+  templates the person picks: hair shape, beard or none, eyes set wide
+  and bright for eagle-eyed and narrow for poor sight, a wider jaw for a
+  heavy build; seeded by the survivor so the ancestor keeps their face
+  in the cemetery; rendered at eight to ten times with pixelated
+  scaling. The item ships with a self-test pass: a page of generated
+  faces at 8x8 and 12x12, screenshotted and judged one by one for
+  whether each reads as a person by shape and colour. If 8x8 does not
+  read, the size is 12x12.
+
+**The second half, after the round.**
+
+- **Found knowledge.** A place teaches a capability early: weir stakes
+  at a river mouth teach the weir, a collapsed smokehouse teaches
+  smoking, rock carvings at a lake mark where the elk cross, an old boat
+  gives a net, a grave gives a stone axe. Six to ten kinds, each a cell
+  the generator places rarely, found by walking it into the vision ring,
+  which is what the "search this region" order in F is for. The
+  capability opens below its tier for the survivor who found it and goes
+  into the life record, so the journal carries the knowledge to the heir
+  under the Knowledge branch as F already says knowledge travels; the
+  object stays at the place and must be fetched. The lodestone is the
+  first of these and already written under 6. This is the variance in
+  the world the recipe section asks for, and the reason to explore that
+  the orders game otherwise lacks.
+- **Earned traits.** H's conditions and 5's scars are traits by living
+  and land with their items; the card reads them from the record when
+  they exist.
+
+**The reference player** runs a fixed person, the median grades and no
+quirk, so the gates keep measuring the list and not the boat.
+
+**What I does not do.** No stats on screen, no re-roll button, no point
+budget, no trait that is a percentage with a name, and the tree buys
+nothing here: a lineage does not breed better people.
 
 ## Beyond the gate: the edge of the world
 
