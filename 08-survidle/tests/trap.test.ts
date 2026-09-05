@@ -3,17 +3,26 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { trapDraws, trapFactor } from "../src/sim/camp";
 import { resolveCell, yieldItem } from "../src/sim/intent";
-import { addItem, qty } from "../src/sim/inventory";
+import { addItem, pile, qty } from "../src/sim/inventory";
 import { TRAP_HOLD_KG } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
+import { addOrder } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
 
 const cal = calendar(0);
+type G = ReturnType<typeof newGame>;
+function until(g: G, pred: () => boolean, max = 3000): boolean {
+  for (let i = 0; i < max; i++) {
+    if (pred()) return true;
+    advance(g.state, g.world, 1);
+  }
+  return pred();
+}
 
 /** Seed 4's start region has a lake: the player on its shore, the shore read, a basket in the pack, and the lake full of fish. */
 function readyToSet() {
@@ -133,5 +142,21 @@ describe("the basket trap", () => {
     const g = readyToSet();
     placeAtSpot(g.state, g.world, g.state.player.region, "camp");
     expect(resolveCell(g.state, g.world, cal, "setTrap", undefined, "nearest").cell).toBe(g.cell);
+  });
+
+  it("a set-trap order pockets the basket from the camp pile before it leaves, and sets the trap at the read shore", () => {
+    const g = newGame(4);
+    placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+    const cell = cellOf(g.state, g.world);
+    const obs = readShore(g.state, g.world, cell);
+    const st = regionState(g.state, g.world, g.state.player.region);
+    for (const s of obs.fish) st.pop[s] = 50;
+    placeAtSpot(g.state, g.world, g.state.player.region, "camp");
+    addItem(pile(g.state, st.campCell), "basketTrap", 1);
+    addOrder(g.state, g.world, { task: "setTrap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    expect(until(g, () => qty(g.state.player.pack, "basketTrap") === 1, 5)).toBe(true);
+    expect(qty(pile(g.state, st.campCell), "basketTrap")).toBe(0);
+    expect(until(g, () => st.trap !== null, 200)).toBe(true);
+    expect(st.trap).toMatchObject({ cell });
   });
 });

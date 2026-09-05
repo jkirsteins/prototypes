@@ -70,12 +70,13 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * player. The felling grind, needing the axe kept just above it, runs
  * last and forever. Two kilos of berries at camp sit with the cook
  * keeps: in season they are the cheapest kcal there is, and out of it
- * the keep blocks harmlessly on nothing ripe. Twenty hours of roof come
- * once the hang keep is standing and food is running, before the hunt
- * that would otherwise take the next block of hours; the trough follows
- * the hut it needs room to stand in, and the top fill keep from the
- * opening stays as it was, the trough's own fill keep a second want for
- * the greater capacity the trough gives rather than a replacement.
+ * the keep blocks harmlessly on nothing ripe. Once food and the hunt are
+ * running, the roof takes the hours the felling grind would have
+ * burned: the sticks and bark the hut needs, above what the opening
+ * keeps already hold, sit right before it, the trough follows the hut
+ * it needs room to stand in, and the top fill keep from the opening
+ * stays as it was, the trough's own fill keep a second want for the
+ * greater capacity the trough gives rather than a replacement.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -104,14 +105,15 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("berries", 2),
   job("build", { kind: "once" }, "dryingRack"),
   keep("hang", 10),
-  job("bark", { kind: "campHas", qty: 40 }),
-  job("build", { kind: "once" }, "turfHut"),
-  job("build", { kind: "once" }, "waterStore"),
-  keep("fill", 20),
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
   keep("craft", 1, "axe"),
+  job("sticks", { kind: "campHas", qty: 20 }),
+  job("bark", { kind: "campHas", qty: 40 }),
+  job("build", { kind: "once" }, "turfHut"),
+  job("build", { kind: "once" }, "waterStore"),
+  keep("fill", 20),
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 

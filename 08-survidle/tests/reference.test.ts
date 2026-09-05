@@ -74,9 +74,11 @@ describe("the reference player", () => {
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     const hang = tasks.indexOf("hang:");
-    expect(tasks.slice(hang + 1, hang + 5)).toEqual(["bark:", "build:turfHut", "build:waterStore", "fill:"]);
-    expect(tasks[hang + 5]).toBe("craft:bow");
-    expect(REFERENCE_ORDERS.length).toBe(35);
+    expect(tasks[hang + 1]).toBe("craft:bow");
+    const axe = tasks.indexOf("craft:axe");
+    expect(tasks.slice(axe + 1, axe + 6)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:"]);
+    expect(tasks[axe + 6]).toBe("chop:");
+    expect(REFERENCE_ORDERS.length).toBe(36);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -250,8 +252,8 @@ describe("the reference player", () => {
   });
 
   it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 2 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    const r = runReference(2, 30);
+    // Seed 153 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
+    const r = runReference(153, 30);
     expect(r.outcome).toEqual({ kind: "died", day: REFERENCE_TARGET_DAY, cause: "starved" });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);

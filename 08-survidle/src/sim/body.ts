@@ -353,11 +353,12 @@ export const ARROWS_TO_CARRY = 10;
  */
 export const KIT_ITEMS = new Set<ItemId>(["arrow", "snare"]);
 
-/** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job. */
+/** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job, a basket for a set-trap job. */
 export function orderKit(state: GameState): ItemId[] {
   const it = state.intent;
   if (it?.task === "hunt" && hasTool(state.player, "bow")) return ["arrow"];
   if (it?.task === "build" && it.arg === "snare") return ["snare"];
+  if (it?.task === "setTrap") return ["basketTrap"];
   return [];
 }
 
@@ -368,9 +369,10 @@ function snaresWanted(it: Intent): number {
 }
 
 /**
- * Pockets the live order's kit - arrows for a bow hunt, snares for a set-snares job -
- * from the camp pile, when standing at the intent's camp cell. Returns how many it
- * moved, so a start that turns out illegal can hand them straight back.
+ * Pockets the live order's kit - arrows for a bow hunt, snares for a set-snares job,
+ * a basket for a set-trap job - from the camp pile, when standing at the intent's
+ * camp cell. Returns how many it moved, so a start that turns out illegal can hand
+ * them straight back.
  */
 export function provisionKit(state: GameState, world: World): number {
   const it = state.intent;
@@ -388,6 +390,10 @@ export function provisionKit(state: GameState, world: World): number {
     const want = snaresWanted(it) - qty(pack, "snare");
     if (want <= 0) return 0;
     return transfer(camp, pack, "snare", Math.min(want, qty(camp, "snare")));
+  }
+  if (kit.includes("basketTrap")) {
+    if (qty(pack, "basketTrap") >= 1) return 0;
+    return transfer(camp, pack, "basketTrap", Math.min(1, qty(camp, "basketTrap")));
   }
   return 0;
 }
