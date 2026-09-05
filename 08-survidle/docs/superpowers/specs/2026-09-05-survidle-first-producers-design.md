@@ -95,6 +95,9 @@ makes nothing countable, so it is never a keep.
 
 ## 4. The basket trap, Fishing 5
 
+> As built, the recommended level sits on a different key than this
+> section names - see the "As built" note at the head of section 7.
+
 **The item.** Recipe `basketTrap`: 6 sticks and 3 cordage, a knife, 60
 minutes, out one `basketTrap` (2 kg, a tool with no durability in this
 item; 4's raiders and the ice are what end it). `RECOMMENDED["craft:basketTrap"]
@@ -207,8 +210,23 @@ the rate `water.ts` gives); the spec adds no second rule.
 
 **What it leaves.** The walk to fill it: twenty litres is ten bucket
 trips, or five with two buckets, which is the chore the spine row names.
+The trough's litres also count toward the camp's freeze threshold, so a
+camp with a trough standing splits its buckets less often than one
+without.
 
 ## 7. The reference list, the horizon rows and the reports
+
+> **As built.** The recommended level for the trap sits on setting it
+> (`RECOMMENDED.trap`), not on the craft: `masteryKey()` gives both
+> `setTrap` and `emptyTrap` the one key `trap`, and a `craft:basketTrap`
+> entry would never be looked up. Every producer line - the read, the
+> craft, the setting job and the empty keep - sits together below the
+> hunt keep, with the empty keep beside the other three, not split
+> across the rack and the bow as first drafted: the calibration pass
+> measured that April only affords them once everything above is met or
+> blocked. The list is 36 lines. The basket craft delivers `"leave"`, so
+> it stays in the pack for the walk to the shore rather than going to
+> camp first.
 
 **The list.** The reference wants gain, in order, with the reasons a
 competent player would give:
@@ -277,6 +295,10 @@ litres" fill it; then dies, begins again, walks home and reads the found
 line with the trap's kilos on the landing log. The console stays clean.
 
 ## 10. The capability spine's coverage test
+
+> As built, a row names its RECOMMENDED key(s) on a `keys` array, not the
+> single `key` field below - see the "As built" note at the head of
+> section 7.
 
 `src/sim/capabilities.ts` holds `CAPABILITIES`, one row per built
 capability with the spine spec's columns:

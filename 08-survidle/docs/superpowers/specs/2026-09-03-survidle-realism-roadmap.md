@@ -1841,7 +1841,11 @@ seed parameter came back to the tombstone from the save. The console
 stayed clean. Two findings: the tombstone shows the name twice, in the
 heading and again in the epitaph's own "Name." prefix; and the panels
 behind the landing screen still show the dead body's bars (health 0, no
-tools) until Land.
+tools) until Land. The Do panel's rows are a hand-kept list, and it had
+missed the three new tasks - reading the water, setting and emptying
+the trap - until this pass caught it. A July death lands the heir on 21
+October, by which an October dawn has already taken the trap while the
+hut, the trough and the ancestor's tools still stand at camp.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
