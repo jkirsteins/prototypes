@@ -83,7 +83,7 @@ describe("the fill task", () => {
     placeAt(state, world, shore.cell);
     const o = check(state, world, cal, "fill");
     expect(o.ok).toBe(false);
-    expect(o.why).toBe("no vessel at camp to pour into");
+    expect(o.why).toBe("camp is full");
   });
 
   it("a keep past the camp's capacity is skipped with the reason, not looped", () => {

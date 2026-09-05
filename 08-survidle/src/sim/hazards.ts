@@ -143,7 +143,7 @@ function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng, 
     addItem(camp, "ice", litres);
     // Each bucket at camp rolls the split a carried one does, and takes its share of the ice with it.
     const buckets = qty(camp, "barkBucket");
-    const full = litres > campWaterCapacity(camp) / 2;
+    const full = litres > campWaterCapacity(camp, st) / 2;
     for (let i = 0; i < buckets; i++) {
       if (!full || !rng.chance(1 / 3)) continue;
       removeItem(camp, "barkBucket", 1);

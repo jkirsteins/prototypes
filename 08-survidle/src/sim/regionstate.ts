@@ -23,7 +23,7 @@ export function newRegionState(world: World, id: number): RegionState {
     wood: r.wood0,
     pop: startingPop(world, id),
     campCell: r.campCell,
-    structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false },
+    structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false, turfHut: false, waterStore: false },
     boughBedAge: 0,
     structureAge: {},
     build: {},
@@ -35,6 +35,7 @@ export function newRegionState(world: World, id: number): RegionState {
     orders: [],
     nextOrderId: 1,
     iceHole: null,
+    trap: null,
   };
 }
 

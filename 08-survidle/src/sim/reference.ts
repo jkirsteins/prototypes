@@ -14,11 +14,12 @@
  */
 import { CELL_KM } from "../units";
 import { cellAt } from "../world/cells";
-import type { World } from "../world/gen";
+import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY } from "./calendar";
 import { addItem, freshTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, TOOLS } from "./items";
+import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
@@ -28,6 +29,7 @@ import { FAT_FULL } from "./player";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { startTask } from "./tasks";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
@@ -55,16 +57,33 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * ranks eating what is already caught above catching more of it: the cook
  * keeps sit above the fish keep, and the rack job and the dried-meat keep
  * sit above the hunt keep, right after the cook keeps - both block
- * harmlessly with nothing to cook or hang. The fish keep sits right after
- * the cook keeps so the spear is used the day it exists. Tools the
- * survivor holds are once jobs, since the first one made is taken up and
- * a keep would craft a second; the axe stays a keep because the arrival
- * axe wears out and the spare is the point. Auto-eat, auto-feed and
- * auto-drink stay on, as they are for every player. The felling grind,
- * needing the axe kept just above it, runs last and forever. Two kilos
- * of berries at camp sit with the cook keeps:
- * in season they are the cheapest kcal there is, and out of it the keep
- * blocks harmlessly on nothing ripe.
+ * harmlessly with nothing to cook or hang. The producers - the read, the
+ * basket trap, the setting job and the empty keep - sit below the hunt
+ * keep and above the axe, because the first month cannot afford them:
+ * the list below the hunt keep is reached only when everything above it
+ * is met or blocked, so setting a trap costs one read, one craft and one
+ * setting, once, whenever that day comes, and the empty keep after it
+ * draws the shore only once everything above is met or blocked too. The
+ * basket is carried, not stocked: the craft job leaves it in the pack
+ * rather than walking it to camp first, so the trap can be set on the
+ * way to the shore instead of needing a separate trip home for the
+ * basket already made. The producers are measured through the kitted
+ * camp, the horizon stages and the heir gate until the list can afford
+ * them. Tools the survivor holds are
+ * once jobs, since the first one made is taken up and a keep would
+ * craft a second; the axe stays a keep because the arrival axe wears
+ * out and the spare is the point. Auto-eat, auto-feed and auto-drink
+ * stay on, as they are for every player. The felling grind, needing the
+ * axe kept just above it, runs last and forever. Two kilos of berries
+ * at camp sit with the cook keeps: in season they are the cheapest
+ * kcal there is, and out of it the keep blocks harmlessly on nothing
+ * ripe. Once food and the hunt are running, the roof takes the hours
+ * the felling grind would have burned: the sticks and bark the hut
+ * needs, above what the opening keeps already hold, sit right before
+ * it, the trough follows the hut it needs room to stand in, and the
+ * top fill keep from the opening stays as it was, the trough's own
+ * fill keep a second want for the greater capacity the trough gives
+ * rather than a replacement.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -92,7 +111,16 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
+  job("read", { kind: "once" }),
+  job("craft", { kind: "once" }, "basketTrap", "leave"),
+  job("setTrap", { kind: "once" }),
+  keep("emptyTrap", 1),
   keep("craft", 1, "axe"),
+  job("sticks", { kind: "campHas", qty: 20 }),
+  job("bark", { kind: "campHas", qty: 40 }),
+  job("build", { kind: "once" }, "turfHut"),
+  job("build", { kind: "once" }, "waterStore"),
+  keep("fill", 20),
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
@@ -153,13 +181,33 @@ export function passesGate(deathDay: number | null, targetDay: number): boolean 
 }
 
 /**
+ * The trap block a kitted camp and the horizon's built stages both want: a
+ * trap set at the region's shore, known to hold whatever fish that shore
+ * has, standing from the first minute rather than waiting on a read and a
+ * setTrap job. A region with no shore, or a shore with nothing in the
+ * water, leaves the trap unset - there is nothing for it to hold.
+ */
+export function kitTrap(state: GameState, world: World): void {
+  const p = state.player;
+  const st = regionState(state, world, p.region);
+  const shore = spotOf(regionAt(world, p.region), "shore");
+  if (!shore) return;
+  const fish = shoreFish(world, regionAt(world, p.region), shore.cell);
+  if (!fish.length) return;
+  state.player.known[shore.cell] = { minute: 0, fish };
+  st.trap = { cell: shore.cell, kg: 0, fish };
+}
+
+/**
  * The audit's kitted camp (spec 8, "Decisions confirmed with the author"): the
  * true arrival kit plus every tool and structure the from-scratch list spends
  * its first days building. A flag on the script, not a second gate - it asks
  * whether the seven fixes let an already-established camp hold, separately
- * from whether the from-scratch list can bootstrap one in time.
+ * from whether the from-scratch list can bootstrap one in time. `producers`
+ * gates the hut, the trough and the trap: the horizon's earlier stages want
+ * the arrival kit alone and set their own structures through `setUpStage`.
  */
-export function kitOut(state: GameState, world: World): void {
+export function kitOut(state: GameState, world: World, producers = true): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
@@ -174,6 +222,11 @@ export function kitOut(state: GameState, world: World): void {
   addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);
   st.structures.firePit = true;
+  if (producers) {
+    st.structures.turfHut = true;
+    st.structures.waterStore = true;
+    kitTrap(state, world);
+  }
 }
 
 /** How often the player script looks at the list: the cost of playing by hand is the idle time between looks. */
@@ -200,9 +253,29 @@ export class ReferencePlayer {
   /** Units a want's dropped once/times stand-ins have completed so far, per want index. */
   private completed = new Map<number, number>();
 
-  constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS) {}
+  /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
+  reachedDay: number | null = null;
+
+  /**
+   * `home` is the region of the old camp for an heir: the first log line
+   * gives the bearing, and a competent player walks there before anything
+   * else, since the camp orders deliver to is the region's own and the old
+   * one has the fire pit, the stone and the snares the list would otherwise
+   * spend its first days on. The walk is the real travel task, paid in hours,
+   * burn and nights on the way, and no order is given until the region is
+   * reached. The first survivor has no home and starts on the list at once.
+   */
+  constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS, private home: number | null = null) {}
 
   tick(state: GameState, world: World): void {
+    if (this.home !== null) {
+      if (state.player.region !== this.home) {
+        if (!state.task) startTask(state, world, calendar(state.minute, state.startDoy), "travel", `region:${this.home}`);
+        return;
+      }
+      this.reachedDay = calendar(state.minute, state.startDoy).day;
+      this.home = null;
+    }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
       if (list.some((o) => o.id === g.id)) continue;
@@ -369,7 +442,7 @@ export interface HeirReport {
   first: ReferenceReport;
   gapDays: number;
   landed: WorldDate;
-  found: { structures: string[]; campFoodKcal: number; campFirewoodKg: number; snares: number; kmToOldCamp: number };
+  found: { structures: string[]; campFoodKcal: number; campFirewoodKg: number; snares: number; kmToOldCamp: number; reachedCampDay: number | null; trapKg: number | null };
   heir: ReferenceReport;
 }
 
@@ -384,17 +457,18 @@ export function runHeir(seed: number, days: number): HeirReport {
   const first = measure(ref, days);
   const { state, world } = ref;
   if (!state.dead) {
-    return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0 }, heir: first };
+    return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0, reachedCampDay: null, trapKg: null }, heir: first };
   }
   const oldRegion = oldCampRegion(state);
   const oldSt = regionState(state, world, oldRegion);
+  const trapKg = oldSt.trap ? Math.round(oldSt.trap.kg * 10) / 10 : null;
   beginAgain(state, world);
   // land() clears state.landing once it confirms the name, so the cell it chose
   // has to be read off the landing itself, not off the player it then places.
   const landCell = state.landing!.cell;
   land(state, world);
   const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth"] as const).filter((s) => oldSt.structures[s]);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore"] as const).filter((s) => oldSt.structures[s]);
   const lc = cellAt(world, landCell);
   const cc = cellAt(world, oldSt.campCell);
   const found = {
@@ -403,8 +477,9 @@ export function runHeir(seed: number, days: number): HeirReport {
     campFirewoodKg: Math.round(qty(camp, "firewood")),
     snares: oldSt.structures.snares,
     kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
+    trapKg,
   };
-  const heirRef = { state, world, player: new ReferencePlayer() };
+  const heirRef = { state, world, player: new ReferencePlayer(REFERENCE_ORDERS, oldRegion) };
   const heir = measure(heirRef, days);
-  return { seed, first, gapDays: current(state).gapDays, landed: current(state).landed, found, heir };
+  return { seed, first, gapDays: current(state).gapDays, landed: current(state).landed, found: { ...found, reachedCampDay: heirRef.player.reachedDay }, heir };
 }

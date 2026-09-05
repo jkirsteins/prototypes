@@ -7,10 +7,10 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { berriesOverloaded } from "./berries";
 import { addItem, carried, pile, qty, removeItem } from "./inventory";
-import { TOOLS } from "./items";
+import { TOOLS, WATER_STORE_L } from "./items";
 import { type Activity, activityOf } from "./player";
 import { cellOf, watersideCell } from "./position";
-import type { GameState, Inventory, Player, ToolId } from "./types";
+import type { GameState, Inventory, Player, RegionState, ToolId } from "./types";
 
 export const WATER_FULL = 3.0;
 export const THIRSTY_L = 1.0;
@@ -70,21 +70,22 @@ export const VESSELS: ToolId[] = ["barkBucket", "waterskin"];
 /** Litres an hour a fed fire thaws at camp. */
 export const THAW_L_PER_HOUR = 2;
 
-/** Litres the vessels lying in this pile can hold between them. */
-export function campWaterCapacity(inv: Inventory): number {
+/** Litres the vessels lying in this pile can hold between them, plus the trough when this camp has one. */
+export function campWaterCapacity(inv: Inventory, st?: Pick<RegionState, "structures">): number {
   let l = 0;
   for (const v of VESSELS) l += qty(inv, v) * (TOOLS[v].litres ?? 0);
+  if (st?.structures.waterStore) l += WATER_STORE_L;
   return l;
 }
 
-/** Room left in this pile's vessels: capacity less the water and ice already in them. */
-export function campWaterRoom(inv: Inventory): number {
-  return Math.max(0, campWaterCapacity(inv) - qty(inv, "water") - qty(inv, "ice"));
+/** Room left in this pile's vessels and trough: capacity less the water and ice already in them. */
+export function campWaterRoom(inv: Inventory, st?: Pick<RegionState, "structures">): number {
+  return Math.max(0, campWaterCapacity(inv, st) - qty(inv, "water") - qty(inv, "ice"));
 }
 
-/** Empties the carried vessels into the pile's vessels as far as they have room. Returns litres poured. */
-export function pourVessels(p: Player, inv: Inventory): number {
-  let room = campWaterRoom(inv);
+/** Empties the carried vessels into the pile's vessels and trough as far as they have room. Returns litres poured. */
+export function pourVessels(p: Player, inv: Inventory, st?: Pick<RegionState, "structures">): number {
+  let room = campWaterRoom(inv, st);
   let poured = 0;
   for (const t of p.tools) {
     if (room <= 1e-9) break;

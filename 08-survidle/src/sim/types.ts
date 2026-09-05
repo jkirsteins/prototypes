@@ -20,7 +20,7 @@ export type { Habitat, Species } from "./species";
 /** Items counted in pieces. A tool not in hand is one of these. */
 export type CountItem =
   | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew"
-  | "snare" | "arrow" | "torch"
+  | "snare" | "arrow" | "torch" | "basketTrap"
   | ToolId;
 /** Items measured in kilograms. */
 export type KgItem =
@@ -53,13 +53,18 @@ export type ClothingId =
 export type ClothingSlot = "coat" | "trousers" | "boots" | "hat" | "mittens" | "blanket";
 export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 soaked */ wet?: number }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed";
+/** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
+export interface Observation { minute: number; fish: Species[] }
+
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore";
+/** Structures the weather takes down unless they are mended. */
+export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
 export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
   | "snare" | "needle" | "axe" | "torch"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
-  | "hideBlanket" | "barkBucket" | "waterskin";
+  | "hideBlanket" | "barkBucket" | "waterskin" | "basketTrap";
 
 /** Where inside a region the player stands. Every region has a camp. */
 export type SpotId = "camp" | "forest" | "outcrop" | "shore" | "heath";
@@ -69,6 +74,7 @@ export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
+  | "read" | "setTrap" | "emptyTrap"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
@@ -76,6 +82,7 @@ export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split",
   "hunt", "fish", "cook", "craft", "repair", "sharpen", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
+  "read", "setTrap", "emptyTrap",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep",
 ];
 
@@ -197,11 +204,11 @@ export interface RegionState {
   pop: Partial<Record<Species, number>>;
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean };
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean };
   /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
   boughBedAge: number;
-  /** Minutes since the lean-to and the rack were built or mended; each falls after a season. */
-  structureAge: Partial<Record<"leanTo" | "dryingRack", number>>;
+  /** Minutes since each decaying structure was built or mended; each falls after its life span. */
+  structureAge: Partial<Record<DecayingId, number>>;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
   fire: { lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number };
@@ -218,6 +225,8 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
+  /** The basket trap set in this region's water: where, the live fish in it, and the species that shore holds. */
+  trap: { cell: number; kg: number; fish: Species[] } | null;
 }
 
 export interface Player {
@@ -258,6 +267,8 @@ export interface Player {
   workHours: number;
   /** Set when the day's work is done: the minute of the next dawn, until which the runner rests. */
   restUntil?: number;
+  /** Shores this survivor has read, by cell. */
+  known: Record<number, Observation>;
 }
 
 export interface Weather {

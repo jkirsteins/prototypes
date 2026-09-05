@@ -14,6 +14,7 @@ import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
+import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
@@ -36,7 +37,7 @@ const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
   chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
-  fill: "shore", iceHole: "shore",
+  fill: "shore", iceHole: "shore", read: "shore", setTrap: "shore",
 };
 
 /** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
@@ -74,6 +75,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
     case "hang": return "driedMeat";
+    case "emptyTrap": return "fish";
     default: return null;
   }
 }
@@ -139,6 +141,11 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   }
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
   if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
+  if (task === "emptyTrap" && st.trap) return { cell: st.trap.cell, note: "" };
+  if (task === "setTrap") {
+    const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);
+    if (cells.length) return { cell: cells[0], note: "" };
+  }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
   const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
@@ -277,8 +284,11 @@ function untilMet(state: GameState, it: Intent): boolean {
 }
 
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
-function packCarries(state: GameState, it: Intent): boolean {
-  if (it.task === "fill") return vesselLitres(state.player) > 0 && campWaterRoom(pile(state, it.campCell)) > 0;
+function packCarries(state: GameState, world: World, it: Intent): boolean {
+  if (it.task === "fill") {
+    const room = campWaterRoom(pile(state, it.campCell), regionState(state, world, state.player.region));
+    return vesselLitres(state.player) > 0 && room > 0;
+  }
   const pack = state.player.pack;
   if (weight(pack) >= PACK_HARD_KG - 1e-9) return true;
   const items = yieldItems(it.task, it.arg);
@@ -292,10 +302,10 @@ function packCarries(state: GameState, it: Intent): boolean {
  * in the camp pile - but the pack can still hold something unrelated that
  * arrived with the player and is still owed a drop.
  */
-export function deliveryPending(state: GameState, it: Intent): boolean {
+export function deliveryPending(state: GameState, world: World, it: Intent): boolean {
   if (it.deliver !== "camp") return false;
-  if (it.cell === it.campCell) return packCarries(state, it);
-  return !isEmpty(pile(state, it.cell)) || packCarries(state, it);
+  if (it.cell === it.campCell) return packCarries(state, world, it);
+  return !isEmpty(pile(state, it.cell)) || packCarries(state, world, it);
 }
 
 function loadFull(state: GameState, it: Intent): boolean {
@@ -309,8 +319,8 @@ function dropEverything(state: GameState, world: World): void {
   const to = pile(state, here);
   const keep = new Set(orderKit(state));
   for (const { item, qty: q } of listItems(from)) if (!keep.has(item)) transfer(from, to, item, q);
-  // Unloading at the home camp empties the vessels too, as far as the vessels at camp have room.
-  if (state.intent?.campCell === here) pourVessels(state.player, to);
+  // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
+  if (state.intent?.campCell === here) pourVessels(state.player, to, regionState(state, world, state.player.region));
 }
 
 type Outcome = "again" | undefined;
@@ -354,7 +364,7 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
     }
   }
   // At camp, whatever is on the back comes off, yield or not - it is not going back out.
-  if (packCarries(state, it) || (here === it.campCell && !isEmpty(pack))) {
+  if (packCarries(state, world, it) || (here === it.campCell && !isEmpty(pack))) {
     if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with the load");
     dropEverything(state, world);
     it.step = "unloading at camp";
@@ -495,7 +505,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   // back (it favours the pack over the ground when there is room) goes onto the
   // camp pile at once, so campHas can see it and nothing is ever carried back out.
   // Idempotent: once the pack holds none of the yield this does not fire again.
-  if (it.deliver === "camp" && here === it.campCell && packCarries(state, it)) {
+  if (it.deliver === "camp" && here === it.campCell && packCarries(state, world, it)) {
     dropEverything(state, world);
     it.step = "unloading at camp";
     return "again";
@@ -503,7 +513,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   const o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
   const met = it.windDown || untilMet(state, it);
   if (met || (o && !o.ok)) {
-    if (deliveryPending(state, it)) return deliveryStep(state, world, cal, it);
+    if (deliveryPending(state, world, it)) return deliveryStep(state, world, cal, it);
     // An order's intent says nothing: the scheduler removes a met job with its
     // done line and re-judges a blocked one, logging the reason once.
     if (it.orderId !== null || it.windDown) state.intent = null;

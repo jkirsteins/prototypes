@@ -279,6 +279,16 @@ describe("the Do panel", () => {
     expect(html).toContain('data-act="advanced"');
   });
 
+  it("the Hunt group also offers reading the shore and setting and emptying the trap", () => {
+    // Seed 21's start region has a shore (tests/start.test.ts covers this generally); the rows
+    // render as buttons whether or not they are greyed with a reason.
+    const html = doHtml(state, world, cal, newUiState());
+    const huntGroup = html.slice(html.indexOf("<small>Hunt</small>"), html.indexOf("<small>Camp</small>"));
+    expect(huntGroup).toContain("Read the water");
+    expect(huntGroup).toContain("Set the trap");
+    expect(huntGroup).toContain("Empty the trap");
+  });
+
   it("the strip's choice shows on the row, and the raw list appears under the advanced toggle unchanged", () => {
     // The Move tab is where the raw list keeps Haul and the spot walks.
     const ui = { ...newUiState(), until: "forever" as const, deliver: "camp" as const, advanced: true, tab: "move" as const };

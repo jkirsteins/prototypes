@@ -257,18 +257,21 @@ record and the journal read from it with its daily forecast field, the
 epitaph and the cemetery, the dim map, the season spine, first decay,
 the gap between survivors that sets the heir's month, and the heir set
 down near the old camp; not its ramp; built), then the first producers and
-stocks (C's basket trap, and 3's water storage and turf hut, pulled out
-of their items), then B the risk forecast with the away cap as its
-horizon, then the first tester round: with B in, the set the hybrid's
-bet needs exists (a death that persists, a producer, a camp that holds,
-orders, a forecast that makes away risk legible), so twenty testers and
-the beacon go in there, as a kill-or-continue check of the hybrid and
+stocks (C's reading water and basket trap, then 3's turf hut, then 3's
+water store, pulled out of their items, in that order because the heirs
+die of food before any snow falls and cold sits under band until it does;
+built), then B the risk forecast with the away cap as its
+horizon, then 3's siting (camp as a chosen cell, pulled out of 3 the way
+the hut and the trough were), then the first tester round: with B and
+siting in, the set the hybrid's bet needs exists (a death that persists,
+a producer, a camp that holds and was chosen, orders, a forecast that
+makes away risk legible), so twenty testers and the beacon go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
 run and its search order), then E hides and clothing, then the rest of
-3 camp (siting, the rest of the shelter ladder, the buildings with the
+3 camp (the rest of the shelter ladder, the buildings with the
 cellar first) with the rest of C alongside and F's trails and the
 cellar's keep, then 4 animals, 5 injury
 and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
@@ -315,11 +318,31 @@ world always reads "starved, day 45", and goals and a tree tuned against
 runs that never see first frost are tuned against the wrong game. The
 trap, the water storage and the turf hut are each a table row and one
 rate or rule, and the death the trap can cause while the player is away
-is November ice, months past where any run ends today. The rest of F
-still comes before the cellar and the shelter ladder's other rungs: the
+is November ice, months past where any run ends today. Inside the slot
+the trap goes first and the hut second: F's heirs, walking home, starve
+in September with cold under band, so the trap is what moves the heir
+gate and the hut is what carries the survivor past it into the snow.
+The trough is third; no heir was thirsty. The rest of F still comes
+before the cellar and the shelter ladder's other rungs: the
 latitude is what makes the second run a different game from the first,
 the goals and the tree are what the second run is for, and the corpse
 run is what a death leaves reachable.
+
+Why siting comes before the tester round and not in 3's slot: the
+promotion rule above is written for rungs the player earns, and siting
+is not a rung, it is the decision the run is spent living with, which
+the section under 3 calls the most idle-shaped addition here. Measured
+by deaths it never moves, since the baseline's start filter already
+gives every camp a shore and an outcrop, so under the rule it would sit
+behind E and the rest of F for as long as thirst and hunger lead the
+ledger. But the tester round is a kill-or-continue check of the bet,
+and testers who never chose where to settle cannot answer it; a kill
+from that round would be ambiguous. The cost also grows with every slot
+that passes: the camp cell is read in twenty files today, and the
+corpse run, the goals and the trails would each bind to it before 3's
+turn came. B stays ahead of it, because the forecast is what makes an
+away death fair and that is the premise being tested. The rest of 3,
+the ladder's other rungs and the buildings, keeps its slot.
 
 Why D landed whole and early: the species half because the roster is
 what the orders hunt, and the sound half beside it because the cue sink
@@ -1734,11 +1757,75 @@ firewood at camp; the heir starves on day 27. Against the late-August
 gate (first snow, fed), heir passed 0 of 4.
 
 Every heir lands between 8 and 16 August with a fire pit and five
-snares waiting some 10 to 18 km away, and dies of cold or hunger inside
-40 days. The reference list was tuned for an April start, and the stop
-rule's reading is unchanged: the first producers (the basket trap, the
-water storage, the turf hut) are next in the order, and the heir's
-report is the number they are measured against.
+snares waiting some 10 to 18 km away. Read closer, those four deaths
+were not the list meeting September: the heir never went to the old
+camp, and the shore it landed on had no rock, so the list stalled on
+its first job. Every heir's camp held 0 stone and 130 to 394 logs at
+death, with a fire drill and no ring to light; three froze beside 40 kg
+of firewood and seed 79's heir wore its axe out felling and starved. The
+landing search asks for a shore where the start search asks for a shore
+and an outcrop, and travel was not a line on the list. Meanwhile every
+ancestor had starved 0.1 to 1.2 km from its own camp, so its axe, knife,
+bucket and spear lay beside the fire pit and the stone through the gap.
+The reference heir now walks to the old camp first, as the first log
+line's bearing invites, by the travel task with its hours and burn, and
+gives no order until it arrives: all four reach it on day 1 and take
+their camp there. Measured again: seed 17's heir starves on day 39
+(was frozen on 25), seed 19's on day 53, alive and fed at day 45 (was
+19), seed 79's on day 36 (was 27), and seed 42's dies of a fever on day
+16 (was 36), a hazard roll in rain with the tinder refusing. Heir
+passed 0 of 4 still, and now of the ancestor's cause: snares over band
+and fish in band, 950 to 2,600 kcal eaten a day against 3,500 to 3,700
+burned, most of the excess the working day's felling. The stop rule's
+reading holds: the first producers are next, and the heir's report is
+the number they are measured against. Cold sits under band through
+September on every heir, so the trap is what moves this gate and the
+turf hut is what carries the survivor past it into the snow.
+
+Measured with the producers in (`2026-09-05-survidle-first-producers-design.md`):
+the April gate passed 4 of 4. `npx vite-node scripts/reference.ts --heir
+17 19 42 79 250`: seed 17's first life starves on day 48; a 90-day gap
+lands the heir 16 August, year 1, 12.4 km from the old camp, finding a
+fire pit standing, 5 snares, a trap with 5.0 kg, 0 kcal and 65 kg of
+firewood at camp; the heir starves on day 37. Seed 19's first life
+starves on day 51; a 90-day gap lands the heir 19 August, year 1, 13.2
+km away, finding the same fire pit and 5 snares, no trap, 0 kcal and 68
+kg of firewood at camp; the heir is alive and fed at first snow on day
+27 and starves on day 48. Seed 42's first life starves on day 40; a
+90-day gap lands the heir 8 August, year 1, 10.4 km away, finding a fire
+pit standing, 5 snares, no trap, 0 kcal and no firewood at camp; the
+heir dies of sickness on day 16, before first snow. Seed 79's first
+life starves on day 40; a 90-day gap lands the heir 8 August, year 1,
+18.3 km away, finding a fire pit standing, 5 snares, no trap, 0 kcal
+and 89 kg of firewood at camp; against the first-snow gate on day 34
+the heir fails, starving on day 36. Heir passed 1 of 4. `npx vite-node
+scripts/horizon.ts 17 19 42 79 90`: the producers stage (trap, hut and
+trough at keeps) holds 33, 30, 37 and 35 days against its 10-to-20-day
+band, over on all four; the stocked stage holds 46, 49, 44 and 46 days
+against its 20-to-60-day band, in band on all four.
+
+The trap works: its dawn draws yielded 486 to 786 kcal a day on three
+seeds when set on days 10 to 18. But the first month cannot afford it:
+set early and emptied daily, April read 1 of 4, the reads and the trips
+costing what the trap yielded; set early and never emptied, April read
+1 of 4 again, the unemptied basket drawing the shore's fish down while
+the spear fished it. With every producer line below the hunt keep,
+April is 4 of 4 again, and the lines below the hunt keep are reached
+only when everything above is met or blocked - which one first life in
+four managed: seed 17 set its trap and starved with it standing full at
+5.0 kg on day 48. Seeds 19, 42 and 79 never reached them and their
+first lives read no trap. The heir who inherits a full trap starves
+beside it: seed 17's heir walked home to "trap with 5.0 kg", read trap
+0 in its own week, and starved on day 37 - the empty keep sits below
+the same hunt keep, and the heir's own list never reaches it either.
+What that makes next: the calibration pass owns the list's scheduling
+(a keep that is met most of the time, or a runner that empties a trap
+when it passes to fish), and the heir gate's reading of the producers
+waits on it; the trap's own bottleneck, the rack's 6 kg and spoilage,
+is unmeasured until then. A spoiled once-craft counts as done and is
+never retried (`it.done++` before `complete()` decides), which hides
+the bow at low Crafting. An unemptied trap keeps drawing the shore's
+population down.
 
 The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
 the epitaph, the entry and "The next boat lands in July, year 1". Begin
@@ -1754,7 +1841,11 @@ seed parameter came back to the tombstone from the save. The console
 stayed clean. Two findings: the tombstone shows the name twice, in the
 heading and again in the epitaph's own "Name." prefix; and the panels
 behind the landing screen still show the dead body's bars (health 0, no
-tools) until Land.
+tools) until Land. The Do panel's rows are a hand-kept list, and it had
+missed the three new tasks - reading the water, setting and emptying
+the trap - until this pass caught it. A July death lands the heir on 21
+October, by which an October dawn has already taken the trap while the
+hut, the trough and the ancestor's tools still stand at camp.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -1825,9 +1916,10 @@ in the world. Three levers, cheapest first:
   by a long walk, so the old cabin is the waypoint on the way up. It is
   also the reason 6's moving camp exists: a summer camp south, a winter
   push north, stock carried between.
-- **The camp as the decision.** 3's siting, when it lands: coast, inland
-  lake and fell edge should each want a different orders list. Not in the
-  thirty-day scope; the test says whether the two above are enough.
+- **The camp as the decision.** 3's siting, which lands after B and
+  before the tester round (the build order says why): coast, inland
+  lake and fell edge should each want a different orders list. The
+  test says whether the three together are enough.
 
 **Goals.** Hades' fated list is the model: every goal in the world is
 listed, a few are open at a time, harder ones open as earlier ones close,

@@ -8,6 +8,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
+import { fishLie, readCells } from "../sim/knowledge";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
 import { daysInWords, landingDate } from "../sim/landing";
@@ -200,11 +201,20 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
     ["Fish", (s) => isFish(s)],
     ["Heard", (s) => isVoiceOnly(s)],
   ];
-  return groups
+  const lines = groups
     .map(([label, pick]) => {
       const list = here.filter(pick).map((s) => rosterEntry(state, world, id, s, cal));
       return list.length ? `<div>${label}: ${list.join(", ")}</div>` : "";
     })
+    .join("");
+  return lines + readHtml(state, world, id);
+}
+
+/** The shores of this region the survivor has read, each with what lies where. Empty when none is. */
+export function readHtml(state: GameState, world: World, id: number): string {
+  return readCells(state, world, id)
+    .filter((c) => state.player.known[c].fish.length > 0)
+    .map((c) => `<div>Shore read: ${state.player.known[c].fish.map(fishLie).join(", ")}</div>`)
     .join("");
 }
 
@@ -254,9 +264,12 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.firePit) built.push("fire pit");
   if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
   if (st.structures.cabin) built.push("log cabin");
+  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
   if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
   if (st.structures.boughBed) built.push("bough bed");
+  if (st.structures.waterStore) built.push("water trough");
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
+  if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
   const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
   const fire = st.structures.firePit
     ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
@@ -265,7 +278,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${RACK_MAX_KG} kg max)</small></div>`
     : "";
   const campPile = pile(state, st.campCell);
-  const cap = campWaterCapacity(campPile);
+  const cap = campWaterCapacity(campPile, st);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
@@ -408,7 +421,11 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
   return `<h2>Do</h2><div class="tabs">${tabs}</div>${instantBtns}${opts.map(optHtml).join("")}`;
 }
 
-/** The Do panel's rows. The Hunt group is the region's own roster: what is not here is not offered. */
+/**
+ * The Do panel's rows. The Hunt group is the region's own roster: what is
+ * not here is not offered, plus the shore's own reading and the trap it
+ * sets and empties.
+ */
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
     { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
@@ -417,6 +434,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
       { id: "fish" as TaskId, arg: "any" },
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
+      { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
     ] },
     { label: "Camp", items: [{ id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },

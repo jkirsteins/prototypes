@@ -10,7 +10,7 @@ import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { craftSuccess, oddsFactor } from "../src/sim/skills";
 
-const dry = { raining: false, heavy: false, snowing: false, roof: false, cabin: false, fireAtCamp: false, bedded: false, storm: false };
+const dry = { raining: false, heavy: false, snowing: false, roof: false, walled: false, fireAtCamp: false, bedded: false, storm: false };
 
 describe("wet clothing", () => {
   it("rain soaks the outer layer first, and a soaked wool coat keeps half its warmth", () => {
@@ -32,7 +32,7 @@ describe("wet clothing", () => {
     stepGarments(state, { ...dry, raining: true, fireAtCamp: true, roof: true }, 60);
     expect(garmentWet(state.player.clothing[0])).toBeCloseTo(80, 6);
     for (const g of state.player.clothing) g.wet = 100;
-    stepGarments(state, { ...dry, raining: true, cabin: true, roof: true }, 60);
+    stepGarments(state, { ...dry, raining: true, walled: true, roof: true }, 60);
     expect(garmentWet(state.player.clothing[0])).toBeCloseTo(95, 6);
     // A lean-to alone, in rain or snowfall, neither dries nor wets you further.
     for (const g of state.player.clothing) g.wet = 100;

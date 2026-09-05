@@ -36,13 +36,13 @@ export const APRIL: YieldTable = {
   },
 };
 
-/** Late August, the same country. Its fishing row folds hook and net; its small-game row folds traps and hunting. */
+/** Late August, the same country. Its fishing row folds hook and net; the passive row is the trap's share of the water, split out so the trap is measured on its own. */
 export const LATE_AUGUST: YieldTable = {
   name: "late August",
   rows: {
     plants: row(band(300, 800), band(600, 1200)),
     fishing: row(band(200, 700), band(700, 1500)),
-    passiveFishing: null,
+    passiveFishing: row(band(100, 400), band(400, 1000)),
     traps: row(band(0, 200), band(200, 700)),
     hunting: null,
     largeGame: row(band(0, 0), band(300, 1500)),
@@ -70,6 +70,7 @@ export const BERRY_TO_DOY = 288;
 /** Which table rows a ledger source answers to. The kit answers to none. */
 export const SOURCE_ROWS: Record<YieldSource, TableRow[]> = {
   fish: ["fishing"],
+  trap: ["passiveFishing"],
   snare: ["traps"],
   hunt: ["hunting", "largeGame"],
   berries: ["plants"],

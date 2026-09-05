@@ -23,7 +23,7 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split"],
   foraging: ["berries", "stone"],
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
-  fishing: fishSpecies().map((s) => `fish:${s}`),
+  fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen"],
   building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish"],
 };
@@ -110,7 +110,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "hunt": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
     case "mend": return "building";
-    case "fish": return "fishing";
+    case "fish": case "read": case "setTrap": case "emptyTrap": return "fishing";
     case "craft": case "repair": case "sharpen": return "crafting";
     case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": return "building";
     case "fill": case "iceHole": return "foraging";
@@ -134,6 +134,8 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "craft": return `craft:${arg}`;
     case "cook": return `cook:${arg ?? "rawMeat"}`;
     case "fill": case "iceHole": return id;
+    case "read": return "read";
+    case "setTrap": case "emptyTrap": return "trap";
     default: return null;
   }
 }
@@ -146,6 +148,15 @@ export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
   "craft:hideTrousers": { skill: "crafting", level: 8 },
   "craft:hideBoots": { skill: "crafting", level: 8 },
   "build:cabin": { skill: "building", level: 10 },
+  read: { skill: "fishing", level: 3 },
+  // Keyed "trap", not "setTrap": that is the mastery key masteryKey() gives
+  // both setTrap and emptyTrap (they are one trap skill, not two), and every
+  // other entry here is keyed by exactly the string masteryKey() returns for
+  // its task - a "setTrap" key would never be looked up and the panel would
+  // never show it.
+  trap: { skill: "fishing", level: 5 },
+  "build:turfHut": { skill: "building", level: 5 },
+  "build:waterStore": { skill: "building", level: 3 },
 };
 for (const s of huntedLand()) {
   const l = SPECIES_DEFS[s].hunt?.level;

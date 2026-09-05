@@ -10,8 +10,8 @@
 import { dayNumber } from "./calendar";
 import type { GameState } from "./types";
 
-export type YieldSource = "fish" | "snare" | "hunt" | "berries" | "kit";
-export const YIELD_SOURCES: YieldSource[] = ["fish", "snare", "hunt", "berries", "kit"];
+export type YieldSource = "fish" | "trap" | "snare" | "hunt" | "berries" | "kit";
+export const YIELD_SOURCES: YieldSource[] = ["fish", "trap", "snare", "hunt", "berries", "kit"];
 
 export interface BurnBuckets { base: number; activity: number; walk: number; cold: number; sick: number }
 
@@ -39,7 +39,7 @@ export interface WeekAverage {
 }
 
 export function emptyYield(): Record<YieldSource, number> {
-  return { fish: 0, snare: 0, hunt: 0, berries: 0, kit: 0 };
+  return { fish: 0, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0 };
 }
 
 export function emptyBurn(): BurnBuckets {

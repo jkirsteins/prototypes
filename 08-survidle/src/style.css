@@ -233,6 +233,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 .grid .c.mk-shelter { color: #fff; background: #4a5a78; }
+.grid .c.mk-trap { color: #fff; background: #4a5a78; }
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
 @keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }

@@ -62,11 +62,11 @@ is the roadmap item that builds it; "built" means it is in the tree today.
 | bow | Crafting 5 | a log (Woodcraft), cordage, a knife; sinew (Hunting) for arrows | roe deer and elk | arrows, sinew, a lumpy larder | 2 | built |
 | tailored hide clothing | Crafting 8 | hide and sinew (Hunting), the needle | winter under wool is winter under hide; the shell 7's wind reads | wear, mending, a deer every eight days | 2 to 3 | built; E deepens |
 | cabin | Building 10 | 40 logs, 12 stone, 8 cordage (Woodcraft, Foraging) | +15 C, and the hearth, storehouse, cellar and smokehouse attach here | sixty hours, a winter's firewood | 2 to 3 | built |
-| reading water | Fishing 3 | D's ranges per shore | the shore says what it holds and where; the local rate; where to site a camp and set a trap | nothing passive yet | 1 to 2 | C |
+| reading water | Fishing 3 | D's ranges per shore | the shore says what it holds and where; the local rate; where to site a camp and set a trap | nothing passive yet | 1 to 2 | C; built |
 | fibres and resin | Foraging 3 and 5 | the season: nettle and willow in summer, resin from pine | a second source of cordage (Crafting); glue for arrows, a wound seal (5), a torch that burns longer | season, drying | 2 | C |
-| basket trap | Fishing 5 | stakes (Woodcraft), fibre (Foraging), Crafting; a read shore | passive fish: the first food a camp makes without you | emptying, hauling, the rack's 6 kg, November ice, 4's raiders | 1 to 2 | C, producers slot; producer |
-| water storage | Building 3 | a vessel (Crafting), a camp | a week of water, the water keep as a stock | freezing, the walk to fill it | 2 | 3, producers slot; producer |
-| turf hut | Building 5 | poles, sticks, birch bark or bog turf (Woodcraft, Foraging) | a hearth: fire inside is legal, and the roof E's smoking needs; +10 C | re-turfing in a year or two | 2 to 3 | 3, producers slot |
+| basket trap | Fishing 5 | stakes (Woodcraft), fibre (Foraging), Crafting; a read shore | passive fish: the first food a camp makes without you | emptying, hauling, the rack's 6 kg, November ice, 4's raiders | 1 to 2 | C, producers slot; producer; built |
+| water storage | Building 3 | a vessel (Crafting), a camp | a week of water, the water keep as a stock | freezing, the walk to fill it | 2 | 3, producers slot; producer; built |
+| turf hut | Building 5 | poles, sticks, birch bark or bog turf (Woodcraft, Foraging) | a hearth: fire inside is legal, and the roof E's smoking needs; +10 C | re-turfing in a year or two | 2 to 3 | 3, producers slot; built |
 | scrape and tan | Crafting 3 and 5 | hide (Hunting), birch bark (Woodcraft), a vessel or pit (Crafting, Building) | tanned hide that every tailored piece needs; fat (D) for the tallow light | five days in the pit, a spoiled tan is the hide gone | 3 | E |
 | smoking | Crafting 5 | a roof with a hearth (Building), fuel (Woodcraft) | hide that keeps half its warmth soaked; rack-dried meat without the sickness roll | six hours, fuel | 3 | E and 3 |
 | net | Fishing 10 | cordage in quantity (Woodcraft, Foraging), a read shore | surplus that scales | spoilage becomes the limit | 2 to 3 | C |
@@ -109,9 +109,9 @@ capability before it made its bottleneck the measured cause.
 
 ## 5. The coverage test
 
-`src/sim/spine.ts` holds a `CAPABILITIES` table for what is built, and
-`tests/spine.test.ts` asserts over it the way card coverage is asserted
-over cards. Its scope is exactly:
+`src/sim/capabilities.ts` holds the `CAPABILITIES` table for what is
+built, and `tests/capabilities.test.ts` asserts over it the way card
+coverage is asserted over cards. Its scope is exactly:
 
 - every declared tier (a recommended level that names a capability);
 - every producer (a structure or order that yields while the survivor

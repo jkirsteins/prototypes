@@ -222,9 +222,9 @@ describe("the world save", () => {
     expect(loadGame(store)!.state.dead!.cause).toBe("froze");
   });
 
-  it("writes version 5 and reads 4 by wrapping the survivor as the first of the world", () => {
+  it("writes version 6 and reads 4 by wrapping the survivor as the first of the world", () => {
     const { state } = newGame(8);
-    expect(JSON.parse(serialize(state)).version).toBe(5);
+    expect(JSON.parse(serialize(state)).version).toBe(6);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     v4.version = 4;
     delete v4.state.survivors;
@@ -243,5 +243,31 @@ describe("the world save", () => {
     expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
     expect(file.state.spine).toEqual({ fired: {}, announced: {} });
     for (const st of Object.values(file.state.regions)) expect(st.structureAge).toEqual({});
+  });
+});
+
+describe("the version 6 save", () => {
+  it("writes version 6 and fills the producers' fields into an older save", () => {
+    const { state } = newGame(8);
+    const text = serialize(state);
+    expect(JSON.parse(text).version).toBe(6);
+    const old = JSON.parse(text);
+    old.version = 5;
+    delete old.state.player.known;
+    for (const st of Object.values(old.state.regions) as Record<string, unknown>[]) {
+      delete (st.structures as Record<string, unknown>).turfHut;
+      delete (st.structures as Record<string, unknown>).waterStore;
+      delete st.trap;
+    }
+    old.state.ledger = [{ day: 1, yield: { fish: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 0, burn: { base: 0, activity: 0, walk: 0, cold: 0, sick: 0 }, sleepMin: 0, workMin: 0 }];
+    const file = deserialize(JSON.stringify(old))!;
+    expect(file).not.toBeNull();
+    expect(file.state.player.known).toEqual({});
+    for (const st of Object.values(file.state.regions)) {
+      expect(st.structures.turfHut).toBe(false);
+      expect(st.structures.waterStore).toBe(false);
+      expect(st.trap).toBeNull();
+    }
+    expect(file.state.ledger[0].yield.trap).toBe(0);
   });
 });

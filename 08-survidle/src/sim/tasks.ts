@@ -12,7 +12,7 @@ import {
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, MEND, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, MEND, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -28,12 +28,13 @@ import {
   atCamp, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { lightingInRain, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import type {
-  GameState, IceMode, Inventory, ItemId, Order, PausedTask, RecipeId,
+  DecayingId, GameState, IceMode, Inventory, ItemId, Order, PausedTask, RecipeId,
   SpotId, StructureId, TaskId, ToolId,
 } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
@@ -65,7 +66,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole", "read"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightIndoors", "lightTorch"]);
 
@@ -85,7 +86,8 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang",
+  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
+  "setTrap", "emptyTrap",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -203,8 +205,10 @@ function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | 
   const r = regionAt(world, state.player.region);
   const st = regionState(state, world, state.player.region);
   const pool = id === "fish" ? fishSpecies() : huntedLand();
+  const obs = id === "fish" ? state.player.known[at] : undefined;
   const out: { s: Species; w: number }[] = [];
   for (const s of pool) {
+    if (obs && !obs.fish.includes(s)) continue;
     if (!r.capacity[s] || popOf(st, s) < 1) continue;
     const def = SPECIES_DEFS[s].hunt!;
     if (!spotSuits(world, at, def.spot, waterOf(s))) continue;
@@ -332,8 +336,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       // capacity has nothing left to gain from another cycle; without this the task
       // repeats forever at the shore instead of walking the full vessel home to pour.
       if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
-        const camp = pile(state, regionState(state, world, p.region).campCell);
-        const why = campWaterRoom(camp) > 0 ? "the vessels are full" : "no vessel at camp to pour into";
+        const homeSt = regionState(state, world, p.region);
+        const camp = pile(state, homeSt.campCell);
+        const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "camp is full";
         return { ...o, ok: false, why };
       }
       if (state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at)) {
@@ -414,6 +419,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
     }
+    case "read": {
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Read the water", detail: "an hour watching this shore: what lives in it and where it lies", duration: 60, repeatable: false }));
+      if (!o.ok) return o;
+      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
+      if (isRead(state, at)) return { ...o, ok: false, why: "you have read this water" };
+      return o;
+    }
     case "cook": {
       const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
       const kg = Math.min(1, totalQty(invs, food));
@@ -461,16 +473,19 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
       if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
-      if (sid === "cabin" && !st.structures.firePit) return { ...o, ok: false, why: "build the fire pit first" };
+      if ((sid === "cabin" || sid === "turfHut") && !st.structures.firePit) return { ...o, ok: false, why: "build the fire pit first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% built; materials already laid out` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
       return o;
     }
     case "mend": {
-      const sid = arg as "leanTo" | "dryingRack";
+      const sid = arg as DecayingId;
       const def = MEND[sid];
       const name = STRUCTURES[sid].name;
-      const o = needCamp(opt({ group: "camp", label: `Mend the ${name}`, detail: `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another season" : "relash it for another season"}`, duration: def.minutes, repeatable: false }));
+      const label = sid === "turfHut" ? "Re-roof the hut" : `Mend the ${name}`;
+      const detail = sid === "turfHut" ? "20 bark; a new roof for another year and a half"
+        : `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another season" : "relash it for another season"}`;
+      const o = needCamp(opt({ group: "camp", label, detail, duration: def.minutes, repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };
       if (!needsMending(st, sid)) return { ...o, ok: false, why: "stands well enough" };
@@ -478,8 +493,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "light": {
-      const roof = st.structures.leanTo || st.structures.cabin;
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
       const o = needCamp(opt({
         group: "camp", label: "Light the fire",
         detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
@@ -566,15 +580,32 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "lightIndoors": {
       const o = needCamp(opt({
         group: "camp", label: "Light a fire indoors",
-        detail: "no smoke hole: the cabin will fill with smoke",
+        detail: st.structures.turfHut && !st.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
         duration: 10,
       }));
       if (!o.ok) return o;
-      if (!st.structures.cabin) return { ...o, ok: false, why: "needs a cabin" };
-      if (st.structures.hearth) return { ...o, ok: false, why: "there is a hearth: light it there" };
+      if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
+      if (st.structures.cabin && st.structures.hearth) return { ...o, ok: false, why: "there is a hearth: light it there" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
+      return o;
+    }
+    case "setTrap": {
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Set the trap", detail: "stakes and the basket in the shallows; catches while you are elsewhere", duration: 20 }));
+      if (!o.ok) return o;
+      if (st.trap) return { ...o, ok: false, why: `the trap is set at ${whereIs(state, world, st.trap.cell)} already` };
+      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
+      if (!isRead(state, at)) return { ...o, ok: false, why: "read the water first" };
+      if (state.player.known[at].fish.length === 0) return { ...o, ok: false, why: "nothing lives in this water" };
+      if (!kitInReach(state, world, "basketTrap", invs)) return { ...o, ok: false, why: "needs a basket trap" };
+      return o;
+    }
+    case "emptyTrap": {
+      const o = opt({ group: "hunt", label: "Empty the trap", detail: st.trap ? `${st.trap.kg.toFixed(1)} kg of fish in it` : "", duration: 15 });
+      if (!st.trap) return { ...o, ok: false, why: "no trap set here" };
+      if (at !== st.trap.cell) return { ...o, ok: false, why: `walk to the trap at ${whereIs(state, world, st.trap.cell)}` };
+      if (st.trap.kg <= 1e-9) return { ...o, ok: false, why: "the trap is empty" };
       return o;
     }
   }
@@ -585,13 +616,16 @@ export function bedText(state: GameState, world: World): string {
   const st = regionState(state, world, state.player.region);
   const camp = atCamp(state, world);
   const bed = camp && st.structures.boughBed;
-  const roof = camp && (st.structures.cabin || st.structures.leanTo);
+  const roof = camp && roofed(st);
   const blanket = state.player.clothing.some((g) => CLOTHING[g.id].slot === "blanket");
   const on = bed ? "on a bough bed" : "on bare ground";
   const under = blanket && roof ? "under your blanket and the roof" : blanket ? "under your blanket" : roof ? "under the roof" : "in the open";
   const fire = camp && st.fire.lit ? ", by the fire" : "";
   return `${on}, ${under}${fire}`;
 }
+
+/** A read shore's odds over an unread one: knowing where the fish lie is worth half again. */
+export const READ_ODDS = 1.5;
 
 export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
   const def = SPECIES_DEFS[species].hunt!;
@@ -602,6 +636,7 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
   if (stormNow(state.weather, state.minute)) odds *= 0.5;
+  if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
   return Math.min(0.95, odds);
@@ -623,6 +658,9 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "fish", "any"));
   for (const s of fishSpecies()) if (r.capacity[s]) out.push(check(state, world, cal, "fish", s));
+  out.push(check(state, world, cal, "read"));
+  out.push(check(state, world, cal, "setTrap"));
+  out.push(check(state, world, cal, "emptyTrap"));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
   out.push(check(state, world, cal, "light"));
@@ -638,7 +676,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "iceHole"));
   for (const id of RECIPE_IDS) out.push(check(state, world, cal, "craft", id));
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
-  for (const sid of ["leanTo", "dryingRack"] as const) out.push(check(state, world, cal, "mend", sid));
+  for (const sid of DECAYING) out.push(check(state, world, cal, "mend", sid));
   for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
   out.push(check(state, world, cal, "haul"));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
@@ -1062,6 +1100,29 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       } else log(state, "Nothing bites.");
       return;
     }
+    case "read": {
+      const here = cellOf(state, world);
+      readShore(state, world, here);
+      log(state, readLine(state, world, cal, here), "good");
+      return;
+    }
+    case "setTrap": {
+      const here = cellOf(state, world);
+      consume(invs, [{ item: "basketTrap", qty: 1 }]);
+      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish] };
+      log(state, `The trap is set at ${whereIs(state, world, here)}.`);
+      state.stats.structures++;
+      return;
+    }
+    case "emptyTrap": {
+      const kg = st.trap!.kg;
+      st.trap!.kg = 0;
+      produce(state, world, "fish", kg);
+      creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
+      state.stats.animals++;
+      log(state, `You empty the trap: ${kg.toFixed(1)} kg of fish.`, "good");
+      return;
+    }
     case "cook": {
       const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
       const kg = Math.min(1, totalQty(invs, food));
@@ -1126,7 +1187,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         st.structures[sid] = true;
         delete st.build[sid];
         if (sid === "boughBed") st.boughBedAge = 0;
-        if (sid === "leanTo" || sid === "dryingRack") st.structureAge[sid] = 0;
+        if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") st.structureAge[sid] = 0;
       }
       state.stats.structures++;
       if (sid !== "snare" && !hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
@@ -1134,7 +1195,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "mend": {
-      const sid = arg as "leanTo" | "dryingRack";
+      const sid = arg as DecayingId;
       consume(invs, MEND[sid].needs);
       st.structureAge[sid] = 0;
       record(state, { kind: "repaired", structure: sid });
@@ -1145,8 +1206,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "lightIndoors": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
       if (wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      const roof = st.structures.leanTo || st.structures.cabin;
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roof);
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
       if (lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
         return;

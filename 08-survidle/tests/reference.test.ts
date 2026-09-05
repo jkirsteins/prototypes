@@ -52,6 +52,11 @@ describe("the reference player", () => {
     expect(axe.kind).toBe("keep");
   });
 
+  it("the basket trap is carried, not stocked: its craft want leaves it in the pack, unlike every other craft want", () => {
+    const crafts = REFERENCE_ORDERS.filter((o) => o.req.task === "craft");
+    for (const o of crafts) expect(o.req.deliver, o.req.arg ?? "").toBe(o.req.arg === "basketTrap" ? "leave" : "camp");
+  });
+
   it("a competent day two: chop right after the fire is lit, the knife and the snares right after the lean-to", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
     const at = (s: string) => tasks.findIndex((t) => t.startsWith(s));
@@ -63,14 +68,23 @@ describe("the reference player", () => {
     expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
   });
 
-  it("the fish keep follows the cook keeps and comes before the berries keep and the rack", () => {
+  it("the producers sit below the hunt keep, right before the axe keep; the fish keep follows the cook keeps", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
     expect(tasks[cook - 1]).toBe("cook:fish");
     expect(tasks[cook + 1]).toBe("fish:any");
     expect(tasks[cook + 2]).toBe("berries:");
     expect(tasks[cook + 3]).toBe("build:dryingRack");
-    expect(REFERENCE_ORDERS.length).toBe(27);
+    const hang = tasks.indexOf("hang:");
+    expect(tasks[hang + 1]).toBe("craft:bow");
+    const hunt = tasks.indexOf("hunt:any");
+    expect(tasks.slice(hunt + 1, hunt + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
+    expect(tasks[hunt + 4]).toBe("emptyTrap:");
+    expect(tasks[hunt + 5]).toBe("craft:axe");
+    const axe = tasks.indexOf("craft:axe");
+    expect(tasks.slice(axe + 1, axe + 6)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:"]);
+    expect(tasks[axe + 6]).toBe("chop:");
+    expect(REFERENCE_ORDERS.length).toBe(36);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -227,7 +241,7 @@ describe("the reference player", () => {
   });
 
   it("weekLines reads a week against the table for its date", () => {
-    const week = { days: 7, yield: { fish: 310, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
+    const week = { days: 7, yield: { fish: 310, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
     const lines = weekLines(week, 115);
     expect(lines[0]).toContain("fish 310 (in band)");
     expect(lines[0]).toContain("kit 0");
@@ -244,8 +258,8 @@ describe("the reference player", () => {
   });
 
   it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 85 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    const r = runReference(85, 30);
+    // Seed 153 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
+    const r = runReference(153, 30);
     expect(r.outcome).toEqual({ kind: "died", day: REFERENCE_TARGET_DAY, cause: "starved" });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
@@ -262,6 +276,18 @@ describe("the heir", () => {
     expect(r.found.kmToOldCamp).toBeLessThanOrEqual(20);
     expect(r.heir.record.index).toBe(2);
     expect(r.heir.checkpoints.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
+    const r = runHeir(17, 60);
+    expect(r.found.reachedCampDay).not.toBeNull();
+    expect(r.found.reachedCampDay!).toBeLessThanOrEqual(3);
+  }, 30000);
+
+  it("reports the trap's kilos and the new structures in the found line", () => {
+    const r = runHeir(17, 60);
+    expect(r.found).toHaveProperty("trapKg");
+    expect(r.found.trapKg === null || r.found.trapKg >= 0).toBe(true);
   }, 30000);
 
   it("a first life still alive at the day cap has no heir to raise, and stands in for both", () => {

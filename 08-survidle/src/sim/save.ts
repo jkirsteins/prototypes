@@ -18,17 +18,17 @@ export const SAVE_KEY = "survidle.save";
 /** Away longer than this is simulated as this. */
 export const MAX_OFFLINE_SECONDS = 24 * 3600;
 
-export interface SaveFile { version: 5; savedAt: number; state: GameState }
+export interface SaveFile { version: 6; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 5, savedAt: now, state };
+  const file: SaveFile = { version: 6, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if ((file?.version !== 3 && file?.version !== 4 && file?.version !== 5) || !file.state || typeof file.savedAt !== "number") return null;
+    if ((file?.version !== 3 && file?.version !== 4 && file?.version !== 5 && file?.version !== 6) || !file.state || typeof file.savedAt !== "number") return null;
     fillDefaults(file.state);
     return file as unknown as SaveFile;
   } catch {
@@ -51,7 +51,14 @@ function fillDefaults(state: GameState): void {
   state.spine ??= { fired: {}, announced: {} };
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [newRecord(1, rollName(new Rng(derive(state.seed, 7)), []), { year: 1, doy: state.startDoy }, 0)];
-  for (const st of Object.values(state.regions)) st.structureAge ??= {};
+  state.player.known ??= {};
+  for (const st of Object.values(state.regions)) {
+    st.structureAge ??= {};
+    st.structures.turfHut ??= false;
+    st.structures.waterStore ??= false;
+    st.trap ??= null;
+  }
+  for (const d of state.ledger) d.yield.trap ??= 0;
   if (state.intent) {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;
