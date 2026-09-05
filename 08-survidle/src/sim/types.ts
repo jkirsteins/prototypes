@@ -364,6 +364,8 @@ export interface GameState {
   seed: number;
   /** Day of year the run began on, 0-based; 1 April unless the harness or the browser says otherwise. */
   startDoy: number;
+  /** Real hours the world runs on without the player before the catch-up caps it: the away dial, 1 to AWAY_HOURS_MAX, set per run. */
+  awayHours: number;
   minute: number;
   rng: number;
   player: Player;

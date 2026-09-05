@@ -2,6 +2,7 @@ import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, fmtDate, START_DOY } from "./calendar";
+import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS } from "./items";
 import { creditYield } from "./ledger";
@@ -76,6 +77,7 @@ export function newGame(seed: number, startDoy = START_DOY): { state: GameState;
   const state = {
     seed,
     startDoy,
+    awayHours: AWAY_HOURS_DEFAULT,
     minute: 0,
     rng: derive(seed, 99),
     regions: {},

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { newGame } from "../src/sim/newgame";
 import { fillPopulations } from "../src/sim/regionstate";
-import { catchUp, deserialize, loadGame, MAX_OFFLINE_SECONDS, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
+import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { regionAt, speciesHere } from "../src/world/gen";
 
 class MemStorage implements Storage {
@@ -206,9 +206,9 @@ describe("save", () => {
     expect(state.minute).toBeCloseTo(1200, 6);
     expect(Array.isArray(away.entries)).toBe(true);
     const long = newGame(9);
-    catchUp(long.state, long.world, MAX_OFFLINE_SECONDS * 3);
+    catchUp(long.state, long.world, awaySeconds(long.state) * 3);
     // A real second is a game minute, so the cap in game minutes equals the cap in seconds.
-    expect(long.state.minute).toBeLessThanOrEqual(MAX_OFFLINE_SECONDS);
+    expect(long.state.minute).toBeLessThanOrEqual(awaySeconds(long.state));
   });
 });
 

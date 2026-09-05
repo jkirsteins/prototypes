@@ -19,13 +19,14 @@ import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
-import { catchUp, clearSave, loadGame, MAX_OFFLINE_SECONDS, saveGame } from "./sim/save";
+import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
 import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
+import { mountAwayDial } from "./ui/dial";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, doHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -76,7 +77,7 @@ function boot() {
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, elapsed, speed);
       setCueSink((c) => sounds.cue(c));
-      awayInfo = { seconds: Math.min(elapsed, MAX_OFFLINE_SECONDS), capped: elapsed > MAX_OFFLINE_SECONDS };
+      awayInfo = { seconds: Math.min(elapsed, awaySeconds(state)), capped: elapsed > awaySeconds(state) };
       saveGame(state);
     }
   } else {
@@ -138,7 +139,7 @@ function frame(now: number) {
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, dtSec, speed);
       setCueSink((c) => sounds.cue(c));
-      awayInfo = { seconds: Math.min(dtSec, MAX_OFFLINE_SECONDS), capped: dtSec > MAX_OFFLINE_SECONDS };
+      awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
     } else {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed);
     }
@@ -319,6 +320,7 @@ setCueSink((c) => sounds.cue(c));
 document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 mountControl(document.getElementById("sound")!, audio);
+mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();
   else audio.resume();

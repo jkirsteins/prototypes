@@ -1,5 +1,5 @@
 import { derive, Rng } from "../rng";
-import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
+import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { WORK_HOURS_DEFAULT } from "./body";
@@ -15,8 +15,11 @@ import { newSkills } from "./skills";
 import type { GameState, Inventory, LogEntry, TaskId } from "./types";
 
 export const SAVE_KEY = "survidle.save";
-/** Away longer than this is simulated as this. */
-export const MAX_OFFLINE_SECONDS = 24 * 3600;
+
+/** The most real time a catch-up simulates: the run's away dial. The forecast's first row is this same span. */
+export function awaySeconds(state: GameState): number {
+  return state.awayHours * 3600;
+}
 
 export interface SaveFile { version: 6; savedAt: number; state: GameState }
 
@@ -43,6 +46,7 @@ export function deserialize(text: string): SaveFile | null {
  */
 function fillDefaults(state: GameState): void {
   state.startDoy ??= START_DOY;
+  state.awayHours ??= AWAY_HOURS_DEFAULT;
   state.skills ??= newSkills();
   state.intent ??= null;
   state.ledger ??= [];
@@ -185,7 +189,7 @@ export interface AwaySummary {
  * steps the foreground loop takes.
  */
 export function catchUp(state: GameState, world: World, realSecondsElapsed: number, speed = 1): AwaySummary {
-  const seconds = Math.min(MAX_OFFLINE_SECONDS, Math.max(0, realSecondsElapsed));
+  const seconds = Math.min(awaySeconds(state), Math.max(0, realSecondsElapsed));
   const minutes = seconds * GAME_MINUTES_PER_REAL_SECOND * speed;
   const before = state.log.length;
   const firstMinute = state.minute;

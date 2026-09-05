@@ -4,6 +4,10 @@
  */
 export const GAME_MINUTES_PER_REAL_SECOND = 1;
 
+/** Real hours the world runs on without the player before the catch-up caps: the away dial's default and ceiling. */
+export const AWAY_HOURS_DEFAULT = 8;
+export const AWAY_HOURS_MAX = 24;
+
 export const CELL_KM = 0.3;
 /** Real paths wander; straight-line distance times this. */
 export const PATH_FACTOR = 1.25;
