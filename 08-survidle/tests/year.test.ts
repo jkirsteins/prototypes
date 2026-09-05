@@ -25,7 +25,7 @@ describe("the year script", () => {
 
   it("stocks a December camp for the winter gate", () => {
     const r = runWinter(17, 2);
-    expect(r.startDoy).toBe(335);
+    expect(r.startDoy).toBe(334);
     expect(r.kitted).toBe(true);
     expect(r.stocked).toEqual({ driedMeatKg: 80, firewoodKg: 400, logs: 150 });
   });

@@ -13,7 +13,7 @@ import { FOODS, type FoodId } from "./items";
 import { setSkillLevel } from "./horizon";
 import { type DayLedger, emptyBurn, type WeekAverage, weekBefore } from "./ledger";
 import { current } from "./record";
-import { type ReferenceReport, ReferencePlayer, REFERENCE_ORDERS, setUpReference, stepReference } from "./reference";
+import { type ReferenceReport, type ReferencePlayer, setUpReference, stepReference } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
 import type { GameState, Species } from "./types";
@@ -21,8 +21,13 @@ import type { GameState, Species } from "./types";
 /** The species whose first kill marks the large-game surplus: the tables' large-game row. */
 export const LARGE_GAME: Species[] = ["deer", "reindeer", "elk"];
 
-/** 1 December: the winter gate's start, a fortnight before the dark and a month before the cold snap. */
-export const WINTER_START_DOY = 335;
+/**
+ * 1 December: the winter gate's start, a fortnight before the dark and a
+ * month before the cold snap. Day of year is 0-based (1 April is 90, the
+ * calendar's own START_DOY), so 1 December - 31 + 28 + 31 + 30 + 31 + 30 +
+ * 31 + 31 + 30 + 31 + 30 days into the year - is 334, not 335.
+ */
+export const WINTER_START_DOY = 334;
 /** Days from 1 December to 1 March. */
 export const WINTER_DAYS = 90;
 /** The winter stock (spec 1.3): a hut winter is about 3 tonnes of firewood, of which 400 kg split and 150 logs to split. */
@@ -117,7 +122,6 @@ export function runYear(seed: number, opts: YearOptions = {}): YearReport {
   const days = opts.days ?? 365;
   const ref = setUpReference(seed, !fresh, startDoy);
   if (!fresh) for (const s of SKILL_IDS) setSkillLevel(ref.state, s, level);
-  ref.player = new ReferencePlayer(REFERENCE_ORDERS);
   const life = runLife(ref, days);
   return { seed, level, kitted: !fresh, startDoy, stocked: null, ...life };
 }
@@ -132,7 +136,6 @@ export function runWinter(seed: number, days = WINTER_DAYS): YearReport {
   addItem(camp, "driedMeat", WINTER_STOCK.driedMeatKg);
   addItem(camp, "firewood", WINTER_STOCK.firewoodKg);
   addItem(camp, "log", WINTER_STOCK.logs);
-  ref.player = new ReferencePlayer(REFERENCE_ORDERS);
   const life = runLife(ref, days);
   return { seed, level: 20, kitted: true, startDoy: WINTER_START_DOY, stocked: { ...WINTER_STOCK }, ...life };
 }

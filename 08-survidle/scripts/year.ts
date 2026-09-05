@@ -23,7 +23,7 @@ if (level !== undefined && !(Number.isInteger(level) && level >= 1 && level <= 5
   process.exit(2);
 }
 if (startDoy !== undefined && !(Number.isInteger(startDoy) && startDoy >= 0 && startDoy < 365)) {
-  console.error("--start takes a day of year, 0 to 364: 90 is 1 April, 335 is 1 December");
+  console.error("--start takes a day of year, 0 to 364: 90 is 1 April, 334 is 1 December");
   process.exit(2);
 }
 const seeds = rawArgs.filter((a) => !a.startsWith("--")).map(Number).filter((n) => Number.isFinite(n));
