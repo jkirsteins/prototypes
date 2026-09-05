@@ -52,6 +52,11 @@ describe("the reference player", () => {
     expect(axe.kind).toBe("keep");
   });
 
+  it("the basket trap is carried, not stocked: its craft want leaves it in the pack, unlike every other craft want", () => {
+    const crafts = REFERENCE_ORDERS.filter((o) => o.req.task === "craft");
+    for (const o of crafts) expect(o.req.deliver, o.req.arg ?? "").toBe(o.req.arg === "basketTrap" ? "leave" : "camp");
+  });
+
   it("a competent day two: chop right after the fire is lit, the knife and the snares right after the lean-to", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
     const at = (s: string) => tasks.findIndex((t) => t.startsWith(s));

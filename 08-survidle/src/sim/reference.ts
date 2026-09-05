@@ -60,23 +60,27 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * harmlessly with nothing to cook or hang. The shore is read the day the
  * spear exists, so the trap that follows it knows what water it is set
  * in; the basket trap and the setting job come right after the read. The
- * trap's empty keep sits above the fish keep, the same as cook sits
- * above fish: emptying what is already caught outranks catching more of
- * it, and the fish keep sits right after so the spear is used the day it
- * exists. Tools the survivor holds are once jobs, since the first one
- * made is taken up and a keep would craft a second; the axe stays a keep
- * because the arrival axe wears out and the spare is the point.
- * Auto-eat, auto-feed and auto-drink stay on, as they are for every
- * player. The felling grind, needing the axe kept just above it, runs
- * last and forever. Two kilos of berries at camp sit with the cook
- * keeps: in season they are the cheapest kcal there is, and out of it
- * the keep blocks harmlessly on nothing ripe. Once food and the hunt are
- * running, the roof takes the hours the felling grind would have
- * burned: the sticks and bark the hut needs, above what the opening
- * keeps already hold, sit right before it, the trough follows the hut
- * it needs room to stand in, and the top fill keep from the opening
- * stays as it was, the trough's own fill keep a second want for the
- * greater capacity the trough gives rather than a replacement.
+ * basket is carried, not stocked: the craft job leaves it in the pack
+ * rather than walking it to camp first, so the trap can be set on the
+ * way to the shore instead of needing a separate trip home for the
+ * basket already made. The trap's empty keep sits above the fish keep,
+ * the same as cook sits above fish: emptying what is already caught
+ * outranks catching more of it, and the fish keep sits right after so
+ * the spear is used the day it exists. Tools the survivor holds are
+ * once jobs, since the first one made is taken up and a keep would
+ * craft a second; the axe stays a keep because the arrival axe wears
+ * out and the spare is the point. Auto-eat, auto-feed and auto-drink
+ * stay on, as they are for every player. The felling grind, needing the
+ * axe kept just above it, runs last and forever. Two kilos of berries
+ * at camp sit with the cook keeps: in season they are the cheapest
+ * kcal there is, and out of it the keep blocks harmlessly on nothing
+ * ripe. Once food and the hunt are running, the roof takes the hours
+ * the felling grind would have burned: the sticks and bark the hut
+ * needs, above what the opening keeps already hold, sit right before
+ * it, the trough follows the hut it needs room to stand in, and the
+ * top fill keep from the opening stays as it was, the trough's own
+ * fill keep a second want for the greater capacity the trough gives
+ * rather than a replacement.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -96,7 +100,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("craft", { kind: "once" }, "fishingSpear"),
   job("read", { kind: "once" }),
-  job("craft", { kind: "once" }, "basketTrap"),
+  job("craft", { kind: "once" }, "basketTrap", "leave"),
   job("setTrap", { kind: "once" }),
   keep("cook", 1, "fish"),
   keep("cook", 1),

@@ -159,4 +159,19 @@ describe("the basket trap", () => {
     expect(until(g, () => st.trap !== null, 200)).toBe(true);
     expect(st.trap).toMatchObject({ cell });
   });
+
+  it("an intent to set the trap started away from camp with a basket already in the pack sets it", () => {
+    const g = newGame(4);
+    placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+    const cell = cellOf(g.state, g.world);
+    const obs = readShore(g.state, g.world, cell);
+    const st = regionState(g.state, g.world, g.state.player.region);
+    for (const s of obs.fish) st.pop[s] = 50;
+    // Neither at camp nor at the shore: the basket is already carried, not fetched.
+    placeAtSpot(g.state, g.world, g.state.player.region, "forest");
+    addItem(g.state.player.pack, "basketTrap", 1);
+    addOrder(g.state, g.world, { task: "setTrap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    expect(until(g, () => st.trap !== null, 400)).toBe(true);
+    expect(st.trap).toMatchObject({ cell });
+  });
 });
