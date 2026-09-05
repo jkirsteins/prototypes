@@ -246,7 +246,16 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 .grid .c.mk-shelter { color: #fff; background: #4a5a78; }
+.grid .c.mk-camp { color: #fff; background: #4a5a78; opacity: .7; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
+
+/* The legend has no cell background to draw a marker against, so its letters take the
+   background colour each mark uses on the map instead. */
+#map .legend b.mk-player { color: #b8860b; }
+#map .legend b.mk-fire { color: #b8431a; }
+#map .legend b.mk-shelter { color: #4a5a78; }
+#map .legend b.mk-camp { color: #4a5a78; opacity: .7; }
+#map .legend b.mk-trap { color: #4a5a78; }
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
 @keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }

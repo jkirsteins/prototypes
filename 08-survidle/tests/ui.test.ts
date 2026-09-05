@@ -120,7 +120,9 @@ describe("panels", () => {
     const nb = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, nb);
     setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl:not(.mk)").length).toBe(1);
+    // The pile was dropped where the walk began: the camp, which the player has now
+    // stepped off, so its own mark - x, with nothing built there yet - shows alongside.
+    expect(document.querySelectorAll("#map .c.pl.mk-camp").length).toBe(1);
   });
 
   it("bars follow the state", () => {

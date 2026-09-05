@@ -34,6 +34,7 @@ export const MARKS = {
   you: { glyph: "@", cls: "mk-player", label: "you" },
   fire: { glyph: "F", cls: "mk-fire", label: "fire" },
   shelter: { glyph: "H", cls: "mk-shelter", label: "shelter" },
+  camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
 
@@ -213,13 +214,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
   for (const { st, cell } of visitedCamps(state)) {
-    let m: (typeof MARKS)[keyof typeof MARKS] | null = null;
+    let m: (typeof MARKS)[keyof typeof MARKS];
     if (st.fire.lit) m = MARKS.fire;
     else if (st.structures.cabin || st.structures.leanTo || st.structures.turfHut) m = MARKS.shelter;
-    if (m) {
-      const g = toGlyph(cell);
-      if (g >= 0) markerAt.set(g, m);
-    }
+    else m = MARKS.camp;
+    const g = toGlyph(cell);
+    if (g >= 0) markerAt.set(g, m);
   }
   for (const r of Object.values(state.regions)) {
     if (!r.trap) continue;

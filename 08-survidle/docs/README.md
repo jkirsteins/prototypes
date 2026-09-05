@@ -42,6 +42,9 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   walking, the work, the hauling, and when the body asks for it, the walk
   back to camp, a fire from what is at camp, and the night's sleep. An
   "advanced" toggle shows the raw single actions underneath, one at a time.
+- **Camp is the cell the run lives around.** It starts at the region's
+  centre; walk to a better cell and make camp there while nothing stands at
+  the old one, and the region panel says what the cell offers first.
 - **Orders belong to a camp.** Walk into a new region and its list is
   empty; come back and the old list resumes.
 - **A big north.** The world is about 540 by 390 km, the shape of the far

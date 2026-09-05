@@ -277,7 +277,7 @@ filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
 pass checks from then on; built), then
 3's siting (camp as a chosen cell, pulled out of 3 the way
-the hut and the trough were), then the first half of I the survivor
+the hut and the trough were; built), then the first half of I the survivor
 (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
 quirks, the card and the face), then the first tester round: with B,
@@ -536,6 +536,28 @@ today and the runner walks to the chosen cell. Choosing where to settle
 is the decision the rest of the run is spent living with, and it is the
 most idle-shaped addition in this roadmap; the rungs below are what make
 the choice mean something.
+
+**Built.** `makeCamp` in `src/sim/tasks.ts` is a Camp-group task, twenty
+minutes, legal on a passable land cell that is not the live camp while
+`canMoveCamp` in `src/sim/camp.ts` holds; it refuses for three reasons -
+a structure standing at the old camp, its fire lit or banked, or weight
+left in its pile - and naming which. Completing the task moves
+`RegionState.campCell`, carries a running intent's own snapshot of it
+along, and logs "You make camp here." `siteReport` and `siteLine`, in
+the same file, give the walk minutes from a cell to every other spot the
+region has and whether its water ices over; the region panel's Here
+section shows it off the camp cell as "As a camp: ...", and the
+make-camp row's small print repeats it or the reason the move is
+blocked. `campCellOf` in `src/sim/position.ts` is the one helper
+`spotHere`, `describeWhere`, `whereIs` and the region overview's
+off-region distances now read, so each of them follows a moved camp
+instead of the cell the region generated. `src/ui/map.ts`'s `MARKS`
+table gains `camp` ("x", `mk-camp`), drawn at a visited region's camp
+cell whenever neither the fire nor the shelter mark takes it; `style.css`
+colours the mark and gives the legend's letters the same colours the
+map's marks use. The reference player, the horizon and `runHeir` are
+unchanged, since nothing in them chooses to move a camp. The browser
+pass is next.
 
 **The shelter ladder.** Each rung has a northern precedent and a cost it
 pays back in a different currency. Warmth is the shelter term of the

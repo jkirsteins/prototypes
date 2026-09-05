@@ -10,6 +10,7 @@ import { regionState } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
+import { mapHtml } from "../src/ui/map";
 import { regionHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { fmtKm } from "../src/units";
@@ -260,6 +261,30 @@ describe("the site report crosses the ice the walk buttons cross", () => {
     const expected = Math.round(routeMinutes(world, iceRoute!, speed, ice));
     const r = siteReport(state, world, st.campCell);
     expect(r.spots.find((s) => s.id === "outcrop")!.minutes).toBe(expected);
+  });
+});
+
+describe("the map marks the camp", () => {
+  it("draws x until a fire or shelter glyph takes the cell, and follows a move", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = newUiState();
+    const st = regionState(state, world, state.player.region);
+    const generated = st.campCell;
+    // A fresh game starts you standing on the camp, and your own glyph wins the cell,
+    // the same way a fire or shelter you stand on does; step off to see the mark.
+    const off = neighbourLandCell(world, generated);
+    placeAt(state, world, off);
+    expect(mapHtml(world, state, ui, cal)).toContain("mk-camp");
+    st.fire.lit = true;
+    st.fire.fuelKg = 5;
+    expect(mapHtml(world, state, ui, cal)).not.toContain("mk-camp");
+    st.fire.lit = false;
+    st.fire.fuelKg = 0;
+
+    // The mark follows a move, to a cell you are not standing on either.
+    st.campCell = neighbourLandCell(world, off);
+    expect(mapHtml(world, state, ui, cal)).toContain("mk-camp");
   });
 });
 
