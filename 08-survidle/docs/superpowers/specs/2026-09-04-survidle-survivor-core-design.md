@@ -67,8 +67,8 @@ the "new world" action in 6.5 and for tests.
 A version 4 file loads as a world whose first survivor is the one in
 the file: `survivors` is one record with a rolled name, `landed` at the
 file's `startDoy` in year 1, no gap, and an events list that begins at
-the load. Their earlier days are not in the record and the entry says
-"the first days are not written". `year` is 1, `landing` is null.
+the load. The record begins at the load and the entry says nothing
+about the days before it. `year` is 1, `landing` is null.
 `fillDefaults` handles it as it handles every earlier field.
 
 ### 1.3 Three phases
@@ -190,12 +190,12 @@ year in `calendar.ts`, derived from the seasonal mean in `weather.ts`
 and written down as numbers: it opens a month after the air's mean
 crosses 0 C in spring, since the sea lags the air, and closes on the
 day the mean crosses 0 C in autumn, since no boat runs into freeze-up.
-With `seasonalMean` as it is, that is day 125 (5 May) to day 306
-(2 November). A test asserts both numbers against the curve so a
+With `seasonalMean` as it is, that is day 125 (6 May) to day 306
+(3 November). A test asserts both numbers against the curve so a
 change to the curve moves them.
 
 Worked: a death on 25 April lands 24 July of the same year; a death on
-1 September lands 5 May of the next; a death on 20 October lands 5 May
+1 September lands 6 May of the next; a death on 20 October lands 6 May
 of the next. The gap in days and the landing date go into the new
 record.
 
@@ -291,7 +291,7 @@ call at the seam where the log already writes the line:
 |---|---|---|
 | `threshold` | `id` | the season spine's detector (7) |
 | `firstKill` | `species` | the hunt and fish task completions, once per species |
-| `built` | `structure` | the build completion, where `stats.structures` is stepped |
+| `built` | `structure` | the build completion, where `stats.structures` is stepped; once per structure per life |
 | `entered` | `region` | `enterRegion`, on the first visit |
 | `toolWorn` | `tool` | where a tool's durability reaches 0 |
 | `frostbite` | `part` | where frostbite first takes a toe or finger |
