@@ -68,17 +68,18 @@ describe("the reference player", () => {
     expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
   });
 
-  it("the trap's empty keep sits above the fish keep, which follows the cook keeps", () => {
+  it("the trap is set right after the spear and emptied under the hunt keep; the fish keep follows the cook keeps", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
     expect(tasks[cook - 1]).toBe("cook:fish");
-    expect(tasks[cook + 1]).toBe("emptyTrap:");
-    expect(tasks[cook + 2]).toBe("fish:any");
-    expect(tasks[cook + 3]).toBe("berries:");
-    expect(tasks[cook + 4]).toBe("build:dryingRack");
+    expect(tasks[cook + 1]).toBe("fish:any");
+    expect(tasks[cook + 2]).toBe("berries:");
+    expect(tasks[cook + 3]).toBe("build:dryingRack");
+    const spear = tasks.indexOf("craft:fishingSpear");
+    expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     const hunt = tasks.indexOf("hunt:any");
-    expect(tasks.slice(hunt + 1, hunt + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
-    expect(tasks[hunt + 4]).toBe("craft:axe");
+    expect(tasks[hunt + 1]).toBe("emptyTrap:");
+    expect(tasks[hunt + 2]).toBe("craft:axe");
     const hang = tasks.indexOf("hang:");
     expect(tasks[hang + 1]).toBe("craft:bow");
     const axe = tasks.indexOf("craft:axe");

@@ -860,16 +860,11 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const repeat = t.repeat;
   state.task = null;
   const it = state.intent;
-  // Read before the done count below: a spoiled craft produced nothing, so it
-  // must not count as the "once" that finishes the want (complete() touches
-  // nothing on the intent itself, so calling it first changes no ordering
-  // the rest of this block depends on).
-  const produced = complete(state, world, cal, rng, id, arg);
   if (it) {
-    if (produced && it.task === id && ((it.arg ?? "") === (wanted ?? "") || (it.arg ?? "") === (arg ?? ""))) {
+    if (it.task === id && ((it.arg ?? "") === (wanted ?? "") || (it.arg ?? "") === (arg ?? ""))) {
       it.done++;
       if (order) order.done++;
-    } else if (produced && it.task === "night" && id === "sleep") {
+    } else if (it.task === "night" && id === "sleep") {
       it.done++;
       if (order) order.done++;
     }
@@ -884,6 +879,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       }
     }
   }
+  complete(state, world, cal, rng, id, arg);
   if (repeat && !state.dead) {
     // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
     const o = check(state, world, cal, id, wanted);
@@ -988,14 +984,7 @@ function cutIceHole(state: GameState, world: World): void {
   log(state, "You cut a hole in the ice.");
 }
 
-/**
- * Applies a finished task's effect. Returns whether it produced its work -
- * true for every task but a craft, which can spoil (canConsume already
- * guarded everything else that could go wrong at check time). The runner
- * reads this to decide whether a "once" intent's done count advances: a
- * spoiled attempt is not a finished one.
- */
-function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): boolean {
+function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const invs = reach(state, world);
@@ -1017,35 +1006,35 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         p.health = Math.max(1, p.health - 10);
         log(state, "The axe glances off a knot into your shin. You will limp for a day.", "bad");
       }
-      return true;
+      return;
     }
-    case "sticks": produce(state, world, "stick", 6); return true;
-    case "bark": produce(state, world, "bark", 4); return true;
+    case "sticks": produce(state, world, "stick", 6); return;
+    case "bark": produce(state, world, "bark", 4); return;
     case "stone": {
       produce(state, world, "stone", Math.round(3 * yieldFactor(state, "foraging")));
       if (rng.chance(0.1)) {
         produce(state, world, "stone", 1);
         log(state, "A good sharp flint among the stones.", "good");
       }
-      return true;
+      return;
     }
     case "berries": {
       const kg = BERRY_PICK_KG * yieldFactor(state, "foraging");
       produce(state, world, "berries", kg);
       creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
-      return true;
+      return;
     }
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
       produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
-      return true;
+      return;
     }
     case "hunt": {
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
       // A hunt saved against a species the catalogue no longer has finishes as nothing.
-      if (!def?.hunt || isFish(s)) return true;
+      if (!def?.hunt || isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(state, "bow", wearFactor(state, world, "hunt", s))) {
         record(state, { kind: "toolWorn", tool: "bow" });
@@ -1085,13 +1074,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
           log(state, `No ${def.name} today, and an arrow lost in the brush.`);
         } else log(state, `No ${def.name} today.`);
       }
-      return true;
+      return;
     }
     case "fish": {
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
       // Likewise a cast saved before fishing named its fish.
-      if (!def?.hunt || !isFish(s)) return true;
+      if (!def?.hunt || !isFish(s)) return;
       const d = regionDensity(state, world, p.region, s, cal);
       if (wearTool(state, "fishingSpear", wearFactor(state, world, "fish", s))) {
         record(state, { kind: "toolWorn", tool: "fishingSpear" });
@@ -1109,13 +1098,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         creditYield(state, "fish", kg * FOODS.cookedFish.kcalPerKg);
         log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
-      return true;
+      return;
     }
     case "read": {
       const here = cellOf(state, world);
       readShore(state, world, here);
       log(state, readLine(state, world, cal, here), "good");
-      return true;
+      return;
     }
     case "setTrap": {
       const here = cellOf(state, world);
@@ -1123,7 +1112,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish] };
       log(state, `The trap is set at ${whereIs(state, world, here)}.`);
       state.stats.structures++;
-      return true;
+      return;
     }
     case "emptyTrap": {
       const kg = st.trap!.kg;
@@ -1132,14 +1121,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
       state.stats.animals++;
       log(state, `You empty the trap: ${kg.toFixed(1)} kg of fish.`, "good");
-      return true;
+      return;
     }
     case "cook": {
       const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
       const kg = Math.min(1, totalQty(invs, food));
       consume(invs, [{ item: food, qty: kg }]);
       produce(state, world, food === "rawMeat" ? "cookedMeat" : "cookedFish", kg);
-      return true;
+      return;
     }
     case "craft": {
       const rid = arg as RecipeId;
@@ -1147,7 +1136,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const needs = effectiveNeeds(state, rid);
       if (!canConsume(invs, needs)) {
         log(state, `The ${rec.name} is left unfinished: the materials are gone.`, "bad");
-        return false;
+        return;
       }
       const success = craftSuccess(state, rid);
       if (success < 1 && !rng.chance(success)) {
@@ -1155,7 +1144,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         consume(invs, lost);
         if (rec.tool && wearTool(state, rec.tool, wearFactor(state, world, "craft", rid))) record(state, { kind: "toolWorn", tool: rec.tool });
         log(state, `The ${rec.name} is spoiled: ${needsList(lost)} wasted.`, "bad");
-        return false;
+        return;
       }
       consume(invs, needs);
       if (rec.tool && wearTool(state, rec.tool, wearFactor(state, world, "craft", rid))) record(state, { kind: "toolWorn", tool: rec.tool });
@@ -1173,7 +1162,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
           else if (takeUp(state, world, item as ToolId)) log(state, `You have a ${rec.name}.`, "good");
         }
       }
-      return true;
+      return;
     }
     case "repair": {
       consume(invs, [{ item: "hide", qty: 0.5 }]);
@@ -1181,13 +1170,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const worst = p.clothing.reduce((a, b) => (b.durability < a.durability ? b : a));
       worst.durability = Math.min(100, worst.durability + 40);
       log(state, `The ${CLOTHING[worst.id].name} is patched.`, "good");
-      return true;
+      return;
     }
     case "sharpen": {
       consume(invs, [{ item: "stone", qty: 1 }]);
       const axe = tool(p, "axe");
       if (axe) axe.durability = Math.min(100, axe.durability + 30);
-      return true;
+      return;
     }
     case "build": {
       const sid = arg as StructureId;
@@ -1203,7 +1192,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       state.stats.structures++;
       if (sid !== "snare" && !hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
-      return true;
+      return;
     }
     case "mend": {
       const sid = arg as DecayingId;
@@ -1211,7 +1200,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.structureAge[sid] = 0;
       record(state, { kind: "repaired", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is mended.`, "good");
-      return true;
+      return;
     }
     case "light":
     case "lightIndoors": {
@@ -1220,14 +1209,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
       if (lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
-        return true;
+        return;
       }
       st.fire.lit = true;
       cue("fireCatches");
       st.fire.fuelKg += 1;
       st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");
-      return true;
+      return;
     }
     case "lightTorch": {
       consume(invs, [{ item: "torch", qty: 1 }]);
@@ -1235,7 +1224,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       p.torch = { lit: true, minutes: TORCH_BURN_MINUTES };
       cue("torchLit");
       log(state, "The torch catches.", "good");
-      return true;
+      return;
     }
     case "melt": {
       st.fire.fuelKg = Math.max(0, st.fire.fuelKg - 1);
@@ -1253,7 +1242,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         t.frozen = false;
         l -= put;
       }
-      return true;
+      return;
     }
     case "thaw": {
       for (const t of p.tools) if (t.frozen) t.frozen = false;
@@ -1263,22 +1252,22 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         removeItem(camp, "ice", ice);
         addItem(camp, "water", ice);
       }
-      return true;
+      return;
     }
     case "fill": {
       if (!waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
       const added = fillVessels(state, world);
       if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
-      return true;
+      return;
     }
     case "hang": {
       const kg = loadRack(state, world);
       if (kg > 0) log(state, `You hang ${kg.toFixed(1)} kg of meat to dry.`);
-      return true;
+      return;
     }
     case "iceHole": {
       cutIceHole(state, world);
-      return true;
+      return;
     }
     case "haul":
     case "night":
@@ -1287,7 +1276,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "walk":
     case "rest":
     case "sleep":
-      return true;
+      return;
   }
 }
 
