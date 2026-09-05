@@ -546,7 +546,7 @@ left in its pile - and naming which. Completing the task moves
 along, and logs "You make camp here." `siteReport` and `siteLine`, in
 the same file, give the walk minutes from a cell to every other spot the
 region has and whether its water ices over; the region panel's Here
-section shows it off the camp cell as "As a camp: ...", and the
+section shows it off the camp cell as "as a camp: ...", and the
 make-camp row's small print repeats it or the reason the move is
 blocked. `campCellOf` in `src/sim/position.ts` is the one helper
 `spotHere`, `describeWhere`, `whereIs` and the region overview's
@@ -557,7 +557,17 @@ cell whenever neither the fire nor the shelter mark takes it; `style.css`
 colours the mark and gives the legend's letters the same colours the
 map's marks use. The reference player, the horizon and `runHeir` are
 unchanged, since nothing in them chooses to move a camp. The browser
-pass is next.
+pass (DevTools, seed 17, 1440 wide) confirmed it: the x mark shows from
+the first frame, coloured in the legend; off the camp cell the panel
+reads "as a camp: forest 0 min, outcrop 38 min, shore 28 min, heath 22
+min; ices over in winter" and the row carries the same line; making
+camp moved the camp cell (850853 to 850851), the mark followed, and the
+log held "You make camp here." Siting on a spot's own cell stays legal
+- the tester round should watch it: it removes the walk the idle
+economy is priced on, a free lever for whoever finds it. Each rung the
+shelter ladder still owes below must add its own structure flag's word
+to `canMoveCamp`'s `STRUCTURE_WORD` table, or a lean-to, a turf hut or a
+cabin standing at the old camp will not hold it there.
 
 **The shelter ladder.** Each rung has a northern precedent and a cost it
 pays back in a different currency. Warmth is the shelter term of the

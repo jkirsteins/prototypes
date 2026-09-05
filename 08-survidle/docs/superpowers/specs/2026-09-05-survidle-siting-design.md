@@ -86,25 +86,37 @@ when `st.fire.lit` or `st.fire.fuelKg > 0` ("the fire is banked there"),
 or when the old camp's pile holds anything ("N kg lie at the old camp,
 carry them first", the weight from `weight(pile)`).
 
+The request binds the cell the click happened on: `src/main.ts`'s
+"intent" handler sets `where: { cell }` for `makeCamp`, and
+`resolveCell` in `src/sim/intent.ts` carries its own `makeCamp` case
+honouring it, so a queued order walks back to the chosen site and
+completes there whatever cell the survivor is standing on when it
+starts.
+
 The Do panel's `intentGroups` Camp group lists `makeCamp`; the row is
 never an order (it joins `NOT_ORDERS`), so the kind-per-row expansion
-does not offer it as a keep.
+does not offer it as a keep, and a row greyed "this is the camp" gets
+no "add it anyway": queuing a blocked makeCamp would let the runner
+site the camp wherever it next stood, not the cell the click meant.
 
 ## 2. The site report
 
 `siteReport(state, world, cell)` in `src/sim/camp.ts` returns
-`{ terrain: string; spots: { id: SpotId; minutes: number | null }[]; ices: boolean }`:
-the terrain's name under foot; for each spot of the region except
-"camp", the walk minutes from `cell` by `findRoute` and `routeMinutes`
-at the survivor's base speed in the current weather (null when no route);
-`ices` true when the region has a shore spot. `siteLine(report)` renders
-"shore 12 min, forest 4 min, rock 9 min; ices over in winter" with the
-spots in the order the region lists them and "no way" for a null.
+`{ spots: { id: SpotId; minutes: number | null }[] }`: for each spot of
+the region except "camp", the walk minutes from `cell` by `findRoute`
+and `routeMinutes` at the survivor's base speed in the current weather
+(null when no route). No `terrain` field (nothing read it) and no
+`ices` field (a region-wide fact that says nothing about the cell,
+along with the "ices over in winter" clause it drove). `siteLine(report)`
+renders "forest 6, outcrop 33, shore 22, heath 17 min" with the spots
+in the region's own order, bare minutes and one "min" for the lot, and
+"no way" in place of a null's number.
 
 The region panel (`regionHtml`) shows, under Here when the survivor is
-in the region and not on the camp cell: "As a camp: <siteLine>". The
-make-camp row's small print is the same line when legal, or the reason
-when not.
+in the region and not on the camp cell: "as a camp: <siteLine>", with
+the reason in parentheses when `canMoveCamp` would refuse the move.
+The make-camp row's small print is the same line when legal, or the
+reason when not.
 
 ## 3. The stale reads
 
@@ -113,11 +125,15 @@ when not.
   region's spots as today, skipping the "camp" entry.
 - `describeWhere`: "X km from camp" reads `regionState(...).campCell`.
 - `regionHtml`'s overview list for a region you are not in: each spot's
-  distance is `kmBetween(world, regionState(...).campCell, s.cell)`
-  when the region has state, else the generated `s.km`.
+  distance is `kmBetween(world, campCellOf(state, world, id), s.cell)`.
 - `whereIs` in tasks.ts (cell to spot id) treats the run-time camp as
   "camp" the same way `spotHere` does; both read one helper,
   `campCellOf(state, world, region)`, added to `src/sim/position.ts`.
+  `campCellOf` is non-creating - `state.regions[region]?.campCell ??
+  regionAt(world, region).campCell`, never `regionState(...)` - so
+  asking after a neighbour's camp (from `whereIs`, `walkTarget`'s
+  region case, or the overview above) never persists state for a
+  region nobody has touched.
 
 ## 4. The map
 
@@ -146,7 +162,7 @@ legend line the UI pass adds under the map on touch lists it as "x camp".
 - The site report on seed 17's start cell lists every spot the region
   has except "camp", with walk minutes above zero for a reachable one and
   "ices over in winter" when a shore is listed; the region panel shows
-  "As a camp:" off the camp cell and not on it.
+  "as a camp:" off the camp cell and not on it.
 - The map draws `mk-camp` at a fresh camp and not once a fire is lit
   there; after a move the mark is at the new cell.
 - The reference player, the horizon stages and `runHeir` are unchanged:
@@ -156,13 +172,14 @@ legend line the UI pass adds under the map on touch lists it as "x camp".
 ## 6. The browser pass
 
 Chrome at 1440 by 900 and 390 wide on seed 17: the "x" camp mark shows
-from the first frame; walking two cells off camp shows "As a camp: ..."
-in the region panel and the make-camp row in the Camp group with the
-same line; making camp moves the mark, the status line reads 0 km from
-camp, and "add firewood" appears there once a fire is lit; digging the
-fire pit then greys the row with its reason; a reload keeps the new
-camp; the forecast re-requests after the move (the region did not
-change, so the click is in the forecast's action list).
+once the survivor steps off the camp (the survivor's own glyph takes
+the cell on the first frame); walking two cells off camp shows "as a
+camp: ..." in the region panel and the make-camp row in the Camp group
+with the same line; making camp moves the mark, the status line reads
+0 km from camp, and "add firewood" appears there once a fire is lit;
+digging the fire pit then greys the row with its reason; a reload
+keeps the new camp; the forecast re-requests after the move (the
+region did not change, so the click is in the forecast's action list).
 
 ## 7. What this does not do
 
