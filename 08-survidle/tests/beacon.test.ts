@@ -211,3 +211,30 @@ describe("the Datadog sink", () => {
     expect(BEACON.site).toBe("datadoghq.eu");
   });
 });
+
+import { mountBeaconPanel } from "../src/ui/beacon-panel";
+
+describe("the beacon panel", () => {
+  it("reads the switch, shows the id, the cohort and the configured state, and toggles through the callback", () => {
+    const { state } = newGame(17);
+    const s = memory();
+    const rec = { ...loadRecord(s), id: "0123456789abcdef", tester: true, cohort: "wave1" };
+    const b = createBeacon(s, null, rec);
+    const root = document.createElement("div");
+    root.innerHTML = `<label><input type="checkbox" data-beacon="on" /> share anonymous play data</label><span class="dim" data-beacon="note"></span>`;
+    const toggled: boolean[] = [];
+    mountBeaconPanel(root, b, false, () => state, (on) => toggled.push(on));
+    const box = root.querySelector<HTMLInputElement>("[data-beacon=on]")!;
+    const note = root.querySelector<HTMLElement>("[data-beacon=note]")!;
+    expect(box.checked).toBe(true);
+    expect(note.textContent).toBe("id 0123456789abcdef, tester: wave1 (not configured)");
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    expect(toggled).toEqual([false]);
+    expect(b.record().on).toBe(false);
+    const root2 = document.createElement("div");
+    root2.innerHTML = root.innerHTML;
+    mountBeaconPanel(root2, createBeacon(s, null, { ...rec, tester: false, cohort: null }), true, () => state, () => {});
+    expect(root2.querySelector("[data-beacon=note]")!.textContent).toBe("id 0123456789abcdef");
+  });
+});

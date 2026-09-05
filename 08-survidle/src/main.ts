@@ -4,6 +4,10 @@ import { mountControl } from "./audio/control";
 import { createAudioEngine } from "./audio/engine";
 import { SLOTS } from "./audio/manifest";
 import { createScheduler } from "./audio/scheduler";
+import { createBeacon } from "./beacon/beacon";
+import { BEACON } from "./beacon/config";
+import { createDatadogSink } from "./beacon/datadog";
+import { applyTesterLink, loadRecord, saveRecord } from "./beacon/storage";
 import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
 import { advance } from "./sim/advance";
 import { calendar, dayNumber } from "./sim/calendar";
@@ -27,6 +31,7 @@ import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
+import { mountBeaconPanel } from "./ui/beacon-panel";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
@@ -48,9 +53,27 @@ const forcedDay = params.get("day");
 const forcedDayN = forcedDay === null || forcedDay.trim() === "" ? Number.NaN : Number(forcedDay);
 const startDoy = Number.isInteger(forcedDayN) && forcedDayN >= 0 && forcedDayN < 365 ? forcedDayN : undefined;
 
-let state: GameState;
+// The tester link marks the device once and leaves the address; ?seed= and the rest stay.
+let beaconRec = loadRecord(localStorage);
+{
+  const link = applyTesterLink(beaconRec, params);
+  if (link.stripped) {
+    beaconRec = link.rec;
+    saveRecord(localStorage, beaconRec);
+    params.delete("tester");
+    const q = params.toString();
+    history.replaceState(null, "", `${location.pathname}${q ? `?${q}` : ""}${location.hash}`);
+  }
+}
+const beaconConfigured = Boolean(BEACON.applicationId && BEACON.clientToken);
+const makeSink = () => createDatadogSink(BEACON, beaconRec.id, { tester: beaconRec.tester, cohort: beaconRec.cohort });
+let sinkMade = beaconConfigured && beaconRec.on;
+const beacon = createBeacon(localStorage, sinkMade ? makeSink() : null, beaconRec);
+let wasDead = false;
+
 // Assigned by boot()/fresh() before anything reads it; the assertion is for TS,
 // which cannot see the assignment through the function call.
+let state!: GameState;
 let world!: World;
 const ui = newUiState();
 let awayInfo: { seconds: number; capped: boolean } | null = null;
@@ -72,6 +95,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   const g = newGame(seed, startDoy);
   state = g.state;
   world = g.world;
+  wasDead = false;
   ui.selected = null;
   ui.away = null;
   ui.confirmAbandon = false;
@@ -164,6 +188,9 @@ function frame(now: number) {
   } else if (ui.away) {
     lastReal = now;
   }
+  if (state.dead && !wasDead) beacon.died(state, Date.now());
+  wasDead = Boolean(state.dead);
+  beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
   render();
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
@@ -255,6 +282,7 @@ function onClick(ev: Event) {
       break;
     case "land":
       land(state, world);
+      beacon.beganAgain(state, Date.now());
       ui.confirmAbandon = false;
       resetForecastAt();
       break;
@@ -351,6 +379,8 @@ function zoomBy(delta: number) {
 }
 
 boot();
+beacon.opened(state);
+wasDead = Boolean(state.dead);
 // Built once world is real; the worker keeps its own copy keyed by seed, so a
 // later fresh() with a new world does not leave it stale.
 const forecaster = createForecaster(
@@ -377,6 +407,9 @@ document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 mountControl(document.getElementById("sound")!, audio);
 awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
+mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, () => state, (on) => {
+  if (on && beaconConfigured && !sinkMade) { beacon.setSink(makeSink()); sinkMade = true; }
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();
   else audio.resume();
