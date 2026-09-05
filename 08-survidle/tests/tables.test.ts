@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
+import { emptyYield, YIELD_SOURCES } from "../src/sim/ledger";
 import { BASE_KCAL_PER_HOUR, ENERGY_RATE, WALK_KCAL_PER_HOUR } from "../src/sim/player";
-import { APRIL, BERRY, BURN, LATE_AUGUST, SLEEP_HOURS, sourceBand, tableFor, verdict } from "../src/sim/tables";
+import { APRIL, BERRY, BURN, LATE_AUGUST, SLEEP_HOURS, SOURCE_ROWS, sourceBand, tableFor, verdict } from "../src/sim/tables";
 import { SLEEP_CAP_MINUTES } from "../src/sim/tasks";
 
 describe("the tables", () => {
@@ -11,7 +12,7 @@ describe("the tables", () => {
     expect(APRIL.rows.largeGame!.beginner).toEqual({ lo: 0, hi: 0 });
     expect(LATE_AUGUST.rows.plants!.beginner).toEqual({ lo: 300, hi: 800 });
     expect(LATE_AUGUST.rows.total!.beginner).toEqual({ lo: 700, hi: 1500 });
-    expect(LATE_AUGUST.rows.passiveFishing).toBeNull();
+    expect(LATE_AUGUST.rows.passiveFishing).toEqual({ beginner: { lo: 100, hi: 400 }, experienced: { lo: 400, hi: 1000 } });
   });
 
   it("a source's band is the sum of its rows; a source with no row has none", () => {
@@ -35,6 +36,14 @@ describe("the tables", () => {
     expect(verdict(300, b)).toBe("in band");
     expect(verdict(99, b)).toBe("under");
     expect(verdict(301, b)).toBe("over");
+  });
+
+  it("the trap answers to the passive fishing row, which late August now splits out", () => {
+    expect(SOURCE_ROWS.trap).toEqual(["passiveFishing"]);
+    expect(LATE_AUGUST.rows.passiveFishing).toEqual({ beginner: { lo: 100, hi: 400 }, experienced: { lo: 400, hi: 1000 } });
+    expect(sourceBand(LATE_AUGUST, "trap", "beginner")).toEqual({ lo: 100, hi: 400 });
+    expect(YIELD_SOURCES).toContain("trap");
+    expect(emptyYield().trap).toBe(0);
   });
 });
 

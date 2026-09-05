@@ -227,7 +227,7 @@ describe("the reference player", () => {
   });
 
   it("weekLines reads a week against the table for its date", () => {
-    const week = { days: 7, yield: { fish: 310, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
+    const week = { days: 7, yield: { fish: 310, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
     const lines = weekLines(week, 115);
     expect(lines[0]).toContain("fish 310 (in band)");
     expect(lines[0]).toContain("kit 0");

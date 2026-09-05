@@ -577,6 +577,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }
+    // Not offered anywhere yet: no runner ever reaches this with one of these ids in hand.
+    case "read": case "setTrap": case "emptyTrap": throw new Error(`${id} has no legality check yet`);
   }
 }
 

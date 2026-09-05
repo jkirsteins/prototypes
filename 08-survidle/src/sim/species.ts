@@ -53,17 +53,20 @@ export interface SpeciesDef {
   };
   yields?: { meatKg: number; hideKg?: number; furKg?: number; fatKg?: number; bone?: number; sinew?: number };
   calls?: Call[];
+  /** Where this fish lies off a shore, as the read names it. */
+  lie?: string;
 }
 
 const resident = (winter?: number): SeasonRule => (winter === undefined ? { kind: "resident" } : { kind: "resident", winter });
 const migrant = (arrive: number, leave: number, away?: "denned"): SeasonRule => (away ? { kind: "migrant", arrive, leave, away } : { kind: "migrant", arrive, leave });
-const fish = (name: string, lake: number | null, sea: number | null, range: number, odds: number, meatKg: number, extra: Partial<SpeciesDef> & { level?: number; night?: number } = {}): SpeciesDef => ({
+const fish = (name: string, lake: number | null, sea: number | null, range: number, odds: number, meatKg: number, extra: Partial<SpeciesDef> & { level?: number; night?: number; lie?: string } = {}): SpeciesDef => ({
   name, kind: "fish",
   habitat: { ...(lake !== null ? { lake } : {}), ...(sea !== null ? { sea } : {}) },
   range, season: extra.season ?? resident(), growth: 0.003,
   hunt: { spot: "shore", minutes: 60, odds, injury: 0, ...(extra.level !== undefined ? { level: extra.level } : {}), ...(extra.night !== undefined ? { night: extra.night } : {}) },
   yields: { meatKg },
   ...(extra.needs ? { needs: extra.needs } : {}),
+  ...(extra.lie ? { lie: extra.lie } : {}),
 });
 
 const SPECIES_DEFS_RAW = {
@@ -135,18 +138,18 @@ const SPECIES_DEFS_RAW = {
     calls: [{ sound: "woodpecker", when: "day", months: [2, 4], weight: 2 }] },
 
   // Lake fish.
-  perch: fish("perch", 40, null, 0.9, 0.6, 0.3),
-  roach: fish("roach", 40, null, 0.6, 0.7, 0.2),
-  pike: fish("pike", 8, null, 0.8, 0.35, 2.0, { level: 3 }),
-  whitefish: fish("whitefish", 20, null, 0.6, 0.5, 0.6, { level: 2 }),
-  char: fish("arctic char", 15, null, 0.3, 0.45, 0.8, { level: 4 }),
-  trout: fish("brown trout", 12, null, 0.5, 0.4, 0.7, { level: 3 }),
-  burbot: fish("burbot", 10, null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5) }),
+  perch: fish("perch", 40, null, 0.9, 0.6, 0.3, { lie: "along the reeds" }),
+  roach: fish("roach", 40, null, 0.6, 0.7, 0.2, { lie: "in the shallows" }),
+  pike: fish("pike", 8, null, 0.8, 0.35, 2.0, { level: 3, lie: "in the reeds" }),
+  whitefish: fish("whitefish", 20, null, 0.6, 0.5, 0.6, { level: 2, lie: "off the point" }),
+  char: fish("arctic char", 15, null, 0.3, 0.45, 0.8, { level: 4, lie: "in the deep water" }),
+  trout: fish("brown trout", 12, null, 0.5, 0.4, 0.7, { level: 3, lie: "at the inflow" }),
+  burbot: fish("burbot", 10, null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5), lie: "on the bottom" }),
 
   // Sea fish.
-  cod: fish("cod", null, 30, 0.9, 0.5, 2.5, { level: 2 }),
-  saithe: fish("saithe", null, 25, 0.7, 0.5, 1.5),
-  herring: fish("herring", null, 60, 0.6, 0.8, 0.15),
+  cod: fish("cod", null, 30, 0.9, 0.5, 2.5, { level: 2, lie: "off the rocks" }),
+  saithe: fish("saithe", null, 25, 0.7, 0.5, 1.5, { lie: "off the rocks" }),
+  herring: fish("herring", null, 60, 0.6, 0.8, 0.15, { lie: "off the point" }),
 } satisfies Record<string, SpeciesDef>;
 
 export type Species = keyof typeof SPECIES_DEFS_RAW;

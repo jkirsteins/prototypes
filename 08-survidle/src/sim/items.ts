@@ -1,12 +1,12 @@
 import type {
-  ClothingId, ClothingSlot, ItemId, PerishableId, RecipeId,
+  ClothingId, ClothingSlot, DecayingId, ItemId, PerishableId, RecipeId,
   StructureId, ToolId,
 } from "./types";
 
 /** Unit weight in kg. Kilogram items weigh 1 per unit by definition. */
 export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
-  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4,
+  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2,
   firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
   water: 1, ice: 1,
@@ -21,7 +21,7 @@ export const KG_ITEMS = new Set<ItemId>([
 
 export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
-  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches",
+  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps",
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
   wetFirewood: "wet firewood", water: "water", ice: "ice",
@@ -109,6 +109,7 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   hideBlanket: { name: "hide blanket", needs: [{ item: "hide", qty: 4, alt: "fur" }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 240, out: { clothing: "hideBlanket" } },
   barkBucket: { name: "bark bucket", needs: [{ item: "bark", qty: 4 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 20, out: { item: "barkBucket", qty: 1 } },
   waterskin: { name: "waterskin", needs: [{ item: "hide", qty: 1 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 60, out: { item: "waterskin", qty: 1 } },
+  basketTrap: { name: "basket trap", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 3 }], tool: "knife", minutes: 60, out: { item: "basketTrap", qty: 1 } },
 };
 export const RECIPE_IDS = Object.keys(RECIPES) as RecipeId[];
 
@@ -121,20 +122,31 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 6 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps." },
   snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
   boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat in a fortnight." },
+  turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
+  waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
 export const MAX_SNARES = 5;
 /** Days a bough bed stays springy before it has to be laid again. */
 export const BOUGH_BED_DAYS = 14;
 
-/** Days a lean-to or a drying rack stands before the weather takes it down. */
-export const STRUCTURE_LIFE_DAYS: Record<"leanTo" | "dryingRack", number> = { leanTo: 90, dryingRack: 90 };
+/** Days a decaying structure stands before the weather takes it down. */
+export const STRUCTURE_LIFE_DAYS: Record<DecayingId, number> = { leanTo: 90, dryingRack: 90, turfHut: 540 };
 
-/** What re-roofing a lean-to or relashing a rack takes, resetting its age. */
-export const MEND: Record<"leanTo" | "dryingRack", { needs: Need[]; minutes: number }> = {
+/** What re-roofing, relashing or re-turfing a decaying structure takes, resetting its age. */
+export const MEND: Record<DecayingId, { needs: Need[]; minutes: number }> = {
   leanTo: { needs: [{ item: "stick", qty: 2 }], minutes: 60 },
   dryingRack: { needs: [{ item: "cordage", qty: 1 }], minutes: 60 },
+  turfHut: { needs: [{ item: "bark", qty: 20 }], minutes: 120 },
 };
+/** The structures the weather takes down, in the order the panel lists them. */
+export const DECAYING: DecayingId[] = ["leanTo", "dryingRack", "turfHut"];
+/** Live fish a basket trap holds before it stops catching. */
+export const TRAP_HOLD_KG = 5;
+/** A trap's draw against a fish's own odds: a basket in the shallows is half a spear in a good hand. */
+export const TRAP_ODDS = 0.5;
+/** Litres the water trough holds at camp. */
+export const WATER_STORE_L = 20;
 
 export const FIRE_MAX_KG = 36;
 export const FIRE_LOW_KG = 3;

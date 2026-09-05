@@ -35,6 +35,8 @@ export function activityOf(task: Task | null): Activity {
     case "sticks": case "bark": case "stone": case "berries": case "hunt": case "fish": case "fill": case "hang": return "light";
     case "travel": case "walk": case "haul": return "walk";
     case "chop": case "split": case "build": case "mend": case "iceHole": return "heavy";
+    // Not offered anywhere yet: no runner ever reaches this with one of these ids in hand.
+    case "read": case "setTrap": case "emptyTrap": throw new Error(`${task.id} has no activity yet`);
   }
 }
 
