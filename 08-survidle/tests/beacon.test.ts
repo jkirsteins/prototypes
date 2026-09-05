@@ -169,3 +169,45 @@ describe("the beacon", () => {
     expect(b.record().on).toBe(false);
   });
 });
+
+import { createDatadogSink, type RumLike } from "../src/beacon/datadog";
+import { BEACON } from "../src/beacon/config";
+
+describe("the Datadog sink", () => {
+  it("queues until the SDK loads, then inits with replay and interactions off, sets the user and the context, and drains in order", async () => {
+    const calls: unknown[][] = [];
+    const rum: RumLike = {
+      init: (o) => calls.push(["init", o]), setUser: (u) => calls.push(["setUser", u]),
+      setGlobalContextProperty: (k, v) => calls.push(["ctx", k, v]), addAction: (n, c) => calls.push(["action", n, c]),
+    };
+    let resolve!: (m: { datadogRum: RumLike }) => void;
+    const load = () => new Promise<{ datadogRum: RumLike }>((r) => { resolve = r; });
+    const sink = createDatadogSink({ ...BEACON, applicationId: "app", clientToken: "tok" }, "0123456789abcdef", { tester: true, cohort: "wave1" }, load);
+    sink.emit("opened", { seed: 1 });
+    sink.emit("heartbeat", { seed: 1 });
+    expect(calls).toEqual([]);
+    resolve({ datadogRum: rum });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls[0][0]).toBe("init");
+    const init = calls[0][1] as Record<string, unknown>;
+    expect(init).toMatchObject({ applicationId: "app", clientToken: "tok", site: "datadoghq.eu", sessionReplaySampleRate: 0, trackUserInteractions: false, trackResources: false, trackLongTasks: false, defaultPrivacyLevel: "mask" });
+    expect(calls[1]).toEqual(["setUser", { id: "0123456789abcdef" }]);
+    expect(calls.slice(2, 4)).toEqual([["ctx", "tester", true], ["ctx", "cohort", "wave1"]]);
+    expect(calls.slice(4)).toEqual([["action", "opened", { seed: 1 }], ["action", "heartbeat", { seed: 1 }]]);
+    sink.emit("died", { seed: 1 });
+    expect(calls.at(-1)).toEqual(["action", "died", { seed: 1 }]);
+  });
+
+  it("a failed load drops the queue and the game is unaffected", async () => {
+    const sink = createDatadogSink(BEACON, "id", {}, () => Promise.reject(new Error("offline")));
+    sink.emit("opened", {});
+    await new Promise((r) => setTimeout(r, 0));
+    sink.emit("heartbeat", {});
+  });
+
+  it("the shipped config is blank, so the beacon is inert until the author fills it", () => {
+    expect(BEACON.applicationId).toBe("");
+    expect(BEACON.clientToken).toBe("");
+    expect(BEACON.site).toBe("datadoghq.eu");
+  });
+});
