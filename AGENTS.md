@@ -179,6 +179,14 @@ It is not installed automatically per clone - run `npm install` at the repo
 root once (its `prepare` script points `core.hooksPath` at `.githooks`), or
 `npm run hooks:install` directly. Bypass with `git commit --no-verify`.
 
+A git worktree is a fresh checkout with no `node_modules`, and the hook only
+ever uses the repo root's own biome (never `npx biome`, which is a squatted
+package). A tool the hook cannot find fails the commit and names the
+`npm install` to run; `PROTOTYPES_HOOK_STRICT=0` turns that back into a
+warning. `npm run lint` works in an uninstalled worktree only because npm
+borrows the parent checkout's `node_modules/.bin`, so it is no evidence the
+hook will.
+
 The hook checks the **working tree, not the staged snapshot** - it never runs
 `git stash`, because several sessions can be mid-edit on the same branch at
 once and a stash/restore cycle could swallow someone else's in-progress work.
