@@ -76,8 +76,9 @@ describe("the reference player", () => {
     expect(tasks[cook + 2]).toBe("fish:any");
     expect(tasks[cook + 3]).toBe("berries:");
     expect(tasks[cook + 4]).toBe("build:dryingRack");
-    const spear = tasks.indexOf("craft:fishingSpear");
-    expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
+    const hunt = tasks.indexOf("hunt:any");
+    expect(tasks.slice(hunt + 1, hunt + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
+    expect(tasks[hunt + 4]).toBe("craft:axe");
     const hang = tasks.indexOf("hang:");
     expect(tasks[hang + 1]).toBe("craft:bow");
     const axe = tasks.indexOf("craft:axe");
