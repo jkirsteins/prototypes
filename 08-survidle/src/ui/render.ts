@@ -1,4 +1,5 @@
 import { NOT_ORDERS } from "../sim/ladder";
+import { type HurryState, newHurry } from "./hurry";
 import type { AwaySummary } from "../sim/save";
 import type { TaskGroup } from "../sim/tasks";
 import type { IntentRequest, OrderKind, SpotId, TaskId, UntilChoice } from "../sim/types";
@@ -28,6 +29,8 @@ export interface UiState {
   deliver: "leave" | "camp";
   where: "nearest" | SpotId;
   advanced: boolean;
+  /** The hurry: how fast the work chosen by hand is running right now. Never saved. */
+  hurry: HurryState;
 }
 
 export function newUiState(): UiState {
@@ -35,6 +38,7 @@ export function newUiState(): UiState {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
     cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
     until: "once", n: 10, deliver: "leave", where: "nearest", advanced: false,
+    hurry: newHurry(),
   };
 }
 

@@ -93,6 +93,12 @@ small, .dim { color: var(--dim); }
 .bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }
 .bar.task .fill { background: #3c8f4a; transition: none; }
+/* The pulse draining on a row hurried by clicking; the head is the click target. */
+.bar.hurry { height: 4px; margin: 2px 0 0; }
+.bar.hurry .fill { background: var(--accent); transition: none; }
+#task .order .head.hurry { cursor: pointer; }
+#task .order .head.hurry:hover b { color: var(--accent); }
+.clockrow .hurrying { color: var(--accent); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
 .bar.dur.wet .fill { background: var(--water); opacity: .7; }

@@ -21,6 +21,12 @@ degrees Celsius, minutes. A 3 km walk at 3 km/h is an hour of game time and
 sixty seconds of yours. A day is 24 real minutes; a year is 365 game days.
 Every button shows both times: "1 h 40 min (1 min 40 s)".
 
+Work you choose in the moment runs faster while you watch: a once order
+or a single advanced action runs at up to 6x from start to end, and a
+standing or counted order goes 3 minutes ahead each time you click its
+row, one click per two-thirds of a second. Body needs, the runner's
+waiting, and everything done while you are away run at the one scale.
+
 ## How it plays
 
 - **You give orders, the game keeps them.** Every button adds an order to

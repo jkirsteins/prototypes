@@ -14,9 +14,10 @@ import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
-import { updateBars } from "../src/ui/bars";
+import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W, viewOrigin, ZOOMS } from "../src/ui/map";
-import { actionsHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { actionsHtml, clockHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { commitStripN, newUiState, resetPanels, setPanel, stripRequest } from "../src/ui/render";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
@@ -166,6 +167,39 @@ describe("panels", () => {
     ui.zoom = ZOOMS.length - 1;
     setPanel("map", mapHtml(world, state, ui, cal));
     expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
+  });
+
+  it("the live row of a counted order is a click target with a pulse bar, a once order's row is not", () => {
+    const { state, world } = newGame(3);
+    const cal = calendar(0);
+    addOrder(state, world, { task: "sticks", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).not.toBeNull();
+    setPanel("task", taskHtml(state, world, cal));
+    expect(document.querySelectorAll('#task .order.live .head[data-act="hurry"]').length).toBe(1);
+    expect(document.querySelectorAll("#task .order.live .bar.hurry #bar-hurry").length).toBe(1);
+    const h = newHurry();
+    hurryClick(h, hurryKind(state), state.intent!.orderId);
+    updateHurryBar(h);
+    expect(document.querySelector<HTMLElement>("#bar-hurry")!.style.width).toBe("100.0%");
+    const once = newGame(3);
+    addOrder(once.state, once.world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(once.state, once.world, 1);
+    setPanel("task", taskHtml(once.state, once.world, cal));
+    expect(document.querySelectorAll("#task .order.live").length).toBe(1);
+    expect(document.querySelectorAll('#task [data-act="hurry"]').length).toBe(0);
+    expect(document.querySelectorAll("#task .bar.hurry").length).toBe(0);
+  });
+
+  it("the clock line reads the hurry's rate", () => {
+    const { state } = newGame(3);
+    const cal = calendar(0);
+    document.body.insertAdjacentHTML("beforeend", `<div id="clock"></div>`);
+    setPanel("clock", clockHtml(state, cal, 5));
+    expect(document.querySelector("#clock .dim")?.textContent).toBe("1 s = 1 game min");
+    expect(document.querySelectorAll("#clock .hurrying").length).toBe(0);
+    setPanel("clock", clockHtml(state, cal, 5, 6));
+    expect(document.querySelector("#clock .hurrying")?.textContent).toBe("1 s = 6 game min");
   });
 
   it("bars follow the state", () => {
