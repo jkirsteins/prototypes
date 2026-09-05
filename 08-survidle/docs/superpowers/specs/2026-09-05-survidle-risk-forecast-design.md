@@ -188,10 +188,10 @@ a month                     7 of 10 die: starved, day 24
 ```
 
 Row text rules: "N of 10 die: cause, day D" with the cause word the
-epitaph uses for that `DeathCause` and D the median day; for the away
-and tonight rows, "night 1" replaces "day 1" when the median death falls
-before the next dawn, since that is what the roadmap's example says and
-what the player means by tonight. "none of 10 die" when `died` is 0. A
+epitaph uses for that `DeathCause` and D the median day; the tonight row
+counts nights ("night 1"), since its horizon ends at dawn; the away row
+counts days, since a dial of eight hours from a morning ends in the
+afternoon. "none of 10 die" when `died` is 0. A
 row not yet landed for the current request shows the previous row's text
 in the dimmed class with "..." appended, or "..." alone.
 

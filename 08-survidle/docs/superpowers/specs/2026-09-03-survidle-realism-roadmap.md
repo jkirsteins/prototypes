@@ -265,10 +265,12 @@ water store, pulled out of their items, in that order because the heirs
 die of food before any snow falls and cold sits under band until it does;
 built), then the burn side (the paragraph of that name in the
 calibration pass: the gate's food clause reads the week's intake, and
-two working-day rules were measured and withdrawn; measured), then B
-the risk forecast with the away cap as its
-horizon, then the testing infra (the section of that name below: the
-beacon on by default, the survey and the bars read from them), then
+two working-day rules were measured and withdrawn; measured), then B the
+risk forecast with the away cap as its horizon (built: the Ahead panel,
+four horizons of ten runs each in a worker, the dial on the run, the
+month number into the life record), then the testing infra (the section
+of that name below: the beacon on by default, the survey and the bars
+read from them), then
 the UI pass (the section of that name below: the Do panel folds and
 filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
@@ -1586,6 +1588,38 @@ it stays on purpose: a world that runs on for a day after a player who
 meant to be gone eight hours is what turns an idle player away, and the
 game has to sell. The forecast row is what makes the setting a choice
 rather than a mercy.
+
+**Built.** Ten runs per horizon, each a clone of the state seeded with
+`derive(state.rng, k)` for run k, so the same state forecasts the same
+numbers twice and only a click that draws from the stream moves them.
+The four rows: away, at the dial's hours turned into game minutes;
+tonight, at the minutes to the next dawn; a week, at seven game days;
+and a month, at thirty, each reading "N of 10 die: cause, day D" or
+"none of 10 die," a row not yet landed for the current request shown
+dimmed with its previous text and an ellipsis, or an ellipsis alone.
+The worker keeps one world per seed, posts rows shortest first, and
+yields to its message queue between each so a newer request supersedes
+an older one before its next row starts; a superseded request's
+already-posted rows stand until the newer one's replace them. A
+request goes out when the orders list changes, when the game day
+rolls, when the dial moves, when the player's region changes, and
+otherwise once a game hour, and not at all while the tombstone, the
+landing screen or the away report is up. The dial sits on the settings
+strip beside the sound controls, one to twenty-four hours, default
+eight, and the same field now caps the offline and background-tab
+catch-up in place of the old twenty-four-hour constant. The month
+row's number, the runs alive of ten, lands in the life record's daily
+entry the first time a month row lands for that game day, replacing
+the null the daily step pushed; the journal draws nothing from the
+series yet, since the evolution view lands with the rest of F. The
+browser pass, section 6 of the spec, checks that the Ahead panel fills
+within a few seconds of landing with the away row first, that a list
+change and the dial both move the rows, and that the dial's cap holds
+against a real reload the way the away report says it does. It also
+checks that the month number reaches the life record after the first
+game day, read from the console since the journal draws nothing yet,
+and that a stocked camp stage forecasts its month row as mostly
+alive.
 
 ### The testing infra
 

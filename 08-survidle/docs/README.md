@@ -214,3 +214,4 @@ opens each stage's camp on that day of year instead of 1 April (200 is
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
 - `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
 - `src/sim/reference.ts`: the reference player's order list and checkpoints.
+- `src/sim/forecast.ts`: the forecast's runs per horizon and the horizons themselves; `src/sim/forecaster.ts`: the worker client and the month number.
