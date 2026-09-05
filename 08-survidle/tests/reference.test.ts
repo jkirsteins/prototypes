@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { coastOpen, START_DOY } from "../src/sim/calendar";
+import { calendar, coastOpen, START_DOY } from "../src/sim/calendar";
+import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
@@ -23,24 +24,29 @@ import {
   runReference,
   setUpReference,
   stepReference,
+  wantOpen,
   weekLines,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes } from "../src/sim/skills";
+import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 
 describe("the reference player", () => {
-  it("at level 1 the first tick gives every want as a once job, ranked as the list", () => {
+  it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
     const { state, world, player } = setUpReference(17);
     expect(ordersHere(state, world)).toEqual([]);
     player.tick(state, world);
     const list = ordersHere(state, world);
-    expect(list.length).toBe(REFERENCE_ORDERS.length);
+    // The named-hunt wants gate on the species' recommended level (8, 6, 4), so
+    // a fresh survivor at level 1 does not see them; every other want is open.
+    const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, w, calendar(state.minute, state.startDoy)));
+    expect(list.length).toBe(open.length);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
-      expect(o.req.task, `order ${i + 1}`).toBe(REFERENCE_ORDERS[i].req.task);
+      expect(o.req.task, `order ${i + 1}`).toBe(open[i].req.task);
     });
   });
 
@@ -84,11 +90,14 @@ describe("the reference player", () => {
     expect(tasks[spear + 4]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
     const hunt = tasks.indexOf("hunt:any");
-    expect(tasks[hunt + 1]).toBe("craft:axe");
+    expect(tasks[hunt + 1]).toBe("hunt:elk");
+    expect(tasks.slice(hunt + 1, hunt + 4)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    expect(tasks[hunt + 4]).toBe("craft:axe");
     const axe = tasks.indexOf("craft:axe");
     expect(tasks.slice(axe + 1, axe + 6)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:"]);
-    expect(tasks[axe + 6]).toBe("chop:");
-    expect(REFERENCE_ORDERS.length).toBe(35);
+    expect(tasks[axe + 6]).toBe("split:");
+    expect(tasks[axe + 7]).toBe("chop:");
+    expect(REFERENCE_ORDERS.length).toBe(39);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -284,12 +293,12 @@ describe("the reference player", () => {
     expect(none[0]).toContain("no full day yet");
   });
 
-  it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 153 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    const r = runReference(153, 30);
-    expect(r.outcome).toEqual({ kind: "died", day: REFERENCE_TARGET_DAY, cause: "starved" });
+  it("a run capped exactly on the gate day does not double the checkpoint: seed 17 is alive there (it passes the April gate), and a run of REFERENCE_TARGET_DAY - 1 full days reads back as day REFERENCE_TARGET_DAY (day 1 is the start), so the day cap and that checkpoint fall on the same day", () => {
+    const r = runReference(17, REFERENCE_TARGET_DAY - 1);
+    expect(r.outcome).toEqual({ kind: "reached", day: REFERENCE_TARGET_DAY });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
+    expect(days[days.length - 1]).toBe(REFERENCE_TARGET_DAY);
   });
 });
 
@@ -349,5 +358,28 @@ describe("the lineage", () => {
     const r = runLineage(17, 5, 3);
     expect(r.lives.length).toBe(1);
     expect(r.lives[0].report.outcome.kind).toBe("reached");
+  });
+});
+
+describe("wants by level", () => {
+  it("opens the large-game keeps at the species' recommended hunting level and not below", () => {
+    const { state } = newGame(17);
+    const cal = calendar(0);
+    const elk = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "elk")!;
+    const any = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "any")!;
+    expect(wantOpen(state, elk, cal)).toBe(false);
+    expect(wantOpen(state, any, cal)).toBe(true);
+    setSkillLevel(state, "hunting", SPECIES_DEFS.elk.hunt!.level!);
+    expect(wantOpen(state, elk, cal)).toBe(true);
+  });
+
+  it("the list hangs as a grind, keeps eight cordage, and hunts elk, reindeer and roe deer by name", () => {
+    const hang = REFERENCE_ORDERS.find((w) => w.req.task === "hang")!;
+    expect(hang.kind).toBe("grind");
+    expect(hang.req.until.kind).toBe("forever");
+    const cordage = REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "cordage")!;
+    expect(cordage.req.until).toEqual({ kind: "campHas", qty: 8 });
+    const named = REFERENCE_ORDERS.filter((w) => w.req.task === "hunt" && w.req.arg !== "any").map((w) => w.req.arg);
+    expect(named).toEqual(["elk", "reindeer", "deer"]);
   });
 });

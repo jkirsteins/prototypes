@@ -97,6 +97,11 @@ describe("the species catalogue", () => {
     expect(RECIPES.hideBlanket.needs[0]).toEqual({ item: "hide", qty: 4, alt: "fur" });
   });
 
+  it("auto-eat never takes raw meat, only what is cooked, dried, picked or rendered", () => {
+    expect(AUTO_EAT_ORDER).not.toContain("rawMeat");
+    expect(AUTO_EAT_ORDER).not.toContain("fish");
+  });
+
   it("keeps the catalogue in the order the world was drawn with", () => {
     // A species' position seeds its range noise, so a reorder redraws every range in every world. Append; never insert or sort.
     expect(SPECIES_IDS).toEqual([

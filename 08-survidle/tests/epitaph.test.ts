@@ -69,7 +69,10 @@ describe("the epitaph", () => {
     // to dying of cold, a day later.
     // A pole rack holding 40 kg, with a second rack for another 40, dries far more meat than the old 6 kg
     // could: seed 17 dies a little further out, and seed 19's reserve now carries it past day 60 alive.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 60. Died of cold 0.5 km from camp, with 1.2 kg of food in the pack and 65 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Landed 1 April, year 1."`);
+    // Hunting elk, reindeer and roe deer by name instead of small game alone changes what the list spends its
+    // hours on once it reaches the gate: seed 17 dies sooner and closer to camp, and seed 19 no longer survives
+    // to day 60.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 53. Died of cold 1.2 km from camp, with nothing in the pack and 73 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 48. Starved at camp, with nothing in the pack and 89 kg of firewood at camp."`);
   });
 });

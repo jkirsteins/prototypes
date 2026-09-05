@@ -16,7 +16,7 @@ import { CELL_KM } from "../units";
 import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
-import { calendar, START_DOY } from "./calendar";
+import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, freshTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, TOOLS } from "./items";
 import { shoreFish } from "./knowledge";
@@ -28,6 +28,7 @@ import { orderMet, ordersHere } from "./orders";
 import { FAT_FULL } from "./player";
 import { current } from "./record";
 import { regionState } from "./regionstate";
+import { RECOMMENDED, skillLevel } from "./skills";
 import { LARGE_GAME } from "./species";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { startTask } from "./tasks";
@@ -42,9 +43,10 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * The runner never gathers a prerequisite on its own, so the list is
  * ordered as a competent day one is: water at the top, waiting for its
  * bucket; then the fire-and-roof chain, worked with the arrival axe alone
- * - stone for the ring, sticks, bark and cordage as raw stock, the fire
- * pit, the fire drill, the keep that lights the fire and relights it, one
- * tree felled, a day's firewood split from it, and the lean-to. Then the
+ * - stone for the ring, sticks, bark and cordage as raw stock (cordage
+ * kept to eight, since arrows, snares and the bucket all draw on it), the
+ * fire pit, the fire drill, the keep that lights the fire and relights it,
+ * one tree felled, a day's firewood split from it, and the lean-to. Then the
  * knife and the snares, right after the lean-to: a competent day two sets
  * snares before spending hours at anything else (the knife is two stone,
  * a stick and a cordage, each snare a stick and two cordage, and five
@@ -56,19 +58,27 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * is what the opening cannot spare. Then what the knife unlocks beyond
  * the snares. The scheduler is greedy top-down, so a competent player
  * ranks eating what is already caught above catching more of it: the cook
- * keeps sit above the fish keep, and the rack job and the dried-meat keep
- * sit above the hunt keep, right after the cook keeps - both block
- * harmlessly with nothing to cook or hang. The trap follows the spear:
- * the shore is read the day the spear exists, the basket made and set,
- * and from then on the fish keep's own trips to the shore bring the
- * trap's catch home, since a trap's fish come out when you arrive at
- * its cell as hares do at the snares - no empty keep, and no trip made
- * for the trap alone, which is what cost the first month when the list
- * had one. The basket is carried, not stocked: the craft job leaves it
- * in the pack rather than walking it to camp first, so the trap can be
- * set on the way to the shore. The hut and the trough sit below the
- * hunt keep and above the felling grind, because the first month cannot
- * afford their hours: that part of the list is reached only when
+ * keeps sit above the fish keep, and the rack job and the hang grind
+ * sit above the hunt keeps, right after the cook keeps - both block
+ * harmlessly with nothing to cook or hang. The hang grind hangs whatever
+ * is raw while the rack has room, and the stock it makes is what the
+ * hunt keeps then draw on, rather than a fixed target of its own. The
+ * trap follows the spear: the shore is read the day the spear exists,
+ * the basket made and set, and from then on the fish keep's own trips
+ * to the shore bring the trap's catch home, since a trap's fish come
+ * out when you arrive at its cell as hares do at the snares - no empty
+ * keep, and no trip made for the trap alone, which is what cost the
+ * first month when the list had one. The basket is carried, not
+ * stocked: the craft job leaves it in the pack rather than walking it
+ * to camp first, so the trap can be set on the way to the shore. The
+ * large-game keeps sit below the small-game keep and open at the
+ * species' recommended level (wantOpen), since a competent player does
+ * not walk at an elk with a stone point at level 1: elk, reindeer and
+ * roe deer by name, listed in the order their recommended level falls
+ * (8, 6, 4), so the hardest kill leads and the easiest trails. The hut
+ * and the trough sit below the hunt keeps and above the felling grind,
+ * because the first month cannot afford their hours: that part of the
+ * list is reached only when
  * everything above it is met or blocked. Tools the survivor holds are
  * once jobs, since the first one made is taken up and a keep would
  * craft a second; the axe stays a keep because the arrival axe wears
@@ -83,14 +93,17 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * it, the trough follows the hut it needs room to stand in, and the
  * top fill keep from the opening stays as it was, the trough's own
  * fill keep a second want for the greater capacity the trough gives
- * rather than a replacement.
+ * rather than a replacement. The 400 kg woodpile keep, right above the
+ * felling grind, is the winter want: opened only from 1 September
+ * (Task 11), since stocking that much wood any earlier would come out
+ * of the hours the food and shelter chain still needs.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
   job("stone", { kind: "campHas", qty: 8 }),
   keep("sticks", 10),
   keep("bark", 12),
-  keep("craft", 4, "cordage"),
+  keep("craft", 8, "cordage"),
   job("build", { kind: "once" }, "firePit"),
   job("craft", { kind: "once" }, "fireDrill"),
   keep("light", 1),
@@ -110,18 +123,36 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fish", 1, "any"),
   keep("berries", 2),
   job("build", { kind: "once" }, "dryingRack"),
-  keep("hang", 10),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
+  keep("hunt", 40, "elk"),
+  keep("hunt", 40, "reindeer"),
+  keep("hunt", 40, "deer"),
   keep("craft", 1, "axe"),
   job("sticks", { kind: "campHas", qty: 20 }),
   job("bark", { kind: "campHas", qty: 40 }),
   job("build", { kind: "once" }, "turfHut"),
   job("build", { kind: "once" }, "waterStore"),
   keep("fill", 20),
+  keep("split", 400),
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
+
+/**
+ * Whether a competent player would give this want today: a named hunt
+ * waits for the species' recommended Hunting level, since walking at an
+ * elk with a stone point at level 1 is not competence. The second clause,
+ * the season, is the winter firewood want's (spec 4.3).
+ */
+export function wantOpen(state: GameState, w: { req: IntentRequest; kind: OrderKind }, _cal: Calendar): boolean {
+  if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
+    const rec = RECOMMENDED[`hunt:${w.req.arg}`];
+    if (rec && skillLevel(state, rec.skill) < rec.level) return false;
+  }
+  return true;
+}
 
 /** The reference seeds. */
 export const REFERENCE_SEEDS = [17, 19, 42, 79];
@@ -286,6 +317,7 @@ export class ReferencePlayer {
     for (let i = 0; i < this.wants.length; i++) {
       if (this.finished.has(i) || this.given.has(i)) continue;
       const w = this.wants[i];
+      if (!wantOpen(state, w, calendar(state.minute, state.startDoy))) continue;
       const probe: Order = { id: -1, kind: w.kind, req: w.req, done: this.completed.get(i) ?? 0, minutes: 0, skipped: "" };
       if (orderMet(state, world, probe, false)) continue;
       const best = withinLadder(state, w.req, w.kind);
