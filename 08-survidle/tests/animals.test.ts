@@ -4,7 +4,7 @@ import { dailyAnimals, densityLabel, popOf, seasonalCapacity } from "../src/sim/
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { isVoiceOnly, SPECIES_DEFS, SPECIES_IDS, type Species } from "../src/sim/species";
-import { fillPopulations, regionState } from "../src/sim/regionstate";
+import { fillPopulations, regionState, startingPop } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { generateWorld, regionAt, type World } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
@@ -177,5 +177,34 @@ describe("small game moves in", () => {
       if (k <= 0) continue;
       expect(popOf(regionState(state, world, nb.id), "hare") / k).toBeGreaterThanOrEqual(receiver - 0.05);
     }
+  });
+
+  it("draws on an untouched neighbour, reading it at its starting numbers, and materialises it only because it gave", () => {
+    const { state, world } = newGame(5);
+    const id = state.player.region;
+    const st = regionState(state, world, id);
+    const cal = calendar(60 * 1440); // 1 June
+    const k = seasonalCapacity(world, id, "hare", cal, 0);
+    st.pop.hare = k / 2;
+    const neighbours = regionAt(world, id).neighbours;
+    for (const nb of neighbours) expect(state.regions[nb.id]).toBeUndefined();
+    const before = popOf(st, "hare");
+    dailyAnimals(state, world, cal, new Rng(3), null);
+    expect(popOf(st, "hare")).toBeGreaterThan(before);
+    const materialised = neighbours.filter((nb) => state.regions[nb.id] !== undefined);
+    expect(materialised.length).toBeGreaterThan(0);
+    const gave = materialised[0];
+    expect(popOf(state.regions[gave.id], "hare")).toBeLessThan(startingPop(world, gave.id).hare!);
+  });
+
+  it("leaves every neighbour untouched when the receiver has no gap to fill", () => {
+    const { state, world } = newGame(5);
+    const id = state.player.region;
+    const st = regionState(state, world, id);
+    const cal = calendar(60 * 1440); // 1 June
+    st.pop.hare = seasonalCapacity(world, id, "hare", cal, 0);
+    const neighbours = regionAt(world, id).neighbours;
+    dailyAnimals(state, world, cal, new Rng(3), null);
+    for (const nb of neighbours) expect(state.regions[nb.id]).toBeUndefined();
   });
 });

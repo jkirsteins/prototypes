@@ -65,7 +65,8 @@ describe("the epitaph", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
     // Fish capacities now come from biomass per hectare, yielding tens of thousands per km2; this increases trap yield.
     // Small game now refills a hunted range from its neighbours instead of only the slow herd migration, so the
-    // reference survivor's snares find more hares and the death moves again.
+    // reference survivor's snares find more hares and the death moves again; seed 17's cause moves from starving
+    // to dying of cold, a day later.
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 60. Died of cold at camp, with 1.2 kg of food in the pack and 65 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 60. Starved at camp, with nothing in the pack and 96 kg of firewood at camp."`);
   });
