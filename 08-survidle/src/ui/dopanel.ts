@@ -155,7 +155,12 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
   const openCls = open ? " open" : "";
   if (!o.ok) {
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
+    // Queuing a blocked makeCamp anyway would let the runner site the camp wherever the
+    // body happens to be standing when the order starts, not the cell the click meant:
+    // it gets no "add it anyway" queue path, only the reason it is grey.
+    const queueable = o.id !== "makeCamp";
+    const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   const line = [time, o.detail].filter(Boolean).join("; ");

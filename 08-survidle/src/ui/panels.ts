@@ -2,7 +2,7 @@ import { itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { berriesRefused } from "../sim/berries";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { needsMending, siteLine, siteReport } from "../sim/camp";
+import { canMoveCamp, needsMending, siteLine, siteReport } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
@@ -223,7 +223,6 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   const p = state.player;
   const id = ui.selected ?? p.region;
   const r = regionAt(world, id);
-  const hasState = id in state.regions;
   const st = regionState(state, world, id);
   const here = id === p.region;
   const nb = regionAt(world, p.region).neighbours.find((n) => n.id === id);
@@ -239,13 +238,17 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
       const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
       if (!here) {
-        const km = hasState ? kmBetween(world, campCellOf(state, world, id), s.cell) : s.km;
+        const km = kmBetween(world, campCellOf(state, world, id), s.cell);
         const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
         return `<div>${SPOT_NAMES[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
       // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
       // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
       const cell = s.id === "camp" ? campCellOf(state, world, id) : s.cell;
+      // A generated spot sited on the live camp's own cell would draw a second row for
+      // the same cell (two "you are here" once you stand on it); the camp row above,
+      // listed first, already stands for it.
+      if (s.id !== "camp" && cell === campCellOf(state, world, id)) return "";
       if (cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
@@ -296,9 +299,11 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
       : `<div style="margin-top:6px"><span class="dim">${esc(go.why)}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
   }
-  // What this cell offers as a camp, shown only when it is not the camp already.
-  const asCamp = here && myCell !== campCellOf(state, world, id)
-    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}</dd>`
+  // What this cell offers as a camp, shown only when it is not the camp already; a move
+  // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.
+  const move = here && myCell !== campCellOf(state, world, id) ? canMoveCamp(state, world) : null;
+  const asCamp = move
+    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(move.why)})`}</dd>`
     : "";
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>

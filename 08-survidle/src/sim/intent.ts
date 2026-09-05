@@ -130,6 +130,10 @@ function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where
 /** Where the work is done, decided once. The note says when the chosen spot did not suit. */
 export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
   const here = cellOf(state, world);
+  // The site is chosen at the click, not wherever the runner happens to be standing when
+  // the order starts; named explicitly, ahead of the generic object check below, so the
+  // binding still holds even if that check is ever narrowed to fewer tasks.
+  if (task === "makeCamp") return { cell: typeof where === "object" ? where.cell : here, note: "" };
   if (typeof where === "object") return { cell: where.cell, note: "" };
   const r = regionAt(world, state.player.region);
   const st = regionState(state, world, state.player.region);
@@ -484,11 +488,17 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   fill: () => "filling vessels",
   iceHole: () => "cutting an ice hole",
   hang: () => "hanging meat to dry",
+  makeCamp: () => "making camp",
 };
 
-/** The work step's text, with the place named when it is not where the camp pile sits. */
+/**
+ * The work step's text, with the place named when it is not where the camp pile sits.
+ * A makeCamp never gets the place suffix: its cell is the new site, not the old
+ * campCell it is bound to walk back to, and "making camp" already says where.
+ */
 function workGerund(state: GameState, world: World, it: Intent): string {
   const g = GERUND[it.task]?.(it.arg) ?? it.task;
+  if (it.task === "makeCamp") return g;
   return it.cell === it.campCell ? g : `${g} at ${whereIs(state, world, it.cell)}`;
 }
 

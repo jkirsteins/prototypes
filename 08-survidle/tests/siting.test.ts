@@ -2,17 +2,19 @@ import { describe, expect, it } from "vitest";
 import { canMoveCamp, siteLine, siteReport } from "../src/sim/camp";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile, removeItem } from "../src/sim/inventory";
+import { giveOrder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { baseWalkSpeed } from "../src/sim/player";
-import { atCamp, campCellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
+import { atCamp, campCellOf, cellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
+import { doHtml } from "../src/ui/dopanel";
 import { mapHtml } from "../src/ui/map";
 import { regionHtml } from "../src/ui/panels";
-import { newUiState } from "../src/ui/render";
+import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
 import { fmtKm } from "../src/units";
 import { regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
@@ -35,6 +37,25 @@ describe("moving the camp is allowed while nothing stands at it", () => {
     st.structures.snares = 3;
     removeItem(pile(state, st.campCell), "stick", 30);
     expect(canMoveCamp(state, world)).toEqual({ ok: true });
+  });
+
+  it("wet wood alone still banks the fire, with no dry fuel at all", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = false;
+    st.fire.fuelKg = 0;
+    st.fire.wetKg = 2;
+    expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire is banked there" });
+  });
+
+  it("reads the camp pile without creating one where nothing lies", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const cal = calendar(state.minute, state.startDoy);
+    placeAt(state, world, neighbourLandCell(world, st.campCell));
+    expect(state.piles[st.campCell]).toBeUndefined();
+    availableTasks(state, world, cal);
+    expect(state.piles[st.campCell]).toBeUndefined();
   });
 });
 
@@ -201,20 +222,66 @@ describe("make camp here", () => {
     expect(st.campCell).toBe(next);
     expect(state.intent!.campCell).toBe(next);
   });
+
+  it("queued, binds the cell the click meant, and walks back to it even after the survivor moves on before the order starts", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const clicked = neighbourLandCell(world, st.campCell);
+    placeAt(state, world, clicked);
+    // What main.ts's "intent" click does: the row's own choice carries no cell of its
+    // own, so the click binds the one it is standing on before the request joins the
+    // order queue - the runner then resolves that bound cell, not wherever it starts.
+    const { req, kind } = rowRequest(defaultChoice(), "makeCamp", undefined);
+    req.where = { cell: cellOf(state, world) };
+    giveOrder(state, world, req, kind);
+
+    const elsewhere = neighbourLandCell(world, clicked);
+    placeAt(state, world, elsewhere);
+    advance(state, world, 200);
+    expect(st.campCell).toBe(clicked);
+  });
+
+  it("reads 'making camp' while it runs, not the raw task id with the site's identifier", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const next = neighbourLandCell(world, st.campCell);
+    placeAt(state, world, next);
+    addOrder(state, world, { task: "makeCamp", until: { kind: "once" }, deliver: "leave", where: { cell: next } }, "job");
+    advance(state, world, 1);
+    expect(state.intent).not.toBeNull();
+    expect(state.intent!.step).toBe("making camp");
+  });
+
+  it("the greyed row at camp has no clickable queue path", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = doHtml(state, world, cal, newUiState());
+    expect(html).toContain("this is the camp");
+    expect(html).not.toMatch(/data-act="intent"\s+data-id="makeCamp"/);
+  });
 });
 
 describe("the site report", () => {
-  it("lists every spot but camp with walk minutes, and says the water ices", () => {
+  it("lists every spot but camp with walk minutes, and carries no terrain or ices field", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     const r = siteReport(state, world, st.campCell);
     const region = regionAt(world, state.player.region);
     expect(r.spots.map((s) => s.id).sort()).toEqual(region.spots.filter((s) => s.id !== "camp").map((s) => s.id).sort());
     expect(r.spots.some((s) => s.minutes !== null && s.minutes > 0)).toBe(true);
-    expect(r.ices).toBe(region.spots.some((s) => s.id === "shore"));
+    expect(r).not.toHaveProperty("terrain");
+    expect(r).not.toHaveProperty("ices");
+  });
+
+  it("siteLine names each spot once with its bare minutes, one 'min' for the whole line", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const r = siteReport(state, world, st.campCell);
     const line = siteLine(r);
     for (const s of r.spots) expect(line).toContain(s.id);
-    if (r.ices) expect(line).toContain("ices over in winter");
+    expect(line).not.toContain("ices over in winter");
+    expect(line.endsWith(" min")).toBe(true);
+    expect(line.match(/ min/g)).toHaveLength(1);
   });
 
   it("shows in the region panel off the camp cell, and not on it", () => {
@@ -226,6 +293,18 @@ describe("the site report", () => {
     placeAt(state, world, next);
     expect(regionHtml(state, world, cal, newUiState())).toContain("as a camp");
   });
+
+  it("names why a move is blocked beside what the cell offers as a camp", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const next = neighbourLandCell(world, st.campCell);
+    placeAt(state, world, next);
+    const cal = calendar(state.minute, state.startDoy);
+    st.fire.fuelKg = 2;
+    const html = regionHtml(state, world, cal, newUiState());
+    expect(html).toContain("as a camp");
+    expect(html).toContain("the fire is banked there");
+  });
 });
 
 describe("checking travel to a neighbour touches no region state", () => {
@@ -235,6 +314,28 @@ describe("checking travel to a neighbour touches no region state", () => {
     expect(Object.keys(state.regions).length).toBe(1);
     availableTasks(state, world, cal);
     expect(Object.keys(state.regions).length).toBe(1);
+  });
+
+  it("whereIs reading a neighbour's camp cell does not touch its state either", () => {
+    const { state, world } = newGame(17);
+    expect(Object.keys(state.regions).length).toBe(1);
+    const neighbourId = regionAt(world, state.player.region).neighbours[0].id;
+    const neighbourCamp = regionAt(world, neighbourId).campCell;
+    whereIs(state, world, neighbourCamp);
+    expect(Object.keys(state.regions).length).toBe(1);
+  });
+});
+
+describe("the Here list never doubles up when the camp sits on another spot's cell", () => {
+  it("shows one 'you are here' row once the camp is moved onto the forest spot's own cell", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const forest = regionAt(world, state.player.region).spots.find((s) => s.id === "forest")!;
+    st.campCell = forest.cell;
+    placeAt(state, world, forest.cell);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = regionHtml(state, world, cal, newUiState());
+    expect(html.match(/you are here/g)).toHaveLength(1);
   });
 });
 

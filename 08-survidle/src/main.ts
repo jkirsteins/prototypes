@@ -335,6 +335,9 @@ function onClick(ev: Event) {
       break;
     case "intent": {
       const { req, kind } = rowRequest(defaultChoice(), target.dataset.id as TaskId, target.dataset.arg || undefined);
+      // The site is where the click happened, not wherever the runner is standing when
+      // the order finally starts; RowChoice has no cell of its own to carry that.
+      if (req.task === "makeCamp") req.where = { cell: cellOf(state, world) };
       // The row is greyed with no button when the gate is shut; this is the belt to that brace.
       if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
       break;

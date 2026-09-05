@@ -6,7 +6,7 @@
 import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
-import { enterRegion, regionState, VISITED } from "./regionstate";
+import { enterRegion, VISITED } from "./regionstate";
 import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 
@@ -21,9 +21,13 @@ export function cellOf(state: GameState, world: World): number {
   return cellIndex(world, state.player.x, state.player.y);
 }
 
-/** The camp as the run has it: the region state's cell, which a chosen camp moves, never the generated default. */
+/**
+ * The camp as the run has it: the region state's cell, which a chosen camp moves, never
+ * the generated default. Read only: an untouched region has no state, and asking after
+ * its camp must not be what gives it one - regionState(...) would.
+ */
 export function campCellOf(state: GameState, world: World, region = state.player.region): number {
-  return regionState(state, world, region).campCell;
+  return state.regions[region]?.campCell ?? regionAt(world, region).campCell;
 }
 
 export function cellCenter(world: World, idx: number): { x: number; y: number } {
