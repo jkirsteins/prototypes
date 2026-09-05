@@ -6,15 +6,14 @@ import { needsMending } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
-import { groundOf, intentOption, intentSentence, yieldItem } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
+import { intentSentence } from "../sim/intent";
+import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
-import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
+import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate } from "../sim/landing";
-import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
@@ -25,14 +24,14 @@ import type { AwayOrder, AwaySummary } from "../sim/save";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs, withProgression,
+  availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { GameState, Garment, ItemId, LogEntry, SkillId, TaskId } from "../sim/types";
+import type { GameState, Garment, ItemId, LogEntry, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
-import { regionAt, type RegionDef, speciesHere, type World } from "../world/gen";
-import { esc, rowRequest, type RowChoice, type UiState } from "./render";
+import { regionAt, speciesHere, type World } from "../world/gen";
+import { esc, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
@@ -49,7 +48,7 @@ function wetBar(g: Garment): string {
   return `<div class="bar dur wet"><div class="fill" style="width:${Math.max(0, Math.min(100, w))}%"></div>${label ? `<span class="lbl"><span>${label}</span></span>` : ""}</div>`;
 }
 
-function masteryBar(m: { level: number; share: number }): string {
+export function masteryBar(m: { level: number; share: number }): string {
   return `<div class="bar mastery" title="mastery ${m.level}"><div class="fill" style="width:${Math.round(m.share * 100)}%"></div><span class="lbl"><span>mastery ${m.level}</span></span></div>`;
 }
 
@@ -411,7 +410,7 @@ function optHtml(o: TaskOption): string {
 }
 
 /** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
-function instantHtml(state: GameState, world: World): string {
+export function instantHtml(state: GameState, world: World): string {
   const p = state.player;
   const invs = [p.pack, herePile(state, world)];
   const camp = spotHere(state, world) === "camp";
@@ -448,124 +447,6 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
   const opts = availableTasks(state, world, cal).filter((o) => o.group === ui.tab);
   const instantBtns = instant && ui.tab === "camp" ? instantHtml(state, world) : "";
   return `<h2>Do</h2><div class="tabs">${tabs}</div>${instantBtns}${opts.map(optHtml).join("")}`;
-}
-
-/**
- * The Do panel's rows. The Hunt group is the region's own roster: what is
- * not here is not offered, plus the shore's own reading and the trap it
- * sets and empties.
- */
-export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
-  return [
-    { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
-    { label: "Hunt", items: [
-      { id: "hunt" as TaskId, arg: "any" },
-      ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
-      { id: "fish" as TaskId, arg: "any" },
-      ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
-      { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
-    ] },
-    { label: "Camp", items: [{ id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
-    { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
-    { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
-  ];
-}
-
-/**
- * A kind button's label, item-aware the way the strip's own sentence used to
- * be: a keep or an until-camp-has names the goods it is counting, not just
- * the bare number. Light holds no stock, so its "keep camp at N" has no N to
- * show: the keep there is the fire staying lit.
- */
-function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"], n: number): string {
-  const item = yieldItem(id, arg);
-  if (until === "times") return `${n} times`;
-  if (until === "campHas") return item ? `until camp has ${itemLabel(item, n)}` : "once";
-  if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" ? "keep it lit" : "once";
-  if (until === "forever") return "forever";
-  return "once";
-}
-
-/** The small print under a kind the row's skill has not earned: what it needs and about how long. */
-function kindNeeds(state: GameState, gate: Gate): string {
-  if (gate.ok) return "";
-  const xp = state.skills[gate.skill].xp;
-  const hours = Math.max(1, Math.round((levelMinutes(gate.at) - xp) / 60));
-  return `needs ${SKILL_NAMES[gate.skill]} ${gate.at}, about ${hours} h`;
-}
-
-/** Only work with a real ground (sim/intent.ts's groundOf) moves for a different spot; everything else is camp-bound or carried, whatever its display group. */
-function rowHasWhere(o: TaskOption): boolean {
-  return groundOf(o.id, o.arg) !== null;
-}
-
-function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
-  const r = regionAt(world, state.player.region);
-  const here = cellOf(state, world);
-  const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
-    const km = kmBetween(world, here, s.cell);
-    const label = `${SPOT_NAMES[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
-    return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
-  }).join("");
-  return `<select data-act="row-where" data-id="${o.id}" data-arg="${esc(arg)}"><option value="nearest"${ui.choice.where === "nearest" ? " selected" : ""}>nearest</option>${opts}</select>`;
-}
-
-/**
- * The open row's expansion: the four kinds as buttons (greyed with the
- * level and about how many hours to it when the row's skill has not earned
- * them), the count, the deliver toggle and, for a gather or a hunt, the
- * where select.
- */
-function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
-  const kinds: RowChoice["until"][] = ["times", "campHas", "keep", "forever"];
-  const buttons = kinds.map((k) => {
-    const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
-    const gate = orderGate(state, req, kind);
-    const label = esc(kindLabel(o.id, arg, k, ui.choice.n));
-    const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
-    return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
-  }).join("");
-  const n = `<input type="number" min="1" data-strip-n value="${ui.choice.n}">`;
-  const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
-  const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
-  return `<div class="expand">${buttons}${n}${deliver}${where}</div>`;
-}
-
-/**
- * A NOT_ORDERS task (rest, sleep, night, wait, a runner step) is a move the
- * Do panel starts directly, not something the ladder gates: rowRequest
- * always collapses its choice to a once job, so a kind button on such a row
- * would read "forever" and give a one-off rest. No more, no expansion.
- */
-function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: World): string {
-  const arg = o.arg ?? "";
-  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
-  const bar = o.mastery ? masteryBar(o.mastery) : "";
-  const canOpen = !NOT_ORDERS.includes(o.id);
-  const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
-  const more = canOpen ? `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>` : "";
-  const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
-  const openCls = open ? " open" : "";
-  if (!o.ok) {
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
-  }
-  const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  const line = [time, o.detail].filter(Boolean).join("; ");
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
-}
-
-export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
-  const groups = intentGroups(regionAt(world, state.player.region)).map((g) => {
-    const rows = g.items.map(({ id, arg }) => {
-      const argKey = arg ?? "";
-      const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
-      const where = open ? ui.choice.where : "nearest";
-      return intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, where)), ui, state, world);
-    }).join("");
-    return `<div class="grp"><small>${g.label}</small>${rows}</div>`;
-  }).join("");
-  const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
-  return `<h2>Do</h2>${instantHtml(state, world)}${groups}${adv}`;
 }
 
 /** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */

@@ -14,7 +14,7 @@ import {
   campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
-import { doHtml } from "../src/ui/panels";
+import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 
 const cal = calendar(0);

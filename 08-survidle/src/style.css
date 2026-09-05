@@ -278,6 +278,16 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 
 .grp { margin-top: 8px; }
 .grp > small { color: var(--dim); display: block; margin-bottom: 2px; }
+h3[data-act="fold"] {
+  color: var(--dim); font: inherit; font-size: 13px;
+  margin: 0 0 2px; cursor: pointer;
+}
+input[data-do="filter"] {
+  width: 100%; background: #181e27; color: var(--text);
+  border: 1px solid var(--line); padding: 4px 6px;
+  font: inherit; margin-bottom: 6px;
+}
+#actions .rows { max-height: 50vh; overflow-y: auto; }
 #task .step { color: var(--dim); margin: 4px 0; }
 
 button.act, span.act {

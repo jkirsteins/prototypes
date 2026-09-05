@@ -33,9 +33,10 @@ import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
+import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
-  awayHtml, cemeteryHtml, clockHtml, doHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
+  awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
@@ -143,7 +144,7 @@ function render() {
   setPanel("region", regionHtml(state, world, cal, ui));
   setPanel("task", taskHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
-  setPanel("actions", doHtml(state, world, cal, ui));
+  setPanel("actions", doHtml(state, world, cal, ui, loadFolds(localStorage)));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal));
@@ -345,6 +346,17 @@ function onClick(ev: Event) {
     case "row-deliver":
       ui.choice.deliver = ui.choice.deliver === "camp" ? "leave" : "camp";
       break;
+    case "fold": {
+      const group = target.dataset.group ?? "";
+      const folds = loadFolds(localStorage);
+      saveFold(localStorage, group, !(folds[group] ?? true));
+      break;
+    }
+    case "more": {
+      const group = target.dataset.group ?? "";
+      if (!ui.moreOpen.includes(group)) ui.moreOpen.push(group);
+      break;
+    }
     case "advanced":
       ui.advanced = !ui.advanced;
       break;
@@ -434,6 +446,9 @@ document.addEventListener("input", (ev) => {
     state.landing.name = i < 0
       ? { first: t || state.landing.name.first, last: state.landing.name.last }
       : { first: t.slice(0, i), last: t.slice(i + 1).trim() };
+  } else if (el.matches("[data-do=filter]")) {
+    ui.filter = el.value;
+    render();
   }
 });
 document.addEventListener("change", (ev) => {

@@ -17,7 +17,8 @@ import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
-import { actionsHtml, doHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { doHtml } from "../src/ui/dopanel";
+import { actionsHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
@@ -258,7 +259,11 @@ describe("the Do panel", () => {
   state.skills.woodcraft.xp = levelMinutes(5);
 
   it("has the instant buttons and one row per intent, judged at the work's place", () => {
-    const html = doHtml(state, world, cal, newUiState());
+    // Most of the catalogue sits two or more levels above a fresh survivor's
+    // skill, which is exactly what "more" is for: open it on every group that
+    // carries far rows so this test can still see the whole roster.
+    const ui = { ...newUiState(), moreOpen: ["Hunt", "Make", "Build"] };
+    const html = doHtml(state, world, cal, ui);
     expect(html).toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
@@ -278,9 +283,11 @@ describe("the Do panel", () => {
 
   it("the Hunt group also offers reading the shore and setting and emptying the trap", () => {
     // Seed 21's start region has a shore (tests/start.test.ts covers this generally); the rows
-    // render as buttons whether or not they are greyed with a reason.
-    const html = doHtml(state, world, cal, newUiState());
-    const huntGroup = html.slice(html.indexOf("<small>Hunt</small>"), html.indexOf("<small>Camp</small>"));
+    // render as buttons whether or not they are greyed with a reason. Fishing 5 sits three
+    // levels past this survivor, so the trap pair is far: open "more" to see it.
+    const ui = { ...newUiState(), moreOpen: ["Hunt"] };
+    const html = doHtml(state, world, cal, ui);
+    const huntGroup = html.slice(html.indexOf('data-group="Hunt"'), html.indexOf('data-group="Camp"'));
     expect(huntGroup).toContain("Read the water");
     expect(huntGroup).toContain("Set the trap");
     expect(huntGroup).toContain("Empty the trap");

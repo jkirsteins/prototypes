@@ -27,6 +27,10 @@ export interface UiState {
   /** The open row's choice; reset when another row opens. */
   choice: RowChoice;
   advanced: boolean;
+  /** The Do panel's filter box: narrows rows to those whose label contains it, case-insensitive. */
+  filter: string;
+  /** Do groups whose far rows ("more (N)") have been opened this render lifetime. */
+  moreOpen: string[];
 }
 
 /** A Do row's order settings: what "more" opens, and what a kind button there gives. */
@@ -45,7 +49,7 @@ export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
     cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
-    open: null, choice: defaultChoice(), advanced: false,
+    open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [],
   };
 }
 
