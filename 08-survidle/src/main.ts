@@ -33,7 +33,7 @@ import {
   awayHtml, cemeteryHtml, clockHtml, doHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
-import { commitStripN, newUiState, resetPanels, setPanel, stripRequest, type UiState } from "./ui/render";
+import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
 import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
@@ -288,19 +288,35 @@ function onClick(ev: Event) {
       lastReal = performance.now();
       break;
     case "intent": {
-      const { req, kind } = stripRequest(ui, target.dataset.id as TaskId, target.dataset.arg || undefined);
+      const { req, kind } = rowRequest(defaultChoice(), target.dataset.id as TaskId, target.dataset.arg || undefined);
       // The row is greyed with no button when the gate is shut; this is the belt to that brace.
       if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
       break;
     }
-    case "strip": {
-      const k = target.dataset.k as "until" | "deliver" | "where";
-      const v = target.dataset.v as string;
-      if (k === "until") ui.until = v as UiState["until"];
-      else if (k === "deliver") ui.deliver = v as UiState["deliver"];
-      else ui.where = v as UiState["where"];
+    case "row-more": {
+      const id = target.dataset.id as TaskId;
+      const arg = target.dataset.arg ?? "";
+      if (ui.open && ui.open.id === id && ui.open.arg === arg) ui.open = null;
+      else {
+        ui.open = { id, arg };
+        ui.choice = defaultChoice();
+      }
       break;
     }
+    case "row-kind": {
+      const id = target.dataset.id as TaskId;
+      const arg = target.dataset.arg || undefined;
+      ui.choice.until = target.dataset.until as RowChoice["until"];
+      if (!target.classList.contains("off")) {
+        const { req, kind } = rowRequest(ui.choice, id, arg);
+        if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
+        ui.open = null;
+      }
+      break;
+    }
+    case "row-deliver":
+      ui.choice.deliver = ui.choice.deliver === "camp" ? "leave" : "camp";
+      break;
     case "advanced":
       ui.advanced = !ui.advanced;
       break;
@@ -344,7 +360,7 @@ const forecaster = createForecaster(
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
-  "task", "stop", "intent", "finish", "order-up", "order-down", "order-remove", "dismiss",
+  "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "dismiss",
   "eat", "feed", "drink", "fill", "take", "drop", "drop-all", "toggle-eat", "toggle-feed", "toggle-drink",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
@@ -378,7 +394,7 @@ document.addEventListener("keydown", (ev) => {
 document.addEventListener("input", (ev) => {
   const el = ev.target as HTMLInputElement;
   if (el.matches("[data-strip-n]")) {
-    commitStripN(ui, el.value);
+    commitChoiceN(ui, el.value);
   } else if (el.matches("[data-name]") && state.landing) {
     const t = el.value.trim().slice(0, 40);
     const i = t.indexOf(" ");
@@ -389,11 +405,16 @@ document.addEventListener("input", (ev) => {
 });
 document.addEventListener("change", (ev) => {
   const el = ev.target as HTMLInputElement;
+  if (el.matches("[data-act=row-where]")) {
+    ui.choice.where = el.value as RowChoice["where"];
+    render();
+    return;
+  }
   if (!el.matches("[data-strip-n]")) return;
-  commitStripN(ui, el.value);
+  commitChoiceN(ui, el.value);
   // A blank field commits to 1 already; force the box to show it, since a
   // render that produces the same html as before is one setPanel skips.
-  el.value = String(ui.n);
+  el.value = String(ui.choice.n);
   render();
 });
 document.addEventListener("visibilitychange", () => {

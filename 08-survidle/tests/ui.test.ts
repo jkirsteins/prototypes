@@ -18,7 +18,7 @@ import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
 import { actionsHtml, doHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
-import { commitStripN, newUiState, resetPanels, setPanel, stripRequest } from "../src/ui/render";
+import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
 
@@ -224,16 +224,16 @@ describe("panels", () => {
     expect(h).toContain("5% faster");
   });
 
-  it("commitStripN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its strip field has focus", () => {
+  it("commitChoiceN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its number field has focus", () => {
     const ui = newUiState();
-    commitStripN(ui, "7");
-    expect(ui.n).toBe(7);
-    commitStripN(ui, ""); // a cleared field
-    expect(ui.n).toBe(1);
-    commitStripN(ui, "0");
-    expect(ui.n).toBe(1);
-    commitStripN(ui, "3.6");
-    expect(ui.n).toBe(4);
+    commitChoiceN(ui, "7");
+    expect(ui.choice.n).toBe(7);
+    commitChoiceN(ui, ""); // a cleared field
+    expect(ui.choice.n).toBe(1);
+    commitChoiceN(ui, "0");
+    expect(ui.choice.n).toBe(1);
+    commitChoiceN(ui, "3.6");
+    expect(ui.choice.n).toBe(4);
 
     document.body.innerHTML = `<div id="actions"></div>`;
     expect(setPanel("actions", `<input data-strip-n value="5">`)).toBe(true);
@@ -257,12 +257,8 @@ describe("the Do panel", () => {
   // past the gates they use.
   state.skills.woodcraft.xp = levelMinutes(5);
 
-  it("has a settings strip, the instant buttons, and one row per intent, judged at the work's place", () => {
+  it("has the instant buttons and one row per intent, judged at the work's place", () => {
     const html = doHtml(state, world, cal, newUiState());
-    expect(html).toContain('data-act="strip" data-k="until" data-v="forever"');
-    expect(html).toContain('data-act="strip" data-k="deliver" data-v="camp"');
-    expect(html).toContain('data-act="strip" data-k="where" data-v="nearest"');
-    expect(html).toContain("data-strip-n");
     expect(html).toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
@@ -290,36 +286,14 @@ describe("the Do panel", () => {
     expect(huntGroup).toContain("Empty the trap");
   });
 
-  it("the strip's choice shows on the row, and the raw list appears under the advanced toggle unchanged", () => {
+  it("the raw list appears under the advanced toggle unchanged", () => {
     // The Move tab is where the raw list keeps Haul and the spot walks.
-    const ui = { ...newUiState(), until: "forever" as const, deliver: "camp" as const, advanced: true, tab: "move" as const };
+    const ui = { ...newUiState(), advanced: true, tab: "move" as const };
     const html = doHtml(state, world, cal, ui);
-    expect(html).toMatch(/data-opt="intent:chop:".*forever, bringing it to camp/s);
     expect(html).toContain('class="tabs"');
     expect(html).toContain('data-opt="haul:"');
     expect(html).toContain('data-opt="walk:spot:');
     expect(html).toContain(actionsHtml(state, world, cal, ui, false));
-  });
-
-  it("night's row carries no strip sentence, unlike every other intent under the same strip", () => {
-    const ui = { ...newUiState(), until: "forever" as const, deliver: "camp" as const };
-    const html = doHtml(state, world, cal, ui);
-    expect(html).toMatch(/data-opt="intent:chop:".*forever, bringing it to camp/s);
-    const nightRow = html.match(/<div class="opt"[^>]*data-opt="intent:night:"[\s\S]*?<\/div>/)?.[0] ?? "";
-    expect(nightRow).not.toBe("");
-    expect(nightRow).not.toContain("forever");
-    expect(nightRow).not.toContain("bringing it to camp");
-    // rest is a NOT_ORDERS task too: stripRequest forces it to a once job, so its row
-    // must not promise "forever" either, the same as night's.
-    const restRow = html.match(/<div class="opt"[^>]*data-opt="intent:rest:"[\s\S]*?<\/div>/)?.[0] ?? "";
-    expect(restRow).not.toBe("");
-    expect(restRow).not.toContain("forever");
-  });
-
-  it("until camp has N always says bringing it to camp, even when the strip's own bring-it choice is leave it", () => {
-    const ui = { ...newUiState(), until: "campHas" as const, deliver: "leave" as const, n: 20 };
-    const html = doHtml(state, world, cal, ui);
-    expect(html).toMatch(/data-opt="intent:chop:".*until camp has 20 logs.*bringing it to camp/s);
   });
 
   it("a build blocked only by materials elsewhere in the region is not greyed out, and names what it would fetch", () => {
@@ -390,17 +364,20 @@ describe("the Do panel", () => {
 });
 
 describe("the Orders panel", () => {
-  it("the strip offers keep, and a blocked row is still a button", () => {
+  it("a blocked row is still a button, and its open keep button words the count by the item", () => {
     const { state, world } = newGame(3);
     // Woodcraft 10 opens the keep rung, so split's row is blocked by "no logs here", not the ladder gate.
     state.skills.woodcraft.xp = levelMinutes(10);
-    const ui = { ...newUiState(), until: "keep" as const, n: 40 };
-    const html = doHtml(state, world, calendar(0), ui);
-    expect(html).toContain('data-k="until" data-v="keep"');
-    expect(html).toContain("keep camp at 40 kg firewood");
+    const cal = calendar(0);
+    let html = doHtml(state, world, cal, newUiState());
     // Split needs logs this camp has none of: dim, with the reason, and still clickable.
     expect(html).toMatch(/class="opt off" data-opt="intent:split:"><button class="act" data-act="intent" data-id="split"/);
     expect(html).toContain("no logs here");
+    const ui = newUiState();
+    ui.open = { id: "split", arg: "" };
+    ui.choice = { ...defaultChoice(), until: "keep", n: 40 };
+    html = doHtml(state, world, cal, ui);
+    expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep camp at 40 kg firewood");
   });
 
   it("lists the orders in rank order with their state, counters and buttons", () => {
@@ -473,38 +450,63 @@ describe("the Orders panel", () => {
 });
 
 describe("the Do panel and the ladder", () => {
-  it("the strip's settings become a request and a kind", () => {
-    const ui = { ...newUiState(), until: "keep" as const, n: 40, deliver: "camp" as const, where: "nearest" as const };
-    expect(stripRequest(ui, "split", undefined)).toEqual({ req: { task: "split", arg: undefined, until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, kind: "keep" });
-    expect(stripRequest({ ...ui, until: "forever" }, "chop", undefined).kind).toBe("grind");
-    expect(stripRequest({ ...ui, until: "times", n: 3 }, "chop", undefined)).toMatchObject({ req: { until: { kind: "times", n: 3 } }, kind: "job" });
-    expect(stripRequest({ ...ui, until: "once" }, "chop", undefined)).toMatchObject({ req: { until: { kind: "once" } }, kind: "job" });
-    expect(stripRequest({ ...ui, until: "campHas", n: 8 }, "stone", undefined)).toMatchObject({ req: { until: { kind: "campHas", qty: 8 } }, kind: "job" });
+  it("the choice becomes a request and a kind", () => {
+    const choice = { ...defaultChoice(), until: "keep" as const, n: 40, deliver: "camp" as const, where: "nearest" as const };
+    expect(rowRequest(choice, "split", undefined)).toEqual({ req: { task: "split", arg: undefined, until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, kind: "keep" });
+    expect(rowRequest({ ...choice, until: "forever" }, "chop", undefined).kind).toBe("grind");
+    expect(rowRequest({ ...choice, until: "times", n: 3 }, "chop", undefined)).toMatchObject({ req: { until: { kind: "times", n: 3 } }, kind: "job" });
+    expect(rowRequest({ ...choice, until: "once" }, "chop", undefined)).toMatchObject({ req: { until: { kind: "once" } }, kind: "job" });
+    expect(rowRequest({ ...choice, until: "campHas", n: 8 }, "stone", undefined)).toMatchObject({ req: { until: { kind: "campHas", qty: 8 } }, kind: "job" });
   });
 
-  it("a shut kind greys the row with the reason and no button; once is never greyed", () => {
+  it("opening a row's kinds does not hide any other row's data-opt", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute);
-    const keep = { ...newUiState(), until: "keep" as const, n: 40 };
-    let html = doHtml(state, world, cal, keep);
-    const row = html.slice(html.indexOf('data-opt="intent:split:"'), html.indexOf("</div>", html.indexOf('data-opt="intent:split:"')));
-    expect(row).toContain("keeps at Woodcraft 10, you are 1");
-    expect(row).not.toContain("<button");
-    expect(row).toContain("opt off");
-    html = doHtml(state, world, cal, { ...newUiState(), until: "once" });
-    expect(html.slice(html.indexOf('data-opt="intent:split:"'), html.indexOf("</div>", html.indexOf('data-opt="intent:split:"')))).not.toContain("keeps at");
-    state.skills.woodcraft.xp = levelMinutes(10);
-    html = doHtml(state, world, cal, keep);
-    expect(html.slice(html.indexOf('data-opt="intent:split:"'), html.indexOf("</div>", html.indexOf('data-opt="intent:split:"')))).not.toContain("keeps at");
-  });
-
-  it("every gated row still carries its data-opt, so nothing is hidden", () => {
-    const { state, world } = newGame(21);
-    const cal = calendar(state.minute);
-    const open = doHtml(state, world, cal, { ...newUiState(), until: "once" });
-    const shut = doHtml(state, world, cal, { ...newUiState(), until: "keep", n: 5 });
+    const closed = doHtml(state, world, cal, newUiState());
+    const ui = newUiState();
+    ui.open = { id: "split", arg: "" };
+    const opened = doHtml(state, world, cal, ui);
     const opts = (h: string) => [...h.matchAll(/data-opt="intent:[^"]*"/g)].map((m) => m[0]).sort();
-    expect(opts(shut)).toEqual(opts(open));
+    expect(opts(opened)).toEqual(opts(closed));
+  });
+});
+
+describe("the kind per row", () => {
+  it("the default choice is once, leave, nearest, and rowRequest with it is the plain click", () => {
+    expect(defaultChoice()).toEqual({ until: "once", n: 10, deliver: "leave", where: "nearest" });
+    expect(rowRequest(defaultChoice(), "sticks", undefined)).toEqual({ req: { task: "sticks", arg: undefined, until: { kind: "once" }, deliver: "leave", where: "nearest" }, kind: "job" });
+  });
+
+  it("a NOT_ORDERS task ignores the choice", () => {
+    const r = rowRequest({ ...defaultChoice(), until: "keep", n: 3 }, "rest", undefined);
+    expect(r.kind).toBe("job");
+    expect(r.req.until).toEqual({ kind: "once" });
+  });
+
+  it("the open row renders the four kinds, greys the unearned ones with the level text, and other rows render no expansion", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = newUiState();
+    ui.open = { id: "fish", arg: "any" };
+    const html = doHtml(state, world, cal, ui);
+    const open = html.slice(html.indexOf('data-opt="intent:fish:any"'));
+    expect(open).toContain('data-act="row-kind"');
+    for (const k of ["times", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
+    // Fishing at level 1 has not earned a keep: the keep is greyed and says what it needs.
+    expect(open).toMatch(/data-until="keep"[^>]*class="[^"]*off[^"]*"/);
+    expect(open).toMatch(/needs .* \d/);
+    expect(open).toContain('data-strip-n');
+    expect(open).toContain('data-act="row-deliver"');
+    const closed = html.slice(html.indexOf('data-opt="intent:sticks:"'), html.indexOf('data-opt="intent:sticks:"') + 600);
+    expect(closed).not.toContain('data-act="row-kind"');
+    expect(closed).toContain('data-act="row-more"');
+  });
+
+  it("no strip: the panel has no data-strip kind buttons and no strip sentence", () => {
+    const { state, world } = newGame(17);
+    const html = doHtml(state, world, calendar(state.minute, state.startDoy), newUiState());
+    expect(html).not.toContain('data-act="strip"');
+    expect(html).not.toContain("data-strip=");
   });
 });
 

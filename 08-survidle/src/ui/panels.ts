@@ -14,7 +14,7 @@ import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/ep
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate } from "../sim/landing";
-import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
+import { orderGate, type Gate } from "../sim/ladder";
 import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
@@ -32,7 +32,7 @@ import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, w
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type RegionDef, speciesHere, type World } from "../world/gen";
-import { esc, stripRequest, type UiState } from "./render";
+import { defaultChoice, esc, rowRequest, type RowChoice, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
@@ -472,70 +472,97 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
 }
 
 /**
- * What the strip would add to a plain click, in words; empty for once, leave
- * it, nearest. Mirrors startIntent's own coercions, so the row never
- * promises what the click would not actually do: a NOT_ORDERS task ignores
- * the strip entirely (forced to once, leave it, same as stripRequest), and
- * camp has always delivers to camp whatever the strip's own "bring it"
- * choice says.
+ * A kind button's label, item-aware the way the strip's own sentence used to
+ * be: a keep or an until-camp-has names the goods it is counting, not just
+ * the bare number. Light holds no stock, so its "keep camp at N" has no N to
+ * show: the keep there is the fire staying lit.
  */
-function stripSentence(ui: UiState, id: TaskId, arg: string | undefined): string {
-  if (NOT_ORDERS.includes(id)) return "";
-  const parts: string[] = [];
+function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"], n: number): string {
   const item = yieldItem(id, arg);
-  if (ui.until === "times") parts.push(`${ui.n} times`);
-  else if (ui.until === "campHas") parts.push(item ? `until camp has ${itemLabel(item, ui.n)}` : "once");
-  // Light holds no stock, so "keep camp at N" has no N to show: the keep is the fire staying lit.
-  else if (ui.until === "keep") parts.push(item ? `keep camp at ${itemLabel(item, ui.n)}` : id === "light" ? "keep it lit" : "once");
-  else if (ui.until === "forever") parts.push("forever");
-  if (item && (ui.deliver === "camp" || ui.until === "campHas" || ui.until === "keep")) parts.push("bringing it to camp");
-  else if (!item && ui.deliver === "camp" && id !== "light") parts.push("bringing it to camp");
-  if (ui.where !== "nearest") parts.push(`at ${SPOT_NAMES[ui.where]}`);
-  return parts.join(", ");
+  if (until === "times") return `${n} times`;
+  if (until === "campHas") return item ? `until camp has ${itemLabel(item, n)}` : "once";
+  if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" ? "keep it lit" : "once";
+  if (until === "forever") return "forever";
+  return "once";
 }
 
-function intentRowHtml(o: TaskOption, extra: string, gate: Gate): string {
+/** The small print under a kind the row's skill has not earned: what it needs and about how long. */
+function kindNeeds(state: GameState, gate: Gate): string {
+  if (gate.ok) return "";
+  const xp = state.skills[gate.skill].xp;
+  const hours = Math.max(1, Math.round((levelMinutes(gate.at) - xp) / 60));
+  return `needs ${SKILL_NAMES[gate.skill]} ${gate.at}, about ${hours} h`;
+}
+
+/** Only a gather or a hunt actually moves to different ground for a different spot; the rest are camp-bound or carried. */
+function rowHasWhere(o: TaskOption): boolean {
+  return o.group === "gather" || o.group === "hunt";
+}
+
+function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
+  const r = regionAt(world, state.player.region);
+  const here = cellOf(state, world);
+  const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
+    const km = kmBetween(world, here, s.cell);
+    const label = `${SPOT_NAMES[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
+    return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
+  }).join("");
+  return `<select data-act="row-where" data-id="${o.id}" data-arg="${esc(arg)}"><option value="nearest"${ui.choice.where === "nearest" ? " selected" : ""}>nearest</option>${opts}</select>`;
+}
+
+/**
+ * The open row's expansion: the four kinds as buttons (greyed with the
+ * level and about how many hours to it when the row's skill has not earned
+ * them), the count, the deliver toggle and, for a gather or a hunt, the
+ * where select.
+ */
+function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
+  const kinds: RowChoice["until"][] = ["times", "campHas", "keep", "forever"];
+  const buttons = kinds.map((k) => {
+    const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
+    const gate = orderGate(state, req, kind);
+    const label = esc(kindLabel(o.id, arg, k, ui.choice.n));
+    const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
+    return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
+  }).join("");
+  const n = `<input type="number" min="1" data-strip-n value="${ui.choice.n}">`;
+  const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
+  const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
+  return `<div class="expand">${buttons}${n}${deliver}${where}</div>`;
+}
+
+function intentRowHtml(o: TaskOption, gate: Gate, ui: UiState, state: GameState, world: World): string {
   const arg = o.arg ?? "";
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
-  const detail = [o.detail, extra].filter(Boolean).join("; ");
+  const open = ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
+  const more = `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>`;
+  const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
   // A shut rung is the promise of the rung, not a hidden row: the same data-opt, the reason, and nothing to click.
   if (!gate.ok) {
-    return `<div data-opt="intent:${o.id}:${esc(arg)}" class="opt off"><span class="act">${esc(o.label)}${rec}<small>${esc(gate.why)}</small>${bar}</span></div>`;
+    return `<div data-opt="intent:${o.id}:${esc(arg)}" class="opt off"><span class="act">${esc(o.label)}${rec}<small>${esc(gate.why)}</small>${bar}</span>${more}${expand}</div>`;
   }
   if (!o.ok) {
-    return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${detail ? ` - ${esc(detail)}` : ""}</small>${bar}</button></div>`;
+    return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  const line = [time, detail].filter(Boolean).join("; ");
-  return `<div class="opt" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button></div>`;
-}
-
-function stripHtml(state: GameState, world: World, ui: UiState): string {
-  const b = (k: string, v: string, label: string, on: boolean) => `<button class="mini${on ? " on" : ""}" data-act="strip" data-k="${k}" data-v="${v}">${label}</button>`;
-  const r = regionAt(world, state.player.region);
-  const here = cellOf(state, world);
-  const spots = r.spots.filter((s) => s.id !== "camp").map((s) => {
-    const km = kmBetween(world, here, s.cell);
-    return b("where", s.id, `${SPOT_NAMES[s.id]}${km === null ? "" : ` <small>${fmtKm(km)}</small>`}`, ui.where === s.id);
-  }).join("");
-  return `<div class="strip">
-<div><small>do it</small>${b("until", "once", "once", ui.until === "once")}${b("until", "times", "N times", ui.until === "times")}${b("until", "campHas", "until camp has N", ui.until === "campHas")}${b("until", "keep", "keep camp at N", ui.until === "keep")}${b("until", "forever", "forever", ui.until === "forever")}<input class="n" type="number" min="1" data-strip-n value="${ui.n}"></div>
-<div><small>bring it</small>${b("deliver", "leave", "leave it", ui.deliver === "leave")}${b("deliver", "camp", "to camp", ui.deliver === "camp")}</div>
-<div><small>where</small>${b("where", "nearest", "nearest", ui.where === "nearest")}${spots}</div>
-</div>`;
+  const line = [time, o.detail].filter(Boolean).join("; ");
+  return `<div class="opt" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
 }
 
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const groups = intentGroups(regionAt(world, state.player.region)).map((g) => {
     const rows = g.items.map(({ id, arg }) => {
-      const { req, kind } = stripRequest(ui, id, arg);
-      return intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, ui.where)), stripSentence(ui, id, arg), orderGate(state, req, kind));
+      const argKey = arg ?? "";
+      const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
+      const where = open ? ui.choice.where : "nearest";
+      const { req, kind } = rowRequest(defaultChoice(), id, arg);
+      return intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, where)), orderGate(state, req, kind), ui, state, world);
     }).join("");
     return `<div class="grp"><small>${g.label}</small>${rows}</div>`;
   }).join("");
   const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
-  return `<h2>Do</h2>${stripHtml(state, world, ui)}${instantHtml(state, world)}${groups}${adv}`;
+  return `<h2>Do</h2>${instantHtml(state, world)}${groups}${adv}`;
 }
 
 /** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */

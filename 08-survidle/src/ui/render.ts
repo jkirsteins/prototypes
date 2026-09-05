@@ -22,19 +22,30 @@ export interface UiState {
   awayFromDay: number;
   /** Index into ZOOMS: 0 is one cell per glyph. */
   zoom: number;
-  /** The settings strip: what the next intent clicked will do. */
+  /** The Do row whose kinds are open, or null. */
+  open: { id: TaskId; arg: string } | null;
+  /** The open row's choice; reset when another row opens. */
+  choice: RowChoice;
+  advanced: boolean;
+}
+
+/** A Do row's order settings: what "more" opens, and what a kind button there gives. */
+export interface RowChoice {
   until: "once" | "times" | "campHas" | "keep" | "forever";
   n: number;
   deliver: "leave" | "camp";
   where: "nearest" | SpotId;
-  advanced: boolean;
+}
+
+export function defaultChoice(): RowChoice {
+  return { until: "once", n: 10, deliver: "leave", where: "nearest" };
 }
 
 export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
     cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
-    until: "once", n: 10, deliver: "leave", where: "nearest", advanced: false,
+    open: null, choice: defaultChoice(), advanced: false,
   };
 }
 
@@ -43,7 +54,7 @@ const last = new Map<string, string>();
 /**
  * Replaces a panel's markup only when it changed, so a button is never
  * swapped out from under the pointer between mousedown and mouseup. Also
- * skipped, without caching the new html, while the strip's number field
+ * skipped, without caching the new html, while an open row's number field
  * inside this panel has focus: rewriting the innerHTML there would destroy
  * the focused input mid-keystroke. Left uncached so the write is retried
  * (and the field's value re-synced) as soon as focus moves elsewhere.
@@ -53,7 +64,7 @@ export function setPanel(id: string, html: string, root: ParentNode = document):
   const el = root.querySelector<HTMLElement>(`#${id}`);
   if (!el) return false;
   const focused = document.activeElement;
-  if (focused && (focused.hasAttribute("data-strip-n") || focused.hasAttribute("data-name")) && el.contains(focused)) return false;
+  if (focused && (focused.hasAttribute("data-strip-n") || focused.hasAttribute("data-name") || focused.hasAttribute("data-do")) && el.contains(focused)) return false;
   last.set(id, html);
   el.innerHTML = html;
   return true;
@@ -63,9 +74,9 @@ export function resetPanels(): void {
   last.clear();
 }
 
-/** Clamps and commits the strip's number field to at least 1; shared by the input and change listeners so a keystroke and a blur agree. */
-export function commitStripN(ui: UiState, value: string): void {
-  ui.n = Math.max(1, Math.round(Number(value) || 1));
+/** Clamps and commits the open row's number field to at least 1; shared by the input and change listeners so a keystroke and a blur agree. */
+export function commitChoiceN(ui: UiState, value: string): void {
+  ui.choice.n = Math.max(1, Math.round(Number(value) || 1));
 }
 
 export function esc(s: string): string {
@@ -73,17 +84,17 @@ export function esc(s: string): string {
 }
 
 /**
- * The strip's settings as the order a click on a Do row gives: what main.ts
- * hands to giveOrder. A NOT_ORDERS task (night, rest, sleep, a runner step)
- * ignores the strip: it is a move the Do panel starts directly, not
- * something the ladder gates, so it is always the once job the click means.
+ * The order a click on an open row's kind gives: what main.ts hands to
+ * giveOrder. A NOT_ORDERS task (night, rest, sleep, a runner step) ignores
+ * the choice: it is a move the Do panel starts directly, not something the
+ * ladder gates, so it is always the once job the click means.
  */
-export function stripRequest(ui: UiState, id: TaskId, arg: string | undefined): { req: IntentRequest; kind: OrderKind } {
-  if (NOT_ORDERS.includes(id)) return { req: { task: id, arg, until: { kind: "once" }, deliver: ui.deliver, where: ui.where }, kind: "job" };
-  const kind: OrderKind = ui.until === "keep" ? "keep" : ui.until === "forever" ? "grind" : "job";
-  const until: UntilChoice = ui.until === "times" ? { kind: "times", n: ui.n }
-    : ui.until === "campHas" || ui.until === "keep" ? { kind: "campHas", qty: ui.n }
-    : ui.until === "forever" ? { kind: "forever" }
+export function rowRequest(choice: RowChoice, id: TaskId, arg: string | undefined): { req: IntentRequest; kind: OrderKind } {
+  if (NOT_ORDERS.includes(id)) return { req: { task: id, arg, until: { kind: "once" }, deliver: choice.deliver, where: choice.where }, kind: "job" };
+  const kind: OrderKind = choice.until === "keep" ? "keep" : choice.until === "forever" ? "grind" : "job";
+  const until: UntilChoice = choice.until === "times" ? { kind: "times", n: choice.n }
+    : choice.until === "campHas" || choice.until === "keep" ? { kind: "campHas", qty: choice.n }
+    : choice.until === "forever" ? { kind: "forever" }
     : { kind: "once" };
-  return { req: { task: id, arg, until, deliver: ui.deliver, where: ui.where }, kind };
+  return { req: { task: id, arg, until, deliver: choice.deliver, where: choice.where }, kind };
 }
