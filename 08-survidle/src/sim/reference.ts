@@ -134,7 +134,7 @@ export const REFERENCE_TARGET_DAY = Math.floor(
 );
 /** The kitted camp's gate: a month, until C's trap moves it to December. */
 export const KITTED_TARGET_DAY = 30;
-/** The food clause: kcal at camp that counts as a beginner's day of food, the middle of the April band. */
+/** The food clause: kcal a day eaten over the week before a checkpoint that counts as a beginner's day of food, the middle of the April beginner band the gate day is derived from. */
 export const FOOD_CLAUSE_KCAL = 500;
 /** The day 1 December falls on from a 1 April start; kept as a late checkpoint, not a gate. */
 export const DECEMBER_DAY = 245;
@@ -159,9 +159,9 @@ export function campFoodKcal(state: GameState, world: World): number {
   return campFoodKcalAt(pile(state, regionState(state, world, state.player.region).campCell));
 }
 
-/** The food clause at a checkpoint: the stomach above zero, or a beginner's day of food at camp. */
-export function fed(kcal: number, food: number): boolean {
-  return kcal > 0 || food >= FOOD_CLAUSE_KCAL;
+/** The food clause at a checkpoint: a beginner's day of food eaten on average over the week before it, so a body in deficit that eats what it catches reads fed and one living on its fat does not. */
+export function fed(week: WeekAverage): boolean {
+  return week.days > 0 && week.eaten >= FOOD_CLAUSE_KCAL;
 }
 
 function checkpointDays(gate: Gate): number[] {
@@ -324,7 +324,7 @@ export function stepReference(ref: { state: GameState; world: World; player: Ref
 export interface ReferenceReport {
   seed: number;
   startRing: number;
-  /** Day, kcal, water, warmth, health, food, fed and camp stocks at each checkpoint reached, with the week before it. */
+  /** Day, kcal, water, warmth, health, food, whether the week before read fed, and camp stocks at each checkpoint reached, with the week before it. */
   checkpoints: {
     day: number;
     dayOfYear: number;
@@ -356,11 +356,12 @@ function checkpoint(state: GameState, world: World, day: number): ReferenceRepor
   const stocks: Record<string, number> = {};
   for (const { item, qty } of listItems(camp)) stocks[item] = Math.round(qty * 10) / 10;
   const food = campFoodKcal(state, world);
+  const week = weekBefore(state.ledger, day);
   return {
     day, dayOfYear: calendar(state.minute, state.startDoy).dayOfYear, kcal: Math.round(p.kcal), water: Math.round(p.water * 10) / 10, warmth: Math.round(p.warmth), health: Math.round(p.health),
-    food: Math.round(food), fed: fed(p.kcal, food),
+    food: Math.round(food), fed: fed(week),
     stocks, tools: p.tools.map((t) => `${TOOLS[t.id].name} ${Math.round(t.durability)}`),
-    week: weekBefore(state.ledger, day),
+    week,
   };
 }
 

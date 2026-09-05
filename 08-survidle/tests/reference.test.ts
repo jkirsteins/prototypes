@@ -24,6 +24,7 @@ import {
   stepReference,
   weekLines,
 } from "../src/sim/reference";
+import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes } from "../src/sim/skills";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
@@ -201,10 +202,25 @@ describe("the reference player", () => {
     expect(passesGate(REFERENCE_TARGET_DAY - 1, REFERENCE_TARGET_DAY)).toBe(false);
   });
 
-  it("the food clause wants a stomach above zero or half a kilo of cooked fish at camp", () => {
-    expect(fed(1, 0)).toBe(true);
-    expect(fed(0, FOOD_CLAUSE_KCAL)).toBe(true);
-    expect(fed(0, FOOD_CLAUSE_KCAL - 1)).toBe(false);
+  it("the food clause reads the week before the checkpoint: a beginner's day of food eaten on average, whatever the stomach and the larder hold at the instant", () => {
+    const week = (eaten: number, days = 7) => ({ ...weekBefore([], 1), days, eaten });
+    expect(fed(week(FOOD_CLAUSE_KCAL))).toBe(true);
+    expect(fed(week(FOOD_CLAUSE_KCAL - 1))).toBe(false);
+    expect(fed(week(FOOD_CLAUSE_KCAL, 0))).toBe(false);
+    // Seed 19's shape at day 26: stomach 0, camp 0, eating 2,971 a day - fed.
+    const { state, world } = newGame(19);
+    state.player.kcal = 0;
+    state.minute = 25 * 1440;
+    for (let day = 19; day <= 25; day++) state.ledger.push({ day, yield: emptyYield(), eaten: 2971, burn: emptyBurn(), sleepMin: 0, workMin: 0 });
+    expect(campFoodKcal(state, world)).toBe(0);
+    expect(fed(weekBefore(state.ledger, 26))).toBe(true);
+    // A body on the fat alone with nothing eaten all week is not, whatever the stomach reads.
+    for (const d of state.ledger) d.eaten = 0;
+    state.player.kcal = 3000;
+    expect(fed(weekBefore(state.ledger, 26))).toBe(false);
+  });
+
+  it("campFoodKcal counts every food lying at camp", () => {
     const { state, world } = newGame(17);
     const camp = pile(state, regionState(state, world, state.player.region).campCell);
     expect(campFoodKcal(state, world)).toBe(0);
