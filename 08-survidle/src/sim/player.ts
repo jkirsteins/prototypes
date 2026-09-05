@@ -96,9 +96,9 @@ export const FAT_KCAL_PER_KG = 9000;
 export const FAT_FULL = 80000;
 
 /** The fat warnings' thresholds, as shares of FAT_FULL. */
-export const FAT_THIN = 0.75;
-export const FAT_RIBS = 0.5;
-export const FAT_WASTING = 0.25;
+const FAT_THIN = 0.75;
+const FAT_RIBS = 0.5;
+const FAT_WASTING = 0.25;
 
 /** Share of the fat reserve gone, 0 (full) to 1 (empty): what a thin body costs elsewhere. */
 export function starvation(p: Player): number {

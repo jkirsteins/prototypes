@@ -251,6 +251,14 @@ describe("the reference player", () => {
     }
   });
 
+  it("the day-26 checkpoint's fed reads the week it prints, a full week by then", () => {
+    const r = runReference(17, 27);
+    const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
+    expect(c).toBeDefined();
+    expect(c!.week.days).toBe(7);
+    expect(c!.fed).toBe(fed(c!.week));
+  });
+
   it("a start that opens with snow on the ground has no first snow to report", () => {
     // Mid-November: the seasonal mean there is below zero, so newGame lays snow on day 1.
     const r = runReference(17, 1, { startDoy: 320 });
