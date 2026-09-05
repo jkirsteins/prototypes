@@ -261,11 +261,13 @@ stocks (C's reading water and basket trap, then 3's turf hut, then 3's
 water store, pulled out of their items, in that order because the heirs
 die of food before any snow falls and cold sits under band until it does;
 built), then B the risk forecast with the away cap as its
-horizon, then 3's siting (camp as a chosen cell, pulled out of 3 the way
+horizon, then the testing infra (the section of that name below: the
+beacon behind an opt-in, the survey and the bars read from them), then
+3's siting (camp as a chosen cell, pulled out of 3 the way
 the hut and the trough were), then the first tester round: with B and
 siting in, the set the hybrid's bet needs exists (a death that persists,
 a producer, a camp that holds and was chosen, orders, a forecast that
-makes away risk legible), so twenty testers and the beacon go in there, as a kill-or-continue check of the hybrid and
+makes away risk legible), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
@@ -327,6 +329,15 @@ before the cellar and the shelter ladder's other rungs: the
 latitude is what makes the second run a different game from the first,
 the goals and the tree are what the second run is for, and the corpse
 run is what a death leaves reachable.
+
+Why the testing infra is an item and sits after B: the gate table is
+measured, not felt, and every one of its bars needs the numbers to exist
+from the round's first day, so the beacon cannot be built during the
+round. It depends on nothing in the sim, since every event it sends is
+already in the life record, and it goes after B only so the forecast's
+month number is a field from the start. It was deferred out of the
+roadmap on 2026-09-04 as infra rather than game; with the round now a
+slot two items away it needs its own.
 
 Why siting comes before the tester round and not in 3's slot: the
 promotion rule above is written for rungs the player earns, and siting
@@ -1446,6 +1457,58 @@ it stays on purpose: a world that runs on for a day after a player who
 meant to be gone eight hours is what turns an idle player away, and the
 game has to sell. The forecast row is what makes the setting a choice
 rather than a mercy.
+
+### The testing infra
+
+**Curve.** No row and no tier: this is the instrument the gate table
+reads, not a capability. Expected: on the round's first day every bar in
+the table has a number or a blank that says why.
+
+The gate table's six bars split in two. Four come from a beacon: the
+re-run rate (a new survivor within a day of a first death), the first
+run (a death and a restart inside two hours of attention), hours of
+attention (the median over testers past day 1) and day 30 (a tenth still
+opening the tab), with the expected reading under 1 (a first death
+inside 20 game days from thirst, cold or hunger) beside them. Two come
+from a survey and nothing else: would they pay ten dollars after a week,
+and stories told unprompted. That is one form, sent after a week, keyed
+by the tester's id.
+
+**The beacon is Datadog RUM.** The account is free, its product
+analytics does funnels and retention by user, which are the re-run and
+day 30 bars as they stand, and the MCP connected to this repo's sessions
+reads the numbers without a bars script. The choice was made with cost
+off the table; what earns it is that no worker, no table and no script
+get built and the dashboards exist on the round's first day. Five
+conditions keep the anonymous posture the epitaph section relies on and
+keep the page as light as it is:
+
+- **No client IP and no session replay.** The RUM application's client
+  IP collection is off, and replay is never enabled; a game screen has
+  nothing worth replaying.
+- **Opt-in only, loaded on demand.** The SDK is an npm dependency
+  behind a dynamic import, so nothing loads and no third-party host is
+  touched until a tester turns the beacon on in the settings panel. A
+  random id in local storage is the RUM user id, shown on that panel so
+  the tester can quote it in the survey. No name, no email.
+- **The game's facts as custom actions.** Opened (world seed, survivor
+  index, game day), died (game day, cause, days survived, hours of
+  attention in that life), began again (real time since the death), and
+  B's month number on each open. A heartbeat while the tab is visible is
+  what hours of attention are summed from. Every field is read from the
+  life record or the save, so the simulation does not change.
+- **A thin adapter.** One beacon module with an emit function and the
+  Datadog calls behind it. The account is tied to employment, so the
+  events keep a shape a worker and a table could take if the org ever
+  goes away, and the dashboards are the only thing that would be lost.
+- **Retention and windows checked before the round.** The day 30 bar
+  needs events kept for more than a month, and the re-run bar needs a
+  funnel that takes a time window. Both are confirmed against the org
+  before a tester is recruited; where a window is not available, the
+  MCP exports the sessions and a short script does that one bar.
+
+The round itself, twenty testers from the incremental community and the
+recruiting, is not part of this item; it is the slot after siting.
 
 ### C. Skill tiers
 
