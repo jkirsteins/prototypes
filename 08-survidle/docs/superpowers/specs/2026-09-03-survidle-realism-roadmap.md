@@ -1697,9 +1697,12 @@ itself from the address on the same load. `index.html` and
 id, the cohort when marked, "not configured" when the ids are blank); the
 Datadog sink behind it loads by dynamic import, queues until it is ready,
 and turns off replay, user interactions, resources and long tasks, with
-the privacy level masking everything. `docs/testing.md` is the
-operator's page: the four steps, the tester link, what is sent, and the
-six bars as queries. The application ids are still blank, so the four
+the privacy level masking everything; the switch stops every event
+through `beforeSend`, not only the ones the beacon composes itself.
+`docs/testing.md` is the operator's page: the four steps, the tester
+link, what is sent, the six bars as queries, and what the SDK sends on
+its own view and error events beside the five actions. The application
+ids are still blank, so the four
 author steps in that page stand before a tester is recruited, and the
 browser pass that checked the switch, the note and the tester link ran
 with the ids blank too; the round's controller fills in the ids and

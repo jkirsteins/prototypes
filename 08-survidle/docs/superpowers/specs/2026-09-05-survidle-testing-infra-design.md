@@ -88,8 +88,8 @@ export interface BeaconRecord {
   id: string; on: boolean; tester: boolean; cohort: string | null;
   /** Wall-clock ms of the last death seen, for the time to begin again. */
   diedAt: number | null;
-  /** Visible minutes in the current life, and which life that is. */
-  attention: { survivor: number; minutes: number };
+  /** Visible minutes in the current life, and which world and life that is. */
+  attention: { seed: number; survivor: number; minutes: number };
 }
 export interface Common { seed: number; survivor: number; day: number; tester: boolean; cohort: string | null }
 export function common(state: GameState, rec: BeaconRecord): Common;
@@ -112,7 +112,7 @@ export const BEACON_KEY = "survidle.beacon";
 export function loadRecord(storage: Storage, random: () => string): BeaconRecord;  // creates and saves a fresh record with a new id when none is stored; fills missing fields
 export function saveRecord(storage: Storage, rec: BeaconRecord): void;
 export function newId(): string;  // sixteen lowercase hex characters from crypto.getRandomValues
-export function applyTesterLink(rec: BeaconRecord, params: URLSearchParams): { rec: BeaconRecord; stripped: boolean };  // ?tester=<cohort> sets tester true and the cohort (lowercased, trimmed, at most 32 characters, or "default" when empty); returns whether the param was present
+export function applyTesterLink(rec: BeaconRecord, params: URLSearchParams): { rec: BeaconRecord; stripped: boolean };  // ?tester=<cohort> sets tester true and the cohort (lowercased, trimmed, stripped to [a-z0-9-], at most 32 characters, or "default" when empty); returns whether the param was present
 ```
 
 `main.ts` reads the params it already has; if `applyTesterLink` reports
@@ -164,20 +164,30 @@ turning on with no sink yet, creates the sink then.
 
 ```ts
 export interface BeaconConfig { applicationId: string; clientToken: string; site: string; service: string; env: string }
-export function createDatadogSink(config: BeaconConfig, userId: string, global: Record<string, unknown>): Sink;
+export function createDatadogSink(config: BeaconConfig, userId: string, global: Record<string, unknown>, enabled: () => boolean): Sink;
 ```
 
 The sink queues emits until the dynamic `import("@datadog/browser-rum")`
 resolves, then calls `datadogRum.init({ applicationId, clientToken,
 site, service, env, sessionSampleRate: 100, sessionReplaySampleRate: 0,
 trackUserInteractions: false, trackResources: false, trackLongTasks:
-false, defaultPrivacyLevel: "mask" })`, `datadogRum.setUser({ id:
-userId })`, `datadogRum.setGlobalContextProperty("tester", ...)` and
-`("cohort", ...)`, then drains the queue through
-`datadogRum.addAction(name, context)`. A failed import (offline, blocked)
-drops the queue and logs one console warning; the game is unaffected.
-The SDK's method names are checked against 7.12.0 at install; if one has
-moved, this file absorbs the change and nothing else knows.
+false, defaultPrivacyLevel: "mask", trackAnonymousUser: false, beforeSend
+})`, `datadogRum.setUser({ id: userId })`,
+`datadogRum.setGlobalContextProperty("tester", ...)` and `("cohort",
+...)`, then drains the queue through `datadogRum.addAction(name,
+context)`. `trackAnonymousUser: false` keeps the RUM user to the
+beacon's own random id; without it the SDK mints a second device id the
+switch cannot reach. `beforeSend` reads `enabled()` live at send time (not
+a value captured at init) and drops the event when it reads false, so the
+switch stops every event the SDK sends on its own, not only the ones the
+beacon composes; when it keeps the event, it blanks `view.referrer`. A
+failed import (offline, blocked) drops the queue and logs one console
+warning; the game is unaffected. `Sink` gains `stop?(): void`,
+implemented here as `rum?.stopSession?.()`, so turning the switch off
+mid-session ends the RUM session immediately rather than waiting for
+`beforeSend` to drop the next event. The SDK's method names are checked
+against 7.12.0 at install; if one has moved, this file absorbs the change
+and nothing else knows.
 
 `src/beacon/config.ts`:
 
@@ -196,7 +206,7 @@ export const BEACON: BeaconConfig = { applicationId: "", clientToken: "", site: 
 </div>
 ```
 
-`src/ui/beacon-panel.ts` exports `mountBeaconPanel(root, beacon, configured: boolean)`: sets the checkbox from the record, writes the note as "id <id>" plus ", tester: <cohort>" when marked, plus " (not configured)" when the ids are blank, and wires the change event to `beacon.setOn`. Static markup, mounted once like the dial and the sound controls.
+`src/ui/beacon-panel.ts` exports `mountBeaconPanel(root, beacon, configured: boolean, getState: () => GameState, onToggle: (on: boolean) => void)`: sets the checkbox from the record, writes the note as "id <id>" plus ", tester: <cohort>" when marked, plus " (not configured)" when the ids are blank, with the id itself inside `<code data-beacon="id">` so a double-click selects it. The change handler calls `onToggle(box.checked)` before `beacon.setOn(box.checked, getState())`: turning on has to let the caller create the sink first, or `setOn`'s own `settings` action has nothing to send through. Static markup, mounted once like the dial and the sound controls.
 
 ## 6. docs/testing.md
 
