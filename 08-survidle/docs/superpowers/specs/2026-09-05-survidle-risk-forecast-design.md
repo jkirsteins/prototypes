@@ -11,9 +11,12 @@ Two facts this spec rests on, measured at main 54b6d35 with a throwaway
 script: a game day of the sim with a runner on the reference list costs
 about 14 ms (30 days in 410 ms on seed 17, kitted with orders); a bare
 day with nobody acting costs under 1 ms. A save round trip of a 30-day
-state is 36 KB and under half a millisecond. So ten runs of a month are
+state is 36 KB and under half a millisecond. One real hour is 3,600 game
+minutes (`GAME_MINUTES_PER_REAL_SECOND` is 1 per real second), so the
+default eight-hour away row is 20 game days. So ten runs of a month are
 about four seconds of one core, ten runs of a week under a second, and
-ten runs of an eight-hour away row about fifty milliseconds.
+ten runs of the default away row about three seconds; that cost, not
+fifty milliseconds, is the reason for the worker.
 
 The burn side's readings (the roadmap's calibration-pass paragraph of
 that name) say what the forecast will read on a fresh April start: every
@@ -54,8 +57,10 @@ asked; each names the alternative it passed over.
   horizons in order, yields to its message queue between runs so a newer
   request can supersede an older one mid-forecast, and posts one message
   per finished row. Passed over: running the away row on the main thread
-  for a faster first number; fifty milliseconds in a worker is fast
-  enough and keeps one code path.
+  for a faster first number; at the game scale the default away row is
+  20 game days and costs about three seconds for ten runs, not the
+  fifty milliseconds a 60-game-minute hour would cost, so it belongs in
+  the worker like the rest.
 - **Recompute on the list, the day, the dial, and once a game hour.** The
   orders list changing, the game day rolling, the dial moving, and the
   player moving region each post a request at once; otherwise a request
@@ -95,7 +100,7 @@ export interface ForecastRow {
   died: number;
   /** The commonest cause among the dead, or null when none died. Ties: the earliest median death day wins, then the first in DeathCause order. */
   cause: DeathCause | null;
-  /** The median game day of death among the dead, counted from the forecast's start day as day 1, or null. */
+  /** The median game day of death among the runs that died of the modal cause, counted from the forecast's start day as day 1, or null. */
   day: number | null;
 }
 export function horizons(state: GameState): Horizon[];
@@ -106,9 +111,10 @@ export const FORECAST_RUNS = 10;
 
 `horizons(state)` returns the four in order: away at
 `state.awayHours * 60 * GAME_MINUTES_PER_REAL_SECOND * 60` game minutes
-(an hour of real time is 60 game minutes at the game scale; the constant
-is read, not assumed), tonight at `minutesUntilDawn(state.minute,
-state.startDoy)`, week at `7 * 1440`, month at `30 * 1440`.
+(an hour of real time is 3,600 game minutes at the game scale, so the
+default dial is 20 game days; the constant is read, not assumed),
+tonight at `minutesUntilDawn(state.minute, state.startDoy)`, week at
+`7 * 1440`, month at `30 * 1440`.
 
 `forecastRow` runs the horizon `runs` times. Each run:
 
@@ -123,6 +129,10 @@ state.startDoy)`, week at `7 * 1440`, month at `30 * 1440`.
 - The run died if `s.dead` is set; its cause and day are read from
   `s.dead` (the same shape the epitaph reads). The day is
   `dayNumber(s.dead.minute) - dayNumber(state.minute) + 1`.
+
+The row scores the set-up, not the player: the runner does not
+re-prioritise under scarcity, so a camp a human would save by noticing
+the water is gone still reads as a death.
 
 `forecast` maps `horizons(state)` through `forecastRow`. It is
 synchronous and blocks for the sum of its rows; only tests and the worker
@@ -148,14 +158,17 @@ horizon, in horizon order.
 
 The worker keeps `world` and the seed it was built for; a state with a
 different `seed` rebuilds it. On a request it records `latest = id`,
-then for each horizon: if `id !== latest`, stop; run `forecastRow`; post
-the row; `await` a macrotask (`new Promise((r) => setTimeout(r, 0))`) so
-queued requests are received before the next row starts. A superseded
-request posts nothing further; its already-posted rows stand until the
-newer request's rows replace them, which is why rows carry the id.
+sorts the four horizons shortest first by `minutes`, then for each:
+`await` a macrotask (`new Promise((r) => setTimeout(r, 0))`) so a queued
+request is received before any work is spent on this row; if `id !==
+latest`, stop; run `forecastRow`; post the row. Yielding before the row
+rather than after means a burst of requests (the dial dragged, several
+clicks) does work only for the last one. A superseded request posts
+nothing further; its already-posted rows stand until the newer
+request's rows replace them, which is why rows carry the id.
 
 `src/sim/forecaster.ts` is the main thread's client: `createForecaster()`
-returns `{ request(state): void; rows(): ForecastView; dispose(): void }`
+returns `{ request(state): void; view(): ForecastView; dispose(): void }`
 where `ForecastView` is `{ id: number; rows: Partial<Record<Horizon["id"], ForecastRow & { stale: boolean }>> }`.
 `request` clones nothing (postMessage structured-clones) and bumps the
 id. A row message whose id is older than the latest request marks its
@@ -181,7 +194,7 @@ this spec adds one section and nothing else to the layout):
 
 ```
 <h2>Ahead</h2>
-until you are back (8 h)    3 of 10 die: cold, night 1
+until you are back (8 h)    3 of 10 die: cold, day 1
 tonight                     none of 10 die
 a week                      ...  (dimmed previous value, if any)
 a month                     7 of 10 die: starved, day 24
@@ -189,24 +202,25 @@ a month                     7 of 10 die: starved, day 24
 
 Row text rules: "N of 10 die: cause, day D" with the cause word the
 epitaph uses for that `DeathCause` and D the median day; the tonight row
-counts nights ("night 1"), since its horizon ends at dawn; the away row
-counts days, since a dial of eight hours from a morning ends in the
-afternoon. "none of 10 die" when `died` is 0. A
-row not yet landed for the current request shows the previous row's text
-in the dimmed class with "..." appended, or "..." alone.
+counts nights ("night 1"), since its horizon ends at dawn; every other
+row, the away row included, counts days. "none of 10 die" when `died`
+is 0. A row not yet landed for the current request shows the previous
+row's text in the dimmed class with "..." appended, or "..." alone.
 
-Under the table, the dial: `away up to <input type="range" min="1"
-max="24" value="8"> 8 hours`, wired to `state.awayHours`. The same input
-is mirrored on the settings strip beside the sound controls; both write
-the one field and re-render.
+There is one dial, not two: it lives on the settings strip beside the
+sound controls, and the away row carries the hours in its own label
+("until you are back (8 h)") rather than repeating the input under the
+table.
 
-Writing the month number: when a month row lands with the latest id, and
-`state.record.forecast[day - 1]` for the current game day is `null`, set
-it to `10 - row.died` (alive of ten). A row that lands on a later day
-than it was requested writes nothing (the day rolled; the next request
-covers it). Nothing else in the record changes; the journal, the epitaph
-and the evolution view read the series later, as the idle-curve spec
-says.
+Writing the month number: the daily step pushes one null per day lived
+onto `current(state).forecast`, so its last entry is always today's.
+When a month row lands with the latest id and that last entry is still
+`null`, set it to `10 - row.died` (alive of ten). A row that lands after
+the day has rolled writes into the new day's entry, the one now last in
+the series, not the one it was requested for; nothing reads the row as
+belonging to a specific day, so this costs nothing. Nothing else in the
+record changes; the journal, the epitaph and the evolution view read the
+series later, as the idle-curve spec says.
 
 Requests: `main.ts` posts a request when the orders list changes (add,
 remove, reorder: every path that mutates `regionState(...).orders` goes
@@ -224,8 +238,8 @@ report is dismissed, one request.
 `awaySeconds(state) = state.awayHours * 3600`. `catchUp` reads it in
 place of the constant; `main.ts`'s background-tab branch reads it for
 `awayInfo`. The constant stays exported as `AWAY_HOURS_MAX = 24` and
-`AWAY_HOURS_DEFAULT = 8`, both in `src/sim/save.ts` beside the catch-up
-they bound, and the dial's range reads them. A save without `awayHours`
+`AWAY_HOURS_DEFAULT = 8`, both in `src/units.ts` beside the other game
+constants, and the dial's range reads them. A save without `awayHours`
 loads with the default (the `fillDefaults` block).
 
 The roadmap's numbers hold: 24 hours is 60 game days at the game scale
@@ -275,13 +289,26 @@ the four rows, the dimmed "..." for an unlanded row, "none of 10 die",
 ## 6. The browser pass
 
 Chrome at 200x on seed 17: the Ahead panel fills within a few seconds of
-landing, the away row first; adding a keep to the list changes the rows;
-the dial at 2 hours relabels the first row and a reload after ten real
+landing, the rows shortest-horizon first (the tonight row at the default
+dial, not the away row); adding a keep to the list changes the rows; the
+dial at 2 hours relabels the first row and a reload after ten real
 minutes away is capped by it (the away report says so); the month
 number appears in the journal's series after the first game day (the
 journal draws nothing yet; the record's array is checked in the console
 via `window.survidle.state.record.forecast`). The horizon's stocked
 stage, set up in the console, forecasts the month row as mostly alive.
+
+The reading, on the ledger: seed 17 at 200x, an idle survivor forecast
+"10 of 10 die: thirst, day 1" that died of thirst on day 3, month series
+`[0, 0]` written, console clean. Seed 19 at 1x, rows land ("10 of 10
+die: thirst, day 3", tonight "none of 10 die"), adding a sticks order
+changes the cause to cold, and the dial at 2 relabels the first row's
+hours. At 200x the game runs fast enough that the frame's hourly cadence
+outruns the worker, so only the cheapest rows land before the next
+request supersedes them; that is a harness artefact of running far
+faster than a person plays, and the real-time floor on the hourly
+request (section on `main.ts`'s frame loop) now bounds how often it can
+happen rather than letting every frame re-request.
 
 ## 7. What this does not do
 

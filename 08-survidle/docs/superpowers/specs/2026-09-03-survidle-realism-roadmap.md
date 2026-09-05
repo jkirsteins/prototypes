@@ -1597,10 +1597,15 @@ tonight, at the minutes to the next dawn; a week, at seven game days;
 and a month, at thirty, each reading "N of 10 die: cause, day D" or
 "none of 10 die," a row not yet landed for the current request shown
 dimmed with its previous text and an ellipsis, or an ellipsis alone.
-The worker keeps one world per seed, posts rows shortest first, and
-yields to its message queue between each so a newer request supersedes
-an older one before its next row starts; a superseded request's
-already-posted rows stand until the newer one's replace them. A
+The worker keeps one world per seed and runs the rows shortest first,
+so at the default dial the tonight row lands before the away row and
+the month row lands last; it yields to its message queue before each
+row so a newer request supersedes an older one before any work is
+spent on it, and a superseded request's already-posted rows stand
+until the newer one's replace them. The row scores the set-up, not the
+player: the runner does not re-prioritise under scarcity, so a camp a
+human would save by noticing the water is gone still reads as a death.
+A
 request goes out when the orders list changes, when the game day
 rolls, when the dial moves, when the player's region changes, and
 otherwise once a game hour, and not at all while the tombstone, the
@@ -1613,7 +1618,7 @@ entry the first time a month row lands for that game day, replacing
 the null the daily step pushed; the journal draws nothing from the
 series yet, since the evolution view lands with the rest of F. The
 browser pass, section 6 of the spec, checks that the Ahead panel fills
-within a few seconds of landing with the away row first, that a list
+within a few seconds of landing, shortest row first, that a list
 change and the dial both move the rows, and that the dial's cap holds
 against a real reload the way the away report says it does. It also
 checks that the month number reaches the life record after the first

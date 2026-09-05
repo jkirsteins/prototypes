@@ -142,10 +142,16 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   short and an elk can hurt you; a craft under level can spoil the piece.
   The skills panel marks the three order-kind rungs (3, 5, 10) on each
   skill and reads how far off the next one is, "jobs 3, 8 h to go".
-- **Away.** Close the tab and the world keeps going. On return the elapsed
-  time is simulated, up to 24 real hours (60 game days), and a panel tells
-  you what happened, and, above the log, what each order did while you
-  were gone and what any of them is blocked on. You can die while away.
+- **Away.** Close the tab and the world keeps going. While it is closed the
+  elapsed time is simulated up to the away dial on the settings strip, 1 to
+  24 real hours, default 8 (20 game days at the game scale). On return a
+  panel tells you what happened, and, above the log, what each order did
+  while you were gone and what any of them is blocked on. You can die
+  while away.
+- **Ahead.** The Ahead panel runs the game forward ten times per horizon
+  (until you are back, tonight, a week, a month) and prints how many of
+  the ten runs die and of what. Dim text with "..." is a row from an
+  older state, not yet replaced by the latest request.
 - **Winter** is December to February at 62 N: about five hours of light,
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
   Deer and elk thin out, the mallards and geese are gone south, the eider
@@ -214,4 +220,4 @@ opens each stage's camp on that day of year instead of 1 April (200 is
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
 - `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
 - `src/sim/reference.ts`: the reference player's order list and checkpoints.
-- `src/sim/forecast.ts`: the forecast's runs per horizon and the horizons themselves; `src/sim/forecaster.ts`: the worker client and the month number.
+- `src/sim/forecast.ts`: the forecast's runs per horizon and the horizons themselves; `src/sim/forecast.worker.ts`: the worker that runs them off the main thread; `src/sim/forecaster.ts`: the worker client and the month number; `src/ui/dial.ts`: the away dial.
