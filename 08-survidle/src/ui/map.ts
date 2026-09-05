@@ -24,18 +24,34 @@ const TERRAIN_NAME: Record<Terrain, string> = {
 };
 
 /**
- * The map's key: every terrain letter from the glyph table, then ice, the
- * survivor and the marks a camp leaves. Static content - it names nothing
- * that changes between renders - so it is filled into `.legend` once at
- * boot rather than rebuilt with the map.
+ * Every mark the map can place on a glyph: what it looks like, its map
+ * class (so the legend's letter carries the same colour as the map's),
+ * and what the legend calls it. mapHtml's marker placement reads this same
+ * table, so a mark added here cannot go undocumented in the legend, and a
+ * legend entry can never point at a mark the map does not actually place.
+ */
+export const MARKS = {
+  you: { glyph: "@", cls: "mk-player", label: "you" },
+  fire: { glyph: "F", cls: "mk-fire", label: "fire" },
+  shelter: { glyph: "H", cls: "mk-shelter", label: "shelter" },
+  trap: { glyph: "T", cls: "mk-trap", label: "trap" },
+} as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
+
+/**
+ * The map's key: every terrain letter from the glyph table, then ice, then
+ * every mark from `MARKS`. Static content - it names nothing that changes
+ * between renders - so it is filled into `.legend` once at boot rather
+ * than rebuilt with the map.
  */
 export function legendHtml(): string {
   const terrain = (Object.keys(GLYPH) as Terrain[])
     .map((t) => `<span><b>${GLYPH[t] === "\"" ? "&quot;" : GLYPH[t]}</b> ${TERRAIN_NAME[t]}</span>`)
     .join("");
+  const marks = Object.values(MARKS)
+    .map((m) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`)
+    .join("");
   return (
-    `${terrain}<span><b>=</b> ice</span><span class="accent"><b>@</b> you</span>` +
-    `<span><b>H</b> shelter</span><span><b>F</b> fire</span>` +
+    `${terrain}<span><b>=</b> ice</span>${marks}` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="fog-key">dark: never been there</span>`
   );
@@ -195,11 +211,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     return gy * VIEW_W + gx;
   };
 
-  const markerAt = new Map<number, { glyph: string; cls: string }>();
+  const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
   for (const { st, cell } of visitedCamps(state)) {
-    let m: { glyph: string; cls: string } | null = null;
-    if (st.fire.lit) m = { glyph: "F", cls: "mk-fire" };
-    else if (st.structures.cabin || st.structures.leanTo || st.structures.turfHut) m = { glyph: "H", cls: "mk-shelter" };
+    let m: (typeof MARKS)[keyof typeof MARKS] | null = null;
+    if (st.fire.lit) m = MARKS.fire;
+    else if (st.structures.cabin || st.structures.leanTo || st.structures.turfHut) m = MARKS.shelter;
     if (m) {
       const g = toGlyph(cell);
       if (g >= 0) markerAt.set(g, m);
@@ -208,10 +224,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   for (const r of Object.values(state.regions)) {
     if (!r.trap) continue;
     const g = toGlyph(r.trap.cell);
-    if (g >= 0 && !markerAt.has(g)) markerAt.set(g, { glyph: "T", cls: "mk-trap" });
+    if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.trap);
   }
   const playerGlyph = toGlyph(playerCell);
-  markerAt.set(playerGlyph, { glyph: "@", cls: "mk-player" });
+  markerAt.set(playerGlyph, MARKS.you);
   const routeGlyphs = new Set<number>();
   for (const c of state.route?.path ?? []) {
     const g = toGlyph(c);
