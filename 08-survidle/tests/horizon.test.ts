@@ -28,15 +28,31 @@ describe("the horizon stages", () => {
     expect(skillLevel(state, "fishing")).toBe(1);
   });
 
-  it("the manual stage is every want as a once job on a stocked camp", () => {
+  it("the manual stage is every open want as a once job on a stocked camp", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world);
-    expect(list.length).toBe(REFERENCE_ORDERS.length);
+    // The three named hunts (elk, reindeer, deer) all gate above level 1, so they are absent here.
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 3);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");
     }
     expect(state.player.tools.some((t) => t.id === "knife")).toBe(true);
+  });
+
+  it("the grinds stage (skills at 5) has no elk or reindeer hunt: both gate above it", () => {
+    const { state, world } = setUpStage(17, stage("grinds"));
+    const list = ordersHere(state, world);
+    expect(list.some((o) => o.req.task === "hunt" && o.req.arg === "elk")).toBe(false);
+    expect(list.some((o) => o.req.task === "hunt" && o.req.arg === "reindeer")).toBe(false);
+  });
+
+  it("the manual stage (level 1) has none of the three named hunts", () => {
+    const { state, world } = setUpStage(17, stage("manual"));
+    const list = ordersHere(state, world);
+    for (const arg of ["elk", "reindeer", "deer"]) {
+      expect(list.some((o) => o.req.task === "hunt" && o.req.arg === arg), arg).toBe(false);
+    }
   });
 
   it("the grinds stage has the chop grind, camp-has jobs for the keeps, and no keep", () => {

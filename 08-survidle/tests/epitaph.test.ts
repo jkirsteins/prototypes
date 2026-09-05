@@ -67,12 +67,11 @@ describe("the epitaph", () => {
     // Small game now refills a hunted range from its neighbours instead of only the slow herd migration, so the
     // reference survivor's snares find more hares and the death moves again; seed 17's cause moves from starving
     // to dying of cold, a day later.
-    // A pole rack holding 40 kg, with a second rack for another 40, dries far more meat than the old 6 kg
-    // could: seed 17 dies a little further out, and seed 19's reserve now carries it past day 60 alive.
-    // Hunting elk, reindeer and roe deer by name instead of small game alone changes what the list spends its
-    // hours on once it reaches the gate: seed 17 dies sooner and closer to camp, and seed 19 no longer survives
-    // to day 60.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 53. Died of cold 1.2 km from camp, with nothing in the pack and 73 kg of firewood at camp."`);
+    // A pole rack holding 40 kg, with a second rack for another 40, dries far more meat than the old 6 kg could.
+    // The named hunts sit below the hut group as grinds, not keeps, so raw meat never blocks on a keep the hang
+    // grind is clearing: seed 17 now starves at camp on day 53 (was cold, 1.2 km out), and seed 19 still
+    // starves at camp on day 48.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 53. Starved at camp, with nothing in the pack and 77 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 48. Starved at camp, with nothing in the pack and 89 kg of firewood at camp."`);
   });
 });

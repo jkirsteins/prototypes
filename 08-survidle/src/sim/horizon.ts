@@ -14,7 +14,7 @@ import { withinLadder } from "./ladder";
 import { type WeekAverage, weekBefore } from "./ledger";
 import { newGame } from "./newgame";
 import { addOrder } from "./orders";
-import { kitOut, kitTrap, REFERENCE_ORDERS } from "./reference";
+import { kitOut, kitTrap, REFERENCE_ORDERS, wantOpen } from "./reference";
 import { regionState } from "./regionstate";
 import { levelMinutes, SKILL_IDS } from "./skills";
 import type { DeathCause, GameState, ItemId, SkillId } from "./types";
@@ -63,7 +63,9 @@ export function setUpStage(seed: number, stage: HorizonStage, startDoy = START_D
     for (const [item, n] of Object.entries(stage.stocks)) addItem(camp, item as ItemId, n!);
   }
   for (const s of SKILL_IDS) setSkillLevel(g.state, s, stage.levels[s] ?? 1);
+  const cal = calendar(g.state.minute, g.state.startDoy);
   for (const w of REFERENCE_ORDERS) {
+    if (!wantOpen(g.state, w, cal)) continue;
     const best = withinLadder(g.state, w.req, w.kind);
     addOrder(g.state, g.world, best.req, best.kind);
   }

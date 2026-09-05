@@ -58,45 +58,49 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * is what the opening cannot spare. Then what the knife unlocks beyond
  * the snares. The scheduler is greedy top-down, so a competent player
  * ranks eating what is already caught above catching more of it: the cook
- * keeps sit above the fish keep, and the rack job and the hang grind
- * sit above the hunt keeps, right after the cook keeps - both block
- * harmlessly with nothing to cook or hang. The hang grind hangs whatever
- * is raw while the rack has room, and the stock it makes is what the
- * hunt keeps then draw on, rather than a fixed target of its own. The
- * trap follows the spear: the shore is read the day the spear exists,
- * the basket made and set, and from then on the fish keep's own trips
- * to the shore bring the trap's catch home, since a trap's fish come
- * out when you arrive at its cell as hares do at the snares - no empty
- * keep, and no trip made for the trap alone, which is what cost the
- * first month when the list had one. The basket is carried, not
- * stocked: the craft job leaves it in the pack rather than walking it
- * to camp first, so the trap can be set on the way to the shore. The
- * large-game keeps sit below the small-game keep and open at the
- * species' recommended level (wantOpen), since a competent player does
- * not walk at an elk with a stone point at level 1: elk, reindeer and
- * roe deer by name, listed in the order their recommended level falls
- * (8, 6, 4), so the hardest kill leads and the easiest trails. The hut
- * and the trough sit below the hunt keeps and above the felling grind,
+ * keeps sit above the fish keep, and the rack job sits above the hunt-any
+ * keep, right after the cook keeps - it blocks harmlessly with nothing yet
+ * caught to dry. The trap follows the spear: the shore is read the day the
+ * spear exists, the basket made and set, and from then on the fish keep's
+ * own trips to the shore bring the trap's catch home, since a trap's fish
+ * come out when you arrive at its cell as hares do at the snares - no
+ * empty keep, and no trip made for the trap alone, which is what cost the
+ * first month when the list had one. The basket is carried, not stocked:
+ * the craft job leaves it in the pack rather than walking it to camp
+ * first, so the trap can be set on the way to the shore. The hut and the
+ * trough sit below the small-game hunt keep and above the surplus loop,
  * because the first month cannot afford their hours: that part of the
- * list is reached only when
- * everything above it is met or blocked. Tools the survivor holds are
- * once jobs, since the first one made is taken up and a keep would
- * craft a second; the axe stays a keep because the arrival axe wears
- * out and the spare is the point. Auto-eat, auto-feed and auto-drink
- * stay on, as they are for every player. The felling grind, needing the
- * axe kept just above it, runs last and forever. Two kilos of berries
- * at camp sit with the cook keeps: in season they are the cheapest
- * kcal there is, and out of it the keep blocks harmlessly on nothing
- * ripe. Once food and the hunt are running, the roof takes the hours
- * the felling grind would have burned: the sticks and bark the hut
- * needs, above what the opening keeps already hold, sit right before
- * it, the trough follows the hut it needs room to stand in, and the
- * top fill keep from the opening stays as it was, the trough's own
- * fill keep a second want for the greater capacity the trough gives
- * rather than a replacement. The 400 kg woodpile keep, right above the
- * felling grind, is the winter want: opened only from 1 September
- * (Task 11), since stocking that much wood any earlier would come out
- * of the hours the food and shelter chain still needs.
+ * list is reached only when everything above it is met or blocked. Tools
+ * the survivor holds are once jobs, since the first one made is taken up
+ * and a keep would craft a second; the axe stays a keep because the
+ * arrival axe wears out and the spare is the point. Auto-eat, auto-feed
+ * and auto-drink stay on, as they are for every player. Two kilos of
+ * berries at camp sit with the cook keeps: in season they are the
+ * cheapest kcal there is, and out of it the keep blocks harmlessly on
+ * nothing ripe. Once food, the roof and water are running, the sticks and
+ * bark the hut needs, above what the opening keeps already hold, sit
+ * right before it, the trough follows the hut it needs room to stand in,
+ * and the top fill keep from the opening stays as it was, the trough's
+ * own fill keep a second want for the greater capacity the trough gives
+ * rather than a replacement. Below the hut group sits the surplus loop,
+ * in this order: the hang grind, the winter woodpile keep, the three
+ * named hunts as grinds, and the felling grind. A roof and water outrank
+ * days spent chasing an elk, which is why this loop sits below the hut
+ * group rather than above it. The hang grind hangs whatever raw meat sits
+ * at camp while the rack has room; it sits above the named hunts because
+ * a keep measured in raw meat at camp can never read met while a grind
+ * above it keeps taking that meat to the rack as fast as it comes in - so
+ * hunting elk, reindeer or roe deer here is a grind, not a keep, the way
+ * felling is a grind and not a firewood keep. Each named hunt opens only
+ * at its species' recommended level (wantOpen), since a competent player
+ * does not walk at an elk with a stone point at level 1: elk, reindeer
+ * and roe deer, listed hardest first (8, 6, 4). The 400 kg woodpile keep
+ * sits between the hang grind and the named hunts: stocking wood for
+ * winter earns its place ahead of chasing large game, but behind the
+ * hang grind that clears the rack. The season clause that will gate the
+ * woodpile to autumn (Task 11) is not written yet, so today it opens the
+ * moment the list reaches it. The felling grind, needing the axe kept
+ * well above it, runs last and forever.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -123,28 +127,28 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fish", 1, "any"),
   keep("berries", 2),
   job("build", { kind: "once" }, "dryingRack"),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
-  keep("hunt", 40, "elk"),
-  keep("hunt", 40, "reindeer"),
-  keep("hunt", 40, "deer"),
   keep("craft", 1, "axe"),
   job("sticks", { kind: "campHas", qty: 20 }),
   job("bark", { kind: "campHas", qty: 40 }),
   job("build", { kind: "once" }, "turfHut"),
   job("build", { kind: "once" }, "waterStore"),
   keep("fill", 20),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", 400),
+  { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
+  { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
+  { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
 /**
  * Whether a competent player would give this want today: a named hunt
  * waits for the species' recommended Hunting level, since walking at an
- * elk with a stone point at level 1 is not competence. The second clause,
- * the season, is the winter firewood want's (spec 4.3).
+ * elk with a stone point at level 1 is not competence. `cal` is unused
+ * until the winter woodpile want's season clause lands (Task 11).
  */
 export function wantOpen(state: GameState, w: { req: IntentRequest; kind: OrderKind }, _cal: Calendar): boolean {
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
@@ -314,10 +318,11 @@ export class ReferencePlayer {
       this.given.delete(i);
       this.trueKind.delete(i);
     }
+    const cal = calendar(state.minute, state.startDoy);
     for (let i = 0; i < this.wants.length; i++) {
       if (this.finished.has(i) || this.given.has(i)) continue;
       const w = this.wants[i];
-      if (!wantOpen(state, w, calendar(state.minute, state.startDoy))) continue;
+      if (!wantOpen(state, w, cal)) continue;
       const probe: Order = { id: -1, kind: w.kind, req: w.req, done: this.completed.get(i) ?? 0, minutes: 0, skipped: "" };
       if (orderMet(state, world, probe, false)) continue;
       const best = withinLadder(state, w.req, w.kind);
