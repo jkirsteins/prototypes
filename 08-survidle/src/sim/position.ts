@@ -6,7 +6,7 @@
 import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, waterKindOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
-import { enterRegion, regionState } from "./regionstate";
+import { enterRegion, regionState, VISITED } from "./regionstate";
 import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 
@@ -37,7 +37,7 @@ export function placeAt(state: GameState, world: World, idx: number): void {
 export function setRegion(state: GameState, world: World, id: number): void {
   if (id < 0) return;
   state.player.region = id;
-  if (state.discovered[id] !== 2) enterRegion(state, world, id);
+  if (state.discovered[id] !== VISITED) enterRegion(state, world, id);
 }
 
 /** Puts the player at a named spot of a region, for setup and tests. */

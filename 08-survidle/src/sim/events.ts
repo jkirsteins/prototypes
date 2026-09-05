@@ -39,5 +39,5 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambi
   }
   if (cal.isNight) noteNight(state, p.warmth, wolvesTonight);
 
-  hourlyHazards(state, world, cal, ambient, felt, rng);
+  hourlyHazards(state, world, ambient, felt, rng);
 }

@@ -16,8 +16,8 @@ import { log } from "./log";
 import { fmtName, rollName } from "./names";
 import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
-import { DIM, enterRegion, regionState } from "./regionstate";
-import type { GameState, ItemId, WorldDate } from "./types";
+import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
+import type { GameState, ItemId, RegionState, WorldDate } from "./types";
 
 export const GAP_MIN_DAYS = 90;
 export const LANDING_MIN_KM = 3;
@@ -71,6 +71,7 @@ export function landingCell(world: World, oldCamp: number, seed: number, index: 
 /** The pack goes down where the body fell: every count, every kilo, every stack, and the tools as items. */
 export function layDownPack(state: GameState, world: World): void {
   const p = state.player;
+  // A drowning lays the pack on the water cell itself; the lake keeps it, which is intended.
   const cell = Math.floor(p.y) * world.w + Math.floor(p.x);
   const to = pile(state, cell);
   for (const k of Object.keys(p.pack.items) as ItemId[]) {
@@ -94,6 +95,36 @@ export function demoteFog(state: GameState): void {
   for (const id of Object.keys(state.discovered)) state.discovered[Number(id)] = DIM;
 }
 
+/** How much stands at a camp: the five one-off structures plus however many snares. */
+function campScore(st: RegionState): number {
+  const s = st.structures;
+  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + s.snares;
+}
+
+/**
+ * The region the heir's old camp is read from: a fire pit beats no fire pit,
+ * then the most built, ties to the lowest id since regions are visited in no
+ * particular order. A survivor who died with nothing ever raised anywhere
+ * leaves the heir the region they happened to be standing in.
+ */
+export function oldCampRegion(state: GameState): number {
+  let best = -1;
+  let bestFirePit = false;
+  let bestScore = -1;
+  for (const id of touchedRegions(state).sort((a, b) => a - b)) {
+    const st = state.regions[id];
+    const firePit = st.structures.firePit;
+    const score = campScore(st);
+    if (!firePit && score === 0) continue;
+    if (best < 0 || (firePit && !bestFirePit) || (firePit === bestFirePit && score > bestScore)) {
+      best = id;
+      bestFirePit = firePit;
+      bestScore = score;
+    }
+  }
+  return best >= 0 ? best : state.player.region;
+}
+
 const WINDS = ["east", "south-east", "south", "south-west", "west", "north-west", "north", "north-east"];
 /** One of the eight winds from `from` toward `to`. */
 export function bearing(world: World, from: number, to: number): string {
@@ -109,7 +140,7 @@ export function beginAgain(state: GameState, world: World): void {
   if (!state.dead || state.landing) return;
   const death = worldDate(state, state.dead.minute);
   const { date, gapDays } = landingDate(death);
-  const oldCamp = regionState(state, world, state.player.region).campCell;
+  const oldCamp = regionState(state, world, oldCampRegion(state)).campCell;
   layDownPack(state, world);
   // To 08:00 of the landing day: minute 0 of a day index is 08:00 in this calendar.
   const deathIndex = calendar(state.dead.minute, state.startDoy).dayIndex;
@@ -125,10 +156,12 @@ export function beginAgain(state: GameState, world: World): void {
   state.weather.rolledDay = 0;
   state.weather.storm = null;
   for (const st of Object.values(state.regions)) st.iceHole = null;
+  // The dead survivor's log against the new clock would confuse the landing phase; the heir starts with a clean page.
+  state.log = [];
   demoteFog(state);
   const cell = landingCell(world, oldCamp, state.seed, state.survivors.length + 1);
   const name = rollName(new Rng(derive(state.seed, 500 + state.survivors.length)), state.survivors.map((s) => s.name));
-  state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, name };
+  state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, name, oldCamp };
 }
 
 /** Rolls another name for the landing screen, never one already used in this world. */
@@ -139,9 +172,8 @@ export function rerollName(state: GameState): void {
   state.rng = rng.s;
 }
 
-const NUMBER_WORDS: Record<number, string> = { 90: "Ninety" };
 export function daysInWords(n: number): string {
-  return NUMBER_WORDS[n] ?? String(n);
+  return String(n);
 }
 
 /** Confirms the name and starts the heir's run. */
@@ -149,7 +181,7 @@ export function land(state: GameState, world: World, name = state.landing?.name)
   const l = state.landing;
   if (!l || !name) return;
   const last = current(state);
-  const oldCamp = regionState(state, world, state.player.region).campCell;
+  const oldCamp = l.oldCamp;
   state.survivors.push(newRecord(state.survivors.length + 1, name, l.date, l.gapDays));
   newPerson(state, world, l.cell, l.region);
   state.landing = null;
@@ -158,7 +190,6 @@ export function land(state: GameState, world: World, name = state.landing?.name)
   const lc = cellAt(world, l.cell);
   const km = Math.round(Math.hypot(cc.x - lc.x, cc.y - lc.y) * CELL_KM);
   const oldName = regionAt(world, cellAt(world, oldCamp).region).name;
-  state.log = [];
   log(
     state,
     `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. You land at ${regionAt(world, l.region).name} with an axe, wool on your back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.`,

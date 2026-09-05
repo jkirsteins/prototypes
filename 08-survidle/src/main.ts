@@ -225,6 +225,7 @@ function onClick(ev: Event) {
       break;
     case "abandon-yes":
       abandon(state, regionAt(world, state.player.region).name);
+      ui.confirmAbandon = false;
       break;
     case "begin-again":
       beginAgain(state, world);
@@ -234,6 +235,7 @@ function onClick(ev: Event) {
       break;
     case "land":
       land(state, world);
+      ui.confirmAbandon = false;
       break;
     case "cemetery":
       ui.cemetery = true;
@@ -336,7 +338,7 @@ document.addEventListener("input", (ev) => {
   if (el.matches("[data-strip-n]")) {
     commitStripN(ui, el.value);
   } else if (el.matches("[data-name]") && state.landing) {
-    const t = el.value.trim();
+    const t = el.value.trim().slice(0, 40);
     const i = t.indexOf(" ");
     state.landing.name = i < 0
       ? { first: t || state.landing.name.first, last: state.landing.name.last }

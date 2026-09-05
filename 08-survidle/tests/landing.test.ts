@@ -5,6 +5,7 @@ import { addItem, herePile, pile, qty } from "../src/sim/inventory";
 import { beginAgain, demoteFog, land, landingCell, landingDate } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
+import { placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import { DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
 import { seasonalMean } from "../src/sim/weather";
@@ -76,6 +77,23 @@ describe("the landing", () => {
     expect(state.landing!.name.first.length).toBeGreaterThan(0);
   });
 
+  it("reads the old camp from where the survivor built, not from wherever they died", () => {
+    const { state, world } = newGame(17);
+    const startRegion = state.player.region;
+    const st = regionState(state, world, startRegion);
+    st.structures.firePit = true;
+    st.structures.snares = 2;
+    const startName = regionAt(world, startRegion).name;
+    const neighbour = regionAt(world, startRegion).neighbours[0].id;
+    placeAtSpot(state, world, neighbour, "camp");
+    die(state, "froze", regionAt(world, neighbour).name);
+    beginAgain(state, world);
+    const oldCamp = state.landing!.oldCamp;
+    expect(oldCamp).toBe(st.campCell);
+    land(state, world, { first: "Ilze", last: "Berg" });
+    expect(state.log[0].text).toContain(`The old camp at ${startName}`);
+  });
+
   it("lands: a second survivor with a fresh body, the first log line pointing at the old camp", () => {
     const { state, world } = newGame(17);
     advance(state, world, 5 * 1440);
@@ -89,7 +107,7 @@ describe("the landing", () => {
     expect(current(state).index).toBe(2);
     expect(current(state).gapDays).toBe(90);
     expect(state.player.health).toBe(100);
-    expect(state.log[0].text).toMatch(/^\d+ July, year 1\. Ninety days after .* died\. You land at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
+    expect(state.log[0].text).toMatch(/^\d+ July, year 1\. 90 days after .* died\. You land at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
   });
 });
 

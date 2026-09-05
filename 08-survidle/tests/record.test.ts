@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { hourlyHazards } from "../src/sim/hazards";
 import { addItem, pile } from "../src/sim/inventory";
+import { CLOTHING } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { abandon, DEATH_LINES, die } from "../src/sim/player";
 import { current, hasEvent, noteNight, record, worldDate } from "../src/sim/record";
@@ -61,6 +64,12 @@ describe("the record's seams", () => {
     startTask(state, world, calendar(0), "build", "firePit");
     advance(state, world, 60);
     expect(hasEvent(state, (e) => e.kind === "built" && e.structure === "firePit")).toBe(true);
+    // Rebuilding the same structure later in the same life (a fallen fire pit, say) does not add a second event.
+    st.structures.firePit = false;
+    addItem(pile(state, st.campCell), "stone", 6);
+    startTask(state, world, calendar(0), "build", "firePit");
+    advance(state, world, 60);
+    expect(current(state).events.filter((e) => e.kind === "built" && e.structure === "firePit").length).toBe(1);
   });
 
   it("keeps the worst night as one running minimum", () => {
@@ -93,5 +102,26 @@ describe("the record's seams", () => {
     expect(state.dead!.cause).toBe("gaveUp");
     expect(hasEvent(state, (e) => e.kind === "abandoned")).toBe(true);
     expect(state.log[state.log.length - 1].text).toBe(DEATH_LINES.gaveUp);
+  });
+
+  it("records a tool worn where its durability reaches 0, at a seam beyond chop, hunt, fish and light", () => {
+    const { state, world } = newGame(8);
+    state.player.tools.push({ id: "needle", durability: 1 });
+    addItem(state.player.pack, "hide", 0.5);
+    state.player.clothing[0].durability = 50;
+    startTask(state, world, calendar(0), "repair");
+    advance(state, world, 30);
+    expect(hasEvent(state, (e) => e.kind === "toolWorn" && e.tool === "needle")).toBe(true);
+  });
+
+  it("records frostbite the moment a second bite over an already-numb extremity takes the toes", () => {
+    const { state, world } = newGame(17);
+    const boots = state.player.clothing.find((g) => CLOTHING[g.id].slot === "boots")!;
+    boots.wet = 80;
+    state.player.frostbite.feet = 100;
+    const rng = new Rng(2);
+    for (let h = 0; h < 200 && !state.player.toes; h++) hourlyHazards(state, world, -20, -20, rng);
+    expect(state.player.toes).toBe(true);
+    expect(hasEvent(state, (e) => e.kind === "frostbite" && e.part === "toes")).toBe(true);
   });
 });

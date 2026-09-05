@@ -9,7 +9,7 @@ import type { Presence } from "./advance";
 import { type Calendar, daylight } from "./calendar";
 import { log } from "./log";
 import { record } from "./record";
-import { BERRY_FROM_DOY, MIDSUMMER_DOY } from "./tables";
+import { BERRY_FROM_DOY, BERRY_TO_DOY, MIDSUMMER_DOY } from "./tables";
 import type { GameState, ThresholdId } from "./types";
 import { ICE_SHORE_CM } from "./water";
 import { seasonalMean } from "./weather";
@@ -68,7 +68,7 @@ function detect(id: ThresholdId, state: GameState, cal: Calendar): boolean {
   const doy = cal.dayOfYear;
   const afterMidsummer = doy >= MIDSUMMER_DOY;
   switch (id) {
-    case "berries": return doy >= BERRY_FROM_DOY && doy < MIDSUMMER_DOY + 120;
+    case "berries": return doy >= BERRY_FROM_DOY && doy < BERRY_TO_DOY;
     case "rut": return doy >= RUT_DOY && doy < RUT_DOY + 60;
     case "firstFrost": return afterMidsummer && seasonalMean(doy) + w.offset - 4 < 0;
     case "firstSnow": return afterMidsummer && w.snowCm > 0;

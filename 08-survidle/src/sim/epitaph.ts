@@ -38,7 +38,17 @@ export function monthOfDoy(doy: number): string {
 }
 
 const ORDINAL = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
-function nth(n: number): string { return ORDINAL[n] ?? `${n}th`; }
+function nth(n: number): string {
+  if (ORDINAL[n]) return ORDINAL[n];
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 function cap(s: string): string { return s.charAt(0).toUpperCase() + s.slice(1); }
 

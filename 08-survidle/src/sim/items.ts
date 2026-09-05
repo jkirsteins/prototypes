@@ -128,7 +128,7 @@ export const MAX_SNARES = 5;
 export const BOUGH_BED_DAYS = 14;
 
 /** Days a lean-to or a drying rack stands before the weather takes it down. */
-export const STRUCTURE_LIFE_DAYS: Partial<Record<StructureId, number>> = { leanTo: 90, dryingRack: 90 };
+export const STRUCTURE_LIFE_DAYS: Record<"leanTo" | "dryingRack", number> = { leanTo: 90, dryingRack: 90 };
 
 /** What re-roofing a lean-to or relashing a rack takes, resetting its age. */
 export const MEND: Record<"leanTo" | "dryingRack", { needs: Need[]; minutes: number }> = {

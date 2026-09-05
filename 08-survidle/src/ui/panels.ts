@@ -541,7 +541,7 @@ export function tombstoneHtml(state: GameState, _world: World): string {
   const lines = entry(rec);
   return `<div class="box">
 <h1>${esc(fmtName(rec.name))}</h1>
-<p>${esc(epitaph(rec))}</p>
+<p>${esc(epitaphTail(rec))}</p>
 ${entryLinesHtml(lines.slice(1))}
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>
@@ -555,7 +555,7 @@ export function landingHtml(state: GameState, world: World): string {
   return `<div class="box">
 <h1>${esc(fmtWorldDate(l.date))}</h1>
 <p>${esc(daysInWords(l.gapDays))} days after ${esc(fmtName(last.name))} died. A boat puts you ashore at ${esc(regionAt(world, l.region).name)}.</p>
-<p><label>Your name <input data-name value="${esc(fmtName(l.name))}" /></label> <button class="mini" data-act="reroll-name">another name</button></p>
+<p><label>Your name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label> <button class="mini" data-act="reroll-name">another name</button></p>
 <button class="act" data-act="land">Land</button>
 </div>`;
 }

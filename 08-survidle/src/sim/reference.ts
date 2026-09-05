@@ -19,7 +19,7 @@ import { advance } from "./advance";
 import { calendar, START_DOY } from "./calendar";
 import { addItem, freshTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, TOOLS } from "./items";
-import { beginAgain, land } from "./landing";
+import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
@@ -122,7 +122,7 @@ export function gateFor(startDoy: number, kitted: boolean): Gate {
 }
 
 /** kcal of food sitting in an inventory. */
-export function campFoodKcalAt(_state: GameState, inv: Inventory): number {
+export function campFoodKcalAt(inv: Inventory): number {
   let kcal = 0;
   for (const f of Object.keys(FOODS) as FoodId[]) kcal += qty(inv, f) * FOODS[f].kcalPerKg;
   return kcal;
@@ -130,7 +130,7 @@ export function campFoodKcalAt(_state: GameState, inv: Inventory): number {
 
 /** kcal of food lying at this region's camp. */
 export function campFoodKcal(state: GameState, world: World): number {
-  return campFoodKcalAt(state, pile(state, regionState(state, world, state.player.region).campCell));
+  return campFoodKcalAt(pile(state, regionState(state, world, state.player.region).campCell));
 }
 
 /** The food clause at a checkpoint: the stomach above zero, or a beginner's day of food at camp. */
@@ -386,7 +386,7 @@ export function runHeir(seed: number, days: number): HeirReport {
   if (!state.dead) {
     return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0 }, heir: first };
   }
-  const oldRegion = state.player.region;
+  const oldRegion = oldCampRegion(state);
   const oldSt = regionState(state, world, oldRegion);
   beginAgain(state, world);
   // land() clears state.landing once it confirms the name, so the cell it chose
@@ -399,7 +399,7 @@ export function runHeir(seed: number, days: number): HeirReport {
   const cc = cellAt(world, oldSt.campCell);
   const found = {
     structures: [...structures],
-    campFoodKcal: Math.round(campFoodKcalAt(state, camp)),
+    campFoodKcal: Math.round(campFoodKcalAt(camp)),
     campFirewoodKg: Math.round(qty(camp, "firewood")),
     snares: oldSt.structures.snares,
     kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,

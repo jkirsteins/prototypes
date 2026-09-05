@@ -231,6 +231,9 @@ describe("the world save", () => {
     delete v4.state.year;
     delete v4.state.landing;
     delete v4.state.spine;
+    // structureAge is version 5's own field: a real version 4 file never had it, so the
+    // fixture must drop it too, or fillDefaults' default is never exercised.
+    for (const st of Object.values(v4.state.regions as Record<string, Record<string, unknown>>)) delete st.structureAge;
     const file = deserialize(JSON.stringify(v4))!;
     expect(file.state.year).toBe(1);
     expect(file.state.landing).toBeNull();

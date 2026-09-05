@@ -142,7 +142,7 @@ describe("vessels and snow", () => {
     state.player.energy = 100;
     state.task = null;
     const rng = new Rng(3);
-    for (let h = 0; h < 6; h++) hourlyHazards(state, world, cal, -8, -8, rng);
+    for (let h = 0; h < 6; h++) hourlyHazards(state, world, -8, -8, rng);
     const skin = state.player.tools.find((t) => t.id === "waterskin")!;
     expect(skin.frozen).toBe(true);
     expect(vesselLitres(state.player)).toBe(0);

@@ -331,6 +331,8 @@ export interface Landing {
   date: WorldDate;
   gapDays: number;
   name: { first: string; last: string };
+  /** The camp cell the heir's distance and bearing are read against: the old survivor's, not wherever they died. */
+  oldCamp: number;
 }
 
 export interface RunStats { trees: number; animals: number; structures: number; km: number }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { epitaph } from "../src/sim/epitaph";
+import { epitaph, epitaphTail } from "../src/sim/epitaph";
 import { beginAgain, land } from "../src/sim/landing";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
@@ -23,7 +23,7 @@ describe("the tombstone", () => {
     const { state, world } = dead();
     const html = tombstoneHtml(state, world);
     expect(html).toContain(fmtName(current(state).name));
-    expect(html).toContain(epitaph(current(state)));
+    expect(html).toContain(epitaphTail(current(state)));
     expect(html).toMatch(/The next boat lands in July, year 1\./);
     expect(html).toContain('data-act="begin-again"');
     expect(html).toContain('data-act="cemetery"');
@@ -37,7 +37,7 @@ describe("the landing screen", () => {
     beginAgain(state, world);
     const html = landingHtml(state, world);
     expect(html).toContain("year 1");
-    expect(html).toContain("Ninety days after");
+    expect(html).toContain("90 days after");
     expect(html).toContain(`value="${fmtName(state.landing!.name)}"`);
     expect(html).toContain('data-act="reroll-name"');
     expect(html).toContain('data-act="land"');

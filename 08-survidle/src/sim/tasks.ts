@@ -941,7 +941,7 @@ function cutIceHole(state: GameState, world: World): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   if (!hasTool(p, "axe")) takeUp(state, world, "axe");
-  wearTool(state, "axe", wearFactor(state, world, "chop"));
+  if (wearTool(state, "axe", wearFactor(state, world, "chop"))) record(state, { kind: "toolWorn", tool: "axe" });
   st.iceHole = { cell: cellOf(state, world), minute: state.minute };
   log(state, "You cut a hole in the ice.");
 }
@@ -1081,12 +1081,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (success < 1 && !rng.chance(success)) {
         const lost = spoiledNeeds(needs);
         consume(invs, lost);
-        if (rec.tool) wearTool(state, rec.tool, wearFactor(state, world, "craft", rid));
+        if (rec.tool && wearTool(state, rec.tool, wearFactor(state, world, "craft", rid))) record(state, { kind: "toolWorn", tool: rec.tool });
         log(state, `The ${rec.name} is spoiled: ${needsList(lost)} wasted.`, "bad");
         return;
       }
       consume(invs, needs);
-      if (rec.tool) wearTool(state, rec.tool, wearFactor(state, world, "craft", rid));
+      if (rec.tool && wearTool(state, rec.tool, wearFactor(state, world, "craft", rid))) record(state, { kind: "toolWorn", tool: rec.tool });
       if (rec.out.clothing) {
         const slot = CLOTHING[rec.out.clothing].slot;
         const old = p.clothing.find((g) => CLOTHING[g.id].slot === slot);
@@ -1105,7 +1105,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "repair": {
       consume(invs, [{ item: "hide", qty: 0.5 }]);
-      wearTool(state, "needle", 2 * wearFactor(state, world, "repair"));
+      if (wearTool(state, "needle", 2 * wearFactor(state, world, "repair"))) record(state, { kind: "toolWorn", tool: "needle" });
       const worst = p.clothing.reduce((a, b) => (b.durability < a.durability ? b : a));
       worst.durability = Math.min(100, worst.durability + 40);
       log(state, `The ${CLOTHING[worst.id].name} is patched.`, "good");
@@ -1129,7 +1129,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (sid === "leanTo" || sid === "dryingRack") st.structureAge[sid] = 0;
       }
       state.stats.structures++;
-      if (sid !== "snare") record(state, { kind: "built", structure: sid });
+      if (sid !== "snare" && !hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
       return;
     }
@@ -1160,7 +1160,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "lightTorch": {
       consume(invs, [{ item: "torch", qty: 1 }]);
-      if (!(atCamp(state, world) && st.fire.lit)) wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"));
+      if (!(atCamp(state, world) && st.fire.lit) && wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       p.torch = { lit: true, minutes: TORCH_BURN_MINUTES };
       cue("torchLit");
       log(state, "The torch catches.", "good");

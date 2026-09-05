@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { entry, epitaph, since } from "../src/sim/epitaph";
+import { entry, epitaph, epitaphTail, since } from "../src/sim/epitaph";
 import { newRecord } from "../src/sim/record";
 import { runReference } from "../src/sim/reference";
 import type { LifeRecord } from "../src/sim/types";
@@ -23,6 +23,15 @@ describe("the epitaph", () => {
     expect(epitaph(rec())).toBe(
       "Eirik Kalnins. Day 87. Died of cold on the fourth night after the first frost, 2.1 km from camp, with 400 g of dried meat in the pack and 6 kg of firewood at camp.",
     );
+  });
+
+  it("writes the night as a proper ordinal past ten, not 'the 21th'", () => {
+    const cases: [number, string][] = [[11, "11th"], [21, "21st"], [22, "22nd"], [23, "23rd"], [24, "24th"], [101, "101st"]];
+    for (const [nights, word] of cases) {
+      const r = rec();
+      r.died = { ...r.died!, after: { threshold: "firstFrost", nights } };
+      expect(epitaphTail(r)).toContain(`on the ${word} night after`);
+    }
   });
 
   it("says at camp and on day N when there is nothing else to say", () => {

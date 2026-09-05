@@ -74,7 +74,7 @@ describe("frostbite", () => {
     const rng = new Rng(5);
     let hours = 0;
     while (state.player.frostbite.hands === 0 && hours < 200) {
-      hourlyHazards(state, world, calendar(0), -20, -20, rng);
+      hourlyHazards(state, world, -20, -20, rng);
       hours++;
     }
     expect(state.player.frostbite.hands).toBe(3 * 1440);
@@ -92,7 +92,7 @@ describe("frostbite", () => {
     const rng = new Rng(2);
     let hours = 0;
     while (state.player.frostbite.feet === 0 && hours < 200) {
-      hourlyHazards(state, world, calendar(0), -12, -12, rng);
+      hourlyHazards(state, world, -12, -12, rng);
       hours++;
     }
     expect(state.player.frostbite.feet).toBe(3 * 1440);
@@ -117,7 +117,7 @@ describe("frostbite", () => {
     boots.wet = 80;
     placeAtSpot(state, world, state.player.region, "forest");
     state.task = null;
-    for (let h = 0; h < 200 && !state.player.toes; h++) hourlyHazards(state, world, calendar(0), -20, -20, rng);
+    for (let h = 0; h < 200 && !state.player.toes; h++) hourlyHazards(state, world, -20, -20, rng);
     expect(state.player.toes).toBe(true);
     state.player.frostbite.feet = 0;
     expect(baseWalkSpeed(state, calendar(0), state.weather)).toBeCloseTo(3 * 0.85, 6);
@@ -130,7 +130,7 @@ describe("frostbite", () => {
     const rng = new Rng(2);
     let hours = 0;
     while (!state.player.toes && hours < 100) {
-      hourlyHazards(state, world, calendar(0), -12, -12, rng);
+      hourlyHazards(state, world, -12, -12, rng);
       hours++;
     }
     expect(state.player.toes).toBe(true);

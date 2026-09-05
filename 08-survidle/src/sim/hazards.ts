@@ -22,7 +22,7 @@ import type { GameState } from "./types";
 import { campWaterCapacity, FREEZE_C } from "./water";
 import { ICE_THIN_CM } from "./weather";
 
-export function hourlyHazards(state: GameState, world: World, _cal: Calendar, ambient: number, felt: number, rng: Rng): void {
+export function hourlyHazards(state: GameState, world: World, ambient: number, felt: number, rng: Rng): void {
   freezeVessels(state, world, ambient, rng);
   frostbite(state, felt, rng);
 }
