@@ -1788,25 +1788,27 @@ band, over on all four; the stocked stage holds 46, 49, 44 and 46 days
 against its 20-to-60-day band, in band on all four.
 
 The trap works: its dawn draws yielded 486 to 786 kcal a day on three
-seeds when set on days 10 to 18. But the reference list cannot afford it
-in the first month: with the trap set early and emptied daily April
-read 1 of 4, the reads and the trips costing what the trap yielded;
-with it set early and never emptied April read 1 of 4 again, the
-unemptied basket drawing the shore's fish down while the spear fished
-it; with every producer line below the hunt keep April returns to its
-baseline and no first life ever reaches them, because the hunt, fish,
-berries, hang and arrows keeps are perpetually unmet and starve
-everything under them, the axe keep and the felling grind included. So
-the producers are measured through the kitted camp, the horizon stages
-and the heir gate, and the reference heir inherits no trap or hut from a
-reference ancestor until the list can afford one. What that makes next:
-the calibration pass owns the list's scheduling (a keep that is met
-most of the time, or a runner that empties a trap when it passes to
-fish), and the heir gate's reading of the producers waits on it; the
-trap's own bottleneck, the rack's 6 kg and spoilage, is unmeasured until
-then. A spoiled once-craft counts as done and is never retried
-(`it.done++` before `complete()` decides), which hides the bow at low
-Crafting. An unemptied trap keeps drawing the shore's population down.
+seeds when set on days 10 to 18. But the first month cannot afford it:
+set early and emptied daily, April read 1 of 4, the reads and the trips
+costing what the trap yielded; set early and never emptied, April read
+1 of 4 again, the unemptied basket drawing the shore's fish down while
+the spear fished it. With every producer line below the hunt keep,
+April is 4 of 4 again, and the lines below the hunt keep are reached
+only when everything above is met or blocked - which one first life in
+four managed: seed 17 set its trap and starved with it standing full at
+5.0 kg on day 48. Seeds 19, 42 and 79 never reached them and their
+first lives read no trap. The heir who inherits a full trap starves
+beside it: seed 17's heir walked home to "trap with 5.0 kg", read trap
+0 in its own week, and starved on day 37 - the empty keep sits below
+the same hunt keep, and the heir's own list never reaches it either.
+What that makes next: the calibration pass owns the list's scheduling
+(a keep that is met most of the time, or a runner that empties a trap
+when it passes to fish), and the heir gate's reading of the producers
+waits on it; the trap's own bottleneck, the rack's 6 kg and spoilage,
+is unmeasured until then. A spoiled once-craft counts as done and is
+never retried (`it.done++` before `complete()` decides), which hides
+the bow at low Crafting. An unemptied trap keeps drawing the shore's
+population down.
 
 The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
 the epitaph, the entry and "The next boat lands in July, year 1". Begin
