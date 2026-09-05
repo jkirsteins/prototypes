@@ -53,6 +53,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     fingers: false,
     berriesToday: { day: 1, kg: 0 },
     workHours: WORK_HOURS_DEFAULT,
+    thinStep: 0,
     known: {},
   };
   state.task = null;

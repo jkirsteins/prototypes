@@ -95,6 +95,11 @@ export const FAT_KCAL_PER_KG = 9000;
  */
 export const FAT_FULL = 80000;
 
+/** The fat warnings' thresholds, as shares of FAT_FULL; the working day steps down on the same three (THIN_DAY in body.ts). */
+export const FAT_THIN = 0.75;
+export const FAT_RIBS = 0.5;
+export const FAT_WASTING = 0.25;
+
 /** Share of the fat reserve gone, 0 (full) to 1 (empty): what a thin body costs elsewhere. */
 export function starvation(p: Player): number {
   return 1 - clamp(p.fat, 0, FAT_FULL) / FAT_FULL;
@@ -323,9 +328,9 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 
   // Milestone warnings, once per crossing.
   warn(state, "kcal", p.kcal <= 1200, "You are starving.");
-  warn(state, "thin", p.fat < 0.75 * FAT_FULL, "You are getting thin.");
-  warn(state, "ribs", p.fat < 0.5 * FAT_FULL, "Your ribs show.");
-  warn(state, "wasting", p.fat < 0.25 * FAT_FULL, "You are wasting away.");
+  warn(state, "thin", p.fat < FAT_THIN * FAT_FULL, "You are getting thin.");
+  warn(state, "ribs", p.fat < FAT_RIBS * FAT_FULL, "Your ribs show.");
+  warn(state, "wasting", p.fat < FAT_WASTING * FAT_FULL, "You are wasting away.");
   warn(state, "warm", p.warmth < 30, "You are shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "You are soaked through.");
   warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");

@@ -16,7 +16,7 @@ import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
-import { baseWalkSpeed } from "./player";
+import { baseWalkSpeed, FAT_FULL, FAT_RIBS, FAT_THIN, FAT_WASTING } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
@@ -38,21 +38,52 @@ const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"
 export const WORK_HOURS_DEFAULT = 10;
 
 /**
+ * The working day shrinks with the fat reserve, one step per warning the
+ * body already prints, deepest last: a thin body does four fifths of a
+ * day, one whose ribs show three fifths, a wasting one two fifths. Each
+ * step's line reads once per crossing, the way the warning does.
+ */
+export const THIN_DAY: { fat: number; share: number; line: string }[] = [
+  { fat: FAT_THIN, share: 0.8, line: "Too thin for a full day's work." },
+  { fat: FAT_RIBS, share: 0.6, line: "Your ribs show; the day is shorter still." },
+  { fat: FAT_WASTING, share: 0.4, line: "Wasting away, a few hours' work is all you have." },
+];
+
+export type DayReason = "day" | "thin" | "fed";
+
+/**
+ * The hours of work the body will do today and why: the working day, or
+ * the reserve step that cut it. Read by the runner each minute, so the
+ * step line logs the minute the body crosses into it while at work.
+ */
+export function dayHours(state: GameState, _world: World): { hours: number; reason: DayReason } {
+  const p = state.player;
+  let step = 0;
+  for (let i = 0; i < THIN_DAY.length; i++) if (p.fat < THIN_DAY[i].fat * FAT_FULL) step = i + 1;
+  if (step > p.thinStep) log(state, THIN_DAY[step - 1].line);
+  p.thinStep = step;
+  if (step === 0) return { hours: p.workHours, reason: "day" };
+  return { hours: p.workHours * THIN_DAY[step - 1].share, reason: "thin" };
+}
+
+/**
  * A day's work is done. The ledger already counts every minute awake on a
  * task other than rest, wait, night or sleep, so the runner reads the same
- * number the report prints. The first time the count reaches the working
- * day, the marker is set to the next dawn and the log says so once; it
- * holds until then and clears itself, and the day roll starts the count
- * again. The marker lives on the player, not the intent, so an order
- * switching intents in the evening does not start the day over.
+ * number the report prints, against the day dayHours allows. The first
+ * time the count reaches it, the marker is set to the next dawn and the
+ * log says so once; it holds until then and clears itself, and the day
+ * roll starts the count again. The marker lives on the player, not the
+ * intent, so an order switching intents in the evening does not start
+ * the day over.
  */
-export function spentNow(state: GameState): boolean {
+export function spentNow(state: GameState, world: World): boolean {
   const p = state.player;
   if (p.restUntil !== undefined) {
     if (state.minute < p.restUntil) return true;
     p.restUntil = undefined;
   }
-  if (today(state).workMin < p.workHours * 60) return false;
+  const day = dayHours(state, world);
+  if (today(state).workMin < day.hours * 60) return false;
   p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
   log(state, "A day's work done. You rest by the fire.");
   return true;
@@ -77,7 +108,7 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
 export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
-  const spent = spentNow(state);
+  const spent = spentNow(state, world);
   // Read once, before the sleep clauses, because thirst now has a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
   // A spent body goes to bed at nightfall whatever its energy: an evening by

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { currentNeed, iceHoleSite, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { currentNeed, dayHours, iceHoleSite, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, THIN_DAY, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { qty, removeItem } from "../src/sim/inventory";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
+import { FAT_FULL, FAT_RIBS, FAT_THIN, FAT_WASTING } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
@@ -17,15 +19,21 @@ import { regionAt, spotOf } from "../src/world/gen";
 
 const LINE = "A day's work done. You rest by the fire.";
 
-/** A kitted camp on seed 17 with one endless felling grind, the survivor fresh at 08:00. */
+/** A kitted camp on seed 17 with one endless felling grind, the survivor fresh at 08:00 and its larder empty, so the day is the full working day. */
 function felling() {
   const g = newGame(17);
   kitOut(g.state, g.world);
   g.state.player.energy = 100;
+  stripFood(g.state);
   addOrder(g.state, g.world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
   // One minute is enough for the order to become a live intent to read needs against.
   advance(g.state, g.world, 1);
   return g;
+}
+
+/** The kit's dried meat out of the pack: tomorrow's food is not in hand, so the day is what the reserve allows. */
+function stripFood(state: GameState): void {
+  removeItem(state.player.pack, "driedMeat", qty(state.player.pack, "driedMeat"));
 }
 
 /** The day's work counted as done, so the spent marker holds on the next reading. */
@@ -89,7 +97,7 @@ describe("the working day", () => {
     // Step to an hour past that dawn: marker gone, day 2's count fresh, and the grind back on.
     advance(state, world, until - state.minute + 60);
     expect(state.player.restUntil).toBeUndefined();
-    expect(spentNow(state)).toBe(false);
+    expect(spentNow(state, world)).toBe(false);
     expect(today(state).workMin).toBeLessThan(120);
     expect(state.intent?.need ?? null).not.toBe("spent");
     expect(state.task).not.toBeNull();
@@ -97,16 +105,17 @@ describe("the working day", () => {
   });
 
   it("spentNow sets the marker once at the cap and logs once", () => {
-    const { state } = newGame(1);
+    const { state, world } = newGame(1);
+    stripFood(state);
     today(state).workMin = state.player.workHours * 60;
-    expect(spentNow(state)).toBe(true);
+    expect(spentNow(state, world)).toBe(true);
     const until = state.player.restUntil!;
     expect(until).toBe(state.minute + minutesUntilDawn(state.minute, state.startDoy));
-    expect(spentNow(state)).toBe(true);
+    expect(spentNow(state, world)).toBe(true);
     expect(state.player.restUntil).toBe(until);
     expect(state.log.filter((e) => e.text === LINE).length).toBe(1);
     state.minute = until;
-    expect(spentNow(state)).toBe(false);
+    expect(spentNow(state, world)).toBe(false);
     expect(state.player.restUntil).toBeUndefined();
   });
 
@@ -185,6 +194,66 @@ describe("the working day", () => {
     state.player.energy = 100;
     state.player.water = WATER_FULL;
     expect(currentNeed(state, world, calendar(state.minute), it)).not.toBe("sleep");
+  });
+});
+
+describe("the day shortens with the reserve", () => {
+  const lines = (state: GameState, text: string) => state.log.filter((e) => e.text === text).length;
+
+  it("the steps are the fat warnings' own thresholds", () => {
+    expect([FAT_THIN, FAT_RIBS, FAT_WASTING]).toEqual([0.75, 0.5, 0.25]);
+    expect(THIN_DAY.map((s) => s.fat)).toEqual([FAT_THIN, FAT_RIBS, FAT_WASTING]);
+    expect(THIN_DAY.map((s) => s.share)).toEqual([0.8, 0.6, 0.4]);
+  });
+
+  it("steps down as the reserve empties, as shares of the working day, and logs each step once per crossing", () => {
+    const { state, world } = newGame(1);
+    stripFood(state);
+    const p = state.player;
+    expect(dayHours(state, world)).toEqual({ hours: 10, reason: "day" });
+    p.fat = 0.7 * FAT_FULL;
+    expect(dayHours(state, world)).toEqual({ hours: 8, reason: "thin" });
+    expect(lines(state, THIN_DAY[0].line)).toBe(1);
+    dayHours(state, world);
+    expect(lines(state, THIN_DAY[0].line)).toBe(1);
+    p.fat = 0.4 * FAT_FULL;
+    expect(dayHours(state, world).hours).toBe(6);
+    expect(lines(state, THIN_DAY[1].line)).toBe(1);
+    p.fat = 0.2 * FAT_FULL;
+    expect(dayHours(state, world).hours).toBe(4);
+    expect(lines(state, THIN_DAY[2].line)).toBe(1);
+    // Fed back past the step and thin again: the line reads once per crossing, like the warning it follows.
+    p.fat = FAT_FULL;
+    expect(dayHours(state, world).hours).toBe(10);
+    p.fat = 0.7 * FAT_FULL;
+    expect(dayHours(state, world).hours).toBe(8);
+    expect(lines(state, THIN_DAY[0].line)).toBe(2);
+    // A player working a twelve-hour day steps down from twelve.
+    p.workHours = 12;
+    expect(dayHours(state, world).hours).toBeCloseTo(9.6, 6);
+  });
+
+  it("spentNow reads the shortened day", () => {
+    const { state, world } = newGame(1);
+    stripFood(state);
+    state.player.fat = 0.7 * FAT_FULL;
+    today(state).workMin = 7 * 60;
+    expect(spentNow(state, world)).toBe(false);
+    today(state).workMin = 8 * 60;
+    expect(spentNow(state, world)).toBe(true);
+    expect(lines(state, LINE)).toBe(1);
+  });
+
+  it("the step marker is saved, and a save without it loads on a full day", () => {
+    const { state, world } = newGame(1);
+    stripFood(state);
+    state.player.fat = 0.4 * FAT_FULL;
+    dayHours(state, world);
+    expect(state.player.thinStep).toBe(2);
+    expect(deserialize(serialize(state))!.state.player.thinStep).toBe(2);
+    const raw = JSON.parse(serialize(state));
+    delete raw.state.player.thinStep;
+    expect(deserialize(JSON.stringify(raw))!.state.player.thinStep).toBe(0);
   });
 });
 

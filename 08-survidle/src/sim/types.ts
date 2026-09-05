@@ -267,6 +267,8 @@ export interface Player {
   workHours: number;
   /** Set when the day's work is done: the minute of the next dawn, until which the runner rests. */
   restUntil?: number;
+  /** The reserve step the working day is on (an index into THIN_DAY, 0 for a full day), so each step's line reads once per crossing. */
+  thinStep: number;
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }
