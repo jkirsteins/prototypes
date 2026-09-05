@@ -281,7 +281,10 @@ a producer, a camp that holds and was chosen, orders, a forecast that
 makes away risk legible, a person to lose), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the save sync if the round asks for it (the section of
-that name below: a code on the settings panel and the two-device rule);
+that name below: a code on the settings panel and the two-device rule),
+and the south if the round's first deaths are not followed by a restart
+(the section of that name below: the landing month first, then the map
+extended south);
 then the second half of I (the found places, and the card reading the
 earned traits as their items land);
 then the rest of F in impact order (latitude by row with the
@@ -1631,6 +1634,61 @@ by save time wins, the loser reloads and takes over, and the away
 report says which happened. It lands after the round, if the round's
 testers ask for the phone, and not before, so that the round is
 recruited as single-device and the asking is a finding.
+
+### The south
+
+Not an item. No slot, no curve line. A contingency the round can pull
+in, with a trigger, kept here so the answer to "too punishing" is
+already designed and stays simple.
+
+**The trigger.** The beacon shows first deaths clustering on one cause
+before day 20 and the testers not starting again, so the first-run bar
+fails on its second half. A tester who dies on day 12 and starts again
+is the punishment working, and this stays on the shelf. A tester who
+dies on day 12 and closes the tab is reading the game as unfair, and
+this is the answer. The re-run rate is the bar it serves.
+
+**Two pulls, cheapest first.**
+
+1. **Survivor 1's landing month.** One number. The first survivor lands
+   in June at 62 N instead of April. The gap already rolls the month for
+   every heir, so only the first run changes. It goes first because it
+   costs nothing and tests the same hypothesis.
+2. **The map extended south.** Latitude by row runs from about 56 N at
+   the bottom to 67 N at the top instead of 61 to 67, and the first
+   landing moves to the bottom row. A temperate belt of mixed forest and
+   a Baltic coast under the boreal country, with no names and no
+   history, the way the north has none. New rows in the species table
+   and their ranges (roe deer, boar, beaver, hazel and oak, more fish in
+   spring), and the climate curve, snow and daylight read from the row
+   as they already will. The north above is untouched. The cost is a
+   floor's: a climate curve, terrain thresholds, species ranges and
+   yields, a calibration pass, sound beds.
+
+What the south changes is April, not February. Nobody dies of the
+winter today: the reference runs starve in April and May at 62 N and
+every heir starves in August and September, because a boreal spring has
+nothing to eat until the fish and the berries arrive. A Baltic April
+has sap, nettles, spawning fish and, later, mast, and the idle player
+has more to put on the list.
+
+**What it must not do.** Soften the ramp. The south changes yield
+tables, not gates. The axe still wears, the body still ages, the land
+still empties, and winter still comes, later and shallower at the
+bottom row and as it is today by the middle. The reference player's
+gates stay where they are, and the south is measured on the same
+seeds. If the south takes hunger away as survivor 1's cause and nothing
+kills inside 20 days, that is a finding that the ramp items are late,
+not a reason to make the south harder.
+
+**What it depends on.** Latitude by row, which is already first in F's
+remaining order. Once the row is a function, the south is a wider
+domain plus new species rows.
+
+**What it gives the march north.** More rows to climb, and the first
+camps a lineage builds sit in the richest country, so leaving them
+costs something. It is one continuous map; the tower under "Beyond the
+gate" is a different decision and this does not take it.
 
 ### C. Skill tiers
 
