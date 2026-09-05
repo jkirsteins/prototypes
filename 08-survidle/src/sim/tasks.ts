@@ -336,8 +336,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       // capacity has nothing left to gain from another cycle; without this the task
       // repeats forever at the shore instead of walking the full vessel home to pour.
       if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
-        const camp = pile(state, regionState(state, world, p.region).campCell);
-        const why = campWaterRoom(camp) > 0 ? "the vessels are full" : "no vessel at camp to pour into";
+        const homeSt = regionState(state, world, p.region);
+        const camp = pile(state, homeSt.campCell);
+        const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "no vessel at camp to pour into";
         return { ...o, ok: false, why };
       }
       if (state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at)) {

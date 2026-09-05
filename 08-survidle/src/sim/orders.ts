@@ -152,7 +152,7 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
     // afresh re-checks legality at the work cell (the shore), where the load
     // just filled there reads as "the vessels are full" every trip, even
     // though nothing is wrong - it is on its way to be poured.
-    if (o.id === liveId && live && deliveryPending(state, live)) {
+    if (o.id === liveId && live && deliveryPending(state, world, live)) {
       o.skipped = "";
       if (!chosen) chosen = o;
       continue;
@@ -163,8 +163,9 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
     }
     const keep = keepTarget(o);
     if (keep?.item === "water") {
-      const camp = pile(state, regionState(state, world, state.player.region).campCell);
-      const cap = campWaterCapacity(camp);
+      const homeSt = regionState(state, world, state.player.region);
+      const camp = pile(state, homeSt.campCell);
+      const cap = campWaterCapacity(camp, homeSt);
       // cap === 0 means no vessel has ever reached camp yet, not that camp is
       // full: qty + ice (both 0) trivially clears ">= cap - eps" either way, so
       // without this guard a camp with no bucket at all reads as "at capacity"
@@ -224,7 +225,7 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   const chosen = chooseOrder(state, world, cal);
   if (chosen && live?.orderId === chosen.id) return;
   if (!chosen && live?.task === "wait") return;
-  if (live && deliveryPending(state, live)) {
+  if (live && deliveryPending(state, world, live)) {
     live.windDown = true;
     return;
   }
