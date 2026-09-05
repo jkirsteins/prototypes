@@ -86,7 +86,7 @@ export function surroundings(state: GameState, world: World, ambient: number): S
     footing: footingOf(cellAt(world, here).terrain, w.snowCm),
     frozen: w.iceCm >= ICE_THIN_CM,
     fire,
-    indoors: sheltered(state, world) && st.structures.cabin,
+    indoors: sheltered(state, world) && (st.structures.cabin || st.structures.turfHut),
     rain: ambient > 0 ? w.precip : "none",
     storm: stormNow(w, state.minute),
   };

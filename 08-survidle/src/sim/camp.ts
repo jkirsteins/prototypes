@@ -4,7 +4,7 @@ import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
-import { burnPerHour, dryWood, fuelTotal, stepSmoke } from "./fire";
+import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
   SNARE_CATCH_MAX_AGE, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
@@ -27,7 +27,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     st.logsWet = state.weather.precip !== "none" ? 0 : st.logsWet + dt;
 
     if (st.fire.lit) {
-      const roof = st.structures.leanTo || st.structures.cabin;
+      const roof = roofed(st);
       const perMin = burnPerHour(state.weather, ambient, roof) / 60;
       const total = fuelTotal(st.fire);
       if (total > 0) {
@@ -180,7 +180,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           const s = present[rng.int(present.length)];
           const d = regionDensity(state, world, id, s, cal);
           if (!rng.chance(d * SPECIES_DEFS[s].hunt!.odds * TRAP_ODDS * factor)) continue;
-          st.pop[s] = popOf(st, s) - 1;
+          st.pop[s] = Math.max(0, popOf(st, s) - 1);
           st.trap.kg = Math.min(TRAP_HOLD_KG, st.trap.kg + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
         }
       }

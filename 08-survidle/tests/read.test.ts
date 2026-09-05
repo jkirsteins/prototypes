@@ -66,10 +66,10 @@ describe("reading water", () => {
   it("lists the region's read shores with fish first and nearest first, and the card shows them", () => {
     const { state, world, cell } = atShore();
     expect(readCells(state, world, state.player.region)).toEqual([]);
-    expect(readHtml(state, world, cal, state.player.region)).toBe("");
+    expect(readHtml(state, world, state.player.region)).toBe("");
     readShore(state, world, cell);
     expect(readCells(state, world, state.player.region)).toEqual([cell]);
-    expect(readHtml(state, world, cal, state.player.region)).toContain("Shore read:");
+    expect(readHtml(state, world, state.player.region)).toContain("Shore read:");
   });
 
   it("dies with the person: a new person starts with nothing read", () => {

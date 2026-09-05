@@ -38,7 +38,9 @@ export const HORIZON_STAGES: HorizonStage[] = [
   { id: "manual", label: "manual only", levels: {}, band: [0, 2] },
   { id: "grinds", label: "jobs and grinds", levels: ALL_AT_5, band: [1, 2] },
   { id: "keeps", label: "keeps in woodcraft and building", levels: { ...ALL_AT_5, woodcraft: 10, building: 10 }, band: [3, 5] },
+  // The idle curve's "heir, carried keeps and the baseline" row: 10 to 20 game days.
   { id: "producers", label: "trap, hut and trough at keeps", levels: { ...ALL_AT_5, fishing: 10, building: 10 }, band: [10, 20], built: ["turfHut", "waterStore", "trap"] },
+  // The idle curve's "producers" row: to the away cap, 20 to 60 game days.
   { id: "stocked", label: "the same, stocked", levels: { ...ALL_AT_5, fishing: 10, building: 10 }, band: [20, 60], built: ["turfHut", "waterStore", "trap"], stocks: { driedMeat: 10, water: 20, firewood: 200 } },
 ];
 

@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { HORIZON_STAGES, runStage, setSkillLevel, setUpStage } from "../src/sim/horizon";
 import { pile, qty } from "../src/sim/inventory";
-import { shoreFish } from "../src/sim/knowledge";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { REFERENCE_ORDERS } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { SKILL_IDS, skillLevel } from "../src/sim/skills";
-import { regionAt, spotOf } from "../src/world/gen";
 
 const stage = (id: string) => HORIZON_STAGES.find((s) => s.id === id)!;
 
@@ -64,13 +62,9 @@ describe("the horizon stages", () => {
     const st = regionState(state, world, state.player.region);
     expect(st.structures.turfHut).toBe(true);
     expect(st.structures.waterStore).toBe(true);
-    const shore = spotOf(regionAt(world, state.player.region), "shore");
-    if (shore && shoreFish(world, regionAt(world, state.player.region), shore.cell).length) {
-      expect(st.trap).toBeDefined();
-    } else {
-      // No shore, or a shore with nothing in the water: the trap has nothing to hold.
-      expect(st.trap).toBeUndefined();
-    }
+    // All four reference seeds land the kitted camp beside a shore with fish, so the trap is always set here.
+    expect(st.trap).not.toBeNull();
+    expect(st.trap!.fish.length).toBeGreaterThan(0);
     expect(stage("producers").band).toEqual([10, 20]);
     expect(stage("stocked").band).toEqual([20, 60]);
     const s2 = setUpStage(17, stage("stocked"));

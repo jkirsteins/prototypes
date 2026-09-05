@@ -338,7 +338,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
         const homeSt = regionState(state, world, p.region);
         const camp = pile(state, homeSt.campCell);
-        const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "no vessel at camp to pour into";
+        const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "camp is full";
         return { ...o, ok: false, why };
       }
       if (state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at)) {
@@ -580,7 +580,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "lightIndoors": {
       const o = needCamp(opt({
         group: "camp", label: "Light a fire indoors",
-        detail: st.structures.turfHut ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
+        detail: st.structures.turfHut && !st.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
         duration: 10,
       }));
       if (!o.ok) return o;
@@ -616,7 +616,7 @@ export function bedText(state: GameState, world: World): string {
   const st = regionState(state, world, state.player.region);
   const camp = atCamp(state, world);
   const bed = camp && st.structures.boughBed;
-  const roof = camp && (st.structures.cabin || st.structures.leanTo);
+  const roof = camp && roofed(st);
   const blanket = state.player.clothing.some((g) => CLOTHING[g.id].slot === "blanket");
   const on = bed ? "on a bough bed" : "on bare ground";
   const under = blanket && roof ? "under your blanket and the roof" : blanket ? "under your blanket" : roof ? "under the roof" : "in the open";

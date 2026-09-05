@@ -84,8 +84,10 @@ export const SMOKE_DRAIN_PER_HOUR = 25;
 
 /** Smoke in a closed cabin: rises with an indoor fire and no hearth while someone is there to fill the room for, clears otherwise. */
 export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
-  // The hut has a smoke hole; a camp with one never fills.
-  const filling = st.fire.lit && st.fire.indoors && !st.structures.hearth && atCamp && !st.structures.turfHut;
+  // The hut has a smoke hole; a camp with one and no cabin never fills. A
+  // hut beside a cabin is not the walled shelter the smoke hole was built
+  // into, so the cabin's own smoke rule still applies.
+  const filling = st.fire.lit && st.fire.indoors && !st.structures.hearth && atCamp && !(st.structures.turfHut && !st.structures.cabin);
   if (filling) {
     const rate = smoky(st.fire) ? SMOKE_RISE_PER_HOUR * 1.5 : SMOKE_RISE_PER_HOUR;
     st.smoke = Math.min(100, st.smoke + (rate / 60) * dt);

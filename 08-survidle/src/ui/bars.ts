@@ -1,5 +1,5 @@
 import { calendar } from "../sim/calendar";
-import { burnPerHour, fuelTotal } from "../sim/fire";
+import { burnPerHour, fuelTotal, roofed } from "../sim/fire";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { regionState } from "../sim/regionstate";
 import type { GameState } from "../sim/types";
@@ -29,7 +29,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
 
   const st = regionState(state, world, p.region);
   const total = fuelTotal(st.fire);
-  const roof = st.structures.leanTo || st.structures.cabin;
+  const roof = roofed(st);
   const ambient = ambientTemperature(calendar(state.minute, state.startDoy), state.weather);
   const burnsFor = fmtDuration((total / burnPerHour(state.weather, ambient, roof)) * 60);
   const fireText = st.fire.wetKg > 0

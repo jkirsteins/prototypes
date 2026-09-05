@@ -8,7 +8,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
-import { readCells } from "../sim/knowledge";
+import { fishLie, readCells } from "../sim/knowledge";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
 import { daysInWords, landingDate } from "../sim/landing";
@@ -207,14 +207,14 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
       return list.length ? `<div>${label}: ${list.join(", ")}</div>` : "";
     })
     .join("");
-  return lines + readHtml(state, world, cal, id);
+  return lines + readHtml(state, world, id);
 }
 
 /** The shores of this region the survivor has read, each with what lies where. Empty when none is. */
-export function readHtml(state: GameState, world: World, _cal: Calendar, id: number): string {
+export function readHtml(state: GameState, world: World, id: number): string {
   return readCells(state, world, id)
     .filter((c) => state.player.known[c].fish.length > 0)
-    .map((c) => `<div>Shore read: ${state.player.known[c].fish.map((s) => `${SPECIES_DEFS[s].name} ${SPECIES_DEFS[s].lie}`).join(", ")}</div>`)
+    .map((c) => `<div>Shore read: ${state.player.known[c].fish.map(fishLie).join(", ")}</div>`)
     .join("");
 }
 

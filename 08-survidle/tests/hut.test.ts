@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { needsMending } from "../src/sim/camp";
-import { fireWarms, roofed, splitSheltered, stepSmoke } from "../src/sim/fire";
+import { fireWarms, fuelTotal, roofed, splitSheltered, stepSmoke } from "../src/sim/fire";
 import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { shelterBonus, sheltered } from "../src/sim/player";
@@ -12,8 +12,8 @@ import { check, startTask, stepTask } from "../src/sim/tasks";
 
 const cal = calendar(0);
 
-function campWithPit(seed = 8) {
-  const g = newGame(seed);
+function campWithPit(seed = 8, startDoy?: number) {
+  const g = newGame(seed, startDoy);
   const st = regionState(g.state, g.world, g.state.player.region);
   st.structures.firePit = true;
   const camp = pile(g.state, st.campCell);
@@ -70,6 +70,21 @@ describe("the turf hut", () => {
     expect(st.smoke).toBe(0);
   });
 
+  it("beside a cabin is not the walled shelter the smoke hole was built into: the cabin's own smoke rule still applies", () => {
+    const { state, world, st } = campWithPit();
+    st.structures.turfHut = true;
+    st.structures.cabin = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, cal, "lightIndoors");
+    expect(o).toMatchObject({ ok: true, detail: "no smoke hole: the cabin will fill with smoke" });
+    st.fire.lit = true;
+    st.fire.indoors = true;
+    st.fire.fuelKg = 5;
+    stepSmoke(st, true, 6 * 60);
+    expect(st.smoke).toBeGreaterThan(0);
+  });
+
   it("keeps the rain off like a cabin", () => {
     const { state, world, st } = campWithPit();
     st.structures.turfHut = true;
@@ -77,6 +92,34 @@ describe("the turf hut", () => {
     state.player.wetness = 0;
     advance(state, world, 120);
     expect(state.player.wetness).toBe(0);
+  });
+
+  it("burns fuel at the sheltered rate in heavy rain, the same as a lean-to", () => {
+    const hut = campWithPit(8, 200);
+    hut.st.structures.turfHut = true;
+    hut.st.fire.lit = true;
+    hut.st.fire.fuelKg = 10;
+    hut.state.weather.precip = "heavy";
+    advance(hut.state, hut.world, 60);
+
+    const lean = campWithPit(8, 200);
+    lean.st.structures.leanTo = true;
+    lean.st.fire.lit = true;
+    lean.st.fire.fuelKg = 10;
+    lean.state.weather.precip = "heavy";
+    advance(lean.state, lean.world, 60);
+
+    expect(fuelTotal(hut.st.fire)).toBeCloseTo(fuelTotal(lean.st.fire), 6);
+  });
+
+  it("is not drowned by heavy rain under 2 kg, the way an unroofed fire is", () => {
+    const { state, world, st } = campWithPit(8, 200);
+    st.structures.turfHut = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 1;
+    state.weather.precip = "heavy";
+    advance(state, world, 1);
+    expect(st.fire.lit).toBe(true);
   });
 
   it("needs re-roofing past a year, comes down after a year and a half, and a mend resets it", () => {

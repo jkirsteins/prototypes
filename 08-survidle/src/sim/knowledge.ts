@@ -17,6 +17,12 @@ export function shoreFish(world: World, region: RegionDef, cell: number): Specie
   return fishSpecies().filter((s) => region.capacity[s] && watersideCell(world, cell, waterOf(s) ?? "any"));
 }
 
+/** A species' name and where it lies, for a read: "whitefish off the point". Falls back for the rare species with no lie set. */
+export function fishLie(s: Species): string {
+  const def = SPECIES_DEFS[s];
+  return `${def.name} ${def.lie ?? "off the point"}`;
+}
+
 export function readShore(state: GameState, world: World, cell: number): Observation {
   const region = regionAt(world, cellAt(world, cell).region);
   const obs: Observation = { minute: state.minute, fish: shoreFish(world, region, cell) };
@@ -52,8 +58,8 @@ export function readLine(state: GameState, world: World, cal: Calendar, cell: nu
   for (const s of obs.fish) {
     const def = SPECIES_DEFS[s];
     const gone = absence(def, cal, state.weather.iceCm);
-    if (gone) away.push(`the ${def.name} are ${def.lie}, ${gone}`);
-    else here.push(`${def.name} ${def.lie}`);
+    if (gone) away.push(`the ${def.name} are ${def.lie ?? "off the point"}, ${gone}`);
+    else here.push(fishLie(s));
   }
   return `You read the water at ${name}: ${[here.join(", "), away.join(", ")].filter(Boolean).join("; ")}.`;
 }

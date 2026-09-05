@@ -11,6 +11,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { deserialize, serialize } from "../src/sim/save";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
 
@@ -24,27 +25,18 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   return pred();
 }
 
-/** Seed 4's start region has a lake: the player on its shore, the shore read, a basket in the pack, and the lake full of fish. */
-function readyToSet() {
-  const g = newGame(4);
-  placeAtSpot(g.state, g.world, g.state.player.region, "shore");
-  const cell = cellOf(g.state, g.world);
-  const obs = readShore(g.state, g.world, cell);
-  const st = regionState(g.state, g.world, g.state.player.region);
-  for (const s of obs.fish) st.pop[s] = 50;
-  addItem(g.state.player.pack, "basketTrap", 1);
-  return { ...g, cell, st, obs };
-}
-
 /**
- * Like readyToSet, but 20 July: open water for months, so a multi-day
+ * Seed 4's start region has a lake: the player on its shore, the shore
+ * read, a basket in the pack, and the lake full of fish.
+ *
+ * @param startDoy 20 July (200) for the two tests that drive the trap
+ * across real simulated days: open water for months, so a multi-day
  * advance never runs into seed 4's April cold snap (the shore ices over,
  * and an idle player freezes, within the game's first two dawns - both
- * pre-existing weather, unrelated to the trap). The two tests that drive
- * the trap across real simulated days use this start instead.
+ * pre-existing weather, unrelated to the trap).
  */
-function readyToSetInJuly() {
-  const g = newGame(4, 200);
+function readyToSet(startDoy?: number) {
+  const g = newGame(4, startDoy);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
   const cell = cellOf(g.state, g.world);
   const obs = readShore(g.state, g.world, cell);
@@ -86,7 +78,7 @@ describe("the basket trap", () => {
   });
 
   it("draws at dawn, stops at the hold, and the rate steps with level and mastery", () => {
-    const g = readyToSetInJuly();
+    const g = readyToSet(200);
     setTrap(g);
     advance(g.state, g.world, 10 * 1440);
     expect(g.st.trap!.kg).toBeGreaterThan(0);
@@ -104,7 +96,7 @@ describe("the basket trap", () => {
   });
 
   it("keeps drawing with nobody home, at the base rate", () => {
-    const g = readyToSetInJuly();
+    const g = readyToSet(200);
     setTrap(g);
     g.state.dead = { cause: "starved", minute: g.state.minute };
     advance(g.state, g.world, 10 * 1440, { nobody: true });
@@ -173,5 +165,15 @@ describe("the basket trap", () => {
     addOrder(g.state, g.world, { task: "setTrap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     expect(until(g, () => st.trap !== null, 400)).toBe(true);
     expect(st.trap).toMatchObject({ cell });
+  });
+
+  it("a set trap's fish list and kilos survive a save round trip", () => {
+    const g = readyToSet();
+    setTrap(g);
+    g.st.trap!.kg = 2.4;
+    const file = deserialize(serialize(g.state))!;
+    const region = file.state.regions[g.state.player.region];
+    expect(region.trap).toMatchObject({ cell: g.cell, kg: 2.4 });
+    expect(region.trap!.fish).toEqual(g.obs.fish);
   });
 });
