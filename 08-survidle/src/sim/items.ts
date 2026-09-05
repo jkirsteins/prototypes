@@ -119,7 +119,7 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   firePit: { name: "fire pit", needs: [{ item: "stone", qty: 6 }], minutes: 30, desc: "A ring of stones. Holds a fire once you can light one." },
   leanTo: { name: "lean-to", needs: [{ item: "stick", qty: 8 }, { item: "log", qty: 4 }, { item: "cordage", qty: 2 }], minutes: 240, desc: "Poles and boughs. A little warmer, half as wet." },
   cabin: { name: "log cabin", needs: [{ item: "log", qty: 40 }, { item: "stone", qty: 12 }, { item: "cordage", qty: 8 }], minutes: 3600, desc: "Walls and a roof. Warm, dry, and a long job." },
-  dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 6 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps." },
+  dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 40 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps; four in rain. A second rack doubles it." },
   snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
   boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat in a fortnight." },
   turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
@@ -150,8 +150,13 @@ export const WATER_STORE_L = 20;
 
 export const FIRE_MAX_KG = 36;
 export const FIRE_LOW_KG = 3;
-export const RACK_MAX_KG = 6;
+/** Raw meat one pole rack holds: strips a centimetre thick run 5 to 8 kg a metre of pole, four two-metre poles. */
+export const RACK_MAX_KG = 40;
+/** Racks a camp can stand; a third is a smokehouse's job. */
+export const MAX_RACKS = 2;
+/** Dry minutes a rack needs in dry weather, and the minutes it needs while it rains. */
 export const RACK_DRY_MINUTES = 48 * 60;
+export const RACK_DRY_RAIN_MINUTES = 96 * 60;
 export const SNARE_CATCH_MAX_AGE = 2 * 1440;
 /** Minutes a torch burns once lit; there is no putting it out. */
 export const TORCH_BURN_MINUTES = 60;

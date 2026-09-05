@@ -2,12 +2,12 @@ import { itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { berriesRefused } from "../sim/berries";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { canMoveCamp, needsMending, siteLine, siteReport } from "../sim/camp";
+import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { intentSentence } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, KG_ITEMS, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
@@ -285,7 +285,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
     : "";
   const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${RACK_MAX_KG} kg max)</small></div>`
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
     : "";
   const campPile = pile(state, st.campCell);
   const cap = campWaterCapacity(campPile, st);

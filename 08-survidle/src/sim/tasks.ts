@@ -5,14 +5,14 @@ import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
-import { canMoveCamp, needsMending, siteLine, siteReport } from "./camp";
+import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
   addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, MEND, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -322,9 +322,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "hang": {
       const raw = totalQty(invs, "rawMeat");
-      const room = RACK_MAX_KG - st.rack.kg;
+      const room = rackCapacity(st) - st.rack.kg;
       const kg = Math.min(raw, room);
-      const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${RACK_MAX_KG} kg on the rack, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
+      const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${rackCapacity(st)} kg on the racks, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
       if (raw <= 1e-9) return { ...o, ok: false, why: "no raw meat here" };
@@ -476,7 +476,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         return o2;
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
-      if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      if (sid === "dryingRack") {
+        if (st.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
+      } else if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
       if ((sid === "cabin" || sid === "turfHut") && !st.structures.firePit) return { ...o, ok: false, why: "build the fire pit first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% built; materials already laid out` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
@@ -1196,6 +1198,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       } else {
         st.structures[sid] = true;
         delete st.build[sid];
+        if (sid === "dryingRack") st.racks = Math.min(MAX_RACKS, st.racks + 1);
         if (sid === "boughBed") st.boughBedAge = 0;
         if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") st.structureAge[sid] = 0;
       }
