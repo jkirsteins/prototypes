@@ -29,6 +29,7 @@ import {
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
 import { lightingInRain, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
@@ -65,7 +66,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole", "read"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightIndoors", "lightTorch"]);
 
@@ -85,7 +86,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang",
+  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -203,8 +204,10 @@ function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | 
   const r = regionAt(world, state.player.region);
   const st = regionState(state, world, state.player.region);
   const pool = id === "fish" ? fishSpecies() : huntedLand();
+  const obs = id === "fish" ? state.player.known[at] : undefined;
   const out: { s: Species; w: number }[] = [];
   for (const s of pool) {
+    if (obs && !obs.fish.includes(s)) continue;
     if (!r.capacity[s] || popOf(st, s) < 1) continue;
     const def = SPECIES_DEFS[s].hunt!;
     if (!spotSuits(world, at, def.spot, waterOf(s))) continue;
@@ -414,6 +417,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
       return o;
     }
+    case "read": {
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Read the water", detail: "an hour watching this shore: what lives in it and where it lies", duration: 60, repeatable: false }));
+      if (!o.ok) return o;
+      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
+      if (isRead(state, at)) return { ...o, ok: false, why: "you have read this water" };
+      return o;
+    }
     case "cook": {
       const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
       const kg = Math.min(1, totalQty(invs, food));
@@ -578,7 +588,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     // Not offered anywhere yet: no runner ever reaches this with one of these ids in hand.
-    case "read": case "setTrap": case "emptyTrap": throw new Error(`${id} has no legality check yet`);
+    case "setTrap": case "emptyTrap": throw new Error(`${id} has no legality check yet`);
   }
 }
 
@@ -595,6 +605,9 @@ export function bedText(state: GameState, world: World): string {
   return `${on}, ${under}${fire}`;
 }
 
+/** A read shore's odds over an unread one: knowing where the fish lie is worth half again. */
+export const READ_ODDS = 1.5;
+
 export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
   const def = SPECIES_DEFS[species].hunt!;
   let odds = density * def.odds * oddsFactor(state, species);
@@ -604,6 +617,7 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
   if (stormNow(state.weather, state.minute)) odds *= 0.5;
+  if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
   return Math.min(0.95, odds);
@@ -625,6 +639,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "fish", "any"));
   for (const s of fishSpecies()) if (r.capacity[s]) out.push(check(state, world, cal, "fish", s));
+  out.push(check(state, world, cal, "read"));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
   out.push(check(state, world, cal, "light"));
@@ -1062,6 +1077,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         creditYield(state, "fish", kg * FOODS.cookedFish.kcalPerKg);
         log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
+      return;
+    }
+    case "read": {
+      const here = cellOf(state, world);
+      readShore(state, world, here);
+      log(state, readLine(state, world, cal, here), "good");
       return;
     }
     case "cook": {

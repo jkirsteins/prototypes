@@ -200,7 +200,7 @@ describe("tasks", () => {
     // Seed 4: a starting region with a lake, so the list has a fishing row at all.
     const { state, world } = newGame(4);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
       expect(ids.has(id as never)).toBe(true);
     }
   });
@@ -271,9 +271,9 @@ describe("anything", () => {
     expect(rows[0]).toMatchObject({ id: "hunt", arg: "any", label: "Hunt anything" });
     const fishAt = rows.findIndex((o) => o.id === "fish");
     expect(rows[fishAt]).toMatchObject({ id: "fish", arg: "any", label: "Fish for anything" });
-    // Only species with capacity here have rows.
+    // Only species with capacity here have rows. Read is a hunt-group row with no species of its own.
     const r = regionAt(g.world, g.state.player.region);
-    for (const o of rows) if (o.arg !== "any") expect(r.capacity[o.arg as Species]).toBeGreaterThan(0);
+    for (const o of rows) if (o.arg && o.arg !== "any") expect(r.capacity[o.arg as Species]).toBeGreaterThan(0);
   });
 
   it("draws only from species about, on ground that suits them", () => {
