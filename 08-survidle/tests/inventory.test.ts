@@ -96,7 +96,9 @@ describe("the producers' rows", () => {
     expect(WATER_STORE_L).toBe(20);
     for (const s of fishSpecies()) expect(SPECIES_DEFS[s].lie).toBeTruthy();
     expect(RECOMMENDED.read).toEqual({ skill: "fishing", level: 3 });
-    expect(RECOMMENDED["craft:basketTrap"]).toEqual({ skill: "fishing", level: 5 });
+    // Keyed "trap": masteryKey("setTrap") and masteryKey("emptyTrap") both
+    // return "trap", and RECOMMENDED is always keyed by masteryKey's return.
+    expect(RECOMMENDED.trap).toEqual({ skill: "fishing", level: 5 });
     expect(RECOMMENDED["build:turfHut"]).toEqual({ skill: "building", level: 5 });
     expect(RECOMMENDED["build:waterStore"]).toEqual({ skill: "building", level: 3 });
     expect(skillOf("read")).toBe("fishing");

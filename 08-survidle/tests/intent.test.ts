@@ -4,12 +4,14 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
 import { addItem, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
-import { ITEM_KG } from "../src/sim/items";
+import { ITEM_KG, RECIPES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { addOrder, orderMet, ordersHere, runOrders } from "../src/sim/orders";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
+import { levelMinutes } from "../src/sim/skills";
 import { candidateWeight, check, stepTask, stopTask } from "../src/sim/tasks";
 import { takeStep } from "../src/sim/steps";
 import type { Intent, TaskId } from "../src/sim/types";
@@ -474,5 +476,48 @@ describe("saves", () => {
     go(back, 120);
     expect(back.state.intent).not.toBeNull();
     expect(back.state.intent!.done).toBeGreaterThan(0);
+  });
+});
+
+describe("a spoiled craft does not count as the once that finishes an order", () => {
+  /** Bow's needs at camp, and a knife in hand: everything craft:bow wants but the crafting level. */
+  function readyToCraftBow() {
+    const { state, world } = newGame(3);
+    const camp = regionState(state, world, state.player.region).campCell;
+    placeAt(state, world, camp);
+    state.player.tools.push({ id: "knife", durability: 100 });
+    addItem(state.player.pack, "log", 1);
+    addItem(state.player.pack, "cordage", 3);
+    return { state, world };
+  }
+
+  it("a spoiled attempt at Crafting 1 leaves the order at 0 done, unmet and still standing", () => {
+    const { state, world } = readyToCraftBow();
+    const o = addOrder(state, world, { task: "craft", arg: "bow", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    expect(startIntent(state, world, cal, rng(), o.req, o.id)).toBe(true);
+    // Crafting 1 (untrained): craftSuccess("bow") is 1/16, and seed 1's first roll
+    // fails it (see tests/skills.test.ts's identical setup) - the craft spoils.
+    const craftRng = new Rng(1);
+    for (let m = 0; m < RECIPES.bow.minutes; m++) stepTask(state, world, cal, craftRng, 1);
+    expect(state.log.some((e) => e.text.startsWith("The bow is spoiled"))).toBe(true);
+    expect(state.task).toBeNull();
+    expect(o.done).toBe(0);
+    expect(orderMet(state, world, o, false)).toBe(false);
+    runOrders(state, world, cal, new Rng(1));
+    expect(ordersHere(state, world).some((x) => x.id === o.id)).toBe(true);
+  });
+
+  it("a successful attempt at the recommended level finishes the order", () => {
+    const { state, world } = readyToCraftBow();
+    state.skills.crafting.xp = levelMinutes(5);
+    const o = addOrder(state, world, { task: "craft", arg: "bow", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    expect(startIntent(state, world, cal, rng(), o.req, o.id)).toBe(true);
+    const craftRng = new Rng(1);
+    for (let m = 0; m < RECIPES.bow.minutes; m++) stepTask(state, world, cal, craftRng, 1);
+    expect(state.log.some((e) => e.text.startsWith("The bow is spoiled"))).toBe(false);
+    expect(o.done).toBe(1);
+    expect(orderMet(state, world, o, false)).toBe(true);
+    runOrders(state, world, cal, new Rng(1));
+    expect(ordersHere(state, world).some((x) => x.id === o.id)).toBe(false);
   });
 });

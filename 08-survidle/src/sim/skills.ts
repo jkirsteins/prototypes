@@ -149,7 +149,12 @@ export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
   "craft:hideBoots": { skill: "crafting", level: 8 },
   "build:cabin": { skill: "building", level: 10 },
   read: { skill: "fishing", level: 3 },
-  "craft:basketTrap": { skill: "fishing", level: 5 },
+  // Keyed "trap", not "setTrap": that is the mastery key masteryKey() gives
+  // both setTrap and emptyTrap (they are one trap skill, not two), and every
+  // other entry here is keyed by exactly the string masteryKey() returns for
+  // its task - a "setTrap" key would never be looked up and the panel would
+  // never show it.
+  trap: { skill: "fishing", level: 5 },
   "build:turfHut": { skill: "building", level: 5 },
   "build:waterStore": { skill: "building", level: 3 },
 };
