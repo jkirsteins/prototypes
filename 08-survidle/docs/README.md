@@ -2,8 +2,12 @@
 
 A northern survival idle game. One person, an axe, wool clothes and a kilo of
 dried meat, set down on 1 April in a procedurally generated stretch of boreal
-forest, lakes, bog and fell. Survive as many days as you can. Death is
-permanent and deletes the save.
+forest, lakes, bog and fell. Survive as many days as you can. Death keeps the
+world, not the survivor: the tombstone shows what happened, and "Begin again"
+lands the next survivor here months later, under a name you choose. The
+journal holds the life record and every ancestor before them; the cemetery
+lists the dead, and "leave this world", on the cemetery panel, is the only
+way to a new one.
 
 Design spec: `docs/superpowers/specs/2026-09-02-survidle-design.md`.
 Implementation plan: `docs/superpowers/plans/2026-09-02-survidle.md`.
@@ -147,11 +151,15 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   Deer and elk thin out, the mallards and geese are gone south, the eider
   stay on the coast, and the lakes' birds leave with the ice. You need hide
   clothing, a cabin, and a wood pile.
+- **The journal** reads the life record: what season it is, what came before,
+  and every ancestor's life under their epitaph.
 
 ## Debug URL parameters
 
-- `?seed=123` starts a new run with that world seed. While present, every
-  reload starts over instead of loading the save.
+- `?seed=123` starts a fresh run with that world seed. While present, every
+  reload starts over instead of loading the save. Without it, a reload
+  returns to whatever phase the save is in: alive, the tombstone, or the
+  landing screen.
 - `?speed=60` runs the clock 60 times faster than the game scale. For
   reaching winter in an afternoon; not a game feature.
 - `window.survidle` exposes `state`, `world`, `advance(minutes)` and `speed`

@@ -1726,13 +1726,13 @@ August, year 1, 12.4 km from the old camp, finding a fire pit standing,
 11 August, year 1, 13.2 km away, finding the same fire pit and 5 snares
 with 0 kcal and 26 kg of firewood; the heir freezes on day 19. Seed 42's
 first life starves on day 40; a 90-day gap lands the heir 8 August, year
-1, 10.4 km away, finding 0 kcal and 0 kg of firewood; the heir freezes on
-day 36. Seed 79's first life starves on day 40; a 90-day gap lands the
-heir 8 August, year 1, 18.3 km away, finding 0 kcal and 89 kg of
-firewood; the heir starves on day 27. Against the late-August gate
-(first snow, fed), heir passed 0 of 4.
+1, 10.4 km away, finding a fire pit standing, 5 snares, 0 kcal and 0 kg
+of firewood at camp; the heir freezes on day 36. Seed 79's first life
+starves on day 40; a 90-day gap lands the heir 8 August, year 1, 18.3 km
+away, finding 0 kcal and 89 kg of firewood; the heir starves on day 27.
+Against the late-August gate (first snow, fed), heir passed 0 of 4.
 
-Every heir lands in the second week of August with a fire pit and five
+Every heir lands between 8 and 16 August with a fire pit and five
 snares waiting some 10 to 18 km away, and dies of cold or hunger inside
 40 days. The reference list was tuned for an April start, and the stop
 rule's reading is unchanged: the first producers (the basket trap, the
