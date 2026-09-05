@@ -2407,12 +2407,21 @@ Three of the four gates are red, and the two causes of death they name
 are what the tables audit opens on. The first is winter thirst at a camp
 that has an axe and can cut a hole: seeds 17 and 19 die of it on winter
 days 23 and 34 from the stocked camp, so what is missing is not the
-fill keep's melt fallback but the winter water path behind it. The second
+fill keep's melt fallback but the winter water path behind it. Part of
+that is this sub-project's own doing: the indoor floor holds felt
+temperature above 20 inside a lit hut, and `waterLossPerHour` multiplies
+the loss by 1.3 above 20 the same way it does below -10, so a winter
+spent indoors drinks 30 percent more than the same winter did before the
+floor existed. The second
 is outdoor cold: seeds 42 and 79 freeze on winter days 6 and 8, in wool,
 on a walking task at -15 to -20 C, with 1,150 and 1,781 kcal a day of
 their burn in walking, which is E hides and clothing's row rather than
-this sub-project's. The year loop's own flags for the audit are in
-section 8 of its spec.
+this sub-project's. A third observation goes with them: seed 79's third
+life starves on day 19 with 3.6 kg of raw meat lying at camp and nothing
+eaten over the week before it. Raw meat is rightly not auto-eaten - a
+survivor who eats it raw is choosing to - so the gap is not the eating
+rule but the cook keep failing to clear the pile into food. The year
+loop's own flags for the audit are in section 8 of its spec.
 
 The browser pass ran in Chrome on seed 17, at 1440 by 900 and again at
 390 wide with touch emulation. A camp with one rack read "40 kg on the
@@ -2675,8 +2684,13 @@ the cost, and none of it waits on the lineage.
 **Decay between survivors** is where the balance lives and where the
 roof and the cellar earn their place. The gap is months, so decay is per
 month elapsed and the away catch-up already knows how to run it. First
-rulings for the spec to strike: a cabin stands for decades; a lean-to
-falls in a season; a rack rots in a season; dried meat in the open is
+rulings for the spec to strike: a cabin stands for decades; a lean-to's
+bough roof fails in a year while its frame stands; a lashed pole rack
+lasts two years (the year loop is what these are measured in: a season
+was the first ruling, and a structure that needs mending twice a summer
+is a chore rather than a decision, so the built lifetimes are
+STRUCTURE_LIFE_DAYS - 365 for the lean-to, 730 for the rack, 540 for the
+turf roof); dried meat in the open is
 gone in a month and dried meat in the cellar keeps, once 3 builds the
 cellar; a tool rusts to a wear penalty and is still a tool; the fire pit
 stays; a trail fades in two years unwalked; the dim map never fades,
