@@ -95,7 +95,7 @@ export const FAT_KCAL_PER_KG = 9000;
  */
 export const FAT_FULL = 80000;
 
-/** The fat warnings' thresholds, as shares of FAT_FULL; the working day steps down on the same three (THIN_DAY in body.ts). */
+/** The fat warnings' thresholds, as shares of FAT_FULL. */
 export const FAT_THIN = 0.75;
 export const FAT_RIBS = 0.5;
 export const FAT_WASTING = 0.25;

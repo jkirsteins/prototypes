@@ -16,11 +16,10 @@ import { hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, FOODS, ITEM_KG, MAX_SNARES } from "./items";
 import { today, weekBefore } from "./ledger";
 import { log } from "./log";
-import { baseWalkSpeed, FAT_FULL, FAT_RIBS, FAT_THIN, FAT_WASTING } from "./player";
+import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
-import { BURN } from "./tables";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
@@ -38,19 +37,7 @@ const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"
 /** Hours of task work a day before the body calls it a day: a camp-builder's working day, with the evening by the fire. */
 export const WORK_HOURS_DEFAULT = 10;
 
-/**
- * The working day shrinks with the fat reserve, one step per warning the
- * body already prints, deepest last: a thin body does four fifths of a
- * day, one whose ribs show three fifths, a wasting one two fifths. Each
- * step's line reads once per crossing, the way the warning does.
- */
-export const THIN_DAY: { fat: number; share: number; line: string }[] = [
-  { fat: FAT_THIN, share: 0.8, line: "Too thin for a full day's work." },
-  { fat: FAT_RIBS, share: 0.6, line: "Your ribs show; the day is shorter still." },
-  { fat: FAT_WASTING, share: 0.4, line: "Wasting away, a few hours' work is all you have." },
-];
-
-export type DayReason = "day" | "thin" | "fed";
+export type DayReason = "day" | "fed";
 
 /** With tomorrow's food in hand, a half day: chores and the roof still get their hours, and a full larder never stalls the hut. */
 export const FED_DAY_SHARE = 0.5;
@@ -70,32 +57,29 @@ export function foodInHand(state: GameState, world: World): number {
   return kcal;
 }
 
-/** A day's burn for this body: the ledger's week before today, all five buckets; the band top while nothing is on record. */
-export function dayBurn(state: GameState): number {
+/**
+ * A day's burn for this body: the ledger's week before today, all five
+ * buckets. Null until a full week is on record, since the runner has no
+ * honest reading of what a day here costs before it has lived seven of
+ * them; the arrival kit is a day's food by the band, and a survivor fresh
+ * off the boat with no roof works the full day.
+ */
+export function dayBurn(state: GameState): number | null {
   const w = weekBefore(state.ledger, dayNumber(state.minute));
-  if (w.days === 0) return BURN.day.hi;
+  if (w.days < 7) return null;
   const b = w.burn;
   return b.base + b.activity + b.walk + b.cold + b.sick;
 }
 
 /**
- * The hours of work the body will do today and why: the working day, the
- * reserve step that cut it, or tomorrow's food in hand. The shorter of
- * the two cuts applies, and on a tie the reserve is the reason, since it
- * is the body and not the larder that cannot work. Read by the runner
- * each minute, so the step line logs the minute the body crosses into
- * it while at work.
+ * The hours of work the body will do today and why: the working day, or a
+ * half day with tomorrow's food in hand. Read by the runner each minute.
  */
 export function dayHours(state: GameState, world: World): { hours: number; reason: DayReason } {
   const p = state.player;
-  let step = 0;
-  for (let i = 0; i < THIN_DAY.length; i++) if (p.fat < THIN_DAY[i].fat * FAT_FULL) step = i + 1;
-  if (step > p.thinStep) log(state, THIN_DAY[step - 1].line);
-  p.thinStep = step;
-  const thin = step === 0 ? p.workHours : p.workHours * THIN_DAY[step - 1].share;
-  const fed = foodInHand(state, world) >= dayBurn(state) ? p.workHours * FED_DAY_SHARE : p.workHours;
-  if (fed < thin) return { hours: fed, reason: "fed" };
-  return { hours: thin, reason: step === 0 ? "day" : "thin" };
+  const burn = dayBurn(state);
+  if (burn !== null && foodInHand(state, world) >= burn) return { hours: p.workHours * FED_DAY_SHARE, reason: "fed" };
+  return { hours: p.workHours, reason: "day" };
 }
 
 /**
