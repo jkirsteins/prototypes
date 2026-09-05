@@ -139,7 +139,8 @@ reason when not.
 
 `mapHtml`: for each visited region, when the camp cell would get no fire
 or shelter glyph, draw "x" with class `mk-camp` at it. A CSS rule gives
-`.mk-camp` the marker colour the shelter mark uses at lower opacity. The
+`.mk-camp` its own colour, the palette's good green, distinct from the
+shelter and trap marks, as a plain background with no opacity. The
 legend line the UI pass adds under the map on touch lists it as "x camp".
 
 ## 5. Tests

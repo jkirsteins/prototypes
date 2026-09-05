@@ -557,10 +557,11 @@ cell whenever neither the fire nor the shelter mark takes it; `style.css`
 colours the mark and gives the legend's letters the same colours the
 map's marks use. The reference player, the horizon and `runHeir` are
 unchanged, since nothing in them chooses to move a camp. The browser
-pass (DevTools, seed 17, 1440 wide) confirmed it: the x mark shows from
-the first frame, coloured in the legend; off the camp cell the panel
-reads "as a camp: forest 0 min, outcrop 38 min, shore 28 min, heath 22
-min; ices over in winter" and the row carries the same line; making
+pass (DevTools, seed 17, 1440 wide) confirmed it: the x mark shows once
+the survivor steps off the camp (the survivor's own glyph takes the cell
+on the first frame), coloured in the legend; off the camp cell the panel
+read the site line ("forest 0, outcrop 38, shore 28, heath 22 min" in
+the line's shortened form) and the row carried the same line; making
 camp moved the camp cell (850853 to 850851), the mark followed, and the
 log held "You make camp here." Siting on a spot's own cell stays legal
 - the tester round should watch it: it removes the walk the idle
