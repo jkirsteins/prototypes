@@ -7,6 +7,7 @@ import { WATER_FULL } from "../sim/water";
 import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
+import { type HurryState, pulseLeft } from "./hurry";
 
 function setBar(id: string, frac: number, text?: string, root: ParentNode = document): void {
   const fill = root.querySelector<HTMLElement>(`#bar-${id}`);
@@ -45,4 +46,9 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     const pct = root.querySelector<HTMLElement>("#task-pct");
     if (pct) pct.textContent = `${Math.floor(frac * 100)}%`;
   }
+}
+
+/** Every frame: the pulse's bar on the live row, so the list's markup does not churn while it drains. */
+export function updateHurryBar(h: HurryState, root: ParentNode = document): void {
+  setBar("hurry", pulseLeft(h), undefined, root);
 }

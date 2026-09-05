@@ -762,7 +762,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const ice = walkIceMode(state, target.thin);
     const from = cellOf(state, world);
     const path = findRoute(world, from, target.cell, ice) ?? [];
-    state.route = { target: target.cell, path, label: target.label, ice, lastLand: from };
+    state.route = { target: target.cell, path, walked: [from], label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
   }
@@ -952,7 +952,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
       p.x = next.x;
       p.y = next.y;
       setRegion(state, world, cellAt(world, cell).region);
-      route.path.shift();
+      route.walked.push(route.path.shift()!);
       km -= distKm;
       state.stats.km += distKm;
       const terrain = cellAt(world, cell).terrain;

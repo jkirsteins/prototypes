@@ -98,6 +98,12 @@ small, .dim { color: var(--dim); }
 .bar.water .fill { background: var(--water); }
 .bar.fire .fill { background: var(--fire); }
 .bar.task .fill { background: #3c8f4a; transition: none; }
+/* The pulse draining on a row hurried by clicking; the head is the click target. */
+.bar.hurry { height: 4px; margin: 2px 0 0; }
+.bar.hurry .fill { background: var(--accent); transition: none; }
+#task .order .head.hurry { cursor: pointer; }
+#task .order .head.hurry:hover b { color: var(--accent); }
+.clockrow .hurrying { color: var(--accent); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
 .bar.dur.wet .fill { background: var(--water); opacity: .7; }
@@ -179,8 +185,15 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.dim { opacity: 0.45; }
 .maptools { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .legend .fog-key { color: #4a5160; }
-/* Where you are walking, and where things lie. */
-.grid .c.rt { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.22); outline: 1px solid rgba(230, 194, 41, 0.22); outline-offset: -1px; }
+/* Your walk: a line through the glyph centres, solid ahead, dashed behind. It sits after the shade
+   and carries no z-index, so it is over the night and under the @ and the fire glow. */
+.grid .walk { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+/* non-scaling-stroke keeps the stroke in screen pixels under the stretched viewBox. */
+polyline.walk-ahead, polyline.walk-behind { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+polyline.walk-ahead { stroke: rgba(230, 194, 41, 0.9); stroke-width: 2px; }
+polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; stroke-dasharray: 3 3; }
+.legend .walk-key svg { width: 24px; height: 6px; vertical-align: middle; }
+/* Where things lie. */
 .grid .c.pl { text-decoration: underline; text-decoration-color: #e6c229; text-underline-offset: 2px; }
 .legend .pl-key { text-decoration: underline; text-decoration-color: #e6c229; }
 /* The light of the hour, laid over the glyphs. */

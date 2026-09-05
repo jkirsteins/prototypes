@@ -76,6 +76,26 @@ describe("tasks", () => {
     expect(state.stats.km).toBeCloseTo(forest.km, 1);
   });
 
+  it("the route remembers every cell it walked, the start first, so the whole walk is the route as first found", () => {
+    const g = newGame(3);
+    const { state, world } = g;
+    const r = regionAt(world, state.player.region);
+    const forest = spotOf(r, "forest")!;
+    const start = cellOf(state, world);
+    const whole = [start, ...findRoute(world, start, forest.cell)!];
+    startTask(state, world, cal, "walk", "spot:forest");
+    expect(state.route!.walked).toEqual([start]);
+    let steps = 0;
+    while (state.route && steps++ < 2000) {
+      run(g, 3);
+      if (!state.route) break;
+      expect(state.route.walked[0]).toBe(start);
+      expect(state.route.walked.concat(state.route.path)).toEqual(whole);
+    }
+    expect(state.route).toBeNull();
+    expect(spotHere(state, world)).toBe("forest");
+  });
+
   it("a stopped walk leaves you on the way, and the next walk starts from there", () => {
     const g = newGame(3);
     const { state, world } = g;

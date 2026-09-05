@@ -134,6 +134,8 @@ function fillDefaults(state: GameState): void {
     state.route.ice ??= "none";
     // Old saves predate lastLand; the route's own path (or its target, if already there) is the closest thing to it.
     state.route.lastLand ??= state.route.path[0] ?? state.route.target;
+    // Nothing is known of where an old save's walk began; its behind line starts at the survivor.
+    state.route.walked ??= [];
   }
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;

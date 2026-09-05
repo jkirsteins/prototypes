@@ -15,11 +15,12 @@ import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
-import { updateBars } from "../src/ui/bars";
-import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
+import { updateBars, updateHurryBar } from "../src/ui/bars";
+import { mapHtml, mapKey, VIEW_H, VIEW_W, viewOrigin, ZOOMS } from "../src/ui/map";
 import { doHtml } from "../src/ui/dopanel";
-import { actionsHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { actionsHtml, clockHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
+import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
 
@@ -105,24 +106,102 @@ describe("panels", () => {
     expect(document.querySelectorAll("#map .c.cur").length).toBeGreaterThan(50);
   });
 
-  it("marks the route while walking and cells with something lying on them", () => {
+  it("draws the walk as a line, solid ahead and dashed behind, and marks cells with something lying on them", () => {
     const { state, world } = newGame(21);
     const cal = calendar(0);
     const ui = newUiState();
+    const z = ZOOMS[ui.zoom];
+    const glyphs = (cells: number[]) => {
+      const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+      return new Set(cells.map((c) => `${Math.floor((cellAt(world, c).x - x0) / z)},${Math.floor((cellAt(world, c).y - y0) / z)}`)).size;
+    };
+    const points = (sel: string) => (document.querySelector(sel)!.getAttribute("points") ?? "").trim().split(/\s+/).filter(Boolean).length;
     const k1 = mapKey(state, world, ui, cal);
     startTask(state, world, cal, "walk", "spot:forest");
     expect(mapKey(state, world, ui, cal)).not.toBe(k1);
     setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.rt").length).toBe(state.route!.path.length);
+    expect(document.querySelectorAll("#map .c.rt").length).toBe(0);
+    expect(document.querySelectorAll("#map svg.walk").length).toBe(1);
+    expect(points("#map polyline.walk-ahead")).toBe(glyphs([cellOf(state, world), ...state.route!.path]));
+    expect(points("#map polyline.walk-behind")).toBe(1);
+    const rng = new Rng(1);
+    while (state.route && state.route.walked.length < 3) stepTask(state, world, calendar(state.minute), rng, 1);
+    expect(state.route).not.toBeNull();
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(points("#map polyline.walk-behind")).toBe(glyphs([...state.route!.walked, cellOf(state, world)]));
+    expect(points("#map polyline.walk-ahead")).toBe(glyphs([cellOf(state, world), ...state.route!.path]));
+    stopTask(state, world);
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(points("#map polyline.walk-ahead")).toBe(0);
+    expect(points("#map polyline.walk-behind")).toBe(0);
+    // Camp may already have a pile behind you; the stone adds one under your feet.
+    const piles = document.querySelectorAll("#map .c.pl").length;
     addItem(herePile(state, world), "stone", 2);
     setPanel("map", mapHtml(world, state, ui, cal));
-    expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 1);
     const nb = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, nb);
     setPanel("map", mapHtml(world, state, ui, cal));
-    // The pile was dropped where the walk began: the camp, which the player has now
-    // stepped off, so its own mark - x, with nothing built there yet - shows alongside.
-    expect(document.querySelectorAll("#map .c.pl.mk-camp").length).toBe(1);
+    // The stone's cell is underlined with no marker on it; camp's pile sits under its x.
+    expect(document.querySelectorAll("#map .c.pl").length).toBe(piles + 1);
+    expect(document.querySelectorAll("#map .c.pl:not(.mk)").length).toBe(1);
+  });
+
+  it("marks this region's camp with an x whenever you are not on its glyph", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(0);
+    const ui = newUiState();
+    const st = regionState(state, world, state.player.region);
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
+    const nb = neighbours(world, st.campCell).find((c) => cellAt(world, c).terrain !== "water")!;
+    placeAt(state, world, nb);
+    setPanel("map", mapHtml(world, state, ui, cal));
+    const camp = document.querySelectorAll<HTMLElement>("#map .mk-camp");
+    expect(camp.length).toBe(1);
+    expect(camp[0].textContent).toBe("x");
+    expect(camp[0].title).toContain(`camp, ${regionAt(world, state.player.region).name}`);
+    st.fire.lit = true;
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
+    expect(document.querySelectorAll("#map .mk-fire").length).toBe(1);
+    st.fire.lit = false;
+    ui.zoom = ZOOMS.length - 1;
+    setPanel("map", mapHtml(world, state, ui, cal));
+    expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
+  });
+
+  it("the live row of a counted order is a click target with a pulse bar, a once order's row is not", () => {
+    const { state, world } = newGame(3);
+    const cal = calendar(0);
+    addOrder(state, world, { task: "sticks", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).not.toBeNull();
+    setPanel("task", taskHtml(state, world, cal));
+    expect(document.querySelectorAll('#task .order.live .head[data-act="hurry"]').length).toBe(1);
+    expect(document.querySelectorAll("#task .order.live .bar.hurry #bar-hurry").length).toBe(1);
+    const h = newHurry();
+    hurryClick(h, hurryKind(state), state.intent!.orderId);
+    updateHurryBar(h);
+    expect(document.querySelector<HTMLElement>("#bar-hurry")!.style.width).toBe("100.0%");
+    const once = newGame(3);
+    addOrder(once.state, once.world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(once.state, once.world, 1);
+    setPanel("task", taskHtml(once.state, once.world, cal));
+    expect(document.querySelectorAll("#task .order.live").length).toBe(1);
+    expect(document.querySelectorAll('#task [data-act="hurry"]').length).toBe(0);
+    expect(document.querySelectorAll("#task .bar.hurry").length).toBe(0);
+  });
+
+  it("the clock line reads the hurry's rate", () => {
+    const { state } = newGame(3);
+    const cal = calendar(0);
+    document.body.insertAdjacentHTML("beforeend", `<div id="clock"></div>`);
+    setPanel("clock", clockHtml(state, cal, 5));
+    expect(document.querySelector("#clock .dim")?.textContent).toBe("1 s = 1 game min");
+    expect(document.querySelectorAll("#clock .hurrying").length).toBe(0);
+    setPanel("clock", clockHtml(state, cal, 5, 6));
+    expect(document.querySelector("#clock .hurrying")?.textContent).toBe("1 s = 6 game min");
   });
 
   it("bars follow the state", () => {

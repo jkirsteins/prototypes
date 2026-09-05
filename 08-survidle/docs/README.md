@@ -21,6 +21,12 @@ degrees Celsius, minutes. A 3 km walk at 3 km/h is an hour of game time and
 sixty seconds of yours. A day is 24 real minutes; a year is 365 game days.
 Every button shows both times: "1 h 40 min (1 min 40 s)".
 
+Work you choose in the moment runs faster while you watch: a once order
+or a single advanced action runs at up to 6x from start to end, and a
+standing or counted order goes 3 minutes ahead each time you click its
+row, one click per two-thirds of a second. Body needs, the runner's
+waiting, and everything done while you are away run at the one scale.
+
 ## How it plays
 
 - **You give orders, the game keeps them.** Every button adds an order to
@@ -59,8 +65,10 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   in forest, gather stone on rock, fish beside water, hares and berries on
   bog or meadow, and camp things at camp. Named spots (forest, outcrop,
   shore, heath) are waypoints with walk buttons; routes go around lakes and
-  across bog only when they must, and the remaining route is highlighted
-  while you walk. Stop a walk and you stand where you are.
+  across bog only when they must, and your walk is drawn as a line, solid
+  ahead of you and dashed behind, that goes when the walk ends. This
+  region's camp is an `x` whenever you are off it. Stop a walk and you
+  stand where you are.
 - **Stopping never loses work.** Felling, gathering, crafting and the rest
   keep their share done, listed under "Set aside" with a resume button, or
   the place to walk back to. Walking keeps nothing because your position is

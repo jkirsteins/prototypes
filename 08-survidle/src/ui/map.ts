@@ -54,6 +54,7 @@ export function legendHtml(): string {
   return (
     `${terrain}<span><b>=</b> ice</span>${marks}` +
     `<span class="pl-key">underlined: something lies there</span>` +
+    `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="fog-key">dark: never been there</span>`
   );
 }
@@ -186,6 +187,34 @@ export function flickerDelay(i: number): string {
   return `-${(((i * 2654435761) >>> 0) % 1100) / 1000}s`;
 }
 
+/**
+ * The walk as a line through glyph centres: solid from the survivor's glyph
+ * to the target, dashed from where the walk began to the survivor's glyph.
+ * The viewBox is in glyphs, so the same points serve every zoom; a point off
+ * the view is kept and clipped rather than dropped, since dropping it would
+ * join the two visible ends with a false straight segment. Cells that share
+ * a glyph collapse to one point, and a polyline of one point draws nothing.
+ * With no route the element is emitted empty, so the markup has one shape.
+ */
+function walkSvg(world: World, state: GameState, here: number, x0: number, y0: number, z: number): string {
+  const route = state.route;
+  const points = (cells: number[]): string => {
+    const out: string[] = [];
+    let last = "";
+    for (const cell of cells) {
+      const c = cellAt(world, cell);
+      const pt = `${Math.floor((c.x - x0) / z) + 0.5},${Math.floor((c.y - y0) / z) + 0.5}`;
+      if (pt === last) continue;
+      out.push(pt);
+      last = pt;
+    }
+    return out.join(" ");
+  };
+  const behind = route ? points([...route.walked, here]) : "";
+  const ahead = route ? points([here, ...route.path]) : "";
+  return `<svg class="walk" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="none"><polyline class="walk-behind" points="${behind}"/><polyline class="walk-ahead" points="${ahead}"/></svg>`;
+}
+
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
   const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo || r.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}${r.trap ? "T" : ""}`).join(",");
@@ -228,11 +257,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, MARKS.you);
-  const routeGlyphs = new Set<number>();
-  for (const c of state.route?.path ?? []) {
-    const g = toGlyph(c);
-    if (g >= 0) routeGlyphs.add(g);
-  }
   const pileGlyphs = new Set<number>();
   for (const k of Object.keys(state.piles)) {
     const g = toGlyph(Number(k));
@@ -292,7 +316,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       }
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
-      if (routeGlyphs.has(i)) cls.push("rt");
       glyph = GLYPH[t];
       if (t === "water" && iceMode(state.weather) !== "none") {
         glyph = "=";
@@ -316,12 +339,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       cls.push("mk", m.cls);
       glyph = m.glyph;
       if (m.cls === "mk-player") title = `you, ${title}`;
+      if (m.cls === "mk-camp") title = `camp, ${title}`;
     }
     const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
     const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
     parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`<i class="shade"></i></div></div>`);
+  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z)}</div></div>`);
   return parts.join("");
 }

@@ -1,4 +1,5 @@
 import { NOT_ORDERS } from "../sim/ladder";
+import { type HurryState, newHurry } from "./hurry";
 import type { AwaySummary } from "../sim/save";
 import type { TaskGroup } from "../sim/tasks";
 import type { IntentRequest, OrderKind, SpotId, TaskId, UntilChoice } from "../sim/types";
@@ -33,6 +34,8 @@ export interface UiState {
   moreOpen: string[];
   /** The Do panel's fold state, held here and written through on toggle so a frame never has to re-read storage. */
   folds: Record<string, boolean>;
+  /** The hurry: how fast the work chosen by hand is running right now. Never saved. */
+  hurry: HurryState;
 }
 
 /** A Do row's order settings: what "more" opens, and what a kind button there gives. */
@@ -52,6 +55,7 @@ export function newUiState(): UiState {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
     cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
     open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [], folds: {},
+    hurry: newHurry(),
   };
 }
 

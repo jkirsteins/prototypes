@@ -22,8 +22,8 @@ describe("terrain colour", () => {
     }
   });
 
-  it("the region and route highlights are overlays, not backgrounds", () => {
-    for (const sel of [".grid .c.cur", ".grid .c.sel", ".grid .c.rt"]) {
+  it("the region highlights are overlays, not backgrounds", () => {
+    for (const sel of [".grid .c.cur", ".grid .c.sel"]) {
       const body = rule(sel);
       expect(body).toContain("box-shadow: inset 0 0 0 20px");
       expect(body).toContain("outline-offset: -1px");

@@ -31,6 +31,7 @@ import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, w
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
+import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
@@ -145,7 +146,7 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
   return `<h2>Skills</h2>${rows.join("")}`;
 }
 
-export function clockHtml(state: GameState, cal: Calendar, ambient: number): string {
+export function clockHtml(state: GameState, cal: Calendar, ambient: number, rate = 1): string {
   const sun = cal.isNight ? "night" : "day";
   const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
   const ice = state.weather.iceCm >= 1 ? `<span>ice ${Math.round(state.weather.iceCm)} cm</span>` : "";
@@ -162,7 +163,7 @@ ${snow}
 ${ice}
 ${storm}
 ${dry}
-<span class="dim">1 s = ${GAME_MINUTES_PER_REAL_SECOND} game min</span>
+<span class="${rate > 1 ? "hurrying" : "dim"}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span>
 </div>${skyHtml()}</div>`;
 }
 
@@ -318,6 +319,8 @@ ${asCamp}
 }
 
 const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
+/** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
+const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
 /** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
 function ordersHtml(state: GameState, world: World, cal: Calendar): string {
@@ -328,12 +331,17 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
+    // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
+    const clicks = live && hurryKind(state) === "click";
     const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
     const second = live
-      ? `<div class="step">${esc(it!.step)}</div>${state.task ? TASK_BAR : ""}`
+      ? `<div class="step">${esc(it!.step)}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(o.skipped || (orderMet(state, world, o, false) ? "met" : "waiting"))}</div>`;
     const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
-    return `<div class="order${live ? " live" : ""}"><div class="head"><b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${btns}</div>${second}</div>`;
+    const head = clicks
+      ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
+      : `<div class="head">`;
+    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${btns}</div>${second}</div>`;
   }).join("");
   return `${waiting}${rows}`;
 }

@@ -30,7 +30,7 @@ import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
-import { updateBars } from "./ui/bars";
+import { updateBars, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
@@ -40,6 +40,7 @@ import {
   regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
+import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
@@ -100,6 +101,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   wasDead = false;
   ui.selected = null;
   ui.away = null;
+  ui.hurry = newHurry();
   ui.confirmAbandon = false;
   ui.folds = loadFolds(localStorage);
   resetPanels();
@@ -123,6 +125,7 @@ function boot() {
       setCueSink(null);
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, elapsed, speed);
+      ui.hurry = newHurry();
       setCueSink((c) => sounds.cue(c));
       awayInfo = { seconds: Math.min(elapsed, awaySeconds(state)), capped: elapsed > awaySeconds(state) };
       saveGame(state);
@@ -149,7 +152,7 @@ function render() {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
-  setPanel("clock", clockHtml(state, cal, ambient));
+  setPanel("clock", clockHtml(state, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
@@ -163,6 +166,7 @@ function render() {
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal));
   updateBars(state, world);
+  updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
 
   const overlay = document.getElementById("overlay")!;
@@ -194,10 +198,13 @@ function frame(now: number) {
       setCueSink(null);
       ui.awayFromDay = calendar(state.minute, state.startDoy).day;
       ui.away = catchUp(state, world, dtSec, speed);
+      ui.hurry = newHurry();
       setCueSink((c) => sounds.cue(c));
       awayInfo = { seconds: Math.min(dtSec, awaySeconds(state)), capped: dtSec > awaySeconds(state) };
     } else {
-      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed);
+      // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
+      const extra = hurryFrame(ui.hurry, hurryKind(state), state.intent?.orderId ?? null, dtSec);
+      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
   } else if (ui.away) {
@@ -381,6 +388,9 @@ function onClick(ev: Event) {
     }
     case "advanced":
       ui.advanced = !ui.advanced;
+      break;
+    case "hurry":
+      hurryClick(ui.hurry, hurryKind(state), state.intent?.orderId ?? null);
       break;
     case "finish": {
       const id = target.dataset.id as TaskId;

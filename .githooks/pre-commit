@@ -23,9 +23,13 @@ ROOT=$(git rev-parse --show-toplevel) || exit 1
 cd "$ROOT" || exit 1
 GITDIR=$(git rev-parse --git-dir) || exit 1
 
-# 1 => a skipped check (missing node_modules, missing biome) becomes a hard
-# failure instead of a warning. For CI or a paranoid local setup.
-STRICT=${PROTOTYPES_HOOK_STRICT:-0}
+# A check that cannot run (no node on PATH, no biome or typescript installed)
+# fails the commit rather than warning and waving it through. A gate that
+# opens silently is not a gate: a fresh git worktree has no node_modules, and
+# the warning it printed was read by nobody while unlinted commits went in.
+# The message says what to install. PROTOTYPES_HOOK_STRICT=0 turns these back
+# into warnings for a setup that has a reason.
+STRICT=${PROTOTYPES_HOOK_STRICT:-1}
 
 FAILURES=''
 say()  { printf '%s\n' "$*"; }
@@ -82,7 +86,7 @@ fi
 # Both biome's launcher and tsc's shim are `#!/usr/bin/env node`. GUI git
 # clients often run hooks with a minimal PATH and no node.
 if ! command -v node >/dev/null 2>&1; then
-	skip_or_fail "node is not on PATH for this hook (GUI git clients use a minimal PATH) - SKIPPING all checks."
+	skip_or_fail "node is not on PATH for this hook (GUI git clients use a minimal PATH) - no check can run."
 	[ -z "$FAILURES" ] && exit 0
 fi
 
@@ -100,7 +104,7 @@ if [ "$LINT_N" != 0 ]; then
 			xargs -0 -r "$BIOME" lint --no-errors-on-unmatched
 		[ $? -ne 0 ] && note_failure "biome lint failed"
 	else
-		skip_or_fail "$BIOME is missing - SKIPPING lint. Run 'npm install' in $ROOT."
+		skip_or_fail "$BIOME is missing - cannot lint. Run 'npm install' in $ROOT."
 	fi
 fi
 
@@ -110,7 +114,7 @@ fi
 for p in $PROTOS; do
 	[ -f "$p/tsconfig.json" ] || continue
 	if [ ! -x "$p/node_modules/.bin/tsc" ]; then
-		skip_or_fail "$p/node_modules has no typescript - SKIPPING typecheck. Run 'npm install' in $p."
+		skip_or_fail "$p/node_modules has no typescript - cannot typecheck. Run 'npm install' in $p."
 		continue
 	fi
 	say "pre-commit: tsc --noEmit ($p)"
@@ -126,6 +130,7 @@ if [ -n "$FAILURES" ]; then
 	cat <<-'EOF'
 
 		  autofix lint      npm run lint:fix
+		  missing a tool    npm install (in the directory the message names)
 		  commit anyway     git commit --no-verify
 
 		  Note: checks ran against the working tree, not the staged snapshot -
