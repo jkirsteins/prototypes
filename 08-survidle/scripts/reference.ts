@@ -90,7 +90,8 @@ if (heir) {
   for (const seed of seeds) {
     const r = runHeir(seed, days);
     console.log(`seed ${seed} (heir): first life ${outcomeText(r.first)}; gap ${r.gapDays} days; landed ${fmtWorldDate(r.landed)}, ${r.found.kmToOldCamp} km from the old camp`);
-    console.log(`  found: ${r.found.structures.join(", ") || "nothing standing"}; ${r.found.snares} snares; ${r.found.campFoodKcal} kcal and ${r.found.campFirewoodKg} kg of firewood at camp`);
+    const trap = r.found.trapKg === null ? "no trap" : `trap with ${r.found.trapKg.toFixed(1)} kg`;
+    console.log(`  found: ${r.found.structures.join(", ") || "nothing standing"}; ${r.found.snares} snares; ${trap}; ${r.found.campFoodKcal} kcal and ${r.found.campFirewoodKg} kg of firewood at camp`);
   console.log(r.found.reachedCampDay === null ? "  never reached the old camp" : `  reached the old camp on day ${r.found.reachedCampDay}`);
     printCheckpoints(r.heir);
     console.log(`  heir: ${passLine(r.heir)}`);

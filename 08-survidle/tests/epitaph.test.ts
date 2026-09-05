@@ -63,7 +63,7 @@ describe("the epitaph", () => {
 
   it("is deterministic for the reference seeds", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 48. Starved 1.2 km from camp, with nothing in the pack and 60 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 43. Starved at camp, with nothing in the pack and 26 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 43. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 49. Starved at camp, with nothing in the pack and 21 kg of firewood at camp."`);
   });
 });

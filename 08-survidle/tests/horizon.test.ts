@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { HORIZON_STAGES, runStage, setSkillLevel, setUpStage } from "../src/sim/horizon";
+import { pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { REFERENCE_ORDERS } from "../src/sim/reference";
+import { regionState } from "../src/sim/regionstate";
 import { SKILL_IDS, skillLevel } from "../src/sim/skills";
 
 const stage = (id: string) => HORIZON_STAGES.find((s) => s.id === id)!;
 
 describe("the horizon stages", () => {
-  it("three stages, each a skill profile with a band in game days", () => {
-    expect(HORIZON_STAGES.map((s) => s.id)).toEqual(["manual", "grinds", "keeps"]);
+  it("five stages, each a skill profile with a band in game days", () => {
+    expect(HORIZON_STAGES.map((s) => s.id)).toEqual(["manual", "grinds", "keeps", "producers", "stocked"]);
     expect(stage("manual").levels).toEqual({});
     for (const s of SKILL_IDS) expect(stage("grinds").levels[s]).toBe(5);
     expect(stage("keeps").levels).toEqual({ woodcraft: 10, building: 10, foraging: 5, hunting: 5, fishing: 5, crafting: 5 });
@@ -53,6 +55,22 @@ describe("the horizon stages", () => {
     expect(list.find((o) => o.req.task === "light")!.kind).toBe("keep");
     expect(list.find((o) => o.req.task === "fill")!.kind).toBe("job");
     expect(list.find((o) => o.req.task === "hunt")!.kind).toBe("job");
+  });
+
+  it("the producers stages stand the hut, the trough and a trap on the kitted camp, and the stocked one adds stores", () => {
+    const { state, world } = setUpStage(17, stage("producers"));
+    const st = regionState(state, world, state.player.region);
+    expect(st.structures.turfHut).toBe(true);
+    expect(st.structures.waterStore).toBe(true);
+    expect(stage("producers").band).toEqual([10, 20]);
+    expect(stage("stocked").band).toEqual([20, 60]);
+    const s2 = setUpStage(17, stage("stocked"));
+    const camp = pile(s2.state, regionState(s2.state, s2.world, s2.state.player.region).campCell);
+    expect(qty(camp, "driedMeat")).toBeGreaterThanOrEqual(10);
+    expect(qty(camp, "water")).toBeGreaterThanOrEqual(20);
+    expect(qty(camp, "firewood")).toBeGreaterThanOrEqual(200);
+    const manual = setUpStage(17, stage("manual"));
+    expect(regionState(manual.state, manual.world, manual.state.player.region).structures.turfHut).toBe(false);
   });
 
   it("a manual camp dies before the six-day cap on seed 17, and inBand agrees with the band", () => {
