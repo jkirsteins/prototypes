@@ -38,6 +38,12 @@ describe("the beacon record", () => {
     expect(again.attention).toEqual({ survivor: 0, minutes: 0 });
     saveRecord(s, { ...again, cohort: "wave1" });
     expect(JSON.parse(s.getItem(BEACON_KEY)!).cohort).toBe("wave1");
+    s.setItem(BEACON_KEY, JSON.stringify({ id: "0123456789abcdef", attention: { minutes: 10 } }));
+    const partial = loadRecord(s);
+    expect(partial.attention).toEqual({ survivor: 0, minutes: 0 });
+    s.setItem(BEACON_KEY, JSON.stringify({ id: 42 }));
+    const badId = loadRecord(s);
+    expect(badId.id).toMatch(/^[0-9a-f]{16}$/);
   });
 
   it("the tester link marks the device and its cohort, strips itself, and a later open without it keeps the mark", () => {

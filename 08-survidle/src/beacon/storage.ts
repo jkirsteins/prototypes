@@ -23,8 +23,9 @@ function fresh(id: string): BeaconRecord {
 export function loadRecord(storage: Storage, id: () => string = newId): BeaconRecord {
   let stored: Partial<BeaconRecord> | null = null;
   try { stored = JSON.parse(storage.getItem(BEACON_KEY) ?? "null"); } catch { stored = null; }
-  const rec = { ...fresh(stored?.id ?? id()), ...(stored ?? {}) } as BeaconRecord;
-  if (!rec.attention || typeof rec.attention.minutes !== "number") rec.attention = { survivor: 0, minutes: 0 };
+  const idVal = typeof stored?.id === "string" && stored.id ? stored.id : id();
+  const rec = { ...fresh(idVal), ...(stored ?? {}), id: idVal } as BeaconRecord;
+  if (!rec.attention || typeof rec.attention.survivor !== "number" || typeof rec.attention.minutes !== "number") rec.attention = { survivor: 0, minutes: 0 };
   if (JSON.stringify(rec) !== storage.getItem(BEACON_KEY)) saveRecord(storage, rec);
   return rec;
 }
