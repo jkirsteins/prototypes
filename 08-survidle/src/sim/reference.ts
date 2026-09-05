@@ -12,20 +12,24 @@
  * from-scratch survivor has only once jobs until a skill reaches 3 and no
  * keeps for weeks.
  */
+import { CELL_KM } from "../units";
+import { cellAt } from "../world/cells";
 import type { World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY } from "./calendar";
 import { addItem, freshTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, TOOLS } from "./items";
+import { beginAgain, land } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
 import { FAT_FULL } from "./player";
+import { cellOf } from "./position";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import type { DeathCause, GameState, IntentRequest, LifeRecord, Order, OrderKind } from "./types";
+import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
@@ -118,12 +122,16 @@ export function gateFor(startDoy: number, kitted: boolean): Gate {
   return { kind: "day", day: kitted ? KITTED_TARGET_DAY : REFERENCE_TARGET_DAY };
 }
 
+/** kcal of food sitting in an inventory. */
+export function campFoodKcalAt(_state: GameState, inv: Inventory): number {
+  let kcal = 0;
+  for (const f of Object.keys(FOODS) as FoodId[]) kcal += qty(inv, f) * FOODS[f].kcalPerKg;
+  return kcal;
+}
+
 /** kcal of food lying at this region's camp. */
 export function campFoodKcal(state: GameState, world: World): number {
-  const camp = pile(state, regionState(state, world, state.player.region).campCell);
-  let kcal = 0;
-  for (const f of Object.keys(FOODS) as FoodId[]) kcal += qty(camp, f) * FOODS[f].kcalPerKg;
-  return kcal;
+  return campFoodKcalAt(state, pile(state, regionState(state, world, state.player.region).campCell));
 }
 
 /** The food clause at a checkpoint: the stomach above zero, or a beginner's day of food at camp. */
@@ -315,12 +323,9 @@ export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
 }
 
 /** Runs the set-up a day at a time for `days` days or until death, whichever is first. */
-export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {
-  const kitted = opts.kitted ?? false;
-  const startDoy = opts.startDoy ?? START_DOY;
-  const ref = setUpReference(seed, kitted, startDoy);
+export function measure(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number, kitted = false): ReferenceReport {
   const { state, world } = ref;
-  const gate = gateFor(startDoy, kitted);
+  const gate = gateFor(state.startDoy, kitted);
   // A start late enough to open with snow already lying has no first snow to
   // wait for, and reading the check on day 1 would call the ground the fall.
   const openedBare = state.weather.snowCm === 0;
@@ -353,5 +358,51 @@ export function runReference(seed: number, days: number, opts: { kitted?: boolea
   // death after the gate comes later in the list, and a death before it fails passesGate.
   const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
   const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
-  return { seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, record: current(state) };
+  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, record: current(state) };
+}
+
+export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {
+  return measure(setUpReference(seed, opts.kitted ?? false, opts.startDoy ?? START_DOY), days, opts.kitted ?? false);
+}
+
+export interface HeirReport {
+  seed: number;
+  first: ReferenceReport;
+  gapDays: number;
+  landed: WorldDate;
+  found: { structures: string[]; campFoodKcal: number; campFirewoodKg: number; snares: number; kmToOldCamp: number };
+  heir: ReferenceReport;
+}
+
+/**
+ * Two lives: the from-scratch reference run to death, then the gap, the
+ * landing near the old camp, and a fresh reference run as the heir. A run
+ * still alive at the day cap has no heir to raise, so it stands in for
+ * both halves and the gap reads 0.
+ */
+export function runHeir(seed: number, days: number): HeirReport {
+  const ref = setUpReference(seed);
+  const first = measure(ref, days);
+  const { state, world } = ref;
+  if (!state.dead) {
+    return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0 }, heir: first };
+  }
+  const oldRegion = state.player.region;
+  const oldSt = regionState(state, world, oldRegion);
+  beginAgain(state, world);
+  land(state, world);
+  const camp = pile(state, oldSt.campCell);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth"] as const).filter((s) => oldSt.structures[s]);
+  const lc = cellAt(world, state.landing ? state.landing.cell : cellOf(state, world));
+  const cc = cellAt(world, oldSt.campCell);
+  const found = {
+    structures: [...structures],
+    campFoodKcal: Math.round(campFoodKcalAt(state, camp)),
+    campFirewoodKg: Math.round(qty(camp, "firewood")),
+    snares: oldSt.structures.snares,
+    kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
+  };
+  const heirRef = { state, world, player: new ReferencePlayer() };
+  const heir = measure(heirRef, days);
+  return { seed, first, gapDays: current(state).gapDays, landed: current(state).landed, found, heir };
 }

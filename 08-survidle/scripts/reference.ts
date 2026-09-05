@@ -20,12 +20,23 @@
  * gate; a start from July on (spec 7.3) is measured at the first snow.
  * That day is the morning the check ran, the day after the fall, and a
  * start that opens with snow already lying has no first snow to report.
+ *
+ * --heir, anywhere in the args, runs a second life per seed after the
+ * from-scratch (and, if given, kitted) blocks: the reference run to death,
+ * the gap, the landing near the old camp, then a fresh reference run as
+ * the heir. It prints the first life's outcome, the gap and landing date,
+ * what the heir found at the old camp, the heir's checkpoints and its own
+ * "heir passed N of M" line. Like --kitted, it is a diagnostic and never
+ * touches the exit code - the from-scratch run from scratch is still the
+ * gate.
  */
 import { calendar, fmtDate } from "../src/sim/calendar";
-import { REFERENCE_SEEDS, runReference, weekLines } from "../src/sim/reference";
+import { fmtWorldDate } from "../src/sim/epitaph";
+import { REFERENCE_SEEDS, type ReferenceReport, runHeir, runReference, weekLines } from "../src/sim/reference";
 
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
+const heir = rawArgs.includes("--heir");
 const startArg = rawArgs.find((a) => a.startsWith("--start="));
 const startDoy = startArg ? Number(startArg.slice("--start=".length)) : undefined;
 if (startArg && !(Number.isInteger(startDoy) && startDoy! >= 0 && startDoy! < 365)) {
@@ -36,20 +47,31 @@ const args = rawArgs.filter((a) => !a.startsWith("--")).map(Number).filter((n) =
 const days = args.length >= 2 ? args[args.length - 1] : 250;
 const seeds = args.length >= 2 ? args.slice(0, -1) : args.length === 1 ? args : REFERENCE_SEEDS;
 
-function runBlock(seed: number, kit: boolean): boolean {
-  const t0 = performance.now();
-  const r = runReference(seed, days, { kitted: kit, startDoy });
-  const from = startDoy === undefined ? "" : ` (from ${fmtDate(calendar(0, startDoy))})`;
-  console.log(`seed ${seed}${kit ? " (kitted)" : ""}${from}: start found at ring ${r.startRing}`);
+function outcomeText(r: ReferenceReport): string {
+  return r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `reached day ${r.outcome.day}`;
+}
+
+function printCheckpoints(r: ReferenceReport): void {
   for (const c of r.checkpoints) {
     const stocks = Object.entries(c.stocks).map(([k, v]) => `${k} ${v}`).join(", ") || "nothing";
     console.log(`  day ${c.day}: kcal ${c.kcal}, water ${c.water} l, warmth ${c.warmth}, health ${c.health}, food at camp ${c.food} kcal, fed: ${c.fed ? "yes" : "no"}; camp: ${stocks}; tools: ${c.tools.join(", ") || "none"}`);
     for (const line of weekLines(c.week, c.dayOfYear)) console.log(`    ${line}`);
   }
-  const outcome = r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `reached day ${r.outcome.day}`;
+}
+
+function passLine(r: ReferenceReport): string {
   const gateText = r.gate.kind === "day" ? `day ${r.gate.day}` : r.firstSnowDay === null ? "first snow (none yet)" : `first snow, day ${r.firstSnowDay}`;
-  const passLine = r.passed ? `alive and fed at ${gateText}, ` : `gate ${gateText}: failed, `;
-  console.log(`  ${passLine}${outcome}`);
+  const verdict = r.passed ? `alive and fed at ${gateText}, ` : `gate ${gateText}: failed, `;
+  return `${verdict}${outcomeText(r)}`;
+}
+
+function runBlock(seed: number, kit: boolean): boolean {
+  const t0 = performance.now();
+  const r = runReference(seed, days, { kitted: kit, startDoy });
+  const from = startDoy === undefined ? "" : ` (from ${fmtDate(calendar(0, startDoy))})`;
+  console.log(`seed ${seed}${kit ? " (kitted)" : ""}${from}: start found at ring ${r.startRing}`);
+  printCheckpoints(r);
+  console.log(`  ${passLine(r)}`);
   console.log(`  (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return r.passed;
 }
@@ -60,6 +82,19 @@ console.log(`passed ${passed} of ${seeds.length}`);
 
 if (kitted) {
   for (const seed of seeds) runBlock(seed, true);
+}
+
+if (heir) {
+  let heirPassed = 0;
+  for (const seed of seeds) {
+    const r = runHeir(seed, days);
+    console.log(`seed ${seed} (heir): first life ${outcomeText(r.first)}; gap ${r.gapDays} days; landed ${fmtWorldDate(r.landed)}, ${r.found.kmToOldCamp} km from the old camp`);
+    console.log(`  found: ${r.found.structures.join(", ") || "nothing standing"}; ${r.found.snares} snares; ${r.found.campFoodKcal} kcal and ${r.found.campFirewoodKg} kg of firewood at camp`);
+    printCheckpoints(r.heir);
+    console.log(`  heir: ${passLine(r.heir)}`);
+    if (r.heir.passed) heirPassed++;
+  }
+  console.log(`heir passed ${heirPassed} of ${seeds.length}`);
 }
 
 process.exit(passed === seeds.length ? 0 : 1);

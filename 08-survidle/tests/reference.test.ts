@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { START_DOY } from "../src/sim/calendar";
+import { coastOpen, START_DOY } from "../src/sim/calendar";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
@@ -18,6 +18,7 @@ import {
   REFERENCE_ORDERS,
   REFERENCE_TARGET_DAY,
   ReferencePlayer,
+  runHeir,
   runReference,
   setUpReference,
   stepReference,
@@ -249,4 +250,17 @@ describe("the reference player", () => {
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
   });
+});
+
+describe("the heir", () => {
+  it("runs two lives on seed 17 and lands the heir in the open season near the old camp", () => {
+    const r = runHeir(17, 70);
+    expect(r.first.outcome.kind).toBe("died");
+    expect(r.gapDays).toBeGreaterThanOrEqual(90);
+    expect(coastOpen(r.landed.doy)).toBe(true);
+    expect(r.found.kmToOldCamp).toBeGreaterThanOrEqual(3);
+    expect(r.found.kmToOldCamp).toBeLessThanOrEqual(20);
+    expect(r.heir.record.index).toBe(2);
+    expect(r.heir.checkpoints.length).toBeGreaterThan(0);
+  }, 30000);
 });
