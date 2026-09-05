@@ -135,3 +135,47 @@ describe("seasons", () => {
     }
   });
 });
+
+describe("small game moves in", () => {
+  /** Seed 5's start region and its neighbours, all touched, hares at the numbers the test sets. */
+  function heath(nbDensity: number) {
+    const { state, world } = newGame(5);
+    const id = state.player.region;
+    const st = regionState(state, world, id);
+    const cal = calendar(60 * 1440); // 1 June from a 1 April start
+    const k = seasonalCapacity(world, id, "hare", cal, 0);
+    expect(k).toBeGreaterThan(10);
+    st.pop.hare = k / 2;
+    for (const nb of regionAt(world, id).neighbours) {
+      const nst = regionState(state, world, nb.id);
+      nst.pop.hare = seasonalCapacity(world, nb.id, "hare", cal, 0) * nbDensity;
+    }
+    return { state, world, id, st, cal, k };
+  }
+
+  it("refills a half-emptied region to nine tenths within thirty summer days when the neighbours are full", () => {
+    const { state, world, st, cal, k } = heath(1);
+    const rng = new Rng(3);
+    for (let d = 0; d < 30; d++) dailyAnimals(state, world, cal, rng, null);
+    expect(popOf(st, "hare") / k).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("does not refill it from neighbours that are as empty", () => {
+    const { state, world, st, cal, k } = heath(0.5);
+    const rng = new Rng(3);
+    for (let d = 0; d < 30; d++) dailyAnimals(state, world, cal, rng, null);
+    expect(popOf(st, "hare") / k).toBeLessThan(0.7);
+  });
+
+  it("never takes a neighbour below the receiving region's density", () => {
+    const { state, world, id, cal } = heath(1);
+    const rng = new Rng(3);
+    for (let d = 0; d < 30; d++) dailyAnimals(state, world, cal, rng, null);
+    const receiver = popOf(regionState(state, world, id), "hare") / seasonalCapacity(world, id, "hare", cal, 0);
+    for (const nb of regionAt(world, id).neighbours) {
+      const k = seasonalCapacity(world, nb.id, "hare", cal, 0);
+      if (k <= 0) continue;
+      expect(popOf(regionState(state, world, nb.id), "hare") / k).toBeGreaterThanOrEqual(receiver - 0.05);
+    }
+  });
+});
