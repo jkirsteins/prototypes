@@ -67,10 +67,13 @@ whenever a different row opens. `rowRequest(choice, id, arg)` in
 A Do row renders as today for its plain click (a once job through
 `rowRequest` with the default choice). A "more" mini button on the row
 sets `ui.open` to that row. The open row renders an expansion under its
-label: the kinds as buttons (N times, until camp has N, keep camp at N,
-forever) with a number field for N, a deliver toggle (bring to camp /
-leave where it is) and a where select (nearest, or the region's spots)
-where the task has a where; the kinds the row's skill has not earned
+label: the kinds as buttons (once, N times, until camp has N, keep camp
+at N, forever) - once leads them so a plain click's deliver and where
+can be chosen deliberately, through the same `row-kind` path every
+other kind takes, rather than always falling back to the default choice
+- with a number field for N, a deliver toggle (bring to camp / leave
+where it is) and a where select (nearest, or the region's spots) where
+the task has a where; the kinds the row's skill has not earned
 (`withinLadder` from `sim/ladder.ts`, as the strip used) are greyed with
 "needs <skill> <level>, about <hours> h" in the small print the skills
 panel already words. Clicking an earned kind gives the order through
@@ -80,7 +83,8 @@ clamp stays as the number field's.
 
 The `setPanel` guard that skipped a rewrite while the strip's number
 field had focus keeps working for the expansion's number field, which
-carries the same `data-strip-n` attribute.
+carries the `data-row-n` attribute (renamed from `data-strip-n`, since
+the strip is gone and only the row's own field carries it now).
 
 ## 2. Fold and filter
 
@@ -90,23 +94,28 @@ the row helpers it uses, so panels.ts shrinks):
 - `foldState(storage)` and `saveFold(storage, groupId, open)`: a record
   of group id to open flag under `survidle.ui`; every group open by
   default.
-- A filter box at the top of the panel (`<input data-do="filter">`), its
-  value kept in `ui.filter`; rows whose label does not contain the
-  filter (case-insensitive) are left out; group headings whose rows are
-  all filtered out are left out; an empty filter shows everything.
+- A filter box (`<input data-do="filter">`), static markup in
+  `index.html` outside the rows `doHtml` returns, its value kept in
+  `ui.filter`; rows whose label does not contain the filter
+  (case-insensitive) are left out; group headings whose rows are all
+  filtered out are left out; an empty filter shows everything.
 - Per group, rows that cannot start now and whose skill is more than one
   level under the row's recommended level fold under a "more (N)" line
   that opens them for that render; `ui.moreOpen` holds the group ids
-  opened. Rows that can start or are within a level stay visible.
+  opened. Rows that can start or are within a level stay visible. A
+  non-empty filter skips this fold outright: every matching row renders,
+  since hiding a match the reader typed for behind "more" would defeat
+  the filter.
 - In the Make group, rows that can start now list before rows that
   cannot, both keeping their original order otherwise.
 - The tabs stay as the group headings; a heading click folds its group.
 
-The `setPanel` guard also skips the rewrite while the filter box has
-focus (`data-do="filter"` joins the focused-input check), so typing is
-not interrupted; the panel re-renders on the next frame after blur, and
-the filter is applied through `ui.filter` on each keystroke by a
-`keyup` handler that calls `render()` once.
+Because the filter box lives outside the rows `doHtml` returns, the
+`setPanel` guard never has to special-case it: rewriting the rows never
+touches the box the reader is typing into, so the guard only ever needs
+to watch the expansion's own `data-row-n` field. An `input` handler on
+`data-do="filter"` sets `ui.filter` and calls `render()` on every
+keystroke.
 
 ## 3. Columns that scroll inside themselves
 
@@ -117,9 +126,12 @@ the filter is applied through `ui.filter` on each keystroke by a
 - `#actions .rows { max-height: 50vh; overflow-y: auto; }` around the Do
   panel's rows, so the panel scrolls inside its box.
 - The log keeps `#log .entries { max-height: 320px }`.
+- The away dial (`#away`) moves out of the centre column into this one,
+  placed directly after `#forecast`, so the dial that sets the away
+  hours sits beside the Ahead panel that forecasts them.
 
-`index.html`'s right column order: `#task`, `#forecast`, `#log`,
-`#actions`, `#inventory`, `#journal`.
+`index.html`'s right column order: `#task`, `#forecast`, `#away`,
+`#log`, `#actions`, `#inventory`, `#journal`.
 
 ## 4. The phone layout
 

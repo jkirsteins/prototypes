@@ -1786,17 +1786,24 @@ takes the row's own choice where `stripRequest` took the strip's, a
 row's "more" opens the row's own kinds greyed by the level and hours its
 skill has not earned, and picking an earned kind gives the order and
 closes the row; no row is shut by a choice made for another any more,
-and the global strip is gone. `doHtml`, `intentGroups`, `intentRowHtml`
-and the fold, filter and far-row helpers moved out of `panels.ts` into a
-new `src/ui/dopanel.ts`: a group folds and remembers it under
-`survidle.ui`, a filter box narrows rows by label and drops a group
-whose rows are all filtered out, rows more than a level under their
-recommended rung tuck behind a "more (N)" line, and the Make group lists
-what can be made now first. The right column reorders to `#task`,
-`#forecast`, `#log`, `#actions`, `#inventory`, `#journal` so the
-check-in sits above the fold; `#app` and `.col` scroll inside themselves
-at the viewport's height, and `#actions .rows` scrolls inside its own
-376-pixel box. Under 700px `.col` goes `display: contents` so the
+and the global strip is gone. The kind buttons wrap onto the row as a
+run of small buttons rather than one per line; a one-per-line layout is
+left as a polish item for a later pass. `doHtml`, `intentGroups`,
+`intentRowHtml` and the fold, filter and far-row helpers moved out of
+`panels.ts` into a new `src/ui/dopanel.ts`: a group folds and remembers
+it under `survidle.ui`, a filter box - static markup in `index.html`,
+outside the rows `doHtml` returns, so typing into it is never caught by
+`setPanel`'s guard - narrows rows by label and drops a group whose rows
+are all filtered out, rows more than a level under their recommended
+rung tuck behind a "more (N)" line, and the Make group lists what can be
+made now first. The right column reorders to `#task`, `#forecast`,
+`#log`, `#actions`, `#inventory`, `#journal` so the
+check-in sits above the fold, with the away dial (`#away`) moved out of
+the centre column to sit directly under Ahead in this column, since the
+dial that sets the away hours and the forecast it drives belong beside
+each other; `#app` and `.col` scroll inside themselves at the viewport's
+height, and `#actions .rows` scrolls inside a box half the viewport
+high. Under 700px `.col` goes `display: contents` so the
 sections become one column's grid items, reordered so Doing, Ahead and
 the map lead; the map's grid scrolls sideways in its own wrapper,
 recentred on the survivor after every rebuild, and a static legend

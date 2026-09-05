@@ -9,11 +9,11 @@ rule by eye.
 
 The check-in - the bars, Doing with the order list, Ahead and the log's
 first lines - must be visible without scrolling the body. A browser pass
-checks this by loading the page at 1440 by 900, taking a screenshot or
-reading the DOM's positions, and confirming `#task`, `#forecast`, and
-the top of `#log` sit inside the first screenful. Scrolling inside a
-column (the Do panel's own box, a column that runs the viewport's
-height) does not count as the body scrolling.
+checks this by loading the page at a 1440 by 900 viewport, taking a
+screenshot or reading the DOM's positions, and confirming `#task`,
+`#forecast`, and the top of `#log` sit inside the first screenful.
+Scrolling inside a column (the Do panel's own box, a column that runs
+the viewport's height) does not count as the body scrolling.
 
 ## A list past a dozen rows has a fold and a filter
 
@@ -36,15 +36,23 @@ present somewhere on the page.
 A row reads as a label line and a small-print line, plus the progress
 bar when the task is running. A browser pass checks this by reading a
 row's rendered height against its two text lines and bar, and flags a
-row that wraps to three lines or drops the bar while running.
+row that wraps to three lines or drops the bar while running. An open
+row is the exception: its expansion adds lines on purpose, for the kind
+buttons, the count, the deliver toggle and the where select.
 
 ## Buttons reachable by thumb at 390 wide
 
 Under the phone breakpoint, buttons and inputs are large enough to hit
 with a thumb: at least 40 pixels tall, per the `@media (hover: none)`
-rule. A browser pass checks this at 390 wide by measuring a button's
-box, and confirms nothing needed for a check-in sits outside a scroll
-container a thumb cannot reach.
+rule. The map's legend sits behind the same rule, standing in for the
+glyph tooltips a touch device has no hover to trigger. Since the rule
+only trips on a real touch device, a browser pass checks both the
+thumb sizing and the legend with touch emulation, not a resized desktop
+window - in the DevTools browser, `emulate` with `390x844x3,mobile,touch`.
+A desktop window resized to 390 wide never trips `(hover: none)` and
+would pass a check that never ran. The pass measures a button's box at
+that emulation and confirms nothing needed for a check-in sits outside
+a scroll container a thumb cannot reach.
 
 ## Every browser pass runs at both widths and says so
 
