@@ -1,0 +1,902 @@
+[
+  {
+    "slot": "forest",
+    "file": "forest.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05065069.mp3",
+    "source": "BBC Sound Effects NHU05065069, \"Coal tits, goldcrests, treecreepers, robin and wind in the trees. Autumn, early morning. CONIFEROUS FOREST ATMOSPHERE, Quantock Hills, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      40.0,
+      74.0
+    ],
+    "note": "spruce and pine, small birds and moving air; no water and no human noise, so it sits under everything else"
+  },
+  {
+    "slot": "open",
+    "file": "open.ogg",
+    "url": "repo:04-3dtest/assets/audio/ambient_meadow.ogg",
+    "source": "\"Park ambiences\" by Thimras, https://opengameart.org/content/park-ambiences, mixed and level-matched in 04-3dtest and taken from there",
+    "author": "Thimras (OpenGameArt)",
+    "licence": "CC0 1.0",
+    "kind": "loop",
+    "trim": [
+      20.0,
+      54.0
+    ],
+    "note": "wind through grass with distant birdsong: the meadow, heath and fell bed"
+  },
+  {
+    "slot": "lake",
+    "file": "lake.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07012119.mp3",
+    "source": "BBC Sound Effects 07012119, \"Water lapping on loch shore (Loch Broom, Ullapool)\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      100.0,
+      134.0
+    ],
+    "note": "small waves on a freshwater shore, no surf and no gulls"
+  },
+  {
+    "slot": "sea",
+    "file": "sea.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05061097.mp3",
+    "source": "BBC Sound Effects NHU05061097, \"Waves. SHINGLE BEACH, Minsmere, Suffolk, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      60.0,
+      94.0
+    ],
+    "note": "waves dragging back over stones, which is what the coast sounds like here rather than sand"
+  },
+  {
+    "slot": "rain_light",
+    "file": "rain_light.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07043374.mp3",
+    "source": "BBC Sound Effects 07043374, \"Rain on foliage\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      140.0,
+      174.0
+    ],
+    "note": "steady rain landing on leaves, no thunder and no gutter"
+  },
+  {
+    "slot": "rain_heavy",
+    "file": "rain_heavy.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07005210.mp3",
+    "source": "BBC Sound Effects 07005210, \"Heavy rain, on turf and trees\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      100.0,
+      134.0
+    ],
+    "note": "the same weather two grades up, from a different recording so the two rains are not one file at two gains"
+  },
+  {
+    "slot": "fire",
+    "file": "fire.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07025148.mp3",
+    "source": "BBC Sound Effects 07025148, \"Fire: Roaring wood fire\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      200.0,
+      234.0
+    ],
+    "note": "a close, dense fire. The small camp fire recorded in Nanda Devi (BBC NHU05008080) reads better but its cracks stand 30 dB over its own crackle, and normalizing that to a -12 dBFS peak leaves the bed inaudible between bangs; this window has the archive's tightest crest"
+  },
+  {
+    "slot": "leaves",
+    "file": "leaves.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07027032.mp3",
+    "source": "BBC Sound Effects 07027032, \"Weather: Wind in trees\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      120.0,
+      154.0
+    ],
+    "note": "the wind layer that rides over the forest bed when it blows"
+  },
+  {
+    "slot": "chorus",
+    "file": "chorus.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05104268.mp3",
+    "source": "BBC Sound Effects NHU05104268, \"Song thrush, blackbird, wren, carrion crow, hedge sparrow, wood pigeon, robin, rooks, recorded at height of chorus. DAWN CHORUS, Kent, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      120.0,
+      154.0
+    ],
+    "note": "northern European songbirds at dawn; the distant rooster in the source sits outside the trim window"
+  },
+  {
+    "slot": "insects",
+    "file": "insects.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05085169.mp3",
+    "source": "BBC Sound Effects NHU05085169, \"Buzzing. STABLE FLIES (STOMOXYS CALCITRANS), Hampshire, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "loop",
+    "trim": [
+      60.0,
+      94.0
+    ],
+    "note": "the summer bog: flies close enough to be a nuisance, which is the point"
+  },
+  {
+    "slot": "step_grass",
+    "file": "step_grass_01.ogg",
+    "url": "repo:04-3dtest/assets/audio/footstep_grass_01.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 04-3dtest/assets/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "note": "soft sole scuff on grass; four of them so a walk does not tick"
+  },
+  {
+    "slot": "step_grass",
+    "file": "step_grass_02.ogg",
+    "url": "repo:04-3dtest/assets/audio/footstep_grass_02.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 04-3dtest/assets/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "note": "soft sole scuff on grass; four of them so a walk does not tick"
+  },
+  {
+    "slot": "step_grass",
+    "file": "step_grass_03.ogg",
+    "url": "repo:04-3dtest/assets/audio/footstep_grass_03.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 04-3dtest/assets/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "note": "soft sole scuff on grass; four of them so a walk does not tick"
+  },
+  {
+    "slot": "step_grass",
+    "file": "step_grass_04.ogg",
+    "url": "repo:04-3dtest/assets/audio/footstep_grass_04.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 04-3dtest/assets/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "note": "soft sole scuff on grass; four of them so a walk does not tick"
+  },
+  {
+    "slot": "step_leaves",
+    "file": "step_leaves_01.ogg",
+    "url": "repo:06-dueling/public/audio/footstep_01.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 06-dueling/public/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "filter": "asetrate=48000*0.9,aresample=48000",
+    "note": "the same scuffs pitched down a tenth, which lengthens and darkens them into leaf litter"
+  },
+  {
+    "slot": "step_leaves",
+    "file": "step_leaves_02.ogg",
+    "url": "repo:06-dueling/public/audio/footstep_02.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 06-dueling/public/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "filter": "asetrate=48000*0.9,aresample=48000",
+    "note": "the same scuffs pitched down a tenth, which lengthens and darkens them into leaf litter"
+  },
+  {
+    "slot": "step_leaves",
+    "file": "step_leaves_03.ogg",
+    "url": "repo:06-dueling/public/audio/footstep_03.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 06-dueling/public/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "filter": "asetrate=48000*0.9,aresample=48000",
+    "note": "the same scuffs pitched down a tenth, which lengthens and darkens them into leaf litter"
+  },
+  {
+    "slot": "step_leaves",
+    "file": "step_leaves_04.ogg",
+    "url": "repo:06-dueling/public/audio/footstep_04.ogg",
+    "source": "\"RPG Audio\" pack by Kenney Vleugels, https://kenney.nl/assets/rpg-audio, already in this repository at 06-dueling/public/audio",
+    "author": "Kenney Vleugels (Kenney.nl)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0,
+      0.5
+    ],
+    "filter": "asetrate=48000*0.9,aresample=48000",
+    "note": "the same scuffs pitched down a tenth, which lengthens and darkens them into leaf litter"
+  },
+  {
+    "slot": "step_snow",
+    "file": "step_snow_01.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05014056.mp3",
+    "source": "BBC Sound Effects NHU05014056, \"Cu crunching sounds of individual person walking in snow. Slight wind noise. FOOTSTEPS, Nepal, Himalayas\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      7.8,
+      8.35
+    ],
+    "note": "one crunch cut out of a close-miked walk; four consecutive steps, so they differ the way real steps do"
+  },
+  {
+    "slot": "step_snow",
+    "file": "step_snow_02.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05014056.mp3",
+    "source": "BBC Sound Effects NHU05014056, \"Cu crunching sounds of individual person walking in snow. Slight wind noise. FOOTSTEPS, Nepal, Himalayas\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      8.32,
+      8.86
+    ],
+    "note": "one crunch cut out of a close-miked walk; four consecutive steps, so they differ the way real steps do"
+  },
+  {
+    "slot": "step_snow",
+    "file": "step_snow_03.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05014056.mp3",
+    "source": "BBC Sound Effects NHU05014056, \"Cu crunching sounds of individual person walking in snow. Slight wind noise. FOOTSTEPS, Nepal, Himalayas\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      9.22,
+      9.76
+    ],
+    "note": "one crunch cut out of a close-miked walk; four consecutive steps, so they differ the way real steps do"
+  },
+  {
+    "slot": "step_snow",
+    "file": "step_snow_04.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05014056.mp3",
+    "source": "BBC Sound Effects NHU05014056, \"Cu crunching sounds of individual person walking in snow. Slight wind noise. FOOTSTEPS, Nepal, Himalayas\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      10.06,
+      10.62
+    ],
+    "note": "one crunch cut out of a close-miked walk; four consecutive steps, so they differ the way real steps do"
+  },
+  {
+    "slot": "step_bog",
+    "file": "step_bog_01.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07041184.mp3",
+    "source": "BBC Sound Effects 07041184, \"Footsteps, one person walking in mud\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      24.98,
+      25.62
+    ],
+    "note": "one suck of wet ground per file"
+  },
+  {
+    "slot": "step_bog",
+    "file": "step_bog_02.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07041184.mp3",
+    "source": "BBC Sound Effects 07041184, \"Footsteps, one person walking in mud\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      25.68,
+      26.32
+    ],
+    "note": "one suck of wet ground per file"
+  },
+  {
+    "slot": "step_bog",
+    "file": "step_bog_03.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07041184.mp3",
+    "source": "BBC Sound Effects 07041184, \"Footsteps, one person walking in mud\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      34.98,
+      35.62
+    ],
+    "note": "one suck of wet ground per file"
+  },
+  {
+    "slot": "step_bog",
+    "file": "step_bog_04.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07041184.mp3",
+    "source": "BBC Sound Effects 07041184, \"Footsteps, one person walking in mud\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      41.44,
+      42.08
+    ],
+    "note": "one suck of wet ground per file"
+  },
+  {
+    "slot": "step_rock",
+    "file": "step_rock_01.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07004067.mp3",
+    "source": "BBC Sound Effects 07004067, \"Footsteps on shingle, 1 man departing\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      0.28,
+      0.86
+    ],
+    "note": "loose stone underfoot; the walker recedes through the source, so the four cuts come from its first seven seconds"
+  },
+  {
+    "slot": "step_rock",
+    "file": "step_rock_02.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07004067.mp3",
+    "source": "BBC Sound Effects 07004067, \"Footsteps on shingle, 1 man departing\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      2.96,
+      3.54
+    ],
+    "note": "loose stone underfoot; the walker recedes through the source, so the four cuts come from its first seven seconds"
+  },
+  {
+    "slot": "step_rock",
+    "file": "step_rock_03.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07004067.mp3",
+    "source": "BBC Sound Effects 07004067, \"Footsteps on shingle, 1 man departing\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      5.12,
+      5.7
+    ],
+    "note": "loose stone underfoot; the walker recedes through the source, so the four cuts come from its first seven seconds"
+  },
+  {
+    "slot": "step_rock",
+    "file": "step_rock_04.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07004067.mp3",
+    "source": "BBC Sound Effects 07004067, \"Footsteps on shingle, 1 man departing\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      6.94,
+      7.52
+    ],
+    "note": "loose stone underfoot; the walker recedes through the source, so the four cuts come from its first seven seconds"
+  },
+  {
+    "slot": "step_ice",
+    "file": "step_ice_01.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07023335.mp3",
+    "source": "BBC Sound Effects 07023335, \"Ice: Footsteps on ice, Normal, 1 pair\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      7.34,
+      7.92
+    ],
+    "note": "a hard, hollow step; the ring under it is what tells you the lake is not ground"
+  },
+  {
+    "slot": "step_ice",
+    "file": "step_ice_02.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07023335.mp3",
+    "source": "BBC Sound Effects 07023335, \"Ice: Footsteps on ice, Normal, 1 pair\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      8.78,
+      9.32
+    ],
+    "note": "a hard, hollow step; the ring under it is what tells you the lake is not ground"
+  },
+  {
+    "slot": "step_ice",
+    "file": "step_ice_03.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07023335.mp3",
+    "source": "BBC Sound Effects 07023335, \"Ice: Footsteps on ice, Normal, 1 pair\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      15.26,
+      15.82
+    ],
+    "note": "a hard, hollow step; the ring under it is what tells you the lake is not ground"
+  },
+  {
+    "slot": "step_ice",
+    "file": "step_ice_04.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07023335.mp3",
+    "source": "BBC Sound Effects 07023335, \"Ice: Footsteps on ice, Normal, 1 pair\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      34.16,
+      34.74
+    ],
+    "note": "a hard, hollow step; the ring under it is what tells you the lake is not ground"
+  },
+  {
+    "slot": "axe",
+    "file": "axe_01.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07022331.mp3",
+    "source": "BBC Sound Effects 07022331, \"Axe, used to chop a tree down\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      16.0,
+      17.0
+    ],
+    "note": "one bite into a standing trunk, with its ring; the felling crash at the end of the source belongs to treeFalls, not here"
+  },
+  {
+    "slot": "axe",
+    "file": "axe_02.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07022331.mp3",
+    "source": "BBC Sound Effects 07022331, \"Axe, used to chop a tree down\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      31.38,
+      32.4
+    ],
+    "note": "one bite into a standing trunk, with its ring; the felling crash at the end of the source belongs to treeFalls, not here"
+  },
+  {
+    "slot": "axe",
+    "file": "axe_03.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07022331.mp3",
+    "source": "BBC Sound Effects 07022331, \"Axe, used to chop a tree down\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      35.32,
+      36.32
+    ],
+    "note": "one bite into a standing trunk, with its ring; the felling crash at the end of the source belongs to treeFalls, not here"
+  },
+  {
+    "slot": "knap",
+    "file": "knap.ogg",
+    "url": "https://cdn.freesound.org/previews/539/539973_12029332-hq.mp3",
+    "source": "\"Flint Strike\" by Za-Games, Freesound #539973, https://freesound.org/people/Za-Games/sounds/539973/",
+    "author": "Za-Games (Freesound)",
+    "licence": "CC0 1.0",
+    "kind": "oneshot",
+    "trim": [
+      0.0,
+      0.6
+    ],
+    "note": "one struck flake off a core; short, because the crafting loop repeats it about once a second"
+  },
+  {
+    "slot": "treeFalls",
+    "file": "treeFalls.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07058031.mp3",
+    "source": "BBC Sound Effects 07058031, \"Tree falling\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      1.4,
+      7.2
+    ],
+    "note": "the lean, the tearing, and the ground hit"
+  },
+  {
+    "slot": "arrow",
+    "file": "arrow.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07037397.mp3",
+    "source": "BBC Sound Effects 07037397, \"Archery, bow twang\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      0.9,
+      2.6
+    ],
+    "note": "the release, not the landing: the cue fires when the shot is taken, hit or miss"
+  },
+  {
+    "slot": "spear",
+    "file": "spear.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07044110.mp3",
+    "source": "BBC Sound Effects 07044110, \"Small splash\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      0.2,
+      2.5
+    ],
+    "note": "the fishing spear going into water; the cue is a cast at a fish from the shore, so a splash is the sound and not an impact"
+  },
+  {
+    "slot": "fireCatches",
+    "file": "fireCatches.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07059049.mp3",
+    "source": "BBC Sound Effects 07059049, \"Match struck - open fire lit, crackle of flame\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      0.0,
+      4.5
+    ],
+    "note": "the strike and the tinder taking, which is what the log line says happens"
+  },
+  {
+    "slot": "torchLit",
+    "file": "torchLit.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07054185.mp3",
+    "source": "BBC Sound Effects 07054185, \"Building coal fire using paper, kindling & bellows\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      7.5,
+      11.0
+    ],
+    "note": "kindling flaring; a smaller, faster catch than the camp fire's, from a different recording so the two moments do not share a file"
+  },
+  {
+    "slot": "iceCracks",
+    "file": "iceCracks.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07071025.mp3",
+    "source": "BBC Sound Effects 07071025, \"Ice creaking and cracking - 1972 (7K, reprocessed)\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      4.8,
+      9.4
+    ],
+    "note": "the warning underfoot; a library effect rather than a field recording, and it reads as ice"
+  },
+  {
+    "slot": "fallThrough",
+    "file": "fallThrough.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07044109.mp3",
+    "source": "BBC Sound Effects 07044109, \"Large splash\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      0.3,
+      3.0
+    ],
+    "note": "going through the ice: one heavy entry and the water closing"
+  },
+  {
+    "slot": "toolBreaks",
+    "file": "toolBreaks.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/07039201.mp3",
+    "source": "BBC Sound Effects 07039201, \"Wood splintering\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      3.35,
+      5.0
+    ],
+    "note": "a haft or a bow giving way"
+  },
+  {
+    "slot": "wolves",
+    "file": "wolves.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05102193.mp3",
+    "source": "BBC Sound Effects NHU05102193, \"Wolves howling. EUROPEAN WOLF (CANIS LUPUS), London Zoo, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      27.5,
+      36.5
+    ],
+    "note": "the pack, not the single animal: this is the danger cue, so several voices at once"
+  },
+  {
+    "slot": "wolf",
+    "file": "wolf.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05078128.mp3",
+    "source": "BBC Sound Effects NHU05078128, \"Howls. WOLF (CANIS LUPUS)\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      24.6,
+      31.0
+    ],
+    "note": "one long howl from a single animal, which is the night call rather than the pack alarm"
+  },
+  {
+    "slot": "loon",
+    "file": "loon.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05054192.mp3",
+    "source": "BBC Sound Effects NHU05054192, \"MCU calls and snatch of song at end, from a bird in water with chicks. BLACK-THROATED DIVER (GAVIA ARCTICA), Yukon Delta, Alaska\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      6.5,
+      11.0
+    ],
+    "note": "the exact species the catalogue names"
+  },
+  {
+    "slot": "cuckoo",
+    "file": "cuckoo.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU2065479.mp3",
+    "source": "BBC Sound Effects NHU2065479, \"Territorial call very close. COMMON CUCKOO (CUCULUS CANORUS), Notts, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      4.6,
+      9.5
+    ],
+    "note": "three calls; the bird repeats for minutes, so any window is representative"
+  },
+  {
+    "slot": "raven",
+    "file": "raven.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU10392060.mp3",
+    "source": "BBC Sound Effects NHU10392060, \"Calls of single bird. RAVEN (CORVUS CORAX), Queen Charlotte Islands, Canada\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      0.2,
+      6.0
+    ],
+    "note": "one bird, no flock, no other species behind it"
+  },
+  {
+    "slot": "owl",
+    "file": "owl.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05085052.mp3",
+    "source": "BBC Sound Effects NHU05085052, \"Hoots. TAWNY OWL (STRIX ALUCO SYLVATICA), Inverness\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      44.6,
+      47.6
+    ],
+    "note": "the catalogue's bird is the Ural owl; no Ural owl recording was found and the tawny is the nearest Strix on offer, with the same hooting shape"
+  },
+  {
+    "slot": "crane",
+    "file": "crane.ogg",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/7/78/Grus_grus_-_Common_Crane_XC596509.mp3",
+    "source": "Wikimedia Commons, \"Grus grus - Common Crane XC596509\" (xeno-canto XC596509), https://commons.wikimedia.org/wiki/File:Grus_grus_-_Common_Crane_XC596509.mp3",
+    "author": "Benoit Van Hecke",
+    "licence": "CC BY-SA 4.0",
+    "kind": "oneshot",
+    "trim": [
+      2.0,
+      9.0
+    ],
+    "note": "the exact species; the BBC archive had only sandhill, whooping and Manchurian cranes"
+  },
+  {
+    "slot": "goose",
+    "file": "goose.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05079247.mp3",
+    "source": "BBC Sound Effects NHU05079247, \"Calls, with pink footed goose. GREYLAG GOOSE (ANSER ANSER), Kinross, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      4.5,
+      12.0
+    ],
+    "note": "the catalogue's bird is the bean goose; greylag and pink-footed are the same genus and the same overflight racket, and no bean goose recording turned up"
+  },
+  {
+    "slot": "capercaillie",
+    "file": "capercaillie.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05016207.mp3",
+    "source": "BBC Sound Effects NHU05016207, \"Vcu display from male with guttural grunting calls. Also some wing beats. WESTERN CAPERCAILLIE (TETRAO UROGALLUS), Abernethy Forest, Scotland\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      27.5,
+      35.0
+    ],
+    "note": "the lek display, which is what the sim plays in February to April"
+  },
+  {
+    "slot": "blackGrouse",
+    "file": "blackGrouse.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05078202.mp3",
+    "source": "BBC Sound Effects NHU05078202, \"Coos at lek. BLACK GROUSE (TETRAO TETRIX BRITANNICUS), Perthshire, Scotland\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      58.5,
+      66.5
+    ],
+    "note": "the bubbling rookooing of a lek"
+  },
+  {
+    "slot": "willowGrouse",
+    "file": "willowGrouse.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05069086.mp3",
+    "source": "BBC Sound Effects NHU05069086, \"CU calls, howling wind in b/g. WILLOW GROUSE (LAGOPUS LAGOPUS), Hudson Bay, Manitoba, Canada\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      10.5,
+      14.5
+    ],
+    "note": "the exact species; the wind behind it suits the bog and birch scrub it is heard from"
+  },
+  {
+    "slot": "ptarmigan",
+    "file": "ptarmigan.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05019225.mp3",
+    "source": "BBC Sound Effects NHU05019225, \"Mcu call from a male on the ground. PTARMIGAN (LAGOPUS MUTUS), Cairn Gorm, Scotland\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      7.5,
+      10.5
+    ],
+    "note": "the exact species, on the fell where the sim puts it"
+  },
+  {
+    "slot": "mallard",
+    "file": "mallard.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05012018.mp3",
+    "source": "BBC Sound Effects NHU05012018, \"Cu male calling as it takes off, with wind in bushes. MALLARD (ANAS PLATYRHYNCHOS), Norfolk Broads, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      2.5,
+      9.0
+    ],
+    "note": "the exact species"
+  },
+  {
+    "slot": "eider",
+    "file": "eider.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05028028.mp3",
+    "source": "BBC Sound Effects NHU05028028, \"Males & females calling mcu. Waves breaking on shore md. COMMON EIDER (SOMATERIA MOLLISSIMA), Shetland\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      9.3,
+      16.0
+    ],
+    "note": "the exact species, and the surf behind it belongs where eiders are heard"
+  },
+  {
+    "slot": "elk",
+    "file": "elk.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05095061.mp3",
+    "source": "BBC Sound Effects NHU05095061, \"Grunting, groaning and trotting. EUROPEAN ELK or MOOSE (ALCES ALCES), Bialowieza Forest, Poland\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      11.3,
+      15.0
+    ],
+    "note": "Alces alces in a European forest, not a red deer roaring"
+  },
+  {
+    "slot": "fox",
+    "file": "fox.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05079185.mp3",
+    "source": "BBC Sound Effects NHU05079185, \"Vixen barking and trotting. RED FOX (VULPES VULPES), Surrey, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      27.4,
+      30.5
+    ],
+    "note": "the winter barking the sim plays in November to January"
+  },
+  {
+    "slot": "woodpecker",
+    "file": "woodpecker.ogg",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/4/40/Great_Spotted_Woodpecker_drum.ogg",
+    "source": "Wikimedia Commons, \"Great Spotted Woodpecker drum.ogg\", https://commons.wikimedia.org/wiki/File:Great_Spotted_Woodpecker_drum.ogg",
+    "author": "T. Voekler (Wikimedia user Teacoolish)",
+    "licence": "CC BY-SA 3.0",
+    "kind": "oneshot",
+    "trim": [
+      0.0,
+      5.5
+    ],
+    "note": "drumming rather than calling, which is the February to April sound the sim schedules"
+  },
+  {
+    "slot": "squirrel",
+    "file": "squirrel.ogg",
+    "url": "https://sound-effects-media.bbcrewind.co.uk/mp3/NHU05104155.mp3",
+    "source": "BBC Sound Effects NHU05104155, \"Scolding. RED SQUIRREL (SCIURUS VULGARIS), Suffolk, UK\"",
+    "author": "BBC Archive",
+    "licence": "BBC RemArc (personal, educational and research use only)",
+    "kind": "oneshot",
+    "trim": [
+      16.5,
+      23.0
+    ],
+    "note": "the exact species, scolding from a branch"
+  }
+]
