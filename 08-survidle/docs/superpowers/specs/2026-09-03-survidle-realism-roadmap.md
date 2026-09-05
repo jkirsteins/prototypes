@@ -275,7 +275,7 @@ them), then
 the UI pass (the section of that name below: the Do panel folds and
 filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
-pass checks from then on), then
+pass checks from then on; built), then
 3's siting (camp as a chosen cell, pulled out of 3 the way
 the hut and the trough were), then the first half of I the survivor
 (the section of that name below: the away report in third person by
@@ -1699,6 +1699,13 @@ Datadog sink behind it loads by dynamic import, queues until it is ready,
 and turns off replay, user interactions, resources and long tasks, with
 the privacy level masking everything; the switch stops every event
 through `beforeSend`, not only the ones the beacon composes itself.
+
+Read at 1440 by 900 with `?tester=wave1`, the parameter left the address
+on load, the record read tester with cohort wave1 and a sixteen-hex id,
+the panel note read "id <hex>, tester: wave1 (not configured)", the
+only host requested was the dev server and the SDK bundle was never
+fetched; attention minutes persisted across page loads.
+
 `docs/testing.md` is the operator's page: the four steps, the tester
 link, what is sent, the six bars as queries, and what the SDK sends on
 its own view and error events beside the five actions. The application
@@ -1772,6 +1779,49 @@ The pass, in one item:
   390 wide. The page is what keeps the pass from rotting: every item
   after it is checked against it in its browser pass, the way the
   reference gate is run.
+
+**Built.** The order kind is chosen per Do row: `UiState.open` and
+`UiState.choice` replace the strip, `rowRequest` in `src/ui/render.ts`
+takes the row's own choice where `stripRequest` took the strip's, a
+row's "more" opens the row's own kinds greyed by the level and hours its
+skill has not earned, and picking an earned kind gives the order and
+closes the row; no row is shut by a choice made for another any more,
+and the global strip is gone. `doHtml`, `intentGroups`, `intentRowHtml`
+and the fold, filter and far-row helpers moved out of `panels.ts` into a
+new `src/ui/dopanel.ts`: a group folds and remembers it under
+`survidle.ui`, a filter box narrows rows by label and drops a group
+whose rows are all filtered out, rows more than a level under their
+recommended rung tuck behind a "more (N)" line, and the Make group lists
+what can be made now first. The right column reorders to `#task`,
+`#forecast`, `#log`, `#actions`, `#inventory`, `#journal` so the
+check-in sits above the fold; `#app` and `.col` scroll inside themselves
+at the viewport's height, and `#actions .rows` scrolls inside its own
+376-pixel box. Under 700px `.col` goes `display: contents` so the
+sections become one column's grid items, reordered so Doing, Ahead and
+the map lead; the map's grid scrolls sideways in its own wrapper,
+recentred on the survivor after every rebuild, and a static legend
+(`legendHtml` in `src/ui/map.ts`, built from the same `MARKS` table the
+map's marker placement reads, so a mark cannot exist on the map without
+a legend entry or point a legend entry at a mark the map never places)
+stands in for the hover tooltips a touch device has no hover to
+trigger. Buttons and inputs grow to 40px under `@media (hover: none)`.
+`docs/ux.md` is the guidelines page; `docs/README.md` points at it from
+Development.
+
+Read on seed 17: in the DevTools browser at 1440 by 900 the right
+column reads task, forecast, log, actions, inventory, journal; Doing,
+Ahead and the log's first lines sit within the first 350 pixels; the Do
+panel scrolls inside a 376-pixel box holding 3,778 pixels of rows; the
+columns scroll inside themselves; no horizontal body overflow. At 500
+wide, the narrowest a desktop window allows (the breakpoint is 700, so
+390 renders the same rule), one column of 480 pixels in the order
+Doing, Ahead, map, then the rest; the map scrolls inside its wrapper
+centred on the survivor; no horizontal overflow. The touch-only rules
+(the legend, 40-pixel controls) sit behind a hover media query a
+desktop window cannot trip; the reviewer read the CSS. The touch rules
+and the legend's mark colours are checked by the siting item's browser
+pass next, since that item adds the camp mark and the legend's colour
+rule.
 
 ### The save sync
 

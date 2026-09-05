@@ -182,6 +182,9 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
     npm test
     npm run build
 
+Every browser pass runs at 1440 by 900 and at 390 wide against
+`docs/ux.md`.
+
 `scripts/mapstats.ts` prints a downsampled view of the whole world and its
 terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 
