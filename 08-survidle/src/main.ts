@@ -6,9 +6,10 @@ import { SLOTS } from "./audio/manifest";
 import { createScheduler } from "./audio/scheduler";
 import { addFirewood, drop, dropAll, eat, take } from "./sim/actions";
 import { advance } from "./sim/advance";
-import { calendar } from "./sim/calendar";
+import { calendar, dayNumber } from "./sim/calendar";
 import { setCueSink } from "./sim/cues";
 import { since } from "./sim/epitaph";
+import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { giveOrder, orderGate } from "./sim/ladder";
@@ -29,7 +30,7 @@ import { updateBars } from "./ui/bars";
 import { mountAwayDial } from "./ui/dial";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
-  awayHtml, cemeteryHtml, clockHtml, doHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
+  awayHtml, cemeteryHtml, clockHtml, doHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel, stripRequest, type UiState } from "./ui/render";
@@ -48,11 +49,17 @@ const forcedDayN = forcedDay === null || forcedDay.trim() === "" ? Number.NaN : 
 const startDoy = Number.isInteger(forcedDayN) && forcedDayN >= 0 && forcedDayN < 365 ? forcedDayN : undefined;
 
 let state: GameState;
-let world: World;
+// Assigned by boot()/fresh() before anything reads it; the assertion is for TS,
+// which cannot see the assignment through the function call.
+let world!: World;
 const ui = newUiState();
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
+// Read by fresh() below (called from boot(), before the forecaster exists) and by
+// requestForecast() (defined after boot(), once world is real) - declared here so
+// neither reads it before it is initialized.
+let forecastAt = { minute: -Infinity, day: -1, region: -1 };
 
 function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   const g = newGame(seed, startDoy);
@@ -62,6 +69,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   ui.away = null;
   ui.confirmAbandon = false;
   resetPanels();
+  forecastAt = { minute: -Infinity, day: -1, region: -1 };
   saveGame(state);
 }
 
@@ -102,6 +110,7 @@ function render() {
   }
   setPanel("region", regionHtml(state, world, cal, ui));
   setPanel("task", taskHtml(state, world, cal));
+  setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("actions", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
@@ -143,6 +152,7 @@ function frame(now: number) {
     } else {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed);
     }
+    if (state.minute - forecastAt.minute >= 60 || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
   } else if (ui.away) {
     lastReal = now;
   }
@@ -303,6 +313,7 @@ function onClick(ev: Event) {
       removeOrder(state, world, Number(target.dataset.id));
       break;
   }
+  if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   state.rng = rng.s;
   saveGame(state);
   render();
@@ -313,6 +324,24 @@ function zoomBy(delta: number) {
 }
 
 boot();
+// Built once world is real; the worker keeps its own copy keyed by seed, so a
+// later fresh() with a new world does not leave it stale.
+const forecaster = createForecaster(
+  world,
+  typeof Worker === "undefined" ? undefined : new Worker(new URL("./sim/forecast.worker.ts", import.meta.url), { type: "module" }),
+);
+forecaster.onRow = (row) => { noteMonthRow(state, row); };
+/** The actions that change what the forecast reads: orders, needs, camp state. */
+const FORECAST_ACTS = [
+  "task", "stop", "intent", "order-up", "order-down", "order-remove", "dismiss",
+  "eat", "feed", "drink", "fill", "take", "drop", "drop-all", "toggle-eat", "toggle-feed", "toggle-drink",
+];
+/** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
+function requestForecast(): void {
+  if (state.dead || state.landing || ui.away) return;
+  forecaster.request(state);
+  forecastAt = { minute: state.minute, day: dayNumber(state.minute), region: state.player.region };
+}
 setCueSink((c) => sounds.cue(c));
 // Registered before mountControl's own capture listeners, so unlock() always
 // runs before the control's show() on the same click or keydown - otherwise
@@ -320,7 +349,7 @@ setCueSink((c) => sounds.cue(c));
 document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 mountControl(document.getElementById("sound")!, audio);
-mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; });
+mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();
   else audio.resume();

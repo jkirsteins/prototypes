@@ -6,6 +6,7 @@
  */
 import type { World } from "../world/gen";
 import { forecast, type ForecastRow, type HorizonId } from "./forecast";
+import { current } from "./record";
 import type { GameState } from "./types";
 
 export interface ViewRow extends ForecastRow { stale: boolean }
@@ -28,6 +29,21 @@ export function beginRequest(view: ForecastView, id: number): void {
 export function applyRow(view: ForecastView, id: number, row: ForecastRow): void {
   if (id === view.id) view.rows[row.id] = { ...row, stale: false };
   else if (id < view.id && !view.rows[row.id]) view.rows[row.id] = { ...row, stale: true };
+}
+
+/**
+ * The month row's number into the life record: the runs alive of ten,
+ * into today's entry (the last one the daily step pushed) if it is
+ * still null. False when there is no entry yet or it is already
+ * written. The journal and the evolution view read the series later.
+ */
+export function noteMonthRow(state: GameState, row: ForecastRow): boolean {
+  if (row.id !== "month") return false;
+  const f = current(state).forecast;
+  const i = f.length - 1;
+  if (i < 0 || f[i] !== null) return false;
+  f[i] = row.runs - row.died;
+  return true;
 }
 
 export interface Forecaster {

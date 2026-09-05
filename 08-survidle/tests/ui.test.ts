@@ -14,9 +14,10 @@ import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
+import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W } from "../src/ui/map";
-import { actionsHtml, doHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { actionsHtml, doHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitStripN, newUiState, resetPanels, setPanel, stripRequest } from "../src/ui/render";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
@@ -522,5 +523,32 @@ describe("the skills panel and the rungs", () => {
     expect(wood5).toContain('<span class="on">jobs 3</span>');
     expect(wood5).toContain('<span class="on">grinds 5</span>');
     expect(wood5).toContain("keeps 10, 5 d 9 h to go");
+  });
+});
+
+describe("the forecast panel", () => {
+  it("prints each row, the dimmed unlanded ones, and the dial's hours", () => {
+    const { state } = newGame(17);
+    state.awayHours = 3;
+    const v = emptyView();
+    beginRequest(v, 1);
+    applyRow(v, 1, { id: "away", runs: 10, died: 0, cause: null, day: null });
+    applyRow(v, 1, { id: "tonight", runs: 10, died: 3, cause: "froze", day: 1 });
+    applyRow(v, 1, { id: "month", runs: 10, died: 7, cause: "starved", day: 24 });
+    beginRequest(v, 2);
+    applyRow(v, 2, { id: "away", runs: 10, died: 1, cause: "wolves", day: 1 });
+    const html = forecastHtml(v, state);
+    expect(html).toContain("until you are back (3 h)");
+    expect(html).toContain("1 of 10 die: wolves, day 1");
+    expect(html).toContain("3 of 10 die: cold, night 1");
+    expect(html).toContain("7 of 10 die: starved, day 24");
+    expect(html).toMatch(/class="dim"[^>]*>a week<\/span>[\s\S]*?\.\.\./);
+    // Request 2 replaced the away row that had "none of 10 die"; check that
+    // text on a view where the away row still shows nothing dying.
+    const v2 = emptyView();
+    beginRequest(v2, 1);
+    applyRow(v2, 1, { id: "away", runs: 10, died: 0, cause: null, day: null });
+    expect(forecastHtml(v2, state)).toContain("none of 10 die");
+    expect(forecastHtml(null, state)).toContain("<h2>Ahead</h2>");
   });
 });

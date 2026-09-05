@@ -11,6 +11,8 @@ import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCT
 import { fishLie, readCells } from "../sim/knowledge";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
+import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
+import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate } from "../sim/landing";
 import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { fmtName } from "../sim/names";
@@ -360,6 +362,33 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   }
   const list = orders.length ? ordersHtml(state, world, cal) : "";
   return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${head}${list}${asideHtml}`;
+}
+
+const HORIZON_LABEL: Record<HorizonId, (state: GameState) => string> = {
+  away: (s) => `until you are back (${s.awayHours} h)`,
+  tonight: () => "tonight",
+  week: () => "a week",
+  month: () => "a month",
+};
+
+/** "N of 10 die: cause, day D", the tonight row counting nights; "none of 10 die" when nothing died. */
+export function forecastRowText(row: ForecastRow): string {
+  if (row.died === 0) return `none of ${row.runs} die`;
+  const unit = row.id === "tonight" ? "night" : "day";
+  return `${row.died} of ${row.runs} die: ${CAUSE_WORD[row.cause!]}, ${unit} ${row.day}`;
+}
+
+/** The Ahead panel: one line per horizon, the ones not yet landed for the latest request dimmed with "...". */
+export function forecastHtml(view: ForecastView | null, state: GameState): string {
+  const ids: HorizonId[] = ["away", "tonight", "week", "month"];
+  const rows = ids.map((id) => {
+    const r = view?.rows[id];
+    const label = HORIZON_LABEL[id](state);
+    if (!r) return `<div class="row"><span class="dim">${label}</span><span class="dim">...</span></div>`;
+    if (r.stale) return `<div class="row"><span class="dim">${label}</span><span class="dim">${esc(forecastRowText(r))} ...</span></div>`;
+    return `<div class="row"><span>${label}</span><span>${esc(forecastRowText(r))}</span></div>`;
+  });
+  return `<h2>Ahead</h2>${rows.join("")}`;
 }
 
 const GROUPS: { id: TaskGroup; label: string }[] = [

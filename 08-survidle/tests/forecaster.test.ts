@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ForecastRow } from "../src/sim/forecast";
-import { applyRow, beginRequest, createForecaster, emptyView } from "../src/sim/forecaster";
+import { applyRow, beginRequest, createForecaster, emptyView, noteMonthRow } from "../src/sim/forecaster";
 import { newGame } from "../src/sim/newgame";
+import { current } from "../src/sim/record";
 
 const row = (id: ForecastRow["id"], died = 0): ForecastRow => ({ id, runs: 10, died, cause: died ? "starved" : null, day: died ? 3 : null });
 
@@ -40,5 +41,20 @@ describe("the forecast view", () => {
     f.request(state);
     expect(f.view().id).toBe(2);
     f.dispose();
+  });
+});
+
+describe("the month number", () => {
+  it("fills the last null of the life record with the runs alive, once per day, and ignores other rows", () => {
+    const { state } = newGame(17);
+    const rec = current(state);
+    expect(noteMonthRow(state, row("month", 3))).toBe(false);
+    rec.forecast.push(null, null);
+    expect(noteMonthRow(state, row("week", 3))).toBe(false);
+    expect(rec.forecast).toEqual([null, null]);
+    expect(noteMonthRow(state, row("month", 3))).toBe(true);
+    expect(rec.forecast).toEqual([null, 7]);
+    expect(noteMonthRow(state, row("month", 9))).toBe(false);
+    expect(rec.forecast).toEqual([null, 7]);
   });
 });
