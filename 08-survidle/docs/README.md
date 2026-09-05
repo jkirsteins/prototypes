@@ -211,6 +211,18 @@ against the roadmap's provisional bands. `npm run horizon -- --start=<doy>`
 opens each stage's camp on that day of year instead of 1 April (200 is
 20 July, 235 is 24 August). It is not part of `npm test`.
 
+`npm run year` runs the best survivor the sim can hold: a kitted camp with
+every producer, all six skills at 20, the reference list, from 1 April for
+a year, on the four seeds. It prints a line on the first of each month
+(kcal eaten and burned a day, the stock at camp), the day of the first
+hang and the first large-game kill, the week before the death, and the
+outcome; the gate is alive after a year on 4 seeds. `--level=N` sets the
+skills, `--fresh` runs the arrival kit at level 1, `--winter` runs a
+stocked December camp to 1 March (the winter gate), `--start=<doy>` opens
+on another day. About a minute; not part of `npm test`. The survivor is a
+diagnostic, not a claim about players: if this one cannot live a year, no
+lineage can.
+
 ## Where the numbers live
 
 - `src/units.ts`: the time scale and pack limits.
