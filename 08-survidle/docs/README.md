@@ -113,8 +113,9 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   drinks, shelters from a storm, is home before dark in winter and banks
   the fire it leaves, and nothing more.
 - **Camp.** Fire pit, then fire (needs a fire drill and firewood); lean-to,
-  then a cabin (40 logs, 60 hours); drying rack (3 kg raw to 1 kg that
-  keeps); snares on the heath. "Hang meat to dry" is a task, and a keep on
+  then a cabin (40 logs, 60 hours); drying rack (40 kg of raw meat,
+  3 kg raw to 1 kg that keeps, two dry days or four wet; a camp can stand
+  two); snares on the heath. "Hang meat to dry" is a task, and a keep on
   dried meat runs it as the rack has room. Auto-eat and auto-feed keep you
   alive while the tab is closed, as long as the food and firewood are
   there.
@@ -159,7 +160,9 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
   Deer and elk thin out, the mallards and geese are gone south, the eider
   stay on the coast, and the lakes' birds leave with the ice. You need hide
-  clothing, a cabin, and a wood pile.
+  clothing, a cabin, and a wood pile. A fire under the turf hut's smoke
+  hole burns 1.2 kg an hour against an open fire's 3, and the hut holds
+  at 5 C while it is lit, whatever the air outside is doing.
 - **The journal** reads the life record: what season it is, what came before,
   and every ancestor's life under their epitaph.
 

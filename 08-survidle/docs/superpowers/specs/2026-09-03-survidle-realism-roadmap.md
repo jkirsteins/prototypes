@@ -121,7 +121,8 @@ Calibration targets for the sim, to steer by rather than to hit exactly:
 
 What is already hard and stays: fishing barely breaks even on calories, a
 bow needs cordage, a log, a knife and arrows need sinew from a kill, a deer
-is 18,000 kcal that rots in 36 warm hours and dries 6 kg at a time.
+is 18,000 kcal that rots in 36 warm hours and dries 40 kg at a time on
+one pole rack, 80 on the two a camp can stand.
 
 ## What the north yields: the calibration tables
 
@@ -211,11 +212,12 @@ the roadmap, and where each note lands:
     same at 2 C as at 20 C. The cellar (3) is that tier, three to five
     days at 4 C, and the raised cache is the frozen one above the snow
     and the animals (4).
-  - The rack dries 6 kg in two dry days with no heat. A deer is 15 to 25
-    kg and rots in 36 hours, so one kill needs three rack cycles and
-    loses most of itself: racks should hold a day's cutting, or a camp
-    should build more than one (3). Rack-dried raw meat should carry a
-    sickness chance that the smokehouse (3) removes, and dried meat in
+  - The rack dried 6 kg in two dry days with no heat. A deer is 15 to 25
+    kg and rots in 36 hours, so one kill needed three rack cycles and
+    lost most of itself: racks should hold a day's cutting, or a camp
+    should build more than one (3). Both landed in the year loop: a pole
+    rack holds 40 kg, a camp stands two, and rain stretches the drying
+    to 96 hours. Rack-dried raw meat should carry a sickness chance that the smokehouse (3) removes, and dried meat in
     the open should last a month or two, not for ever; F's decay table
     already says a month, and the cellar is where it keeps.
   - Salt does not exist. The coast can make it (sea water reduced over a
@@ -277,8 +279,15 @@ filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
 pass checks from then on; built), then
 3's siting (camp as a chosen cell, pulled out of 3 the way
-the hut and the trough were; built), then the first half of I the survivor
-(the section of that name below: the away report in third person by
+the hut and the trough were; built), then the year loop
+(`2026-09-05-survidle-year-loop-design.md`, plan
+`2026-09-05-survidle-year-loop.md`: the year script and its three gates,
+fish capacities from biomass, small-game inflow, the trap's rot, a 40 kg
+rack and a second one, decay at one and two years, large game by name at
+level, fuel by shelter and an indoor temperature, the winter woodpile and
+the melt fallback, the wet-cold need, the journal clause and the
+ancestor's day; built, readings under F), then the first half of I the
+survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
 quirks, the card and the face), then the first tester round: with B,
 siting and a survivor the tester chose in, the set the hybrid's bet
@@ -2309,14 +2318,8 @@ against that: one honest deficit (seed 42) and one the food clause
 misreads (seed 19, eating 2,971 a day), both named in the calibration
 pass above, whose burn-side paragraph carries what was measured and
 withdrawn; with the clause reading the week, April reads 4 of 4 and
-only seed 42's deficit is still real. The heir gate
-is measured meaningfully once the tree's carry lands with the rest of F:
-the survivor ladder's row 2 is a carried heir, a quarter carry in one
-skill and keeps from birth, and 1 of 4 is the expected reading for a
-fresh heir until then. What to watch when carry lands is a Fishing 10
-heir at a read shore, drawing five times a day from a trap and a hut
-waiting, passing 4 of 4. Two runner findings stand: a spoiled once-craft
-counts as done and is never retried (`it.done++` before `complete()`
+only seed 42's deficit is still real. Two runner findings stand: a
+spoiled once-craft counts as done and is never retried (`it.done++` before `complete()`
 decides), which hides the bow at low Crafting; and a trap keeps drawing
 the shore's population down whether or not anyone empties it.
 
@@ -2339,6 +2342,96 @@ missed the three new tasks - reading the water, setting and emptying
 the trap - until this pass caught it. A July death lands the heir on 21
 October, by which an October dawn has already taken the trap while the
 hut, the trough and the ancestor's tools still stand at camp.
+
+Measured with the year loop (`2026-09-05-survidle-year-loop-design.md`,
+built 2026-09-05 on `worktree-year-loop`, head 9deac2c). Before it, on
+main bcaebb2: `npm run reference -- --heir` read first lives starving on
+days 52, 49, 34 and 37, and their heirs, landing 2 to 20 August and
+walking home on day 1, starving on days 32, 59, 29 and 46, the heir gate
+at 1 of 4; a kitted camp with every producer at level 20 run from 1 April
+starved on days 73, 129, 57 and 48, and at level 10 on days 67, 113, 57
+and 52; a stocked December camp with a turf hut, 80 kg of dried meat and
+300 kg of firewood died on days 15 (thirst, the store frozen), 26, 13 and
+6 (all froze), every one of them with no firewood left. That set of
+readings is what replaced this section's older line that 1 of 4 was the
+expected heir reading until the Lineage tree's carry landed: carry moves
+the delegation clock and adds no calories, so nothing the sim can hold
+was reaching a year with or without it.
+
+Then the reading each piece moved. Fish capacities from biomass, perch at
+10 to 50 kg a hectare rather than 40 a square kilometre, took the year
+probe to days 97, 125, 55 and 53 and stopped a survivor's own take from
+moving the shore's density. Small-game inflow between neighbouring
+regions is movement rather than survival, and read the shape it read
+before it: the trend gate at 1 of 2 on the two seeds it was run against.
+Large game by name at level, with the cordage keep at 8 and the hang
+grind, took the year probe to days 80, 221, 143 and 57, seed 19's first
+elk falling on day 42 and seed 42's on day 64, which is the first time
+the tables' large-game row was reached at all. Fuel by shelter, 3 kg an
+hour in the open against 1.2 in a turf hut and 0.8 in a cabin, put the
+winter gate at days 25 (thirst), 22 (wolves), 6 and 11 (thirst). The
+indoor temperature floor moved it to days 23 and 34 (thirst) and 6 and 8
+(froze), and both frozen deaths are outdoors on a walking task at -15 to
+-20 C, which an indoor floor was never meant to cover. The winter
+woodpile with the melt fallback took seed 17 off thirst entirely, to day
+80 and a freezing, while seed 19 moved the wrong way, to day 17, and 42
+and 79 read days 11 and 24. The wet-cold need at warmth 45 took seed 19
+at level 10 to day 214.
+
+Where it lands, measured at 9deac2c on 2026-09-05 with `npm test` green
+at 715 tests. The April gate stays 4 of 4: every seed alive and fed at
+day 26, then starving on days 52, 55, 39 and 46. The heir trend reads 2
+of 4 against its gate of 3 of 4. Seed 17's three lives die on days 52
+(landed 1 April), 94 (20 August) and 172 (6 May) and seed 19's on days 55
+(1 April), 76 (23 August, thirst) and 223 (6 May, thirst), both trends
+holding; seed 42's read days 39 (1 April), 78 (7 August) and 5 (6 May,
+froze) and seed 79's days 46 (1 April), 66 (14 August) and 19 (6 May),
+both breaking on the third life. Both third lives land in May at a camp
+holding no food: seed 42's 17.4 km from it, freezing on day 5 with 3,044
+kcal a day of its burn in walking, and seed 79's 11.5 km from it,
+starving on day 19. The year gate is 0 of 4 at level 20: seed 17 starves
+on day 68, seed 19 freezes on day 245, which is 1 December, seed 42
+starves on day 218 and seed 79 on day 229. At level 10 the four die on
+days 82 (starved), 214 (thirst), 177 and 102 (starved), and `--fresh` at
+level 1 reads days 52, 55, 39 and 46, all starved, the same days as the
+April run's first lives. The winter gate is 0 of 4: days 23 and 34
+(thirst) and 6 and 8 (froze). The horizon stages read over their bands at
+the four lower rungs (manual only 5, 4, 6 and 5 days against 0 to 2; jobs
+and grinds 4, past 30, 5 and 5 against 1 to 2; keeps in woodcraft and
+building past 30 on all four against 3 to 5; trap, hut and trough at
+keeps past 30, past 30, 14 and past 30 against 10 to 20, the 14 the one
+row in band) and in band at the top one, the same stocked, past 30 on all
+four against 20 to 60.
+
+Three of the four gates are red, and the two causes of death they name
+are what the tables audit opens on. The first is winter thirst at a camp
+that has an axe and can cut a hole: seeds 17 and 19 die of it on winter
+days 23 and 34 from the stocked camp, so what is missing is not the
+fill keep's melt fallback but the winter water path behind it. The second
+is outdoor cold: seeds 42 and 79 freeze on winter days 6 and 8, in wool,
+on a walking task at -15 to -20 C, with 1,150 and 1,781 kcal a day of
+their burn in walking, which is E hides and clothing's row rather than
+this sub-project's. The year loop's own flags for the audit are in
+section 8 of its spec.
+
+The browser pass ran in Chrome on seed 17, at 1440 by 900 and again at
+390 wide with touch emulation. A camp with one rack read "40 kg on the
+racks, two dry days" in the Do row's detail and "rack: 12.0 kg drying, 0%
+(40 kg max)" in the camp panel once the hang had run. On 7 December, with
+a turf hut standing, "Light the fire" read "fire drill and 1 kg firewood;
+under the smoke hole", the camp panel read "turf hut, drying rack" and
+"fire: burning" after it, and a split keep entered at 400 stood in the
+orders list as "Split a log, keep camp at 400 kg firewood". At an iced
+shore with 20 cm of snow and no axe, the fill row read "melts snow at the
+fire instead" and the running order read "Fill vessels, keep camp at 6.0
+l water" with "melting snow" as its doing line. After a death and Begin
+again, the landing line read "The journal of Veikko Urbonas lists a
+drying rack at Hareskog", and the heir's tombstone carried "Veikko
+Urbonas lived 251 days." under the epitaph. At 1440 by 900 the body did
+not scroll and the check-in sat inside the first screenful; at 390 wide
+with touch emulation every one of the 130 controls measured 40 pixels or
+taller, the map legend stood, and nothing scrolled sideways. Nothing was
+found to fix.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in

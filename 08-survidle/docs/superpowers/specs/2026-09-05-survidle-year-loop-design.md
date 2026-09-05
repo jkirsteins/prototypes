@@ -133,6 +133,10 @@ implies (a turf hut, 80 kg of dried meat, 400 kg of firewood, 150 logs
 at camp) on 1 December and runs to 1 March. Gate: alive on 1 March on 4
 seeds.
 
+As built, `WINTER_START_DOY` is 334, not 335: the day of year is 0-based,
+so 1 April is 90 and 1 December is 334. The probes behind section 0 were
+written against 335 and so opened a day late.
+
 ### 1.4 The trend gate
 
 `runHeir` runs three lives instead of two, `--heir` printing per life
@@ -238,6 +242,16 @@ elk hunt at level 8 is four hours at about 25 percent, an elk in two
 days of hunting, which is what a skilled subsistence hunter gets in the
 rut. Odds, injury and yields are unchanged.
 
+As built, the named hunts are grinds rather than "keep camp at 40 kg raw
+meat", and they sit with the hang grind below the hut group and the
+400 kg woodpile keep, before the felling grind. A keep on raw meat with
+the hang grind above it never reads met: the rack takes the raw meat, the
+keep sees the camp short again and the named hunt never ends, which
+starved the axe, the hut and the trough. Shelter and water come before
+the surplus loop. The horizon harness (`setUpStage`) filters its wants
+through `wantOpen` too, so a stage sees the same list the reference
+player would at that level and date.
+
 ### 3.2 The rack is a real rack
 
 A pole rack holds what you build: strips a centimetre thick run 5 to
@@ -268,11 +282,10 @@ material is there.
 
 An elk lies where it fell and is hauled in 35 kg loads by the machinery
 that exists; the hunt keep's "bring it to camp" is the same haul the
-felling grind uses. `AUTO_EAT_ORDER` is checked so raw meat is never
-eaten while cooked or dried food is at camp or in the pack, since seed
-42's fever death is a survivor eating raw meat unasked. Meat at or
-below 0 C does not age, which is why an autumn kill keeps overnight and
-a July one races the rack.
+felling grind uses. `AUTO_EAT_ORDER` already excludes raw meat and raw
+fish; a test pins it (`tests/species.test.ts`). Seed 42's fever was not a
+raw-meat death. Meat at or below 0 C does not age, which is why an autumn
+kill keeps overnight and a July one races the rack.
 
 ### 3.5 Tests
 
@@ -317,6 +330,11 @@ date. The fill keep melts snow at the fire when the shore is iced and
 no hole is cut, the way `drinkStep` already falls back to `melt`, so a
 frozen store is refilled. Both apply to the fresh survivor's list too.
 
+As built, the woodpile want opens on day of year 244 and closes on day 90
+(`WINTER_WOOD_FROM_DOY` and `WINTER_WOOD_TO_DOY`): the thaw begins with
+April, and a spring survivor should get a roof over its head before a
+winter's pile of wood.
+
 ### 4.4 Wet and cold is cold sooner
 
 The cold need in `bodyStep` reads wetness: soaked (`wetness` above 60)
@@ -353,6 +371,11 @@ heir's list starts at the surplus tier on its first morning.
 `STRUCTURE_LIFE_DAYS` becomes lean-to 365, drying rack 730, turf hut
 540 as today. The "needs re-roofing" and "needs relashing" lines and
 the repair task move with the two-thirds rule already built.
+
+Both numbers stand as built. One consequence to know: `structureAge` for
+the rack is one clock shared by both racks at a camp, so building the
+second resets the first one's age. The alternative is an age per rack,
+which the decay rules do not carry today.
 
 ### 5.3 What the player sees
 
@@ -432,3 +455,15 @@ of 4; the April gate stays 4 of 4 at day 26; the browser pass in
 section 6 is read; and the roadmap carries every reading. If the year
 gate is red after all five sections, the sub-project still lands and
 the reading is the opening of sub-project 2's spec.
+
+Measured. All five sections landed and the readings are in the roadmap,
+in the F section's "Measured with the year loop" paragraphs
+(`2026-09-03-survidle-realism-roadmap.md`), which carry the before
+numbers, what each piece moved, and the closing gates. In short: `npm
+test` green at 715 tests; the April gate 4 of 4 at day 26; the trend gate
+2 of 4 against its 3 of 4; the year gate 0 of 4 at level 20, 10 and
+fresh; the winter gate 0 of 4; the browser pass of section 6 read at both
+widths with nothing to fix. Three gates are red, and the two deaths they
+name are winter thirst at a camp holding an axe and outdoor cold in wool
+at -15 to -20 C on a walking task. That is the opening of sub-project 2's
+spec, as this section allows for.

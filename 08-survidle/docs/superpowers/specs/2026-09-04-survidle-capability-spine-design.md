@@ -56,7 +56,7 @@ is the roadmap item that builds it; "built" means it is in the tree today.
 | lean-to | Building 1 | sticks, logs, cordage (Woodcraft) | a roof: half the wetting, a night that does not kill | the open front, no fire inside | 1 | built |
 | bark bucket | Crafting 1 | bark (Woodcraft) | stored water, the water keep | splits at frost, competes for cordage | 1 | built |
 | fishing spear | Fishing 1 | stick, stone, cordage (Woodcraft, Foraging) | fish at the beginner rate | barely breaks even | 1 | built |
-| drying rack | Building 1 | sticks, cordage (Woodcraft), meat (Hunting, Fishing) | meat that keeps: 3 kg into 1 | 6 kg at a time, two dry days, animals at the rack | 2 | built; producer |
+| drying rack | Building 1 | sticks, cordage (Woodcraft), meat (Hunting, Fishing) | meat that keeps: 3 kg into 1 | 40 kg a rack, two racks a camp, two dry days or four wet, animals at the rack | 2 | built; producer |
 | jobs, grinds, keeps | 3, 5, 10 in each skill | the skill's own hours | the away horizon for every skill | grinds wear tools and cut out the haul | 1 to 2 | built; alone |
 | bone needle | Crafting 1 | bone (Hunting) | tailored clothing, the waterskin | the first kill comes first | 2 | built |
 | bow | Crafting 5 | a log (Woodcraft), cordage, a knife; sinew (Hunting) for arrows | roe deer and elk | arrows, sinew, a lumpy larder | 2 | built |
@@ -64,7 +64,7 @@ is the roadmap item that builds it; "built" means it is in the tree today.
 | cabin | Building 10 | 40 logs, 12 stone, 8 cordage (Woodcraft, Foraging) | +15 C, and the hearth, storehouse, cellar and smokehouse attach here | sixty hours, a winter's firewood | 2 to 3 | built |
 | reading water | Fishing 3 | D's ranges per shore | the shore says what it holds and where; the local rate; where to site a camp and set a trap | nothing passive yet | 1 to 2 | C; built |
 | fibres and resin | Foraging 3 and 5 | the season: nettle and willow in summer, resin from pine | a second source of cordage (Crafting); glue for arrows, a wound seal (5), a torch that burns longer | season, drying | 2 | C |
-| basket trap | Fishing 5 | stakes (Woodcraft), fibre (Foraging), Crafting; a read shore | passive fish: the first food a camp makes without you | emptying, hauling, the rack's 6 kg, November ice, 4's raiders | 1 to 2 | C, producers slot; producer; built |
+| basket trap | Fishing 5 | stakes (Woodcraft), fibre (Foraging), Crafting; a read shore | passive fish: the first food a camp makes without you | emptying, hauling, the rack's 40 kg, November ice, 4's raiders | 1 to 2 | C, producers slot; producer; built |
 | water storage | Building 3 | a vessel (Crafting), a camp | a week of water, the water keep as a stock | freezing, the walk to fill it | 2 | 3, producers slot; producer; built |
 | turf hut | Building 5 | poles, sticks, birch bark or bog turf (Woodcraft, Foraging) | a hearth: fire inside is legal, and the roof E's smoking needs; +10 C | re-turfing in a year or two | 2 to 3 | 3, producers slot; built |
 | scrape and tan | Crafting 3 and 5 | hide (Hunting), birch bark (Woodcraft), a vessel or pit (Crafting, Building) | tanned hide that every tailored piece needs; fat (D) for the tallow light | five days in the pit, a spoiled tan is the hide gone | 3 | E |
