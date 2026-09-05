@@ -1204,7 +1204,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") st.structureAge[sid] = 0;
       }
       state.stats.structures++;
-      if (sid !== "snare" && !hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
+      // Once per structure per life; the first snare set is the record's snare line.
+      if (!hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
       return;
     }

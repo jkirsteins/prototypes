@@ -12,12 +12,13 @@ import { advance } from "./advance";
 import { calendar, coastOpen } from "./calendar";
 import { fmtWorldDate } from "./epitaph";
 import { addItem, pile } from "./inventory";
+import { STRUCTURES } from "./items";
 import { log } from "./log";
 import { fmtName, rollName } from "./names";
 import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
 import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
-import type { GameState, ItemId, RegionState, WorldDate } from "./types";
+import type { GameState, ItemId, LifeEvent, LifeRecord, RegionState, WorldDate } from "./types";
 
 export const GAP_MIN_DAYS = 90;
 export const LANDING_MIN_KM = 3;
@@ -176,6 +177,17 @@ export function daysInWords(n: number): string {
   return String(n);
 }
 
+/** What the last survivor's record says was built at the old camp, as a list: "a fire pit, snares and a drying rack". Empty when nothing was. */
+function builtList(rec: LifeRecord): string {
+  const names = rec.events
+    .filter((e): e is LifeEvent & { kind: "built" } => e.kind === "built")
+    .sort((a, b) => a.day - b.day)
+    .map((e) => (e.structure === "snare" ? "snares" : `a ${STRUCTURES[e.structure].name}`));
+  if (!names.length) return "";
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
 /** Confirms the name and starts the heir's run. */
 export function land(state: GameState, world: World, name = state.landing?.name): void {
   const l = state.landing;
@@ -190,8 +202,10 @@ export function land(state: GameState, world: World, name = state.landing?.name)
   const lc = cellAt(world, l.cell);
   const km = Math.round(Math.hypot(cc.x - lc.x, cc.y - lc.y) * CELL_KM);
   const oldName = regionAt(world, cellAt(world, oldCamp).region).name;
+  const built = builtList(last);
+  const journal = built ? ` The journal of ${fmtName(last.name)} lists ${built} at ${oldName}.` : "";
   log(
     state,
-    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. You land at ${regionAt(world, l.region).name} with an axe, wool on your back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.`,
+    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. You land at ${regionAt(world, l.region).name} with an axe, wool on your back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.${journal}`,
   );
 }

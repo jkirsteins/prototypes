@@ -76,4 +76,10 @@ describe("the epitaph", () => {
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved at camp, with nothing in the pack and 70 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 55. Starved at camp, with nothing in the pack and 49 kg of firewood at camp."`);
   });
+
+  it("writes the first snare set as its own line", () => {
+    const r = rec();
+    r.events.push({ kind: "built", structure: "snare", day: 3, date: { year: 1, doy: 92 } });
+    expect(entry(r)).toContain("Day 3. Set the first snare.");
+  });
 });

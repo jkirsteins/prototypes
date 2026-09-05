@@ -510,6 +510,13 @@ function entryLinesHtml(lines: string[]): string {
   return `<div class="entries">${lines.map((l) => `<div class="e">${esc(l)}</div>`).join("")}</div>`;
 }
 
+/** "Veikko Urbonas lived 49 days." under the epitaph, for every survivor but the first. */
+function ancestorLine(state: GameState): string {
+  const prev = state.survivors[state.survivors.length - 2];
+  if (!prev?.died) return "";
+  return `<p class="ancestor">${esc(fmtName(prev.name))} lived ${prev.died.day} days.</p>`;
+}
+
 export function tombstoneHtml(state: GameState, _world: World): string {
   const rec = current(state);
   const next = landingDate(worldDate(state, state.dead!.minute)).date;
@@ -517,6 +524,7 @@ export function tombstoneHtml(state: GameState, _world: World): string {
   return `<div class="box">
 <h1>${esc(fmtName(rec.name))}</h1>
 <p>${esc(epitaphTail(rec))}</p>
+${ancestorLine(state)}
 ${entryLinesHtml(lines.slice(1))}
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>
