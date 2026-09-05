@@ -263,13 +263,19 @@ die of food before any snow falls and cold sits under band until it does;
 built), then B the risk forecast with the away cap as its
 horizon, then the testing infra (the section of that name below: the
 beacon behind an opt-in, the survey and the bars read from them), then
+the UI pass (the section of that name below: the Do panel folds and
+filters, the kind chosen per row instead of a mode, columns that scroll
+inside themselves, the phone layout, and the guidelines page the browser
+pass checks from then on), then
 3's siting (camp as a chosen cell, pulled out of 3 the way
 the hut and the trough were), then the first tester round: with B and
 siting in, the set the hybrid's bet needs exists (a death that persists,
 a producer, a camp that holds and was chosen, orders, a forecast that
 makes away risk legible), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
-earned it; then the rest of F in impact order (latitude by row with the
+earned it; then the save sync if the round asks for it (the section of
+that name below: a code on the settings panel and the two-device rule);
+then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
 run and its search order), then E hides and clothing, then the rest of
@@ -338,6 +344,19 @@ already in the life record, and it goes after B only so the forecast's
 month number is a field from the start. It was deferred out of the
 roadmap on 2026-09-04 as infra rather than game; with the round now a
 slot two items away it needs its own.
+
+Why the UI pass is before the round and the sync after it: the round
+measures the check-in loop, and a check-in is reading and one tap, which
+is the part of the game a phone fits best; half the incremental
+community opens a link on a phone, and a page that does not fit is a
+tester lost before the first death. On the desktop the Do panel has
+sixty to seventy rows in one column and the log sits a screen and a half
+down, so a tester who knows what they want cannot find it, and the
+order strip can shut every row on the panel. None of that is the bet;
+all of it stands between a tester and the bet. The sync is different: a
+save that follows the player needs a two-device rule, and whether
+testers want it is a finding the round produces for free when it is
+recruited as single-device.
 
 Why siting comes before the tester round and not in 3's slot: the
 promotion rule above is written for rungs the player earns, and siting
@@ -1509,6 +1528,80 @@ keep the page as light as it is:
 
 The round itself, twenty testers from the incremental community and the
 recruiting, is not part of this item; it is the slot after siting.
+
+### The UI pass
+
+**Curve.** No row and no tier. Expected: a tester who knows what they
+want finds it in one look, nothing a check-in needs is off the screen,
+and the page fits a phone.
+
+The desktop today is three columns with one breakpoint at 1300px, a
+centre no narrower than 560px, and a map of 72 by 36 glyphs at 11px,
+792px wide. The Do panel lists every gather, every species that lives
+here for hunting and fishing, sixteen camp tasks, every recipe and every
+structure: sixty to seventy rows in one column, two or three lines each,
+and every item adds rows. The log sits under the Doing panel, the Do
+panel and the inventory in the same column, a screen and a half down on
+a normal monitor. Nothing in the layout stops a panel from pushing the
+next one off the screen.
+
+The order strip is a mode: choose "keep camp at N" and every row whose
+skill is under the keep rung renders as a shut row with nothing to
+click, so early on choosing a keep shuts most of the panel, chop
+included, and the way out is to notice the strip. The shut rows were
+meant as the promise of the rung, and they still are; what is wrong is
+that the promise is a mode that applies to sixty rows at once.
+
+The pass, in one item:
+
+- **The kind is chosen per row, not as a mode.** A row's plain click is
+  "once", as it reads. The row expands in place to offer the other kinds
+  for that row alone, N times, until camp has N, keep camp at N,
+  forever, with bring-it and where beside them; the kinds the row's skill
+  has not earned are greyed there with the level and the hours to it, as
+  the skills panel words it. The promise stays, next to what can be done
+  now, and no row on the panel is ever shut by a choice made for another.
+  The global strip goes.
+- **Fold and filter.** Groups collapse and remember it. A text box at the
+  top of the panel narrows the rows as you type. Rows that cannot start
+  and are more than a level away fold under a "more" per group, and Make
+  lists what can be made now first.
+- **Columns scroll inside themselves.** Each column is the viewport's
+  height. The Do panel scrolls inside its box; the log keeps a fixed
+  slice at the foot of its column. The Doing panel, the away report, the
+  bars, B's forecast, the order list and the log are on screen at 1440
+  by 900 without scrolling.
+- **The phone layout.** One column under about 700px, with Doing, the
+  away report and the order list first, the map second in a horizontal
+  scroll container scrolled to the survivor on each rebuild, the rest
+  below. Buttons tall enough for a thumb; what the glyph tooltips say
+  moves into the region card, since touch has no hover; the zoom keys
+  already have buttons. Phone-only players get a whole game from this;
+  a desktop player gets nothing on the phone until the sync.
+- **The guidelines page.** `docs/ux.md`, a page: nothing is pushed off
+  the screen; a list past a dozen rows gets a fold and a filter; the
+  check-in fits above the fold; a row is two lines, label and small
+  print, with the bar; every browser pass runs at 1440 by 900 and at
+  390 wide. The page is what keeps the pass from rotting: every item
+  after it is checked against it in its browser pass, the way the
+  reference gate is run.
+
+### The save sync
+
+The save is local storage, so a phone is a different world from the
+desktop and the beacon counts one tester as two. Responsive alone
+serves phone-only players. For the save to follow the player it has to
+leave the device, and the rungs are: export and import as a file, which
+works and is not a check-in; a sync code on the settings panel with the
+save put to a key-value store on every save and fetched on every open,
+Cloudflare's free tier being enough; and Steam cloud for the Steam
+build. The storage is trivial. The item is the two-device rule: a tab
+left open on the desktop and a phone check-in both run the simulation
+forward and diverge, the same problem two tabs have today. Last writer
+by save time wins, the loser reloads and takes over, and the away
+report says which happened. It lands after the round, if the round's
+testers ask for the phone, and not before, so that the round is
+recruited as single-device and the asking is a finding.
 
 ### C. Skill tiers
 
