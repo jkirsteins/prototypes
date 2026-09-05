@@ -1543,6 +1543,15 @@ keep the page as light as it is:
   the round is not asked to find it. A random id in local storage is
   the RUM user id, shown on the same panel so the tester can quote it
   in the survey. No name, no email.
+- **The tester link.** `?tester=<cohort>` on any open marks the device
+  a tester: the flag and the cohort word are written beside the beacon
+  id in local storage, the parameter is dropped from the address, and
+  every event carries both from then on. The cohort word is whatever
+  the invite says, so a second recruiting wave is told apart from the
+  first. The flag lives beside the id and not inside the world, so it
+  survives "leave this world" and a new seed, and travels with the
+  save sync if that lands; the settings panel shows it with the id.
+  Everyone else stays counted, and the bars are read for the cohort.
 - **The game's facts as custom actions.** Opened (world seed, survivor
   index, game day), died (game day, cause, days survived, hours of
   attention in that life), began again (real time since the death), and
