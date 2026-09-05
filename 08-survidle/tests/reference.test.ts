@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar, coastOpen, START_DOY } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -26,6 +26,8 @@ import {
   stepReference,
   wantOpen,
   weekLines,
+  WINTER_WOOD_FROM_DOY,
+  WINTER_WOOD_TO_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { regionState } from "../src/sim/regionstate";
@@ -321,17 +323,22 @@ describe("the heir", () => {
     expect(r.heir.checkpoints.length).toBeGreaterThan(0);
   }, 30000);
 
-  it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
-    const r = runHeir(17, 60);
-    expect(r.found.reachedCampDay).not.toBeNull();
-    expect(r.found.reachedCampDay!).toBeLessThanOrEqual(3);
+  // Two lives of sixty days is seconds of simulation, so the two readings
+  // taken off the same run share it rather than raising the heir twice.
+  let sixty: ReturnType<typeof runHeir>;
+  beforeAll(() => {
+    sixty = runHeir(17, 60);
   }, 30000);
 
+  it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
+    expect(sixty.found.reachedCampDay).not.toBeNull();
+    expect(sixty.found.reachedCampDay!).toBeLessThanOrEqual(3);
+  });
+
   it("reports the trap's kilos and the new structures in the found line", () => {
-    const r = runHeir(17, 60);
-    expect(r.found).toHaveProperty("trapKg");
-    expect(r.found.trapKg === null || r.found.trapKg >= 0).toBe(true);
-  }, 30000);
+    expect(sixty.found).toHaveProperty("trapKg");
+    expect(sixty.found.trapKg === null || sixty.found.trapKg >= 0).toBe(true);
+  });
 
   it("a first life still alive at the day cap has no heir to raise, and stands in for both", () => {
     const r = runHeir(17, 1);
@@ -341,25 +348,15 @@ describe("the heir", () => {
   });
 });
 
+// The three-life run over a quarter of a year lives in tests/slow/lineage.test.ts
+// (`npm run test:slow`); what stays here is the shape of a lineage, cheaply.
 describe("the lineage", () => {
-  it("runs three lives on seed 17, each landing after a gap and reporting what it found", () => {
-    const r = runLineage(17, 250, 3);
-    expect(r.seed).toBe(17);
-    expect(r.lives.length).toBe(3);
-    expect(r.lives[0].index).toBe(1);
-    expect(r.lives[0].gapDays).toBe(0);
-    expect(r.lives[0].found).toBeNull();
-    for (const life of r.lives.slice(1)) {
-      expect(life.gapDays).toBeGreaterThanOrEqual(90);
-      expect(coastOpen(life.landed.doy)).toBe(true);
-      expect(life.found).not.toBeNull();
-      expect(life.found!.structures).toContain("firePit");
-      expect(typeof life.found!.logs).toBe("number");
-    }
-    for (const life of r.lives) {
-      expect(life.report.surplus.hang === null || life.report.surplus.hang >= 1).toBe(true);
-    }
-  });
+  it("raises an heir after the first life dies, landing it in the open coast with the old camp to find", () => {
+    const r = runLineage(17, 60, 2);
+    expect(r.lives.length).toBe(2);
+    expect(r.lives[1].found).not.toBeNull();
+    expect(coastOpen(r.lives[1].landed.doy)).toBe(true);
+  }, 30000);
 
   it("stops early when a life reaches the day cap alive", () => {
     const r = runLineage(17, 5, 3);
@@ -398,6 +395,27 @@ describe("wants by level", () => {
       expect(w.kind, w.req.arg).toBe("grind");
       expect(w.req.until.kind, w.req.arg).toBe("forever");
     }
+  });
+
+  it("withdraws the woodpile when the thaw closes it, and gives it again the next September", () => {
+    // Keeps are earned at woodcraft 10, so the woodpile stands as itself and
+    // is told from the list's 60 kg keep by its target.
+    const { state, world } = newGame(17, WINTER_WOOD_FROM_DOY);
+    setSkillLevel(state, "woodcraft", 10);
+    const player = new ReferencePlayer();
+    const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty === 400);
+    player.tick(state, world);
+    expect(woodpile().length).toBe(1);
+    // Forward to the thaw: the days left in the year from 1 September, then April's first day.
+    state.minute = (365 - WINTER_WOOD_FROM_DOY + WINTER_WOOD_TO_DOY) * 1440;
+    expect(calendar(state.minute, state.startDoy).dayOfYear).toBe(WINTER_WOOD_TO_DOY);
+    player.tick(state, world);
+    expect(woodpile()).toEqual([]);
+    // A full year from the start: 1 September again, and the want reopens.
+    state.minute = 365 * 1440;
+    expect(calendar(state.minute, state.startDoy).dayOfYear).toBe(WINTER_WOOD_FROM_DOY);
+    player.tick(state, world);
+    expect(woodpile().length).toBe(1);
   });
 
   it("opens the 400 kg firewood keep from 1 September and not in April, staying open through winter until the thaw", () => {

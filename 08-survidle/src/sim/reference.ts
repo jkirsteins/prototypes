@@ -24,7 +24,7 @@ import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
-import { orderMet, ordersHere } from "./orders";
+import { orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { current } from "./record";
 import { regionState } from "./regionstate";
@@ -323,15 +323,27 @@ export class ReferencePlayer {
       this.reachedDay = calendar(state.minute, state.startDoy).day;
       this.home = null;
     }
+    const cal = calendar(state.minute, state.startDoy);
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
-      if (list.some((o) => o.id === g.id)) continue;
+      if (list.some((o) => o.id === g.id)) {
+        // A want whose season has closed takes its standing order off the
+        // list rather than leaving it to be worked out of season: the
+        // woodpile given on 1 September would otherwise still be splitting
+        // 400 kg through the following summer. It is withdrawn, not
+        // finished, so the want is given again when the season reopens.
+        if (!wantOpen(state, this.wants[i], cal)) {
+          removeOrder(state, world, g.id);
+          this.given.delete(i);
+          this.trueKind.delete(i);
+        }
+        continue;
+      }
       if (this.trueKind.get(i)) this.finished.add(i);
       else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);
     }
-    const cal = calendar(state.minute, state.startDoy);
     for (let i = 0; i < this.wants.length; i++) {
       if (this.finished.has(i) || this.given.has(i)) continue;
       const w = this.wants[i];

@@ -186,7 +186,13 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
     npm install
     npm run dev      # http://127.0.0.1:5173/prototypes/08/
     npm test
+    npm run test:slow
     npm run build
+
+`npm test` is the commit gate and stays under twenty seconds; it excludes
+`tests/slow/`, which holds the runs measured in whole simulated seasons -
+the three-life lineage on seed 17. `npm run test:slow` runs those, and is
+worth a run when the reference player, the lineage or the landing moves.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
