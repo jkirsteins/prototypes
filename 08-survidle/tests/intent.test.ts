@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
-import { addItem, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
+import { addItem, herePile, isEmpty, pile, qty, removeItem } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
@@ -257,6 +257,7 @@ describe("the work tier", () => {
     addItem(pile(state, camp), "cordage", 2);
     addItem(pile(state, forest), "log", 4);
     addItem(state.player.pack, "driedMeat", 3);
+    removeItem(state.player.pack, "driedMeat", qty(state.player.pack, "driedMeat"));
     // The button agrees with startIntent: fetching counts as a way to start, so it is not greyed out.
     expect(intentOption(state, world, cal, "build", "leanTo", "nearest").ok).toBe(true);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);

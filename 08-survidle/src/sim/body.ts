@@ -9,17 +9,18 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { eat, edible } from "./actions";
-import { type Calendar, minutesUntilDawn } from "./calendar";
+import { type Calendar, dayNumber, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES } from "./items";
-import { today } from "./ledger";
+import { AUTO_EAT_ORDER, type FoodId, FOODS, ITEM_KG, MAX_SNARES } from "./items";
+import { today, weekBefore } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed, FAT_FULL, FAT_RIBS, FAT_THIN, FAT_WASTING } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { isRunning, type Step, walkStep } from "./steps";
+import { BURN } from "./tables";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
@@ -51,19 +52,50 @@ export const THIN_DAY: { fat: number; share: number; line: string }[] = [
 
 export type DayReason = "day" | "thin" | "fed";
 
+/** With tomorrow's food in hand, a half day: chores and the roof still get their hours, and a full larder never stalls the hut. */
+export const FED_DAY_SHARE = 0.5;
+export const FED_LINE = "Food for tomorrow in hand: a short day. You rest by the fire.";
+
 /**
- * The hours of work the body will do today and why: the working day, or
- * the reserve step that cut it. Read by the runner each minute, so the
- * step line logs the minute the body crosses into it while at work.
+ * The kcal of what the body will eat on its own, in the pack and at this
+ * region's camp together: the auto-eat foods that are edible right now.
+ * Raw meat is never eaten unasked and berries past the day's ceiling are
+ * refused, so neither counts.
  */
-export function dayHours(state: GameState, _world: World): { hours: number; reason: DayReason } {
+export function foodInHand(state: GameState, world: World): number {
+  const p = state.player;
+  const camp = pile(state, regionState(state, world, p.region).campCell);
+  let kcal = 0;
+  for (const f of AUTO_EAT_ORDER) if (edible(state, f)) kcal += (qty(p.pack, f) + qty(camp, f)) * FOODS[f].kcalPerKg;
+  return kcal;
+}
+
+/** A day's burn for this body: the ledger's week before today, all five buckets; the band top while nothing is on record. */
+export function dayBurn(state: GameState): number {
+  const w = weekBefore(state.ledger, dayNumber(state.minute));
+  if (w.days === 0) return BURN.day.hi;
+  const b = w.burn;
+  return b.base + b.activity + b.walk + b.cold + b.sick;
+}
+
+/**
+ * The hours of work the body will do today and why: the working day, the
+ * reserve step that cut it, or tomorrow's food in hand. The shorter of
+ * the two cuts applies, and on a tie the reserve is the reason, since it
+ * is the body and not the larder that cannot work. Read by the runner
+ * each minute, so the step line logs the minute the body crosses into
+ * it while at work.
+ */
+export function dayHours(state: GameState, world: World): { hours: number; reason: DayReason } {
   const p = state.player;
   let step = 0;
   for (let i = 0; i < THIN_DAY.length; i++) if (p.fat < THIN_DAY[i].fat * FAT_FULL) step = i + 1;
   if (step > p.thinStep) log(state, THIN_DAY[step - 1].line);
   p.thinStep = step;
-  if (step === 0) return { hours: p.workHours, reason: "day" };
-  return { hours: p.workHours * THIN_DAY[step - 1].share, reason: "thin" };
+  const thin = step === 0 ? p.workHours : p.workHours * THIN_DAY[step - 1].share;
+  const fed = foodInHand(state, world) >= dayBurn(state) ? p.workHours * FED_DAY_SHARE : p.workHours;
+  if (fed < thin) return { hours: fed, reason: "fed" };
+  return { hours: thin, reason: step === 0 ? "day" : "thin" };
 }
 
 /**
@@ -85,7 +117,7 @@ export function spentNow(state: GameState, world: World): boolean {
   const day = dayHours(state, world);
   if (today(state).workMin < day.hours * 60) return false;
   p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
-  log(state, "A day's work done. You rest by the fire.");
+  log(state, day.reason === "fed" ? FED_LINE : "A day's work done. You rest by the fire.");
   return true;
 }
 
