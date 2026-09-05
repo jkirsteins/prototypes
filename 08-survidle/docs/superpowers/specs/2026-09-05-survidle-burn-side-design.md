@@ -217,3 +217,27 @@ unit-level and add well under a second.
   producer's numbers.
 - The gate day, the bands and the survivor rows.
 - B, the risk forecast, which follows this in the build order.
+
+## 6. Measured
+
+Five readings of `npm run reference -- --heir`, not four: the food
+rule needed a fifth once it was guarded on the body's own full week.
+A, the clause alone with both rules off, reads April 4 of 4 and the
+heir gate 1 of 4. B, the reserve rule alone, reads April 2 of 4 and
+the heir gate 1 of 4, two of its first lives freezing beside uncooked
+meat and no firewood. C, the food rule alone, reads April 3 of 4 and
+the heir gate 3 of 4, the heir reading carried by a changed opening
+life rather than by the rule doing anything for heirs. D, both rules
+together (the state this item started from), reads April 1 of 4 and
+the heir gate 1 of 4. E, the food rule guarded on a full week, reads
+identical to A on every seed and every heir: the guard never gets a
+week old enough and a larder full enough to call a day fed before the
+seed's outcome is already decided.
+
+Both rules are withdrawn: B moves every April death earlier, and E
+shows the food rule, honestly guarded, never fires at all, so it moves
+nothing. The clause stays, since it is the gate's reading and not a
+lever. The clause alone reads April 4 of 4 and the heir gate 1 of 4,
+the same as reading A. The roadmap's calibration-pass paragraph headed
+"Measured with the burn side" is the record: the five readings, what
+B's cold deaths were, what C's opening death was, and the decision.

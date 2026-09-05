@@ -263,7 +263,10 @@ down near the old camp; not its ramp; built), then the first producers and
 stocks (C's reading water and basket trap, then 3's turf hut, then 3's
 water store, pulled out of their items, in that order because the heirs
 die of food before any snow falls and cold sits under band until it does;
-built), then B the risk forecast with the away cap as its
+built), then the burn side (the paragraph of that name in the
+calibration pass: the gate's food clause reads the week's intake, and
+two working-day rules were measured and withdrawn; measured), then B
+the risk forecast with the away cap as its
 horizon, then the testing infra (the section of that name below: the
 beacon on by default, the survey and the bars read from them), then
 the UI pass (the section of that name below: the Do panel folds and
@@ -1469,6 +1472,55 @@ of the reserve, which sits at zero whenever intake is under burn however
 much is eaten. The clause should read the week's intake against its burn,
 or the fat's trend, not the reserve at an instant.
 
+Measured with the burn side (spec
+`2026-09-05-survidle-burn-side-design.md`): what was built is the
+gate's food clause reading the week before a checkpoint, fed when the
+week ate at least 500 kcal a day; a working day that stepped down on
+the fat warnings, to 0.8, 0.6 and 0.4 of the day under three quarters,
+half and a quarter of the reserve; and a half day whenever tomorrow's
+cooked food was already in hand, read against the body's own week of
+burn, the band top standing in for that week before one existed. Five
+readings of `npm run reference -- --heir` show what each piece moves.
+A, the clause alone with both rules off, reads April 4 of 4 and the
+heir gate 1 of 4; the first lives starve on days 52, 49, 34 and 37, and
+the heirs on 32, 59, 29 and 46. B, the reserve rule alone, reads April
+2 of 4 and the heir gate 1 of 4; one first life starves on day 45 and
+three freeze, on 41, 18 and 14, the heirs on 36, 67, 31 and 31, with
+the gate week's work in band on every seed, 1,488 to 1,670. C, the food
+rule alone, reads April 3 of 4 and the heir gate 3 of 4; the first
+lives read 46 and 54 starved, 4 to wolves and 30 starved, the heirs on
+38, 55, 34 and 60. D, both rules together, reads April 1 of 4 and the
+heir gate 1 of 4; the first lives read 16 to sickness, 44 and 20
+starved, 4 to wolves. E, the food rule guarded on a full week, reads
+identical to A on every seed and every heir.
+
+B's cold deaths are the reserve rule's own case against it: seeds 42
+and 79 die on days 18 and 14 with 1.2 and 2.4 kilograms of raw meat
+sitting at camp, no firewood, and nothing eaten all week, because a
+shorter day starves the wood keeps first, the fire goes out, the snared
+meat is never cooked, and the body freezes beside its own food. The
+reserve's cost does not belong on the working day.
+
+C's opening death is the arrival kit's doing, not the rule's: the kit
+is one day's food by the band, so the first days off the boat read as
+fed and ran half days, and seed 42 had no roof up when the wolves came
+on day 4. C's heir reading of 3 of 4 comes from those changed first
+lives, not from the rule working for heirs; guarded on the body's own
+week, as E is, the rule never fires, because no April camp and no
+August heir ever holds a week's burn of cooked food.
+
+The decision is that both rules are withdrawn and the clause is kept,
+on the spec's own rule that what moves nothing goes and what moves a
+death earlier goes too. April reads 4 of 4 and the heir gate 1 of 4 on
+the clause alone, the deaths after the gate unchanged at starvation on
+days 34 to 52. The burn side's lever is not the hours: work burn still
+sits over its band, at 1,763 to 2,030 kcal a day with 500 to 780 of it
+walking, and the next reading of that belongs to the list's shape, the
+trips between camp, shore and heath, or to the survivor rows that carry
+a heir past a first snow, not to a shorter day; the horizon at D reads
+as it did for the producers, four stages over their bands and the
+stocked stage in band on all four seeds, and says nothing new.
+
 ### B. The risk forecast
 
 **Curve.** The horizon curve's instrument: the forecast's first row is
@@ -2072,7 +2124,8 @@ first lives read trap weeks of 700 and 757 kcal a day on seeds 17 and
 79, and two heirs inherit a working trap. April's 2 of 4 is accepted
 against that: one honest deficit (seed 42) and one the food clause
 misreads (seed 19, eating 2,971 a day), both named in the calibration
-pass above, where the burn side is now the next change. The heir gate
+pass above, whose burn-side paragraph carries what was measured and
+withdrawn. The heir gate
 is measured meaningfully once the tree's carry lands with the rest of F:
 the survivor ladder's row 2 is a carried heir, a quarter carry in one
 skill and keeps from birth, and 1 of 4 is the expected reading for a

@@ -9,6 +9,7 @@
 **Tech Stack:** TypeScript, Vite, vitest. Run everything from `08-survidle/`. `npm test` must stay under ten seconds.
 
 **Spec:** `08-survidle/docs/superpowers/specs/2026-09-05-survidle-burn-side-design.md`
+**Outcome:** both rules measured and withdrawn; see the spec's section 6 and the roadmap's burn-side paragraph.
 
 ## Global Constraints
 
