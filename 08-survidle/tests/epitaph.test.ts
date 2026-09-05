@@ -61,9 +61,10 @@ describe("the epitaph", () => {
     expect(entry(r)[0]).toBe("Eirik Kalnins. Landed 1 April, year 1.");
   });
 
-  it("is deterministic for the reference seeds", () => {
+  it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved 1.2 km from camp, with 2.4 kg of food in the pack and 70 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 49. Starved at camp, with 1.2 kg of food in the pack and no firewood at camp."`);
+    // Fish capacities now come from biomass per hectare, yielding tens of thousands per km2; this increases trap yield.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 59. Starved at camp, with nothing in the pack and 79 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 55. Starved 0.9 km from camp, with 1.2 kg of food in the pack and 84 kg of firewood at camp."`);
   });
 });

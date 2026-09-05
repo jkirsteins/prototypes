@@ -59,6 +59,18 @@ export interface SpeciesDef {
 
 const resident = (winter?: number): SeasonRule => (winter === undefined ? { kind: "resident" } : { kind: "resident", winter });
 const migrant = (arrive: number, leave: number, away?: "denned"): SeasonRule => (away ? { kind: "migrant", arrive, leave, away } : { kind: "migrant", arrive, leave });
+
+/**
+ * Fish per square kilometre of water from a standing biomass in kg per
+ * hectare and the mean weight of one fish. A boreal lake carries perch at
+ * 10 to 50 kg/ha and pike at 10 to 20; the numbers below sit inside those
+ * ranges, so a region's lake holds tens of thousands of perch and a
+ * survivor's take never moves its density. A pond is still fishable down.
+ */
+export function perKm2(kgPerHa: number, kgEach: number): number {
+  return Math.round((kgPerHa * 100) / kgEach);
+}
+
 const fish = (name: string, lake: number | null, sea: number | null, range: number, odds: number, meatKg: number, extra: Partial<SpeciesDef> & { level?: number; night?: number; lie?: string } = {}): SpeciesDef => ({
   name, kind: "fish",
   habitat: { ...(lake !== null ? { lake } : {}), ...(sea !== null ? { sea } : {}) },
@@ -137,19 +149,19 @@ const SPECIES_DEFS_RAW = {
   woodpecker: { name: "great spotted woodpecker", kind: "bird", habitat: { spruce: 2, pine: 2, birch: 2 }, range: 0.8, season: resident(), growth: 0.005,
     calls: [{ sound: "woodpecker", when: "day", months: [2, 4], weight: 2 }] },
 
-  // Lake fish.
-  perch: fish("perch", 40, null, 0.9, 0.6, 0.3, { lie: "along the reeds" }),
-  roach: fish("roach", 40, null, 0.6, 0.7, 0.2, { lie: "in the shallows" }),
-  pike: fish("pike", 8, null, 0.8, 0.35, 2.0, { level: 3, lie: "in the reeds" }),
-  whitefish: fish("whitefish", 20, null, 0.6, 0.5, 0.6, { level: 2, lie: "off the point" }),
-  char: fish("arctic char", 15, null, 0.3, 0.45, 0.8, { level: 4, lie: "in the deep water" }),
-  trout: fish("brown trout", 12, null, 0.5, 0.4, 0.7, { level: 3, lie: "at the inflow" }),
-  burbot: fish("burbot", 10, null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5), lie: "on the bottom" }),
+  // Lake fish: biomass per hectare over mean weight (perKm2).
+  perch: fish("perch", perKm2(30, 0.08), null, 0.9, 0.6, 0.3, { lie: "along the reeds" }),
+  roach: fish("roach", perKm2(20, 0.1), null, 0.6, 0.7, 0.2, { lie: "in the shallows" }),
+  pike: fish("pike", perKm2(15, 1.5), null, 0.8, 0.35, 2.0, { level: 3, lie: "in the reeds" }),
+  whitefish: fish("whitefish", perKm2(10, 0.5), null, 0.6, 0.5, 0.6, { level: 2, lie: "off the point" }),
+  char: fish("arctic char", perKm2(5, 0.6), null, 0.3, 0.45, 0.8, { level: 4, lie: "in the deep water" }),
+  trout: fish("brown trout", perKm2(5, 0.5), null, 0.5, 0.4, 0.7, { level: 3, lie: "at the inflow" }),
+  burbot: fish("burbot", perKm2(5, 1.0), null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5), lie: "on the bottom" }),
 
-  // Sea fish.
-  cod: fish("cod", null, 30, 0.9, 0.5, 2.5, { level: 2, lie: "off the rocks" }),
-  saithe: fish("saithe", null, 25, 0.7, 0.5, 1.5, { lie: "off the rocks" }),
-  herring: fish("herring", null, 60, 0.6, 0.8, 0.15, { lie: "off the point" }),
+  // Sea fish, the coastal strip: cod and saithe thin, herring in shoals.
+  cod: fish("cod", null, perKm2(5, 2.5), 0.9, 0.5, 2.5, { level: 2, lie: "off the rocks" }),
+  saithe: fish("saithe", null, perKm2(5, 1.5), 0.7, 0.5, 1.5, { lie: "off the rocks" }),
+  herring: fish("herring", null, perKm2(30, 0.15), 0.6, 0.8, 0.15, { lie: "off the point" }),
 } satisfies Record<string, SpeciesDef>;
 
 export type Species = keyof typeof SPECIES_DEFS_RAW;

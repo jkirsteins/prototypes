@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  awayWord, extrasClass, fishSpecies, huntedLand, isFish, isHunted, isVoiceOnly, seasonFactor, SPECIES_DEFS, SPECIES_IDS, waterOf,
+  awayWord, extrasClass, fishSpecies, huntedLand, isFish, isHunted, isVoiceOnly, perKm2, seasonFactor, SPECIES_DEFS, SPECIES_IDS, waterOf,
 } from "../src/sim/species";
 import { AUTO_EAT_ORDER, FOODS, ITEM_KG, KG_ITEMS, RECIPES } from "../src/sim/items";
 import { monthName } from "../src/sim/calendar";
@@ -112,5 +112,26 @@ describe("the species catalogue", () => {
     expect(monthName(0)).toBe("January");
     expect(monthName(3)).toBe("April");
     expect(monthName(11)).toBe("December");
+  });
+});
+
+describe("fish capacities", () => {
+  it("come from biomass per hectare over mean weight, so one survivor never moves a shore's density", () => {
+    // A boreal lake: perch 30 kg/ha at 80 g, pike 15 kg/ha at 1.5 kg (year loop spec 2.1).
+    expect(perKm2(30, 0.08)).toBe(37500);
+    expect(SPECIES_DEFS.perch.habitat.lake).toBe(perKm2(30, 0.08));
+    expect(SPECIES_DEFS.roach.habitat.lake).toBe(perKm2(20, 0.1));
+    expect(SPECIES_DEFS.pike.habitat.lake).toBe(perKm2(15, 1.5));
+    expect(SPECIES_DEFS.whitefish.habitat.lake).toBe(perKm2(10, 0.5));
+    expect(SPECIES_DEFS.char.habitat.lake).toBe(perKm2(5, 0.6));
+    expect(SPECIES_DEFS.trout.habitat.lake).toBe(perKm2(5, 0.5));
+    expect(SPECIES_DEFS.burbot.habitat.lake).toBe(perKm2(5, 1.0));
+    expect(SPECIES_DEFS.cod.habitat.sea).toBe(perKm2(5, 2.5));
+    expect(SPECIES_DEFS.saithe.habitat.sea).toBe(perKm2(5, 1.5));
+    expect(SPECIES_DEFS.herring.habitat.sea).toBe(perKm2(30, 0.15));
+    for (const s of fishSpecies()) {
+      const h = SPECIES_DEFS[s].habitat;
+      expect((h.lake ?? 0) + (h.sea ?? 0), s).toBeGreaterThanOrEqual(200);
+    }
   });
 });
