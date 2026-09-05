@@ -263,13 +263,19 @@ die of food before any snow falls and cold sits under band until it does;
 built), then B the risk forecast with the away cap as its
 horizon, then the testing infra (the section of that name below: the
 beacon behind an opt-in, the survey and the bars read from them), then
+the UI pass (the section of that name below: the Do panel folds and
+filters, the kind chosen per row instead of a mode, columns that scroll
+inside themselves, the phone layout, and the guidelines page the browser
+pass checks from then on), then
 3's siting (camp as a chosen cell, pulled out of 3 the way
 the hut and the trough were), then the first tester round: with B and
 siting in, the set the hybrid's bet needs exists (a death that persists,
 a producer, a camp that holds and was chosen, orders, a forecast that
 makes away risk legible), so twenty testers go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
-earned it; then the rest of F in impact order (latitude by row with the
+earned it; then the save sync if the round asks for it (the section of
+that name below: a code on the settings panel and the two-device rule);
+then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
 run and its search order), then E hides and clothing, then the rest of
@@ -280,7 +286,10 @@ and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
 territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
 4 and 6 (depletion and fed wolves), each when its sub-project does, and
-the reference player says when the ramp is enough. 2 rivers is flavour
+the reference player says when the ramp is enough. The first of those
+arrived unbidden with the producers: an heir inherits a shore its
+ancestor and its ancestor's trap fished for six weeks, and the fish row
+reads under band on every heir where it read in band for the ancestor. 2 rivers is flavour
 and has no slot: it lands whenever there is room after 3, and when it
 does it plugs into the water features 1, C and 3 own rather than bringing
 its own. A capability is promoted in this order when the one before it
@@ -338,6 +347,19 @@ already in the life record, and it goes after B only so the forecast's
 month number is a field from the start. It was deferred out of the
 roadmap on 2026-09-04 as infra rather than game; with the round now a
 slot two items away it needs its own.
+
+Why the UI pass is before the round and the sync after it: the round
+measures the check-in loop, and a check-in is reading and one tap, which
+is the part of the game a phone fits best; half the incremental
+community opens a link on a phone, and a page that does not fit is a
+tester lost before the first death. On the desktop the Do panel has
+sixty to seventy rows in one column and the log sits a screen and a half
+down, so a tester who knows what they want cannot find it, and the
+order strip can shut every row on the panel. None of that is the bet;
+all of it stands between a tester and the bet. The sync is different: a
+save that follows the player needs a two-device rule, and whether
+testers want it is a finding the round produces for free when it is
+recruited as single-device.
 
 Why siting comes before the tester round and not in 3's slot: the
 promotion rule above is written for rungs the player earns, and siting
@@ -1418,6 +1440,23 @@ day now, so F core is next; the survivors starve on days 40 to 48 and the
 horizon rows end in cold and thirst, which is what the trap and the water
 storage answer in their slot.
 
+Measured again with the producers in (the F row carries the runs): the
+gap both gates die of is on the burn side. Work burn reads over its band
+on every seed and every heir, before the producers and after them: 1,800
+to 2,200 kcal a day, of which 500 to 1,000 is walking, three hours a day
+on the paths between camp, the shore, the heath and the forest, because
+the runner works its ten hours whatever food it holds. A body doing that
+needs 3,500 to 4,000 a day, and no April shore and five snares provide
+it; the producers add a few hundred to a gap of two thousand. The next
+calibration change is therefore not a food row: a runner that rests once
+the day's food is in hand, or a working day that shortens on an empty
+reserve, measured on both gates before any producer is tuned. And the
+gate's food clause misreads a body in deficit: seed 19 read unfed at day
+26 while eating 2,971 kcal a day, because the clause is a 04:00 snapshot
+of the reserve, which sits at zero whenever intake is under burn however
+much is eaten. The clause should read the week's intake against its burn,
+or the fat's trend, not the reserve at an instant.
+
 ### B. The risk forecast
 
 **Curve.** The horizon curve's instrument: the forecast's first row is
@@ -1509,6 +1548,80 @@ keep the page as light as it is:
 
 The round itself, twenty testers from the incremental community and the
 recruiting, is not part of this item; it is the slot after siting.
+
+### The UI pass
+
+**Curve.** No row and no tier. Expected: a tester who knows what they
+want finds it in one look, nothing a check-in needs is off the screen,
+and the page fits a phone.
+
+The desktop today is three columns with one breakpoint at 1300px, a
+centre no narrower than 560px, and a map of 72 by 36 glyphs at 11px,
+792px wide. The Do panel lists every gather, every species that lives
+here for hunting and fishing, sixteen camp tasks, every recipe and every
+structure: sixty to seventy rows in one column, two or three lines each,
+and every item adds rows. The log sits under the Doing panel, the Do
+panel and the inventory in the same column, a screen and a half down on
+a normal monitor. Nothing in the layout stops a panel from pushing the
+next one off the screen.
+
+The order strip is a mode: choose "keep camp at N" and every row whose
+skill is under the keep rung renders as a shut row with nothing to
+click, so early on choosing a keep shuts most of the panel, chop
+included, and the way out is to notice the strip. The shut rows were
+meant as the promise of the rung, and they still are; what is wrong is
+that the promise is a mode that applies to sixty rows at once.
+
+The pass, in one item:
+
+- **The kind is chosen per row, not as a mode.** A row's plain click is
+  "once", as it reads. The row expands in place to offer the other kinds
+  for that row alone, N times, until camp has N, keep camp at N,
+  forever, with bring-it and where beside them; the kinds the row's skill
+  has not earned are greyed there with the level and the hours to it, as
+  the skills panel words it. The promise stays, next to what can be done
+  now, and no row on the panel is ever shut by a choice made for another.
+  The global strip goes.
+- **Fold and filter.** Groups collapse and remember it. A text box at the
+  top of the panel narrows the rows as you type. Rows that cannot start
+  and are more than a level away fold under a "more" per group, and Make
+  lists what can be made now first.
+- **Columns scroll inside themselves.** Each column is the viewport's
+  height. The Do panel scrolls inside its box; the log keeps a fixed
+  slice at the foot of its column. The Doing panel, the away report, the
+  bars, B's forecast, the order list and the log are on screen at 1440
+  by 900 without scrolling.
+- **The phone layout.** One column under about 700px, with Doing, the
+  away report and the order list first, the map second in a horizontal
+  scroll container scrolled to the survivor on each rebuild, the rest
+  below. Buttons tall enough for a thumb; what the glyph tooltips say
+  moves into the region card, since touch has no hover; the zoom keys
+  already have buttons. Phone-only players get a whole game from this;
+  a desktop player gets nothing on the phone until the sync.
+- **The guidelines page.** `docs/ux.md`, a page: nothing is pushed off
+  the screen; a list past a dozen rows gets a fold and a filter; the
+  check-in fits above the fold; a row is two lines, label and small
+  print, with the bar; every browser pass runs at 1440 by 900 and at
+  390 wide. The page is what keeps the pass from rotting: every item
+  after it is checked against it in its browser pass, the way the
+  reference gate is run.
+
+### The save sync
+
+The save is local storage, so a phone is a different world from the
+desktop and the beacon counts one tester as two. Responsive alone
+serves phone-only players. For the save to follow the player it has to
+leave the device, and the rungs are: export and import as a file, which
+works and is not a check-in; a sync code on the settings panel with the
+save put to a key-value store on every save and fetched on every open,
+Cloudflare's free tier being enough; and Steam cloud for the Steam
+build. The storage is trivial. The item is the two-device rule: a tab
+left open on the desktop and a phone check-in both run the simulation
+forward and diverge, the same problem two tabs have today. Last writer
+by save time wins, the loser reloads and takes over, and the away
+report says which happened. It lands after the round, if the round's
+testers ask for the phone, and not before, so that the round is
+recruited as single-device and the asking is a finding.
 
 ### C. Skill tiers
 
@@ -1845,50 +1958,53 @@ the number they are measured against. Cold sits under band through
 September on every heir, so the trap is what moves this gate and the
 turf hut is what carries the survivor past it into the snow.
 
-Measured with the producers in (`2026-09-05-survidle-first-producers-design.md`):
-the April gate passed 4 of 4. `npx vite-node scripts/reference.ts --heir
-17 19 42 79 250`: seed 17's first life starves on day 48; a 90-day gap
-lands the heir 16 August, year 1, 12.4 km from the old camp, finding a
-fire pit standing, 5 snares, a trap with 5.0 kg, 0 kcal and 65 kg of
-firewood at camp; the heir starves on day 37. Seed 19's first life
-starves on day 51; a 90-day gap lands the heir 19 August, year 1, 13.2
-km away, finding the same fire pit and 5 snares, no trap, 0 kcal and 68
-kg of firewood at camp; the heir is alive and fed at first snow on day
-27 and starves on day 48. Seed 42's first life starves on day 40; a
-90-day gap lands the heir 8 August, year 1, 10.4 km away, finding a fire
-pit standing, 5 snares, no trap, 0 kcal and no firewood at camp; the
-heir dies of sickness on day 16, before first snow. Seed 79's first
-life starves on day 40; a 90-day gap lands the heir 8 August, year 1,
-18.3 km away, finding a fire pit standing, 5 snares, no trap, 0 kcal
-and 89 kg of firewood at camp; against the first-snow gate on day 34
-the heir fails, starving on day 36. Heir passed 1 of 4. `npx vite-node
-scripts/horizon.ts 17 19 42 79 90`: the producers stage (trap, hut and
-trough at keeps) holds 33, 30, 37 and 35 days against its 10-to-20-day
-band, over on all four; the stocked stage holds 46, 49, 44 and 46 days
+Measured with the producers in (`2026-09-05-survidle-first-producers-design.md`),
+with the trap's fish coming out when the survivor arrives at its cell:
+the April gate passed 2 of 4. Seed 17 stands fed at day 26 with 3,700
+kcal at camp and starves on day 52; seed 19 reads unfed at day 26 while
+eating 2,971 kcal a day, and starves on day 49; seed 42 reads unfed at
+net -343 with sickness burning 180 a day, and starves on day 34; seed 79
+stands fed and starves on day 37. `npx vite-node scripts/reference.ts
+--heir 17 19 42 79 250`: seed 17's heir lands 20 August, year 1, 12.4 km
+from the old camp, finding a fire pit, 5 snares, a trap emptied to 0.0 kg
+and 70 kg of firewood, draws 129 kcal a day from the trap in its first
+week, fails the first-snow gate on day 11 and starves on day 32. Seed
+19's heir lands 17 August, 13.2 km away, finding no trap and no
+firewood, is alive and fed at first snow on day 14 on hares and berries,
+and starves on day 59. Seed 42's heir lands 2 August, 10.4 km away,
+finding no trap, and starves on day 29 before any snow. Seed 79's heir
+lands 5 August, 18.3 km away, finding a trap emptied to 0.0 kg, draws
+400 kcal a day from it, and starves on day 46 before any snow. Heir
+passed 1 of 4. `npx vite-node scripts/horizon.ts 17 19 42 79 90`: the
+producers stage holds 33, 36, 36 and 34 days against its 10-to-20-day
+band, over on all four; the stocked stage holds 41, 49, 39 and 34 days
 against its 20-to-60-day band, in band on all four.
 
-The trap works: its dawn draws yielded 486 to 786 kcal a day on three
-seeds when set on days 10 to 18. But the first month cannot afford it:
-set early and emptied daily, April read 1 of 4, the reads and the trips
-costing what the trap yielded; set early and never emptied, April read
-1 of 4 again, the unemptied basket drawing the shore's fish down while
-the spear fished it. With every producer line below the hunt keep,
-April is 4 of 4 again, and the lines below the hunt keep are reached
-only when everything above is met or blocked - which one first life in
-four managed: seed 17 set its trap and starved with it standing full at
-5.0 kg on day 48. Seeds 19, 42 and 79 never reached them and their
-first lives read no trap. The heir who inherits a full trap starves
-beside it: seed 17's heir walked home to "trap with 5.0 kg", read trap
-0 in its own week, and starved on day 37 - the empty keep sits below
-the same hunt keep, and the heir's own list never reaches it either.
-What that makes next: the calibration pass owns the list's scheduling
-(a keep that is met most of the time, or a runner that empties a trap
-when it passes to fish), and the heir gate's reading of the producers
-waits on it; the trap's own bottleneck, the rack's 6 kg and spoilage,
-is unmeasured until then. A spoiled once-craft counts as done and is
-never retried (`it.done++` before `complete()` decides), which hides
-the bow at low Crafting. An unemptied trap keeps drawing the shore's
-population down.
+How the trap got there. Its dawn draws yielded 486 to 786 kcal a day on
+three seeds when set on days 10 to 18, but no place in the reference
+list could afford an empty keep: set early and emptied daily, April read
+1 of 4, the trips costing what the trap yielded; set early and never
+emptied, 1 of 4 again, the unemptied basket drawing the shore's fish
+down while the spear fished it; below the hunt keep, the lines were
+reached by one first life in four, and the heir who inherited a full trap
+starved beside it. The snares already had the answer: hares come with you
+when you pass the heath. A trap's fish now come out when you arrive at
+its cell, so the fish keep's own trips bring the catch home and the list
+has no empty keep; the trap is set the day the spear exists. With that,
+first lives read trap weeks of 700 and 757 kcal a day on seeds 17 and
+79, and two heirs inherit a working trap. April's 2 of 4 is accepted
+against that: one honest deficit (seed 42) and one the food clause
+misreads (seed 19, eating 2,971 a day), both named in the calibration
+pass above, where the burn side is now the next change. The heir gate
+is measured meaningfully once the tree's carry lands with the rest of F:
+the survivor ladder's row 2 is a carried heir, a quarter carry in one
+skill and keeps from birth, and 1 of 4 is the expected reading for a
+fresh heir until then. What to watch when carry lands is a Fishing 10
+heir at a read shore, drawing five times a day from a trap and a hut
+waiting, passing 4 of 4. Two runner findings stand: a spoiled once-craft
+counts as done and is never retried (`it.done++` before `complete()`
+decides), which hides the bow at low Crafting; and a trap keeps drawing
+the shore's population down whether or not anyone empties it.
 
 The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
 the epitaph, the entry and "The next boat lands in July, year 1". Begin
@@ -2394,6 +2510,11 @@ cross a floor.
   it out and report. The player prepares, or does not.
 - Each sub-project ships with the browser pass that shows a run through
   its new danger, not only its tests.
+- Every task the sim offers is offered by the Do panel, or named in an
+  exclusion list with its reason, and a test asserts it both ways, the
+  third such guard beside the card policy and the capability table. The
+  panel's rows are a hand-kept list, and it had missed all three of the
+  producers' tasks until a browser pass caught it.
 - Every death is the end of a survivor, never of the world. Nothing a
   sub-project adds may make a set-up hold forever. Nothing carries on the
   person except through the Lineage tree, and the tree never buys
@@ -2407,7 +2528,11 @@ cross a floor.
   tree's carry and rate ladders improve rates between tiers; every major
   tier names something the survivor can newly do, recognise, make,
   automate or survive, with a name the player can remember and a log line
-  when it opens. A tier whose best name is "+X%" is not a tier.
+  when it opens. A tier whose best name is "+X%" is not a tier. A tier
+  sits on a task with no roll, or on the rate the tool then earns, never
+  on the making of it: a recommended level on a craft halves its odds
+  per level short and makes the tier a lottery, which is what the basket
+  trap's Fishing 5 did until it moved to setting the trap.
 - Every major capability connects systems: it depends on something
   outside its own skill and makes something outside its own skill more
   useful. The capability spine

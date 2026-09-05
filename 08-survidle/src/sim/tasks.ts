@@ -971,6 +971,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
     placeAt(state, world, cellOf(state, world));
     if (wasTravel) log(state, `You reach ${label}.`);
     if (spotHere(state, world) === "heath") collectSnares(state, world);
+    collectTrap(state, world);
   }
 }
 
@@ -1115,11 +1116,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "emptyTrap": {
-      const kg = st.trap!.kg;
-      st.trap!.kg = 0;
-      produce(state, world, "fish", kg);
-      creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
-      state.stats.animals++;
+      const kg = takeTrapFish(state, world);
       log(state, `You empty the trap: ${kg.toFixed(1)} kg of fish.`, "good");
       return;
     }
@@ -1278,6 +1275,26 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "sleep":
       return;
   }
+}
+
+/** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken. */
+function takeTrapFish(state: GameState, world: World): number {
+  const st = regionState(state, world, state.player.region);
+  const kg = st.trap?.kg ?? 0;
+  if (!st.trap || kg <= 1e-9) return 0;
+  st.trap.kg = 0;
+  produce(state, world, "fish", kg);
+  creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
+  state.stats.animals++;
+  return kg;
+}
+
+/** The fish in the trap come out when you arrive at its cell, as hares do at the snares: a basket at the shore you stand on is not a trip. */
+function collectTrap(state: GameState, world: World): void {
+  const st = regionState(state, world, state.player.region);
+  if (!st.trap || cellOf(state, world) !== st.trap.cell) return;
+  const kg = takeTrapFish(state, world);
+  if (kg > 1e-9) log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; you take them.`, "good");
 }
 
 /** Hares hanging in the snares come with you when you pass the heath. */

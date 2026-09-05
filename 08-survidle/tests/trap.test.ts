@@ -121,6 +121,28 @@ describe("the basket trap", () => {
     expect(yieldItem("emptyTrap")).toBe("fish");
   });
 
+  it("the fish come out into the pack when you arrive at the trap, as hares do at the snares", () => {
+    const g = readyToSet(200);
+    setTrap(g);
+    g.st.trap!.kg = 1.2;
+    placeAtSpot(g.state, g.world, g.state.player.region, "camp");
+    expect(startTask(g.state, g.world, cal, "walk", `cell:${g.cell}`)).toBe(true);
+    let n = 0;
+    while (g.state.task && n < 200) { advance(g.state, g.world, 5); n++; }
+    expect(cellOf(g.state, g.world)).toBe(g.cell);
+    expect(g.st.trap!.kg).toBe(0);
+    expect(qty(g.state.player.pack, "fish")).toBeCloseTo(1.2, 6);
+    expect(today(g.state).yield.trap).toBeCloseTo(1200, 6);
+    expect(g.state.log.some((l) => l.text === "1.2 kg of fish in the trap at the shore; you take them.")).toBe(true);
+    // Arriving at an empty trap says nothing.
+    const before = g.state.log.length;
+    placeAtSpot(g.state, g.world, g.state.player.region, "camp");
+    startTask(g.state, g.world, cal, "walk", `cell:${g.cell}`);
+    n = 0;
+    while (g.state.task && n < 200) { advance(g.state, g.world, 5); n++; }
+    expect(g.state.log.slice(before).some((l) => /in the trap/.test(l.text))).toBe(false);
+  });
+
   it("the ice takes it, and says so", () => {
     const g = readyToSet();
     setTrap(g);

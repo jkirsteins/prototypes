@@ -68,7 +68,7 @@ describe("the reference player", () => {
     expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
   });
 
-  it("the producers sit below the hunt keep, right before the axe keep; the fish keep follows the cook keeps", () => {
+  it("the trap follows the spear with no empty keep, the hut group sits below the hunt keep, and the fish keep follows the cook keeps", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
     expect(tasks[cook - 1]).toBe("cook:fish");
@@ -77,14 +77,16 @@ describe("the reference player", () => {
     expect(tasks[cook + 3]).toBe("build:dryingRack");
     const hang = tasks.indexOf("hang:");
     expect(tasks[hang + 1]).toBe("craft:bow");
+    const spear = tasks.indexOf("craft:fishingSpear");
+    expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
+    expect(tasks[spear + 4]).toBe("cook:fish");
+    expect(tasks).not.toContain("emptyTrap:");
     const hunt = tasks.indexOf("hunt:any");
-    expect(tasks.slice(hunt + 1, hunt + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
-    expect(tasks[hunt + 4]).toBe("emptyTrap:");
-    expect(tasks[hunt + 5]).toBe("craft:axe");
+    expect(tasks[hunt + 1]).toBe("craft:axe");
     const axe = tasks.indexOf("craft:axe");
     expect(tasks.slice(axe + 1, axe + 6)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:"]);
     expect(tasks[axe + 6]).toBe("chop:");
-    expect(REFERENCE_ORDERS.length).toBe(36);
+    expect(REFERENCE_ORDERS.length).toBe(35);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
