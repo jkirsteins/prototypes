@@ -10,10 +10,11 @@ export function mountAwayDial(root: HTMLElement, get: () => number, set: (hours:
   const label = root.querySelector<HTMLElement>("[data-away=label]")!;
   input.min = "1";
   input.max = String(AWAY_HOURS_MAX);
+  const clamp = (h: number) => Math.min(AWAY_HOURS_MAX, Math.max(1, Math.round(Number(h) || 1)));
   const show = (h: number) => { input.value = String(h); label.textContent = `${h} hour${h === 1 ? "" : "s"}`; };
-  show(get());
+  show(clamp(get()));
   input.addEventListener("input", () => {
-    const h = Math.min(AWAY_HOURS_MAX, Math.max(1, Math.round(Number(input.value) || 1)));
+    const h = clamp(Number(input.value));
     set(h);
     show(h);
   });
