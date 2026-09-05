@@ -60,6 +60,10 @@ const sounds = createScheduler(audio);
 // requestForecast() (defined after boot(), once world is real) - declared here so
 // neither reads it before it is initialized.
 let forecastAt = { minute: -Infinity, day: -1, region: -1 };
+/** Every life-restart site calls this so the next frame requests by invariant, not by the side effect of state.minute happening to have moved. */
+function resetForecastAt(): void {
+  forecastAt = { minute: -Infinity, day: -1, region: -1 };
+}
 
 function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   const g = newGame(seed, startDoy);
@@ -69,7 +73,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   ui.away = null;
   ui.confirmAbandon = false;
   resetPanels();
-  forecastAt = { minute: -Infinity, day: -1, region: -1 };
+  resetForecastAt();
   saveGame(state);
 }
 
@@ -240,6 +244,7 @@ function onClick(ev: Event) {
       break;
     case "begin-again":
       beginAgain(state, world);
+      resetForecastAt();
       break;
     case "reroll-name":
       rerollName(state);
@@ -247,6 +252,7 @@ function onClick(ev: Event) {
     case "land":
       land(state, world);
       ui.confirmAbandon = false;
+      resetForecastAt();
       break;
     case "cemetery":
       ui.cemetery = true;
@@ -333,7 +339,7 @@ const forecaster = createForecaster(
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
-  "task", "stop", "intent", "order-up", "order-down", "order-remove", "dismiss",
+  "task", "stop", "intent", "finish", "order-up", "order-down", "order-remove", "dismiss",
   "eat", "feed", "drink", "fill", "take", "drop", "drop-all", "toggle-eat", "toggle-feed", "toggle-drink",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
