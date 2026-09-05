@@ -1,18 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import {
-  currentNeed, dayBurn, dayHours, FED_DAY_SHARE, FED_LINE, foodInHand, iceHoleSite, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, WORK_HOURS_DEFAULT,
-} from "../src/sim/body";
+import { currentNeed, iceHoleSite, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
-import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
-import { emptyBurn, emptyYield, today } from "../src/sim/ledger";
+import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { BERRY, BURN } from "../src/sim/tables";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
@@ -30,11 +26,6 @@ function felling() {
   // One minute is enough for the order to become a live intent to read needs against.
   advance(g.state, g.world, 1);
   return g;
-}
-
-/** The kit's dried meat out of the pack: tomorrow's food is not in hand, so the day is what the reserve allows. */
-function stripFood(state: GameState): void {
-  removeItem(state.player.pack, "driedMeat", qty(state.player.pack, "driedMeat"));
 }
 
 /** The day's work counted as done, so the spent marker holds on the next reading. */
@@ -98,7 +89,7 @@ describe("the working day", () => {
     // Step to an hour past that dawn: marker gone, day 2's count fresh, and the grind back on.
     advance(state, world, until - state.minute + 60);
     expect(state.player.restUntil).toBeUndefined();
-    expect(spentNow(state, world)).toBe(false);
+    expect(spentNow(state)).toBe(false);
     expect(today(state).workMin).toBeLessThan(120);
     expect(state.intent?.need ?? null).not.toBe("spent");
     expect(state.task).not.toBeNull();
@@ -106,16 +97,16 @@ describe("the working day", () => {
   });
 
   it("spentNow sets the marker once at the cap and logs once", () => {
-    const { state, world } = newGame(1);
+    const { state } = newGame(1);
     today(state).workMin = state.player.workHours * 60;
-    expect(spentNow(state, world)).toBe(true);
+    expect(spentNow(state)).toBe(true);
     const until = state.player.restUntil!;
     expect(until).toBe(state.minute + minutesUntilDawn(state.minute, state.startDoy));
-    expect(spentNow(state, world)).toBe(true);
+    expect(spentNow(state)).toBe(true);
     expect(state.player.restUntil).toBe(until);
     expect(state.log.filter((e) => e.text === LINE).length).toBe(1);
     state.minute = until;
-    expect(spentNow(state, world)).toBe(false);
+    expect(spentNow(state)).toBe(false);
     expect(state.player.restUntil).toBeUndefined();
   });
 
@@ -194,108 +185,6 @@ describe("the working day", () => {
     state.player.energy = 100;
     state.player.water = WATER_FULL;
     expect(currentNeed(state, world, calendar(state.minute), it)).not.toBe("sleep");
-  });
-});
-
-describe("tomorrow's food in hand", () => {
-  const lines = (state: GameState, text: string) => state.log.filter((e) => e.text === text).length;
-
-  /** A ledger week of `burn` a day on record (or fewer, for `days` less than 7), the clock on the morning after day 7. */
-  function weekOnRecord(state: GameState, burn: number, days = 7): void {
-    state.minute = 7 * 1440;
-    state.ledger = [];
-    for (let day = 8 - days; day <= 7; day++) {
-      state.ledger.push({ day, yield: emptyYield(), eaten: 0, burn: { ...emptyBurn(), base: burn }, sleepMin: 0, workMin: 0 });
-    }
-  }
-
-  it("a half day", () => {
-    expect(FED_DAY_SHARE).toBe(0.5);
-  });
-
-  it("food in hand is what the body will eat, pack and camp together: no raw meat, no berries past the day's ceiling", () => {
-    const { state, world } = newGame(1);
-    stripFood(state);
-    const p = state.player;
-    const camp = pile(state, regionState(state, world, p.region).campCell);
-    expect(foodInHand(state, world)).toBe(0);
-    addItem(camp, "cookedFish", 2);
-    addItem(p.pack, "driedMeat", 0.4);
-    expect(foodInHand(state, world)).toBeCloseTo(3400, 6);
-    addItem(camp, "rawMeat", 10);
-    expect(foodInHand(state, world)).toBeCloseTo(3400, 6);
-    addItem(camp, "berries", 1);
-    expect(foodInHand(state, world)).toBeCloseTo(3900, 6);
-    p.berriesToday = { day: 1, kg: BERRY.refuseKg };
-    expect(foodInHand(state, world)).toBeCloseTo(3400, 6);
-  });
-
-  it("is a half day only once a full week of the body's own burn is on record", () => {
-    const { state, world } = newGame(1);
-    stripFood(state);
-    const p = state.player;
-    const camp = pile(state, regionState(state, world, p.region).campCell);
-    expect(dayBurn(state)).toBeNull();
-    addItem(camp, "cookedFish", 10);
-    expect(dayHours(state, world)).toEqual({ hours: 10, reason: "day" });
-    // Six days on record is not a week.
-    weekOnRecord(state, 2700, 6);
-    expect(dayBurn(state)).toBeNull();
-    expect(dayHours(state, world)).toEqual({ hours: 10, reason: "day" });
-    // Seven is: 2,700 in hand against a week burning 2,700 a day is a half day, 2,699 is not.
-    state.ledger = [];
-    weekOnRecord(state, 2700);
-    expect(dayBurn(state)).toBeCloseTo(2700, 6);
-    removeItem(camp, "cookedFish", qty(camp, "cookedFish"));
-    addItem(camp, "cookedFish", 2.699);
-    expect(dayHours(state, world)).toEqual({ hours: 10, reason: "day" });
-    // A fresh add rather than a second addItem onto the same stack: 2.699 + 0.001
-    // drifts to 2.6999999999999997 in floating point and never crosses the line.
-    removeItem(camp, "cookedFish", qty(camp, "cookedFish"));
-    addItem(camp, "cookedFish", 2.7);
-    expect(dayHours(state, world)).toEqual({ hours: 5, reason: "fed" });
-  });
-
-  it("the arrival kit is a day's food by the band, and still the first day from the boat is a full day", () => {
-    const { state, world } = newGame(1);
-    expect(foodInHand(state, world)).toBeCloseTo(BURN.day.hi, 6);
-    expect(dayHours(state, world)).toEqual({ hours: 10, reason: "day" });
-  });
-
-  it("the day's-work-done line says when the larder cut the day short", () => {
-    const { state, world } = newGame(1);
-    stripFood(state);
-    const p = state.player;
-    const camp = pile(state, regionState(state, world, p.region).campCell);
-    today(state).workMin = 10 * 60;
-    expect(spentNow(state, world)).toBe(true);
-    expect(lines(state, LINE)).toBe(1);
-    expect(lines(state, FED_LINE)).toBe(0);
-    p.restUntil = undefined;
-    weekOnRecord(state, 2700);
-    addItem(camp, "cookedFish", 4);
-    today(state).workMin = 4 * 60;
-    expect(spentNow(state, world)).toBe(false);
-    today(state).workMin = 5 * 60;
-    expect(spentNow(state, world)).toBe(true);
-    expect(lines(state, FED_LINE)).toBe(1);
-    expect(lines(state, LINE)).toBe(1);
-  });
-
-  it("a runner with the larder full rests after a half day", () => {
-    const g = newGame(17);
-    kitOut(g.state, g.world);
-    g.state.player.energy = 100;
-    weekOnRecord(g.state, 2700);
-    addOrder(g.state, g.world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    advance(g.state, g.world, 1);
-    expect(dayHours(g.state, g.world).reason).toBe("fed");
-    for (let h = 0; h < 8; h++) advance(g.state, g.world, 60);
-    const day = g.state.ledger.find((d) => d.day === 8)!;
-    expect(day.workMin).toBeGreaterThanOrEqual(5 * 60);
-    expect(day.workMin).toBeLessThan(6 * 60);
-    expect(g.state.player.restUntil).toBeDefined();
-    expect(lines(g.state, FED_LINE)).toBe(1);
   });
 });
 

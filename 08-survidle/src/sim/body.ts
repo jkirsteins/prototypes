@@ -9,12 +9,12 @@ import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { eat, edible } from "./actions";
-import { type Calendar, dayNumber, minutesUntilDawn } from "./calendar";
+import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, type FoodId, FOODS, ITEM_KG, MAX_SNARES } from "./items";
-import { today, weekBefore } from "./ledger";
+import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES } from "./items";
+import { today } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
@@ -37,71 +37,24 @@ const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"
 /** Hours of task work a day before the body calls it a day: a camp-builder's working day, with the evening by the fire. */
 export const WORK_HOURS_DEFAULT = 10;
 
-export type DayReason = "day" | "fed";
-
-/** With tomorrow's food in hand, a half day: chores and the roof still get their hours, and a full larder never stalls the hut. */
-export const FED_DAY_SHARE = 0.5;
-export const FED_LINE = "Food for tomorrow in hand: a short day. You rest by the fire.";
-
-/**
- * The kcal of what the body will eat on its own, in the pack and at this
- * region's camp together: the auto-eat foods that are edible right now.
- * Raw meat is never eaten unasked and berries past the day's ceiling are
- * refused, so neither counts.
- */
-export function foodInHand(state: GameState, world: World): number {
-  const p = state.player;
-  const camp = pile(state, regionState(state, world, p.region).campCell);
-  let kcal = 0;
-  for (const f of AUTO_EAT_ORDER) if (edible(state, f)) kcal += (qty(p.pack, f) + qty(camp, f)) * FOODS[f].kcalPerKg;
-  return kcal;
-}
-
-/**
- * A day's burn for this body: the ledger's week before today, all five
- * buckets. Null until a full week is on record, since the runner has no
- * honest reading of what a day here costs before it has lived seven of
- * them; the arrival kit is a day's food by the band, and a survivor fresh
- * off the boat with no roof works the full day.
- */
-export function dayBurn(state: GameState): number | null {
-  const w = weekBefore(state.ledger, dayNumber(state.minute));
-  if (w.days < 7) return null;
-  const b = w.burn;
-  return b.base + b.activity + b.walk + b.cold + b.sick;
-}
-
-/**
- * The hours of work the body will do today and why: the working day, or a
- * half day with tomorrow's food in hand. Read by the runner each minute.
- */
-export function dayHours(state: GameState, world: World): { hours: number; reason: DayReason } {
-  const p = state.player;
-  const burn = dayBurn(state);
-  if (burn !== null && foodInHand(state, world) >= burn) return { hours: p.workHours * FED_DAY_SHARE, reason: "fed" };
-  return { hours: p.workHours, reason: "day" };
-}
-
 /**
  * A day's work is done. The ledger already counts every minute awake on a
  * task other than rest, wait, night or sleep, so the runner reads the same
- * number the report prints, against the day dayHours allows. The first
- * time the count reaches it, the marker is set to the next dawn and the
- * log says so once; it holds until then and clears itself, and the day
- * roll starts the count again. The marker lives on the player, not the
- * intent, so an order switching intents in the evening does not start
- * the day over.
+ * number the report prints. The first time the count reaches the working
+ * day, the marker is set to the next dawn and the log says so once; it
+ * holds until then and clears itself, and the day roll starts the count
+ * again. The marker lives on the player, not the intent, so an order
+ * switching intents in the evening does not start the day over.
  */
-export function spentNow(state: GameState, world: World): boolean {
+export function spentNow(state: GameState): boolean {
   const p = state.player;
   if (p.restUntil !== undefined) {
     if (state.minute < p.restUntil) return true;
     p.restUntil = undefined;
   }
-  const day = dayHours(state, world);
-  if (today(state).workMin < day.hours * 60) return false;
+  if (today(state).workMin < p.workHours * 60) return false;
   p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
-  log(state, day.reason === "fed" ? FED_LINE : "A day's work done. You rest by the fire.");
+  log(state, "A day's work done. You rest by the fire.");
   return true;
 }
 
@@ -124,7 +77,7 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
 export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
-  const spent = spentNow(state, world);
+  const spent = spentNow(state);
   // Read once, before the sleep clauses, because thirst now has a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
   // A spent body goes to bed at nightfall whatever its energy: an evening by
