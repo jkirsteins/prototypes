@@ -263,4 +263,11 @@ describe("the heir", () => {
     expect(r.heir.record.index).toBe(2);
     expect(r.heir.checkpoints.length).toBeGreaterThan(0);
   }, 30000);
+
+  it("a first life still alive at the day cap has no heir to raise, and stands in for both", () => {
+    const r = runHeir(17, 1);
+    expect(r.first.outcome.kind).toBe("reached");
+    expect(r.gapDays).toBe(0);
+    expect(r.heir).toEqual(r.first);
+  });
 });

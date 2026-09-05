@@ -25,7 +25,6 @@ import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledg
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere } from "./orders";
 import { FAT_FULL } from "./player";
-import { cellOf } from "./position";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
@@ -390,10 +389,13 @@ export function runHeir(seed: number, days: number): HeirReport {
   const oldRegion = state.player.region;
   const oldSt = regionState(state, world, oldRegion);
   beginAgain(state, world);
+  // land() clears state.landing once it confirms the name, so the cell it chose
+  // has to be read off the landing itself, not off the player it then places.
+  const landCell = state.landing!.cell;
   land(state, world);
   const camp = pile(state, oldSt.campCell);
   const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth"] as const).filter((s) => oldSt.structures[s]);
-  const lc = cellAt(world, state.landing ? state.landing.cell : cellOf(state, world));
+  const lc = cellAt(world, landCell);
   const cc = cellAt(world, oldSt.campCell);
   const found = {
     structures: [...structures],
