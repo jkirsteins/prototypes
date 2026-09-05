@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { dailyCamp, trapDraws, trapFactor } from "../src/sim/camp";
+import { trapDraws, trapFactor } from "../src/sim/camp";
 import { resolveCell, yieldItem } from "../src/sim/intent";
 import { addItem, qty } from "../src/sim/inventory";
 import { TRAP_HOLD_KG } from "../src/sim/items";
@@ -19,6 +18,24 @@ const cal = calendar(0);
 /** Seed 4's start region has a lake: the player on its shore, the shore read, a basket in the pack, and the lake full of fish. */
 function readyToSet() {
   const g = newGame(4);
+  placeAtSpot(g.state, g.world, g.state.player.region, "shore");
+  const cell = cellOf(g.state, g.world);
+  const obs = readShore(g.state, g.world, cell);
+  const st = regionState(g.state, g.world, g.state.player.region);
+  for (const s of obs.fish) st.pop[s] = 50;
+  addItem(g.state.player.pack, "basketTrap", 1);
+  return { ...g, cell, st, obs };
+}
+
+/**
+ * Like readyToSet, but 20 July: open water for months, so a multi-day
+ * advance never runs into seed 4's April cold snap (the shore ices over,
+ * and an idle player freezes, within the game's first two dawns - both
+ * pre-existing weather, unrelated to the trap). The two tests that drive
+ * the trap across real simulated days use this start instead.
+ */
+function readyToSetInJuly() {
+  const g = newGame(4, 200);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
   const cell = cellOf(g.state, g.world);
   const obs = readShore(g.state, g.world, cell);
@@ -59,23 +76,14 @@ describe("the basket trap", () => {
     expect(check(g.state, g.world, cal, "setTrap")).toMatchObject({ ok: false, why: "the water is under ice" });
   });
 
-  // Seed 4 has an early cold snap that ices the shore over within the game's first two
-  // dawns once anything (this trap's own draws included) shifts the shared rng stream -
-  // an unattended player standing at that shore for ten straight days dies of the same
-  // cold. That is real weather, exercised by its own "the ice takes it" test below; it
-  // is not what these two draw-mechanics tests are about, so they drive dailyCamp
-  // directly, dawn by dawn, rather than through advance's full weather and body
-  // simulation, and never touch state.weather.iceCm.
   it("draws at dawn, stops at the hold, and the rate steps with level and mastery", () => {
-    const g = readyToSet();
+    const g = readyToSetInJuly();
     setTrap(g);
-    const who = { region: g.state.player.region, atCamp: false };
-    const rng = new Rng(12345);
-    for (let day = 0; day < 10; day++) dailyCamp(g.state, g.world, cal, rng, who);
+    advance(g.state, g.world, 10 * 1440);
     expect(g.st.trap!.kg).toBeGreaterThan(0);
     expect(g.st.trap!.kg).toBeLessThanOrEqual(TRAP_HOLD_KG);
     g.st.trap!.kg = TRAP_HOLD_KG;
-    for (let day = 0; day < 3; day++) dailyCamp(g.state, g.world, cal, rng, who);
+    advance(g.state, g.world, 3 * 1440);
     expect(g.st.trap!.kg).toBe(TRAP_HOLD_KG);
     expect(trapDraws(5)).toBe(4);
     expect(trapDraws(10)).toBe(5);
@@ -87,10 +95,10 @@ describe("the basket trap", () => {
   });
 
   it("keeps drawing with nobody home, at the base rate", () => {
-    const g = readyToSet();
+    const g = readyToSetInJuly();
     setTrap(g);
-    const rng = new Rng(12345);
-    for (let day = 0; day < 10; day++) dailyCamp(g.state, g.world, cal, rng, null);
+    g.state.dead = { cause: "starved", minute: g.state.minute };
+    advance(g.state, g.world, 10 * 1440, { nobody: true });
     expect(g.st.trap!.kg).toBeGreaterThan(0);
   });
 
