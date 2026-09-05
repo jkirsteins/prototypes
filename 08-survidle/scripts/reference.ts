@@ -21,19 +21,21 @@
  * That day is the morning the check ran, the day after the fall, and a
  * start that opens with snow already lying has no first snow to report.
  *
- * --heir, anywhere in the args, runs a second life per seed after the
- * from-scratch (and, if given, kitted) blocks: the reference run to death,
- * the gap, the landing near the old camp, then a fresh reference run as
- * the heir, which walks to the old camp before it gives an order. It
- * prints the first life's outcome, the gap and landing date, what the heir
- * found at the old camp, the day it got there, the heir's checkpoints and its own
- * "heir passed N of M" line. Like --kitted, it is a diagnostic and never
+ * --heir, anywhere in the args, runs a lineage of three lives per seed after
+ * the from-scratch (and, if given, kitted) blocks: the reference run to
+ * death, then for each heir the gap, the landing near the old camp, the
+ * walk home before it gives an order, and a fresh reference run. It prints
+ * each life's landing, what it found at the old camp, the day it got there,
+ * the surplus days (first hang, first large-game kill), the life's
+ * checkpoints and pass line, then a trend line for the seed and a
+ * "trend gate: N of M seeds" line - whether each life in the lineage died
+ * at or past the one before it. Like --kitted, it is a diagnostic and never
  * touches the exit code - the from-scratch run from scratch is still the
  * gate.
  */
 import { calendar, fmtDate } from "../src/sim/calendar";
 import { fmtWorldDate } from "../src/sim/epitaph";
-import { REFERENCE_SEEDS, type ReferenceReport, runHeir, runReference, weekLines } from "../src/sim/reference";
+import { REFERENCE_SEEDS, type ReferenceReport, runLineage, runReference, weekLines } from "../src/sim/reference";
 
 const rawArgs = process.argv.slice(2);
 const kitted = rawArgs.includes("--kitted");
@@ -86,18 +88,34 @@ if (kitted) {
 }
 
 if (heir) {
-  let heirPassed = 0;
+  let trend = 0;
   for (const seed of seeds) {
-    const r = runHeir(seed, days);
-    console.log(`seed ${seed} (heir): first life ${outcomeText(r.first)}; gap ${r.gapDays} days; landed ${fmtWorldDate(r.landed)}, ${r.found.kmToOldCamp} km from the old camp`);
-    const trap = r.found.trapKg === null ? "no trap" : `trap with ${r.found.trapKg.toFixed(1)} kg`;
-    console.log(`  found: ${r.found.structures.join(", ") || "nothing standing"}; ${r.found.snares} snares; ${trap}; ${r.found.campFoodKcal} kcal and ${r.found.campFirewoodKg} kg of firewood at camp`);
-    console.log(r.found.reachedCampDay === null ? "  never reached the old camp" : `  reached the old camp on day ${r.found.reachedCampDay}`);
-    printCheckpoints(r.heir);
-    console.log(`  heir: ${passLine(r.heir)}`);
-    if (r.heir.passed) heirPassed++;
+    const l = runLineage(seed, days, 3);
+    console.log(`seed ${seed} (lineage):`);
+    let lastDeath: number | null = null;
+    let climbs = true;
+    for (const life of l.lives) {
+      const r = life.report;
+      const landed = `${fmtWorldDate(life.landed)}${life.gapDays ? `, ${life.gapDays} days after the death` : ""}`;
+      console.log(` life ${life.index}: landed ${landed}`);
+      if (life.found) {
+        const f = life.found;
+        const trap = f.trapKg === null ? "no trap" : `trap with ${f.trapKg.toFixed(1)} kg`;
+        console.log(`  found: ${f.structures.join(", ") || "nothing standing"}; ${f.snares} snares; ${trap}; ${f.campFoodKcal} kcal, ${f.campFirewoodKg} kg of firewood and ${f.logs} logs at camp, ${f.kmToOldCamp} km away`);
+        console.log(life.reachedCampDay === null ? "  never reached the old camp" : `  reached the old camp on day ${life.reachedCampDay}`);
+      }
+      console.log(`  surplus: first hang ${r.surplus.hang === null ? "never" : `day ${r.surplus.hang}`}, first large game ${r.surplus.largeGame === null ? "never" : `day ${r.surplus.largeGame}`}`);
+      printCheckpoints(r);
+      console.log(`  ${passLine(r)}`);
+      if (r.outcome.kind === "died") {
+        if (lastDeath !== null && r.outcome.day < lastDeath) climbs = false;
+        lastDeath = r.outcome.day;
+      }
+    }
+    if (climbs && l.lives.length > 1) trend++;
+    console.log(` trend: ${climbs ? "each life at or past the one before" : "a life died sooner than the one before"}`);
   }
-  console.log(`heir passed ${heirPassed} of ${seeds.length}`);
+  console.log(`trend gate: ${trend} of ${seeds.length} seeds (gate is 3 of 4)`);
 }
 
 process.exit(passed === seeds.length ? 0 : 1);

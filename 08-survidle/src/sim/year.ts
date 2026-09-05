@@ -16,10 +16,8 @@ import { current } from "./record";
 import { type ReferenceReport, type ReferencePlayer, setUpReference, stepReference } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
-import type { GameState, Species } from "./types";
-
-/** The species whose first kill marks the large-game surplus: the tables' large-game row. */
-export const LARGE_GAME: Species[] = ["deer", "reindeer", "elk"];
+import { LARGE_GAME } from "./species";
+import type { GameState } from "./types";
 
 /**
  * 1 December: the winter gate's start, a fortnight before the dark and a

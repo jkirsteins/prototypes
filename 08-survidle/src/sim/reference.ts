@@ -28,6 +28,7 @@ import { orderMet, ordersHere } from "./orders";
 import { FAT_FULL } from "./player";
 import { current } from "./record";
 import { regionState } from "./regionstate";
+import { LARGE_GAME } from "./species";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { startTask } from "./tasks";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, WorldDate } from "./types";
@@ -346,6 +347,8 @@ export interface ReferenceReport {
   gateDay: number | null;
   /** The day the first snow fell, if it did within `days`. */
   firstSnowDay: number | null;
+  /** The day of the first hang and of the first large-game kill; null when never (year loop spec 1.1). */
+  surplus: { hang: number | null; largeGame: number | null };
   /** The life record, for the selector: epitaph, entry and since read this. */
   record: LifeRecord;
 }
@@ -403,9 +406,13 @@ export function measure(ref: { state: GameState; world: World; player: Reference
   const checkpoints: ReferenceReport["checkpoints"] = [];
   const seen = new Set<number>();
   let firstSnowDay: number | null = null;
+  const surplus: ReferenceReport["surplus"] = { hang: null, largeGame: null };
   for (let d = 1; d <= days && !state.dead; d++) {
     stepReference(ref, 1440);
     const day = calendar(state.minute, state.startDoy).day;
+    const home = regionState(state, world, state.player.region);
+    if (surplus.hang === null && home.rack.kg > 0) surplus.hang = day;
+    if (surplus.largeGame === null && current(state).events.some((e) => e.kind === "firstKill" && LARGE_GAME.includes(e.species))) surplus.largeGame = day;
     if (gate.kind === "firstSnow" && openedBare && firstSnowDay === null && state.weather.snowCm > 0) {
       firstSnowDay = day;
       seen.add(day);
@@ -429,7 +436,7 @@ export function measure(ref: { state: GameState; world: World; player: Reference
   // death after the gate comes later in the list, and a death before it fails passesGate.
   const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
   const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
-  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, record: current(state) };
+  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state) };
 }
 
 export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {
@@ -445,6 +452,72 @@ export interface HeirReport {
   heir: ReferenceReport;
 }
 
+/** What the heir finds at the old camp: `HeirReport["found"]` plus the log pile, which the trend report reads and `runHeir`'s callers do not. */
+export type Found = { structures: string[]; campFoodKcal: number; campFirewoodKg: number; logs: number; snares: number; kmToOldCamp: number; trapKg: number | null };
+
+export interface LifeReport {
+  index: number;
+  landed: WorldDate;
+  gapDays: number;
+  /** What stood at the old camp when this life landed; null for the first survivor. */
+  found: Found | null;
+  reachedCampDay: number | null;
+  report: ReferenceReport;
+}
+
+export interface LineageReport {
+  seed: number;
+  lives: LifeReport[];
+}
+
+/** What the heir finds at the old camp, read after the gap has run and before the heir moves. */
+function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landCell: number, trapKg: number | null): Found {
+  const oldSt = regionState(state, world, oldRegion);
+  const camp = pile(state, oldSt.campCell);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore"] as const).filter((s) => oldSt.structures[s]);
+  const lc = cellAt(world, landCell);
+  const cc = cellAt(world, oldSt.campCell);
+  return {
+    structures: [...structures],
+    campFoodKcal: Math.round(campFoodKcalAt(camp)),
+    campFirewoodKg: Math.round(qty(camp, "firewood")),
+    logs: Math.round(qty(camp, "log")),
+    snares: oldSt.structures.snares,
+    kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
+    trapKg,
+  };
+}
+
+/**
+ * Lives in one world, one after another (year loop spec 1.4): the from-scratch
+ * reference run, then for each heir the gap, the landing near the old camp,
+ * the walk home and a fresh reference run. A life still alive at the day cap
+ * has no heir to raise, so the report ends there.
+ */
+export function runLineage(seed: number, days: number, lives = 3): LineageReport {
+  const ref = setUpReference(seed);
+  const { state, world } = ref;
+  const out: LifeReport[] = [];
+  let first = measure(ref, days);
+  out.push({ index: 1, landed: current(state).landed, gapDays: 0, found: null, reachedCampDay: null, report: first });
+  for (let i = 2; i <= lives && state.dead; i++) {
+    const oldRegion = oldCampRegion(state);
+    const oldSt = regionState(state, world, oldRegion);
+    const trapKg = oldSt.trap ? Math.round(oldSt.trap.kg * 10) / 10 : null;
+    beginAgain(state, world);
+    // land() clears state.landing once it confirms the name, so the cell it chose
+    // has to be read off the landing itself, not off the player it then places.
+    const landCell = state.landing!.cell;
+    land(state, world);
+    const found = foundAtOldCamp(state, world, oldRegion, landCell, trapKg);
+    const heirRef = { state, world, player: new ReferencePlayer(REFERENCE_ORDERS, oldRegion) };
+    const report = measure(heirRef, days);
+    out.push({ index: i, landed: current(state).landed, gapDays: current(state).gapDays, found, reachedCampDay: heirRef.player.reachedDay, report });
+    first = report;
+  }
+  return { seed, lives: out };
+}
+
 /**
  * Two lives: the from-scratch reference run to death, then the gap, the
  * landing near the old camp, and a fresh reference run as the heir. A run
@@ -452,33 +525,12 @@ export interface HeirReport {
  * both halves and the gap reads 0.
  */
 export function runHeir(seed: number, days: number): HeirReport {
-  const ref = setUpReference(seed);
-  const first = measure(ref, days);
-  const { state, world } = ref;
-  if (!state.dead) {
-    return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0, reachedCampDay: null, trapKg: null }, heir: first };
+  const l = runLineage(seed, days, 2);
+  const first = l.lives[0].report;
+  if (l.lives.length === 1) {
+    return { seed, first, gapDays: 0, landed: l.lives[0].landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0, reachedCampDay: null, trapKg: null }, heir: first };
   }
-  const oldRegion = oldCampRegion(state);
-  const oldSt = regionState(state, world, oldRegion);
-  const trapKg = oldSt.trap ? Math.round(oldSt.trap.kg * 10) / 10 : null;
-  beginAgain(state, world);
-  // land() clears state.landing once it confirms the name, so the cell it chose
-  // has to be read off the landing itself, not off the player it then places.
-  const landCell = state.landing!.cell;
-  land(state, world);
-  const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore"] as const).filter((s) => oldSt.structures[s]);
-  const lc = cellAt(world, landCell);
-  const cc = cellAt(world, oldSt.campCell);
-  const found = {
-    structures: [...structures],
-    campFoodKcal: Math.round(campFoodKcalAt(camp)),
-    campFirewoodKg: Math.round(qty(camp, "firewood")),
-    snares: oldSt.structures.snares,
-    kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
-    trapKg,
-  };
-  const heirRef = { state, world, player: new ReferencePlayer(REFERENCE_ORDERS, oldRegion) };
-  const heir = measure(heirRef, days);
-  return { seed, first, gapDays: current(state).gapDays, landed: current(state).landed, found: { ...found, reachedCampDay: heirRef.player.reachedDay }, heir };
+  const h = l.lives[1];
+  const found = { structures: h.found!.structures, campFoodKcal: h.found!.campFoodKcal, campFirewoodKg: h.found!.campFirewoodKg, snares: h.found!.snares, kmToOldCamp: h.found!.kmToOldCamp, trapKg: h.found!.trapKg, reachedCampDay: h.reachedCampDay };
+  return { seed, first, gapDays: h.gapDays, landed: h.landed, found, heir: h.report };
 }

@@ -156,6 +156,8 @@ export type Species = keyof typeof SPECIES_DEFS_RAW;
 /** Widened from the literal RAW object so every entry reads as a full SpeciesDef, not just the fields its own literal happened to set. */
 export const SPECIES_DEFS: Record<Species, SpeciesDef> = SPECIES_DEFS_RAW;
 export const SPECIES_IDS = Object.keys(SPECIES_DEFS) as Species[];
+/** The species whose first kill marks the large-game surplus: the tables' large-game row. */
+export const LARGE_GAME: Species[] = ["deer", "reindeer", "elk"];
 
 export function speciesDef(s: Species): SpeciesDef {
   return SPECIES_DEFS[s];

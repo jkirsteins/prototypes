@@ -19,6 +19,7 @@ import {
   REFERENCE_TARGET_DAY,
   ReferencePlayer,
   runHeir,
+  runLineage,
   runReference,
   setUpReference,
   stepReference,
@@ -321,5 +322,32 @@ describe("the heir", () => {
     expect(r.first.outcome.kind).toBe("reached");
     expect(r.gapDays).toBe(0);
     expect(r.heir).toEqual(r.first);
+  });
+});
+
+describe("the lineage", () => {
+  it("runs three lives on seed 17, each landing after a gap and reporting what it found", () => {
+    const r = runLineage(17, 250, 3);
+    expect(r.seed).toBe(17);
+    expect(r.lives.length).toBe(3);
+    expect(r.lives[0].index).toBe(1);
+    expect(r.lives[0].gapDays).toBe(0);
+    expect(r.lives[0].found).toBeNull();
+    for (const life of r.lives.slice(1)) {
+      expect(life.gapDays).toBeGreaterThanOrEqual(90);
+      expect(coastOpen(life.landed.doy)).toBe(true);
+      expect(life.found).not.toBeNull();
+      expect(life.found!.structures).toContain("firePit");
+      expect(typeof life.found!.logs).toBe("number");
+    }
+    for (const life of r.lives) {
+      expect(life.report.surplus.hang === null || life.report.surplus.hang >= 1).toBe(true);
+    }
+  });
+
+  it("stops early when a life reaches the day cap alive", () => {
+    const r = runLineage(17, 5, 3);
+    expect(r.lives.length).toBe(1);
+    expect(r.lives[0].report.outcome.kind).toBe("reached");
   });
 });

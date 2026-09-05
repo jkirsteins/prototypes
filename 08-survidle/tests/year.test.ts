@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { LARGE_GAME, runWinter, runYear } from "../src/sim/year";
+import { LARGE_GAME } from "../src/sim/species";
+import { runWinter, runYear } from "../src/sim/year";
 
 describe("the year script", () => {
   it("runs a kitted level-20 survivor from 1 April and reports months, the surplus days and the outcome", () => {
