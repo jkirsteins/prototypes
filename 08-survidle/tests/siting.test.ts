@@ -4,14 +4,17 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, pile, removeItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
+import { baseWalkSpeed } from "../src/sim/player";
 import { atCamp, campCellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
+import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
 import { regionHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { fmtKm } from "../src/units";
 import { regionAt } from "../src/world/gen";
+import { findRoute, routeMinutes } from "../src/world/route";
 import { neighbourLandCell } from "./siting-helpers";
 
 describe("moving the camp is allowed while nothing stands at it", () => {
@@ -223,3 +226,40 @@ describe("the site report", () => {
     expect(regionHtml(state, world, cal, newUiState())).toContain("as a camp");
   });
 });
+
+describe("checking travel to a neighbour touches no region state", () => {
+  it("availableTasks's every-neighbour travel check does not grow state.regions", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(Object.keys(state.regions).length).toBe(1);
+    availableTasks(state, world, cal);
+    expect(Object.keys(state.regions).length).toBe(1);
+  });
+});
+
+describe("the site report crosses the ice the walk buttons cross", () => {
+  it("routes at walkableIce(state.weather), not a flat 'none' - seed 45's outcrop is six cells over safe ice, eight around it", () => {
+    const { state, world } = newGame(45);
+    const st = regionState(state, world, state.player.region);
+    const region = regionAt(world, state.player.region);
+    const outcrop = region.spots.find((s) => s.id === "outcrop")!;
+
+    // The land-only route this spot would take without ice, for contrast.
+    const landRoute = findRoute(world, st.campCell, outcrop.cell, "none");
+    expect(landRoute).not.toBeNull();
+
+    state.weather.iceCm = ICE_SAFE_CM + 1;
+    const ice = walkableIce(state.weather);
+    expect(ice).toBe("safe");
+    const iceRoute = findRoute(world, st.campCell, outcrop.cell, ice);
+    expect(iceRoute).not.toBeNull();
+    expect(iceRoute!.length).toBeLessThan(landRoute!.length);
+
+    const cal = calendar(state.minute, state.startDoy);
+    const speed = baseWalkSpeed(state, cal, state.weather);
+    const expected = Math.round(routeMinutes(world, iceRoute!, speed, ice));
+    const r = siteReport(state, world, st.campCell);
+    expect(r.spots.find((s) => s.id === "outcrop")!.minutes).toBe(expected);
+  });
+});
+

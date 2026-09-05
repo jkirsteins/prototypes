@@ -17,6 +17,7 @@ import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { SPECIES_DEFS } from "./species";
 import { type DecayingId, type GameState, type RegionState, type SpotId, type Terrain, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
+import { walkableIce } from "./weather";
 
 /**
  * The map's own terrain names (ui/map.ts's TERRAIN_NAME), duplicated here since sim/ never
@@ -269,11 +270,14 @@ export function siteReport(state: GameState, world: World, cell: number): SiteRe
   const r = regionAt(world, region);
   const cal = calendar(state.minute, state.startDoy);
   const speed = baseWalkSpeed(state, cal, state.weather);
+  // The same ice a walk button in this Here section would cross, not a flat "none": a
+  // frozen shore is reachable here exactly when the button next to it says so.
+  const ice = walkableIce(state.weather);
   const spots = r.spots
     .filter((s) => s.id !== "camp")
     .map((s) => {
-      const route = findRoute(world, cell, s.cell, "none");
-      return { id: s.id, minutes: route ? Math.round(routeMinutes(world, route, speed, "none")) : null };
+      const route = findRoute(world, cell, s.cell, ice);
+      return { id: s.id, minutes: route ? Math.round(routeMinutes(world, route, speed, ice)) : null };
     });
   return { terrain: TERRAIN_NAME[cellAt(world, cell).terrain], spots, ices: r.spots.some((s) => s.id === "shore") };
 }

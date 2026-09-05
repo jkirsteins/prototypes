@@ -137,7 +137,10 @@ export function walkTarget(state: GameState, world: World, arg: string): { cell:
   if (kind === "region") {
     const id = Number(val);
     const r = regionAt(world, id);
-    return r ? { cell: campCellOf(state, world, id), label: r.name, thin } : null;
+    // A camp can only have moved in a region that already has state; reading campCellOf
+    // unconditionally would call regionState and persist one for every neighbour this
+    // checks travel to, and availableTasks checks every neighbour every frame.
+    return r ? { cell: state.regions[id] ? campCellOf(state, world, id) : r.campCell, label: r.name, thin } : null;
   }
   if (kind === "cell") {
     const cell = Number(val);
