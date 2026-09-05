@@ -270,7 +270,8 @@ risk forecast with the away cap as its horizon (built: the Ahead panel,
 four horizons of ten runs each in a worker, the dial on the run, the
 month number into the life record), then the testing infra (the section
 of that name below: the beacon on by default, the survey and the bars
-read from them), then
+read from them; built, the application ids blank until the author fills
+them), then
 the UI pass (the section of that name below: the Do panel folds and
 filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
@@ -1684,6 +1685,25 @@ keep the page as light as it is:
   funnel that takes a time window. Both are confirmed against the org
   before a tester is recruited; where a window is not available, the
   MCP exports the sessions and a short script does that one bar.
+
+**Built.** `src/beacon/facts.ts`, `storage.ts`, `beacon.ts` and
+`datadog.ts` ship the five actions (`opened`, `heartbeat`, `died`,
+`beganAgain`, `settings`) as pure functions over the state and a record
+kept beside the save, `survidle.beacon`, that carries the random id, the
+switch, the tester flag and cohort, the last death's time and the current
+life's attention minutes. The tester link marks that record and strips
+itself from the address on the same load. `index.html` and
+`src/ui/beacon-panel.ts` add the settings-panel switch and its note (the
+id, the cohort when marked, "not configured" when the ids are blank); the
+Datadog sink behind it loads by dynamic import, queues until it is ready,
+and turns off replay, user interactions, resources and long tasks, with
+the privacy level masking everything. `docs/testing.md` is the
+operator's page: the four steps, the tester link, what is sent, and the
+six bars as queries. The application ids are still blank, so the four
+author steps in that page stand before a tester is recruited, and the
+browser pass that checked the switch, the note and the tester link ran
+with the ids blank too; the round's controller fills in the ids and
+reads the beacon side of the gate table once testers are in.
 
 The round itself, twenty testers from the incremental community and the
 recruiting, is not part of this item; it is the slot after siting.

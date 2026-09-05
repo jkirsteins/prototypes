@@ -170,6 +170,10 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   reaching winter in an afternoon; not a game feature.
 - `window.survidle` exposes `state`, `world`, `advance(minutes)` and `speed`
   in the console.
+- `?tester=<cohort>` marks this device a tester for the round and names its
+  cohort; the parameter is dropped from the address after one open, and the
+  mark survives a new world. The settings strip shows the beacon id and the
+  cohort. See docs/testing.md.
 
 ## Development
 

@@ -127,10 +127,11 @@ intact, so `?seed=` survives) and the same hash.
 ```ts
 export interface Sink { emit(name: string, context: Record<string, unknown>): void }
 export interface Beacon {
-  opened(state): void; died(state): void; beganAgain(state, now: number): void;
+  opened(state): void; died(state, now: number): void; beganAgain(state, now: number): void;
   /** Once a real minute while visible and running: counts a minute of attention and emits a heartbeat. */
   tick(state, visible: boolean, running: boolean, now: number): void;
   setOn(on: boolean, state): void;
+  setSink(sink: Sink | null): void;
   record(): BeaconRecord;
 }
 export function createBeacon(storage: Storage, sink: Sink | null, rec: BeaconRecord): Beacon;
