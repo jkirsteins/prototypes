@@ -4,7 +4,7 @@
  * UI never shows coordinates; it shows what these functions say.
  */
 import { CELL_KM } from "../units";
-import { type Cell, cellAt, neighbours, regionAt, type RegionDef, regionOf, waterKindOf, type World } from "../world/gen";
+import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
 import { enterRegion, regionState, VISITED } from "./regionstate";
 import { walkableIce } from "./weather";
@@ -19,6 +19,11 @@ export function cellIndex(world: World, x: number, y: number): number {
 /** The cell under the player's feet. */
 export function cellOf(state: GameState, world: World): number {
   return cellIndex(world, state.player.x, state.player.y);
+}
+
+/** The camp as the run has it: the region state's cell, which a chosen camp moves, never the generated default. */
+export function campCellOf(state: GameState, world: World, region = state.player.region): number {
+  return regionState(state, world, region).campCell;
 }
 
 export function cellCenter(world: World, idx: number): { x: number; y: number } {
@@ -55,15 +60,16 @@ export function hereTerrain(state: GameState, world: World): Terrain {
   return hereCell(state, world).terrain;
 }
 
-/** The named spot whose cell the player stands on, if any. */
+/** The named spot whose cell the player stands on, if any: the live camp cell first, then the region's other spots. */
 export function spotHere(state: GameState, world: World): SpotId | null {
   const idx = cellOf(state, world);
+  if (idx === campCellOf(state, world)) return "camp";
   const r = regionAt(world, state.player.region);
-  return r.spots.find((s) => s.cell === idx)?.id ?? null;
+  return r.spots.find((s) => s.id !== "camp" && s.cell === idx)?.id ?? null;
 }
 
 export function atCamp(state: GameState, world: World): boolean {
-  return cellOf(state, world) === regionState(state, world, state.player.region).campCell;
+  return cellOf(state, world) === campCellOf(state, world);
 }
 
 export function forestCell(world: World, idx: number): boolean {
@@ -128,14 +134,13 @@ const GROUND: Record<Terrain, string> = {
 
 /** "at camp", "in the spruce, 0.4 km from camp", "on the way to Stensund, 2.1 km to go". */
 export function describeWhere(state: GameState, world: World): string {
-  const r: RegionDef = regionAt(world, state.player.region);
   if (state.route?.path.length) {
     return `on the way to ${state.route.label}, ${routeKm(state.route.path).toFixed(1)} km to go`;
   }
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";
   const ice = walkableIce(state.weather);
-  const km = kmBetween(world, cellOf(state, world), r.campCell, ice);
+  const km = kmBetween(world, cellOf(state, world), campCellOf(state, world), ice);
   const dist = km === null ? "" : `, ${km.toFixed(1)} km from camp`;
   if (spot) return `at ${SPOT_WORDS[spot]}${dist}`;
   return `${GROUND[hereTerrain(state, world)]}${dist}`;

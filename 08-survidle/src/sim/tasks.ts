@@ -25,7 +25,7 @@ import {
   skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
 import {
-  atCamp, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
+  atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
 import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
@@ -153,8 +153,9 @@ function walkIceMode(state: GameState, thin: boolean): IceMode {
 export function whereIs(state: GameState, world: World, cell: number): string {
   const region = cellAt(world, cell).region;
   const r = regionAt(world, region);
-  const spot = r.spots.find((s) => s.cell === cell);
   const inRegion = region === state.player.region ? "" : ` in ${r.name}`;
+  if (cell === campCellOf(state, world, region)) return `${SPOT_WORDS.camp}${inRegion}`;
+  const spot = r.spots.find((s) => s.id !== "camp" && s.cell === cell);
   if (spot) return `${SPOT_WORDS[spot.id]}${inRegion}`;
   const here = cellCenter(world, cellOf(state, world));
   const there = cellCenter(world, cell);

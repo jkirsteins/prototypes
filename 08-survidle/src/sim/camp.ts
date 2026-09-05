@@ -3,11 +3,11 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
+import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
-  SNARE_CATCH_MAX_AGE, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  SNARE_CATCH_MAX_AGE, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
@@ -215,4 +215,32 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
 /** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
 export function needsMending(st: RegionState, id: DecayingId): boolean {
   return st.structures[id] && (st.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
+}
+
+/**
+ * The word canMoveCamp names for each structure flag that can hold a camp in place, in the order
+ * RegionState.structures declares them, snares excepted since they stand on the heath, not the camp cell.
+ * Names come from STRUCTURES where a structure is built there; a hearth has no build entry of its own.
+ */
+const STRUCTURE_WORD: Partial<Record<keyof RegionState["structures"], string>> = {
+  firePit: STRUCTURES.firePit.name,
+  leanTo: STRUCTURES.leanTo.name,
+  cabin: STRUCTURES.cabin.name,
+  dryingRack: STRUCTURES.dryingRack.name,
+  boughBed: STRUCTURES.boughBed.name,
+  hearth: "hearth",
+  turfHut: STRUCTURES.turfHut.name,
+  waterStore: STRUCTURES.waterStore.name,
+};
+
+/** Whether the camp may be moved: nothing built at it, no fire banked, nothing lying in its pile. */
+export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok: false; why: string } {
+  const st = regionState(state, world, state.player.region);
+  for (const [key, word] of Object.entries(STRUCTURE_WORD)) {
+    if (st.structures[key as keyof typeof st.structures]) return { ok: false, why: `the ${word} stands there` };
+  }
+  if (st.fire.lit || st.fire.fuelKg > 0) return { ok: false, why: "the fire is banked there" };
+  const kg = weight(pile(state, st.campCell));
+  if (kg > 1e-9) return { ok: false, why: `${Math.round(kg * 10) / 10} kg lie at the old camp, carry them first` };
+  return { ok: true };
 }

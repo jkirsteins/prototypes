@@ -17,7 +17,7 @@ import { daysInWords, landingDate } from "../sim/landing";
 import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
-import { cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
+import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
@@ -223,6 +223,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   const p = state.player;
   const id = ui.selected ?? p.region;
   const r = regionAt(world, id);
+  const hasState = id in state.regions;
   const st = regionState(state, world, id);
   const here = id === p.region;
   const nb = regionAt(world, p.region).neighbours.find((n) => n.id === id);
@@ -238,7 +239,9 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
       const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
       if (!here) {
-        return `<div>${SPOT_NAMES[s.id]} <small>${[s.id === "camp" ? "" : `${fmtKm(s.km)} from camp`, lying].filter(Boolean).join(", ")}</small></div>`;
+        const km = hasState ? kmBetween(world, campCellOf(state, world, id), s.cell) : s.km;
+        const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
+        return `<div>${SPOT_NAMES[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
       if (s.cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
