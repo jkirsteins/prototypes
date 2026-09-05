@@ -500,6 +500,24 @@ describe("the kind per row", () => {
     const closed = html.slice(html.indexOf('data-opt="intent:sticks:"'), html.indexOf('data-opt="intent:sticks:"') + 600);
     expect(closed).not.toContain('data-act="row-kind"');
     expect(closed).toContain('data-act="row-more"');
+    // rest is a NOT_ORDERS task: rowRequest always collapses its choice to a once job, so it gets
+    // no more button and no expansion at all, even when ui.open somehow names it.
+    const restUi = newUiState();
+    restUi.open = { id: "rest", arg: "" };
+    const restHtml = doHtml(state, world, cal, restUi);
+    const restRow = restHtml.slice(restHtml.indexOf('data-opt="intent:rest:"'), restHtml.indexOf('data-opt="intent:rest:"') + 400);
+    expect(restRow).not.toContain('data-act="row-kind"');
+    expect(restRow).not.toContain('data-act="row-more"');
+  });
+
+  it("the where-select follows the real ground rule, not the display group: fill is grouped camp but grounded to the shore", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = newUiState();
+    ui.open = { id: "fill", arg: "" };
+    const html = doHtml(state, world, cal, ui);
+    const open = html.slice(html.indexOf('data-opt="intent:fill:"'));
+    expect(open).toContain('data-act="row-where"');
   });
 
   it("no strip: the panel has no data-strip kind buttons and no strip sentence", () => {

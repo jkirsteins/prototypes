@@ -6,7 +6,7 @@ import { needsMending } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
-import { intentOption, intentSentence, yieldItem } from "../sim/intent";
+import { groundOf, intentOption, intentSentence, yieldItem } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, RECIPE_IDS, STRUCTURE_IDS, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { fishSpecies, huntedLand, isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
@@ -14,7 +14,7 @@ import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/ep
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate } from "../sim/landing";
-import { orderGate, type Gate } from "../sim/ladder";
+import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
@@ -32,7 +32,7 @@ import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, w
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { regionAt, type RegionDef, speciesHere, type World } from "../world/gen";
-import { defaultChoice, esc, rowRequest, type RowChoice, type UiState } from "./render";
+import { esc, rowRequest, type RowChoice, type UiState } from "./render";
 import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
@@ -494,9 +494,9 @@ function kindNeeds(state: GameState, gate: Gate): string {
   return `needs ${SKILL_NAMES[gate.skill]} ${gate.at}, about ${hours} h`;
 }
 
-/** Only a gather or a hunt actually moves to different ground for a different spot; the rest are camp-bound or carried. */
+/** Only work with a real ground (sim/intent.ts's groundOf) moves for a different spot; everything else is camp-bound or carried, whatever its display group. */
 function rowHasWhere(o: TaskOption): boolean {
-  return o.group === "gather" || o.group === "hunt";
+  return groundOf(o.id, o.arg) !== null;
 }
 
 function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
@@ -531,23 +531,27 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
   return `<div class="expand">${buttons}${n}${deliver}${where}</div>`;
 }
 
-function intentRowHtml(o: TaskOption, gate: Gate, ui: UiState, state: GameState, world: World): string {
+/**
+ * A NOT_ORDERS task (rest, sleep, night, wait, a runner step) is a move the
+ * Do panel starts directly, not something the ladder gates: rowRequest
+ * always collapses its choice to a once job, so a kind button on such a row
+ * would read "forever" and give a one-off rest. No more, no expansion.
+ */
+function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: World): string {
   const arg = o.arg ?? "";
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
-  const open = ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
-  const more = `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>`;
+  const canOpen = !NOT_ORDERS.includes(o.id);
+  const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
+  const more = canOpen ? `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>` : "";
   const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
-  // A shut rung is the promise of the rung, not a hidden row: the same data-opt, the reason, and nothing to click.
-  if (!gate.ok) {
-    return `<div data-opt="intent:${o.id}:${esc(arg)}" class="opt off"><span class="act">${esc(o.label)}${rec}<small>${esc(gate.why)}</small>${bar}</span>${more}${expand}</div>`;
-  }
+  const openCls = open ? " open" : "";
   if (!o.ok) {
-    return `<div class="opt off" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   const line = [time, o.detail].filter(Boolean).join("; ");
-  return `<div class="opt" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
 }
 
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
@@ -556,8 +560,7 @@ export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiStat
       const argKey = arg ?? "";
       const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
       const where = open ? ui.choice.where : "nearest";
-      const { req, kind } = rowRequest(defaultChoice(), id, arg);
-      return intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, where)), orderGate(state, req, kind), ui, state, world);
+      return intentRowHtml(withProgression(state, world, intentOption(state, world, cal, id, arg, where)), ui, state, world);
     }).join("");
     return `<div class="grp"><small>${g.label}</small>${rows}</div>`;
   }).join("");

@@ -276,10 +276,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 }
 .tabs button.on { color: var(--accent); border-color: var(--accent); }
 
-.strip { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-.strip > div { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.strip > div > small { color: var(--dim); width: 52px; }
-.strip .n { width: 52px; background: #181e27; color: var(--text); border: 1px solid var(--line); font: inherit; font-size: 12px; padding: 1px 4px; }
 .grp { margin-top: 8px; }
 .grp > small { color: var(--dim); display: block; margin-bottom: 2px; }
 #task .step { color: var(--dim); margin: 4px 0; }
@@ -299,6 +295,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .opt.off span.act small { color: #5d6570; }
 .opt.off button.act { color: var(--dim); background: transparent; }
 .opt.off button.act small { color: #5d6570; }
+/* The expansion is a row's own line, not a third column squeezed beside the label and "more". */
+.opt.open { flex-wrap: wrap; }
+.opt .expand { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 4px 0 2px; }
+.kind small { color: var(--dim); }
+.expand input[data-strip-n] { width: 4em; }
 .opt .rep {
   background: #181e27; color: var(--dim);
   border: 1px solid var(--line); font: inherit; cursor: pointer;

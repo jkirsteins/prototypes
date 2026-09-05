@@ -41,7 +41,7 @@ const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
 };
 
 /** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
-function groundOf(task: TaskId, arg?: string): SpotId | null {
+export function groundOf(task: TaskId, arg?: string): SpotId | null {
   // "Anything" names no species: a cast for it goes to the shore, a hunt for it is placed by anyCell below.
   if (arg === "any") return task === "hunt" ? "forest" : task === "fish" ? "shore" : null;
   if (task === "hunt" || task === "fish") return SPECIES_DEFS[arg as Species]?.hunt?.spot ?? null;
