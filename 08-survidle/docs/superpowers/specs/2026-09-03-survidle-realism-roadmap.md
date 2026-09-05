@@ -265,7 +265,7 @@ water store, pulled out of their items, in that order because the heirs
 die of food before any snow falls and cold sits under band until it does;
 built), then B the risk forecast with the away cap as its
 horizon, then the testing infra (the section of that name below: the
-beacon behind an opt-in, the survey and the bars read from them), then
+beacon on by default, the survey and the bars read from them), then
 the UI pass (the section of that name below: the Do panel folds and
 filters, the kind chosen per row instead of a mode, columns that scroll
 inside themselves, the phone layout, and the guidelines page the browser
@@ -1537,11 +1537,12 @@ keep the page as light as it is:
 - **No client IP and no session replay.** The RUM application's client
   IP collection is off, and replay is never enabled; a game screen has
   nothing worth replaying.
-- **Opt-in only, loaded on demand.** The SDK is an npm dependency
-  behind a dynamic import, so nothing loads and no third-party host is
-  touched until a tester turns the beacon on in the settings panel. A
-  random id in local storage is the RUM user id, shown on that panel so
-  the tester can quote it in the survey. No name, no email.
+- **On by default.** The SDK is an npm dependency behind a dynamic
+  import, loaded on every open, so a tester who never visits the
+  settings panel is counted; a switch on that panel turns it off, and
+  the round is not asked to find it. A random id in local storage is
+  the RUM user id, shown on the same panel so the tester can quote it
+  in the survey. No name, no email.
 - **The game's facts as custom actions.** Opened (world seed, survivor
   index, game day), died (game day, cause, days survived, hours of
   attention in that life), began again (real time since the death), and
