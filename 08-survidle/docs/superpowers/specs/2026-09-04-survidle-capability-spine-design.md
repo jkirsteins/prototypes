@@ -124,7 +124,11 @@ beneath methods and classes, and a purely defensive or decorative
 structure is not a tier. A row either names a receiving skill other than
 its own and one thing it gives, or carries `alone` with its reason. A
 tier that reaches the tree without a row fails the test, and a row whose
-best name is "+X%" is not a row.
+best name is "+X%" is not a row. A row's tier sits on a task with no
+roll, or on the rate the tool then earns, never on the making of it: a
+recommended level on a craft halves its success per level short, so a
+tier placed there is a lottery and not a capability. The basket trap is
+the standing example, keyed on setting the trap, not on crafting it.
 
 ## 6. Out of scope
 

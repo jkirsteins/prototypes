@@ -286,7 +286,10 @@ and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
 territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
 4 and 6 (depletion and fed wolves), each when its sub-project does, and
-the reference player says when the ramp is enough. 2 rivers is flavour
+the reference player says when the ramp is enough. The first of those
+arrived unbidden with the producers: an heir inherits a shore its
+ancestor and its ancestor's trap fished for six weeks, and the fish row
+reads under band on every heir where it read in band for the ancestor. 2 rivers is flavour
 and has no slot: it lands whenever there is room after 3, and when it
 does it plugs into the water features 1, C and 3 own rather than bringing
 its own. A capability is promoted in this order when the one before it
@@ -1437,6 +1440,23 @@ day now, so F core is next; the survivors starve on days 40 to 48 and the
 horizon rows end in cold and thirst, which is what the trap and the water
 storage answer in their slot.
 
+Measured again with the producers in (the F row carries the runs): the
+gap both gates die of is on the burn side. Work burn reads over its band
+on every seed and every heir, before the producers and after them: 1,800
+to 2,200 kcal a day, of which 500 to 1,000 is walking, three hours a day
+on the paths between camp, the shore, the heath and the forest, because
+the runner works its ten hours whatever food it holds. A body doing that
+needs 3,500 to 4,000 a day, and no April shore and five snares provide
+it; the producers add a few hundred to a gap of two thousand. The next
+calibration change is therefore not a food row: a runner that rests once
+the day's food is in hand, or a working day that shortens on an empty
+reserve, measured on both gates before any producer is tuned. And the
+gate's food clause misreads a body in deficit: seed 19 read unfed at day
+26 while eating 2,971 kcal a day, because the clause is a 04:00 snapshot
+of the reserve, which sits at zero whenever intake is under burn however
+much is eaten. The clause should read the week's intake against its burn,
+or the fat's trend, not the reserve at an instant.
+
 ### B. The risk forecast
 
 **Curve.** The horizon curve's instrument: the forecast's first row is
@@ -1938,50 +1958,53 @@ the number they are measured against. Cold sits under band through
 September on every heir, so the trap is what moves this gate and the
 turf hut is what carries the survivor past it into the snow.
 
-Measured with the producers in (`2026-09-05-survidle-first-producers-design.md`):
-the April gate passed 4 of 4. `npx vite-node scripts/reference.ts --heir
-17 19 42 79 250`: seed 17's first life starves on day 48; a 90-day gap
-lands the heir 16 August, year 1, 12.4 km from the old camp, finding a
-fire pit standing, 5 snares, a trap with 5.0 kg, 0 kcal and 65 kg of
-firewood at camp; the heir starves on day 37. Seed 19's first life
-starves on day 51; a 90-day gap lands the heir 19 August, year 1, 13.2
-km away, finding the same fire pit and 5 snares, no trap, 0 kcal and 68
-kg of firewood at camp; the heir is alive and fed at first snow on day
-27 and starves on day 48. Seed 42's first life starves on day 40; a
-90-day gap lands the heir 8 August, year 1, 10.4 km away, finding a fire
-pit standing, 5 snares, no trap, 0 kcal and no firewood at camp; the
-heir dies of sickness on day 16, before first snow. Seed 79's first
-life starves on day 40; a 90-day gap lands the heir 8 August, year 1,
-18.3 km away, finding a fire pit standing, 5 snares, no trap, 0 kcal
-and 89 kg of firewood at camp; against the first-snow gate on day 34
-the heir fails, starving on day 36. Heir passed 1 of 4. `npx vite-node
-scripts/horizon.ts 17 19 42 79 90`: the producers stage (trap, hut and
-trough at keeps) holds 33, 30, 37 and 35 days against its 10-to-20-day
-band, over on all four; the stocked stage holds 46, 49, 44 and 46 days
+Measured with the producers in (`2026-09-05-survidle-first-producers-design.md`),
+with the trap's fish coming out when the survivor arrives at its cell:
+the April gate passed 2 of 4. Seed 17 stands fed at day 26 with 3,700
+kcal at camp and starves on day 52; seed 19 reads unfed at day 26 while
+eating 2,971 kcal a day, and starves on day 49; seed 42 reads unfed at
+net -343 with sickness burning 180 a day, and starves on day 34; seed 79
+stands fed and starves on day 37. `npx vite-node scripts/reference.ts
+--heir 17 19 42 79 250`: seed 17's heir lands 20 August, year 1, 12.4 km
+from the old camp, finding a fire pit, 5 snares, a trap emptied to 0.0 kg
+and 70 kg of firewood, draws 129 kcal a day from the trap in its first
+week, fails the first-snow gate on day 11 and starves on day 32. Seed
+19's heir lands 17 August, 13.2 km away, finding no trap and no
+firewood, is alive and fed at first snow on day 14 on hares and berries,
+and starves on day 59. Seed 42's heir lands 2 August, 10.4 km away,
+finding no trap, and starves on day 29 before any snow. Seed 79's heir
+lands 5 August, 18.3 km away, finding a trap emptied to 0.0 kg, draws
+400 kcal a day from it, and starves on day 46 before any snow. Heir
+passed 1 of 4. `npx vite-node scripts/horizon.ts 17 19 42 79 90`: the
+producers stage holds 33, 36, 36 and 34 days against its 10-to-20-day
+band, over on all four; the stocked stage holds 41, 49, 39 and 34 days
 against its 20-to-60-day band, in band on all four.
 
-The trap works: its dawn draws yielded 486 to 786 kcal a day on three
-seeds when set on days 10 to 18. But the first month cannot afford it:
-set early and emptied daily, April read 1 of 4, the reads and the trips
-costing what the trap yielded; set early and never emptied, April read
-1 of 4 again, the unemptied basket drawing the shore's fish down while
-the spear fished it. With every producer line below the hunt keep,
-April is 4 of 4 again, and the lines below the hunt keep are reached
-only when everything above is met or blocked - which one first life in
-four managed: seed 17 set its trap and starved with it standing full at
-5.0 kg on day 48. Seeds 19, 42 and 79 never reached them and their
-first lives read no trap. The heir who inherits a full trap starves
-beside it: seed 17's heir walked home to "trap with 5.0 kg", read trap
-0 in its own week, and starved on day 37 - the empty keep sits below
-the same hunt keep, and the heir's own list never reaches it either.
-What that makes next: the calibration pass owns the list's scheduling
-(a keep that is met most of the time, or a runner that empties a trap
-when it passes to fish), and the heir gate's reading of the producers
-waits on it; the trap's own bottleneck, the rack's 6 kg and spoilage,
-is unmeasured until then. A spoiled once-craft counts as done and is
-never retried (`it.done++` before `complete()` decides), which hides
-the bow at low Crafting. An unemptied trap keeps drawing the shore's
-population down.
+How the trap got there. Its dawn draws yielded 486 to 786 kcal a day on
+three seeds when set on days 10 to 18, but no place in the reference
+list could afford an empty keep: set early and emptied daily, April read
+1 of 4, the trips costing what the trap yielded; set early and never
+emptied, 1 of 4 again, the unemptied basket drawing the shore's fish
+down while the spear fished it; below the hunt keep, the lines were
+reached by one first life in four, and the heir who inherited a full trap
+starved beside it. The snares already had the answer: hares come with you
+when you pass the heath. A trap's fish now come out when you arrive at
+its cell, so the fish keep's own trips bring the catch home and the list
+has no empty keep; the trap is set the day the spear exists. With that,
+first lives read trap weeks of 700 and 757 kcal a day on seeds 17 and
+79, and two heirs inherit a working trap. April's 2 of 4 is accepted
+against that: one honest deficit (seed 42) and one the food clause
+misreads (seed 19, eating 2,971 a day), both named in the calibration
+pass above, where the burn side is now the next change. The heir gate
+is measured meaningfully once the tree's carry lands with the rest of F:
+the survivor ladder's row 2 is a carried heir, a quarter carry in one
+skill and keeps from birth, and 1 of 4 is the expected reading for a
+fresh heir until then. What to watch when carry lands is a Fishing 10
+heir at a read shore, drawing five times a day from a trap and a hut
+waiting, passing 4 of 4. Two runner findings stand: a spoiled once-craft
+counts as done and is never retried (`it.done++` before `complete()`
+decides), which hides the bow at low Crafting; and a trap keeps drawing
+the shore's population down whether or not anyone empties it.
 
 The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
 the epitaph, the entry and "The next boat lands in July, year 1". Begin
@@ -2487,6 +2510,11 @@ cross a floor.
   it out and report. The player prepares, or does not.
 - Each sub-project ships with the browser pass that shows a run through
   its new danger, not only its tests.
+- Every task the sim offers is offered by the Do panel, or named in an
+  exclusion list with its reason, and a test asserts it both ways, the
+  third such guard beside the card policy and the capability table. The
+  panel's rows are a hand-kept list, and it had missed all three of the
+  producers' tasks until a browser pass caught it.
 - Every death is the end of a survivor, never of the world. Nothing a
   sub-project adds may make a set-up hold forever. Nothing carries on the
   person except through the Lineage tree, and the tree never buys
@@ -2500,7 +2528,11 @@ cross a floor.
   tree's carry and rate ladders improve rates between tiers; every major
   tier names something the survivor can newly do, recognise, make,
   automate or survive, with a name the player can remember and a log line
-  when it opens. A tier whose best name is "+X%" is not a tier.
+  when it opens. A tier whose best name is "+X%" is not a tier. A tier
+  sits on a task with no roll, or on the rate the tool then earns, never
+  on the making of it: a recommended level on a craft halves its odds
+  per level short and makes the tier a lottery, which is what the basket
+  trap's Fishing 5 did until it moved to setting the trap.
 - Every major capability connects systems: it depends on something
   outside its own skill and makes something outside its own skill more
   useful. The capability spine
