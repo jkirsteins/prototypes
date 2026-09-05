@@ -260,8 +260,8 @@ describe("the reference player", () => {
   });
 
   it("a death landing exactly on a checkpoint day does not double the checkpoint", () => {
-    // Seed 153 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
-    const r = runReference(153, 30);
+    // Seed 107 dies on the gate day, the REFERENCE_TARGET_DAY checkpoint, so the run has a death and a checkpoint on the same day.
+    const r = runReference(107, 30);
     expect(r.outcome).toEqual({ kind: "died", day: REFERENCE_TARGET_DAY, cause: "starved" });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
