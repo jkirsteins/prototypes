@@ -257,8 +257,10 @@ record and the journal read from it with its daily forecast field, the
 epitaph and the cemetery, the dim map, the season spine, first decay,
 the gap between survivors that sets the heir's month, and the heir set
 down near the old camp; not its ramp; built), then the first producers and
-stocks (C's basket trap, and 3's water storage and turf hut, pulled out
-of their items), then B the risk forecast with the away cap as its
+stocks (C's reading water and basket trap, then 3's turf hut, then 3's
+water store, pulled out of their items, in that order because the heirs
+die of food before any snow falls and cold sits under band until it does;
+built), then B the risk forecast with the away cap as its
 horizon, then the first tester round: with B in, the set the hybrid's
 bet needs exists (a death that persists, a producer, a camp that holds,
 orders, a forecast that makes away risk legible), so twenty testers and
@@ -315,8 +317,12 @@ world always reads "starved, day 45", and goals and a tree tuned against
 runs that never see first frost are tuned against the wrong game. The
 trap, the water storage and the turf hut are each a table row and one
 rate or rule, and the death the trap can cause while the player is away
-is November ice, months past where any run ends today. The rest of F
-still comes before the cellar and the shelter ladder's other rungs: the
+is November ice, months past where any run ends today. Inside the slot
+the trap goes first and the hut second: F's heirs, walking home, starve
+in September with cold under band, so the trap is what moves the heir
+gate and the hut is what carries the survivor past it into the snow.
+The trough is third; no heir was thirsty. The rest of F still comes
+before the cellar and the shelter ladder's other rungs: the
 latitude is what makes the second run a different game from the first,
 the goals and the tree are what the second run is for, and the corpse
 run is what a death leaves reachable.
@@ -1758,6 +1764,49 @@ reading holds: the first producers are next, and the heir's report is
 the number they are measured against. Cold sits under band through
 September on every heir, so the trap is what moves this gate and the
 turf hut is what carries the survivor past it into the snow.
+
+Measured with the producers in (`2026-09-05-survidle-first-producers-design.md`):
+the April gate passed 4 of 4. `npx vite-node scripts/reference.ts --heir
+17 19 42 79 250`: seed 17's first life starves on day 48; a 90-day gap
+lands the heir 16 August, year 1, 12.4 km from the old camp, finding a
+fire pit standing, 5 snares, a trap with 5.0 kg, 0 kcal and 65 kg of
+firewood at camp; the heir starves on day 37. Seed 19's first life
+starves on day 51; a 90-day gap lands the heir 19 August, year 1, 13.2
+km away, finding the same fire pit and 5 snares, no trap, 0 kcal and 68
+kg of firewood at camp; the heir is alive and fed at first snow on day
+27 and starves on day 48. Seed 42's first life starves on day 40; a
+90-day gap lands the heir 8 August, year 1, 10.4 km away, finding a fire
+pit standing, 5 snares, no trap, 0 kcal and no firewood at camp; the
+heir dies of sickness on day 16, before first snow. Seed 79's first
+life starves on day 40; a 90-day gap lands the heir 8 August, year 1,
+18.3 km away, finding a fire pit standing, 5 snares, no trap, 0 kcal
+and 89 kg of firewood at camp; against the first-snow gate on day 34
+the heir fails, starving on day 36. Heir passed 1 of 4. `npx vite-node
+scripts/horizon.ts 17 19 42 79 90`: the producers stage (trap, hut and
+trough at keeps) holds 33, 30, 37 and 35 days against its 10-to-20-day
+band, over on all four; the stocked stage holds 46, 49, 44 and 46 days
+against its 20-to-60-day band, in band on all four.
+
+The trap works: its dawn draws yielded 486 to 786 kcal a day on three
+seeds when set on days 10 to 18. But the reference list cannot afford it
+in the first month: with the trap set early and emptied daily April
+read 1 of 4, the reads and the trips costing what the trap yielded;
+with it set early and never emptied April read 1 of 4 again, the
+unemptied basket drawing the shore's fish down while the spear fished
+it; with every producer line below the hunt keep April returns to its
+baseline and no first life ever reaches them, because the hunt, fish,
+berries, hang and arrows keeps are perpetually unmet and starve
+everything under them, the axe keep and the felling grind included. So
+the producers are measured through the kitted camp, the horizon stages
+and the heir gate, and the reference heir inherits no trap or hut from a
+reference ancestor until the list can afford one. What that makes next:
+the calibration pass owns the list's scheduling (a keep that is met
+most of the time, or a runner that empties a trap when it passes to
+fish), and the heir gate's reading of the producers waits on it; the
+trap's own bottleneck, the rack's 6 kg and spoilage, is unmeasured until
+then. A spoiled once-craft counts as done and is never retried
+(`it.done++` before `complete()` decides), which hides the bow at low
+Crafting. An unemptied trap keeps drawing the shore's population down.
 
 The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
 the epitaph, the entry and "The next boat lands in July, year 1". Begin
