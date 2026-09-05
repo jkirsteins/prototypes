@@ -3,6 +3,10 @@ import { newGame } from "../src/sim/newgame";
 import { awaySeconds, catchUp, deserialize, serialize } from "../src/sim/save";
 import { mountAwayDial } from "../src/ui/dial";
 import { AWAY_HOURS_DEFAULT, AWAY_HOURS_MAX, GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
+import { kitOut, REFERENCE_ORDERS } from "../src/sim/reference";
+import { addOrder } from "../src/sim/orders";
+import { addItem, pile } from "../src/sim/inventory";
+import { regionState } from "../src/sim/regionstate";
 
 describe("the away dial", () => {
   it("is eight hours on a new game and on a save without it, and caps at twenty-four", () => {
@@ -24,10 +28,22 @@ describe("the away dial", () => {
 
   it("the catch-up simulates at most the dial's hours, whatever the real time away", () => {
     const { state, world } = newGame(17);
-    state.awayHours = 2;
+    kitOut(state, world);
+    for (const { req, kind } of REFERENCE_ORDERS) {
+      addOrder(state, world, req, kind);
+    }
+    const campCell = regionState(state, world, state.player.region).campCell;
+    addItem(pile(state, campCell), "driedMeat", 5);
+    state.awayHours = 1;
     const from = state.minute;
     catchUp(state, world, 10 * 3600);
-    expect(state.minute - from).toBe(2 * 3600 * GAME_MINUTES_PER_REAL_SECOND);
+    expect(state.dead).toBeNull();
+    expect(state.minute - from).toBe(1 * 3600 * GAME_MINUTES_PER_REAL_SECOND);
+    // A second call with different dial and elapsed time: caps to elapsed (under dial).
+    state.awayHours = 24;
+    const from2 = state.minute;
+    catchUp(state, world, 2 * 3600);
+    expect(state.minute - from2).toBe(2 * 3600 * GAME_MINUTES_PER_REAL_SECOND);
   });
 
   it("the dial reads the state, writes it on input, and labels the hours", () => {
