@@ -166,8 +166,15 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.dim { opacity: 0.45; }
 .maptools { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .legend .fog-key { color: #4a5160; }
-/* Where you are walking, and where things lie. */
-.grid .c.rt { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.22); outline: 1px solid rgba(230, 194, 41, 0.22); outline-offset: -1px; }
+/* Your walk: a line through the glyph centres, solid ahead, dashed behind. It sits after the shade
+   and carries no z-index, so it is over the night and under the @ and the fire glow. */
+.grid .walk { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+/* non-scaling-stroke keeps the stroke in screen pixels under the stretched viewBox. */
+polyline.walk-ahead, polyline.walk-behind { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+polyline.walk-ahead { stroke: rgba(230, 194, 41, 0.9); stroke-width: 2px; }
+polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; stroke-dasharray: 3 3; }
+.legend .walk-key svg { width: 24px; height: 6px; vertical-align: middle; }
+/* Where things lie. */
 .grid .c.pl { text-decoration: underline; text-decoration-color: #e6c229; text-underline-offset: 2px; }
 .legend .pl-key { text-decoration: underline; text-decoration-color: #e6c229; }
 /* The light of the hour, laid over the glyphs. */
@@ -233,6 +240,9 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 .grid .c.mk-shelter { color: #fff; background: #4a5a78; }
+/* The @'s hue at a quarter of its weight: home, before it has a fire or a roof. */
+.grid .c.mk-camp { color: #e6c229; background: #3a3210; }
+.legend .camp-key { color: #e6c229; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */

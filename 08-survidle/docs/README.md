@@ -56,8 +56,10 @@ Every button shows both times: "1 h 40 min (1 min 40 s)".
   in forest, gather stone on rock, fish beside water, hares and berries on
   bog or meadow, and camp things at camp. Named spots (forest, outcrop,
   shore, heath) are waypoints with walk buttons; routes go around lakes and
-  across bog only when they must, and the remaining route is highlighted
-  while you walk. Stop a walk and you stand where you are.
+  across bog only when they must, and your walk is drawn as a line, solid
+  ahead of you and dashed behind, that goes when the walk ends. This
+  region's camp is an `x` whenever you are off it. Stop a walk and you
+  stand where you are.
 - **Stopping never loses work.** Felling, gathering, crafting and the rest
   keep their share done, listed under "Set aside" with a resume button, or
   the place to walk back to. Walking keeps nothing because your position is

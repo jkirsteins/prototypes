@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { fillPopulations } from "../src/sim/regionstate";
+import { startTask } from "../src/sim/tasks";
 import { catchUp, deserialize, loadGame, MAX_OFFLINE_SECONDS, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { regionAt, speciesHere } from "../src/world/gen";
 
@@ -114,6 +116,17 @@ describe("save", () => {
     expect(back.regions[state.player.region].smoke).toBe(0);
     expect(back.regions[state.player.region].structures.hearth).toBe(false);
     expect(back.regions[state.player.region].logsWet).toBe(1440);
+  });
+
+  it("a save mid-walk from before the route remembered its walked cells loads with none", () => {
+    const { state, world } = newGame(3);
+    startTask(state, world, calendar(0), "walk", "spot:forest");
+    const raw = JSON.parse(serialize(state));
+    expect(raw.state.route.walked.length).toBe(1);
+    delete raw.state.route.walked;
+    const back = deserialize(JSON.stringify(raw))!.state;
+    expect(back.route!.walked).toEqual([]);
+    expect(back.route!.path).toEqual(state.route!.path);
   });
 
   it("stores, loads, and keeps the save on death", () => {

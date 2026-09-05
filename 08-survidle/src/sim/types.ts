@@ -116,6 +116,8 @@ export interface PausedTask {
 export interface Route {
   target: number;
   path: number[];
+  /** Cells this walk has left behind, the start cell first; `walked.concat(path)` is the route as first found. */
+  walked: number[];
   label: string;
   /** Whether this walk may cross water, and how: matters when the ice under it later changes. */
   ice: IceMode;
