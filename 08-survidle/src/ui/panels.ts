@@ -421,7 +421,11 @@ export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: U
   return `<h2>Do</h2><div class="tabs">${tabs}</div>${instantBtns}${opts.map(optHtml).join("")}`;
 }
 
-/** The Do panel's rows. The Hunt group is the region's own roster: what is not here is not offered. */
+/**
+ * The Do panel's rows. The Hunt group is the region's own roster: what is
+ * not here is not offered, plus the shore's own reading and the trap it
+ * sets and empties.
+ */
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
     { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
@@ -430,6 +434,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
       { id: "fish" as TaskId, arg: "any" },
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
+      { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
     ] },
     { label: "Camp", items: [{ id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
