@@ -46,6 +46,23 @@ derives terrain from per-cell moisture and elevation (`fieldsAt` in
 pine the dry heath. The weather counts dry days (`dryDays`) for the fire's
 tinder rule.
 
+What the year loop changes, in flight as this is written. The year loop
+(spec `2026-09-05-survidle-year-loop-design.md` at 33f8aa1, plan
+`2026-09-05-survidle-year-loop.md` at 66a9dce, code on
+`worktree-year-loop`) lands before this spec's plan is written, and the
+plan is written against main as it is then, not against the survey
+above. The pieces that meet this spec: its Task 11 rewrites the fill
+intent's fallback in `src/sim/intent.ts`, so a fill on an iced shore
+with no axe walks home and melts snow into the vessels, and exports
+`fireStep` and `campMeltReady` from `src/sim/body.ts` for it; the fetch
+trip in section 2 and the thirsty step in section 3 are written on top
+of that clause, not beside it. It adds `npm run year` with a year gate
+and a winter gate, and the winter gate's stocked December camp dies of
+thirst today walking to an iced shore, which is the reading section 6
+is for. `RegionState` gains `racks` and `trap.age` with defaults in
+`src/sim/save.ts`; `state.seeps` sits beside them. The reference list
+gains large game by name; nothing in this spec changes the list.
+
 ## Decisions taken by the author's pre-approval
 
 - **The first camp is where you land.** The first survivor lands on a
@@ -105,9 +122,15 @@ seeded from the world seed so a seed always lands the same way, and
 falling back to the shore cell nearest the centroid. The centroid stays
 as `cx, cy` for the wildlife capacity and the region name. `placeSpots`
 runs from the new camp as it does today, so the forest, outcrop and heath
-keep their scaled walks; the shore spot is placed by the same rule and
-lands on the camp cell or beside it, and a spot on the camp's own cell is
-dropped, since the camp spot already names it.
+keep their scaled walks. The shore spot stays, and its rule changes: it is
+the shore cell nearest the camp by route other than the camp cell itself,
+usually a neighbour, a minute's walk. It stays because `kitTrap` in
+`src/sim/reference.ts` sets the trap through it, the horizon's producer
+stages and the year probe kit through `kitTrap`, and seven test files
+place the survivor with `placeAtSpot(state, world, "shore")`; a dropped
+spot would lose the trap in all of them without an error. Passed over:
+dropping the spot and teaching `kitTrap` to read the camp cell, which
+moves the exposure into every test instead of out of it.
 
 `looksLikeStart` gains a second pass: a lattice cell the box test accepts
 is built as a region and rejected when no cell of it is a shore. The box
@@ -172,7 +195,8 @@ sticks each is the limit.
 **State.** `state.seeps: Record<number, Seep>` keyed by cell like the
 piles, `Seep = { class: SeepClass; litres: number; ice: number; dug: number }`,
 `dug` the world minute it was finished, for the upkeep clock. The save
-defaults it to an empty record.
+defaults it to an empty record, beside the year loop's `racks` and
+`trap.age` defaults in `src/sim/save.ts`.
 
 **Refill.** Each tick, every seep adds `rate / 60 * dt` litres up to the
 pool, unless refilling is stopped. It stops when the ambient is under
@@ -270,10 +294,17 @@ possible" for a cell with a seep ground.
 
 ## 6. The re-measure
 
-`npm run reference` and `npm run horizon` on the April gate seeds, before
-and after part 1, with the numbers in the plan's record. The expectation
-is a shorter water walk and an easier gate; a gate that gets harder is a
-finding, not a number to bend.
+`npm run reference`, `npm run horizon`, `npm run year` and
+`npm run year -- --winter` on the gate seeds, after part 1, with the
+numbers in the plan's record. The year loop's readings are the "before":
+its spec's section 0 and section 10 as measured when it lands. The
+"after" is written beside them under the same headings, not as a second
+unrelated set, since every gate number in the roadmap moves when the
+first camp is on the shore. The winter gate is the one this camp is
+expected to change most: a stocked December camp that dies of thirst on
+day 15 walking to an iced shore now has the shore under foot. The
+expectation everywhere is a shorter water walk and an easier gate; a
+gate that gets harder is a finding, not a number to bend.
 
 ## 7. The browser pass
 
