@@ -190,12 +190,12 @@ year in `calendar.ts`, derived from the seasonal mean in `weather.ts`
 and written down as numbers: it opens a month after the air's mean
 crosses 0 C in spring, since the sea lags the air, and closes on the
 day the mean crosses 0 C in autumn, since no boat runs into freeze-up.
-With `seasonalMean` as it is, that is day 124 (4 May) to day 306
+With `seasonalMean` as it is, that is day 125 (5 May) to day 306
 (2 November). A test asserts both numbers against the curve so a
 change to the curve moves them.
 
 Worked: a death on 25 April lands 24 July of the same year; a death on
-1 September lands 4 May of the next; a death on 20 October lands 4 May
+1 September lands 5 May of the next; a death on 20 October lands 5 May
 of the next. The gap in days and the landing date go into the new
 record.
 
@@ -219,6 +219,11 @@ Tools in a pile lose durability at `TOOL_RUST_PER_MONTH`, 5 points per
 one rule the pack at the death cell needs that piles do not have today,
 and it applies to any tool left on the ground, alive or not. A tool at
 the floor is still a tool with the wear penalty the tables give it.
+
+This rule was not built here: piles hold tools as counts, not as
+durability-bearing items, and `takeUp` hands back any tool taken from a
+pile at full durability, so rust as wear has nothing to act on until the
+corpse run gives piles durability to lose.
 
 ### 4.4 Where the heir lands
 

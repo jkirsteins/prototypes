@@ -433,7 +433,7 @@ contains:
 2. **The calibration pass**, as specced, which makes the bands honest.
    The three horizon checks are provisional until it runs and are re-run
    after it.
-3. **F's core**, with the life record the journal reads and the daily
+3. **F's core** (built), with the life record the journal reads and the daily
    forecast field (6) added to its list; the views draw once B exists.
    The gap between survivors sets the heir's landing month, so the
    reference player runs from every month from here on.

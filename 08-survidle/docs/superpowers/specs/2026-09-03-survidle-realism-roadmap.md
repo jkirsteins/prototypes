@@ -256,7 +256,7 @@ built), then F's core (the world saved instead of the person, the life
 record and the journal read from it with its daily forecast field, the
 epitaph and the cemetery, the dim map, the season spine, first decay,
 the gap between survivors that sets the heir's month, and the heir set
-down near the old camp; not its ramp), then the first producers and
+down near the old camp; not its ramp; built), then the first producers and
 stocks (C's basket trap, and 3's water storage and turf hut, pulled out
 of their items), then B the risk forecast with the away cap as its
 horizon, then the first tester round: with B in, the set the hybrid's
@@ -1698,23 +1698,62 @@ warn sooner; the evolution view; and the long tail's content, the season
 spine, the goals and the march north. Expected: each row's heir at full
 Lineage outlives the survivor before it, and never outlives the ramp.
 
-Not specced. The high-level guidance is here so the spec has something
-to argue with; the numbers are first targets, not rulings. It is the item
-the thirty-day gate measures, and it builds in three parts. The core is
-one slot after the calibration pass and the delegation ladder: the world
-saved instead of the person, the life record and the journal read from
-it with a daily field for B's month number, the epitaph and the
-cemetery, the dim map, the season spine, first decay, the gap between
-survivors, and the heir set down near the old camp. The lineage lands
-after the first producers and B, in impact order: latitude by row, the
-goals list, the Lineage tree with the chosen landing month as an Arrival
-node, and the death site with the corpse run and its search order. The
-landing month is not an item of its own: the gap between survivors
-rolls it from the first death on, so the reference player runs from
-every month as soon as the core lands. The ramp's parts
+Built: `2026-09-04-survidle-survivor-core-design.md`, plan
+`2026-09-04-survidle-survivor-core.md`, for the core; the lineage and the
+ramp are not specced. The high-level guidance for those two is here so
+the spec has something to argue with; the numbers are first targets, not
+rulings. It is the item the thirty-day gate measures, and it builds in
+three parts. The core is one slot after the calibration pass and the
+delegation ladder: the world saved instead of the person, the life
+record and the journal read from it with a daily field for B's month
+number, the epitaph and the cemetery, the dim map, the season spine,
+first decay, the gap between survivors, and the heir set down near the
+old camp. The lineage lands after the first producers and B, in impact
+order: latitude by row, the goals list, the Lineage tree with the chosen
+landing month as an Arrival node, and the death site with the corpse run
+and its search order. The landing month is not an item of its own: the
+gap between survivors rolls it from the first death on, so the reference
+player runs from every month as soon as the core lands. The ramp's parts
 land inside the sub-projects that own them. Trails and the cellar's keep
 land with 3, because each needs a camp that can be sited and stocked. The
 reference player is F's instrument and lands with the baseline.
+
+Measured, `npx vite-node scripts/reference.ts --heir 17 19 42 79 250`:
+seed 17's first life starves on day 48; a 90-day gap lands the heir 16
+August, year 1, 12.4 km from the old camp, finding a fire pit standing,
+5 snares, 0 kcal and 60 kg of firewood at camp; the heir freezes on day
+25. Seed 19's first life starves on day 43; a 90-day gap lands the heir
+11 August, year 1, 13.2 km away, finding the same fire pit and 5 snares
+with 0 kcal and 26 kg of firewood; the heir freezes on day 19. Seed 42's
+first life starves on day 40; a 90-day gap lands the heir 8 August, year
+1, 10.4 km away, finding 0 kcal and 0 kg of firewood; the heir freezes on
+day 36. Seed 79's first life starves on day 40; a 90-day gap lands the
+heir 8 August, year 1, 18.3 km away, finding 0 kcal and 89 kg of
+firewood; the heir starves on day 27. Against the late-August gate
+(first snow, fed), heir passed 0 of 4.
+
+Every heir lands in the second week of August with a fire pit and five
+snares waiting some 10 to 18 km away, and dies of cold or hunger inside
+40 days. The reference list was tuned for an April start, and the stop
+rule's reading is unchanged: the first producers (the basket trap, the
+water storage, the turf hut) are next in the order, and the heir's
+report is the number they are measured against.
+
+The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
+the epitaph, the entry and "The next boat lands in July, year 1". Begin
+again gave the landing screen dated 2 July, year 1, "Ninety days after
+Veikko Urbonas died", with a prefilled name rerolled twice and then
+typed over. Land gave a fresh body and the first log line naming the old
+camp 12 km north. The journal read "Next: The berries, expected in 10
+days", the heir's own entry, the ancestor under their epitaph and the
+cemetery link; seven regions were dim. Abandoning gave a "Gave up"
+tombstone with the next boat in October. The cemetery listed both dead
+newest first with leave-world behind a confirm. A reload without the
+seed parameter came back to the tombstone from the save. The console
+stayed clean. Two findings: the tombstone shows the name twice, in the
+heading and again in the epitaph's own "Name." prefix; and the panels
+behind the landing screen still show the dead body's bars (health 0, no
+tools) until Land.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -1897,7 +1936,12 @@ for the next one. There is no "write in the journal" button.
   far by design; the distance comes from where the death was and where
   the heir lands. A lineage accumulates metal this way, an axe per
   survivor. Rust as wear keeps the tenth a lump, and the reference player
-  checks that the tool ramp stays honest under a long lineage.
+  checks that the tool ramp stays honest under a long lineage. The core
+  lays the dead survivor's pack down as a pile without this: a pile holds
+  tools as counts, and `takeUp` hands back a fresh tool at full
+  durability regardless of what was dropped, so rust as wear waits for
+  the corpse run, which is what needs durability to live in a pile at
+  all.
 
 **The epitaph and the cemetery.** Every survivor's life is summed up in
 words the game writes from the log, and every world keeps the list. The
