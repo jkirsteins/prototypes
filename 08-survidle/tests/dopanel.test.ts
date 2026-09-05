@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
-import { filterRows, FOLD_KEY, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
+import { doHtml, filterRows, FOLD_KEY, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
+import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
 
 function memory(): Storage {
   const m = new Map<string, string>();
@@ -40,12 +42,62 @@ describe("fold and filter", () => {
     const bow = opts.find((o) => o.id === "craft" && o.arg === "bow")!;
     expect(chop.ok).toBe(true);
     expect(bow.ok).toBe(false);
-    expect(bow.recommended).toEqual({ text: "Crafting 5", under: true });
+    expect(bow.recommended).toEqual({ text: "Crafting 5", under: true, short: 4 });
 
     const { near, far } = splitFar([chop, bow], state);
     expect(near).toEqual([chop]);
     expect(far).toEqual([bow]);
 
     expect(makeFirst([bow, chop])).toEqual([chop, bow]);
+  });
+
+  it("the filter narrows doHtml's rows to matching labels and drops emptied groups", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute);
+    state.skills.woodcraft.xp = levelMinutes(5);
+    const html = doHtml(state, world, cal, { ...newUiState(), filter: "stick" });
+    expect(html).toContain("Gather sticks");
+    expect(html).not.toContain("Fell a tree");
+    expect((html.match(/data-group="/g) ?? []).length).toBe(1);
+  });
+
+  it("a folded group renders its heading only", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute);
+    state.skills.woodcraft.xp = levelMinutes(5);
+    const html = doHtml(state, world, cal, newUiState(), { Gather: false });
+    const group = html.slice(html.indexOf('data-group="Gather"'), html.indexOf('data-group="Hunt"'));
+    expect(group).toContain("+ Gather");
+    expect(group).not.toContain("Gather sticks");
+  });
+
+  it("ui.moreOpen renders a group's far rows in place of the more button", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const closed = doHtml(state, world, cal, newUiState());
+    expect(closed).toMatch(/data-act="more" data-group="Make">more \(\d+\)/);
+    const opened = doHtml(state, world, cal, { ...newUiState(), moreOpen: ["Make"] });
+    expect(opened).toContain('data-opt="intent:craft:bow"');
+    expect(opened).toMatch(/data-act="more" data-group="Make">less/);
+  });
+
+  it("a non-empty filter skips the far fold: a far row still renders, with no more line", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = doHtml(state, world, cal, { ...newUiState(), filter: "coat" });
+    expect(html).toContain("hide coat");
+    expect(html).not.toContain('data-act="more"');
+  });
+
+  it("once is a kind button, carrying the row's own choice of deliver and where", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = newUiState();
+    ui.open = { id: "sticks", arg: "" };
+    const html = doHtml(state, world, cal, ui);
+    const open = html.slice(html.indexOf('data-opt="intent:sticks:"'));
+    expect(open).toContain('data-until="once"');
+    expect((open.match(/class="kind"/g) ?? []).length).toBe(5);
+    expect(rowRequest({ ...defaultChoice(), deliver: "camp" }, "sticks", undefined).req.deliver).toBe("camp");
   });
 });

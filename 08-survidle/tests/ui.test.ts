@@ -237,25 +237,39 @@ describe("panels", () => {
     expect(ui.choice.n).toBe(4);
 
     document.body.innerHTML = `<div id="actions"></div>`;
-    expect(setPanel("actions", `<input data-strip-n value="5">`)).toBe(true);
-    const field = document.querySelector<HTMLInputElement>("[data-strip-n]")!;
+    expect(setPanel("actions", `<input data-row-n value="5">`)).toBe(true);
+    const field = document.querySelector<HTMLInputElement>("[data-row-n]")!;
     field.focus();
     expect(document.activeElement).toBe(field);
     // A redraw carrying different html is refused outright while the field is focused, and the DOM is left alone.
     expect(setPanel("actions", "<p>a different render</p>")).toBe(false);
-    expect(document.querySelector("[data-strip-n]")).not.toBeNull();
+    expect(document.querySelector("[data-row-n]")).not.toBeNull();
     field.blur();
     expect(setPanel("actions", "<p>a different render</p>")).toBe(true);
-    expect(document.querySelector("[data-strip-n]")).toBeNull();
+    expect(document.querySelector("[data-row-n]")).toBeNull();
+  });
+
+  it("setPanel skips a rewrite while a row-n field inside the panel has focus, and proceeds while the filter field outside it has focus", () => {
+    document.body.innerHTML = `<div id="actions"><input data-do="filter"><div id="dorows"><input data-row-n value="5"></div></div>`;
+    resetPanels();
+    const rowN = document.querySelector<HTMLInputElement>("[data-row-n]")!;
+    rowN.focus();
+    expect(setPanel("dorows", "<p>a different render</p>")).toBe(false);
+    expect(document.querySelector("[data-row-n]")).not.toBeNull();
+
+    const filter = document.querySelector<HTMLInputElement>("[data-do]")!;
+    filter.focus();
+    expect(setPanel("dorows", "<p>a different render</p>")).toBe(true);
+    expect(document.querySelector("[data-row-n]")).toBeNull();
   });
 });
 
 describe("the Do panel", () => {
   const { state, world } = newGame(21);
   const cal = calendar(state.minute);
-  // Woodcraft 5 keeps chop's row open at the grind and job rungs the strip tests below reach for.
-  // The ladder gate has its own tests; these rows are about the strip sentence, so woodcraft is
-  // past the gates they use.
+  // Woodcraft 5 keeps chop's row open at the grind and job rungs the tests below reach for.
+  // The ladder gate has its own tests; these rows are about a row's own kind buttons, so
+  // woodcraft is past the gates they use.
   state.skills.woodcraft.xp = levelMinutes(5);
 
   it("has the instant buttons and one row per intent, judged at the work's place", () => {
@@ -490,7 +504,7 @@ describe("the kind per row", () => {
     expect(r.req.until).toEqual({ kind: "once" });
   });
 
-  it("the open row renders the four kinds, greys the unearned ones with the level text, and other rows render no expansion", () => {
+  it("the open row renders the five kinds, greys the unearned ones with the level text, and other rows render no expansion", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
@@ -498,11 +512,11 @@ describe("the kind per row", () => {
     const html = doHtml(state, world, cal, ui);
     const open = html.slice(html.indexOf('data-opt="intent:fish:any"'));
     expect(open).toContain('data-act="row-kind"');
-    for (const k of ["times", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
+    for (const k of ["once", "times", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
     // Fishing at level 1 has not earned a keep: the keep is greyed and says what it needs.
     expect(open).toMatch(/data-until="keep"[^>]*class="[^"]*off[^"]*"/);
     expect(open).toMatch(/needs .* \d/);
-    expect(open).toContain('data-strip-n');
+    expect(open).toContain('data-row-n');
     expect(open).toContain('data-act="row-deliver"');
     const closed = html.slice(html.indexOf('data-opt="intent:sticks:"'), html.indexOf('data-opt="intent:sticks:"') + 600);
     expect(closed).not.toContain('data-act="row-kind"');

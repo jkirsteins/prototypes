@@ -20,9 +20,6 @@
           <label><input type="checkbox" data-sound="ambience" /> ambience</label>
           <span class="dim" data-sound="note"></span>
         </div>
-        <div id="away" class="panel">
-          <label>away up to <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" /> <b data-away="label"></b></label>
-        </div>
         <div id="beacon" class="panel">
           <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
           <span class="dim" data-beacon="note"></span>
@@ -37,8 +34,15 @@
       <aside id="right" class="col">
         <section id="task" class="panel"></section>
         <section id="forecast" class="panel"></section>
+        <div id="away" class="panel">
+          <label>away up to <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" /> <b data-away="label"></b></label>
+        </div>
         <section id="log" class="panel"></section>
-        <section id="actions" class="panel"></section>
+        <section id="actions" class="panel">
+          <h2>Do</h2>
+          <input type="search" data-do="filter" placeholder="filter" />
+          <div id="dorows"></div>
+        </section>
         <section id="inventory" class="panel"></section>
         <section id="journal" class="panel"></section>
       </aside>

@@ -4,7 +4,7 @@ import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween } from "../sim/position";
-import { gap, levelMinutes, SKILL_NAMES } from "../sim/skills";
+import { levelMinutes, SKILL_NAMES } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { SPOT_NAMES, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, TaskId } from "../sim/types";
@@ -18,7 +18,8 @@ export const FOLD_KEY = "survidle.ui";
 
 export function loadFolds(storage: Storage): Record<string, boolean> {
   try {
-    return JSON.parse(storage.getItem(FOLD_KEY) ?? "{}") ?? {};
+    const parsed: unknown = JSON.parse(storage.getItem(FOLD_KEY) ?? "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, boolean>) : {};
   } catch {
     return {};
   }
@@ -35,29 +36,17 @@ export function filterRows<T extends { label: string }>(rows: T[], text: string)
 }
 
 /**
- * The mastery key RECOMMENDED is keyed by, for the branches that carry a
- * recommendation (craft, build, hunt, fish, read, the trap pair). Mirrors
- * sim/skills.ts's masteryKey for exactly those branches: none of them need
- * the world the way chop's terrain-keyed branch does, and chop never carries
- * a recommendation, so splitFar (which has no world to hand) never needs it.
- */
-function recKey(o: TaskOption): string {
-  if (o.id === "setTrap" || o.id === "emptyTrap") return "trap";
-  return o.arg ? `${o.id}:${o.arg}` : o.id;
-}
-
-/**
  * Rows that cannot start now and whose skill sits more than a level under
  * the row's recommended rung: tucked behind "more" so the panel opens on
  * what a fresh survivor can actually reach for. A row with no
  * recommendation, or one within a level of it, is never far, whatever `ok`
- * says.
+ * says. `withProgression` already carries the gap on `recommended.short`.
  */
-export function splitFar(rows: TaskOption[], state: GameState): { near: TaskOption[]; far: TaskOption[] } {
+export function splitFar(rows: TaskOption[], _state: GameState): { near: TaskOption[]; far: TaskOption[] } {
   const near: TaskOption[] = [];
   const far: TaskOption[] = [];
   for (const o of rows) {
-    (!o.ok && gap(state, recKey(o)) > 1 ? far : near).push(o);
+    (!o.ok && (o.recommended?.short ?? 0) > 1 ? far : near).push(o);
   }
   return { near, far };
 }
@@ -89,10 +78,10 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
 }
 
 /**
- * A kind button's label, item-aware the way the strip's own sentence used to
- * be: a keep or an until-camp-has names the goods it is counting, not just
- * the bare number. Light holds no stock, so its "keep camp at N" has no N to
- * show: the keep there is the fire staying lit.
+ * A kind button's label, item-aware: a keep or an until-camp-has names the
+ * goods it is counting, not just the bare number. Light holds no stock, so
+ * its "keep camp at N" has no N to show: the keep there is the fire staying
+ * lit.
  */
 function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"], n: number): string {
   const item = yieldItem(id, arg);
@@ -128,13 +117,15 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
 }
 
 /**
- * The open row's expansion: the four kinds as buttons (greyed with the
+ * The open row's expansion: the five kinds as buttons (greyed with the
  * level and about how many hours to it when the row's skill has not earned
  * them), the count, the deliver toggle and, for a gather or a hunt, the
- * where select.
+ * where select. "once" leads them so a plain click's deliver and where can
+ * be chosen deliberately too, through the same row-kind path every other
+ * kind takes, rather than always falling back to the default choice.
  */
 function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
-  const kinds: RowChoice["until"][] = ["times", "campHas", "keep", "forever"];
+  const kinds: RowChoice["until"][] = ["once", "times", "campHas", "keep", "forever"];
   const buttons = kinds.map((k) => {
     const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
     const gate = orderGate(state, req, kind);
@@ -142,7 +133,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
     const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
     return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
   }).join("");
-  const n = `<input type="number" min="1" data-strip-n value="${ui.choice.n}">`;
+  const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
   return `<div class="expand">${buttons}${n}${deliver}${where}</div>`;
@@ -186,28 +177,30 @@ function groupOptions(g: { label: string; items: { id: TaskId; arg?: string }[] 
  * One Do group: a folding heading, then its rows - Make's startable rows
  * first - with the far ones (cannot start, skill more than a level under
  * the rung) tucked behind a "more (N)" line until ui.moreOpen names the
- * group. Left out entirely once the filter empties it.
+ * group. Left out entirely once the filter empties it. A non-empty filter
+ * skips the far fold outright: a match the reader typed for is never the
+ * one row left hidden behind "more".
  */
 function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean>): string {
   const options = groupOptions(g, state, world, cal, ui);
   if (!options.length) return "";
   const open = folds[g.label] !== false;
-  const heading = `<h3 data-act="fold" data-group="${esc(g.label)}">${open ? "-" : "+"} ${esc(g.label)}</h3>`;
+  const heading = `<button class="fold" data-act="fold" data-group="${esc(g.label)}">${open ? "-" : "+"} ${esc(g.label)}</button>`;
   if (!open) return `<div class="grp">${heading}</div>`;
   const ordered = g.label === "Make" ? makeFirst(options) : options;
-  const { near, far } = splitFar(ordered, state);
+  const { near, far } = ui.filter.trim() ? { near: ordered, far: [] as TaskOption[] } : splitFar(ordered, state);
   const nearHtml = near.map((o) => intentRowHtml(o, ui, state, world)).join("");
-  const farHtml = !far.length ? "" : ui.moreOpen.includes(g.label)
-    ? far.map((o) => intentRowHtml(o, ui, state, world)).join("")
+  const moreOpen = ui.moreOpen.includes(g.label);
+  const farHtml = !far.length ? "" : moreOpen
+    ? `${far.map((o) => intentRowHtml(o, ui, state, world)).join("")}<button class="mini" data-act="more" data-group="${esc(g.label)}">less</button>`
     : `<button class="mini" data-act="more" data-group="${esc(g.label)}">more (${far.length})</button>`;
   return `<div class="grp">${heading}${nearHtml}${farHtml}</div>`;
 }
 
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean> = {}): string {
-  const filterBox = `<input data-do="filter" placeholder="filter" value="${esc(ui.filter)}">`;
   const groups = intentGroups(regionAt(world, state.player.region))
     .map((g) => groupHtml(g, state, world, cal, ui, folds))
     .join("");
   const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
-  return `<h2>Do</h2>${filterBox}${instantHtml(state, world)}<div class="rows">${groups}</div>${adv}`;
+  return `${instantHtml(state, world)}<div class="rows">${groups}</div>${adv}`;
 }

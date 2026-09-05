@@ -290,10 +290,11 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .tabs button.on { color: var(--accent); border-color: var(--accent); }
 
 .grp { margin-top: 8px; }
-.grp > small { color: var(--dim); display: block; margin-bottom: 2px; }
-h3[data-act="fold"] {
-  color: var(--dim); font: inherit; font-size: 13px;
-  margin: 0 0 2px; cursor: pointer;
+.fold {
+  display: block; width: 100%; text-align: left;
+  background: transparent; color: var(--dim); border: 0;
+  font: inherit; font-size: 13px;
+  margin: 0 0 2px; padding: 0; cursor: pointer;
 }
 input[data-do="filter"] {
   width: 100%; background: #181e27; color: var(--text);
@@ -322,7 +323,7 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .opt.open { flex-wrap: wrap; }
 .opt .expand { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 4px 0 2px; }
 .kind small { color: var(--dim); }
-.expand input[data-strip-n] { width: 4em; }
+.expand input[data-row-n] { width: 4em; }
 .opt .rep {
   background: #181e27; color: var(--dim);
   border: 1px solid var(--line); font: inherit; cursor: pointer;
@@ -338,6 +339,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .mini.on { color: var(--accent); border-color: var(--accent); }
 .mini.danger { color: var(--bad); }
 .mini:disabled { color: #5d6570; cursor: default; border-color: var(--line); }
+.mini.off { color: #5d6570; cursor: default; }
+.mini.off:hover { border-color: var(--line); }
 
 #task .head { display: flex; justify-content: space-between; align-items: baseline; }
 #task .aside { margin-top: 8px; border-top: 1px dotted var(--line); padding-top: 6px; }
@@ -402,17 +405,17 @@ button.act small, span.act small { display: block; color: var(--dim); }
   .col { display: contents; }
   #task { order: 1; }
   #forecast { order: 2; }
-  #map { order: 3; }
-  #stats { order: 4; }
-  #actions { order: 5; }
-  #inventory { order: 6; }
-  #log { order: 7; }
-  #region { order: 8; }
-  #gear { order: 9; }
-  #skills { order: 10; }
-  #journal { order: 11; }
-  #clock { order: 12; }
-  #sound { order: 13; }
-  #away { order: 14; }
+  #away { order: 3; }
+  #map { order: 4; }
+  #stats { order: 5; }
+  #actions { order: 6; }
+  #inventory { order: 7; }
+  #log { order: 8; }
+  #region { order: 9; }
+  #gear { order: 10; }
+  #skills { order: 11; }
+  #journal { order: 12; }
+  #clock { order: 13; }
+  #sound { order: 14; }
   #beacon { order: 15; }
 }

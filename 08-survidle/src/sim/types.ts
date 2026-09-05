@@ -133,7 +133,7 @@ export type Until =
 /** Where an intent's work is done: the nearest suitable ground, a named spot, or one cell. */
 export type Where = "nearest" | SpotId | { cell: number };
 
-/** The strip's choice, before the yield item is filled in. */
+/** The row's chosen kind, before the yield item is filled in. */
 export type UntilChoice =
   | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" };
 
@@ -156,7 +156,7 @@ export interface Order {
   /** Stable within the run; the live intent names its order by it. */
   id: number;
   kind: OrderKind;
-  /** The click, as the strip made it. Cells are resolved afresh at every start. */
+  /** The click, as the row's chosen kind made it. Cells are resolved afresh at every start. */
   req: IntentRequest;
   /** Completions of the work and minutes spent in it, for the list and the away report. */
   done: number;

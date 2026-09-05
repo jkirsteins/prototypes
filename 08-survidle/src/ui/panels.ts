@@ -388,8 +388,9 @@ export function forecastRowText(row: ForecastRow): string {
   return `${row.died} of ${row.runs} die: ${CAUSE_WORD[row.cause!]}, ${unit} ${row.day}`;
 }
 
-/** The Ahead panel: one line per horizon, the ones not yet landed for the latest request dimmed with "...". */
+/** The Ahead panel: one line per horizon, the ones not yet landed for the latest request dimmed with "...". A dead survivor has nothing ahead: the stale rows from before death would otherwise linger. */
 export function forecastHtml(view: ForecastView | null, state: GameState): string {
+  if (state.dead) return `<h2>Ahead</h2><div class="row"><span class="dim">nothing ahead</span></div>`;
   const ids: HorizonId[] = ["away", "tonight", "week", "month"];
   const rows = ids.map((id) => {
     const r = view?.rows[id];

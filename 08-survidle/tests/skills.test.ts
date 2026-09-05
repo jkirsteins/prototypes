@@ -480,7 +480,7 @@ describe("options carry progression", () => {
   it("a recommendation reads on the button, and says when you are under it", () => {
     const { state, world } = newGame(3);
     const elk = availableTasks(state, world, cal).find((o) => o.id === "hunt" && o.arg === "elk")!;
-    expect(elk.recommended).toEqual({ text: "Hunting 8", under: true });
+    expect(elk.recommended).toEqual({ text: "Hunting 8", under: true, short: 7 });
     expect(elk.detail).not.toContain("Hunting 8");
     const cabin = availableTasks(state, world, cal).find((o) => o.id === "build" && o.arg === "cabin")!;
     expect(cabin.detail).toContain("at Building 1 this takes 10.6x as long");

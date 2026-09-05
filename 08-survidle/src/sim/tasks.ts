@@ -59,8 +59,8 @@ export interface TaskOption {
   resume?: number;
   /** Mastery of this action, and the share of the way to the next mastery level. */
   mastery?: { level: number; share: number };
-  /** The recommended level, and whether you are under it. */
-  recommended?: { text: string; under: boolean };
+  /** The recommended level, whether you are under it, and by how many levels. */
+  recommended?: { text: string; under: boolean; short: number };
 }
 
 export const SPOT_NAMES = SPOT_WORDS;
@@ -711,7 +711,7 @@ export function withProgression(state: GameState, world: World, o: TaskOption): 
   const rec = RECOMMENDED[key];
   if (!rec) return out;
   const g = gap(state, key);
-  out.recommended = { text: `${SKILL_NAMES[rec.skill]} ${rec.level}`, under: g > 0 };
+  out.recommended = { text: `${SKILL_NAMES[rec.skill]} ${rec.level}`, under: g > 0, short: g };
   const parts: string[] = [];
   if (g > 0 && o.id === "craft") parts.push(`${Math.round(craftSuccess(state, o.arg as RecipeId) * 100)}% chance it comes out`);
   if (g > 0 && o.id === "build") parts.push(`at ${SKILL_NAMES.building} ${skillLevel(state, "building")} this takes ${(1.3 ** g).toFixed(1)}x as long`);

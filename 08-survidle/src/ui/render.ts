@@ -31,6 +31,8 @@ export interface UiState {
   filter: string;
   /** Do groups whose far rows ("more (N)") have been opened this render lifetime. */
   moreOpen: string[];
+  /** The Do panel's fold state, held here and written through on toggle so a frame never has to re-read storage. */
+  folds: Record<string, boolean>;
 }
 
 /** A Do row's order settings: what "more" opens, and what a kind button there gives. */
@@ -49,7 +51,7 @@ export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
     cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
-    open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [],
+    open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [], folds: {},
   };
 }
 
@@ -68,7 +70,7 @@ export function setPanel(id: string, html: string, root: ParentNode = document):
   const el = root.querySelector<HTMLElement>(`#${id}`);
   if (!el) return false;
   const focused = document.activeElement;
-  if (focused && (focused.hasAttribute("data-strip-n") || focused.hasAttribute("data-name") || focused.hasAttribute("data-do")) && el.contains(focused)) return false;
+  if (focused && (focused.hasAttribute("data-row-n") || focused.hasAttribute("data-name")) && el.contains(focused)) return false;
   last.set(id, html);
   el.innerHTML = html;
   return true;

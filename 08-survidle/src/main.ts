@@ -101,6 +101,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   ui.selected = null;
   ui.away = null;
   ui.confirmAbandon = false;
+  ui.folds = loadFolds(localStorage);
   resetPanels();
   resetForecastAt();
   saveGame(state);
@@ -108,6 +109,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
 }
 
 function boot() {
+  ui.folds = loadFolds(localStorage);
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
     state = saved.state;
@@ -156,7 +158,7 @@ function render() {
   setPanel("region", regionHtml(state, world, cal, ui));
   setPanel("task", taskHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
-  setPanel("actions", doHtml(state, world, cal, ui, loadFolds(localStorage)));
+  setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal));
@@ -350,8 +352,8 @@ function onClick(ev: Event) {
     case "row-kind": {
       const id = target.dataset.id as TaskId;
       const arg = target.dataset.arg || undefined;
-      ui.choice.until = target.dataset.until as RowChoice["until"];
       if (!target.classList.contains("off")) {
+        ui.choice.until = target.dataset.until as RowChoice["until"];
         const { req, kind } = rowRequest(ui.choice, id, arg);
         if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
         ui.open = null;
@@ -363,13 +365,15 @@ function onClick(ev: Event) {
       break;
     case "fold": {
       const group = target.dataset.group ?? "";
-      const folds = loadFolds(localStorage);
-      saveFold(localStorage, group, !(folds[group] ?? true));
+      const open = !(ui.folds[group] ?? true);
+      ui.folds[group] = open;
+      saveFold(localStorage, group, open);
       break;
     }
     case "more": {
       const group = target.dataset.group ?? "";
-      if (!ui.moreOpen.includes(group)) ui.moreOpen.push(group);
+      if (ui.moreOpen.includes(group)) ui.moreOpen = ui.moreOpen.filter((g) => g !== group);
+      else ui.moreOpen.push(group);
       break;
     }
     case "advanced":
@@ -458,7 +462,7 @@ document.addEventListener("keydown", (ev) => {
 // focus (a redraw between keystrokes is what used to eat the field's focus).
 document.addEventListener("input", (ev) => {
   const el = ev.target as HTMLInputElement;
-  if (el.matches("[data-strip-n]")) {
+  if (el.matches("[data-row-n]")) {
     commitChoiceN(ui, el.value);
   } else if (el.matches("[data-name]") && state.landing) {
     const t = el.value.trim().slice(0, 40);
@@ -478,7 +482,7 @@ document.addEventListener("change", (ev) => {
     render();
     return;
   }
-  if (!el.matches("[data-strip-n]")) return;
+  if (!el.matches("[data-row-n]")) return;
   commitChoiceN(ui, el.value);
   // A blank field commits to 1 already; force the box to show it, since a
   // render that produces the same html as before is one setPanel skips.
