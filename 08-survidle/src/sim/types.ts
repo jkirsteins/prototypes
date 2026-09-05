@@ -225,8 +225,8 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
-  /** The basket trap set in this region's water: where, the live fish in it, and the species that shore holds. */
-  trap: { cell: number; kg: number; fish: Species[] } | null;
+  /** The basket trap set in this region's water: where, the live fish in it, the species that shore holds, and minutes since it was last emptied. */
+  trap: { cell: number; kg: number; fish: Species[]; age: number } | null;
 }
 
 export interface Player {

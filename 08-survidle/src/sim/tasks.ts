@@ -1123,7 +1123,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "setTrap": {
       const here = cellOf(state, world);
       consume(invs, [{ item: "basketTrap", qty: 1 }]);
-      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish] };
+      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish], age: 0 };
       log(state, `The trap is set at ${whereIs(state, world, here)}.`);
       state.stats.structures++;
       return;
@@ -1303,6 +1303,7 @@ function takeTrapFish(state: GameState, world: World): number {
   const kg = st.trap?.kg ?? 0;
   if (!st.trap || kg <= 1e-9) return 0;
   st.trap.kg = 0;
+  st.trap.age = 0;
   produce(state, world, "fish", kg);
   creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
   state.stats.animals++;

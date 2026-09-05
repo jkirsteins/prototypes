@@ -61,6 +61,7 @@ function fillDefaults(state: GameState): void {
     st.structures.turfHut ??= false;
     st.structures.waterStore ??= false;
     st.trap ??= null;
+    if (st.trap) st.trap.age ??= 0;
   }
   for (const d of state.ledger) d.yield.trap ??= 0;
   if (state.intent) {

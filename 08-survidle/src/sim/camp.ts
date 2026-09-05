@@ -170,6 +170,14 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         }
       }
     }
+    if (st.trap && st.trap.kg > 0) {
+      st.trap.age += 1440;
+      if (st.trap.age > SNARE_CATCH_MAX_AGE) {
+        log(state, `The fish in the trap at ${r.name} have rotted.`, "bad");
+        st.trap.kg = 0;
+        st.trap.age = 0;
+      }
+    }
     if (st.trap) {
       if (state.weather.iceCm >= ICE_SHORE_CM) {
         log(state, `The ice has taken the trap at ${r.name}.`, "bad");
