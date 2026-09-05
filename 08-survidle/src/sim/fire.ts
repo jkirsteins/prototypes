@@ -71,6 +71,11 @@ export function fireWarms(st: RegionState): boolean {
   return st.structures.hearth || st.fire.indoors;
 }
 
+/** True when the camp has a roof over it: a lean-to, a turf hut, or a cabin. */
+export function roofed(st: RegionState): boolean {
+  return st.structures.leanTo || st.structures.cabin || st.structures.turfHut;
+}
+
 export const SMOKE_COUGH = 40;
 export const SMOKE_DEADLY = 60;
 export const SMOKE_RISE_PER_HOUR = 20;
@@ -79,7 +84,8 @@ export const SMOKE_DRAIN_PER_HOUR = 25;
 
 /** Smoke in a closed cabin: rises with an indoor fire and no hearth while someone is there to fill the room for, clears otherwise. */
 export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
-  const filling = st.fire.lit && st.fire.indoors && !st.structures.hearth && atCamp;
+  // The hut has a smoke hole; a camp with one never fills.
+  const filling = st.fire.lit && st.fire.indoors && !st.structures.hearth && atCamp && !st.structures.turfHut;
   if (filling) {
     const rate = smoky(st.fire) ? SMOKE_RISE_PER_HOUR * 1.5 : SMOKE_RISE_PER_HOUR;
     st.smoke = Math.min(100, st.smoke + (rate / 60) * dt);
@@ -119,7 +125,7 @@ export function splitIsWet(state: GameState, world: World): boolean {
  */
 export function splitSheltered(state: GameState, world: World, at: number): boolean {
   const st = regionState(state, world, cellAt(world, at).region);
-  return at === st.campCell && (st.structures.leanTo || st.structures.cabin);
+  return at === st.campCell && roofed(st);
 }
 
 /** Dries up to `perHour * dt / 60` kg total, drawn from whichever of `invs` has wet stock first. */
@@ -148,7 +154,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
   const dry = w.precip === "none";
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    const sheltered = st.fire.lit || st.structures.cabin;
+    const sheltered = st.fire.lit || st.structures.cabin || st.structures.turfHut;
     const perHour = sheltered ? 2 : st.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
     if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];

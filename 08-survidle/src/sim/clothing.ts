@@ -42,7 +42,7 @@ export interface Exposure {
   heavy: boolean;
   snowing: boolean;
   roof: boolean;
-  cabin: boolean;
+  walled: boolean;
   fireAtCamp: boolean;
   bedded: boolean;
   storm: boolean;
@@ -60,9 +60,9 @@ export function wetFactor(g: Garment): number {
   return 1 - loss * (garmentWet(g) / 100);
 }
 
-/** Wetting rate per minute for the outer layer out in the weather; zero by the fire, under a roof, in a cabin, or when dry. */
+/** Wetting rate per minute for the outer layer out in the weather; zero by the fire, under a roof, walled in, or when dry. */
 function wetRate(x: Exposure): number {
-  if (x.fireAtCamp || x.roof || x.cabin || !x.raining) return 0;
+  if (x.fireAtCamp || x.roof || x.walled || !x.raining) return 0;
   let r = x.heavy ? 2 : 1;
   if (x.snowing) r *= 0.25;
   if (x.storm) r *= 2;
@@ -71,11 +71,11 @@ function wetRate(x: Exposure): number {
 
 /**
  * Drying rate per minute: the fire dries fastest whatever the weather, a
- * cabin dries slowly whatever the weather, a lean-to only in dry weather,
+ * walled camp dries slowly whatever the weather, a lean-to only in dry weather,
  * and the open only in dry weather too.
  */
 function dryRate(x: Exposure): number {
-  return x.fireAtCamp ? 20 / 60 : x.cabin ? 5 / 60 : x.roof ? (x.raining ? 0 : 5 / 60) : x.raining ? 0 : 5 / 60;
+  return x.fireAtCamp ? 20 / 60 : x.walled ? 5 / 60 : x.roof ? (x.raining ? 0 : 5 / 60) : x.raining ? 0 : 5 / 60;
 }
 
 /** Wets or dries every garment for dt minutes. */

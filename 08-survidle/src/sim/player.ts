@@ -45,6 +45,7 @@ export function isCampTask(task: Task | null): boolean {
 /** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
 export function shelterBonus(r: RegionState): number {
   if (r.structures.cabin) return 15;
+  if (r.structures.turfHut) return 10;
   if (r.structures.leanTo) return 5;
   return 0;
 }
@@ -52,7 +53,7 @@ export function shelterBonus(r: RegionState): number {
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
 export function sheltered(state: GameState, world: World): boolean {
   const r = regionState(state, world, state.player.region);
-  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo);
+  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo || r.structures.turfHut);
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
@@ -202,7 +203,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   const roof = sheltered(state, world);
-  const cabin = roof && r.structures.cabin;
+  const walled = roof && (r.structures.cabin || r.structures.turfHut);
   const h = dt / 60;
 
   const x: Exposure = {
@@ -210,7 +211,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
     heavy: w.precip === "heavy",
     snowing: w.precip !== "none" && ambient <= 0,
     roof,
-    cabin: !!cabin,
+    walled: !!walled,
     fireAtCamp: r.fire.lit && camp && campTask,
     bedded: bedded(state.task),
     storm: stormNow(w, state.minute),
@@ -263,7 +264,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.
-  if (x.raining && !x.cabin) {
+  if (x.raining && !x.walled) {
     let wet = x.heavy ? 2 : 1;
     if (x.roof) wet *= 0.5;
     // Snow brushes off; it dampens rather than soaks.

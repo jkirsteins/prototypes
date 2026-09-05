@@ -264,6 +264,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.firePit) built.push("fire pit");
   if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
   if (st.structures.cabin) built.push("log cabin");
+  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
   if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
   if (st.structures.boughBed) built.push("bough bed");
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);

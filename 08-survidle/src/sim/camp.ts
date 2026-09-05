@@ -6,14 +6,14 @@ import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, stepSmoke } from "./fire";
 import {
-  BOUGH_BED_DAYS, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
+  BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
   SNARE_CATCH_MAX_AGE, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { SPECIES_DEFS } from "./species";
-import { type GameState, type RegionState, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type RegionState, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
@@ -138,6 +138,13 @@ export function trapFactor(mastery: number): number {
   return mastery >= 50 ? 5 / 3 : mastery >= 20 ? 4 / 3 : 1;
 }
 
+/** What the log says when each decaying structure gives out. */
+const FALLS: Record<DecayingId, (name: string) => string> = {
+  leanTo: (n) => `The lean-to at ${n} has fallen in.`,
+  dryingRack: (n) => `The rack at ${n} has rotted through.`,
+  turfHut: (n) => `The roof of the hut at ${n} has come down.`,
+};
+
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
 export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
@@ -186,14 +193,15 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
       }
     }
-    for (const sid of ["leanTo", "dryingRack"] as const) {
+    for (const sid of DECAYING) {
       if (!st.structures[sid]) continue;
       st.structureAge[sid] = (st.structureAge[sid] ?? 0) + 1440;
       if (st.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
       st.structures[sid] = false;
       delete st.structureAge[sid];
       if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; }
-      log(state, sid === "leanTo" ? `The lean-to at ${r.name} has fallen in.` : `The rack at ${r.name} has rotted through.`, "bad");
+      if (sid === "turfHut") st.fire.indoors = false;
+      log(state, FALLS[sid](r.name), "bad");
     }
     if (st.iceHole) {
       st.iceHole = null;
@@ -204,7 +212,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
   }
 }
 
-/** Past two thirds of its life a lean-to needs re-roofing and a rack relashing; the camp panel says so. */
-export function needsMending(st: RegionState, id: "leanTo" | "dryingRack"): boolean {
+/** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
+export function needsMending(st: RegionState, id: DecayingId): boolean {
   return st.structures[id] && (st.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
 }
