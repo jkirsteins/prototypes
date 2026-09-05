@@ -41,8 +41,9 @@ function readyToSet(startDoy?: number) {
   const cell = cellOf(g.state, g.world);
   const obs = readShore(g.state, g.world, cell);
   const st = regionState(g.state, g.world, g.state.player.region);
-  // Fish capacities now come from biomass per hectare over mean weight,
-  // yielding tens of thousands per km2; scale population to match the density scale.
+  // A shore's fish capacity is biomass per hectare over mean weight, tens of
+  // thousands per km2, so the population is stocked on that scale for the trap
+  // to have anything to catch.
   for (const s of obs.fish) st.pop[s] = 2500;
   addItem(g.state.player.pack, "basketTrap", 1);
   return { ...g, cell, st, obs };

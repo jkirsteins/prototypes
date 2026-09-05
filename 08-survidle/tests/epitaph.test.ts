@@ -63,16 +63,13 @@ describe("the epitaph", () => {
 
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
-    // Fish capacities now come from biomass per hectare, yielding tens of thousands per km2; this increases trap yield.
-    // Small game now refills a hunted range from its neighbours instead of only the slow herd migration, so the
-    // reference survivor's snares find more hares and the death moves again; seed 17's cause moves from starving
-    // to dying of cold, a day later.
-    // A pole rack holding 40 kg, with a second rack for another 40, dries far more meat than the old 6 kg could.
-    // The named hunts sit below the hut group as grinds, not keeps, so raw meat never blocks on a keep the hang
-    // grind is clearing: seed 17 starves at camp on day 52, and seed 19 starves on day 55.
-    // Soaked bodies under 5 C read cold at warmth 45 instead of 30, so they spend more time at the fire early.
-    // The 400 kg woodpile keep waits for its season (1 September to 1 April): a 1 April
-    // start is closed for it from the first tick and never opens it in either life below.
+    // What these two deaths rest on: a shore's fish capacity is biomass per hectare over mean weight, tens of
+    // thousands per km2, so a trap and a spear both find fish; a hunted small-game range refills from its
+    // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
+    // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
+    // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
+    // the early days buy warmth at the fire; and the 400 kg woodpile keep is open only from 1 September to
+    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below.
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved at camp, with nothing in the pack and 70 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 55. Starved at camp, with nothing in the pack and 49 kg of firewood at camp."`);
   });
