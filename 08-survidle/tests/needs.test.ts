@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { canFeed, currentNeed } from "../src/sim/body";
+import { canFeed, currentNeed, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
 import { calendar } from "../src/sim/calendar";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
+import { ambientTemperature } from "../src/sim/weather";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { huntedLand } from "../src/sim/species";
@@ -227,5 +228,26 @@ describe("a kit at camp counts only while standing there", () => {
     placeAt(state, world, heath);
     expect(heath).not.toBe(st.campCell);
     expect(check(state, world, cal, "build", "snare").why).toBe("needs a snare");
+  });
+});
+
+describe("wet and cold", () => {
+  it("counts as cold at warmth 45 when soaked under 5 C, and not when dry", () => {
+    const g = felling();
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 10;
+    state.weather.offset = -10;
+    const cal = calendar(state.minute);
+    expect(ambientTemperature(cal, state.weather)).toBeLessThan(5);
+    state.player.warmth = 40;
+    state.player.wetness = 0;
+    expect(currentNeed(state, world, cal, state.intent!)).not.toBe("cold");
+    state.player.wetness = 80;
+    expect(currentNeed(state, world, cal, state.intent!)).toBe("cold");
+    expect(SOAKED_WETNESS).toBe(60);
+    expect(WET_COLD_C).toBe(5);
   });
 });

@@ -69,11 +69,11 @@ describe("the epitaph", () => {
     // to dying of cold, a day later.
     // A pole rack holding 40 kg, with a second rack for another 40, dries far more meat than the old 6 kg could.
     // The named hunts sit below the hut group as grinds, not keeps, so raw meat never blocks on a keep the hang
-    // grind is clearing: seed 17 starves at camp on day 53 (was cold, 1.2 km out), and seed 19 still
-    // starves at camp on day 48.
+    // grind is clearing: seed 17 starves at camp on day 52, and seed 19 starves on day 55.
+    // Soaked bodies under 5 C read cold at warmth 45 instead of 30, so they spend more time at the fire early.
     // The 400 kg woodpile keep waits for its season (1 September to 1 April): a 1 April
     // start is closed for it from the first tick and never opens it in either life below.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 53. Starved at camp, with nothing in the pack and 77 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 48. Starved at camp, with nothing in the pack and 89 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved at camp, with nothing in the pack and 70 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 55. Starved at camp, with nothing in the pack and 49 kg of firewood at camp."`);
   });
 });

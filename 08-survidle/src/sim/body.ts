@@ -23,7 +23,7 @@ import { isRunning, type Step, walkStep } from "./steps";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
-import { stormComing, stormNow, walkableIce } from "./weather";
+import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
 
 export const SLEEP_AT = 20;
 export const NIGHT_SLEEP_UNDER = 60;
@@ -31,6 +31,10 @@ export const COLD_UNDER = 30;
 export const WARM_AT = 45;
 export const HUNGRY_UNDER = 1800;
 export const PROVISION_KG = 2;
+/** Soaked through: wet clothing holds half its warmth, and hypothermia near freezing is an hour or two away. */
+export const SOAKED_WETNESS = 60;
+/** The air under which a soaked body reads cold at WARM_AT rather than COLD_UNDER. */
+export const WET_COLD_C = 5;
 /** Densest first, so two kilos carry the most days. */
 const PROVISIONS: FoodId[] = ["driedMeat", "cookedMeat", "cookedFish", "berries"];
 
@@ -94,7 +98,9 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) it.coldSpent = false;
-  const cold = !it.coldSpent && (p.warmth < COLD_UNDER || (it.need === "cold" && p.warmth < WARM_AT));
+  const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, state.weather) < WET_COLD_C;
+  const coldUnder = wetCold ? WARM_AT : COLD_UNDER;
+  const cold = !it.coldSpent && (p.warmth < coldUnder || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (thirsty) return "thirsty";
   if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
