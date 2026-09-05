@@ -10,10 +10,24 @@ import type { GameState } from "../sim/types";
 import { type BeaconRecord, beganAgainFacts, common, diedFacts, openedFacts } from "./facts";
 import { saveRecord } from "./storage";
 
-export interface Sink { emit(name: string, context: Record<string, unknown>): void }
+export interface Sink {
+  emit(name: string, context: Record<string, unknown>): void;
+  /** Ends the vendor session outright, for a switch turned off mid-session; optional because the recording test sink has nothing to end. */
+  stop?(): void;
+}
 
 /** One heartbeat a real minute while the tab is visible and the game runs: the unit hours of attention are summed from. */
 export const HEARTBEAT_MS = 60_000;
+
+/**
+ * Whether this is the frame that should report a death: the first frame
+ * where the state reads dead and the caller had not already seen it die.
+ * A death produced by the reload catch-up counts the same as one produced
+ * by a live tick, since both cross from not-dead to dead exactly once.
+ */
+export function deathTransition(wasDead: boolean, deadNow: boolean): boolean {
+  return deadNow && !wasDead;
+}
 
 export interface Beacon {
   opened(state: GameState): void;
@@ -38,16 +52,17 @@ export function createBeacon(storage: Storage, sink: Sink | null, rec: BeaconRec
     },
     beganAgain(state, now) {
       send("beganAgain", { ...beganAgainFacts(state, rec, now) });
-      rec.attention = { survivor: current(state).index, minutes: 0 };
+      rec.attention = { seed: state.seed, survivor: current(state).index, minutes: 0 };
       save();
     },
     tick(state, visible, running, now) {
-      if (!visible || !running) return;
+      if (!visible || !running) { lastBeat = null; return; }
       if (lastBeat === null) { lastBeat = now; return; }
       if (now - lastBeat < HEARTBEAT_MS) return;
       lastBeat = now;
+      const seed = state.seed;
       const survivor = current(state).index;
-      if (rec.attention.survivor !== survivor) rec.attention = { survivor, minutes: 0 };
+      if (rec.attention.seed !== seed || rec.attention.survivor !== survivor) rec.attention = { seed, survivor, minutes: 0 };
       rec.attention.minutes += 1;
       save();
       send("heartbeat", { ...common(state, rec) });

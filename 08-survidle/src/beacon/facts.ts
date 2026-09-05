@@ -16,8 +16,8 @@ export interface BeaconRecord {
   cohort: string | null;
   /** Wall-clock milliseconds of the last death seen, for the time it took to begin again. */
   diedAt: number | null;
-  /** Visible minutes in one life, and which life that count belongs to. */
-  attention: { survivor: number; minutes: number };
+  /** Visible minutes in one life, and which world and life that count belongs to. */
+  attention: { seed: number; survivor: number; minutes: number };
 }
 
 export interface Common { seed: number; survivor: number; day: number; tester: boolean; cohort: string | null }
@@ -42,7 +42,7 @@ export function diedFacts(state: GameState, rec: BeaconRecord): Common & { cause
   const died = current(state).died;
   const cause = died?.cause ?? state.dead?.cause ?? "gaveUp";
   const daysSurvived = died?.day ?? c.day;
-  const attentionMin = rec.attention.survivor === c.survivor ? rec.attention.minutes : 0;
+  const attentionMin = rec.attention.seed === c.seed && rec.attention.survivor === c.survivor ? rec.attention.minutes : 0;
   return { ...c, cause, daysSurvived, attentionMin };
 }
 

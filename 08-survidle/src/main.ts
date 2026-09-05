@@ -4,7 +4,7 @@ import { mountControl } from "./audio/control";
 import { createAudioEngine } from "./audio/engine";
 import { SLOTS } from "./audio/manifest";
 import { createScheduler } from "./audio/scheduler";
-import { createBeacon } from "./beacon/beacon";
+import { createBeacon, deathTransition, type Sink } from "./beacon/beacon";
 import { BEACON } from "./beacon/config";
 import { createDatadogSink } from "./beacon/datadog";
 import { applyTesterLink, loadRecord, saveRecord } from "./beacon/storage";
@@ -67,9 +67,10 @@ let beaconRec = loadRecord(localStorage);
   }
 }
 const beaconConfigured = Boolean(BEACON.applicationId && BEACON.clientToken);
-const makeSink = () => createDatadogSink(BEACON, beaconRec.id, { tester: beaconRec.tester, cohort: beaconRec.cohort });
+const makeSink = () => createDatadogSink(BEACON, beaconRec.id, { tester: beaconRec.tester, cohort: beaconRec.cohort }, () => beacon.record().on);
 let sinkMade = beaconConfigured && beaconRec.on;
-const beacon = createBeacon(localStorage, sinkMade ? makeSink() : null, beaconRec);
+let sink: Sink | null = sinkMade ? makeSink() : null;
+const beacon = createBeacon(localStorage, sink, beaconRec);
 let wasDead = false;
 
 // Assigned by boot()/fresh() before anything reads it; the assertion is for TS,
@@ -110,6 +111,9 @@ function boot() {
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
     state = saved.state;
+    // Set before the catch-up below runs, so a death the catch-up itself deals
+    // is not already read as "seen": the first frame must still emit died for it.
+    wasDead = Boolean(saved.state.dead);
     world = generateWorld(state.seed);
     fillPopulations(state, world);
     const elapsed = Math.max(0, (Date.now() - saved.savedAt) / 1000);
@@ -189,7 +193,7 @@ function frame(now: number) {
   } else if (ui.away) {
     lastReal = now;
   }
-  if (state.dead && !wasDead) beacon.died(state, Date.now());
+  if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
   render();
@@ -281,12 +285,15 @@ function onClick(ev: Event) {
     case "reroll-name":
       rerollName(state);
       break;
-    case "land":
+    case "land": {
+      const wasLanding = state.landing !== null;
       land(state, world);
-      beacon.beganAgain(state, Date.now());
+      // land() no-ops without a landing or a name; only count a real landing as a begin-again.
+      if (wasLanding && state.landing === null) beacon.beganAgain(state, Date.now());
       ui.confirmAbandon = false;
       resetForecastAt();
       break;
+    }
     case "cemetery":
       ui.cemetery = true;
       ui.confirmLeave = false;
@@ -392,7 +399,6 @@ function zoomBy(delta: number) {
 
 boot();
 beacon.opened(state);
-wasDead = Boolean(state.dead);
 // Built once world is real; the worker keeps its own copy keyed by seed, so a
 // later fresh() with a new world does not leave it stale.
 const forecaster = createForecaster(
@@ -420,7 +426,13 @@ document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 mountControl(document.getElementById("sound")!, audio);
 awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, () => state, (on) => {
-  if (on && beaconConfigured && !sinkMade) { beacon.setSink(makeSink()); sinkMade = true; }
+  if (on && beaconConfigured && !sinkMade) {
+    sink = makeSink();
+    beacon.setSink(sink);
+    sinkMade = true;
+  }
+  // Off cannot wait for the next event: the vendor session ends now, not on its next send.
+  if (!on) sink?.stop?.();
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();

@@ -11,9 +11,12 @@ export function mountBeaconPanel(root: HTMLElement, beacon: Beacon, configured: 
   const note = root.querySelector<HTMLElement>("[data-beacon=note]")!;
   const rec = beacon.record();
   box.checked = rec.on;
-  note.textContent = `id ${rec.id}${rec.tester ? `, tester: ${rec.cohort}` : ""}${configured ? "" : " (not configured)"}`;
+  // The id sits in its own element so a double-click selects just the id, not the whole note.
+  note.innerHTML = `id <code data-beacon="id">${rec.id}</code>${rec.tester ? `, tester: ${rec.cohort}` : ""}${configured ? "" : " (not configured)"}`;
   box.addEventListener("change", () => {
-    beacon.setOn(box.checked, getState());
+    // Before setOn: turning on must let the caller create the sink first, or
+    // setOn's own settings action has nothing to send through.
     onToggle(box.checked);
+    beacon.setOn(box.checked, getState());
   });
 }
