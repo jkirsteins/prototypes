@@ -28,6 +28,7 @@ import { FAT_FULL } from "./player";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { startTask } from "./tasks";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
@@ -200,9 +201,29 @@ export class ReferencePlayer {
   /** Units a want's dropped once/times stand-ins have completed so far, per want index. */
   private completed = new Map<number, number>();
 
-  constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS) {}
+  /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
+  reachedDay: number | null = null;
+
+  /**
+   * `home` is the region of the old camp for an heir: the first log line
+   * gives the bearing, and a competent player walks there before anything
+   * else, since the camp orders deliver to is the region's own and the old
+   * one has the fire pit, the stone and the snares the list would otherwise
+   * spend its first days on. The walk is the real travel task, paid in hours,
+   * burn and nights on the way, and no order is given until the region is
+   * reached. The first survivor has no home and starts on the list at once.
+   */
+  constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS, private home: number | null = null) {}
 
   tick(state: GameState, world: World): void {
+    if (this.home !== null) {
+      if (state.player.region !== this.home) {
+        if (!state.task) startTask(state, world, calendar(state.minute, state.startDoy), "travel", `region:${this.home}`);
+        return;
+      }
+      this.reachedDay = calendar(state.minute, state.startDoy).day;
+      this.home = null;
+    }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
       if (list.some((o) => o.id === g.id)) continue;
@@ -369,7 +390,7 @@ export interface HeirReport {
   first: ReferenceReport;
   gapDays: number;
   landed: WorldDate;
-  found: { structures: string[]; campFoodKcal: number; campFirewoodKg: number; snares: number; kmToOldCamp: number };
+  found: { structures: string[]; campFoodKcal: number; campFirewoodKg: number; snares: number; kmToOldCamp: number; reachedCampDay: number | null };
   heir: ReferenceReport;
 }
 
@@ -384,7 +405,7 @@ export function runHeir(seed: number, days: number): HeirReport {
   const first = measure(ref, days);
   const { state, world } = ref;
   if (!state.dead) {
-    return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0 }, heir: first };
+    return { seed, first, gapDays: 0, landed: current(state).landed, found: { structures: [], campFoodKcal: 0, campFirewoodKg: 0, snares: 0, kmToOldCamp: 0, reachedCampDay: null }, heir: first };
   }
   const oldRegion = oldCampRegion(state);
   const oldSt = regionState(state, world, oldRegion);
@@ -404,7 +425,7 @@ export function runHeir(seed: number, days: number): HeirReport {
     snares: oldSt.structures.snares,
     kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
   };
-  const heirRef = { state, world, player: new ReferencePlayer() };
+  const heirRef = { state, world, player: new ReferencePlayer(REFERENCE_ORDERS, oldRegion) };
   const heir = measure(heirRef, days);
-  return { seed, first, gapDays: current(state).gapDays, landed: current(state).landed, found, heir };
+  return { seed, first, gapDays: current(state).gapDays, landed: current(state).landed, found: { ...found, reachedCampDay: heirRef.player.reachedDay }, heir };
 }

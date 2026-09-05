@@ -1734,11 +1734,30 @@ firewood at camp; the heir starves on day 27. Against the late-August
 gate (first snow, fed), heir passed 0 of 4.
 
 Every heir lands between 8 and 16 August with a fire pit and five
-snares waiting some 10 to 18 km away, and dies of cold or hunger inside
-40 days. The reference list was tuned for an April start, and the stop
-rule's reading is unchanged: the first producers (the basket trap, the
-water storage, the turf hut) are next in the order, and the heir's
-report is the number they are measured against.
+snares waiting some 10 to 18 km away. Read closer, those four deaths
+were not the list meeting September: the heir never went to the old
+camp, and the shore it landed on had no rock, so the list stalled on
+its first job. Every heir's camp held 0 stone and 130 to 394 logs at
+death, with a fire drill and no ring to light; three froze beside 40 kg
+of firewood and seed 79's heir wore its axe out felling and starved. The
+landing search asks for a shore where the start search asks for a shore
+and an outcrop, and travel was not a line on the list. Meanwhile every
+ancestor had starved 0.1 to 1.2 km from its own camp, so its axe, knife,
+bucket and spear lay beside the fire pit and the stone through the gap.
+The reference heir now walks to the old camp first, as the first log
+line's bearing invites, by the travel task with its hours and burn, and
+gives no order until it arrives: all four reach it on day 1 and take
+their camp there. Measured again: seed 17's heir starves on day 39
+(was frozen on 25), seed 19's on day 53, alive and fed at day 45 (was
+19), seed 79's on day 36 (was 27), and seed 42's dies of a fever on day
+16 (was 36), a hazard roll in rain with the tinder refusing. Heir
+passed 0 of 4 still, and now of the ancestor's cause: snares over band
+and fish in band, 950 to 2,600 kcal eaten a day against 3,500 to 3,700
+burned, most of the excess the working day's felling. The stop rule's
+reading holds: the first producers are next, and the heir's report is
+the number they are measured against. Cold sits under band through
+September on every heir, so the trap is what moves this gate and the
+turf hut is what carries the survivor past it into the snow.
 
 The browser pass ran in Chrome on seed 17 at 200x. The tombstone showed
 the epitaph, the entry and "The next boat lands in July, year 1". Begin

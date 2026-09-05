@@ -264,6 +264,12 @@ describe("the heir", () => {
     expect(r.heir.checkpoints.length).toBeGreaterThan(0);
   }, 30000);
 
+  it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
+    const r = runHeir(17, 60);
+    expect(r.found.reachedCampDay).not.toBeNull();
+    expect(r.found.reachedCampDay!).toBeLessThanOrEqual(3);
+  }, 30000);
+
   it("a first life still alive at the day cap has no heir to raise, and stands in for both", () => {
     const r = runHeir(17, 1);
     expect(r.first.outcome.kind).toBe("reached");

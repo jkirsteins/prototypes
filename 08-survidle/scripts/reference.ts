@@ -24,8 +24,9 @@
  * --heir, anywhere in the args, runs a second life per seed after the
  * from-scratch (and, if given, kitted) blocks: the reference run to death,
  * the gap, the landing near the old camp, then a fresh reference run as
- * the heir. It prints the first life's outcome, the gap and landing date,
- * what the heir found at the old camp, the heir's checkpoints and its own
+ * the heir, which walks to the old camp before it gives an order. It
+ * prints the first life's outcome, the gap and landing date, what the heir
+ * found at the old camp, the day it got there, the heir's checkpoints and its own
  * "heir passed N of M" line. Like --kitted, it is a diagnostic and never
  * touches the exit code - the from-scratch run from scratch is still the
  * gate.
@@ -90,6 +91,7 @@ if (heir) {
     const r = runHeir(seed, days);
     console.log(`seed ${seed} (heir): first life ${outcomeText(r.first)}; gap ${r.gapDays} days; landed ${fmtWorldDate(r.landed)}, ${r.found.kmToOldCamp} km from the old camp`);
     console.log(`  found: ${r.found.structures.join(", ") || "nothing standing"}; ${r.found.snares} snares; ${r.found.campFoodKcal} kcal and ${r.found.campFirewoodKg} kg of firewood at camp`);
+  console.log(r.found.reachedCampDay === null ? "  never reached the old camp" : `  reached the old camp on day ${r.found.reachedCampDay}`);
     printCheckpoints(r.heir);
     console.log(`  heir: ${passLine(r.heir)}`);
     if (r.heir.passed) heirPassed++;
