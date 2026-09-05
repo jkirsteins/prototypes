@@ -1229,8 +1229,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.fire.lit = true;
       cue("fireCatches");
       st.fire.fuelKg += 1;
-      // lightIndoors is always indoors; a plain light at the pit joins it only under a hut's smoke hole, never beside a cabin.
-      st.fire.indoors = id === "lightIndoors" || (st.structures.turfHut && !st.structures.cabin);
+      // lightIndoors is always indoors, and it refuses a cabin with a hearth in
+      // favour of a plain light - so the plain light is the one that lays a
+      // cabin's hearth fire, and it also joins the fire under a hut's smoke
+      // hole. A pit fire beside a cabin with no hearth is an open fire.
+      st.fire.indoors = id === "lightIndoors" || (st.structures.turfHut && !st.structures.cabin) || (st.structures.cabin && st.structures.hearth);
       log(state, "Smoke, then flame. The fire is lit.", "good");
       return;
     }
