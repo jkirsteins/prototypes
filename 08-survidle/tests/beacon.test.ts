@@ -93,3 +93,79 @@ describe("the facts", () => {
     expect(beganAgainFacts(state, { ...rec, diedAt: null }, 1_090_000).sinceDeathSec).toBeNull();
   });
 });
+
+import { createBeacon, HEARTBEAT_MS, type Sink } from "../src/beacon/beacon";
+
+function recording(): Sink & { sent: { name: string; ctx: Record<string, unknown> }[] } {
+  const sent: { name: string; ctx: Record<string, unknown> }[] = [];
+  return { sent, emit: (name, ctx) => { sent.push({ name, ctx }); } };
+}
+
+describe("the beacon", () => {
+  it("opened emits once with the facts; a heartbeat arms on the first tick, fires at sixty seconds, counts a minute, and skips hidden or stopped", () => {
+    const { state } = newGame(17);
+    const s = memory();
+    const sink = recording();
+    const b = createBeacon(s, sink, loadRecord(s));
+    b.opened(state);
+    expect(sink.sent.map((e) => e.name)).toEqual(["opened"]);
+    expect(sink.sent[0].ctx.seed).toBe(17);
+    b.tick(state, true, true, 1000);
+    expect(sink.sent.length).toBe(1);
+    b.tick(state, true, true, 1000 + HEARTBEAT_MS - 1);
+    expect(sink.sent.length).toBe(1);
+    b.tick(state, true, true, 1000 + HEARTBEAT_MS);
+    expect(sink.sent.map((e) => e.name)).toEqual(["opened", "heartbeat"]);
+    expect(b.record().attention).toEqual({ survivor: 1, minutes: 1 });
+    b.tick(state, false, true, 1000 + 2 * HEARTBEAT_MS);
+    b.tick(state, true, false, 1000 + 3 * HEARTBEAT_MS);
+    expect(sink.sent.length).toBe(2);
+    expect(JSON.parse(s.getItem(BEACON_KEY)!).attention.minutes).toBe(1);
+  });
+
+  it("died stores the time and emits; beganAgain emits the seconds since and resets the life's attention", () => {
+    const { state } = newGame(17);
+    const s = memory();
+    const sink = recording();
+    const b = createBeacon(s, sink, { ...loadRecord(s), attention: { survivor: 1, minutes: 5 } });
+    state.dead = { cause: "starved", minute: state.minute };
+    b.died(state, 50_000);
+    expect(b.record().diedAt).toBe(50_000);
+    expect(sink.sent.at(-1)).toMatchObject({ name: "died", ctx: { cause: "starved", attentionMin: 5 } });
+    state.dead = null;
+    state.survivors.push({ ...current(state), index: 2, forecast: [], events: [], died: null });
+    b.beganAgain(state, 170_000);
+    expect(sink.sent.at(-1)).toMatchObject({ name: "beganAgain", ctx: { survivor: 2, sinceDeathSec: 120 } });
+    expect(b.record().attention).toEqual({ survivor: 2, minutes: 0 });
+  });
+
+  it("off, nothing is emitted but the count still moves; setOn emits the settings action whatever the new value, once", () => {
+    const { state } = newGame(17);
+    const s = memory();
+    const sink = recording();
+    const b = createBeacon(s, sink, { ...loadRecord(s), on: false });
+    b.opened(state);
+    b.tick(state, true, true, 0);
+    b.tick(state, true, true, HEARTBEAT_MS);
+    expect(sink.sent).toEqual([]);
+    expect(b.record().attention.minutes).toBe(1);
+    b.setOn(true, state);
+    expect(sink.sent.map((e) => e.name)).toEqual(["settings"]);
+    expect(sink.sent[0].ctx.on).toBe(true);
+    b.opened(state);
+    expect(sink.sent.map((e) => e.name)).toEqual(["settings", "opened"]);
+    b.setOn(false, state);
+    b.opened(state);
+    expect(sink.sent.map((e) => e.name)).toEqual(["settings", "opened", "settings"]);
+    expect(JSON.parse(s.getItem(BEACON_KEY)!).on).toBe(false);
+  });
+
+  it("without a sink every method is safe", () => {
+    const { state } = newGame(17);
+    const b = createBeacon(memory(), null, loadRecord(memory()));
+    b.opened(state);
+    b.tick(state, true, true, 0);
+    b.setOn(false, state);
+    expect(b.record().on).toBe(false);
+  });
+});
