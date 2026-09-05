@@ -146,8 +146,13 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
 
 /** 1 September: a competent player starts the winter woodpile when the nights first frost. */
 export const WINTER_WOOD_FROM_DOY = 244;
-/** The day the woodpile want closes again: after ice-out the pile is for next winter, and the list's 60 kg keep carries the summer. */
-export const WINTER_WOOD_TO_DOY = 120;
+/**
+ * The day the woodpile want closes again: the thaw begins with April, so a
+ * pile stacked after it is next winter's rather than this one's, and a
+ * spring survivor should have a roof up before a winter pile. The list's
+ * 60 kg keep, above this one, is what carries the summer.
+ */
+export const WINTER_WOOD_TO_DOY = 90;
 
 /**
  * Whether a competent player would give this want today: a named hunt

@@ -166,6 +166,16 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
 }
 
 /**
+ * The one reason a fill's allowance and its melt fallback both key on: the
+ * shore is iced over with no axe for a hole, but snow can still be melted at
+ * the fire instead. Stated once so fetchAllowance and workStep never judge
+ * it two different ways.
+ */
+function meltInsteadOk(state: GameState, world: World, cal: Calendar, task: TaskId, why: string): boolean {
+  return task === "fill" && why === "iced over; needs an axe for an ice hole" && campMeltReady(state, world, cal);
+}
+
+/**
  * A blocked want gets one allowance for a reason a competent player would
  * work around rather than accept: a build missing materials at camp, when
  * something it needs sits elsewhere in the region and can be walked to; and
@@ -177,9 +187,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
  * disagree about whether the want may go on.
  */
 function fetchAllowance(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
-  if (task === "fill" && why === "iced over; needs an axe for an ice hole") {
-    return campMeltReady(state, world, cal) ? { ok: true, detail: "melts snow at the fire instead" } : { ok: false, detail: "" };
-  }
+  if (meltInsteadOk(state, world, cal, task, why)) return { ok: true, detail: "melts snow at the fire instead" };
   if (task !== "build" || arg === "snare" || why !== "missing materials at camp") return { ok: false, detail: "" };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
@@ -527,6 +535,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     return "again";
   }
   let o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
+  const rawWhy = o?.why ?? "";
   // The melt allowance chooseOrder and startIntent gave this fill before it
   // began still holds while it runs: a fill stopped cold by "iced over" the
   // moment the shore froze over mid-keep must fall through to the melt
@@ -535,7 +544,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   // already tried it and fallen through to "none" on purpose when nothing
   // fits in the pack, and re-opening that case here would spin forever.
   if (it.task === "fill" && o && !o.ok) {
-    const fa = fetchAllowance(state, world, cal, it.task, it.arg, o.why);
+    const fa = fetchAllowance(state, world, cal, it.task, it.arg, rawWhy);
     if (fa.ok) o = { ...o, ok: true, why: "", detail: fa.detail };
   }
   const met = it.windDown || untilMet(state, it);
@@ -549,15 +558,22 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     return undefined;
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
-  // A fill on a frozen shore cuts its hole first; the fill follows next minute.
-  // With no hole to be had (no axe), the fill is served at camp instead: snow
-  // melted at the fire into the vessels, which the delivery then pours out.
+  // A fill on a frozen shore cuts its hole first, judged at the shore itself
+  // (it.cell) rather than wherever the survivor happens to be standing - an
+  // ice hole is ground-gated to waterside terrain, so judging it underfoot
+  // would read false at camp by position alone and never let an axe-carrying
+  // survivor walk to the shore at all. Left unresolved here, the walk below
+  // still carries them there; once at it.cell, the hole is cut. With no hole
+  // to be had - meltInsteadOk is the same "iced over; needs an axe" reason
+  // fetchAllowance already keys on - the fill is served at camp instead:
+  // snow melted at the fire into the vessels, which the delivery then pours out.
   if (it.task === "fill" && !waterSource(state, world)) {
-    if (check(state, world, cal, "iceHole").ok) {
-      takeStep(state, world, cal, { id: "iceHole", step: "cutting an ice hole" }, rng);
-      return undefined;
-    }
-    if (state.weather.iceCm >= ICE_SHORE_CM && campMeltReady(state, world, cal)) {
+    if (check(state, world, cal, "iceHole", undefined, it.cell).ok) {
+      if (here === it.cell) {
+        takeStep(state, world, cal, { id: "iceHole", step: "cutting an ice hole" }, rng);
+        return undefined;
+      }
+    } else if (meltInsteadOk(state, world, cal, it.task, rawWhy)) {
       if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " to melt snow");
       const fs = fireStep(state, world, cal, it.campCell);
       if (fs) { takeStep(state, world, cal, fs, rng); return undefined; }

@@ -40,11 +40,12 @@ describe("the reference player", () => {
     player.tick(state, world);
     const list = ordersHere(state, world);
     // The three named hunts (elk, reindeer, deer) gate on the species' recommended level,
-    // so a level-1 survivor's first tick never sees them; every other want is open.
+    // so a level-1 survivor's first tick never sees them; the 400 kg woodpile keep gates
+    // by season and a 1 April start is closed for it too; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 3);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 3);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 4);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 4);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -399,10 +400,10 @@ describe("wants by level", () => {
     }
   });
 
-  it("opens the 400 kg firewood keep from 1 September, stays open through winter into an April before ice-out, and is closed in high summer", () => {
+  it("opens the 400 kg firewood keep from 1 September and not in April, staying open through winter until the thaw", () => {
     const { state } = newGame(17);
     const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === 400)!;
-    expect(wantOpen(state, wood, calendar(0, 90))).toBe(true);
+    expect(wantOpen(state, wood, calendar(0, 90))).toBe(false);
     expect(wantOpen(state, wood, calendar(0, 200))).toBe(false);
     expect(wantOpen(state, wood, calendar(0, 244))).toBe(true);
     expect(wantOpen(state, wood, calendar(0, 20))).toBe(true);

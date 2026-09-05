@@ -171,4 +171,25 @@ describe("the fill keep in winter", () => {
     advance(state, world, 120);
     expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(before);
   });
+
+  it("with an axe in hand, an iced shore, snow and a lit fire, the fill keep walks to the shore and cuts a hole rather than melting snow at camp", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    state.player.tools.push(freshTool("barkBucket"));
+    addItem(pile(state, st.campCell), "barkBucket", 1);
+    state.weather.iceCm = ICE_SHORE_CM;
+    state.weather.snowCm = 20;
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    const before = qty(pile(state, st.campCell), "water");
+    advance(state, world, 120);
+    // Only the iceHole task ever sets a standing hole at the shore; the melt
+    // fallback never does, so its presence alone rules out melting having run.
+    expect(st.iceHole?.cell).toBe(shore.cell);
+    expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(before);
+  });
 });
