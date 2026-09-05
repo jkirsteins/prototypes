@@ -261,16 +261,17 @@ stocks (C's reading water and basket trap, then 3's turf hut, then 3's
 water store, pulled out of their items, in that order because the heirs
 die of food before any snow falls and cold sits under band until it does;
 built), then B the risk forecast with the away cap as its
-horizon, then the first tester round: with B in, the set the hybrid's
-bet needs exists (a death that persists, a producer, a camp that holds,
-orders, a forecast that makes away risk legible), so twenty testers and
-the beacon go in there, as a kill-or-continue check of the hybrid and
+horizon, then 3's siting (camp as a chosen cell, pulled out of 3 the way
+the hut and the trough were), then the first tester round: with B and
+siting in, the set the hybrid's bet needs exists (a death that persists,
+a producer, a camp that holds and was chosen, orders, a forecast that
+makes away risk legible), so twenty testers and the beacon go in there, as a kill-or-continue check of the hybrid and
 not the commercial gate, before any content deepens a loop that has not
 earned it; then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
 run and its search order), then E hides and clothing, then the rest of
-3 camp (siting, the rest of the shelter ladder, the buildings with the
+3 camp (the rest of the shelter ladder, the buildings with the
 cellar first) with the rest of C alongside and F's trails and the
 cellar's keep, then 4 animals, 5 injury
 and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
@@ -326,6 +327,22 @@ before the cellar and the shelter ladder's other rungs: the
 latitude is what makes the second run a different game from the first,
 the goals and the tree are what the second run is for, and the corpse
 run is what a death leaves reachable.
+
+Why siting comes before the tester round and not in 3's slot: the
+promotion rule above is written for rungs the player earns, and siting
+is not a rung, it is the decision the run is spent living with, which
+the section under 3 calls the most idle-shaped addition here. Measured
+by deaths it never moves, since the baseline's start filter already
+gives every camp a shore and an outcrop, so under the rule it would sit
+behind E and the rest of F for as long as thirst and hunger lead the
+ledger. But the tester round is a kill-or-continue check of the bet,
+and testers who never chose where to settle cannot answer it; a kill
+from that round would be ambiguous. The cost also grows with every slot
+that passes: the camp cell is read in twenty files today, and the
+corpse run, the goals and the trails would each bind to it before 3's
+turn came. B stays ahead of it, because the forecast is what makes an
+away death fair and that is the premise being tested. The rest of 3,
+the ladder's other rungs and the buildings, keeps its slot.
 
 Why D landed whole and early: the species half because the roster is
 what the orders hunt, and the sound half beside it because the cue sink
@@ -1895,9 +1912,10 @@ in the world. Three levers, cheapest first:
   by a long walk, so the old cabin is the waypoint on the way up. It is
   also the reason 6's moving camp exists: a summer camp south, a winter
   push north, stock carried between.
-- **The camp as the decision.** 3's siting, when it lands: coast, inland
-  lake and fell edge should each want a different orders list. Not in the
-  thirty-day scope; the test says whether the two above are enough.
+- **The camp as the decision.** 3's siting, which lands after B and
+  before the tester round (the build order says why): coast, inland
+  lake and fell edge should each want a different orders list. The
+  test says whether the three together are enough.
 
 **Goals.** Hades' fated list is the model: every goal in the world is
 listed, a few are open at a time, harder ones open as earlier ones close,

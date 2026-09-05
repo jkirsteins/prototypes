@@ -160,9 +160,11 @@ The same hue as the `@` at a quarter of its weight, so the eye pairs
 the two without mistaking one for the other. Title: `camp, <region
 name>`. Legend: `x camp` beside `@ you`.
 
-`mapKey` needs no change: the survivor's cell (which fixes the region)
-and the zoom are in it, and the marker is a function of those two and
-the region's camp cell, which does not move.
+`mapKey` needs no change yet: the survivor's cell (which fixes the
+region) and the zoom are in it, and the marker is a function of those
+two and the region's camp cell, read from the region state. That cell
+does not move today. When 3's siting makes it a chosen cell, it joins
+the key and nothing else about the marker changes.
 
 ## 5. Tests
 
