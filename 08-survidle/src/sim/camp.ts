@@ -31,7 +31,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
 
     if (st.fire.lit) {
       const roof = roofed(st);
-      const perMin = burnPerHour(state.weather, ambient, roof) / 60;
+      const perMin = burnPerHour(state.weather, ambient, st) / 60;
       const total = fuelTotal(st.fire);
       if (total > 0) {
         const share = st.fire.wetKg / total;

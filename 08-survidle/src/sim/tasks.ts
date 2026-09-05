@@ -511,6 +511,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
+      if (st.structures.turfHut && !st.structures.cabin) return { ...o, detail: `${o.detail}; under the smoke hole` };
       return o;
     }
     case "lightTorch": {
@@ -1227,7 +1228,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.fire.lit = true;
       cue("fireCatches");
       st.fire.fuelKg += 1;
-      st.fire.indoors = id === "lightIndoors";
+      // lightIndoors is always indoors; a plain light at the pit joins it only under a hut's smoke hole, never beside a cabin.
+      st.fire.indoors = id === "lightIndoors" || (st.structures.turfHut && !st.structures.cabin);
       log(state, "Smoke, then flame. The fire is lit.", "good");
       return;
     }
