@@ -2,7 +2,7 @@ import { itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { berriesRefused } from "../sim/berries";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { needsMending } from "../sim/camp";
+import { needsMending, siteLine, siteReport } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
@@ -243,10 +243,13 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
         const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
         return `<div>${SPOT_NAMES[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
-      if (s.cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
+      // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
+      // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
+      const cell = s.id === "camp" ? campCellOf(state, world, id) : s.cell;
+      if (cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(world, myCell, s.cell, walkableIce(state.weather));
+      const km = kmBetween(world, myCell, cell, walkableIce(state.weather));
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : ` <small>${esc(walk.why)}</small>`;
@@ -293,6 +296,10 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
       : `<div style="margin-top:6px"><span class="dim">${esc(go.why)}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
   }
+  // What this cell offers as a camp, shown only when it is not the camp already.
+  const asCamp = here && myCell !== campCellOf(state, world, id)
+    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}</dd>`
+    : "";
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
 <dl class="kv">
@@ -300,6 +307,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 <dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
 <dt>animals</dt><dd>${rosterHtml(state, world, id, cal)}</dd>
 <dt>places</dt><dd class="spots">${spots}${loose}</dd>
+${asCamp}
 <dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}</dd>
 </dl>${travel}`;
 }

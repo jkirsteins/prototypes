@@ -1,8 +1,9 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, type World } from "../world/gen";
+import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
-import type { Calendar } from "./calendar";
+import { calendar, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
@@ -10,11 +11,21 @@ import {
   SNARE_CATCH_MAX_AGE, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
+import { baseWalkSpeed } from "./player";
 import { regionState, touchedRegions } from "./regionstate";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { SPECIES_DEFS } from "./species";
-import { type DecayingId, type GameState, type RegionState, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type RegionState, type SpotId, type Terrain, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
+
+/**
+ * The map's own terrain names (ui/map.ts's TERRAIN_NAME), duplicated here since sim/ never
+ * imports from ui/ and this task's scope does not touch map.ts. Today the two are identical;
+ * unifying them behind one table is a candidate cleanup for whoever next touches the map.
+ */
+const TERRAIN_NAME: Record<Terrain, string> = {
+  water: "water", fell: "fell", rock: "rock", bog: "bog", spruce: "spruce", pine: "pine", birch: "birch", meadow: "meadow",
+};
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
@@ -243,4 +254,32 @@ export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok
   const kg = weight(pile(state, st.campCell));
   if (kg > 1e-9) return { ok: false, why: `${Math.round(kg * 10) / 10} kg lie at the old camp, carry them first` };
   return { ok: true };
+}
+
+export interface SiteReport {
+  terrain: string;
+  spots: { id: SpotId; minutes: number | null }[];
+  /** Whether open water in this region ices over in winter, at ICE_SHORE_CM. */
+  ices: boolean;
+}
+
+/** What a cell offers as a camp: the ground under foot, the walk to each of the region's other spots from it, and whether the water ices. */
+export function siteReport(state: GameState, world: World, cell: number): SiteReport {
+  const region = cellAt(world, cell).region;
+  const r = regionAt(world, region);
+  const cal = calendar(state.minute, state.startDoy);
+  const speed = baseWalkSpeed(state, cal, state.weather);
+  const spots = r.spots
+    .filter((s) => s.id !== "camp")
+    .map((s) => {
+      const route = findRoute(world, cell, s.cell, "none");
+      return { id: s.id, minutes: route ? Math.round(routeMinutes(world, route, speed, "none")) : null };
+    });
+  return { terrain: TERRAIN_NAME[cellAt(world, cell).terrain], spots, ices: r.spots.some((s) => s.id === "shore") };
+}
+
+/** "shore 12 min, forest 4 min, rock 9 min; ices over in winter" - the spots in the region's own order. */
+export function siteLine(r: SiteReport): string {
+  const parts = r.spots.map((s) => `${s.id} ${s.minutes === null ? "no way" : `${s.minutes} min`}`);
+  return `${parts.join(", ")}${r.ices ? "; ices over in winter" : ""}`;
 }

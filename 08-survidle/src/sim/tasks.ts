@@ -1,11 +1,11 @@
 import { Rng } from "../rng";
 import { CELL_KM, PACK_HARD_KG } from "../units";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
-import { findRoute, routeKm, routeMinutes } from "../world/route";
+import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
-import { needsMending } from "./camp";
+import { canMoveCamp, needsMending, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
   addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
@@ -87,7 +87,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
-  "setTrap", "emptyTrap",
+  "setTrap", "emptyTrap", "makeCamp",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -129,12 +129,15 @@ export function walkTarget(state: GameState, world: World, arg: string): { cell:
   if (thin) parts.pop();
   const [kind, val] = parts;
   if (kind === "spot") {
+    // "camp" is the one spot a move sends elsewhere; every other spot's cell is fixed at generation.
+    if (val === "camp") return { cell: campCellOf(state, world), label: SPOT_WORDS.camp, thin };
     const s = spotOf(regionAt(world, state.player.region), val as SpotId);
     return s ? { cell: s.cell, label: SPOT_WORDS[val as SpotId], thin } : null;
   }
   if (kind === "region") {
-    const r = regionAt(world, Number(val));
-    return r ? { cell: r.campCell, label: r.name, thin } : null;
+    const id = Number(val);
+    const r = regionAt(world, id);
+    return r ? { cell: campCellOf(state, world, id), label: r.name, thin } : null;
   }
   if (kind === "cell") {
     const cell = Number(val);
@@ -551,6 +554,14 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
       return { ...o, duration: loaded + empty, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
+    case "makeCamp": {
+      const o = opt({ group: "camp", label: "Make camp here", detail: "", duration: 20 });
+      if (at === campCellOf(state, world)) return { ...o, ok: false, why: "this is the camp" };
+      if (!passable(terrain)) return { ...o, ok: false, why: "not here" };
+      const move = canMoveCamp(state, world);
+      if (!move.ok) return { ...o, ok: false, why: move.why };
+      return { ...o, detail: siteLine(siteReport(state, world, at)) };
+    }
     case "night":
       return opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 });
     case "wait":
@@ -675,6 +686,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "sleep"));
   out.push(check(state, world, cal, "fill"));
   out.push(check(state, world, cal, "iceHole"));
+  out.push(check(state, world, cal, "makeCamp"));
   for (const id of RECIPE_IDS) out.push(check(state, world, cal, "craft", id));
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
   for (const sid of DECAYING) out.push(check(state, world, cal, "mend", sid));
@@ -1265,6 +1277,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "iceHole": {
       cutIceHole(state, world);
+      return;
+    }
+    case "makeCamp": {
+      const here = cellOf(state, world);
+      st.campCell = here;
+      if (state.intent) state.intent.campCell = here;
+      log(state, "You make camp here.");
       return;
     }
     case "haul":
