@@ -1,18 +1,20 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
-import { popOf, regionDensity } from "./animals";
+import { absence, popOf, regionDensity } from "./animals";
 import type { Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
-  SNARE_CATCH_MAX_AGE, STRUCTURE_LIFE_DAYS,
+  SNARE_CATCH_MAX_AGE, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
 import { regionState, touchedRegions } from "./regionstate";
+import { masteryOf, skillLevel, yieldFactor } from "./skills";
+import { SPECIES_DEFS } from "./species";
 import { type GameState, type RegionState, PERISHABLES } from "./types";
-import { THAW_L_PER_HOUR } from "./water";
+import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
@@ -126,6 +128,16 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
   return qty(state.player.pack, "firewood") + qty(pile(state, regionState(state, world, region).campCell), "firewood");
 }
 
+/** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
+export function trapDraws(level: number): number {
+  return Math.min(8, 4 + Math.floor(Math.max(0, level - 5) / 5));
+}
+
+/** The trap's own mastery bonus on top of a draw's odds. */
+export function trapFactor(mastery: number): number {
+  return mastery >= 50 ? 5 / 3 : mastery >= 20 ? 4 / 3 : 1;
+}
+
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
 export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
@@ -145,6 +157,24 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         if (popOf(st, "hare") >= 1 && rng.chance(0.3 * d)) {
           st.pop.hare = popOf(st, "hare") - 1;
           st.snareCatch.count += 1;
+        }
+      }
+    }
+    if (st.trap) {
+      if (state.weather.iceCm >= ICE_SHORE_CM) {
+        log(state, `The ice has taken the trap at ${r.name}.`, "bad");
+        st.trap = null;
+      } else if (st.trap.kg < TRAP_HOLD_KG) {
+        const draws = who ? trapDraws(skillLevel(state, "fishing")) : 4;
+        const factor = who ? trapFactor(masteryOf(state, "fishing", "trap")) : 1;
+        const kgFactor = who ? yieldFactor(state, "fishing") : 1;
+        const present = st.trap.fish.filter((s) => popOf(st, s) >= 1 && !absence(SPECIES_DEFS[s], cal, state.weather.iceCm));
+        for (let i = 0; i < draws && present.length && st.trap.kg < TRAP_HOLD_KG; i++) {
+          const s = present[rng.int(present.length)];
+          const d = regionDensity(state, world, id, s, cal);
+          if (!rng.chance(d * SPECIES_DEFS[s].hunt!.odds * TRAP_ODDS * factor)) continue;
+          st.pop[s] = popOf(st, s) - 1;
+          st.trap.kg = Math.min(TRAP_HOLD_KG, st.trap.kg + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
         }
       }
     }

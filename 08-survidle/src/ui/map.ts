@@ -148,7 +148,7 @@ export function flickerDelay(i: number): string {
 
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
-  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}`).join(",");
+  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}${r.trap ? "T" : ""}`).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -181,6 +181,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       const g = toGlyph(cell);
       if (g >= 0) markerAt.set(g, m);
     }
+  }
+  for (const r of Object.values(state.regions)) {
+    if (!r.trap) continue;
+    const g = toGlyph(r.trap.cell);
+    if (g >= 0 && !markerAt.has(g)) markerAt.set(g, { glyph: "T", cls: "mk-trap" });
   }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, { glyph: "@", cls: "mk-player" });

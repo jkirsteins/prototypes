@@ -87,6 +87,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
+  "setTrap", "emptyTrap",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -587,8 +588,23 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }
-    // Not offered anywhere yet: no runner ever reaches this with one of these ids in hand.
-    case "setTrap": case "emptyTrap": throw new Error(`${id} has no legality check yet`);
+    case "setTrap": {
+      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Set the trap", detail: "stakes and the basket in the shallows; catches while you are elsewhere", duration: 20 }));
+      if (!o.ok) return o;
+      if (st.trap) return { ...o, ok: false, why: `the trap is set at ${whereIs(state, world, st.trap.cell)} already` };
+      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
+      if (!isRead(state, at)) return { ...o, ok: false, why: "read the water first" };
+      if (state.player.known[at].fish.length === 0) return { ...o, ok: false, why: "nothing lives in this water" };
+      if (!kitInReach(state, world, "basketTrap", invs)) return { ...o, ok: false, why: "needs a basket trap" };
+      return o;
+    }
+    case "emptyTrap": {
+      const o = opt({ group: "hunt", label: "Empty the trap", detail: st.trap ? `${st.trap.kg.toFixed(1)} kg of fish in it` : "", duration: 15 });
+      if (!st.trap) return { ...o, ok: false, why: "no trap set here" };
+      if (at !== st.trap.cell) return { ...o, ok: false, why: `walk to the trap at ${whereIs(state, world, st.trap.cell)}` };
+      if (st.trap.kg <= 1e-9) return { ...o, ok: false, why: "the trap is empty" };
+      return o;
+    }
   }
 }
 
@@ -640,6 +656,8 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "fish", "any"));
   for (const s of fishSpecies()) if (r.capacity[s]) out.push(check(state, world, cal, "fish", s));
   out.push(check(state, world, cal, "read"));
+  out.push(check(state, world, cal, "setTrap"));
+  out.push(check(state, world, cal, "emptyTrap"));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
   out.push(check(state, world, cal, "light"));
@@ -1083,6 +1101,23 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const here = cellOf(state, world);
       readShore(state, world, here);
       log(state, readLine(state, world, cal, here), "good");
+      return;
+    }
+    case "setTrap": {
+      const here = cellOf(state, world);
+      consume(invs, [{ item: "basketTrap", qty: 1 }]);
+      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish] };
+      log(state, `The trap is set at ${whereIs(state, world, here)}.`);
+      state.stats.structures++;
+      return;
+    }
+    case "emptyTrap": {
+      const kg = st.trap!.kg;
+      st.trap!.kg = 0;
+      produce(state, world, "fish", kg);
+      creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
+      state.stats.animals++;
+      log(state, `You empty the trap: ${kg.toFixed(1)} kg of fish.`, "good");
       return;
     }
     case "cook": {

@@ -200,7 +200,7 @@ describe("tasks", () => {
     // Seed 4: a starting region with a lake, so the list has a fishing row at all.
     const { state, world } = newGame(4);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "setTrap", "emptyTrap", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
       expect(ids.has(id as never)).toBe(true);
     }
   });

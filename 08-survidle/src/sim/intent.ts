@@ -14,6 +14,7 @@ import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
+import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
@@ -36,7 +37,7 @@ const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
   chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
-  fill: "shore", iceHole: "shore", read: "shore",
+  fill: "shore", iceHole: "shore", read: "shore", setTrap: "shore",
 };
 
 /** The ground a piece of work wants, as the spot that stands for it, or null when any ground does. An order saved against a species the catalogue no longer has names no ground. */
@@ -74,6 +75,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
     case "hang": return "driedMeat";
+    case "emptyTrap": return "fish";
     default: return null;
   }
 }
@@ -139,6 +141,11 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   }
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
   if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
+  if (task === "emptyTrap" && st.trap) return { cell: st.trap.cell, note: "" };
+  if (task === "setTrap") {
+    const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);
+    if (cells.length) return { cell: cells[0], note: "" };
+  }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
   const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
