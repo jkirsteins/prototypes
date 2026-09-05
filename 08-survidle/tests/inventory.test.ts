@@ -89,6 +89,8 @@ describe("the producers' rows", () => {
     expect(STRUCTURES.turfHut.minutes).toBe(1200);
     expect(STRUCTURES.turfHut.needs).toEqual([{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }]);
     expect(STRUCTURES.waterStore.needs).toEqual([{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }]);
+    expect(STRUCTURE_LIFE_DAYS.leanTo).toBe(365);
+    expect(STRUCTURE_LIFE_DAYS.dryingRack).toBe(730);
     expect(STRUCTURE_LIFE_DAYS.turfHut).toBe(540);
     expect(MEND.turfHut).toEqual({ needs: [{ item: "bark", qty: 20 }], minutes: 120 });
     expect(DECAYING).toEqual(["leanTo", "dryingRack", "turfHut"]);

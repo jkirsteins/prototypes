@@ -68,7 +68,7 @@ describe("the landing", () => {
     expect(state.minute).toBe(0);
     expect(state.startDoy).toBe(182);
     expect(state.year).toBe(1);
-    expect(st.structures.leanTo).toBe(false);
+    expect(st.structures.leanTo).toBe(true);
     expect(st.structures.firePit).toBe(true);
     expect(qty(pile(state, st.campCell), "firewood")).toBe(10);
     expect(qty(pile(state, deathCell), "driedMeat")).toBeCloseTo(packMeat, 3);

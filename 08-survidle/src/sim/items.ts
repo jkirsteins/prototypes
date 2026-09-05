@@ -130,8 +130,8 @@ export const MAX_SNARES = 5;
 /** Days a bough bed stays springy before it has to be laid again. */
 export const BOUGH_BED_DAYS = 14;
 
-/** Days a decaying structure stands before the weather takes it down. */
-export const STRUCTURE_LIFE_DAYS: Record<DecayingId, number> = { leanTo: 90, dryingRack: 90, turfHut: 540 };
+/** Days a decaying structure stands before the weather takes it down: a bough roof fails in a year while its frame stands, a lashed pole rack lasts two, a turf roof a year and a half. */
+export const STRUCTURE_LIFE_DAYS: Record<DecayingId, number> = { leanTo: 365, dryingRack: 730, turfHut: 540 };
 
 /** What re-roofing, relashing or re-turfing a decaying structure takes, resetting its age. */
 export const MEND: Record<DecayingId, { needs: Need[]; minutes: number }> = {
@@ -154,7 +154,7 @@ export const FIRE_LOW_KG = 3;
 export const RACK_MAX_KG = 40;
 /** Racks a camp can stand; a third is a smokehouse's job. */
 export const MAX_RACKS = 2;
-/** Dry minutes a rack needs in dry weather, and the minutes it needs while it rains. */
+/** Thin strips in dry moving air are hard in about two days; damp air roughly doubles that because the surface never dries. */
 export const RACK_DRY_MINUTES = 48 * 60;
 export const RACK_DRY_RAIN_MINUTES = 96 * 60;
 export const SNARE_CATCH_MAX_AGE = 2 * 1440;

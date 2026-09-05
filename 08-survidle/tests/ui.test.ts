@@ -69,7 +69,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     const worn = newGame(21);
     const st = regionState(worn.state, worn.world, worn.state.player.region);
     st.structures.leanTo = true;
-    st.structureAge.leanTo = 61 * 1440;
+    st.structureAge.leanTo = 244 * 1440;
     addItem(worn.state.player.pack, "stick", 2);
     const h = allActions(worn.state, worn.world);
     expect(h).toContain(`data-act="task" data-id="mend" data-arg="leanTo"`);
