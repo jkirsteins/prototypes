@@ -1490,8 +1490,8 @@ the gate week's work in band on every seed, 1,488 to 1,670. C, the food
 rule alone, reads April 3 of 4 and the heir gate 3 of 4; the first
 lives read 46 and 54 starved, 4 to wolves and 30 starved, the heirs on
 38, 55, 34 and 60. D, both rules together, reads April 1 of 4 and the
-heir gate 1 of 4; the first lives read 16 to sickness, 44 and 20
-starved, 4 to wolves. E, the food rule guarded on a full week, reads
+heir gate 1 of 4; the first lives read 16 to sickness, 44 starved, 4
+to wolves and 20 froze. E, the food rule guarded on a full week, reads
 identical to A on every seed and every heir.
 
 B's cold deaths are the reserve rule's own case against it: seeds 42
