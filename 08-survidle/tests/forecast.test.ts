@@ -11,7 +11,7 @@ import { GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
 import { AUTO_EAT_ORDER } from "../src/sim/items";
 import { WATER_FULL } from "../src/sim/water";
 
-/** A kitted camp on seed 17 with the reference list and a stocked larder: a set-up that holds a day. */
+/** A kitted camp on seed 17 with the reference orders and a stocked larder. */
 function stocked() {
   const g = newGame(17);
   kitOut(g.state, g.world);
@@ -50,7 +50,7 @@ describe("a forecast row", () => {
     expect(state.log.length).toBe(logLen);
   });
 
-  it("runs the runner: a stocked camp with its list holds a day, the same body with nothing left does not", () => {
+  it("counts a clearly alive body as no deaths and a clearly dead one as three, with the cause and the day", () => {
     const { state, world } = stocked();
     const alive = forecastRow(state, world, { id: "tonight", minutes: 1440 }, 3);
     expect(alive).toEqual({ id: "tonight", runs: 3, died: 0, cause: null, day: null });
@@ -82,9 +82,13 @@ describe("a forecast row", () => {
     expect(CAUSE_WORD.gaveUp).toBe("gave up");
   });
 
-  it("agrees with the harness: the horizon's stocked stage holds a week", () => {
+  it("runs the runner: the horizon's stocked stage holds a week only because its orders are worked, as the harness reads it", () => {
     const { state, world } = setUpStage(17, HORIZON_STAGES[4]);
-    const row = forecastRow(state, world, { id: "week", minutes: 7 * 1440 }, 3);
-    expect(row.died).toBe(0);
+    const rowWithOrders = forecastRow(state, world, { id: "week", minutes: 7 * 1440 }, 3);
+    expect(rowWithOrders.died).toBe(0);
+    const { state: stateNoOrders, world: worldNoOrders } = setUpStage(17, HORIZON_STAGES[4]);
+    regionState(stateNoOrders, worldNoOrders, stateNoOrders.player.region).orders = [];
+    const rowNoOrders = forecastRow(stateNoOrders, worldNoOrders, { id: "week", minutes: 7 * 1440 }, 3);
+    expect(rowNoOrders.died > rowWithOrders.died || rowNoOrders.died > 0).toBe(true);
   });
 });
