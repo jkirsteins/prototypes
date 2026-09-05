@@ -398,4 +398,13 @@ describe("wants by level", () => {
       expect(w.req.until.kind, w.req.arg).toBe("forever");
     }
   });
+
+  it("opens the 400 kg firewood keep from 1 September, stays open through winter into an April before ice-out, and is closed in high summer", () => {
+    const { state } = newGame(17);
+    const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === 400)!;
+    expect(wantOpen(state, wood, calendar(0, 90))).toBe(true);
+    expect(wantOpen(state, wood, calendar(0, 200))).toBe(false);
+    expect(wantOpen(state, wood, calendar(0, 244))).toBe(true);
+    expect(wantOpen(state, wood, calendar(0, 20))).toBe(true);
+  });
 });

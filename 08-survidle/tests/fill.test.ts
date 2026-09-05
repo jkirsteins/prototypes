@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { yieldItem } from "../src/sim/intent";
-import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
+import { addItem, freshTool, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, orderMet } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { beginTask, check } from "../src/sim/tasks";
-import { vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
+import { ICE_SHORE_CM, vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
 import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -147,5 +147,28 @@ describe("the fill task", () => {
     const o = check(state, world, cal, "fill", undefined, shore.cell);
     expect(o.ok).toBe(false);
     expect(o.why).toBe("iced over; needs an axe for an ice hole");
+  });
+});
+
+describe("the fill keep in winter", () => {
+  it("melts snow at the fire when the shore is iced and no hole can be cut, and the camp water rises", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    state.player.tools.push(freshTool("barkBucket"));
+    // A bucket at camp too, as waterCamp() gives: with none, the camp pile has
+    // no water capacity at all, and a melted litre can never be poured out of
+    // the vessel carried, whatever the fire does.
+    addItem(pile(state, st.campCell), "barkBucket", 1);
+    state.weather.iceCm = ICE_SHORE_CM;
+    state.weather.snowCm = 20;
+    addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    const before = qty(pile(state, st.campCell), "water");
+    advance(state, world, 120);
+    expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(before);
   });
 });

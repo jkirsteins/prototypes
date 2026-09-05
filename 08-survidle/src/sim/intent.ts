@@ -8,7 +8,7 @@ import type { Rng } from "../rng";
 import { PACK_HARD_KG } from "../units";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { bodyStep, currentNeed, orderKit, provision, provisionKit } from "./body";
+import { bodyStep, campMeltReady, currentNeed, fireStep, orderKit, provision, provisionKit } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
@@ -166,14 +166,20 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
 }
 
 /**
- * A build blocked at its own cell for want of materials gets one allowance:
- * something it needs sits elsewhere in the region and can be walked to. Only
- * when that is the actual reason it is blocked - "already built here" or
- * "build the fire pit first" get no allowance, fetching would not help
- * either. The one place this is decided, so intentOption and startIntent
- * never disagree about whether the button may be pressed.
+ * A blocked want gets one allowance for a reason a competent player would
+ * work around rather than accept: a build missing materials at camp, when
+ * something it needs sits elsewhere in the region and can be walked to; and
+ * a fill blocked by an iced shore with no axe for an ice hole, when snow can
+ * be melted at the fire instead. Only when that is the actual reason it is
+ * blocked - "already built here" or "build the fire pit first" get no
+ * allowance, fetching would not help either. The one place this is decided,
+ * so intentOption, startIntent and the running intent's own workStep never
+ * disagree about whether the want may go on.
  */
-function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
+function fetchAllowance(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
+  if (task === "fill" && why === "iced over; needs an axe for an ice hole") {
+    return campMeltReady(state, world, cal) ? { ok: true, detail: "melts snow at the fire instead" } : { ok: false, detail: "" };
+  }
   if (task !== "build" || arg === "snare" || why !== "missing materials at camp") return { ok: false, detail: "" };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
@@ -191,7 +197,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
   const { cell } = resolveCell(state, world, cal, task, arg, where);
   const o = check(state, world, cal, task, arg, cell);
   if (o.ok) return o;
-  const fa = fetchAllowance(state, world, task, arg, o.why);
+  const fa = fetchAllowance(state, world, cal, task, arg, o.why);
   return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail } : o;
 }
 
@@ -227,7 +233,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const pocketed = provisionKit(state, world);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
-    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
+    if (!o.ok && !fetchAllowance(state, world, cal, req.task, req.arg, o.why).ok) {
       if (pocketed > 0) {
         const kit = orderKit(state)[0];
         if (kit) transfer(state.player.pack, pile(state, state.intent.campCell), kit, pocketed);
@@ -520,7 +526,18 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     it.step = "unloading at camp";
     return "again";
   }
-  const o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
+  let o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
+  // The melt allowance chooseOrder and startIntent gave this fill before it
+  // began still holds while it runs: a fill stopped cold by "iced over" the
+  // moment the shore froze over mid-keep must fall through to the melt
+  // fallback below rather than end here on the reason the allowance excuses.
+  // A build's own fetch allowance is not repeated here: fetchStep above has
+  // already tried it and fallen through to "none" on purpose when nothing
+  // fits in the pack, and re-opening that case here would spin forever.
+  if (it.task === "fill" && o && !o.ok) {
+    const fa = fetchAllowance(state, world, cal, it.task, it.arg, o.why);
+    if (fa.ok) o = { ...o, ok: true, why: "", detail: fa.detail };
+  }
   const met = it.windDown || untilMet(state, it);
   if (met || (o && !o.ok)) {
     if (deliveryPending(state, world, it)) return deliveryStep(state, world, cal, it);
@@ -532,12 +549,23 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     return undefined;
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
-  if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   // A fill on a frozen shore cuts its hole first; the fill follows next minute.
-  if (it.task === "fill" && !waterSource(state, world) && check(state, world, cal, "iceHole").ok) {
-    takeStep(state, world, cal, { id: "iceHole", step: "cutting an ice hole" }, rng);
-    return undefined;
+  // With no hole to be had (no axe), the fill is served at camp instead: snow
+  // melted at the fire into the vessels, which the delivery then pours out.
+  if (it.task === "fill" && !waterSource(state, world)) {
+    if (check(state, world, cal, "iceHole").ok) {
+      takeStep(state, world, cal, { id: "iceHole", step: "cutting an ice hole" }, rng);
+      return undefined;
+    }
+    if (state.weather.iceCm >= ICE_SHORE_CM && campMeltReady(state, world, cal)) {
+      if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " to melt snow");
+      const fs = fireStep(state, world, cal, it.campCell);
+      if (fs) { takeStep(state, world, cal, fs, rng); return undefined; }
+      takeStep(state, world, cal, { id: "melt", step: "melting snow" }, rng);
+      return undefined;
+    }
   }
+  if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   if (it.task === "night") return undefined;
   // Waiting rests by day; by night it sleeps outright, or a running rest keeps
   // raising energy and the sleep need's night clause (night and energy under

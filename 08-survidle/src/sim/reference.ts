@@ -97,10 +97,10 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * and roe deer, listed hardest first (8, 6, 4). The 400 kg woodpile keep
  * sits between the hang grind and the named hunts: stocking wood for
  * winter earns its place ahead of chasing large game, but behind the
- * hang grind that clears the rack. The season clause that will gate the
- * woodpile to autumn (Task 11) is not written yet, so today it opens the
- * moment the list reaches it. The felling grind, needing the axe kept
- * well above it, runs last and forever.
+ * hang grind that clears the rack. It opens only from the season it is
+ * stocked against (wantOpen), so a list that reaches it in April waits for
+ * autumn rather than splitting 400 kg no winter yet needs. The felling
+ * grind, needing the axe kept well above it, runs last and forever.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2),
@@ -144,16 +144,24 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
+/** 1 September: a competent player starts the winter woodpile when the nights first frost. */
+export const WINTER_WOOD_FROM_DOY = 244;
+/** The day the woodpile want closes again: after ice-out the pile is for next winter, and the list's 60 kg keep carries the summer. */
+export const WINTER_WOOD_TO_DOY = 120;
+
 /**
  * Whether a competent player would give this want today: a named hunt
  * waits for the species' recommended Hunting level, since walking at an
- * elk with a stone point at level 1 is not competence. `cal` is unused
- * until the winter woodpile want's season clause lands (Task 11).
+ * elk with a stone point at level 1 is not competence, and the 400 kg
+ * woodpile keep waits for the season it is stocked against.
  */
-export function wantOpen(state: GameState, w: { req: IntentRequest; kind: OrderKind }, _cal: Calendar): boolean {
+export function wantOpen(state: GameState, w: { req: IntentRequest; kind: OrderKind }, cal: Calendar): boolean {
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
+  }
+  if (w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty >= 400) {
+    return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
   }
   return true;
 }

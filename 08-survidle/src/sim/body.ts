@@ -205,7 +205,7 @@ function campWaterReady(state: GameState, world: World, cal: Calendar): boolean 
 }
 
 /** Whether this region's camp can melt snow for water right now: snow on the ground, a fire lit or still gettable, and camp in reach. */
-function campMeltReady(state: GameState, world: World, cal: Calendar): boolean {
+export function campMeltReady(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
   if (state.weather.snowCm < 1) return false;
   if (!st.fire.lit && fireStep(state, world, cal, st.campCell) === null) return false;
@@ -276,7 +276,7 @@ function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
  * a body already at camp and one still deciding whether the walk is worth
  * it never disagree about what camp offers.
  */
-function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
+export function fireStep(state: GameState, world: World, cal: Calendar, at: number): Step | null {
   const p = state.player;
   const st = regionState(state, world, p.region);
   if (st.fire.lit) return null;
