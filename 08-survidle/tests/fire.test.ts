@@ -7,7 +7,7 @@ import { burnPerHour, fireSeason, fireWarmth, lightingInRain, smoky } from "../s
 import { hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { feltTemperature } from "../src/sim/player";
+import { feltTemperature, INDOOR_C, warmthTarget } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -305,5 +305,25 @@ describe("fuel by shelter", () => {
     advance(state, world, 15);
     expect(st.fire.lit).toBe(true);
     expect(st.fire.indoors).toBe(true);
+  });
+});
+
+describe("inside is a temperature", () => {
+  it("holds a body in wool above 20 warmth asleep in a hut at -30 with the fire lit, and not with it out", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.structures.turfHut = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 10;
+    st.fire.indoors = true;
+    startTask(state, world, cal, "sleep");
+    const lit = feltTemperature(state, world, -30);
+    expect(warmthTarget(lit)).toBeGreaterThan(20);
+    st.fire.lit = false;
+    const out = feltTemperature(state, world, -30);
+    expect(out).toBeLessThan(lit - 10);
+    expect(INDOOR_C).toEqual({ turfHut: 5, cabin: 10 });
   });
 });
