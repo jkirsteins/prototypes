@@ -1507,19 +1507,45 @@ fed and ran half days, and seed 42 had no roof up when the wolves came
 on day 4. C's heir reading of 3 of 4 comes from those changed first
 lives, not from the rule working for heirs; guarded on the body's own
 week, as E is, the rule never fires, because no April camp and no
-August heir ever holds a week's burn of cooked food.
+August heir ever holds a day's burn of the food the body eats unasked:
+seed 17's 3,700 kcal at camp on day 26 is 2,100 of raw meat, which the
+body never touches on its own, and 1,600 the body would eat, against a
+burn of 3,450; seed 79's 3,600 at camp is all raw meat, none of it
+counted.
+
+Reading F took the food rule's half day back to the camp larder alone
+(no pack, so the arrival kit is never read at all) with the reserve
+rule off and no week guard, the band top standing in before a week
+exists. It reads April 2 of 4 and the heir gate 1 of 4; every first-life
+death moves earlier than A's (52 to 44, 49 to 48, 34 to 24, 37 to 7),
+the last of those a new cold death inside the days-1-to-10 window A
+does not have, and the gate week's burn on the two seeds that still
+reach day 26 reads higher than A's, further from the band, not closer.
+The controller's ruling: withdrawn, on the same rule as B and the
+guarded C - it moves deaths earlier without moving the burn toward its
+band.
 
 The decision is that both rules are withdrawn and the clause is kept,
 on the spec's own rule that what moves nothing goes and what moves a
 death earlier goes too. April reads 4 of 4 and the heir gate 1 of 4 on
 the clause alone, the deaths after the gate unchanged at starvation on
-days 34 to 52. The burn side's lever is not the hours: work burn still
-sits over its band, at 1,763 to 2,030 kcal a day with 500 to 780 of it
+days 34 to 52. The two rules are in commits 464ac1b to fe6b86e, and
+ad800ce restores the working day; a later body model can rebuild from
+there. The burn side's lever is not the hours: work burn still
+sits over its band, at 1,763 to 2,030 kcal a day with 497 to 783 of it
 walking, and the next reading of that belongs to the list's shape, the
 trips between camp, shore and heath, or to the survivor rows that carry
 a heir past a first snow, not to a shorter day; the horizon at D reads
 as it did for the producers, four stages over their bands and the
 stocked stage in band on all four seeds, and says nothing new.
+
+The clause reads the week's intake against a flat 500 kcal a day, the
+April beginner band's middle and the number the gate day is derived
+from, by the author's decision; a burn-relative clause was not
+measured. Against burn, the same week reads 90, 81, 41 and 51 percent
+on seeds 17, 19, 42 and 79 (eaten over burn from reading A's first-life
+table: 3,105/3,450, 2,971/3,648, 1,657/4,000, 1,979/3,860), which
+separates the seeds a flat number does not.
 
 ### B. The risk forecast
 
@@ -1622,6 +1648,11 @@ keep the page as light as it is:
 
 The round itself, twenty testers from the incremental community and the
 recruiting, is not part of this item; it is the slot after siting.
+
+The suite's own wall time was read at 12.8 to 23.7 seconds during the
+burn-side item on a loaded machine, against the repo's few-seconds
+budget; it was unmeasured at 7066694, and a baseline timing plus a split
+of the slow files is this round's harness work.
 
 ### The UI pass
 
@@ -2125,7 +2156,8 @@ first lives read trap weeks of 700 and 757 kcal a day on seeds 17 and
 against that: one honest deficit (seed 42) and one the food clause
 misreads (seed 19, eating 2,971 a day), both named in the calibration
 pass above, whose burn-side paragraph carries what was measured and
-withdrawn. The heir gate
+withdrawn; with the clause reading the week, April reads 4 of 4 and
+only seed 42's deficit is still real. The heir gate
 is measured meaningfully once the tree's carry lands with the rest of F:
 the survivor ladder's row 2 is a carried heir, a quarter carry in one
 skill and keeps from birth, and 1 of 4 is the expected reading for a
