@@ -54,7 +54,7 @@ export function setUpStage(seed: number, stage: HorizonStage, startDoy = START_D
   for (const b of stage.built ?? []) {
     if (b === "turfHut") st.structures.turfHut = true;
     else if (b === "waterStore") st.structures.waterStore = true;
-    else kitTrap(g.state, g.world);
+    else if (b === "trap") kitTrap(g.state, g.world);
   }
   if (stage.stocks) {
     const camp = pile(g.state, st.campCell);

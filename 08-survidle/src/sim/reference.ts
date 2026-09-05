@@ -57,20 +57,19 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * ranks eating what is already caught above catching more of it: the cook
  * keeps sit above the fish keep, and the rack job and the dried-meat keep
  * sit above the hunt keep, right after the cook keeps - both block
- * harmlessly with nothing to cook or hang. The trap is set early and
- * emptied late. The shore is read the day the spear exists, so the trap
- * that follows it knows what water it is set in, and the read, the
- * basket trap and the setting job come right after the spear: setting a
- * trap costs one read, one craft and one setting, once. The basket is
- * carried, not stocked: the craft job leaves it in the pack rather than
- * walking it to camp first, so the trap can be set on the way to the
- * shore instead of needing a separate trip home for the basket already
- * made. The empty keep sits far below, under the hunt keep and above
- * the axe: the daily walk to the shore for the half kilo standing in
- * the trap costs a beginner's first month more than the half kilo is
- * worth, so the trap is emptied only when everything above it is met or
- * blocked, and a trap left to fill to its five kilos is what the heir
- * walks home to. Tools the survivor holds are
+ * harmlessly with nothing to cook or hang. The producers - the read, the
+ * basket trap, the setting job and the empty keep - sit below the hunt
+ * keep and above the axe, because the first month cannot afford them:
+ * the list below the hunt keep is reached only when everything above it
+ * is met or blocked, so setting a trap costs one read, one craft and one
+ * setting, once, whenever that day comes, and the empty keep after it
+ * draws the shore only once everything above is met or blocked too. The
+ * basket is carried, not stocked: the craft job leaves it in the pack
+ * rather than walking it to camp first, so the trap can be set on the
+ * way to the shore instead of needing a separate trip home for the
+ * basket already made. The producers are measured through the kitted
+ * camp, the horizon stages and the heir gate until the list can afford
+ * them. Tools the survivor holds are
  * once jobs, since the first one made is taken up and a keep would
  * craft a second; the axe stays a keep because the arrival axe wears
  * out and the spare is the point. Auto-eat, auto-feed and auto-drink
@@ -103,9 +102,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("build", { kind: "times", n: 5 }, "snare"),
   job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
   job("craft", { kind: "once" }, "fishingSpear"),
-  job("read", { kind: "once" }),
-  job("craft", { kind: "once" }, "basketTrap", "leave"),
-  job("setTrap", { kind: "once" }),
   keep("cook", 1, "fish"),
   keep("cook", 1),
   keep("fish", 1, "any"),
@@ -115,6 +111,9 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
+  job("read", { kind: "once" }),
+  job("craft", { kind: "once" }, "basketTrap", "leave"),
+  job("setTrap", { kind: "once" }),
   keep("emptyTrap", 1),
   keep("craft", 1, "axe"),
   job("sticks", { kind: "campHas", qty: 20 }),
