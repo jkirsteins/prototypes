@@ -18,6 +18,29 @@ export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
 };
 
+/** What each terrain glyph is called, for the legend. */
+const TERRAIN_NAME: Record<Terrain, string> = {
+  water: "water", fell: "fell", rock: "rock", bog: "bog", spruce: "spruce", pine: "pine", birch: "birch", meadow: "meadow",
+};
+
+/**
+ * The map's key: every terrain letter from the glyph table, then ice, the
+ * survivor and the marks a camp leaves. Static content - it names nothing
+ * that changes between renders - so it is filled into `.legend` once at
+ * boot rather than rebuilt with the map.
+ */
+export function legendHtml(): string {
+  const terrain = (Object.keys(GLYPH) as Terrain[])
+    .map((t) => `<span><b>${GLYPH[t] === "\"" ? "&quot;" : GLYPH[t]}</b> ${TERRAIN_NAME[t]}</span>`)
+    .join("");
+  return (
+    `${terrain}<span><b>=</b> ice</span><span class="accent"><b>@</b> you</span>` +
+    `<span><b>H</b> shelter</span><span><b>F</b> fire</span>` +
+    `<span class="pl-key">underlined: something lies there</span>` +
+    `<span class="fog-key">dark: never been there</span>`
+  );
+}
+
 export const SNOW_SHOWN_CM = 5;
 export const VIEW_W = 72;
 export const VIEW_H = 36;
@@ -226,7 +249,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
 
   const parts: string[] = [];
   parts.push(`<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+ closer</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === ZOOMS.length - 1 ? "disabled" : ""} title="Farther (minus key)">- farther</button><span class="dim">${zoomLabel(ui.zoom)}, ${(VIEW_W * z * 0.3).toFixed(0)} by ${(VIEW_H * z * 0.3).toFixed(0)} km on screen, centred on you</span></div>`);
-  parts.push(`<div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}">`);
+  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}">`);
   for (let i = 0; i < VIEW_W * VIEW_H; i++) {
     const gx = i % VIEW_W;
     const gy = Math.floor(i / VIEW_W);
@@ -279,11 +302,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (m.cls === "mk-player") title = `you, ${title}`;
     }
     const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
-    parts.push(`<span class="${cls.join(" ")}"${act}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    // The scroll wrapper centres on this glyph after every rebuild.
+    const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
+    parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`<i class="shade"></i></div>`);
-  parts.push(
-    `<div class="legend"><span>~ water</span><span>= ice</span><span>A spruce</span><span>T pine</span><span>Y birch</span><span>. meadow</span><span>" bog</span><span>n rock</span><span>^ fell</span><span class="accent">@ you</span><span>H shelter</span><span>F fire</span><span class="pl-key">underlined: something lies there</span><span class="fog-key">dark: never been there</span></div>`,
-  );
+  parts.push(`<i class="shade"></i></div></div>`);
   return parts.join("");
 }

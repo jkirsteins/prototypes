@@ -34,7 +34,7 @@ import { updateBars } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
-import { mapHtml, mapKey, ZOOMS } from "./ui/map";
+import { legendHtml, mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
@@ -130,6 +130,14 @@ function boot() {
   }
 }
 
+/** Scrolls the map's horizontal box so the survivor's glyph sits centred, after a rebuild moves it. */
+function scrollMapToSurvivor() {
+  const wrap = document.querySelector<HTMLElement>("#mapdyn .scroll-x");
+  const you = wrap?.querySelector<HTMLElement>("[data-you]");
+  if (!wrap || !you) return;
+  wrap.scrollLeft = you.offsetLeft + you.offsetWidth / 2 - wrap.clientWidth / 2;
+}
+
 let lastMapKey = "";
 function render() {
   // Arriving where you were looking ends the looking.
@@ -143,7 +151,7 @@ function render() {
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
-    setPanel("map", mapHtml(world, state, ui, cal));
+    if (setPanel("mapdyn", mapHtml(world, state, ui, cal))) scrollMapToSurvivor();
   }
   setPanel("region", regionHtml(state, world, cal, ui));
   setPanel("task", taskHtml(state, world, cal));
@@ -481,6 +489,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") saveGame(state);
 });
 window.addEventListener("pagehide", () => saveGame(state));
+// The terrain letters never change, so the legend is set once rather than rebuilt with the map.
+document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 render();
 requestAnimationFrame(frame);
 
