@@ -4,6 +4,11 @@
  * counted per horizon. Every run goes through advance with the orders,
  * the needs and the stocks exactly as the live game has them, so a
  * change to the runner changes the forecast by construction.
+ *
+ * The synchronous path below runs the sim with whatever cue sink is
+ * installed in this module's copy of cues.ts, so forecast runs are
+ * silent in practice: the worker's copy of that module never has one
+ * set, and neither does the test harness.
  */
 import { derive } from "../rng";
 import { GAME_MINUTES_PER_REAL_SECOND } from "../units";
@@ -24,7 +29,7 @@ export interface ForecastRow {
   died: number;
   /** The commonest cause among the dead; a tie goes to the cause whose median death came soonest, then to CAUSES order. Null when none died. */
   cause: DeathCause | null;
-  /** The median day of death among the dead, the forecast's own day being 1. Null when none died. */
+  /** The median day of death among the runs that died of that cause, the forecast's own day being 1. Null when none died. */
   day: number | null;
 }
 
@@ -66,7 +71,7 @@ export function forecastRow(state: GameState, world: World, horizon: Horizon, ru
     const day = median(days);
     if (!best || days.length > best.n || (days.length === best.n && day < best.day)) best = { cause: c, n: days.length, day };
   }
-  return { id: horizon.id, runs, died: deaths.length, cause: best!.cause, day: median(deaths.map((d) => d.day).sort((a, b) => a - b)) };
+  return { id: horizon.id, runs, died: deaths.length, cause: best!.cause, day: best!.day };
 }
 
 /** Every horizon in order. Synchronous; the worker calls forecastRow one horizon at a time instead. */

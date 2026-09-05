@@ -65,4 +65,18 @@ describe("the away dial", () => {
     input.dispatchEvent(new Event("input"));
     expect(label.textContent).toBe("1 hour");
   });
+
+  it("refresh() re-reads get(), for a new world whose dial did not change by input", () => {
+    const root = document.createElement("div");
+    root.innerHTML = `<input type="range" data-away="hours"><b data-away="label"></b>`;
+    let hours = 8;
+    const dial = mountAwayDial(root, () => hours, () => {});
+    const input = root.querySelector<HTMLInputElement>("[data-away=hours]")!;
+    const label = root.querySelector<HTMLElement>("[data-away=label]")!;
+    hours = 3;
+    expect(input.value).toBe("8");
+    dial.refresh();
+    expect(input.value).toBe("3");
+    expect(label.textContent).toBe("3 hours");
+  });
 });

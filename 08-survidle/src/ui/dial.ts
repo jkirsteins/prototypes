@@ -1,11 +1,16 @@
 import { AWAY_HOURS_MAX } from "../units";
 
+export interface AwayDial {
+  /** Re-reads get() and shows it; a new life's dial does not carry the old one's display. */
+  refresh(): void;
+}
+
 /**
  * The away dial: how many real hours the world runs on without the
  * player before the catch-up caps it. Static markup, mounted once like
  * the sound controls; the label spells the hours out.
  */
-export function mountAwayDial(root: HTMLElement, get: () => number, set: (hours: number) => void): void {
+export function mountAwayDial(root: HTMLElement, get: () => number, set: (hours: number) => void): AwayDial {
   const input = root.querySelector<HTMLInputElement>("[data-away=hours]")!;
   const label = root.querySelector<HTMLElement>("[data-away=label]")!;
   input.min = "1";
@@ -18,4 +23,5 @@ export function mountAwayDial(root: HTMLElement, get: () => number, set: (hours:
     set(h);
     show(h);
   });
+  return { refresh: () => show(clamp(get())) };
 }

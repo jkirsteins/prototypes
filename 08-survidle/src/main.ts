@@ -27,7 +27,7 @@ import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars } from "./ui/bars";
-import { mountAwayDial } from "./ui/dial";
+import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, doHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -59,11 +59,14 @@ const sounds = createScheduler(audio);
 // Read by fresh() below (called from boot(), before the forecaster exists) and by
 // requestForecast() (defined after boot(), once world is real) - declared here so
 // neither reads it before it is initialized.
-let forecastAt = { minute: -Infinity, day: -1, region: -1 };
+let forecastAt = { minute: -Infinity, day: -1, region: -1, real: -Infinity };
 /** Every life-restart site calls this so the next frame requests by invariant, not by the side effect of state.minute happening to have moved. */
 function resetForecastAt(): void {
-  forecastAt = { minute: -Infinity, day: -1, region: -1 };
+  forecastAt = { minute: -Infinity, day: -1, region: -1, real: -Infinity };
 }
+// Assigned once mountAwayDial() runs, below; fresh() runs once before that during
+// boot(), when there is nothing yet to refresh.
+let awayDial: AwayDial | null = null;
 
 function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   const g = newGame(seed, startDoy);
@@ -75,6 +78,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
   resetPanels();
   resetForecastAt();
   saveGame(state);
+  awayDial?.refresh();
 }
 
 function boot() {
@@ -156,7 +160,7 @@ function frame(now: number) {
     } else {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed);
     }
-    if (state.minute - forecastAt.minute >= 60 || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
+    if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
   } else if (ui.away) {
     lastReal = now;
   }
@@ -319,8 +323,9 @@ function onClick(ev: Event) {
       removeOrder(state, world, Number(target.dataset.id));
       break;
   }
-  if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   state.rng = rng.s;
+  // After the rng write-back, so the request the click triggers reads the committed rng.
+  if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   saveGame(state);
   render();
 }
@@ -346,7 +351,7 @@ const FORECAST_ACTS = [
 function requestForecast(): void {
   if (state.dead || state.landing || ui.away) return;
   forecaster.request(state);
-  forecastAt = { minute: state.minute, day: dayNumber(state.minute), region: state.player.region };
+  forecastAt = { minute: state.minute, day: dayNumber(state.minute), region: state.player.region, real: performance.now() };
 }
 setCueSink((c) => sounds.cue(c));
 // Registered before mountControl's own capture listeners, so unlock() always
@@ -355,7 +360,7 @@ setCueSink((c) => sounds.cue(c));
 document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 mountControl(document.getElementById("sound")!, audio);
-mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
+awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") audio.suspend();
   else audio.resume();

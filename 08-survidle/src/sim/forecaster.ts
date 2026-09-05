@@ -36,6 +36,11 @@ export function applyRow(view: ForecastView, id: number, row: ForecastRow): void
  * into today's entry (the last one the daily step pushed) if it is
  * still null. False when there is no entry yet or it is already
  * written. The journal and the evolution view read the series later.
+ *
+ * This relies on a new life's record starting with an empty series, so
+ * a row computed for the life that just died cannot land in the heir's;
+ * and a row that lands after the day has rolled writes into the new
+ * day's entry rather than the one it was computed for.
  */
 export function noteMonthRow(state: GameState, row: ForecastRow): boolean {
   if (row.id !== "month") return false;

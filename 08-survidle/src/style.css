@@ -62,7 +62,7 @@ small, .dim { color: var(--dim); }
 .accent { color: var(--accent); }
 
 /* A label on the left, a value on the right; the forecast panel's four horizons. */
-.row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+#forecast .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
 
 /* Bars */
 .bar {
