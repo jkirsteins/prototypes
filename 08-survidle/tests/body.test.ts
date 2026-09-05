@@ -263,6 +263,7 @@ describe("the body tier", () => {
     // for the rest of this longer, heavier-laden trace.
     const { state, world, camp } = felling(10, "camp");
     removeItem(state.player.pack, "driedMeat", qty(state.player.pack, "driedMeat"));
+    // The kit's dried meat out of the pack: tomorrow's food is not in hand, so the runner works the full day this test needs.
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.fire.lit = true;
@@ -397,6 +398,7 @@ describe("the runner in the elements", () => {
   it("in winter it leaves the work so as to be at camp by sunset", () => {
     const { g, state, world, camp } = felling();
     removeItem(state.player.pack, "driedMeat", qty(state.player.pack, "driedMeat"));
+    // The kit's dried meat out of the pack: tomorrow's food is not in hand, so the runner works the full day this test needs.
     state.minute = 320 * 1440;
     // A filled waterskin so an unreachable shore in the depths of winter never
     // masks the home need behind an unresolvable thirst; this trace is about dusk.
