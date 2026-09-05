@@ -490,7 +490,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const name = STRUCTURES[sid].name;
       const label = sid === "turfHut" ? "Re-roof the hut" : `Mend the ${name}`;
       const detail = sid === "turfHut" ? "20 bark; a new roof for another year and a half"
-        : `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another season" : "relash it for another season"}`;
+        : `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another year" : "relash it for another two years"}`;
       const o = needCamp(opt({ group: "camp", label, detail, duration: def.minutes, repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };

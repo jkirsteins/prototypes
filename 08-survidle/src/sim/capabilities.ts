@@ -53,7 +53,7 @@ export const CAPABILITIES: CapabilityRow[] = [
     tier: "structure",
     receives: ["woodcraft"],
     gives: "+5 C and half the wetting; a roof over the pit",
-    limits: "a season, then re-roofing",
+    limits: "a year, then re-roofing",
   },
   {
     id: "cabin",
