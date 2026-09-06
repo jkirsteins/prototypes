@@ -18,7 +18,7 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
-import { nearestCell } from "./intent";
+import { nearestCell, yieldItem } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, RECIPES, ROOT_FROM_DOY, ROOT_TO_DOY,
   SAP_FROM_DOY, SAP_TO_DOY, TOOLS,
@@ -151,6 +151,12 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * hang grind has its old place at the head of the loop for the quarter of
  * the year - the ninety-odd days from the thaw to midsummer - that they
  * are shut.
+ *
+ * Fat before meat: the render keep sits above the cook keeps because raw
+ * fat rots in three days and is the calories the ceiling does not touch;
+ * the crack grind takes the bones the hunts leave at camp; the gathering
+ * keeps open by season in wantOpen, and a seaweed keep opens only for a
+ * camp on the sea.
  */
 
 /**
@@ -219,8 +225,17 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("read", { kind: "once" }),
   job("craft", { kind: "once" }, "basketTrap", "leave"),
   job("setTrap", { kind: "once" }),
+  keep("cook", 1, "rawFat"),
   keep("cook", 1, "fish"),
   keep("cook", 1),
+  { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  keep("eggs", 2),
+  keep("roots", 2),
+  keep("cook", 1, "roots"),
+  keep("innerBark", 3),
+  keep("grindBark", 1),
+  job("tapSap", { kind: "once" }),
+  keep("seaweed", 2),
   keep("fish", 1, "any"),
   keep("berries", 2),
   keep("build", 20, "snare"),
@@ -318,6 +333,22 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
   if (winterStockWant(w)) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
+  // The nests hold eggs only in their window; inner bark strips only April to July, when the
+  // rise the task itself half-rates outside of is also the whole window a beginner should
+  // bother stripping at all; the sap window is the same three weeks the task's own check reads.
+  if (w.req.task === "eggs") return cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY;
+  if (w.req.task === "innerBark") return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
+  if (w.req.task === "tapSap") return cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY;
+  // Roots dig by hand April to October; outside it the ground is frozen and only an ice hole,
+  // cut and kept open with an axe, reaches the rhizomes under it.
+  if (w.req.task === "roots") return (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY) || axeInReach(state, world);
+  // Seaweed grows only on a sea shore: a camp on an inland lake never has this want to give.
+  if (w.req.task === "seaweed") return regionAt(world, state.player.region).sea > 0;
+  // A cracked bone wants a bone: the hunts leave them at camp, and the want waits for one to sit there.
+  if (w.req.task === "crack") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "bone") >= 1;
+  }
   return true;
 }
 
@@ -574,7 +605,13 @@ export class ReferencePlayer {
         }
         continue;
       }
-      if (this.trueKind.get(i)) this.finished.add(i);
+      // A completed want given as its own kind is normally a finished job for good, or the
+      // knife would be made again - but nothing is left standing for a want with no yield to
+      // count: a tap drunk on the spot is not a possession the way a knife is, so the sap
+      // window's want is reconsidered on the very next look rather than closed for the season
+      // after its first drink. "Read" has no yield either and is reconsidered the same way,
+      // harmlessly: its own check refuses a second look at water it has already read.
+      if (this.trueKind.get(i)) { if (yieldItem(this.wants[i].req.task, this.wants[i].req.arg) !== null) this.finished.add(i); }
       else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);

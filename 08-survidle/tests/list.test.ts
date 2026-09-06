@@ -83,4 +83,20 @@ describe("the list after the axe", () => {
     expect(twenty).toBe(tasks.indexOf("berries::keep") + 1);
     expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
   });
+
+  it("keeps the fat rendered above the cook keeps, cracks bones, and gathers eggs, roots, bark, sap and seaweed in their seasons", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("cook:rawFat:keep")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
+    expect(tasks.indexOf("crack::grind")).toBeGreaterThan(tasks.indexOf("cook::keep"));
+    for (const t of ["eggs::keep", "roots::keep", "cook:roots:keep", "innerBark::keep", "grindBark::keep", "tapSap::job", "seaweed::keep"]) expect(tasks).toContain(t);
+    const { state, world } = newGame(17);
+    expect(wantOpen(state, world, want("eggs::keep"), calendar(0, 100))).toBe(false);
+    expect(wantOpen(state, world, want("eggs::keep"), calendar(0, 130))).toBe(true);
+    expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 125))).toBe(true);
+    expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 200))).toBe(false);
+    expect(wantOpen(state, world, want("innerBark::keep"), calendar(0, 250))).toBe(false);
+    expect(wantOpen(state, world, want("roots::keep"), calendar(0, 250))).toBe(true);
+    state.player.tools = [];
+    expect(wantOpen(state, world, want("roots::keep"), calendar(0, 340))).toBe(false);
+  });
 });

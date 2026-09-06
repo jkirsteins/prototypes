@@ -7,7 +7,7 @@ import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { FAT_FULL } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
   fed,
@@ -32,11 +32,27 @@ import {
   WINTER_WOOD_TO_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
+import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
+import { cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+
+/**
+ * No reference seed's home region has a birch cell (the brief's own
+ * region-scoped lookup finds none for 17, 19, 42 or 79), so this scans the
+ * terrain grid directly, the way tests/plants.test.ts's own finder does.
+ */
+function findBirchCell(world: World): number {
+  for (let y = 0; y < WORLD_H; y += 3) {
+    for (let x = 0; x < WORLD_W; x += 3) {
+      if (terrainOf(world, x, y) === "birch") return cellIdx(world, x, y);
+    }
+  }
+  throw new Error("no birch cell found anywhere in the world");
+}
 
 describe("the reference player", () => {
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
@@ -51,8 +67,8 @@ describe("the reference player", () => {
     // and the hide coat, trousers and boots wait for Crafting 8; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 19);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 19);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 23);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 23);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -101,16 +117,23 @@ describe("the reference player", () => {
   it("the trap follows the spear with no empty keep, the hut group sits below the hunt keep, and the fish keep follows the cook keeps", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
+    expect(tasks[cook - 2]).toBe("cook:rawFat");
     expect(tasks[cook - 1]).toBe("cook:fish");
-    expect(tasks[cook + 1]).toBe("fish:any");
-    expect(tasks[cook + 2]).toBe("berries:");
+    // The fat and carbohydrate item's own gathers: a bone crack, eggs, roots and its cook keep,
+    // inner bark and its grind, the sap tap and seaweed, all between the cook keeps and the fish keep.
+    expect(tasks.slice(cook + 1, cook + 9)).toEqual(["crack:", "eggs:", "roots:", "cook:roots", "innerBark:", "grindBark:", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 9]).toBe("fish:any");
+    expect(tasks[cook + 10]).toBe("berries:");
     // The twenty-snare keep sits right after the berries, pushing the rack and the bow one further down.
-    expect(tasks[cook + 3]).toBe("build:snare");
-    expect(tasks[cook + 4]).toBe("build:dryingRack");
-    expect(tasks[cook + 5]).toBe("craft:bow");
+    expect(tasks[cook + 11]).toBe("build:snare");
+    expect(tasks[cook + 12]).toBe("build:dryingRack");
+    expect(tasks[cook + 13]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
-    expect(tasks[spear + 4]).toBe("cook:fish");
+    // The rendered-fat keep sits above the two cook keeps, fat first: raw fat rots in three
+    // warm days and is the calories the lean ceiling does not touch.
+    expect(tasks[spear + 4]).toBe("cook:rawFat");
+    expect(tasks[spear + 5]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
     const hunt = tasks.indexOf("hunt:any");
     // The clothing block, then the stone restock, then the edge's whole life with the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
@@ -125,10 +148,12 @@ describe("the reference player", () => {
     expect(tasks[axe + 13]).toBe("hang:");
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 65: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
+    // 74: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
     // twenty-snare keep after the berries, the forty-snare keep after the water trough, the
-    // thaw grind at the head of the water block.
-    expect(REFERENCE_ORDERS.length).toBe(65);
+    // thaw grind at the head of the water block, and the fat and carbohydrate item's nine
+    // insertions around the cook keeps - the rendered-fat keep, the bone crack, eggs, roots
+    // and its cook keep, inner bark and its grind, the sap tap and seaweed.
+    expect(REFERENCE_ORDERS.length).toBe(74);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -149,6 +174,31 @@ describe("the reference player", () => {
     const have = qty(pile(state, st.campCell), "bark");
     if (have < 5) expect(tasks).toContain("bark");
     else expect(tasks).not.toContain("bark");
+  });
+
+  it("a once job with nothing to keep is given again the day after it finishes, since nothing is left standing for the trueKind rule to close off", () => {
+    const { state, world } = newGame(17, SAP_FROM_DOY);
+    const birch = findBirchCell(world);
+    placeAt(state, world, birch);
+    state.player.tools.push({ id: "knife", durability: 100 });
+    state.player.kcal = 3000;
+    state.player.water = 3;
+    state.player.warmth = 100;
+    state.player.health = 100;
+    const player = new ReferencePlayer([
+      { req: { task: "tapSap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    const ref = { state, world, player };
+    const sapTotal = () => state.ledger.reduce((s, d) => s + d.yield.sap, 0);
+    stepReference(ref, 24 * 60);
+    const sap1 = sapTotal();
+    expect(sap1).toBeGreaterThan(0);
+    stepReference(ref, 24 * 60);
+    stepReference(ref, 24 * 60);
+    // A once job given as itself is normally a finished job for good (the knife would
+    // otherwise be made again); a tap drunk on the spot leaves nothing standing to make
+    // that true, so three days in the window book more than one day's three-tap cap.
+    expect(sapTotal()).toBeGreaterThan(SAP_KCAL * SAP_TAPS_PER_DAY);
   });
 
   it("a times want counts its stand-ins' units: given exactly twice at woodcraft 1, and once as itself at woodcraft 3", () => {

@@ -63,6 +63,16 @@ export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
 }
 
 /**
+ * A keep whose yield ages into a different item on its own reads both: a
+ * strip of inner bark left at camp dries into flour's own raw material
+ * within the hour a lit fire is going, faster than a beginner strips more
+ * of it, so a keep counting only the fresh strip never reads met and
+ * spends the whole day stripping bark forever with a pile of the dried
+ * kind sitting beside it unground.
+ */
+const KEEP_ALSO: Partial<Record<TaskId, ItemId>> = { innerBark: "driedBark" };
+
+/**
  * Whether the order asks for nothing right now. A keep is unmet under half
  * its target when idle and until the target once it is the live order, so
  * one low fire does not send the runner home to split a single log. The
@@ -77,7 +87,8 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
   const camp = pile(state, st.campCell);
   const keep = keepTarget(o);
   if (keep) {
-    const have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
+    const also = KEEP_ALSO[o.req.task];
+    const have = qty(camp, keep.item) + (also ? qty(camp, also) : 0) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
     return live ? have >= keep.qty - 1e-9 : have >= keep.qty / 2 - 1e-9;
   }
   if (structureKeep(o.req, o.kind)) {

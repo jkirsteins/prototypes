@@ -36,7 +36,7 @@ describe("the horizon stages", () => {
     // closed for both, as are the two ice-hole fetches and the two melts, which wait for the
     // shore to ice over, and the fire indoors, which waits for a hut, and the hide coat, trousers
     // and boots wait for Crafting 8, the wedge split and dead wood wait for a camp with no axe, and the celt and the flaked axe for their tier or a lost axe.
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 19);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 23);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");
