@@ -110,8 +110,11 @@ waiting, and everything done while you are away run at the one scale.
   region card lists what lives here. Hunt or fish for a chosen species,
   or for anything, and what you meet is drawn by how many are about. Each
   species has its own mastery, yields and recommended level; fur-bearers
-  give fur, deer and bigger give hide, and big animals give fat, the
-  richest food there is.
+  give fur, deer and bigger give hide, and big animals carry fat, the
+  richest food there is - full in autumn, half through winter, down to a
+  fifth by spring, and cracking a bone for marrow follows the same curve,
+  last of all to thin out. Herring, char, salmon and trout run oily and
+  carry roe at the spawning window; the rest of the catch stays lean.
 - **Sound.** The place has a voice: wind in the trees or over the fell,
   water at the shore, rain, the fire at camp, footsteps on leaves, snow or
   bog, the axe. The species that live here call at their hours and in
@@ -120,10 +123,14 @@ waiting, and everything done while you are away run at the one scale.
   sets the volume and turns the ambience off on its own. Recordings and
   their licences are listed in `public/audio/manifest.md`; several are for
   this prototype only and are marked for replacement.
-- **Body.** Food is a kilocalorie reserve. Lean meat and fish feed nothing
-  past 1,600 kcal a day - a hare or a deer alone starves you as surely as
-  no food at all - while fat and berries have no ceiling; two litres of
-  berries, about 1.2 kg, is a full day's worth. Warmth settles toward what
+- **Body.** Food is a kilocalorie reserve. Every food has a lean share:
+  meat and fish are wholly lean and feed nothing past 1,600 kcal a day -
+  a hare or a deer alone starves you as surely as no food at all - while
+  oily fish, roe and eggs count for less against that ceiling and fat and
+  marrow for none of it. Berries, seaweed, roots and bark flour carry no
+  lean share either, but each has its own gut ceiling instead: full
+  credit to a line, half past it, none past a second, two litres of
+  berries, about 1.2 kg, among them. Warmth settles toward what
   your felt temperature can hold: ambient, plus clothing, fire and shelter
   at camp, plus activity, minus wetness. Below 20 warmth you lose health
   fast. Energy drains awake and faster working; below 20 you work at half
@@ -149,9 +156,16 @@ waiting, and everything done while you are away run at the one scale.
   a kilo, 3 kg raw to 1 kg dried at 3,300, the same kcal in less weight,
   two dry days or four wet; a camp can stand two); a trap line of up to
   forty snares on the heath, checked at dawn. "Hang meat to dry" is a
-  task, and a keep on dried meat runs it as the rack has room. Auto-eat
-  and auto-feed keep you alive while the tab is closed, as long as the
-  food and firewood are there.
+  task, and a keep on dried meat runs it as the rack has room. Cracking a
+  bone gives marrow, and a kill's fat must be rendered at a fire within
+  three days or it spoils like meat. Roots dug at the water or through
+  winter ice, pine inner bark stripped and ground to flour, birch sap
+  tapped for three weeks in May and shore seaweed on a coastal camp fill
+  the season's plant band; nests give eggs in May and June. Once the
+  larder holds a winter's food, hunting and fishing stand down for the
+  woodpile until it dips back under that line. Auto-eat and auto-feed
+  keep you alive while the tab is closed, as long as the food and
+  firewood are there.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
@@ -295,8 +309,8 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/ui/face.ts`: the face templates and palette; `src/ui/card.ts`: the card's lines and the story rank; `src/sim/voice.ts`: the log's tokens and the third-person rule.
 - `src/sim/inventory.ts`: the three axes, their wear factors and the blunt line; `src/sim/tasks.ts`: the edge's slowdown, honing, dead wood and the wedge split.
 - `src/sim/items.ts`: weights, foods, recipes, structures.
-- `src/sim/lean.ts`: the lean ceiling, the daily cap on meat and fish.
-- `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls.
+- `src/sim/gut.ts`: the lean ceiling on every food's lean share and the per-food gut ceilings, both booked by the day.
+- `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls, and the carcass fat curve marrow follows.
 - `src/world/wildlife.ts`: how a region's habitat and a species' range become a capacity.
 - `src/sim/player.ts`: kcal burn, warmth balance, fatigue, wetness, health, the fat reserve.
 - `src/sim/sleep.ts`: the two processes sleep runs on, their lines, and how long a night is.
@@ -305,6 +319,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
   and the constants it lays, settles and melts by.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
+- `src/sim/stocks.ts`: the spring egg stock and the regional root stock, seeded on 1 April or 1 May and drawn down by nothing else.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
 - `src/ui/map.ts`: light sources and the rings they light.
 - `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
@@ -315,4 +330,5 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/manual.ts`: the one-page manual's four sections, the handbook
   links, and when a world opens it unasked.
 - `src/sim/reference.ts`: the reference player's order list and checkpoints.
+- `src/sim/probe.ts`: the without probe, a source disabled for a year run so no single one reads as mandatory.
 - `src/sim/forecast.ts`: the forecast's runs per horizon and the horizons themselves; `src/sim/forecast.worker.ts`: the worker that runs them off the main thread; `src/sim/forecaster.ts`: the worker client and the month number; `src/ui/dial.ts`: the away dial.

@@ -1,5 +1,9 @@
 # Survidle: fat and carbohydrate
 
+**Built.** On `survidle/fat-and-carbohydrate`, commits b3b717c to HEAD,
+the plan's twelve tasks. Section 0's "Measured after" carries the final
+readings.
+
 The tables audit (`2026-09-06-survidle-tables-audit-design.md`) left one
 finding above the others: a lone survivor has no fat or carbohydrate path
 outside big game and the berry season. Meat and fish feed nothing past

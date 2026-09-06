@@ -29,7 +29,8 @@ export const MANUAL_SECTIONS: { title: string; lines: string[] }[] = [
     lines: [
       "Hare alone starves you; you need fat: marrow, oily fish, eggs and roe in their season.",
       "A trap in the water works while you sleep. Berries are a season, and two litres is a day's worth.",
-      "A deer is weeks of food that rots in a day unless you dry it.",
+      "Roots at the water and pine bark are work; they fill a gap, not a winter.",
+      "A deer is weeks of food that rots in a day unless you dry it; its fat rots in three unless you render it.",
       "Winter needs a hut or a snow shelter, a woodpile, and stores.",
     ],
   },
