@@ -56,6 +56,41 @@ describe("the fill task", () => {
     expect(o.why).toBe("the vessels are full");
   });
 
+  // A vessel that froze full has no room: fillVessels cannot top it up and
+  // pourVessels will not empty it, and vesselLitres reads a frozen vessel as
+  // empty, so the old full-vessel guard never fired on one. The fetch ran every
+  // daylight hour for twenty days on a level-20 camp from 30 January, drew
+  // nothing, and starved the woodpile keep beneath it into a cold death. The
+  // reason is its own, because the answer to it is the fire and not the walk
+  // home; the thaw grind at the head of the list is what serves it.
+  it("with every vessel frozen, the fetch says so instead of running for nothing", () => {
+    const { state, world } = waterCamp();
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    placeAt(state, world, shore.cell);
+    const bucket = state.player.tools.find((t) => t.id === "barkBucket")!;
+    bucket.litres = 2;
+    bucket.frozen = true;
+    // vesselLitres passes a frozen vessel over, so the old guard read it as empty.
+    expect(vesselLitres(state.player)).toBe(0);
+    const o = check(state, world, cal, "fill");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("no vessel has room to fill");
+    // Thawed, the same bucket is full again and the fetch says the older thing.
+    bucket.frozen = false;
+    expect(check(state, world, cal, "fill").why).toBe("the vessels are full");
+  });
+
+  it("a frozen vessel with an empty one beside it leaves the fetch open", () => {
+    const { state, world } = waterCamp();
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    placeAt(state, world, shore.cell);
+    const bucket = state.player.tools.find((t) => t.id === "barkBucket")!;
+    bucket.litres = 2;
+    bucket.frozen = true;
+    state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
+    expect(check(state, world, cal, "fill").ok).toBe(true);
+  });
+
   it("a water keep fills at the shore, walks home, pours, and is met", () => {
     const { g, state, world, camp } = waterCamp();
     const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");

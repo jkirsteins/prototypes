@@ -40,7 +40,7 @@ import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
   type SpotId, type StructureId, type TaskId, type ToolId,
 } from "./types";
-import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
+import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -227,29 +227,37 @@ function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | 
   return out;
 }
 
+/**
+ * Why a fetch has nothing to gain, or null when it has. fillVessels tops
+ * every carried vessel off in one call, so a fetch with no room left in any
+ * of them repeats forever at the water instead of walking the load home to
+ * pour - and a vessel that froze full has no room at all, since fillVessels
+ * cannot add to it and pourVessels will not empty it. The frozen case is
+ * given its own reason and not "the vessels are full", because the answer to
+ * it is the fire and not the walk home: a level-20 camp whose only bucket
+ * froze on 30 January ran the fetch every daylight hour for twenty days,
+ * drew nothing, and starved the woodpile keep beneath it into a cold death.
+ */
+function noVesselRoom(state: GameState, world: World): string | null {
+  const p = state.player;
+  if (vesselLitresCapacity(p) <= 0) return null;
+  if (vesselRoom(p) > 1e-9) return null;
+  if (p.tools.some((t) => t.frozen && (TOOLS[t.id].litres ?? 0) > 0)) return "no vessel has room to fill";
+  const homeSt = regionState(state, world, p.region);
+  return campWaterRoom(pile(state, homeSt.campCell), homeSt) > 0 ? "the vessels are full" : "camp is full";
+}
+
 /** How much is about for a hunt or a cast from this cell, by the same weights the draw uses. 0 when the ground suits nothing. */
 export function candidateWeight(state: GameState, world: World, cal: Calendar, id: "hunt" | "fish", at: number): number {
   return candidates(state, world, cal, id, at).reduce((a, x) => a + x.w, 0);
 }
 
 /**
- * What "anything" turns out to be.
- *
- * A hunt is chosen, not drawn: a hunter walks out after the biggest thing
- * they can take, and takes what they meet on the way only when there is
- * nothing bigger worth the day. Among the species this ground could give,
- * the ones standing thicker than tracks whose recommended Hunting level
- * the survivor has reached are ranked by the meat they carry, and the
- * heaviest is what the hunt goes after. A level-1 survivor qualifies for
- * nothing but the small game and the birds, so the rule gives a hare; a
- * level-20 one in a forest with roe deer and mallard goes after the deer.
- * Without it the draw was a lottery over what walked past, and a level-20
- * survivor in a region holding seventy-six roe deer took twenty-six
- * mallard in forty-eight days and starved at the lean ceiling.
- *
- * A cast is still drawn: what takes the hook is not the angler's choice.
- * Nothing about at all gives null either way, and the odds of the hunt
- * that follows are untouched - this picks the quarry, not the outcome.
+ * What "anything" turns out to be: drawn by how likely each species is to
+ * be met from this cell, hunt and cast alike. What walks past is not the
+ * hunter's choice; the ground is, and huntGroundValue below is what
+ * chooses it, so a hunt that draws mallard drew it on a shore the hunter
+ * had a reason to be standing on. Null when nothing is about.
  */
 export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: Rng, id: "hunt" | "fish", at: number): Species | null {
   const c = candidates(state, world, cal, id, at);
@@ -438,11 +446,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (holds <= 0) return { ...base, ok: false, why: "needs a vessel" };
         const s = state.seeps[at];
         if (!s) return { ...base, ok: false, why: Object.keys(state.seeps).some((k) => cellAt(world, Number(k)).region === p.region) ? "walk to the seep" : "no seep dug" };
-        if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
-          const homeSt = regionState(state, world, p.region);
-          const why = campWaterRoom(pile(state, homeSt.campCell), homeSt) > 0 ? "the vessels are full" : "camp is full";
-          return { ...base, ok: false, why };
-        }
+        const noRoom = noVesselRoom(state, world);
+        if (noRoom) return { ...base, ok: false, why: noRoom };
         if (s.litres <= 1e-9) return { ...base, ok: false, why: s.ice > 1e-9 ? "the seep is frozen" : "the seep is empty" };
         const v = tripVessel(state, world);
         const litres = Math.min(tripLitres(state, world), s.litres);
@@ -453,15 +458,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (holds <= 0) return { ...o0, ok: false, why: "needs a vessel" };
       const v = tripVessel(state, world);
       const o = { ...o0, detail: `${tripLitres(state, world).toFixed(1)} l${v ? `, the ${TOOLS[v.id].name}` : ""}` };
-      // fillVessels tops every carried vessel off in one call, so a vessel already at
-      // capacity has nothing left to gain from another cycle; without this the task
-      // repeats forever at the shore instead of walking the full vessel home to pour.
-      if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
-        const homeSt = regionState(state, world, p.region);
-        const camp = pile(state, homeSt.campCell);
-        const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "camp is full";
-        return { ...o, ok: false, why };
-      }
+      const noRoom = noVesselRoom(state, world);
+      if (noRoom) return { ...o, ok: false, why: noRoom };
       const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };

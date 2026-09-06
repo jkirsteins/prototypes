@@ -80,6 +80,22 @@ export function vesselLitresCapacity(p: Player): number {
   return l;
 }
 
+/**
+ * Litres a fetch could actually put in the vessels in hand: what the unfrozen
+ * ones have left. A vessel that froze full is a block of ice - fillVessels
+ * cannot top it up and pourVessels will not empty it - so it holds no room,
+ * and a fetch with none of it anywhere has nothing to gain by going.
+ */
+export function vesselRoom(p: Player): number {
+  let room = 0;
+  for (const t of p.tools) {
+    const holds = TOOLS[t.id].litres ?? 0;
+    if (!holds || t.frozen) continue;
+    room += Math.max(0, holds - (t.litres ?? 0));
+  }
+  return room;
+}
+
 /** What holds water when it is left at camp. */
 export const VESSELS: ToolId[] = ["barkBucket", "waterskin"];
 /**

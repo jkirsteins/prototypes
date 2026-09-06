@@ -139,10 +139,11 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * all autumn hung meat instead of cutting wood, and two year seeds froze
  * on days 300 and 325 with hundreds of thousands of kcal at camp and a
  * woodpile of two kilos. A survivor with a full rack and no woodpile cuts
- * wood. Both keeps open only from the season they are stocked against
- * (wantOpen), so a list that reaches them in April waits for autumn rather
- * than splitting a pile no winter yet needs, and the hang grind has its
- * old place at the head of the loop for the two thirds of the year they
+ * wood. Both keeps open only for the season they are stocked against
+ * (wantOpen): midsummer to the thaw, so a list that reaches them in April
+ * or May waits rather than splitting a pile no winter yet needs, and the
+ * hang grind has its old place at the head of the loop for the quarter of
+ * the year - the ninety-odd days from the thaw to midsummer - that they
  * are shut.
  */
 
