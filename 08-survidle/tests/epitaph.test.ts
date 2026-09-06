@@ -78,11 +78,11 @@ describe("the epitaph", () => {
     // a spent body down until dawn, so the evening ends at the rested line and
     // the dark is worked rather than sat out, which spends the arrival kit at a
     // different pace.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 32. Starved at camp, with nothing in the pack and 32 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 36. Starved at camp, with nothing in the pack and 69 kg of firewood at camp."`);
     // Seed 19 no longer reaches day 60: with a broken night resumed rather than
     // spent awake, its opening runs a different order sequence and it never gets
     // a food source going before the arrival kit is out.
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 16. Died of cold at camp, with 2.4 kg of food in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 4. Died of cold at camp, with nothing in the pack and 1 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

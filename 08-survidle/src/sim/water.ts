@@ -27,7 +27,11 @@ export function waterLossPerHour(state: GameState, felt: number): number {
   let a = activityOf(state.task);
   if (a === "walk" && carried(p) > body(state).packComfortableKg) a = "heavy";
   let l = LOSS_PER_HOUR[a];
-  if (felt > 20 || felt < -10) l *= 1.3;
+  // Cold dry air takes water from the breath whatever you do; a warm room
+  // costs nothing at rest and 30 percent more at work. The Swedish handbook's
+  // floor is 1.5 L a day lying still, whatever the room.
+  const working = a === "light" || a === "walk" || a === "heavy";
+  if (felt < -10 || (felt > 20 && working)) l *= 1.3;
   if (p.sick > 0 || berriesOverloaded(p, state.minute)) l *= 1.2;
   return l;
 }

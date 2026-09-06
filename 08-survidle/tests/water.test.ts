@@ -248,4 +248,15 @@ describe("water at camp", () => {
     expect(qty(state.player.pack, "water")).toBe(0);
     expect(qty(state.player.pack, "ice")).toBe(0);
   });
+
+  it("a warm room costs no extra water at rest; work in it does, and cold dry air does whatever you do", () => {
+    const { state, world } = newGame(17);
+    state.task = null;
+    const rest = waterLossPerHour(state, 25);
+    expect(rest).toBeCloseTo(0.1, 6);
+    expect(waterLossPerHour(state, -15)).toBeCloseTo(0.13, 6);
+    placeAtSpot(state, world, state.player.region, "forest");
+    startTask(state, world, calendar(0), "sticks");
+    expect(waterLossPerHour(state, 25)).toBeCloseTo(0.15 * 1.3, 6);
+  });
 });

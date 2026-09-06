@@ -164,7 +164,7 @@ export function workSpeed(state: GameState, world: World): number {
 export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather, loadKg = carried(state.player)): number {
   let v = 3.0;
   if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
-  if (cal.isNight && !state.player.torch.lit) v *= 0.75;
+  if (cal.isNight && !state.player.torch.lit) v *= NIGHT_WALK_FACTOR;
   const d = body(state);
   if (loadKg > d.packHardKg) v *= 0.6;
   else if (loadKg > d.packComfortableKg) v *= 0.8;
@@ -179,8 +179,13 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
   return baseWalkSpeed(state, cal, weather, loadKg) * speedOf(terrain, ice);
 }
 
-/** Flat kcal/h for activities that do not depend on the ground: walking is computed separately, by terrain. */
-const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 400 };
+/**
+ * Flat kcal/h for activities that do not depend on the ground. Heavy is axe
+ * work by the MET tables (6 to 7 MET at 72 kg), under the Swedish
+ * handbook's 700 for a hard march or heavy work.
+ */
+const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 500 };
+export const KCAL_PER_HOUR_FOR_TEST = KCAL_PER_HOUR;
 /**
  * Base kcal/h for walking on ground at ordinary (open-forest) speed; the
  * ground and load scale it from here. Walking at three kilometres an hour
@@ -194,8 +199,23 @@ export const WALK_KCAL_PER_HOUR = 200;
  * The ledger's base bucket; what an activity costs is counted above it.
  */
 export const BASE_KCAL_PER_HOUR = KCAL_PER_HOUR.sleep;
-/** Burn under a felt temperature below zero, as a multiple of the burn before it. */
-export const COLD_BURN_FACTOR = 1.3;
+/**
+ * What a load adds to an hour's walking: the Swedish handbook's 545 kcal/h
+ * at 4 km/h with 27 kg against 240 unloaded, so 300 over the hard limit
+ * and half that over the comfortable one.
+ */
+export const LOAD_KCAL_PER_HOUR = { comfortable: 150, hard: 300 } as const;
+/**
+ * Burn under a felt temperature below zero, as a multiple of the burn
+ * before it: 2 percent a degree, capped at double. 1.3 at -15, where the
+ * flat factor used to sit; 1.6 at -30, which with a working day reads the
+ * handbook's 6,000 kcal for a week at -30 to -40 C.
+ */
+export function coldBurnFactor(felt: number): number {
+  return Math.min(2, 1 + 0.02 * Math.max(0, -felt));
+}
+/** Walking in the dark with no torch: the Swedish handbook's 1 km/h in terrain against 3 by day. */
+export const NIGHT_WALK_FACTOR = 1 / 3;
 /** Burn while sick, as a multiple of the burn before it. */
 export const SICK_BURN_FACTOR = 1.2;
 
@@ -263,7 +283,8 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   if (a === "walk") {
     burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
     if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
-    if (carried(p) > d.packComfortableKg) burn += 50;
+    if (carried(p) > d.packHardKg) burn += LOAD_KCAL_PER_HOUR.hard;
+    else if (carried(p) > d.packComfortableKg) burn += LOAD_KCAL_PER_HOUR.comfortable;
   } else {
     burn = KCAL_PER_HOUR[a];
   }
@@ -272,7 +293,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats;
   const base = d.baseBurn * eats;
   burn = base + above;
-  const afterCold = felt < 0 ? burn * COLD_BURN_FACTOR : burn;
+  const afterCold = burn * coldBurnFactor(felt);
   const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;
   creditBurn(state, {
     base: base * h,

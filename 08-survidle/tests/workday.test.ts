@@ -124,11 +124,19 @@ describe("the working day", () => {
     let up: number | null = null;
     let bedSleepy = 0;
     for (let m = 0; m < 30 * 60 && up === null; m++) {
+      // advance() moves the clock before it reads the need, so the minute
+      // this tick decides on is state.minute + 1, not the one before the
+      // call; and it decides with the debt this tick still opens with, since
+      // the fall from being asleep only starts after the task is chosen.
+      // Reading state.player.sleepDebt back out afterward would already be a
+      // minute past the moment it decided to lie down.
+      const debtBefore = state.player.sleepDebt;
+      const hourOfTick = calendar(state.minute + 1, state.startDoy).hour;
       advance(state, world, 1);
       if (state.task?.id === "sleep") {
         if (bed === null) {
           bed = state.minute;
-          bedSleepy = sleepiness(state.player.sleepDebt, calendar(state.minute, state.startDoy).hour);
+          bedSleepy = sleepiness(debtBefore, hourOfTick);
         }
       } else if (bed !== null) up = state.minute;
     }

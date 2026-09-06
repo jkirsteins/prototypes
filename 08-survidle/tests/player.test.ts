@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
-import { causeFrom, feltTemperature, stepPlayer, walkSpeed } from "../src/sim/player";
+import { causeFrom, coldBurnFactor, feltTemperature, KCAL_PER_HOUR_FOR_TEST, LOAD_KCAL_PER_HOUR, NIGHT_WALK_FACTOR, baseWalkSpeed, stepPlayer, walkSpeed } from "../src/sim/player";
 import { regionState } from "../src/sim/regionstate";
 
 describe("player physiology", () => {
@@ -21,7 +21,8 @@ describe("player physiology", () => {
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k1 = state.player.kcal;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    expect(k1 - state.player.kcal).toBeCloseTo(400, 0);
+    // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
+    expect(k1 - state.player.kcal).toBeCloseTo(500, 0);
   });
 
   it("starves at 2 health per hour with kcal and fat both empty", () => {
@@ -79,9 +80,38 @@ describe("player physiology", () => {
     const clear = { ...state.weather, snowCm: 0 };
     expect(walkSpeed(state, day, clear, "pine", 5)).toBeCloseTo(3.0);
     expect(walkSpeed(state, day, { ...clear, snowCm: 40 }, "pine", 5)).toBeCloseTo(1.5);
-    expect(walkSpeed(state, night, clear, "pine", 5)).toBeCloseTo(2.25);
+    // The Swedish handbook's 1 km/h in terrain against 3 by day, NIGHT_WALK_FACTOR.
+    expect(walkSpeed(state, night, clear, "pine", 5)).toBeCloseTo(1.0);
     expect(walkSpeed(state, day, clear, "pine", 30)).toBeCloseTo(2.4);
     expect(walkSpeed(state, day, clear, "bog", 5)).toBeCloseTo(2.1);
     expect(walkSpeed(state, day, clear, "fell", 5)).toBeCloseTo(1.5);
+  });
+});
+
+describe("the body's rates read the handbooks", () => {
+  it("the cold burn grows with the felt cold: 1 at zero, 1.3 at -15, 1.6 at -30, capped at 2", () => {
+    expect(coldBurnFactor(5)).toBe(1);
+    expect(coldBurnFactor(0)).toBe(1);
+    expect(coldBurnFactor(-15)).toBeCloseTo(1.3, 6);
+    expect(coldBurnFactor(-30)).toBeCloseTo(1.6, 6);
+    expect(coldBurnFactor(-50)).toBe(2);
+    expect(coldBurnFactor(-80)).toBe(2);
+  });
+
+  it("heavy work is 500 kcal an hour and a loaded walk pays 150 over the comfortable limit and 300 over the hard one", () => {
+    expect(KCAL_PER_HOUR_FOR_TEST.heavy).toBe(500);
+    expect(LOAD_KCAL_PER_HOUR).toEqual({ comfortable: 150, hard: 300 });
+  });
+
+  it("the dark without a torch is a third of day speed", () => {
+    const { state } = newGame(17);
+    const night = calendar(14 * 60);
+    expect(night.isNight).toBe(true);
+    const day = calendar(4 * 60);
+    expect(day.isNight).toBe(false);
+    expect(NIGHT_WALK_FACTOR).toBeCloseTo(1 / 3, 6);
+    expect(baseWalkSpeed(state, night, state.weather) / baseWalkSpeed(state, day, state.weather)).toBeCloseTo(1 / 3, 6);
+    state.player.torch = { lit: true, minutes: 30 };
+    expect(baseWalkSpeed(state, night, state.weather)).toBeCloseTo(baseWalkSpeed(state, day, state.weather), 6);
   });
 });
