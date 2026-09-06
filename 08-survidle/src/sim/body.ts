@@ -12,8 +12,8 @@ import { eat, edible } from "./actions";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
-import { hasTool, pile, qty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES } from "./items";
+import { hasTool, pile, qty, takeUp, transfer, weight } from "./inventory";
+import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
@@ -21,7 +21,7 @@ import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { seepStopped } from "./seep";
 import { isRunning, type Step, walkStep } from "./steps";
-import { check } from "./tasks";
+import { check, toolFor } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
@@ -431,6 +431,12 @@ function snaresWanted(it: Intent): number {
 export function provisionKit(state: GameState, world: World): number {
   const it = state.intent;
   if (!it || cellOf(state, world) !== it.campCell) return 0;
+  // The tool the work swings, when none is in hand and the camp pile holds
+  // one: taken up here on the way out. A tool in hand is never put down, so
+  // this is not undone when the start fails; the kit below is. Vessels are
+  // left to the fill task's own rule.
+  const need = it.task === "fill" ? null : toolFor(it.task, it.arg);
+  if (need && !hasTool(state.player, need) && takeUp(state, world, need)) log(state, `You take up the ${TOOLS[need].name}.`);
   const kit = orderKit(state);
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);

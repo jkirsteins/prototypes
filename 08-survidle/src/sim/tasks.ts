@@ -279,6 +279,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
   const r = regionAt(world, p.region);
   const st = regionState(state, world, p.region);
   const invs = [p.pack, pile(state, at)];
+  // Judged from camp for work elsewhere, a tool in the camp pile is in reach
+  // too: setting out takes it up (provisionKit), so a spare made while the
+  // first was still held is not left at home while the shore reads "needs a
+  // fishing spear". Materials are not: they are fetched by the delivery rules
+  // and never carried out to the work.
+  const here = cellOf(state, world);
+  const toolInvs = at !== here && here === st.campCell ? [...invs, pile(state, here)] : invs;
   const camp = at === st.campCell;
   const terrain = cellAt(world, at).terrain;
   const opt = (partial: Partial<TaskOption> & { label: string; group: TaskGroup }): TaskOption => ({
@@ -297,7 +304,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: terrain === "spruce" ? 50 : 60, repeatable: true }));
       if (!o.ok) return o;
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
@@ -316,7 +323,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "split": {
       const sheltered = splitSheltered(state, world, at);
       const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15, repeatable: true });
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
       if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
@@ -368,7 +375,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
     }
     case "iceHole": {
@@ -376,7 +383,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
       if (iceHoleOpen(state, at)) return { ...o, ok: false, why: "already open here" };
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       return o;
     }
     case "hunt": {
@@ -386,7 +393,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         const o = opt({ group: "hunt", label: "Hunt anything", duration: 120, repeatable: true, detail: `whatever is about; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` });
         // Ground, then tool, then animal. Kinds live here but none of them keeps to this ground: the forest is where a hunt starts.
         if (kinds.length && !c.length) return ground(false, "forest", "forest", o);
-        if (!toolNear(p, "bow", invs)) return { ...o, ok: false, why: "needs a bow" };
+        if (!toolNear(p, "bow", toolInvs)) return { ...o, ok: false, why: "needs a bow" };
         if (!kitInReach(state, world, "arrow", [p.pack])) return { ...o, ok: false, why: "needs arrows in the pack" };
         if (!kinds.length) return { ...o, ok: false, why: "nothing about" };
         return o;
@@ -400,7 +407,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         detail: huntDetail(state, s, huntOdds(state, world, cal, d, s)),
       }));
       if (!o.ok) return o;
-      if (!toolNear(p, "bow", invs)) return { ...o, ok: false, why: "needs a bow" };
+      if (!toolNear(p, "bow", toolInvs)) return { ...o, ok: false, why: "needs a bow" };
       if (!kitInReach(state, world, "arrow", [p.pack])) return { ...o, ok: false, why: "needs arrows in the pack" };
       // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
       const gone = absence(def, cal, state.weather.iceCm);
@@ -416,7 +423,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         const kinds = inRegion.filter((k) => watersideCell(world, at, waterOf(k) ?? "any"));
         const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Fish for anything", duration: 60, repeatable: true, detail: `whatever bites; ${kinds.length} kind${kinds.length === 1 ? "" : "s"} here` }));
         if (!o.ok) return o;
-        if (!toolNear(p, "fishingSpear", invs)) return { ...o, ok: false, why: "needs a fishing spear" };
+        if (!toolNear(p, "fishingSpear", toolInvs)) return { ...o, ok: false, why: "needs a fishing spear" };
         // Fish in the region but none in this water is the wrong water, not an empty one.
         if (!c.length) return { ...o, ok: false, why: !kinds.length && inRegion.length ? "nothing bites here" : "nothing about" };
         return o;
@@ -437,7 +444,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         return o;
       }
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
-      if (!toolNear(p, "fishingSpear", invs)) return { ...o, ok: false, why: "needs a fishing spear" };
+      if (!toolNear(p, "fishingSpear", toolInvs)) return { ...o, ok: false, why: "needs a fishing spear" };
       const away = absence(def, cal, state.weather.iceCm);
       if (away) return { ...o, ok: false, why: away };
       if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
@@ -464,13 +471,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const rec = RECIPES[rid];
       const needs = effectiveNeeds(state, rid);
       const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${rec.tool === "needle" ? "needle" : rec.tool}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
-      if (rec.tool && !toolNear(p, rec.tool, invs)) return { ...o, ok: false, why: `needs a ${rec.tool === "fishingSpear" ? "fishing spear" : rec.tool}` };
+      if (rec.tool && !toolNear(p, rec.tool, toolInvs)) return { ...o, ok: false, why: `needs a ${rec.tool === "fishingSpear" ? "fishing spear" : rec.tool}` };
       if (!canConsume(invs, needs)) return { ...o, ok: false, why: "missing materials" };
       return o;
     }
     case "repair": {
       const o = opt({ group: "camp", label: "Mend clothing", detail: "0.5 kg hide; +40 wear on the most worn piece", duration: 30 });
-      if (!toolNear(p, "needle", invs)) return { ...o, ok: false, why: "needs a bone needle" };
+      if (!toolNear(p, "needle", toolInvs)) return { ...o, ok: false, why: "needs a bone needle" };
       if (totalQty(invs, "hide") < 0.5) return { ...o, ok: false, why: "needs 0.5 kg hide" };
       if (!p.clothing.some((g) => g.durability < 100)) return { ...o, ok: false, why: "nothing needs mending" };
       return o;
@@ -549,7 +556,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire pit" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
@@ -641,7 +648,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }

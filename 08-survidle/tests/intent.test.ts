@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
-import { addItem, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
+import { addItem, hasTool, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
@@ -474,5 +474,30 @@ describe("saves", () => {
     go(back, 120);
     expect(back.state.intent).not.toBeNull();
     expect(back.state.intent!.done).toBeGreaterThan(0);
+  });
+});
+
+describe("a spare tool at camp", () => {
+  it("felling judged from camp with the only axe in the camp pile is able to run, and starting it takes the axe up", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    addItem(pile(state, st.campCell), "axe", 1);
+    expect(hasTool(state.player, "axe")).toBe(false);
+    expect(intentOption(state, world, cal, "chop", undefined, "nearest").ok).toBe(true);
+    const req: IntentRequest = { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" };
+    expect(startIntent(state, world, cal, new Rng(1), req)).toBe(true);
+    expect(hasTool(state.player, "axe")).toBe(true);
+    expect(qty(pile(state, st.campCell), "axe")).toBe(0);
+  });
+
+  it("judged from the forest with the axe at camp it is not: the tool is only in reach from camp, where setting out takes it up", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    addItem(pile(state, st.campCell), "axe", 1);
+    placeAtSpot(state, world, state.player.region, "forest");
+    expect(check(state, world, cal, "chop").why).toBe("needs an axe");
   });
 });
