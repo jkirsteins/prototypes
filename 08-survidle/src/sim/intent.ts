@@ -387,14 +387,26 @@ function loadFull(state: GameState, it: Intent): boolean {
   return weight(state.player.pack) + weight(pile(state, it.cell)) >= body(state).packHardKg - 1e-9;
 }
 
-function dropEverything(state: GameState, world: World): void {
+/**
+ * Everything off the back onto the pile here, except the kit this order
+ * carries out with it. Returns whether anything actually moved: a hunt with
+ * a bow keeps its arrows, so a pack holding only those is a pack that
+ * cannot be emptied, and a caller that treated the unload as a step taken
+ * would take it again the next minute and forever. A level-20 camp on seed
+ * 19 did exactly that - fourteen hours a day standing at its own fire
+ * "unloading at camp" with ten arrows in the pack - and starved on day 42
+ * with an elk down and 5,645 kcal a day gathered.
+ */
+function dropEverything(state: GameState, world: World): boolean {
   const from = state.player.pack;
   const here = cellOf(state, world);
   const to = pile(state, here);
   const keep = new Set(orderKit(state));
-  for (const { item, qty: q } of listItems(from)) if (!keep.has(item)) transfer(from, to, item, q);
+  let moved = false;
+  for (const { item, qty: q } of listItems(from)) if (!keep.has(item)) moved = transfer(from, to, item, q) > 1e-9 || moved;
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
-  if (state.intent?.campCell === here) pourVessels(state.player, to, regionState(state, world, state.player.region));
+  if (state.intent?.campCell === here) moved = pourVessels(state.player, to, regionState(state, world, state.player.region)) > 1e-9 || moved;
+  return moved;
 }
 
 type Outcome = "again" | undefined;
@@ -438,11 +450,14 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
     }
   }
   // At camp, whatever is on the back comes off, yield or not - it is not going back out.
+  // A pack holding nothing but this order's own kit comes off as nothing, and that is not a
+  // step taken: fall through to the walk rather than claim one and stand here forever.
   if (packCarries(state, world, it) || (here === it.campCell && !isEmpty(pack))) {
     if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with the load");
-    dropEverything(state, world);
-    it.step = "unloading at camp";
-    return "again";
+    if (dropEverything(state, world)) {
+      it.step = "unloading at camp";
+      return "again";
+    }
   }
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, " for the rest");
   // At the pile with nothing loaded and nothing that counts: what is on your back is in the way. Take it to camp.
@@ -595,8 +610,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   // back (it favours the pack over the ground when there is room) goes onto the
   // camp pile at once, so campHas can see it and nothing is ever carried back out.
   // Idempotent: once the pack holds none of the yield this does not fire again.
-  if (it.deliver === "camp" && here === it.campCell && packCarries(state, world, it)) {
-    dropEverything(state, world);
+  if (it.deliver === "camp" && here === it.campCell && packCarries(state, world, it) && dropEverything(state, world)) {
     it.step = "unloading at camp";
     return "again";
   }

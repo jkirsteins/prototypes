@@ -587,4 +587,31 @@ describe("a spare tool at camp", () => {
     expect(hasTool(state.player, "knife")).toBe(true);
     expect(qty(pile(state, birch), "knife")).toBe(0);
   });
+
+  it("a hunt standing at camp with only its arrows in the pack does not unload forever", () => {
+    // dropEverything keeps the kit an order carries out with it, so a hunt with a bow can never
+    // empty its pack of arrows. Treating that unload as a step taken made the runner take it
+    // again the next minute and every minute after: a level-20 camp on seed 19 stood at its own
+    // fire for fourteen hours a day "unloading at camp" and starved on day 42 with an elk down
+    // and 5,645 kcal a day gathered.
+    const { state, world } = newGame(17);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
+    addItem(state.player.pack, "arrow", 10);
+    expect(startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "any", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, 1)).toBe(true);
+    // The work is away from camp and something of the last kill is still lying there, so the
+    // delivery branch is the one the runner is in, standing at camp with nothing but its kit.
+    const away = regionAt(world, state.player.region).spots.find((sp) => sp.cell !== st.campCell)!.cell;
+    state.intent!.cell = away;
+    addItem(pile(state, away), "sinew", 2);
+    state.task = null;
+    for (let m = 0; m < 120 && state.intent && cellOf(state, world) === st.campCell; m++) advance(state, world, 1);
+    // Either it set out for the rest or the intent gave way to another order: what it must not
+    // do is stand at camp calling the same empty unload a step.
+    expect(cellOf(state, world) !== st.campCell || state.intent === null || state.intent.step !== "unloading at camp").toBe(true);
+    expect(qty(state.player.pack, "arrow")).toBe(10);
+  });
+
 });
