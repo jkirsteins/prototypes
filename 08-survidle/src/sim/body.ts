@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { findRoute, routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
-import { eat, edible } from "./actions";
+import { autoEat, edible, HUNGRY_LINE } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
@@ -30,7 +30,6 @@ import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weathe
 export const SLEEP_AT = 20;
 export const COLD_UNDER = 30;
 export const WARM_AT = 45;
-export const HUNGRY_UNDER = 1800;
 export const PROVISION_KG = 2;
 /** Soaked through: wet clothing holds half its warmth, and hypothermia near freezing is an hour or two away. */
 export const SOAKED_WETNESS = 60;
@@ -100,7 +99,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   const cold = !it.coldSpent && (p.warmth < coldUnder || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (thirsty) return "thirsty";
-  if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
+  if (p.kcal < HUNGRY_LINE && canFeed(state, world, cal, it)) return "hungry";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
   // Worked out: the evening by the fire, held until the fire has given the
   // fatigue back rather than until a clock says dawn. It also holds while the
@@ -385,11 +384,11 @@ function campStep(state: GameState, world: World, cal: Calendar, it: Intent, nee
   return { id: "rest", step: st.fire.lit ? "resting by the fire after the day's work" : "resting after the day's work" };
 }
 
-/** Eat what is in reach; else go where the food is; else nothing. */
+/** Eat what is in reach, walking the order until the hungry line is passed or nothing is left to take; else go where the food is; else nothing. Force is set: the runner eats regardless of the player's auto-eat toggle. */
 function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: Intent): Step | null {
-  for (const food of AUTO_EAT_ORDER) {
-    if (eat(state, world, food, rng)) return null;
-  }
+  const before = state.player.kcal;
+  autoEat(state, world, rng, true);
+  if (state.player.kcal > before) return null;
   if (cellOf(state, world) === it.campCell) return null;
   const camp = pile(state, it.campCell);
   if (!AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(camp, f) > 1e-9)) return null;

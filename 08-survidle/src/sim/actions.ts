@@ -75,12 +75,30 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
   return true;
 }
 
-/** Eats the least valuable safe food when the reserve runs low. */
-export function autoEat(state: GameState, world: World, rng: Rng): void {
+/** The reserve under which the body eats on its own. */
+export const HUNGRY_LINE = 1800;
+
+/**
+ * Eats when the reserve runs low: the order is least valuable first and fat
+ * last, and the walk goes on until the line is passed or nothing is left
+ * that the body will take. A refused food (a capped one past its line, lean
+ * food past the ceiling) is skipped, not a stop, so a body at the lean wall
+ * with fat at hand eats the fat rather than starving beside it, and a body
+ * with room under the ceiling eats the lean food and keeps the fat.
+ */
+export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
   const p = state.player;
-  if (!p.autoEat || p.kcal >= 1800) return;
-  for (const food of AUTO_EAT_ORDER) {
-    if (eat(state, world, food, rng)) return;
+  if (!force && !p.autoEat) return;
+  let guard = 0;
+  while (p.kcal < HUNGRY_LINE && guard++ < 200) {
+    let ate = false;
+    for (const food of AUTO_EAT_ORDER) {
+      if (eat(state, world, food, rng)) {
+        ate = true;
+        break;
+      }
+    }
+    if (!ate) return;
   }
 }
 

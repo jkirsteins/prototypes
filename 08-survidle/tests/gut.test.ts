@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { eat, edible } from "../src/sim/actions";
+import { autoEat, eat, edible } from "../src/sim/actions";
 import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "../src/sim/gut";
-import { addItem } from "../src/sim/inventory";
+import { addItem, qty } from "../src/sim/inventory";
 import { FOODS, GUT, LEAN_KCAL_PER_DAY } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 
@@ -59,5 +59,33 @@ describe("the gut table and the lean share", () => {
     expect(leanEatenToday(p, state.minute)).toBeCloseTo(LEAN_KCAL_PER_DAY, 0);
     expect(edible(state, "cookedMeat")).toBe(false);
     expect(edible(state, "fat")).toBe(true);
+  });
+});
+
+describe("auto-eat closes the day with fat", () => {
+  it("a body at the lean wall with fat at hand eats the fat, and stops once the hungry line is passed", () => {
+    const { state, world } = newGame(17);
+    const p = state.player;
+    p.kcal = 100;
+    p.gut = { day: 1, kg: {}, leanKcal: LEAN_KCAL_PER_DAY };
+    addItem(p.pack, "cookedMeat", 5);
+    addItem(p.pack, "fat", 1);
+    autoEat(state, world, new Rng(1));
+    expect(p.kcal).toBeGreaterThanOrEqual(1800);
+    expect(qty(p.pack, "cookedMeat")).toBe(5);
+    expect(qty(p.pack, "fat")).toBeLessThan(1);
+    expect(qty(p.pack, "fat")).toBeGreaterThan(0.5);
+  });
+
+  it("lean food is eaten first while the ceiling has room, so the fat is kept", () => {
+    const { state, world } = newGame(17);
+    const p = state.player;
+    p.kcal = 1500;
+    addItem(p.pack, "cookedMeat", 5);
+    addItem(p.pack, "fat", 1);
+    autoEat(state, world, new Rng(1));
+    expect(p.kcal).toBeGreaterThanOrEqual(1800);
+    expect(qty(p.pack, "fat")).toBe(1);
+    expect(qty(p.pack, "cookedMeat")).toBeLessThan(5);
   });
 });
