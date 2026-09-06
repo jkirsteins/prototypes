@@ -64,6 +64,13 @@ export const SPENT_AT = 30;
  */
 export const RESTED_AT = 55;
 
+/**
+ * Sleepiness at which the body reads as visibly sleepy: ten points under the
+ * onset line, so a player gets the yawn before the body lies down and has a
+ * chance to do something about the evening.
+ */
+export const SLEEPY_AT = 50;
+
 /** Ten minutes: the step the sleep task's length is searched in, fine enough that a wake lands within a rounded quarter hour. */
 export const WAKE_PROBE_STEP = 10;
 /** No sleep task runs shorter than an hour or longer than fourteen: below the hour nothing is recovered, above it nobody lies still. */

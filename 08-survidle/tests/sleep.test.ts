@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { statsHtml } from "../src/ui/panels";
+import { newUiState } from "../src/ui/render";
 import type { TaskId } from "../src/sim/types";
 import { derived, medianPerson } from "../src/sim/person";
 import { stepPlayer, taskDrain } from "../src/sim/player";
@@ -8,7 +11,7 @@ import { SPENT_AT } from "../src/sim/sleep";
 import {
   CIRCADIAN_PEAK_HOUR, ULTRADIAN_AMPLITUDE,
   alertness, circadian, debtStep, minutesToWake, sleepiness,
-  SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, WAKE_AT,
+  SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SLEEPY_AT, WAKE_AT,
 } from "../src/sim/sleep";
 
 /** Hours of the process at a minute a time, which is the step the body itself takes. */
@@ -192,5 +195,35 @@ describe("the sleep task's length", () => {
 
   it("a light sleeper in a storm lies there longer for the same debt", () => {
     expect(minutesToWake(64, 22.5, true)).toBeGreaterThan(minutesToWake(64, 22.5, false));
+  });
+});
+
+describe("what the player sees", () => {
+  it("reads the yawn as a tag and hears it once per crossing", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    state.task = { id: "rest", progress: 0, duration: 1e6, repeat: false };
+    const LINE = "{You} can barely keep {your} eyes open.";
+    const said = () => state.log.filter((e) => e.text === LINE).length;
+    const tagged = () => statsHtml(state, world, cal, 5, newUiState()).includes(">sleepy<");
+    /** Puts this hour's sleepiness where it is wanted, then steps the body a minute. */
+    const put = (sleepy: number) => {
+      state.player.sleepDebt = sleepy + alertness(cal.hour);
+      stepPlayer(state, world, 10, 1);
+    };
+    put(SLEEPY_AT - 2);
+    expect(said()).toBe(0);
+    expect(tagged()).toBe(false);
+    put(SLEEPY_AT + 1);
+    expect(said()).toBe(1);
+    expect(tagged()).toBe(true);
+    // Held above the line, it is not said again.
+    put(SLEEPY_AT + 5);
+    expect(said()).toBe(1);
+    // Back under and over again: the crossing is what speaks.
+    put(SLEEPY_AT - 5);
+    expect(tagged()).toBe(false);
+    put(SLEEPY_AT + 1);
+    expect(said()).toBe(2);
   });
 });

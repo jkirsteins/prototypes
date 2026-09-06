@@ -18,6 +18,7 @@ import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { fmtName } from "../sim/names";
+import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
@@ -84,6 +85,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
+  if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) tags.push(`<span class="tag bad">sleepy</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   return `<h2><span class="stat-face">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}

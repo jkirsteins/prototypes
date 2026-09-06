@@ -1,7 +1,7 @@
 import { clamp } from "../units";
 import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
-import type { Calendar } from "./calendar";
+import { calendar, type Calendar } from "./calendar";
 import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
 import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
 import { carried } from "./inventory";
@@ -13,7 +13,7 @@ import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
-import { debtStep, SPENT_AT } from "./sleep";
+import { debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
@@ -377,6 +377,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "warm", p.warmth < 30, "{You} {are} shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "{You} {are} soaked through.");
   warn(state, "tired", p.energy < 20, "{You} can barely lift {your} arms. Sleep.");
+  warn(state, "sleepy", sleepiness(p.sleepDebt, calendar(state.minute, state.startDoy).hour) >= SLEEPY_AT, "{You} can barely keep {your} eyes open.");
   warn(state, "thirst", p.water < THIRSTY_L, "{You} {are} thirsty.");
   const here = cellOf(state, world);
   const onThinIce = cellAt(world, here).terrain === "water" && w.iceCm < ICE_SAFE_CM;
