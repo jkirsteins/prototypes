@@ -10,6 +10,7 @@ import { readShore } from "./knowledge";
 import { body, hasQuirk } from "./person";
 import { watersideCell } from "./position";
 import { record } from "./record";
+import { seedSeasonalStocks } from "./stocks";
 import type { GameState, RegionState, Species } from "./types";
 
 /** Starting numbers: seven tenths of what the land can hold. */
@@ -64,6 +65,11 @@ export function regionState(state: GameState, world: World, id: number): RegionS
   if (!st) {
     st = newRegionState(world, id);
     state.regions[id] = st;
+    // The one place a region's state is first created (newRegionState has no other
+    // caller): seed it as though every roll up to today had already run, so a
+    // region first touched mid-season reads no differently from one dailyCamp has
+    // been rolling since the season opened.
+    seedSeasonalStocks(state, world, st, id);
   }
   return st;
 }
