@@ -169,7 +169,7 @@ export function beginAgain(state: GameState, world: World): void {
 /** Highlights a card; the name field takes that person's name until the player edits it. */
 export function pickCandidate(state: GameState, i: 0 | 1 | 2): void {
   const l = state.landing;
-  if (!l || !l.candidates[i]) return;
+  if (!l?.candidates[i]) return;
   l.chosen = i;
   l.name = l.candidates[i].name;
 }

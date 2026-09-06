@@ -45,6 +45,8 @@ import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
+// The face self-test page: a page of generated faces to judge, in place of the game.
+if (params.has("faces")) location.replace(`${import.meta.env.BASE_URL}faces.html`);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
 const speed = Math.max(0.1, Number(params.get("speed")) || 1);
 const forcedSeed = params.get("seed");
