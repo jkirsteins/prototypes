@@ -280,6 +280,8 @@ export interface Player {
   workHours: number;
   /** Set when the day's work is done: the minute of the next dawn, until which the runner rests. */
   restUntil?: number;
+  /** Set when a sleep has run its cap while it is still dark; cleared at dawn. One sleep per night, then rest or chores by the fire until first light. */
+  sleptTonight?: boolean;
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }

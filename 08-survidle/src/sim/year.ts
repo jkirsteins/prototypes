@@ -13,7 +13,7 @@ import { FOODS, type FoodId } from "./items";
 import { setSkillLevel } from "./horizon";
 import { type DayLedger, emptyBurn, type WeekAverage, weekBefore } from "./ledger";
 import { current } from "./record";
-import { type ReferenceReport, type ReferencePlayer, setUpReference, stepReference } from "./reference";
+import { type ReferenceReport, type ReferencePlayer, setUpReference, stepReference, WINTER_STOCK } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
 import { LARGE_GAME } from "./species";
@@ -28,8 +28,6 @@ import type { GameState } from "./types";
 export const WINTER_START_DOY = 334;
 /** Days from 1 December to 1 March. */
 export const WINTER_DAYS = 90;
-/** The winter stock (spec 1.3): a hut winter is about 3 tonnes of firewood, of which 400 kg split and 150 logs to split. */
-export const WINTER_STOCK = { driedMeatKg: 80, firewoodKg: 400, logs: 150 };
 
 export interface MonthLine {
   /** The month that just began, 1 to 12, and the day of the run it began on. */

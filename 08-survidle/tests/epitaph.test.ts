@@ -70,8 +70,11 @@ describe("the epitaph", () => {
     // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
     // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
     // the early days buy warmth at the fire; and the 400 kg woodpile keep is open only from 1 September to
-    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 52. Starved at camp, with nothing in the pack and 28 kg of firewood at camp."`);
+    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below. The felling grind at
+    // the end of the list is a 150-log keep shut until 1 September and placed beside the woodpile keep, so a
+    // spring runner with nothing else able to run rests instead of felling; and stone is wanted twice, a
+    // once job for eight at the opening and a keep of eight as the restock below the clothing block.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 41. Starved at camp, with nothing in the pack and 19 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Landed 1 April, year 1."`);
   });
 

@@ -297,26 +297,37 @@ winter wants, the seep as a per-cell producer on wet ground, the water
 line, and the pit fire and the fire indoors as two rows; built, readings
 under F), placed here because the tables audit's opening flag, winter
 thirst at a camp holding an axe, was read at a camp 25 to 55 minutes
-from its water, then the winter loop, four
-runner and list rules and one question, with the year probe as their
-gate, pulled ahead of everything because the year loop's last deaths
-name them and none is content: a winter working day (camp chores by
-firelight, the night rule kept for travel, since seed 19 froze on
-1 December with 446,000 kcal of fat and 670 logs at camp working two
-hours a day in five hours of light); "keep camp at N logs" in place of
-the felling grind (seed 17 at level 20 starved on day 68 beside 672
-logs, burning 2,500 kcal a day felling); the hunt grinds ranked above
-the woodpile keep in autumn (seeds 42 and 79 ate their July stock by
-November while every hour went to wood); clothing wants in the reference
-list, the hide coat, trousers and boots the tree already has at
-Crafting 8 after the first large kill, since one elk is 20 kg of hide
-and the full set is 12, and seeds 42 and 79 died in wool on a winter
-walk with an elk's hide at camp; and the winter water question, why a
-survivor with an axe and an open ice hole loses 2.5 litres in a day near
-the death, answered before it is fixed; and, if a hut winter then dies
-of fuel, the hearth as a build entry (Building 5, a dozen stones, four
-hours), since the cabin's 0.8 kg an hour and 10 C inside exist in the
-code and nothing in play builds the hearth they need; then J the axe
+from its water, then the winter loop
+(`2026-09-06-survidle-winter-loop-design.md`, plan
+`2026-09-06-survidle-winter-loop.md`: six rules, five of them from a
+per-day, per-task re-reading of the year probe's last deaths rather than
+from its month lines. One sleep per night, so a spent body that has
+slept its nine-hour cap rests until dawn instead of sleeping the dark
+away; away work only by day, an order for another cell skipped
+at night with "dark; at first light" while the thirsty and the spent
+still walk; camp chores by firelight, run by the fire or a torch and
+stopped once the day's work reaches the working day less the daylight,
+so the light stays for the forest, with lighting a fire the one camp job
+neither the dark nor the budget stops and a waiting runner keeping its
+fire before it rests; the spare tool at camp in reach from
+camp and taken up on the way out; "Mend clothing" legal only with the
+worst piece at or under 60, so a mend can stand as an order; and a list
+that restocks eight stone below its opening's once job for them, keeps
+one spare of every held tool and of the bone needle, stocks 150 logs for
+winter beside the woodpile keep in place of the felling grind, and sews
+the hide set at Crafting 8 behind that needle and a repair grind. The
+month lines had hidden
+the causes: stone ran out on every seed, taking the arrows and the axe
+with it, and the fishing spear wore out and was never re-made or taken
+up while a spare lay in the camp pile. The sleep was a clause, not a
+season - `isNight && spent` laid a body down again after its own nine
+hours, so autumn slept 11 to 15 hours a day. The rule that ranked the
+hunts above the woodpile keep in autumn was dropped on its reading:
+hunting stopped for want of arrows, and September's hours went to sleep
+and walking, not wood; a grind above a keep starves the keep. The
+hearth was written as a
+conditional entry and its trigger did not trip. Built, readings under
+F), then J the axe
 and the wood without one (the section of that name below: an iron axe
 that is honed and lost rather than worn out, a stone axe at its real
 hours, dead wood and wedges for a fire with no axe, and a stone keep in
@@ -1952,6 +1963,12 @@ and the legend's mark colours are checked by the siting item's browser
 pass next, since that item adds the camp mark and the legend's colour
 rule.
 
+Notes for a later pass: a one-per-line layout for the kind buttons, and
+a working-day dial, for the tester round to ask for. `workHours` on the
+player is the field, at ten with no control on it; the winter loop
+takes the daylight share off it by rule rather than by a choice, and
+the length of the day's work is the lever a player might actually want.
+
 ### The save sync
 
 The save is local storage, so a phone is a different world from the
@@ -2503,6 +2520,30 @@ survivor who eats it raw is choosing to - so the gap is not the eating
 rule but the cook keep failing to clear the pile into food. The year
 loop's own flags for the audit are in section 8 of its spec.
 
+The winter loop's per-day re-reading of the stocked December camp adds
+three flags to that list, with its numbers. The ice hole skins over at
+every day roll, in `dailyCamp`, so a camp beside its own hole re-cuts it
+most days for 0.3 to 0.9 hours; a hole worked daily in a Baltic winter
+does not freeze solid overnight, and the rate belongs in a table rather
+than in the day roll. Snow reads 14 cm on 1 December and 249 cm on 3
+January against 40 to 60 cm of real winter snow depth in this latitude,
+and it is what halves walking speed for the 4 to 11 hours a day the
+runner walks. And `waterLossPerHour` multiplies the loss by 1.3 above 20
+C felt as it does below -10, which inside a lit hut applies 10 to 22
+hours a day for a fortnight, and the year loop's own note above is the
+same flag read from the other end: an indoor floor that holds felt
+temperature at 22 to 27 turns a rest by the fire into a desert day.
+Together they are the 3.3 to 4.8 litres a day the stocked camp actually
+drank against the 2.5 the year loop's question named.
+
+Beside them, the water spec's own re-measure has its before numbers
+here rather than in that spec, which the parallel session owns: the
+walk to the shore read 25 to 55 minutes each way before the snow, one
+2-litre bucket came home per trip, and the trough's 20-litre keep sat
+twentieth on the list and never got camp past 2 litres, so camp water
+read 0 or 2 litres every evening. The landing camp and fetch-by-method
+are measured against those three.
+
 The browser pass ran in Chrome on seed 17, at 1440 by 900 and again at
 390 wide with touch emulation. A camp with one rack read "40 kg on the
 racks, two dry days" in the Do row's detail and "rack: 12.0 kg drying, 0%
@@ -2574,6 +2615,132 @@ things were found and fixed: a dig ordered from camp left its sticks in
 the camp pile, so the seep's sticks are pocketed at camp as a snare's
 kit is; and the year loop's list left a met last order's load in the
 pack, which the water fetch made visible.
+
+Measured with the winter loop (`2026-09-06-survidle-winter-loop-design.md`,
+built 2026-09-06 on `winter-loop`, `npm test` green at 782 tests). Its before numbers are its own section 0, read on main 22976fe
+with a throwaway probe that stepped the year a minute at a time and
+summed the task, the light, the position and the water loss by day,
+because the month lines had hidden the causes. Stone ran out on every
+seed, the camp piles holding 2, 1, 0 and 0 at the death with the order
+list reading "arrows x5: missing materials" and "Hunt anything: needs
+arrows in the pack", so hunting dropped out of the month's tasks from
+June on two seeds and July on a third. The fishing spear wore out on
+every seed and was never re-made or taken up, the list reading "Fish for
+anything: needs a fishing spear" from May while a spear lay in the camp
+pile. Seed 19 froze on day 245 because its axe wore out on day 234 and
+the axe keep read "missing materials" with 1 stone at camp, beside
+444,600 kcal of dried meat. Seed 17 starved on day 68 beside 764 logs,
+felling 5 hours a day at 400 kcal an hour because the felling grind was
+the only order able to run. Sleep ran 8.2 hours a day in July, 11.3 in
+August, 12.1 in September and 14.8 in October on seed 19, against a
+seven-to-nine band, because `isNight && spent` laid a body down again
+after its own nine-hour cap. Nothing refused work away from camp at
+night, so the stocked camp walked 5 to 8 hours in the dark on most
+nights. And every garment on every seed read durability 0 by the end,
+with 168 kg of hide at seed 19's camp, since the list never ordered the
+needle, the hide set or a mend and "Mend clothing" was legal at 99.
+
+Then the reading each rule moved. One sleep per night took the last
+week's sleep to 8.9, 8.9, 8.9 and 9.2 hours a day at level 20, 8.9, 8.0,
+8.9 and 9.0 at level 10 and 8.8, 9.1, 8.9 and 8.6 in the winter probe,
+with work at 5.6 to 10.1 hours against the October reading's 6.3. Away
+work by day and chores by firelight put their reasons on the rows: seed
+79's list at the year's end reads "dark; at first light" against the
+reindeer hunt and "the day's work waits for the light" against the
+ice-hole fill, the splitting, the cooking, the hang grind and the elk
+and deer hunts at once, with the indoor fire want above them exempt from
+both, since a camp that could not light a fire in the dark could never
+work by one again. The stone want and the tool keeps with the take-up
+are what moved the year: no list reads "missing materials" against the
+arrows, the axe or the knife, no list reads "needs a fishing spear", and
+every survivor ends with an axe and a spear in hand and a spare of each
+in the pile, the spears at 16, 70, 19 and 13 and the drills at 94, 72,
+96 and 54 where seed 42's drill used to read 2. The
+150-log keep in place of the felling grind, placed beside the 400 kg
+woodpile keep, is what carries the fuel: seed 17 ends the year with 3.8
+million kcal at camp, 69 kg of firewood and 2 logs where it used to
+starve on day 68 beside 764 logs. The clothing wants moved wherever hide
+reaches camp: three of the four seeds end the year in a hide set being
+mended, seed 42's reading 69, 93, 88, 78 and 78 with its repair grind
+saying "nothing worn enough to mend" beside 463 kg of hide, where every
+garment on every seed used to read 0. The needle keep is what holds that up, and it
+is a correction: as a once job the needle wore out and took the mend
+grind with it, leaving two seeds with the grind skipped "needs a bone
+needle" beside 383 and 98 kg of hide.
+
+Where it lands, measured on 2026-09-06. The April gate holds 4 of 4 at
+day 26, with first lives of 41, 220, 203 and 91 days against 61, 51, 50
+and 114, and two of the four reaching a second autumn on the arrival kit
+alone. In aggregate that is far longer, but not on every seed: seed 17
+shortens from 61 to 41 and seed 79 from 114 to 91, which is the price of
+the stone trade, since the opening's once job is met and done where the
+earlier list kept gathering, and the arrows and the axe it buys are what
+carry seeds 19 and 42 to 220 and 203. The year gate goes from 0 of 4 to
+3 of 4 at level 20, seeds 17, 42 and 79 standing on 1 April a year after
+they landed where the best of them reached day 211, and seed 19 freezing
+on day 268. At level 10 it goes from 0 of 4 to 2 of 4, seeds 17 and 42
+living the year, seed 19 starving on day 353 and seed 79 taken by wolves
+on day 343, against 246, 85, 186 and 186. The winter gate reads 3 of 4
+against the 4 of 4 the water work left: seed 79 freezes on winter day
+89, with the hut's fire lit and fuel at camp, on 771 kcal a day eaten
+against 5,188 burned. The horizon's lowest rung is nearer its band at 4,
+3, 3 and 4 days against 0 to 2, where it read 5, 8, 7 and 5; the second
+reads 9, 9, past 30 and 4 against 1 to 2, where it read 4, 11, 13 and 4;
+the top three rungs are past 30 on every seed as before, the stocked one
+in band. The December working day was measured directly, since no script
+prints work hours per month: the stocked December camp works 8.0 to 8.6
+hours a day, of which 4.3 to 5.0 are in the dark, against the 4.6 hours
+the chore budget allows and 5.4 hours of light. The trend gate is the
+one that did not come with the rest: 2 of 4 against its 3 of 4, where
+the water work left it at 2. Seed 17's three lives read 41, 113 and 162
+days and seed 42's 203 and then past 251, both holding; seed 19's read
+220, 222 and 207 and seed 79's 91, 67 and 203, both breaking on a life
+that landed out of season. The trend gate compares death days across
+lives that land in different seasons, so a long first life sets a mark
+an autumn or a May heir cannot match and a stronger opening reads to it
+as a regression; it is due to be re-derived rather than answered by a
+rule, and should not be re-litigated as a balance failure until it is.
+
+Two first measures are kept here because each is a rule about the
+reference player rather than about its subject, and both will be met
+again. A stone keep replacing the opening's once job read April 2 of 4
+with first lives of 26, 71, 14 and 93, since a want is judged met at
+half its target when the player decides whether to give it and a level-1
+keep is a stand-in given again only under four stone, which is less than
+the fire pit alone needs; that is why the opening keeps its once job and
+the keep is the restock beside the axe. And a 150-log keep left in the
+felling grind's old place at the end of the list never ran, since the
+three named hunts above it are grinds and a grind is never met: camp
+logs never passed five from 1 September and seed 17 froze on day 259
+with 2.7 million kcal of food beside it. That is why the two
+winter-stock keeps now sit together.
+
+The hearth's trigger was read against these runs and did not trip. Seed
+19 froze inside a standing hut with an axe at 98 in hand, but with 0
+logs and 0 kg of firewood at camp and the fire out for three nights, and
+a hearth burns fuel that is there; the winter probe's seed 79 froze with
+fuel at camp and the fire lit, on an empty stomach, which is a starving
+body giving up its warmth rather than a shelter failing to hold it. The
+entry stays written in the winter loop spec's section 3, for the shelter
+ladder in 3 camp. What the December deaths do name is fuel cut in
+December rather than carried into it: felling is away work and so
+daylight work, and a five-hour day does not keep a fire. Dead wood and
+the wedges are item J's second and third steps. A third belongs beside
+them, measured on the winter loop's own withdrawn rule: a runner stops
+for the day with no firewood for the night and freezes beside the pit -
+nothing makes it stock the night's fire before its working day ends, and
+at level 1 in April that is two nights from death.
+
+Two flags for E, both read at level 20 over a full year. Fur is not
+hide: seed 19 ends with 0 kg of hide at camp against 66.6 kg of fur and
+never sews the set at all, dying in wool at durability 0 with the coat,
+trousers and boots reading "missing materials"; seed 79 sews its set but
+ends on 13 kg of hide beside 69.7 kg of fur, with its trousers already
+back at 0 and the repair grind reading "needs 0.5 kg hide" whenever the
+hide runs out. A garment or a patch that reads fur is the
+gap. And the mend that now works is a flat +40 for 0.5 kg of hide with
+no tanning, wear model or layers behind it, which is the floor E is
+meant to replace.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -3222,7 +3389,17 @@ The item, in the order it is built:
 5. **Stone in the list.** A stone keep, so the axe keep and the hone are
    never read "missing materials" with one stone at camp. Then the year
    probe again, on the four seeds, with the level-20 October deaths as
-   the "before".
+   the "before". The stone keep itself landed early, with the winter
+   loop, which read the same cause from its own deaths. It sits below
+   the clothing block, right above the axe keep, as a restock and not as
+   the opening: replacing the opening's once job with it cost the April
+   gate two seeds, because a want is judged met at half its target when
+   it is given and a level-1 keep is a stand-in given again only under
+   four stone, which is less than the fire pit's six. With both wants in
+   place, the four level-20 camps end the year holding 11, 13, 9 and 0
+   stone with no order reading "missing materials" against the arrows,
+   the axe or the knife. The rest of the item is untouched, and this
+   step now reads the hone rather than the keep.
 
 What this does not do: a saw, which the north did not have; a bronze or
 iron forge; a tree felled by fire as a task before the fire spread of 8

@@ -11,9 +11,9 @@ import { eat, edible } from "./actions";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
-import { axeInHand, hasTool, pile, qty, transfer, weight } from "./inventory";
+import { AXES, axeInHand, hasTool, pile, qty, takeUp, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
-import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES } from "./items";
+import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
@@ -21,7 +21,7 @@ import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { seepStopped } from "./seep";
 import { isRunning, type Step, walkStep } from "./steps";
-import { check } from "./tasks";
+import { check, toolFor } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
@@ -91,9 +91,13 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   // with no energy left sleeps parched, which is what a collapse is.
   // The sticky clause below only carries a sleep already in progress; it needs
   // its own exit or a rested body keeps sleeping into the morning it woke in.
+  // A spent body that has already slept its cap tonight is not laid down
+  // again: it rests by the fire, or works by it, until dawn. The energy clause
+  // stands, since a body worked under 60 in the dark is collapsing, not
+  // starting a second night.
   const sleep = (it.need === "sleep" && (cal.isNight || p.energy < NIGHT_SLEEP_UNDER))
     || p.energy <= SLEEP_AT
-    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || (spent && !thirsty)))
+    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || (spent && !thirsty && !p.sleptTonight)))
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
   if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
@@ -427,6 +431,14 @@ function snaresWanted(it: Intent): number {
 export function provisionKit(state: GameState, world: World): number {
   const it = state.intent;
   if (!it || cellOf(state, world) !== it.campCell) return 0;
+  // The tool the work swings, when none is in hand and the camp pile holds
+  // one: taken up here on the way out. A tool in hand is never put down, so
+  // this is not undone when the start fails; the kit below is. Vessels are
+  // left to the fill task's own rule.
+  const need = it.task === "fill" ? null : toolFor(it.task, it.arg);
+  if (need === "axe") {
+    if (!axeInHand(state.player)) for (const id of AXES) if (takeUp(state, world, id)) { log(state, `{You} {take} up the ${TOOLS[id].name}.`); break; }
+  } else if (need && !hasTool(state.player, need) && takeUp(state, world, need)) log(state, `{You} {take} up the ${TOOLS[need].name}.`);
   const kit = orderKit(state);
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
