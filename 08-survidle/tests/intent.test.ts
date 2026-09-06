@@ -12,6 +12,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { candidateWeight, check, stepTask, stopTask } from "../src/sim/tasks";
 import { takeStep } from "../src/sim/steps";
+import { ICE_SHORE_CM } from "../src/sim/water";
 import type { Intent, TaskId } from "../src/sim/types";
 import { cellAt, regionAt, spotOf } from "../src/world/gen";
 
@@ -490,6 +491,33 @@ describe("a spare tool at camp", () => {
     expect(startIntent(state, world, cal, new Rng(1), req)).toBe(true);
     expect(hasTool(state.player, "axe")).toBe(true);
     expect(qty(pile(state, st.campCell), "axe")).toBe(0);
+  });
+
+  it("a hole fill judged from camp reads only the axe the fill can carry, while the ice-hole task takes the camp one up", () => {
+    // provisionKit leaves a fill's kit to the fill task, so the camp pile's
+    // axe is never in the hands when the fill reaches the ice: the fill reads
+    // the pack and the work cell alone. An iceHole order is provisioned like
+    // any other task, so the same axe is in reach from camp and taken up.
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    // Camp off the water, so the hole is judged at a cell the survivor is not
+    // standing on: every seed's landing camp is itself waterside, where the
+    // work cell and the camp cell are one and the question does not arise.
+    const forest = spotOf(regionAt(world, state.player.region), "forest")!.cell;
+    st.campCell = forest;
+    placeAt(state, world, forest);
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    addItem(pile(state, forest), "axe", 1);
+    addItem(state.player.pack, "barkBucket", 1);
+    state.weather.iceCm = ICE_SHORE_CM;
+    const fill = intentOption(state, world, cal, "fill", "hole", "nearest");
+    expect(fill.ok).toBe(false);
+    expect(fill.why).toBe("needs an axe");
+    expect(intentOption(state, world, cal, "iceHole", undefined, "nearest").ok).toBe(true);
+    const req: IntentRequest = { task: "iceHole", until: { kind: "once" }, deliver: "leave", where: "nearest" };
+    expect(startIntent(state, world, cal, new Rng(1), req)).toBe(true);
+    expect(hasTool(state.player, "axe")).toBe(true);
+    expect(qty(pile(state, forest), "axe")).toBe(0);
   });
 
   it("judged from the forest with the axe at camp it is not: the tool is only in reach from camp, where setting out takes it up", () => {

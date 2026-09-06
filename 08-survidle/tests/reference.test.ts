@@ -26,6 +26,7 @@ import {
   stepReference,
   wantOpen,
   weekLines,
+  winterStockWant,
   WINTER_STOCK,
   WINTER_WOOD_FROM_DOY,
   WINTER_WOOD_TO_DOY,
@@ -475,6 +476,14 @@ describe("wants by level", () => {
     expect(wantOpen(state, world, summer, calendar(0, 90))).toBe(true);
   });
 
+  it("winterStockWant tells the two winter keeps from the summer keeps of the same tasks by their targets", () => {
+    const find = (task: string, q: number) => REFERENCE_ORDERS.find((w) => w.req.task === task && w.req.until.kind === "campHas" && w.req.until.qty === q)!;
+    expect(winterStockWant(find("split", WINTER_STOCK.firewoodKg))).toBe(true);
+    expect(winterStockWant(find("chop", WINTER_STOCK.logs))).toBe(true);
+    expect(winterStockWant(find("chop", 4))).toBe(false);
+    expect(winterStockWant(find("split", 60))).toBe(false);
+  });
+
   it("the hide coat, trousers and boots wait for Crafting 8; the needle, the fur hat, the mittens and the bow do not", () => {
     const { state, world } = newGame(17);
     const cal = calendar(0);
@@ -502,7 +511,7 @@ describe("wants by level", () => {
     stepReference(ref, 20 * 1440);
     const st = regionState(ref.state, ref.world, ref.state.player.region);
     expect(hasTool(ref.state.player, "fishingSpear")).toBe(true);
-    expect(qty(pile(ref.state, st.campCell), "fishingSpear")).toBeLessThanOrEqual(1);
+    expect(qty(pile(ref.state, st.campCell), "fishingSpear")).toBe(1);
   });
 });
 

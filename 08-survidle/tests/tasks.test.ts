@@ -4,6 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
+import { addOrder, chooseOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
 import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
@@ -467,5 +468,23 @@ describe("mend clothing", () => {
     expect(greyed.why).toBe("nothing worn enough to mend");
     state.player.clothing[0].durability = MEND_AT;
     expect(check(state, world, cal, "repair").ok).toBe(true);
+  });
+
+  it("a repair grind on the list is skipped while nothing is worn enough, and chosen once a piece is", () => {
+    // The grind may only sit above the hut group because the mend's own
+    // legality shuts it between wearings; a grind that always ran there would
+    // starve every keep below it.
+    const { state, world } = newGame(8);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.player.tools.push({ id: "needle", durability: 100 });
+    addItem(pile(state, st.campCell), "hide", 1);
+    addOrder(state, world, { task: "repair", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    for (const g of state.player.clothing) g.durability = MEND_AT + 1;
+    expect(chooseOrder(state, world, cal)).toBeNull();
+    expect(ordersHere(state, world)[0].skipped).toBe("nothing worn enough to mend");
+    state.player.clothing[0].durability = MEND_AT;
+    expect(chooseOrder(state, world, cal)?.req.task).toBe("repair");
+    expect(ordersHere(state, world)[0].skipped).toBe("");
   });
 });

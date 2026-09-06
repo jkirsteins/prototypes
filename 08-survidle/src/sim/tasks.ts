@@ -380,7 +380,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
-      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
+      // The pack and the work cell only: the vessel and the axe for a fill are the fill task's own rule, and provisionKit leaves a fill's kit to it, so a camp-pile axe is never taken up on the way out.
+      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
       return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
     }
     case "iceHole": {
@@ -1357,6 +1358,10 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       // ends while it is still dark ran the cap: the night's sleep is had, and
       // the night clauses in currentNeed and the wait intent read the marker
       // rather than laying the body down again until dawn.
+      // The day's rest is not ended with it: `restUntil` runs to dawn and
+      // stays, so a body spent at nightfall rests out the rest of the dark
+      // rather than working the night's chore budget. Clearing it here was
+      // measured and withdrawn on the April gate (spec 1.1).
       if (cal.isNight) state.player.sleptTonight = true;
       return;
     case "haul":

@@ -342,6 +342,32 @@ What changes is the morning: it wakes after nine hours into the dark
 with the day's work count at 0, and section 1.3 says what it does with
 the hours until dawn.
 
+**The spent rest still runs to dawn, and the clear was withdrawn.**
+`restUntil` is not cleared with `sleptTonight`: a body spent at nightfall
+sleeps its cap, wakes in the dark still wearing the latch `spentNow` set,
+and rests out the rest of the night. That means a spent body never spends
+the chore budget 1.3 gives it, which reads like a defect, so clearing the
+latch at the cap sleep was built and measured. It was withdrawn on the
+April gate.
+
+What it bought: about one more hour of chores in the dark in the stocked
+December camp, 4.3 to 5.0 hours a day of work in the dark at the four
+seeds without it against 5.6 to 6.4 with it, on a 4.6 hour budget. What
+it cost: the April gate, 4 of 4 down to 3 of 4. Seed 79's level-1 runner
+ends its working day at 17:00 on day 5 with 0 kg of firewood and 0 logs
+at camp, having spent the last of its ten hours on a lean-to; the fire
+dies at midnight, the felling reads "too rough" in the snow that follows,
+and it freezes at noon on day 7. Nothing in the night rules is what kills
+it: with 1.3's lighting exemption the light row reads "needs 1 kg
+firewood", not the dark. What kills it is that nothing makes a runner
+stock the night's fire before it stops for the day, and the extra
+pre-dawn hours are what end its ten hours that early in the afternoon.
+
+That fuel-planning gap predates this branch and is item J's, beside a
+fire that needs no axe: a runner stocks the night's fire before its
+working day ends. The clear is worth building again once that rule
+stands, and not before.
+
 ### 1.2 Away work only by day
 
 In `chooseOrder`, an order whose resolved cell is not the camp cell is
@@ -362,17 +388,34 @@ camp fire or a torch in hand is lit, and is otherwise skipped with
 "dark; no fire to work by". The chores count toward the working day as
 every task does, and they stop once today's work minutes reach
 `(workHours - daylightHours) * 60`, skipped with "the day's work waits
-for the light". In December that is about 4.5 hours of splitting,
-crafting, cooking and mending between waking and dawn and 5.5 hours of
-light for the forest, the shore and the hunt; in June the budget is
-negative and no chores run at night, which is what June already does.
-By day the budget does not apply: if nothing away is able to run, the
-chores run in the light as today.
+for the light". In December the budget is 4.6 hours of splitting,
+crafting, cooking and mending, against 5.4 hours of light for the forest,
+the shore and the hunt; measured, the stocked December camp works 4.3 to
+5.0 hours a day in the dark across the four seeds, since the budget stops
+camp orders rather than the day, and the lighting tasks below, the body's
+own fire-keeping and its thirst walks, and any task still under way at
+dusk are none of them chores it counts. In June the budget is negative
+and no chores run at night, which is what June already does. By day the
+budget does not apply: if nothing away is able to run, the chores run in
+the light as today.
 
-A runner with every order skipped waits at camp, which by night is a
-rest once it has slept (1.1). The three skip reasons are strings the Do
-panel shows in the row like any other, and the activity log gets the
-"" to reason transition once, as `markSkipped` does for every reason.
+**Lighting a fire is the one camp job the dark never stops.** An order
+whose task is `light`, `lightIndoors` or `lightTorch` is exempt from both
+camp branches: neither "dark; no fire to work by" nor the budget can skip
+it. The fire is what the other chores work by, so a rule that made
+lighting it wait for firelight would leave a camp whose fire has gone out
+unable to light another until dawn - no fire, no splitting, no firewood,
+no fire - and it is minutes of work rather than a working day, so the
+budget has no claim on it either. The away branch still runs first and
+never bites, since the lighting tasks resolve to camp.
+
+A runner with every order skipped waits at camp, and a wait at camp keeps
+its fire before it rests or sleeps: it takes the same `fireStep` a spent
+body takes, and only then rests once it has slept (1.1). Otherwise a
+runner could wait a fire out and have no way back to work before dawn.
+The three skip reasons are strings the Do panel shows in the row like any
+other, and the activity log gets the "" to reason transition once, as
+`markSkipped` does for every reason.
 
 ### 1.4 The spare tool at camp is taken up
 
@@ -392,9 +435,18 @@ Two changes, both at the camp cell, so a tool never teleports:
   hands the kit back as today; a taken-up tool stays taken up, since a
   tool in hand is never put down.
 
-A held tool that breaks at camp with a spare in the camp pile is
-replaced in the same breath, the way `wearTool` already replaces it
-from a pack spare, by reading the pile under foot too.
+`wearTool` is unchanged: it still replaces a broken tool from a pack
+spare and reads no pile. A break at camp is covered twice over without
+it - `beginTask` takes a tool up from the pile under foot when the next
+camp task starts, and `provisionKit` takes one up on the next set-out -
+so the survivor is never left swinging nothing with a spare at its feet.
+
+A stated consequence of `provisionKit` calling `takeUp`: a tool lying in
+the camp pile that a camp task used to swing straight from the pile,
+without ever being held, is now taken into the hands when an order sets
+out with it, and wears from then on like any held tool. That is the
+point - a spare that is never held is never the tool that breaks - and
+it is the one thing in section 8's list that does change.
 
 ### 1.5 Mend clothing is legal when it is worth a patch
 
@@ -561,11 +613,22 @@ is neither.
 - **1.3** A split keep at night with the fire lit runs; with the fire
   out and no torch it is skipped with "dark; no fire to work by"; on a
   5-hour day it stops once 5 hours of work stand and resumes by day;
-  on a 19-hour day no chores run at night.
-- **1.4** A fish keep judged from camp with a spear in the camp pile
-  and none in hand is able to run, and starting it takes the spear up;
-  judged from the shore with the spear at camp it is not; a spear that
-  breaks at camp with a spare in the pile is replaced.
+  on a 19-hour day no chores run at night. The lighting exemption: at
+  night with the fire out, firewood at camp and the day's work already
+  at the budget, a `light` keep is chosen while a split keep below it
+  reads "dark; no fire to work by", and once the fire is lit the split
+  keep is chosen. The wait's fire: a `wait` intent at camp at night with
+  the fire out, firewood at camp and a drill in hand starts the `light`
+  task rather than resting.
+- **1.4** Two tests, the widening and its edge: a felling judged from
+  camp with the only axe in the camp pile is able to run, and starting
+  it takes the axe up; judged from the forest with the axe at camp it
+  is not, since the tool is only in reach from camp, where setting out
+  takes it up. A third holds the line at the fill: a hole fill judged
+  from a camp off the water with the only axe in the camp pile reads
+  "needs an axe", because `provisionKit` leaves a fill's kit to the fill
+  task, while an `iceHole` order judged from the same camp is able to
+  run and starting it takes the axe up.
 - **1.5** Mend is greyed with the worst piece at 61 and legal at 60; a
   `repair` grind is skipped while nothing is worn enough.
 - **2.1 to 2.4** The reference test's want list: stone is wanted twice,
@@ -688,3 +751,23 @@ change to any water row, vessel, source or the melt fallback (water); no
 change to snow depth, the hole's life or the indoor factor (the audit);
 no cabin want; no new tables, bands or constants beyond `MEND_AT`,
 `sleptTonight` and the winter-stock clause.
+
+Two exceptions to "no change".
+
+Stated in 1.4: because `provisionKit` now calls `takeUp`, a tool lying in
+the camp pile that a camp task used to swing from the pile without ever
+being held is taken into the hands when an order sets out with it, and
+wears from then on. No wear rate changes; what changes is which tool
+wears.
+
+Stated in 1.3: the `wait` intent gains a step. A wait standing at camp
+takes the fire step before it rests or sleeps, since this spec's own
+firelight rule would otherwise let a runner wait its fire out and leave
+itself no way back to work before dawn. The rest and the sleep are
+unchanged behind it.
+
+And one thing withdrawn rather than not done, recorded in 1.1: clearing
+`restUntil` at the cap sleep, so a spent body could spend the night's
+chore budget, was built, measured and taken out. It bought about an hour
+a day of December chores in the dark and cost the April gate a seed; the
+fuel-planning rule it wants first is item J's.

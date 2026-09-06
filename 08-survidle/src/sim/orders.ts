@@ -12,8 +12,8 @@ import { KIT_ITEMS } from "./body";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { today } from "./ledger";
 import { normalizeOrder } from "./ladder";
+import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
@@ -137,6 +137,9 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
   o.skipped = why;
 }
 
+/** The tasks that make the light the other camp chores work by. */
+const LIGHTING = new Set<TaskId>(["light", "lightIndoors", "lightTorch"]);
+
 /** The reasons the clock gives for skipping an order; the Do panel shows them on the row like any other. */
 export const NIGHT_SKIP = {
   away: "dark; at first light",
@@ -157,11 +160,20 @@ export const NIGHT_SKIP = {
  * five and a half of light for the forest; in June the budget is negative
  * and no chores run at night. By day nothing here applies: if nothing away
  * is able to run, the chores run in the light as they always did.
+ *
+ * Lighting a fire is the one camp job the dark never stops, by neither of
+ * the two camp branches: the fire is what the chores work by, so a rule
+ * that made lighting it wait for firelight would leave a camp whose fire
+ * has gone out unable to light another until dawn, and it is minutes of
+ * work rather than a working day, so the budget has no claim on it either.
+ * The away branch still applies and never bites, since the lighting tasks
+ * resolve to camp.
  */
-export function nightSkip(state: GameState, world: World, cal: Calendar, cell: number): string | null {
+export function nightSkip(state: GameState, world: World, cal: Calendar, task: TaskId, cell: number): string | null {
   if (!cal.isNight) return null;
   const st = regionState(state, world, state.player.region);
   if (cell !== st.campCell) return NIGHT_SKIP.away;
+  if (LIGHTING.has(task)) return null;
   if (!st.fire.lit && !state.player.torch.lit) return NIGHT_SKIP.noFire;
   const budgetMin = (state.player.workHours - cal.daylightHours) * 60;
   if (today(state).workMin >= budgetMin) return NIGHT_SKIP.budget;
@@ -216,7 +228,7 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       continue;
     }
     const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
-    const night = nightSkip(state, world, cal, cell);
+    const night = nightSkip(state, world, cal, o.req.task, cell);
     if (night) {
       markSkipped(state, world, cal, o, night);
       continue;

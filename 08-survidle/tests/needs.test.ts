@@ -351,6 +351,23 @@ describe("one sleep per night", () => {
     expect(state.player.sleptTonight).toBe(false);
   });
 
+  it("a wait intent at camp keeps its fire before it rests or sleeps", () => {
+    // Every camp chore the dark allows works by firelight, so a runner that
+    // waited a fire out would have no way back to work before dawn. The same
+    // step a spent body takes at camp.
+    const { state, world, night } = septemberEvening();
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = false;
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 5);
+    state.intent = null;
+    state.task = null;
+    state.player.sleptTonight = true;
+    startIntent(state, world, night, new Rng(1), { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
+    expect((state.task as Task | null)?.id).toBe("light");
+  });
+
   it("a wait intent by night sleeps once and then rests", () => {
     const { state, world, night } = septemberEvening();
     state.intent = null;

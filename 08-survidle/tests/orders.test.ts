@@ -716,6 +716,25 @@ describe("the night", () => {
     expect(ordersHere(state, world)[0].skipped).toBe(NIGHT_SKIP.budget);
   });
 
+  it("lighting the fire is the one camp job the dark never stops, by neither the firelight rule nor the budget", () => {
+    // The fire is what the other chores work by, so a camp whose fire has gone
+    // out could otherwise not light another until dawn: no fire, no splitting,
+    // no firewood, no fire.
+    const { state, world, st, night } = decemberChores();
+    st.fire.lit = false;
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 5);
+    addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep", 0);
+    today(state).workMin = (state.player.workHours - night.daylightHours) * 60;
+    expect(chooseOrder(state, world, night)?.req.task).toBe("light");
+    expect(ordersHere(state, world)[0].skipped).toBe("");
+    expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.noFire);
+    st.fire.lit = true;
+    today(state).workMin = 0;
+    expect(chooseOrder(state, world, night)?.req.task).toBe("split");
+  });
+
   it("by day the budget does not apply, and in June no chores run at night at all", () => {
     const { state, world, night } = decemberChores();
     today(state).workMin = (state.player.workHours - night.daylightHours) * 60;
