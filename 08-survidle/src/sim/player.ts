@@ -1,7 +1,7 @@
 import { clamp } from "../units";
 import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
-import { calendar, type Calendar } from "./calendar";
+import type { Calendar } from "./calendar";
 import { type Exposure, garmentWet, skinExposure, stepGarments, wetFactor } from "./clothing";
 import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR } from "./fire";
 import { carried } from "./inventory";
@@ -13,8 +13,8 @@ import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
-import { debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
-import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
+import type { DeathCause, GameState, IceMode, LogEntry, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
@@ -228,10 +228,11 @@ export function taskDrain(workHours: number): number {
 }
 
 /**
- * One step of the body: kcal, warmth, energy, wetness, clothing wear, health.
- * dt is at most one minute. Returns the health drains so a death can be named.
+ * One step of the body: kcal, warmth, the two sleep processes, wetness,
+ * clothing wear, health. dt is at most one minute. Returns the health drains
+ * so a death can be named.
  */
-export function stepPlayer(state: GameState, world: World, ambient: number, dt: number): Drains {
+export function stepPlayer(state: GameState, world: World, cal: Calendar, ambient: number, dt: number): Drains {
   const p = state.player;
   const d = body(state);
   const r = regionState(state, world, p.region);
@@ -299,7 +300,7 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   // an evening by the fire gives none of it back. A light sleeper on a windy
   // night clears it at half the rate.
   const asleep = a === "sleep";
-  p.sleepDebt = debtStep(p.sleepDebt, asleep, dt, asleep && x.storm && hasQuirk(state, "sleepsLight"));
+  p.sleepDebt = debtStep(p.sleepDebt, asleep, dt, asleep && debtFallHalved(state));
 
   // Fatigue: what the work drains and what rest and sleep give back. The
   // budget balances at eight hours - twelve on a task and four of camp work
@@ -377,7 +378,10 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "warm", p.warmth < 30, "{You} {are} shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "{You} {are} soaked through.");
   warn(state, "tired", p.energy < 20, "{You} can barely lift {your} arms. Sleep.");
-  warn(state, "sleepy", sleepiness(p.sleepDebt, calendar(state.minute, state.startDoy).hour) >= SLEEPY_AT, "{You} can barely keep {your} eyes open.");
+  warn(state, "sleepy", sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT, "{You} can barely keep {your} eyes open.");
+  // The evening by the fire announces itself the way the yawn does, and it is
+  // news rather than a warning.
+  warn(state, "spent", p.energy < SPENT_AT, "A day's work done. {You} {rest} by the fire.", "plain");
   warn(state, "thirst", p.water < THIRSTY_L, "{You} {are} thirsty.");
   const here = cellOf(state, world);
   const onThinIce = cellAt(world, here).terrain === "water" && w.iceCm < ICE_SAFE_CM;
@@ -390,7 +394,12 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 }
 
 const warned = new WeakMap<GameState, Set<string>>();
-function warn(state: GameState, key: string, active: boolean, text: string) {
+/**
+ * Says a line the first minute a threshold is crossed, and not again until the
+ * body comes back over it. Most of these are bad news; "plain" is for a
+ * crossing that is only news, and reads in the log's ordinary voice.
+ */
+function warn(state: GameState, key: string, active: boolean, text: string, kind: LogEntry["kind"] | "plain" = "bad") {
   let set = warned.get(state);
   if (!set) {
     set = new Set();
@@ -398,7 +407,7 @@ function warn(state: GameState, key: string, active: boolean, text: string) {
   }
   if (active && !set.has(key)) {
     set.add(key);
-    log(state, text, "bad");
+    log(state, text, kind === "plain" ? undefined : kind);
   } else if (!active && set.has(key)) {
     set.delete(key);
   }

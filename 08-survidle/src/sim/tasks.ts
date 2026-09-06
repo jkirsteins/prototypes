@@ -955,10 +955,11 @@ export function setAside(state: GameState, world: World): void {
       state.paused[key] = { id: t.id, arg: t.arg, fraction, cell: LOCATED.has(t.id) ? cellOf(state, world) : -1 };
     }
   }
-  // The sticky sleep need lives only as long as the sleep it started. A sleep
-  // set aside never reaches the completion that clears it, so clearing it here
-  // leaves the next minute to decide bed or otherwise afresh.
-  if (t.id === "sleep" && state.intent?.need === "sleep") state.intent.need = null;
+  // A sleep set aside keeps nothing here on purpose. The night under way is
+  // the player's `sleeping`, and only the model ends it, so a sleep broken to
+  // feed the fire or by an order changing under the sleeper is resumed on the
+  // next free minute rather than dropped until the onset line comes round
+  // again, which for a body woken at sleepiness 40 would be the next evening.
   state.task = null;
 }
 
@@ -1019,6 +1020,8 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       it.done++;
       if (order) order.done++;
     }
+    // The sleep this need asked for is done; whether the body lies down again
+    // is the model's to say next minute, off the player's own night.
     if (id === "sleep" && it.need === "sleep") it.need = null;
     // A rest that barely warmed anyone is not worth repeating: give the need up until warmth
     // recovers some other way, rather than resting here forever for less than a point of gain.

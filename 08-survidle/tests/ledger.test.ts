@@ -129,7 +129,7 @@ describe("burn in buckets", () => {
   it("an hour asleep in the warm is base and nothing else", () => {
     const { state, world } = newGame(1);
     state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     const b = today(state).burn;
     expect(b.base).toBeCloseTo(BASE_KCAL_PER_HOUR, 6);
     expect(b.activity).toBeCloseTo(0, 6);
@@ -144,7 +144,7 @@ describe("burn in buckets", () => {
     const { state, world } = newGame(1);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k0 = state.player.kcal;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, -30, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     const b = today(state).burn;
     expect(b.base).toBeCloseTo(70, 6);
     expect(b.activity).toBeCloseTo(330, 6);
@@ -160,12 +160,12 @@ describe("burn in buckets", () => {
     const { state, world } = g;
     placeAt(state, world, forestCell(g));
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     const dry = today(state).burn.walk;
     expect(dry).toBeCloseTo(WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
     expect(today(state).burn.activity).toBe(0);
     state.weather.snowCm = 40;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).burn.walk - dry).toBeCloseTo(2 * WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
   });
 
@@ -173,7 +173,7 @@ describe("burn in buckets", () => {
     const { state, world } = newGame(1);
     state.player.sick = 600;
     state.task = null;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, -30, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     const b = today(state).burn;
     expect(b.base).toBeCloseTo(70, 6);
     expect(b.activity).toBeCloseTo(30, 6);
@@ -193,11 +193,11 @@ describe("burn in buckets", () => {
   it("an idle hour is neither sleep nor work", () => {
     const { state, world } = newGame(1);
     state.task = null;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).sleepMin).toBe(0);
     expect(today(state).workMin).toBe(0);
     state.task = { id: "wait", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).workMin).toBe(0);
   });
 });

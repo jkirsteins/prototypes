@@ -44,7 +44,7 @@ describe("the body tier", () => {
     state.player.energy = 20;
     advance(state, world, 1);
     expect(state.task?.id).toBe("walk");
-    expect(state.intent?.step).toBe("walking to camp for the night");
+    expect(state.intent?.step).toBe("walking to camp to doze");
     expect(state.intent?.need).toBe("sleep");
     expect(Object.keys(state.paused)).toHaveLength(1);
     expect(until(g, () => state.task?.id === "sleep")).toBe(true);
@@ -94,7 +94,7 @@ describe("the body tier", () => {
       if (steps.at(-1) !== s) steps.push(s);
       return state.task?.id === "sleep";
     }, 1500);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the night", "laying a fire pit", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp to doze", "laying a fire pit", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 
@@ -627,8 +627,8 @@ describe("the runner in the elements", () => {
 describe("how long a sleep runs", () => {
   it("a body with a day's debt behind it sleeps the model's hours, with no dawn under them", () => {
     const { state, world } = newGame(1);
-    // 13:00 on 1 April: dawn is seventeen hours off, and the old floor would
-    // have held the body down for all of them.
+    // 13:00 on 1 April, with dawn seventeen hours off: nothing in the sleep's
+    // length reads the sun.
     state.minute = 5 * 60;
     const cal = calendar(state.minute);
     state.player.energy = 0;
@@ -642,8 +642,8 @@ describe("how long a sleep runs", () => {
 
   it("a body with its debt paid lies down for the floor's hour and no more", () => {
     const { state, world } = newGame(1);
-    // 22:00 on 1 April, and nothing owing: under an hour nothing is recovered,
-    // so an hour is the floor even for a body already past the wake line.
+    // Nothing owing: under an hour nothing is recovered, so an hour is the
+    // floor even for a body already past the wake line.
     state.minute = 14 * 60;
     state.player.sleepDebt = 0;
     expect(check(state, world, calendar(state.minute), "sleep").duration).toBe(SLEEP_MIN_MINUTES);
@@ -653,11 +653,11 @@ describe("how long a sleep runs", () => {
     const { state, world } = newGame(1);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const e0 = state.player.energy;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(e0 - state.player.energy).toBeCloseTo(7, 6);
     state.task = { id: "craft", arg: "cordage", progress: 0, duration: 60, repeat: false };
     const e1 = state.player.energy;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(e1 - state.player.energy).toBeCloseTo(4, 6);
   });
 });

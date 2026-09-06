@@ -78,7 +78,7 @@ describe("the quirks", () => {
     expect(check(forest.state, forest.world, cal, "fish", "any").why).not.toBe(SHORE_FEAR_LINE);
   });
 
-  it("sleeps light: the wolves never reach the bed, and a storm night is half a night's rest", () => {
+  it("sleeps light: the wolves never reach the bed, and a storm night pays off half the sleep debt", () => {
     const light = withQuirk(17, "sleepsLight");
     const median = withQuirk(17, null);
     const night = calendar(15 * 60, START_DOY);

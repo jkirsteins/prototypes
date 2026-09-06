@@ -355,7 +355,7 @@ describe("sleep by the model, not by the clock", () => {
     p.water = 0.1;
     p.energy = SLEEP_AT;
     expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
-    expect(state.intent!.collapsed).toBe(true);
+    expect(state.player.sleeping).toEqual({ collapsed: true });
     // Past the collapse line but not yet rested: still down.
     p.energy = RESTED_AT - 1;
     expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
@@ -363,7 +363,7 @@ describe("sleep by the model, not by the clock", () => {
     p.energy = RESTED_AT;
     state.intent!.need = null;
     expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
-    expect(state.intent!.collapsed).toBe(false);
+    expect(state.player.sleeping).toBeNull();
   });
 
   it("a rested body with its debt paid works by firelight at 23:00, with no night clause to stop it", () => {
@@ -433,7 +433,7 @@ describe("sleep by the model, not by the clock", () => {
     state.intent = null;
     state.task = null;
     const wait = { task: "wait" as const, until: { kind: "forever" as const }, deliver: "leave" as const, where: "nearest" as const };
-    // Not sleepy, in the dark: it rests, where the old night clause slept.
+    // Not sleepy, in the dark: a wait rests.
     state.player.sleepDebt = 0;
     state.player.water = WATER_FULL;
     startIntent(state, world, night, new Rng(1), wait);

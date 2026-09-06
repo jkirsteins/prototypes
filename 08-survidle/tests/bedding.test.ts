@@ -66,10 +66,10 @@ describe("bedding", () => {
     state.player.clothing.push({ id: "hideBlanket", durability: 100 });
     const blanket = () => state.player.clothing.find((g) => g.id === "hideBlanket")!;
     state.task = { id: "walk", arg: "spot:camp", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 120; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 120; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(blanket().durability).toBe(100);
     state.task = { id: "sleep", progress: 0, duration: 480, repeat: false };
-    for (let m = 0; m < 120; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 120; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(blanket().durability).toBeCloseTo(99, 5);
   });
 });

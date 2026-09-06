@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar, START_DOY } from "../src/sim/calendar";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { medianPerson } from "../src/sim/person";
+import { body, medianPerson } from "../src/sim/person";
 import { baseWalkSpeed, BASE_KCAL_PER_HOUR, COMFORT_C, warmthTarget } from "../src/sim/player";
 import { discovery, enterRegion, SEEN } from "../src/sim/regionstate";
 import { craftSuccess, wearFactor } from "../src/sim/skills";
@@ -24,8 +24,8 @@ describe("the grades at their seams", () => {
     expect(baseWalkSpeed(strong.state, cal, strong.state.weather, 28)).toBe(3);
     expect(baseWalkSpeed(median.state, cal, median.state.weather, 28)).toBeCloseTo(2.4);
     expect(baseWalkSpeed(strong.state, cal, strong.state.weather, 43)).toBeCloseTo(1.8);
-    expect(strong.state.player.workHours).toBe(12);
-    expect(median.state.player.workHours).toBe(10);
+    expect(body(strong.state).workHours).toBe(12);
+    expect(body(median.state).workHours).toBe(10);
   });
 
   it("build: the landing fat, the base burn and the comfort follow the mass", () => {

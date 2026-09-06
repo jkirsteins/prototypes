@@ -9,6 +9,7 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { KIT_ITEMS } from "./body";
+import { body } from "./person";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
@@ -178,7 +179,7 @@ export function nightSkip(state: GameState, world: World, cal: Calendar, task: T
   if (cell !== st.campCell) return NIGHT_SKIP.away;
   if (LIGHTING.has(task)) return null;
   if (!st.fire.lit && !state.player.torch.lit) return NIGHT_SKIP.noFire;
-  const budgetMin = (state.player.workHours - cal.daylightHours) * 60;
+  const budgetMin = (body(state).workHours - cal.daylightHours) * 60;
   if (today(state).workMin >= budgetMin) return NIGHT_SKIP.budget;
   return null;
 }

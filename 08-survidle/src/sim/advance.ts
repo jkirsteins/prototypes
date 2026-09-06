@@ -90,7 +90,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
 
   let drains: Drains | null = null;
   if (!nobody) {
-    drains = stepPlayer(state, world, ambient, dt);
+    drains = stepPlayer(state, world, cal, ambient, dt);
     autoEat(state, world, rng);
     autoDrink(state, world);
     iceUnderFoot(state, world, rng);

@@ -9,18 +9,18 @@ describe("player physiology", () => {
   it("regenerates when fed, warm and idle", () => {
     const { state, world } = newGame(1);
     state.player.health = 50;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(state.player.health).toBeCloseTo(51, 1);
   });
 
   it("burns about 100 kcal per idle hour and more when chopping", () => {
     const { state, world } = newGame(1);
     const k0 = state.player.kcal;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(k0 - state.player.kcal).toBeCloseTo(100, 0);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k1 = state.player.kcal;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(k1 - state.player.kcal).toBeCloseTo(400, 0);
   });
 
@@ -28,7 +28,7 @@ describe("player physiology", () => {
     const { state, world } = newGame(1);
     state.player.kcal = 0;
     state.player.fat = 0;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(state.player.health).toBeCloseTo(98, 1);
   });
 
@@ -36,10 +36,10 @@ describe("player physiology", () => {
     const { state, world } = newGame(1);
     // Starting wool gives about +9 C; at -25 C the body is far below comfort.
     expect(feltTemperature(state, world, -25)).toBeLessThan(-10);
-    for (let m = 0; m < 220; m++) stepPlayer(state, world, -25, 1);
+    for (let m = 0; m < 220; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -25, 1);
     expect(state.player.warmth).toBeLessThan(20);
     const h = state.player.health;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, -25, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -25, 1);
     expect(h - state.player.health).toBeCloseTo(6, 0);
     expect(causeFrom({ starve: 0, cold: 1, sick: 0, thirst: 0, smoke: 0 })).toBe("froze");
   });
@@ -60,15 +60,15 @@ describe("player physiology", () => {
   it("gets wet in rain and dries by the fire", () => {
     const { state, world } = newGame(1);
     state.weather.precip = "heavy";
-    for (let m = 0; m < 30; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 30; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     // The coat and trousers start dry, so they keep most of the rain off the skin at first.
     expect(state.player.wetness).toBeLessThan(20);
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     // Soaked through by now, the skin catches up with the rain.
     expect(state.player.wetness).toBeGreaterThan(50);
     state.weather.precip = "none";
     regionState(state, world, state.player.region).fire.lit = true;
-    for (let m = 0; m < 70; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 70; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(state.player.wetness).toBe(0);
   });
 

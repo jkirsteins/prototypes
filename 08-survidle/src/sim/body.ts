@@ -19,7 +19,7 @@ import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { seepStopped } from "./seep";
-import { RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "./sleep";
+import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
@@ -66,25 +66,33 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
 export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
   const p = state.player;
-  // Read once, before the sleep clauses, because thirst has a say in them.
+  // Read once, before the sleep clauses, because both have a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
+  const storming = stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute);
+  // Thirst defers a bedtime only when the body would actually get up and go to
+  // the water. A storm outranks thirst, so a thirsty body sitting one out is
+  // not going to drink first, and the exception would only keep it awake.
+  const drinkFirst = thirsty && !storming;
   const sleepy = sleepiness(p.sleepDebt, cal.hour);
-  // The body lies down when the two processes cross the onset line, and gets
-  // up when they fall back to the wake line: no clock is read here, so the
+  // The body lies down when the two processes cross the onset line and gets up
+  // when they fall back to the wake line: no clock is read here, so the
   // bedtime, the wake and the nap are all the same clause. A thirsty body
   // that can drink drinks before it lies down; one that has worked itself
   // under the collapse line sleeps parched, which is what a collapse is, and
   // holds that sleep past the wake line until the fatigue an evening by the
   // fire would have given back is there.
-  if (p.energy <= SLEEP_AT) it.collapsed = true;
-  const sleep = p.energy <= SLEEP_AT
-    || (it.collapsed === true && p.energy < RESTED_AT)
-    || (it.need === "sleep" && sleepy > WAKE_AT)
-    || (sleepy >= SLEEP_ONSET && !thirsty)
-    || (it.task === "night" && it.done < 1);
-  if (sleep) return "sleep";
-  it.collapsed = false;
-  if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
+  // The night lives on the player, not the intent, and only the model ends
+  // it: a sleep broken to feed the fire, or by an order changing under the
+  // sleeper, is a night interrupted rather than a night over, and the body
+  // goes back to bed on the next free minute.
+  if (p.energy <= SLEEP_AT) p.sleeping = { collapsed: true };
+  else if (p.sleeping) {
+    if (!(sleepy > WAKE_AT || (p.sleeping.collapsed && p.energy < RESTED_AT))) p.sleeping = null;
+  } else if (sleepy >= SLEEP_ONSET && !drinkFirst) {
+    p.sleeping = { collapsed: false };
+  }
+  if (p.sleeping || (it.task === "night" && it.done < 1)) return "sleep";
+  if (storming) return "storm";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) it.coldSpent = false;
   const wetCold = p.wetness > SOAKED_WETNESS && ambientTemperature(cal, state.weather) < WET_COLD_C;
@@ -94,12 +102,14 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   if (thirsty) return "thirsty";
   if (p.kcal < HUNGRY_UNDER && canFeed(state, world, cal, it)) return "hungry";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
-  // Worked out: the evening by the fire, held until the fire has given back
-  // what five hours of it give back rather than until a clock says dawn.
+  // Worked out: the evening by the fire, held until the fire has given the
+  // fatigue back rather than until a clock says dawn. It also holds while the
+  // body is nearly sleepy, so an evening that is within an hour of bed is
+  // spent by the fire rather than on one more errand and a walk back.
   // A day's work done is no reason to sit down parched: at the water, drink
   // your fill before walking back to the fire. Away from it the stores keep,
   // since the auto-drink reaches a vessel or the camp pile without getting up.
-  const spent = p.energy < SPENT_AT || (it.need === "spent" && p.energy < RESTED_AT);
+  const spent = p.energy < SPENT_AT || (it.need === "spent" && (p.energy < RESTED_AT || sleepy >= SLEEPY_AT));
   if (spent) return p.water < WATER_FULL - 0.5 && waterSource(state, world) ? "thirsty" : "spent";
   if (homeBeforeDark(state, world, cal, it)) return "home";
   return null;
@@ -349,7 +359,8 @@ function campStep(state: GameState, world: World, cal: Calendar, it: Intent, nee
   const st = regionState(state, world, p.region);
   const here = cellOf(state, world);
   if (here !== st.campCell) {
-    const why = need === "sleep" ? " for the night" : need === "cold" ? " to warm up" : " for the evening";
+    // A walk home to lie down by day says what it is, the way the sleep step does.
+    const why = need === "sleep" ? (cal.isNight ? " for the night" : " to doze") : need === "cold" ? " to warm up" : " for the evening";
     if (check(state, world, cal, "walk", `cell:${st.campCell}`).ok) return walkStep(state, world, st.campCell, why);
     const s: Step = need === "sleep"
       ? { id: "sleep", step: "sleeping where {you} {stand}; no way to camp" }

@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { currentNeed, iceHoleSite, snaresWaiting, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { body } from "../src/sim/person";
 import { addOrder } from "../src/sim/orders";
 import { taskDrain } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
+import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
@@ -46,26 +48,40 @@ describe("the working day", () => {
   it("is ten hours by default, and it is the fatigue drain's divisor rather than a count", () => {
     const { state } = newGame(1);
     expect(WORK_HOURS_DEFAULT).toBe(10);
-    expect(state.player.workHours).toBe(10);
+    // The person is the only source of the number: the drain and the night
+    // chore budget both read it there, and nothing keeps a copy.
+    expect(body(state).workHours).toBe(10);
     // The day is over when the drain says so: ten hours of task work from full
     // land exactly on the spent line, and nothing anywhere adds hours up.
-    expect(100 - state.player.workHours * taskDrain(state.player.workHours)).toBeCloseTo(SPENT_AT, 6);
-    const raw = JSON.parse(serialize(state));
-    delete raw.state.player.workHours;
-    expect(deserialize(JSON.stringify(raw))!.state.player.workHours).toBe(10);
+    expect(100 - body(state).workHours * taskDrain(body(state).workHours)).toBeCloseTo(SPENT_AT, 6);
   });
 
-  it("a save from before the two processes derives its debt from its fatigue and drops the old clock markers", () => {
+  it("a save from before the two processes derives its debt from its fatigue and drops the old markers", () => {
     const { state } = newGame(1);
     const raw = JSON.parse(serialize(state));
     raw.state.player.energy = 70;
     delete raw.state.player.sleepDebt;
+    delete raw.state.player.sleeping;
     raw.state.player.restUntil = 12345;
     raw.state.player.sleptTonight = true;
+    raw.state.player.workHours = 9;
     const p = deserialize(JSON.stringify(raw))!.state.player as unknown as Record<string, unknown>;
     expect(p.sleepDebt).toBe(30);
+    expect(p.sleeping).toBeNull();
     expect(p.restUntil).toBeUndefined();
     expect(p.sleptTonight).toBeUndefined();
+    expect(p.workHours).toBeUndefined();
+  });
+
+  it("a night under way survives a save and load, so a run reloaded mid-sleep goes back to bed", () => {
+    const { state, world } = felling();
+    const cal = calendar(state.minute, state.startDoy);
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
+    state.player.water = WATER_FULL;
+    expect(currentNeed(state, world, cal, state.intent!)).toBe("sleep");
+    expect(state.player.sleeping).toEqual({ collapsed: false });
+    const back = deserialize(serialize(state))!.state;
+    expect(back.player.sleeping).toEqual({ collapsed: false });
   });
 
   it("a runner on a felling grind works itself to the spent line and takes its evening by the fire", () => {
@@ -188,20 +204,52 @@ describe("the working day", () => {
     }
   });
 
-  it("a sleep set aside clears the sleep need, so the next minute decides afresh", () => {
+  it("a sleep set aside is a night interrupted, not a night over: the body goes back to bed", () => {
     const { state, world } = felling();
     const it = state.intent!;
     const cal = calendar(state.minute);
-    expect(beginTask(state, world, cal, "sleep")).toBe(true);
-    it.need = "sleep";
-    setAside(state, world);
-    expect(state.task).toBeNull();
-    expect(it.need).toBeNull();
-    // Rested, watered and with its debt paid: nothing sends this body back to bed.
     state.player.energy = 100;
     state.player.water = WATER_FULL;
-    state.player.sleepDebt = debtFor(0, cal.hour);
-    expect(currentNeed(state, world, calendar(state.minute), it)).not.toBe("sleep");
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
+    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+    expect(beginTask(state, world, cal, "sleep")).toBe(true);
+    // Whatever takes the body off the bed - a fire to feed, an order changing
+    // under it - the night is the player's and only the model ends it.
+    setAside(state, world);
+    expect(state.task).toBeNull();
+    expect(state.player.sleeping).toEqual({ collapsed: false });
+    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("sleep");
+    // Past the wake line, and only then, it is up.
+    state.player.sleepDebt = debtFor(WAKE_AT - 1, cal.hour);
+    expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
+    expect(state.player.sleeping).toBeNull();
+  });
+
+  it("a sleep broken to feed the fire is resumed, and an order switching under the sleeper does not end the night", () => {
+    const { state, world } = felling();
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = false;
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 5);
+    placeAt(state, world, st.campCell);
+    state.player.energy = 100;
+    state.player.water = WATER_FULL;
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 5, calendar(state.minute, state.startDoy).hour);
+    // The fire step comes first at camp, so the sleep waits on it.
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("sleep");
+    expect(["light", "lightIndoors"]).toContain(state.task?.id);
+    expect(state.player.sleeping).toEqual({ collapsed: false });
+    // The order the runner was serving is dropped mid-night; the night stands.
+    state.intent = null;
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    let sleeping = false;
+    for (let m = 0; m < 120 && !sleeping; m++) {
+      advance(state, world, 1);
+      sleeping = state.task?.id === "sleep";
+    }
+    expect(sleeping).toBe(true);
   });
 });
 

@@ -589,6 +589,11 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   const it = state.intent;
   const need = currentNeed(state, world, cal, it);
   it.need = need;
+  // The model ends a sleep, not the task's own clock. A sleep task is as long
+  // as the model expects the night to be, and the two can disagree by minutes;
+  // when the body is past the wake line it gets up on that minute rather than
+  // lying out the rest of an hour it no longer needs.
+  if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
   if (need) {
     const s = bodyStep(state, world, cal, rng, it, need);
     if (s) {

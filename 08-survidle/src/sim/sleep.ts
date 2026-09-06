@@ -72,7 +72,7 @@ export const RESTED_AT = 55;
 export const SLEEPY_AT = 50;
 
 /** Ten minutes: the step the sleep task's length is searched in, fine enough that a wake lands within a rounded quarter hour. */
-export const WAKE_PROBE_STEP = 10;
+const WAKE_PROBE_STEP = 10;
 /** No sleep task runs shorter than an hour or longer than fourteen: below the hour nothing is recovered, above it nobody lies still. */
 export const SLEEP_MIN_MINUTES = 60;
 export const SLEEP_MAX_MINUTES = 14 * 60;

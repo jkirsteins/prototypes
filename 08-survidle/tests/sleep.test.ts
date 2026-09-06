@@ -7,11 +7,10 @@ import { newUiState } from "../src/ui/render";
 import type { TaskId } from "../src/sim/types";
 import { derived, medianPerson } from "../src/sim/person";
 import { stepPlayer, taskDrain } from "../src/sim/player";
-import { SPENT_AT } from "../src/sim/sleep";
 import {
   CIRCADIAN_PEAK_HOUR, ULTRADIAN_AMPLITUDE,
   alertness, circadian, debtStep, minutesToWake, sleepiness,
-  SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SLEEPY_AT, WAKE_AT,
+  SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT,
 } from "../src/sim/sleep";
 
 /** Hours of the process at a minute a time, which is the step the body itself takes. */
@@ -47,7 +46,7 @@ describe("sleep debt, the homeostatic process", () => {
   it("work does not move the debt: only the clock does", () => {
     // A felling day and a sewing day are equally long awake. Fatigue is where
     // the work goes, and the two never meet in this function.
-    expect(awake(10, 8)).toBeCloseTo(awake(10, 8), 12);
+
     expect(debtStep(40, false, 1)).toBeGreaterThan(40);
     expect(debtStep(40, true, 1)).toBeLessThan(40);
   });
@@ -60,7 +59,7 @@ describe("fatigue, the reserve the work drains", () => {
     state.player.energy = energy;
     state.player.sleepDebt = 20;
     state.task = { id: taskId, progress: 0, duration: 1e6, repeat: false };
-    for (let m = 0; m < hours * 60; m++) stepPlayer(state, world, 10, 1);
+    for (let m = 0; m < hours * 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 10, 1);
     return state.player;
   }
 
@@ -113,6 +112,10 @@ describe("alertness, the circadian process", () => {
     expect(alertness(14.5)).toBeGreaterThan(alertness(4.5) + 20);
   });
 });
+
+/** 1 December, the day the spec works through: the calendar's own, for its sunrise. */
+const DECEMBER_START_DOY = 334;
+const DECEMBER_MINUTE = 0;
 
 /**
  * The spec's worked December day: up at 05:30 on 1 December with a debt of
@@ -175,11 +178,11 @@ describe("the December table, computed from the model", () => {
   });
 
   it("the wake leaves the dark morning to work by firelight", () => {
-    // Sunrise on 1 December at this latitude is 10:19: nearly four hours of
-    // chores by the fire before the light, which is what the sunset bedtime
-    // spent asleep.
-    expect((wake % 24)).toBeLessThan(10.32);
-    expect(10.32 - (wake % 24)).toBeGreaterThan(3.5);
+    // The body is up hours before the sun on 1 December, which is the whole
+    // point: those hours are chores by the fire, not more sleep.
+    const sunrise = calendar(DECEMBER_MINUTE, DECEMBER_START_DOY).sunrise;
+    expect(wake % 24).toBeLessThan(sunrise);
+    expect(sunrise - (wake % 24)).toBeGreaterThan(3.5);
   });
 });
 
@@ -209,7 +212,7 @@ describe("what the player sees", () => {
     /** Puts this hour's sleepiness where it is wanted, then steps the body a minute. */
     const put = (sleepy: number) => {
       state.player.sleepDebt = sleepy + alertness(cal.hour);
-      stepPlayer(state, world, 10, 1);
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 10, 1);
     };
     put(SLEEPY_AT - 2);
     expect(said()).toBe(0);

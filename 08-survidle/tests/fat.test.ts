@@ -17,7 +17,7 @@ describe("the fat reserve", () => {
     state.player.kcal = 0;
     const fat0 = state.player.fat;
     const health0 = state.player.health;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(fat0 - state.player.fat).toBeCloseTo(100, 0);
     expect(state.player.health).toBeCloseTo(health0, 1);
   });
@@ -50,7 +50,7 @@ describe("the fat reserve", () => {
   it("logs each fat warning once as the reserve crosses its threshold", () => {
     const { state, world } = newGame(1);
     state.player.fat = FAT_FULL * 0.25 - 1;
-    for (let m = 0; m < 5; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 5; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     const texts = state.log.map((e) => e.text);
     for (const line of ["{You} {are} getting thin.", "{Your} ribs show.", "{You} {are} wasting away."]) {
       expect(texts.filter((t) => t === line).length).toBe(1);

@@ -1,7 +1,6 @@
 import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
-import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, START_DOY } from "./calendar";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
@@ -129,14 +128,16 @@ function fillDefaults(state: GameState): void {
   p.toes ??= false;
   p.fingers ??= false;
   p.berriesToday ??= { day: 0, kg: 0 };
-  p.workHours ??= WORK_HOURS_DEFAULT;
   // A save from before the two processes has one number for both: read its
-  // fatigue as the debt's mirror, which is where a rested body sits. The
-  // clock rules that number carried are gone and so are their markers, so a
-  // save holding them drops them here and round-trips clean.
+  // fatigue as the debt's mirror, which is where a rested body sits, and no
+  // night under way. The clock rules that number carried are gone and so are
+  // their markers, and the working day is the person's own, so a save holding
+  // any of them drops them here and round-trips clean.
   p.sleepDebt ??= 100 - p.energy;
+  p.sleeping ??= null;
   delete (p as { restUntil?: number }).restUntil;
   delete (p as { sleptTonight?: boolean }).sleptTonight;
+  delete (p as { workHours?: number }).workHours;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;
