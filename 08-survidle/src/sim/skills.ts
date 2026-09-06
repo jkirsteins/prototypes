@@ -4,11 +4,12 @@
  * hours. What a level buys is what practice buys: speed, odds, less waste.
  */
 import type { World } from "../world/gen";
+import { calendar } from "./calendar";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
 import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
-import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
+import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
 import type { GameState, ItemId, LifeRecord, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
@@ -26,7 +27,7 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
-  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish"],
+  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:rawFat", "crack"],
 };
 
 export const SKILL_CAP = 50;
@@ -137,7 +138,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "mend": return "building";
     case "fish": case "read": case "setTrap": case "emptyTrap": return "fishing";
     case "craft": case "repair": case "sharpen": case "hone": return "crafting";
-    case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": return "building";
+    case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": case "crack": return "building";
     case "fill": case "iceHole": return "foraging";
     default: return null;
   }
@@ -158,6 +159,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
     case "mend": return `mend:${arg}`;
     case "craft": return `craft:${arg}`;
     case "cook": return `cook:${arg ?? "rawMeat"}`;
+    case "crack": return "crack";
     case "fill": case "iceHole": return id;
     case "read": return "read";
     case "setTrap": case "emptyTrap": return "trap";
@@ -243,12 +245,13 @@ export function chopSticks(state: GameState, world: World): number {
   return 4 + (masteryOf(state, "woodcraft", masteryKey(state, world, "chop")!) >= 20 ? 1 : 0);
 }
 
-export function huntExtras(state: GameState, species: Species): {
+export function huntExtras(state: GameState, species: Species, month: number = calendar(state.minute, state.startDoy).month): {
   meatKg: number; hideKg: number; furKg: number; fatKg: number; bone: number; sinew: number; injuryFactor: number; oddsFactor: number; arrowLoss: number;
 } {
   const y = SPECIES_DEFS[species].yields ?? { meatKg: 0 };
   const m = masteryOf(state, "hunting", `hunt:${species}`);
-  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg: y.fatKg ?? 0, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1, oddsFactor: 1, arrowLoss: 0.5 };
+  const fatKg = Math.round((y.fatKg ?? 0) * fatSeason(species, month) * 10) / 10;
+  const out = { meatKg: y.meatKg, hideKg: y.hideKg ?? 0, furKg: y.furKg ?? 0, fatKg, bone: y.bone ?? 0, sinew: y.sinew ?? 0, injuryFactor: 1, oddsFactor: 1, arrowLoss: 0.5 };
   switch (extrasClass(species)) {
     case "fur":
       if (m >= 20) out.furKg = Math.round(out.furKg * 1.5 * 100) / 100;

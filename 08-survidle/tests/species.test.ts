@@ -90,7 +90,8 @@ describe("the species catalogue", () => {
     // Every food carries its lean share; fat's is 0 because it is never capped.
     expect(FOODS.fat).toEqual({ kcalPerKg: 9000, portionKg: 0.1, sickChance: 0, leanShare: 0 });
     expect(AUTO_EAT_ORDER.at(-1)).toBe("fat");
-    expect(SPECIES_DEFS.bear.yields?.fatKg).toBe(10);
+    // Peak autumn fat before denning, a fattened brown bear (fat and carbohydrate design, section 2).
+    expect(SPECIES_DEFS.bear.yields?.fatKg).toBe(25);
     expect(awayWord(SPECIES_DEFS.bear)).toBe("denned");
     expect(awayWord(SPECIES_DEFS.mallard)).toBe("gone");
     expect(RECIPES.furHat.needs).toEqual([{ item: "fur", qty: 1, alt: "hide" }, { item: "sinew", qty: 1 }]);

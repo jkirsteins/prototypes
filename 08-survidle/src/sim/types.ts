@@ -20,20 +20,20 @@ export type { Habitat, Species } from "./species";
 
 /** Items counted in pieces. A tool not in hand is one of these. */
 export type CountItem =
-  | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew"
+  | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew" | "crackedBone"
   | "snare" | "arrow" | "torch" | "basketTrap" | "wedge"
   | ToolId;
 /** Items measured in kilograms. */
 export type KgItem =
-  | "firewood" | "hide" | "fur" | "fat" | "rawMeat" | "cookedMeat" | "driedMeat"
+  | "firewood" | "hide" | "fur" | "fat" | "rawFat" | "rawMeat" | "cookedMeat" | "driedMeat"
   | "fish" | "cookedFish" | "berries" | "wetFirewood"
   /** Litres, at a kilo a litre; only ever in a pile. */
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
-export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "berries";
-export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "berries"];
+export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "berries" | "rawFat";
+export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "berries", "rawFat"];
 
 export interface Stack { kg: number; age: number }
 
@@ -79,7 +79,7 @@ export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
-  | "read" | "setTrap" | "emptyTrap"
+  | "read" | "setTrap" | "emptyTrap" | "crack"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
@@ -87,7 +87,7 @@ export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
   "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
-  "read", "setTrap", "emptyTrap",
+  "read", "setTrap", "emptyTrap", "crack",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp",
 ];
 

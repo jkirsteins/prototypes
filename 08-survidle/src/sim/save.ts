@@ -77,7 +77,10 @@ function fillDefaults(state: GameState): void {
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
   }
-  for (const d of state.ledger) d.yield.trap ??= 0;
+  for (const d of state.ledger) {
+    d.yield.trap ??= 0;
+    d.yield.marrow ??= 0;
+  }
   if (state.intent) {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;

@@ -31,7 +31,7 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend", "crack"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
@@ -77,7 +77,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "deadwood": return "firewood";
     case "hunt": return "rawMeat";
     case "fish": return "fish";
-    case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
+    case "cook": return arg === "fish" ? "cookedFish" : arg === "rawFat" ? "fat" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
     case "melt": return "water";
@@ -91,7 +91,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
 export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "haul") return "all";
   if (task === "chop") return ["log", "stick"];
-  if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];
+  if (task === "hunt") return ["rawMeat", "hide", "fur", "rawFat", "bone", "sinew"];
   // A fill's or a melt's litres never sit in the pack as an item; packCarries reads the vessels instead.
   if (task === "fill" || task === "melt") return ["water"];
   // Hang moves raw meat onto the rack; nothing lands in the pack for a delivery to carry.
@@ -525,6 +525,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   iceHole: () => "cutting an ice hole",
   hang: () => "hanging meat to dry",
   makeCamp: () => "making camp",
+  crack: () => "cracking bones",
 };
 
 /**

@@ -13,7 +13,7 @@ import {
   removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, SNOW_SHELTER_CM, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, SNOW_SHELTER_CM, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -34,7 +34,7 @@ import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from 
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
-import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
+import { fatSeason, fishSpecies, huntedLand, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
@@ -90,7 +90,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
-  "setTrap", "emptyTrap", "makeCamp",
+  "setTrap", "emptyTrap", "makeCamp", "crack",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -547,12 +547,21 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "cook": {
-      const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
+      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "rawFat";
       const kg = Math.min(1, totalQty(invs, food));
-      const o = needCamp(opt({ group: "camp", label: `Cook ${ITEM_NAMES[food]}`, detail: "1 kg at a time over the fire", duration: Math.max(1, 10 * kg), repeatable: true }));
+      const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
+      const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
+      const o = needCamp(opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true }));
       if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
       if (kg <= 0) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
+      return o;
+    }
+    case "crack": {
+      const o = needCamp(opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true }));
+      if (!o.ok) return o;
+      if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
+      if (totalQty(toolInvs, "stone") < 1 && !axeInHand(p)) return { ...o, ok: false, why: "needs a stone or the axe" };
       return o;
     }
     case "craft": {
@@ -1206,6 +1215,20 @@ function cutIceHole(state: GameState, world: World): void {
   log(state, "{You} {cut} a hole in the ice.");
 }
 
+/** Bones do not remember their animal: the crack reads this year's most-killed large game, and the ungulate curve when there is none. */
+function marrowAnimal(state: GameState): Species {
+  let best: Species = "deer";
+  let bestKills = 0;
+  for (const s of [...LARGE_GAME, "bear" as Species]) {
+    const kills = state.stats.kills[s] ?? 0;
+    if (kills > bestKills) {
+      best = s;
+      bestKills = kills;
+    }
+  }
+  return best;
+}
+
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
@@ -1284,7 +1307,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         const where = produce(state, world, "rawMeat", x.meatKg);
         if (x.hideKg) produce(state, world, "hide", x.hideKg);
         if (x.furKg) produce(state, world, "fur", x.furKg);
-        if (x.fatKg) produce(state, world, "fat", x.fatKg);
+        if (x.fatKg) produce(state, world, "rawFat", x.fatKg);
         creditYield(state, "hunt", x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg);
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
@@ -1354,10 +1377,19 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "cook": {
-      const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
+      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "rawFat";
       const kg = Math.min(1, totalQty(invs, food));
       consume(invs, [{ item: food, qty: kg }]);
-      produce(state, world, food === "rawMeat" ? "cookedMeat" : "cookedFish", kg);
+      produce(state, world, food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : "fat", kg);
+      return;
+    }
+    case "crack": {
+      consume(invs, [{ item: "bone", qty: 1 }]);
+      const kg = Math.round(MARROW_KG_PER_BONE * marrowFactor(fatSeason(marrowAnimal(state), cal.month)) * 1000) / 1000;
+      produce(state, world, "fat", kg);
+      produce(state, world, "crackedBone", 1);
+      creditYield(state, "marrow", kg * FOODS.fat.kcalPerKg);
+      log(state, `{You} {crack} a bone: ${Math.round(kg * 1000)} g of marrow.`, "good");
       return;
     }
     case "craft": {

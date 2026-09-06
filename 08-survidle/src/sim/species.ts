@@ -83,6 +83,7 @@ const fish = (name: string, lake: number | null, sea: number | null, range: numb
 
 const SPECIES_DEFS_RAW = {
   // Mammals. Fur-bearers yield fur; deer and bigger yield hide.
+  // fatKg is peak autumn fat, before fatSeason scales it down through the year (fat and carbohydrate design, section 2).
   hare: { name: "mountain hare", kind: "mammal", habitat: { meadow: 20, birch: 16, bog: 8, pine: 4, fell: 3 }, range: 1.0, season: resident(), growth: 0.006,
     hunt: { spot: "heath", minutes: 90, odds: 0.6, injury: 0, night: 0.9 }, yields: { meatKg: 1.2, furKg: 0.2, bone: 1 } },
   squirrel: { name: "red squirrel", kind: "mammal", habitat: { spruce: 12, pine: 10, birch: 4 }, range: 0.9, season: resident(), growth: 0.006,
@@ -92,13 +93,13 @@ const SPECIES_DEFS_RAW = {
     hunt: { spot: "heath", minutes: 150, odds: 0.3, injury: 0, level: 3 }, yields: { meatKg: 3, furKg: 1, bone: 2, sinew: 1 },
     calls: [{ sound: "fox", when: "night", months: [11, 1], weight: 2 }] },
   beaver: { name: "beaver", kind: "mammal", habitat: { lake: 4 }, needs: ["birch", "meadow"], range: 0.5, season: resident(), growth: 0.001,
-    hunt: { spot: "shore", minutes: 150, odds: 0.4, injury: 0, level: 3 }, yields: { meatKg: 10, furKg: 1.5, fatKg: 2, bone: 2, sinew: 1 } },
+    hunt: { spot: "shore", minutes: 150, odds: 0.4, injury: 0, level: 3 }, yields: { meatKg: 10, furKg: 1.5, fatKg: 3, bone: 2, sinew: 1 } },
   deer: { name: "roe deer", kind: "mammal", habitat: { birch: 6, meadow: 5, pine: 3, spruce: 2 }, range: 0.7, season: resident(0.6), growth: 0.0012,
-    hunt: { spot: "forest", minutes: 180, odds: 0.45, injury: 0, level: 4 }, yields: { meatKg: 12, hideKg: 3, fatKg: 1, bone: 4, sinew: 3 } },
+    hunt: { spot: "forest", minutes: 180, odds: 0.45, injury: 0, level: 4 }, yields: { meatKg: 12, hideKg: 3, fatKg: 2, bone: 4, sinew: 3 } },
   reindeer: { name: "wild reindeer", kind: "mammal", habitat: { fell: 3, rock: 2, bog: 1.5, pine: 1 }, range: 0.6, season: resident(), growth: 0.0008,
-    hunt: { spot: "outcrop", minutes: 200, odds: 0.4, injury: 0.05, level: 6 }, yields: { meatKg: 40, hideKg: 5, fatKg: 4, bone: 5, sinew: 4 } },
+    hunt: { spot: "outcrop", minutes: 200, odds: 0.4, injury: 0.05, level: 6 }, yields: { meatKg: 40, hideKg: 5, fatKg: 6, bone: 5, sinew: 4 } },
   elk: { name: "elk", kind: "mammal", habitat: { spruce: 1.0, bog: 0.8, birch: 0.5, pine: 0.3 }, range: 0.8, season: resident(0.6), growth: 0.0006,
-    hunt: { spot: "forest", minutes: 240, odds: 0.3, injury: 0.15, level: 8 }, yields: { meatKg: 150, hideKg: 20, fatKg: 8, bone: 8, sinew: 6 },
+    hunt: { spot: "forest", minutes: 240, odds: 0.3, injury: 0.15, level: 8 }, yields: { meatKg: 150, hideKg: 20, fatKg: 15, bone: 8, sinew: 6 },
     calls: [{ sound: "elk", when: "dusk", months: [8, 9], weight: 2 }, { sound: "elk", when: "night", months: [8, 9], weight: 2 }] },
   wolf: { name: "wolf", kind: "mammal", habitat: { spruce: 0.08, pine: 0.06, bog: 0.05, birch: 0.04, fell: 0.02 }, range: 0.35, season: resident(), growth: 0.0005,
     hunt: { spot: "forest", minutes: 240, odds: 0.25, injury: 0.35, level: 12 }, yields: { meatKg: 25, furKg: 3, fatKg: 1, bone: 6, sinew: 4 },
@@ -107,7 +108,7 @@ const SPECIES_DEFS_RAW = {
     hunt: { spot: "outcrop", minutes: 240, odds: 0.2, injury: 0, level: 10 }, yields: { meatKg: 8, furKg: 1.5, bone: 3, sinew: 2 } },
   // Denned November to March: absent the way a migrant is, and the same rule says so.
   bear: { name: "brown bear", kind: "mammal", habitat: { spruce: 0.15, pine: 0.1, bog: 0.1, birch: 0.08 }, range: 0.5, season: migrant(3, 10, "denned"), growth: 0.0006,
-    hunt: { spot: "forest", minutes: 300, odds: 0.25, injury: 0.5, level: 15 }, yields: { meatKg: 80, furKg: 8, fatKg: 10, bone: 8, sinew: 5 } },
+    hunt: { spot: "forest", minutes: 300, odds: 0.25, injury: 0.5, level: 15 }, yields: { meatKg: 80, furKg: 8, fatKg: 25, bone: 8, sinew: 5 } },
 
   // Game birds, all taken with the bow.
   willowGrouse: { name: "willow grouse", kind: "bird", habitat: { bog: 12, birch: 8, meadow: 4, fell: 2 }, range: 0.9, season: resident(), growth: 0.005,
@@ -170,6 +171,33 @@ export const SPECIES_DEFS: Record<Species, SpeciesDef> = SPECIES_DEFS_RAW;
 export const SPECIES_IDS = Object.keys(SPECIES_DEFS) as Species[];
 /** The species whose first kill marks the large-game surplus: the tables' large-game row. */
 export const LARGE_GAME: Species[] = ["deer", "reindeer", "elk"];
+
+/**
+ * Fat by season, as a share of the peak (fat and carbohydrate design,
+ * section 2): ungulates at full from August to November, half in winter, a
+ * fifth from March to May and 0.6 through midsummer; a bear full before
+ * denning, a third at emergence; a beaver near full all year; the rest of
+ * the mammals at half. The figure abstracts suet, depot fat and other
+ * fatty tissue; other offal is in the meat.
+ */
+export function fatSeason(s: Species, month: number): number {
+  switch (s) {
+    case "deer": case "reindeer": case "elk":
+      return month >= 7 && month <= 10 ? 1 : month === 11 || month <= 1 ? 0.5 : month <= 4 ? 0.2 : 0.6;
+    case "bear":
+      return month === 8 || month === 9 ? 1 : month === 3 || month === 4 ? 0.3 : month >= 5 && month <= 7 ? 0.6 : 0;
+    case "beaver": return 0.8;
+    default: return SPECIES_DEFS[s].kind === "mammal" ? 0.5 : 0;
+  }
+}
+
+/** Marrow is the last fat to go: 1 at a full animal, 0.75 at half, 0.4 at a fifth, linear between and no lower. */
+export function marrowFactor(season: number): number {
+  if (season >= 1) return 1;
+  if (season >= 0.5) return 0.75 + ((season - 0.5) / 0.5) * 0.25;
+  if (season >= 0.2) return 0.4 + ((season - 0.2) / 0.3) * 0.35;
+  return 0.4;
+}
 
 export function speciesDef(s: Species): SpeciesDef {
   return SPECIES_DEFS[s];
