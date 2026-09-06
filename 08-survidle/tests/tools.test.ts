@@ -16,13 +16,13 @@ const cal = calendar(0);
 
 describe("tools as items", () => {
   it("a tool recipe yields a countable item, so a keep on it stays a keep", () => {
-    expect(RECIPES.axe.out).toEqual({ item: "axe", qty: 1 });
-    expect(yieldItem("craft", "axe")).toBe("axe");
+    expect(RECIPES.stoneAxe.out).toEqual({ item: "stoneAxe", qty: 1 });
+    expect(yieldItem("craft", "stoneAxe")).toBe("stoneAxe");
     expect(ITEM_KG.axe).toBe(1.5);
     const { state, world } = newGame(17);
-    const o = addOrder(state, world, { task: "craft", arg: "axe", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    const o = addOrder(state, world, { task: "craft", arg: "stoneAxe", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
-    expect(keepTarget(o)).toEqual({ item: "axe", qty: 1 });
+    expect(keepTarget(o)).toEqual({ item: "stoneAxe", qty: 1 });
   });
 
   it("a shattered flaked axe with a spare in the pack is replaced at once", () => {

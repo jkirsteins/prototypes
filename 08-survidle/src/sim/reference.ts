@@ -117,6 +117,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("lightIndoors", 1),
   keep("chop", 4),
   keep("split", 60),
+  keep("splitWedges", 60),
+  keep("deadwood", 60),
   job("build", { kind: "once" }, "leanTo"),
   job("craft", { kind: "once" }, "knife"),
   keep("craft", 1, "snare"),
@@ -134,7 +136,12 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "once" }, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
-  keep("craft", 1, "axe"),
+  keep("stone", 8),
+  job("craft", { kind: "once" }, "whetstone"),
+  { req: { task: "hone", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  keep("craft", 2, "wedges"),
+  keep("craft", 1, "stoneAxe"),
+  keep("craft", 1, "flakedAxe"),
   job("sticks", { kind: "campHas", qty: 20 }),
   job("bark", { kind: "campHas", qty: 40 }),
   job("build", { kind: "once" }, "turfHut"),
@@ -144,6 +151,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("melt", 20),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", 400),
+  keep("splitWedges", 400),
+  keep("deadwood", 400),
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
@@ -195,9 +204,17 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
-  if (w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty >= 400) {
-    return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
+  // Firewood by method: the axe while one is in reach, wedges and dead wood when none is; the
+  // winter pile's three rows open by the season on top of that.
+  if (w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood") {
+    const withAxe = axeInReach(state, world);
+    if (w.req.task === "split" ? !withAxe : withAxe) return false;
+    if (w.req.until.kind === "campHas" && w.req.until.qty >= 400) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
+    return true;
   }
+  // The spare axe by tier: the celt once Crafting reaches its level, a flaked one under it and only with no axe to hand.
+  if (w.req.task === "craft" && w.req.arg === "stoneAxe") return skillLevel(state, "crafting") >= RECOMMENDED["craft:stoneAxe"].level;
+  if (w.req.task === "craft" && w.req.arg === "flakedAxe") return skillLevel(state, "crafting") < RECOMMENDED["craft:stoneAxe"].level && !axeInReach(state, world);
   return true;
 }
 

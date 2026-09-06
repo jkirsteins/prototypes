@@ -62,7 +62,7 @@ export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
 export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
-  | "snare" | "needle" | "axe" | "torch" | "whetstone" | "wedges"
+  | "snare" | "needle" | "stoneAxe" | "flakedAxe" | "torch" | "whetstone" | "wedges"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
   | "hideBlanket" | "barkBucket" | "waterskin" | "basketTrap";
 

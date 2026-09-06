@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { axeInHand, axeNear, freshTool, pile, wearTool } from "../src/sim/inventory";
+import { addItem, axeInHand, axeNear, freshTool, pile, wearTool } from "../src/sim/inventory";
+import { deserialize, serialize } from "../src/sim/save";
+import { gap } from "../src/sim/skills";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { check, fallThrough } from "../src/sim/tasks";
@@ -64,6 +66,35 @@ describe("three axes", () => {
     placeAtSpot(state, world, state.player.region, "forest");
     const cal = calendar(state.minute, state.startDoy);
     expect(check(state, world, cal, "chop").why).toBe("needs an axe");
+  });
+});
+
+describe("stone axe recipes", () => {
+  it("flakes an axe in ninety minutes at no tier and grinds a celt in twenty hours at Crafting 5 with the whetstone", () => {
+    const { state, world } = newGame(17);
+    addItem(state.player.pack, "stone", 3);
+    addItem(state.player.pack, "stick", 2);
+    addItem(state.player.pack, "cordage", 4);
+    state.player.tools.push(freshTool("knife"), freshTool("whetstone"));
+    const cal = calendar(state.minute, state.startDoy);
+    const flaked = check(state, world, cal, "craft", "flakedAxe");
+    expect(flaked.ok).toBe(true);
+    expect(flaked.duration).toBe(90);
+    expect(flaked.recommended).toBeUndefined();
+    const celt = check(state, world, cal, "craft", "stoneAxe");
+    expect(celt.ok).toBe(true);
+    expect(celt.duration).toBe(1200);
+    expect(gap(state, "craft:stoneAxe")).toBe(4);
+    state.player.tools = state.player.tools.filter((t) => t.id !== "whetstone");
+    expect(check(state, world, cal, "craft", "stoneAxe").why).toBe("needs a whetstone");
+  });
+
+  it("carries an old save's axe mastery over to the celt", () => {
+    const { state } = newGame(17);
+    state.skills.crafting.mastery["craft:axe"] = 300;
+    const back = deserialize(serialize(state));
+    expect(back!.state.skills.crafting.mastery["craft:axe"]).toBeUndefined();
+    expect(back!.state.skills.crafting.mastery["craft:stoneAxe"]).toBe(300);
   });
 });
 

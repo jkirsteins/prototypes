@@ -102,7 +102,9 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   fishingSpear: { name: "fishing spear", needs: [{ item: "stick", qty: 1 }, { item: "stone", qty: 1 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 30, out: { item: "fishingSpear", qty: 1 } },
   snare: { name: "snare", needs: [{ item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 20, out: { item: "snare", qty: 1 } },
   needle: { name: "bone needle", needs: [{ item: "bone", qty: 1 }], tool: "knife", minutes: 20, out: { item: "needle", qty: 1 } },
-  axe: { name: "stone axe", needs: [{ item: "stone", qty: 3 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 90, out: { item: "axe", qty: 1 } },
+  // A flaked edge in an evening: it chops badly and shatters; the celt is a cobble pecked and ground on the whetstone over days, a real edge that hones like iron.
+  flakedAxe: { name: "flaked axe", needs: [{ item: "stone", qty: 2 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 90, out: { item: "flakedAxe", qty: 1 } },
+  stoneAxe: { name: "stone axe", needs: [{ item: "stone", qty: 1 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "whetstone", minutes: 1200, out: { item: "stoneAxe", qty: 1 } },
   torch: { name: "torch", needs: [{ item: "stick", qty: 1 }, { item: "bark", qty: 2 }], minutes: 20, out: { item: "torch", qty: 1 } },
   // A flat stone ground smooth on the outcrop: the edge's whole life, where a stone sharpen spends the stone.
   whetstone: { name: "whetstone", needs: [{ item: "stone", qty: 1 }], minutes: 30, out: { item: "whetstone", qty: 1 } },

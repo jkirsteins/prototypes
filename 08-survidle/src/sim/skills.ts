@@ -143,6 +143,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
 /** Recommended levels. Under them the odds are punished; over them nothing extra. */
 export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
   "craft:bow": { skill: "crafting", level: 5 },
+  "craft:stoneAxe": { skill: "crafting", level: 5 },
   "craft:hideBlanket": { skill: "crafting", level: 6 },
   "craft:hideCoat": { skill: "crafting", level: 8 },
   "craft:hideTrousers": { skill: "crafting", level: 8 },

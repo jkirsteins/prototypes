@@ -48,8 +48,8 @@ describe("the reference player", () => {
     // the two melts wait for the shore to ice over, and the fire indoors for a hut; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 9);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 9);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 15);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 15);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -63,8 +63,13 @@ describe("the reference player", () => {
       expect(o.kind, id).toBe("job");
       expect(o.req.until.kind, id).toBe("once");
     }
-    const axe = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === "axe")!;
-    expect(axe.kind).toBe("keep");
+    for (const id of ["stoneAxe", "flakedAxe"] as const) {
+      const axe = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === id)!;
+      expect(axe.kind, id).toBe("keep");
+    }
+    const whet = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === "whetstone")!;
+    expect(whet.kind).toBe("job");
+    expect(REFERENCE_ORDERS.find((o) => o.req.task === "hone")!.kind).toBe("grind");
   });
 
   it("the basket trap is carried, not stocked: its craft want leaves it in the pack, unlike every other craft want", () => {
@@ -98,14 +103,15 @@ describe("the reference player", () => {
     expect(tasks[spear + 4]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
     const hunt = tasks.indexOf("hunt:any");
-    expect(tasks[hunt + 1]).toBe("craft:axe");
-    const axe = tasks.indexOf("craft:axe");
+    // The edge's whole life sits with the spare axe, not in the opening: a whetstone there cost the knife its stone and the snares an hour.
+    expect(tasks.slice(hunt + 1, hunt + 7)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
+    const axe = tasks.indexOf("craft:flakedAxe");
     expect(tasks.slice(axe + 1, axe + 8)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:shore", "fill:hole", "melt:"]);
     expect(tasks[axe + 8]).toBe("hang:");
-    expect(tasks[axe + 9]).toBe("split:");
-    expect(tasks.slice(axe + 10, axe + 13)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
-    expect(tasks[axe + 13]).toBe("chop:");
-    expect(REFERENCE_ORDERS.length).toBe(44);
+    expect(tasks.slice(axe + 9, axe + 12)).toEqual(["split:", "splitWedges:", "deadwood:"]);
+    expect(tasks.slice(axe + 12, axe + 15)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    expect(tasks[axe + 15]).toBe("chop:");
+    expect(REFERENCE_ORDERS.length).toBe(53);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.

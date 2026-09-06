@@ -478,8 +478,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const rid = arg as RecipeId;
       const rec = RECIPES[rid];
       const needs = effectiveNeeds(state, rid);
-      const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${rec.tool === "needle" ? "needle" : rec.tool}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
-      if (rec.tool && !toolNear(p, rec.tool, invs)) return { ...o, ok: false, why: `needs a ${rec.tool === "fishingSpear" ? "fishing spear" : rec.tool}` };
+      const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${TOOLS[rec.tool].name}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
+      if (rec.tool && !toolNear(p, rec.tool, invs)) return { ...o, ok: false, why: `needs a ${TOOLS[rec.tool].name}` };
       if (!canConsume(invs, needs)) return { ...o, ok: false, why: "missing materials" };
       return o;
     }
