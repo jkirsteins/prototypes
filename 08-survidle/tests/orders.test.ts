@@ -788,4 +788,16 @@ describe("a keep on a structure", () => {
     expect(orderMet(state, world, o, true)).toBe(true);
     expect(orderSentence(state, world, calendar(0), o)).toContain("keep 20 snares set");
   });
+
+  it("a seep is never a structure keep: it stands on a cell, not at camp, and collapses to a once job", () => {
+    const { state, world } = newGame(17);
+    const n = normalizeOrder({ task: "build", arg: "seep", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(n.kind).toBe("job");
+    expect(n.req.until).toEqual({ kind: "once" });
+    const o = addOrder(state, world, n.req, n.kind);
+    expect(keepTarget(o)).toBeNull();
+    expect(orderMet(state, world, o, false)).toBe(false);
+    o.done = 1;
+    expect(orderMet(state, world, o, false)).toBe(true);
+  });
 });

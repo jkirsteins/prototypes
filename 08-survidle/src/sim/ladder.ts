@@ -24,7 +24,9 @@ export function gateSkill(task: TaskId, arg?: string): SkillId | null {
 
 /** A keep whose promise is a structure standing or a count of snares set, not a stock at camp. */
 export function structureKeep(req: IntentRequest, kind: OrderKind): boolean {
-  return kind === "keep" && req.task === "build";
+  // A seep stands on a cell, not at camp, so it is never a structure keep: it falls
+  // back to a once job through the guard below, as it did before structureKeep existed.
+  return kind === "keep" && req.task === "build" && req.arg !== "seep";
 }
 
 /**
