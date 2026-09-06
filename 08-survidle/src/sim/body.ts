@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
-import { regionAt, spotOf, type World } from "../world/gen";
+import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { eat, edible } from "./actions";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
@@ -19,6 +19,7 @@ import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
+import { seepStopped } from "./seep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check } from "./tasks";
 import type { BodyNeed, GameState, Intent, ItemId } from "./types";
@@ -220,29 +221,68 @@ export function campMeltReady(state: GameState, world: World, cal: Calendar): bo
     : check(state, world, cal, "walk", `cell:${st.campCell}`).ok;
 }
 
+/** A place to walk to for water and what a walk there would give: endless at the shore or an open hole, the pool at a seep, the pile's litres at camp. */
+interface WaterOption { cell: number; litres: number; km: number; why: string }
+
+/** Every source in reach of a walk, nearest first; the cell under foot is excluded, since drink() already tried it. */
+function waterOptions(state: GameState, world: World, cal: Calendar): WaterOption[] {
+  const here = cellOf(state, world);
+  const st = regionState(state, world, state.player.region);
+  const out: WaterOption[] = [];
+  const shore = shoreForWater(state, world, cal);
+  if (shore !== null) out.push({ cell: shore, litres: Number.POSITIVE_INFINITY, km: straightKm(world, here, shore), why: " for water" });
+  if (campWaterReady(state, world, cal) && st.campCell !== here) {
+    out.push({ cell: st.campCell, litres: qty(pile(state, st.campCell), "water"), km: straightKm(world, here, st.campCell), why: " for water" });
+  }
+  for (const k of Object.keys(state.seeps)) {
+    const cell = Number(k);
+    if (cell === here || cellAt(world, cell).region !== state.player.region) continue;
+    if (!check(state, world, cal, "walk", `cell:${cell}`).ok) continue;
+    out.push({ cell, litres: state.seeps[cell].litres, km: straightKm(world, here, cell), why: " for the seep" });
+  }
+  return out.sort((a, b) => a.km - b.km);
+}
+
 /** Whether thirst can actually be done anything about here and now; gates the need the way campCanWarm gates cold. */
 function canQuench(state: GameState, world: World, cal: Calendar): boolean {
   return vesselLitres(state.player) > 0
     || waterSource(state, world)
-    || shoreForWater(state, world, cal) !== null
+    || waterOptions(state, world, cal).some((o) => o.litres > 1e-9)
     || iceHoleSite(state, world, cal) !== null
-    || campWaterReady(state, world, cal)
-    || campMeltReady(state, world, cal);
+    || campMeltReady(state, world, cal)
+    || Object.keys(state.seeps).some((k) => cellAt(world, Number(k)).region === state.player.region);
 }
 
-/** Drink in reach; else walk to the region's shore when it is not iced over; else walk to camp for its water or to melt snow at the fire; else nothing. */
+/**
+ * Drink in reach; else the nearest source that would put the reserve back over
+ * the thirsty line; else cut an ice hole; else wait at the fullest seep,
+ * drinking as it fills; else melt snow at the fire, last because it burns the
+ * woodpile. The body's own choice among sources, which an order never makes.
+ */
 function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null {
   if (drink(state, world)) return null;
-  const shoreCell = shoreForWater(state, world, cal);
-  if (shoreCell !== null) return walkStep(state, world, shoreCell, " for water");
+  const p = state.player;
+  const here = cellOf(state, world);
+  const need = Math.max(0.1, THIRSTY_L - p.water);
+  const options = waterOptions(state, world, cal);
+  const enough = options.find((o) => o.litres >= need);
+  if (enough) return walkStep(state, world, enough.cell, enough.why);
   const site = iceHoleSite(state, world, cal);
   if (site !== null) {
-    if (site !== cellOf(state, world)) return walkStep(state, world, site, " to open an ice hole");
+    if (site !== here) return walkStep(state, world, site, " to open an ice hole");
     return { id: "iceHole", step: "opening an ice hole" };
   }
-  const st = regionState(state, world, state.player.region);
-  const atCamp = cellOf(state, world) === st.campCell;
-  if (campWaterReady(state, world, cal)) return atCamp ? null : walkStep(state, world, st.campCell, " for water");
+  const seepHere = state.seeps[here];
+  if (seepHere && seepStopped(state, world, here, ambientTemperature(cal, state.weather)) !== "frozen") {
+    return { id: "rest", step: "waiting at the seep" };
+  }
+  const seeps = options.filter((o) => o.why === " for the seep" && state.seeps[o.cell].ice <= 1e-9);
+  if (seeps.length) {
+    const fullest = seeps.reduce((a, b) => (b.litres > a.litres ? b : a));
+    return walkStep(state, world, fullest.cell, " to wait at the seep");
+  }
+  const st = regionState(state, world, p.region);
+  const atCamp = here === st.campCell;
   if (campMeltReady(state, world, cal)) {
     if (!atCamp) return walkStep(state, world, st.campCell, " for water");
     // The cold step's fire, for the same reason: no fire, no melt.
@@ -289,6 +329,9 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   if (!st.structures.firePit) {
     return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "laying a fire pit" } : null;
   }
+  // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
+  const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
+  if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
   if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
   if (hasTool(p, "fireDrill") && firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {

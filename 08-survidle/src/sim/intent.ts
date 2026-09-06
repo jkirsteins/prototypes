@@ -7,20 +7,22 @@
 import type { Rng } from "../rng";
 import { PACK_HARD_KG } from "../units";
 import { regionAt, spotOf, type World } from "../world/gen";
+import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
-import { bodyStep, campMeltReady, currentNeed, fireStep, orderKit, provision, provisionKit } from "./body";
+import { bodyStep, currentNeed, orderKit, provision, provisionKit } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
-import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, watersideCell } from "./position";
+import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
+import { nearestSeep, seepGround } from "./seep";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
-import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres, waterSource } from "./water";
+import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { candidateWeight, check, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
@@ -46,6 +48,8 @@ export function groundOf(task: TaskId, arg?: string): SpotId | null {
   if (arg === "any") return task === "hunt" ? "forest" : task === "fish" ? "shore" : null;
   if (task === "hunt" || task === "fish") return SPECIES_DEFS[arg as Species]?.hunt?.spot ?? null;
   if (task === "build" && arg === "snare") return "heath";
+  // A seep fetch goes to the seep, a dig to wet ground: neither is a spot.
+  if (task === "fill" && arg === "seep") return null;
   return GROUND_OF[task] ?? null;
 }
 
@@ -74,6 +78,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
+    case "melt": return "water";
     case "hang": return "driedMeat";
     case "emptyTrap": return "fish";
     default: return null;
@@ -85,8 +90,8 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "haul") return "all";
   if (task === "chop") return ["log", "stick"];
   if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];
-  // A fill's litres never sit in the pack as an item; packCarries reads the vessels instead.
-  if (task === "fill") return ["water"];
+  // A fill's or a melt's litres never sit in the pack as an item; packCarries reads the vessels instead.
+  if (task === "fill" || task === "melt") return ["water"];
   // Hang moves raw meat onto the rack; nothing lands in the pack for a delivery to carry.
   if (task === "hang") return [];
   const one = yieldItem(task, arg);
@@ -146,6 +151,20 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
   if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
   if (task === "emptyTrap" && st.trap) return { cell: st.trap.cell, note: "" };
+  if (task === "fill" && arg === "seep") {
+    // The nearest seep holding water; failing that the nearest seep, whose row says why it is shut.
+    const withWater = nearestSeep(state, world, here, (s) => s.litres > 1e-9);
+    const any = withWater ?? nearestSeep(state, world, here, () => true);
+    return { cell: any ?? here, note: "" };
+  }
+  if (task === "build" && arg === "seep") {
+    // The nearest wet cell with no seep on it, by straight line then a route check.
+    const cells = r.cells
+      .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
+      .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c)) return { cell: c, note: "" };
+    return { cell: here, note: "" };
+  }
   if (task === "setTrap") {
     const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);
     if (cells.length) return { cell: cells[0], note: "" };
@@ -166,28 +185,16 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
 }
 
 /**
- * The one reason a fill's allowance and its melt fallback both key on: the
- * shore is iced over with no axe for a hole, but snow can still be melted at
- * the fire instead. Stated once so fetchAllowance and workStep never judge
- * it two different ways.
+ * A build blocked at its own cell for want of materials gets one allowance:
+ * something it needs sits elsewhere in the region and can be walked to. Only
+ * when that is the actual reason it is blocked - "already built here" or
+ * "build the fire pit first" get no allowance, fetching would not help
+ * either. A delivery, not a second method: an order names one method and
+ * waits when that method is shut. The one place this is decided, so
+ * intentOption and startIntent never disagree about whether the button may
+ * be pressed.
  */
-function meltInsteadOk(state: GameState, world: World, cal: Calendar, task: TaskId, why: string): boolean {
-  return task === "fill" && why === "iced over; needs an axe for an ice hole" && campMeltReady(state, world, cal);
-}
-
-/**
- * A blocked want gets one allowance for a reason a competent player would
- * work around rather than accept: a build missing materials at camp, when
- * something it needs sits elsewhere in the region and can be walked to; and
- * a fill blocked by an iced shore with no axe for an ice hole, when snow can
- * be melted at the fire instead. Only when that is the actual reason it is
- * blocked - "already built here" or "build the fire pit first" get no
- * allowance, fetching would not help either. The one place this is decided,
- * so intentOption, startIntent and the running intent's own workStep never
- * disagree about whether the want may go on.
- */
-function fetchAllowance(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
-  if (meltInsteadOk(state, world, cal, task, why)) return { ok: true, detail: "melts snow at the fire instead" };
+function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
   if (task !== "build" || arg === "snare" || why !== "missing materials at camp") return { ok: false, detail: "" };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
@@ -205,7 +212,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
   const { cell } = resolveCell(state, world, cal, task, arg, where);
   const o = check(state, world, cal, task, arg, cell);
   if (o.ok) return o;
-  const fa = fetchAllowance(state, world, cal, task, arg, o.why);
+  const fa = fetchAllowance(state, world, task, arg, o.why);
   return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail } : o;
 }
 
@@ -241,7 +248,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const pocketed = provisionKit(state, world);
   if (!UNCHECKED.has(req.task)) {
     const o = check(state, world, cal, req.task, req.arg, cell);
-    if (!o.ok && !fetchAllowance(state, world, cal, req.task, req.arg, o.why).ok) {
+    if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
       if (pocketed > 0) {
         const kit = orderKit(state)[0];
         if (kit) transfer(state.player.pack, pile(state, state.intent.campCell), kit, pocketed);
@@ -303,7 +310,7 @@ function untilMet(state: GameState, it: Intent): boolean {
 
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
 function packCarries(state: GameState, world: World, it: Intent): boolean {
-  if (it.task === "fill") {
+  if (it.task === "fill" || it.task === "melt") {
     const room = campWaterRoom(pile(state, it.campCell), regionState(state, world, state.player.region));
     return vesselLitres(state.player) > 0 && room > 0;
   }
@@ -534,19 +541,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     it.step = "unloading at camp";
     return "again";
   }
-  let o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
-  const rawWhy = o?.why ?? "";
-  // The melt allowance chooseOrder and startIntent gave this fill before it
-  // began still holds while it runs: a fill stopped cold by "iced over" the
-  // moment the shore froze over mid-keep must fall through to the melt
-  // fallback below rather than end here on the reason the allowance excuses.
-  // A build's own fetch allowance is not repeated here: fetchStep above has
-  // already tried it and fallen through to "none" on purpose when nothing
-  // fits in the pack, and re-opening that case here would spin forever.
-  if (it.task === "fill" && o && !o.ok) {
-    const fa = fetchAllowance(state, world, cal, it.task, it.arg, rawWhy);
-    if (fa.ok) o = { ...o, ok: true, why: "", detail: fa.detail };
-  }
+  const o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
   const met = it.windDown || untilMet(state, it);
   if (met || (o && !o.ok)) {
     if (deliveryPending(state, world, it)) return deliveryStep(state, world, cal, it);
@@ -558,29 +553,6 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     return undefined;
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
-  // A fill on a frozen shore cuts its hole first, judged at the shore itself
-  // (it.cell) rather than wherever the survivor happens to be standing - an
-  // ice hole is ground-gated to waterside terrain, so judging it underfoot
-  // would read false at camp by position alone and never let an axe-carrying
-  // survivor walk to the shore at all. Left unresolved here, the walk below
-  // still carries them there; once at it.cell, the hole is cut. With no hole
-  // to be had - meltInsteadOk is the same "iced over; needs an axe" reason
-  // fetchAllowance already keys on - the fill is served at camp instead:
-  // snow melted at the fire into the vessels, which the delivery then pours out.
-  if (it.task === "fill" && !waterSource(state, world)) {
-    if (check(state, world, cal, "iceHole", undefined, it.cell).ok) {
-      if (here === it.cell) {
-        takeStep(state, world, cal, { id: "iceHole", step: "cutting an ice hole" }, rng);
-        return undefined;
-      }
-    } else if (meltInsteadOk(state, world, cal, it.task, rawWhy)) {
-      if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " to melt snow");
-      const fs = fireStep(state, world, cal, it.campCell);
-      if (fs) { takeStep(state, world, cal, fs, rng); return undefined; }
-      takeStep(state, world, cal, { id: "melt", step: "melting snow" }, rng);
-      return undefined;
-    }
-  }
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   if (it.task === "night") return undefined;
   // Waiting rests by day; by night it sleeps outright, or a running rest keeps

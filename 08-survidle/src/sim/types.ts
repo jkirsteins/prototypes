@@ -56,7 +56,7 @@ export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 
 /** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
 export interface Observation { minute: number; fish: Species[] }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore";
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep";
 /** Structures the weather takes down unless they are mended. */
 export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
@@ -69,6 +69,10 @@ export type RecipeId =
 /** Where inside a region the player stands. Every region has a camp. */
 export type SpotId = "camp" | "forest" | "outcrop" | "shore" | "heath";
 export const SPOTS: SpotId[] = ["camp", "forest", "outcrop", "shore", "heath"];
+
+/** How a fill gets its water: the order names one and never picks another. A missing method is the shore. */
+export type FillMethod = "shore" | "hole" | "seep";
+export const FILL_METHODS: FillMethod[] = ["shore", "hole", "seep"];
 
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
@@ -198,6 +202,11 @@ export interface Intent {
   /** The scheduler has chosen another order: deliver what is owed, then end. */
   windDown: boolean;
 }
+
+/** Where a seep's water comes from: saturated peat, or damp ground. */
+export type SeepClass = "bog" | "damp";
+/** A seep dug on a cell: its ground, the liquid and frozen litres in it (at most the pool between them), and the minute it was last dug. */
+export interface Seep { class: SeepClass; litres: number; ice: number; dug: number }
 
 export interface RegionState {
   /** Standing trees worth felling. */
@@ -390,6 +399,8 @@ export interface GameState {
   paused: Record<string, PausedTask>;
   /** What lies on the ground, by cell index. */
   piles: Record<number, Inventory>;
+  /** Seeps by the cell they are dug on. */
+  seeps: Record<number, Seep>;
   route: Route | null;
   intent: Intent | null;
   /** One record per game day of kcal made, eaten and burned: the calibration ledger. */

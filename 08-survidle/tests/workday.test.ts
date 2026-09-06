@@ -113,6 +113,7 @@ describe("the working day", () => {
   it("a chop started by hand has no intent and keeps going past ten hours", () => {
     const { state, world } = newGame(17);
     kitOut(state, world);
+    placeAtSpot(state, world, state.player.region, "forest");
     state.player.energy = 100;
     today(state).workMin = 11 * 60;
     const cal = calendar(state.minute);

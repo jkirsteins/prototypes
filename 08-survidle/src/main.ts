@@ -39,7 +39,7 @@ import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
-import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
@@ -341,7 +341,7 @@ function onClick(ev: Event) {
       lastReal = performance.now();
       break;
     case "intent": {
-      const { req, kind } = rowRequest(defaultChoice(), target.dataset.id as TaskId, target.dataset.arg || undefined);
+      const { req, kind } = rowRequest(defaultChoiceFor(target.dataset.id as TaskId), target.dataset.id as TaskId, target.dataset.arg || undefined);
       // The site is where the click happened, not wherever the runner is standing when
       // the order finally starts; RowChoice has no cell of its own to carry that.
       if (req.task === "makeCamp") req.where = { cell: cellOf(state, world) };
@@ -355,7 +355,7 @@ function onClick(ev: Event) {
       if (ui.open && ui.open.id === id && ui.open.arg === arg) ui.open = null;
       else {
         ui.open = { id, arg };
-        ui.choice = defaultChoice();
+        ui.choice = defaultChoiceFor(id);
       }
       break;
     }

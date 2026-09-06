@@ -280,7 +280,7 @@ describe("fuel by shelter", () => {
     expect(burnPerHour(dry, -20, st)).toBe(1.2);
   });
 
-  it("a cabin with a hearth burns 0.8 kg an hour and holds the room at 10 C, with the plain light laying the hearth fire", () => {
+  it("a cabin with a hearth burns 0.8 kg an hour and holds the room at 10 C, with the fire indoors laying the hearth fire", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
@@ -289,10 +289,9 @@ describe("fuel by shelter", () => {
     st.structures.hearth = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 10);
-    // Lighting indoors refuses a cabin that has a hearth, so the plain light is
-    // the one task that lays a cabin's fire, and what it lays burns indoors.
-    expect(check(state, world, cal, "lightIndoors").ok).toBe(false);
-    startTask(state, world, cal, "light");
+    // The fire indoors is the row that lays a cabin's hearth fire; the plain light is the pit outside.
+    expect(check(state, world, cal, "lightIndoors").detail).toBe("at the hearth");
+    startTask(state, world, cal, "lightIndoors");
     advance(state, world, 15);
     expect(st.fire.lit).toBe(true);
     expect(st.fire.indoors).toBe(true);
@@ -314,7 +313,7 @@ describe("fuel by shelter", () => {
     expect(burnPerHour(rain, 5, st)).toBe(3);
   });
 
-  it("lighting the fire with a hut standing puts it under the smoke hole", () => {
+  it("the plain light is the pit fire even with a hut standing; the fire indoors goes under the smoke hole", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
@@ -322,8 +321,17 @@ describe("fuel by shelter", () => {
     st.structures.turfHut = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 10);
-    expect(check(state, world, cal, "light").detail).toMatch(/under the smoke hole/);
+    expect(check(state, world, cal, "light").detail).not.toMatch(/smoke hole/);
     startTask(state, world, cal, "light");
+    advance(state, world, 15);
+    expect(st.fire.lit).toBe(true);
+    expect(st.fire.indoors).toBe(false);
+    st.fire.lit = false;
+    st.fire.fuelKg = 0;
+    // The pit fire fed itself the whole pile; a second light needs its kilo.
+    addItem(pile(state, st.campCell), "firewood", 10);
+    expect(check(state, world, cal, "lightIndoors").detail).toBe("under the smoke hole");
+    startTask(state, world, cal, "lightIndoors");
     advance(state, world, 15);
     expect(st.fire.lit).toBe(true);
     expect(st.fire.indoors).toBe(true);

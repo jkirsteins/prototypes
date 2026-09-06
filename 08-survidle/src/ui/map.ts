@@ -36,6 +36,7 @@ export const MARKS = {
   shelter: { glyph: "H", cls: "mk-shelter", label: "shelter" },
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
+  seep: { glyph: "s", cls: "mk-seep", label: "seep" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
 
 /**
@@ -254,6 +255,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (!r.trap) continue;
     const g = toGlyph(r.trap.cell);
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.trap);
+  }
+  for (const k of Object.keys(state.seeps)) {
+    const g = toGlyph(Number(k));
+    if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.seep);
   }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, MARKS.you);

@@ -71,7 +71,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
       { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
     ] },
-    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
     { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
   ];
@@ -87,7 +87,7 @@ function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"
   const item = yieldItem(id, arg);
   if (until === "times") return `${n} times`;
   if (until === "campHas") return item ? `until camp has ${itemLabel(item, n)}` : "once";
-  if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" ? "keep it lit" : "once";
+  if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep it lit" : "once";
   if (until === "forever") return "forever";
   return "once";
 }

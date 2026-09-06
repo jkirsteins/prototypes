@@ -12,7 +12,7 @@ import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { PACK_COMFORTABLE_KG } from "../src/units";
-import { hasSpot, regionAt } from "../src/world/gen";
+import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 
 type G = ReturnType<typeof newGame>;
@@ -249,12 +249,14 @@ describe("the body tier", () => {
     expect(state.dead).toBeNull();
     expect(state.stats.trees).toBeGreaterThan(3);
     expect(seen.get("sleep@camp") ?? 0).toBeGreaterThan(60);
-    expect(seen.get("chop@away") ?? 0).toBeGreaterThan(300);
+    // The camp is a shore cell and may itself be forest, so the felling is counted wherever it happens.
+    const chopMin = (seen.get("chop@away") ?? 0) + (seen.get("chop@camp") ?? 0);
+    expect(chopMin).toBeGreaterThan(300);
     expect(state.intent?.task).toBe("chop");
     expect(sawThirsty).toBe(true);
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the
     // minute a tree comes down is counted by train and not by the trace: one minute per tree of slack.
-    expect(Math.abs(state.skills.woodcraft.xp - seen.get("chop@away")!)).toBeLessThanOrEqual(state.stats.trees + 1);
+    expect(Math.abs(state.skills.woodcraft.xp - chopMin)).toBeLessThanOrEqual(state.stats.trees + 1);
   });
 
   it("a working day with deliver camp: logs pile up at camp, the pack clears after each delivery, and sleep still happens at camp", () => {
@@ -312,9 +314,12 @@ describe("the body tier", () => {
 
 describe("the runner in the elements", () => {
   it("drinks from a vessel, else walks to the shore, else melts snow at the fire", () => {
-    // Seed 10: the forest is off camp and so is the shore, so both fallbacks in this
-    // test actually walk somewhere; seed 42's forest sits right on top of its camp.
-    const { g, state, world } = felling(10);
+    // Seed 10: the camp is a shore cell, so the felling is sent to the forest spot,
+    // 0.9 km off the water, and both fallbacks in this test actually walk somewhere.
+    const g = newGame(10);
+    const { state, world } = g;
+    addItem(state.player.pack, "driedMeat", 2);
+    startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.water = 0.8;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 2 });
@@ -523,12 +528,15 @@ describe("the runner in the elements", () => {
 
   it("falls through to the camp-and-melt fallback when no shore can be walked to", () => {
     // Seed 42: the forest coincides with camp, so once thirst falls through it can
-    // go straight to melting rather than needing a further walk to observe.
+    // go straight to melting rather than needing a further walk to observe. The camp
+    // is a shore cell, so the water under foot is shut with ice and the axe stowed,
+    // or there would be nothing to fall through from.
     const { g, state, world } = felling(42);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // Overload the pack so no walk can start anywhere; melting needs none once at camp.
     addItem(state.player.pack, "stone", 40);
-    state.weather.iceCm = 0;
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    state.weather.iceCm = 4;
     state.weather.snowCm = 5;
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
@@ -591,7 +599,9 @@ describe("the runner in the elements", () => {
     const { state, world } = g;
     const r = regionAt(world, 94);
     expect(hasSpot(r, "shore")).toBe(false);
-    placeAt(state, world, r.campCell);
+    // The camp itself is a shore cell now; stand in forest away from the water so the thirst has to walk.
+    const dryForest = r.cells.find((c) => ["spruce", "pine", "birch"].includes(cellAt(world, c).terrain) && !neighbours(world, c).some((n) => cellAt(world, n).terrain === "water"))!;
+    placeAt(state, world, dryForest);
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);

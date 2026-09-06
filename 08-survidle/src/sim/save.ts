@@ -56,6 +56,7 @@ function fillDefaults(state: GameState): void {
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [newRecord(1, rollName(new Rng(derive(state.seed, 7)), []), { year: 1, doy: state.startDoy }, 0)];
   state.player.known ??= {};
+  state.seeps ??= {};
   for (const st of Object.values(state.regions)) {
     st.structureAge ??= {};
     st.racks ??= st.structures.dryingRack ? 1 : 0;

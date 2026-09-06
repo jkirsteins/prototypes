@@ -119,10 +119,10 @@ describe("where the work is done", () => {
     expect(state.intent!.cell).toBe(heath);
     stopTask(state, world);
     state.intent = null;
-    // Standing on forest ground with nothing left in the forest, the hunt goes to the spot that weighs most, not to the forest.
+    // Standing at camp, a shore cell, with nothing left in the forest or on the shore, the hunt goes to the spot that weighs most, not to the forest.
     placeAtSpot(state, world, state.player.region, "camp");
     const st = regionState(state, world, state.player.region);
-    for (const s of huntedLand()) if (SPECIES_DEFS[s].hunt!.spot === "forest") st.pop[s] = 0;
+    for (const s of huntedLand()) if (SPECIES_DEFS[s].hunt!.spot === "forest" || SPECIES_DEFS[s].hunt!.spot === "shore") st.pop[s] = 0;
     const heaviest = r.spots
       .map((s) => ({ cell: s.cell, w: candidateWeight(state, world, cal, "hunt", s.cell) }))
       .reduce((a, b) => (b.w > a.w ? b : a));
@@ -243,7 +243,7 @@ describe("the work tier", () => {
       until: { kind: "once" }, deliver: "camp", done: 0,
       step: "lighting the fire", need: null, orderId: null, windDown: false,
     };
-    expect(intentSentence(state, world, cal, light)).toBe("Light the fire");
+    expect(intentSentence(state, world, cal, light)).toBe("Light the fire at the pit");
   });
 
   it("a build fetches what is missing from this region's piles, one load at a time, then builds", () => {

@@ -29,7 +29,7 @@ export function gateSkill(task: TaskId, arg?: string): SkillId | null {
  * going out is itself the thing worth watching for.
  */
 export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: OrderKind } {
-  const lightKeep = kind === "keep" && req.task === "light";
+  const lightKeep = kind === "keep" && (req.task === "light" || req.task === "lightIndoors");
   if ((kind === "keep" || req.until.kind === "campHas") && !yieldItem(req.task, req.arg) && !lightKeep) {
     return { req: { ...req, until: { kind: "once" } }, kind: "job" };
   }

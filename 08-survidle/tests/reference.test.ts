@@ -43,11 +43,12 @@ describe("the reference player", () => {
     const list = ordersHere(state, world);
     // The three named hunts (elk, reindeer, deer) gate on the species' recommended level,
     // so a level-1 survivor's first tick never sees them; the 400 kg woodpile keep gates
-    // by season and a 1 April start is closed for it too; every other want is open.
+    // by season and a 1 April start is closed for it too; the two ice-hole fetches and
+    // the two melts wait for the shore to ice over, and the fire indoors for a hut; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
-    const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 4);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 4);
+    const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 9);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 9);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -74,7 +75,9 @@ describe("the reference player", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
     const at = (s: string) => tasks.findIndex((t) => t.startsWith(s));
     expect(at("light::keep")).toBeGreaterThan(-1);
-    expect(at("chop::keep")).toBe(at("light::keep") + 1);
+    // The fire indoors keep sits right under the pit keep, the two methods of one want.
+    expect(at("lightIndoors::keep")).toBe(at("light::keep") + 1);
+    expect(at("chop::keep")).toBe(at("light::keep") + 2);
     expect(at("build:leanTo:job:once")).toBeGreaterThan(at("chop::keep"));
     expect(at("craft:knife:job:once")).toBe(at("build:leanTo:job:once") + 1);
     expect(at("craft:snare:keep")).toBe(at("craft:knife:job:once") + 1);
@@ -96,12 +99,12 @@ describe("the reference player", () => {
     const hunt = tasks.indexOf("hunt:any");
     expect(tasks[hunt + 1]).toBe("craft:axe");
     const axe = tasks.indexOf("craft:axe");
-    expect(tasks.slice(axe + 1, axe + 6)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:"]);
-    expect(tasks[axe + 6]).toBe("hang:");
-    expect(tasks[axe + 7]).toBe("split:");
-    expect(tasks.slice(axe + 8, axe + 11)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
-    expect(tasks[axe + 11]).toBe("chop:");
-    expect(REFERENCE_ORDERS.length).toBe(39);
+    expect(tasks.slice(axe + 1, axe + 8)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:shore", "fill:hole", "melt:"]);
+    expect(tasks[axe + 8]).toBe("hang:");
+    expect(tasks[axe + 9]).toBe("split:");
+    expect(tasks.slice(axe + 10, axe + 13)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    expect(tasks[axe + 13]).toBe("chop:");
+    expect(REFERENCE_ORDERS.length).toBe(44);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -323,11 +326,12 @@ describe("the heir", () => {
     expect(r.heir.checkpoints.length).toBeGreaterThan(0);
   }, 30000);
 
-  // Two lives of sixty days is seconds of simulation, so the two readings
-  // taken off the same run share it rather than raising the heir twice.
+  // Two lives of ninety days is seconds of simulation, so the two readings
+  // taken off the same run share it rather than raising the heir twice. Ninety,
+  // because the first life on seed 17 starves on day 61 with the camp on the shore.
   let sixty: ReturnType<typeof runHeir>;
   beforeAll(() => {
-    sixty = runHeir(17, 60);
+    sixty = runHeir(17, 90);
   }, 30000);
 
   it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
@@ -352,7 +356,7 @@ describe("the heir", () => {
 // (`npm run test:slow`); what stays here is the shape of a lineage, cheaply.
 describe("the lineage", () => {
   it("raises an heir after the first life dies, landing it in the open coast with the old camp to find", () => {
-    const r = runLineage(17, 60, 2);
+    const r = runLineage(17, 90, 2);
     expect(r.lives.length).toBe(2);
     expect(r.lives[1].found).not.toBeNull();
     expect(coastOpen(r.lives[1].landed.doy)).toBe(true);
@@ -367,14 +371,14 @@ describe("the lineage", () => {
 
 describe("wants by level", () => {
   it("opens the large-game hunts at the species' recommended hunting level and not below", () => {
-    const { state } = newGame(17);
+    const { state, world } = newGame(17);
     const cal = calendar(0);
     const elk = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "elk")!;
     const any = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "any")!;
-    expect(wantOpen(state, elk, cal)).toBe(false);
-    expect(wantOpen(state, any, cal)).toBe(true);
+    expect(wantOpen(state, world, elk, cal)).toBe(false);
+    expect(wantOpen(state, world, any, cal)).toBe(true);
     setSkillLevel(state, "hunting", SPECIES_DEFS.elk.hunt!.level!);
-    expect(wantOpen(state, elk, cal)).toBe(true);
+    expect(wantOpen(state, world, elk, cal)).toBe(true);
   });
 
   it("the list hangs as a grind, keeps eight cordage, pins the winter woodpile at 400, and hunts elk, reindeer and roe deer by name", () => {
@@ -419,11 +423,11 @@ describe("wants by level", () => {
   });
 
   it("opens the 400 kg firewood keep from 1 September and not in April, staying open through winter until the thaw", () => {
-    const { state } = newGame(17);
+    const { state, world } = newGame(17);
     const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === 400)!;
-    expect(wantOpen(state, wood, calendar(0, 90))).toBe(false);
-    expect(wantOpen(state, wood, calendar(0, 200))).toBe(false);
-    expect(wantOpen(state, wood, calendar(0, 244))).toBe(true);
-    expect(wantOpen(state, wood, calendar(0, 20))).toBe(true);
+    expect(wantOpen(state, world, wood, calendar(0, 90))).toBe(false);
+    expect(wantOpen(state, world, wood, calendar(0, 200))).toBe(false);
+    expect(wantOpen(state, world, wood, calendar(0, 244))).toBe(true);
+    expect(wantOpen(state, world, wood, calendar(0, 20))).toBe(true);
   });
 });

@@ -53,6 +53,8 @@ describe("water", () => {
   it("drinks at a shore and not away from water; auto-drink keeps the reserve up while the tab runs", () => {
     const g = newGame(42);
     const { state, world } = g;
+    // Camp is a shore cell; stand on the dry forest spot first.
+    placeAtSpot(state, world, state.player.region, "forest");
     state.player.water = 0.5;
     expect(waterSource(state, world)).toBe(false);
     expect(drink(state, world)).toBe(false);
@@ -101,7 +103,7 @@ describe("vessels and snow", () => {
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
     placeAtSpot(state, world, state.player.region, "shore");
     expect(fillVessels(state, world)).toBe(2);
-    placeAtSpot(state, world, state.player.region, "camp");
+    placeAtSpot(state, world, state.player.region, "forest");
     state.player.water = 0.5;
     expect(drink(state, world)).toBe(true);
     expect(state.player.water).toBeCloseTo(2.5, 6);
@@ -116,6 +118,8 @@ describe("vessels and snow", () => {
     st.fire.lit = true;
     st.fire.fuelKg = 10;
     state.weather.snowCm = 5;
+    // The shore under the camp is iced, or the reserve would fill from it and not from the melt.
+    state.weather.iceCm = 4;
     state.player.water = 1;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 1, frozen: true });
     expect(check(state, world, cal, "melt").ok).toBe(true);

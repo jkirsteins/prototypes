@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { placeAtSpot } from "../src/sim/position";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, filterRows, FOLD_KEY, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
@@ -36,6 +37,7 @@ describe("fold and filter", () => {
     // and more than a level short - the shape splitFar and makeFirst are for.
     // Felling is startable from the first minute, so it pairs as the near row.
     const { state, world } = newGame(17);
+    placeAtSpot(state, world, state.player.region, "forest");
     const cal = calendar(state.minute, state.startDoy);
     const opts = availableTasks(state, world, cal);
     const chop = opts.find((o) => o.id === "chop")!;

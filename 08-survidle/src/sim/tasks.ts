@@ -31,13 +31,14 @@ import {
 import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
+import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
-import type {
-  DecayingId, GameState, IceMode, Inventory, ItemId, Order, PausedTask, RecipeId,
-  SpotId, StructureId, TaskId, ToolId,
+import {
+  type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
+  type SpotId, type StructureId, type TaskId, type ToolId,
 } from "./types";
-import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
+import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -332,10 +333,29 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "fill": {
+      const method = (arg ?? "shore") as FillMethod;
       const holds = vesselLitresCapacity(p) + totalQty(invs, "barkBucket") * TOOLS.barkBucket.litres! + totalQty(invs, "waterskin") * TOOLS.waterskin.litres!;
-      const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Fill vessels", detail: "every vessel in hand, from open water", duration: 5, repeatable: true }));
-      if (!o.ok) return o;
-      if (holds <= 0) return { ...o, ok: false, why: "needs a vessel" };
+      const label = method === "hole" ? "Cut an ice hole and fetch water" : method === "seep" ? "Fetch water from the seep" : "Fetch water from the shore";
+      const base = opt({ group: "camp", label, detail: "one vessel", duration: 5, repeatable: true });
+      if (method === "seep") {
+        if (holds <= 0) return { ...base, ok: false, why: "needs a vessel" };
+        const s = state.seeps[at];
+        if (!s) return { ...base, ok: false, why: Object.keys(state.seeps).some((k) => cellAt(world, Number(k)).region === p.region) ? "walk to the seep" : "no seep dug" };
+        if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
+          const homeSt = regionState(state, world, p.region);
+          const why = campWaterRoom(pile(state, homeSt.campCell), homeSt) > 0 ? "the vessels are full" : "camp is full";
+          return { ...base, ok: false, why };
+        }
+        if (s.litres <= 1e-9) return { ...base, ok: false, why: s.ice > 1e-9 ? "the seep is frozen" : "the seep is empty" };
+        const v = tripVessel(state, world);
+        const litres = Math.min(tripLitres(state, world), s.litres);
+        return { ...base, detail: `${litres.toFixed(1)} l${v ? `, the ${TOOLS[v.id].name}` : ""}, ${s.litres.toFixed(1)} of ${SEEP[s.class].poolL} l in the seep` };
+      }
+      const o0 = ground(watersideCell(world, at), "shore", "water", base);
+      if (!o0.ok) return o0;
+      if (holds <= 0) return { ...o0, ok: false, why: "needs a vessel" };
+      const v = tripVessel(state, world);
+      const o = { ...o0, detail: `${tripLitres(state, world).toFixed(1)} l${v ? `, the ${TOOLS[v.id].name}` : ""}` };
       // fillVessels tops every carried vessel off in one call, so a vessel already at
       // capacity has nothing left to gain from another cycle; without this the task
       // repeats forever at the shore instead of walking the full vessel home to pour.
@@ -345,11 +365,11 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "camp is full";
         return { ...o, ok: false, why };
       }
-      if (state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at)) {
-        if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "iced over; needs an axe for an ice hole" };
-        return { ...o, detail: `${o.detail}; opens an ice hole first`, duration: 25 };
-      }
-      return o;
+      const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
+      if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
+      if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
+      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
     }
     case "iceHole": {
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "camp", label: "Open an ice hole", detail: "20 minutes with the axe; skins over by morning", duration: 20 }));
@@ -475,6 +495,18 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         if (!kitInReach(state, world, "snare", invs)) return { ...o2, ok: false, why: "needs a snare" };
         return o2;
       }
+      if (sid === "seep") {
+        const cls = seepGround(world, at);
+        const o2 = { ...o, label: "Dig a seep", detail: cls
+          ? `4 sticks and a bucket to bail; ${SEEP[cls].poolL} l pool, +${SEEP[cls].refillLPerHour} l/h`
+          : "wet ground only: bog, spruce, or meadow and birch beside a bog" };
+        if (!cls) return { ...o2, ok: false, why: watersideCell(world, at) ? "the shore is here" : "dry ground" };
+        if (state.seeps[at]) return { ...o2, ok: false, why: "a seep is here already" };
+        if (vesselLitresCapacity(p) <= 0 && !kitInReach(state, world, "barkBucket", invs) && !kitInReach(state, world, "waterskin", invs)) return { ...o2, ok: false, why: "needs a vessel to bail with" };
+        if (done > 0) return { ...o2, detail: `${Math.round((done / def.minutes) * 100)}% dug` };
+        if (!canConsume(invs, def.needs)) return { ...o2, ok: false, why: "needs 4 sticks" };
+        return o2;
+      }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
       if (sid === "dryingRack") {
         if (st.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
@@ -485,6 +517,13 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "mend": {
+      if (arg === "seep") {
+        const o = opt({ group: "camp", label: "Re-dig the seep", detail: "an hour with the bucket; another year", duration: 60 });
+        const s = state.seeps[at];
+        if (!s) return { ...o, ok: false, why: "no seep here" };
+        if (!seepNeedsRedig(state, s)) return { ...o, ok: false, why: "holds well enough" };
+        return o;
+      }
       const sid = arg as DecayingId;
       const def = MEND[sid];
       const name = STRUCTURES[sid].name;
@@ -501,7 +540,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "light": {
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
       const o = needCamp(opt({
-        group: "camp", label: "Light the fire",
+        group: "camp", label: "Light the fire at the pit",
         detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: lr.minutes,
       }));
@@ -511,7 +550,6 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
-      if (st.structures.turfHut && !st.structures.cabin) return { ...o, detail: `${o.detail}; under the smoke hole` };
       return o;
     }
     case "lightTorch": {
@@ -595,12 +633,11 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     case "lightIndoors": {
       const o = needCamp(opt({
         group: "camp", label: "Light a fire indoors",
-        detail: st.structures.turfHut && !st.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
+        detail: st.structures.cabin && st.structures.hearth ? "at the hearth" : st.structures.turfHut && !st.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
         duration: 10,
       }));
       if (!o.ok) return o;
       if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
-      if (st.structures.cabin && st.structures.hearth) return { ...o, ok: false, why: "there is a hearth: light it there" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
@@ -687,12 +724,13 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "repair"));
   out.push(check(state, world, cal, "rest"));
   out.push(check(state, world, cal, "sleep"));
-  out.push(check(state, world, cal, "fill"));
+  for (const m of FILL_METHODS) out.push(check(state, world, cal, "fill", m));
   out.push(check(state, world, cal, "iceHole"));
   out.push(check(state, world, cal, "makeCamp"));
   for (const id of RECIPE_IDS) out.push(check(state, world, cal, "craft", id));
   for (const id of STRUCTURE_IDS) out.push(check(state, world, cal, "build", id));
   for (const sid of DECAYING) out.push(check(state, world, cal, "mend", sid));
+  out.push(check(state, world, cal, "mend", "seep"));
   for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
   out.push(check(state, world, cal, "haul"));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
@@ -738,11 +776,9 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   const need = toolFor(id, arg);
-  if (need && !hasTool(state.player, need)) {
-    if (id === "fill") {
-      if (vesselLitresCapacity(state.player) <= 0 && !takeUp(state, world, "barkBucket")) takeUp(state, world, "waterskin");
-    } else takeUp(state, world, need);
-  }
+  // A fetch takes up the one vessel with the most room, whatever is already in hand.
+  if (id === "fill") takeUpTripVessel(state, world);
+  else if (need && !hasTool(state.player, need)) takeUp(state, world, need);
   setAside(state, world);
   let any = false;
   if ((id === "hunt" || id === "fish") && arg === "any") {
@@ -1196,6 +1232,10 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (sid === "snare") {
         consume(invs, STRUCTURES.snare.needs);
         st.structures.snares++;
+      } else if (sid === "seep") {
+        const here = cellOf(state, world);
+        state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
+        delete st.build[sid];
       } else {
         st.structures[sid] = true;
         delete st.build[sid];
@@ -1206,10 +1246,16 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       state.stats.structures++;
       // Once per structure per life; the first snare set is the record's snare line.
       if (!hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
-      log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
+      log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : sid === "seep" ? "dug" : "finished"}.`, "good");
       return;
     }
     case "mend": {
+      if (arg === "seep") {
+        const s = state.seeps[cellOf(state, world)];
+        if (s) s.dug = state.minute;
+        log(state, "You dig the seep out again.", "good");
+        return;
+      }
       const sid = arg as DecayingId;
       consume(invs, MEND[sid].needs);
       st.structureAge[sid] = 0;
@@ -1229,11 +1275,8 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.fire.lit = true;
       cue("fireCatches");
       st.fire.fuelKg += 1;
-      // lightIndoors is always indoors, and it refuses a cabin with a hearth in
-      // favour of a plain light - so the plain light is the one that lays a
-      // cabin's hearth fire, and it also joins the fire under a hut's smoke
-      // hole. A pit fire beside a cabin with no hearth is an open fire.
-      st.fire.indoors = id === "lightIndoors" || (st.structures.turfHut && !st.structures.cabin) || (st.structures.cabin && st.structures.hearth);
+      // The row names the method: the pit fire is outdoors whatever stands, the fire indoors is indoors.
+      st.fire.indoors = id === "lightIndoors";
       log(state, "Smoke, then flame. The fire is lit.", "good");
       return;
     }
@@ -1274,7 +1317,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "fill": {
-      if (!waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
+      if (arg === "hole" && !waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
       const added = fillVessels(state, world);
       if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
       return;

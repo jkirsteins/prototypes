@@ -117,7 +117,9 @@ describe("panels", () => {
     };
     const points = (sel: string) => (document.querySelector(sel)!.getAttribute("points") ?? "").trim().split(/\s+/).filter(Boolean).length;
     const k1 = mapKey(state, world, ui, cal);
-    startTask(state, world, cal, "walk", "spot:forest");
+    // The farthest spot, so the walk is long enough to be caught three cells in.
+    const far = regionAt(world, state.player.region).spots.filter((s) => s.id !== "camp").reduce((a, b) => (b.km > a.km ? b : a));
+    startTask(state, world, cal, "walk", `spot:${far.id}`);
     expect(mapKey(state, world, ui, cal)).not.toBe(k1);
     setPanel("map", mapHtml(world, state, ui, cal));
     expect(document.querySelectorAll("#map .c.rt").length).toBe(0);
@@ -616,9 +618,9 @@ describe("the kind per row", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
-    ui.open = { id: "fill", arg: "" };
+    ui.open = { id: "fill", arg: "shore" };
     const html = doHtml(state, world, cal, ui);
-    const open = html.slice(html.indexOf('data-opt="intent:fill:"'));
+    const open = html.slice(html.indexOf('data-opt="intent:fill:shore"'));
     expect(open).toContain('data-act="row-where"');
   });
 

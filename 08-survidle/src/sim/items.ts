@@ -123,6 +123,7 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
   boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat in a fortnight." },
   turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
+  seep: { name: "seep", needs: [{ item: "stick", qty: 4 }], minutes: 240, desc: "A knee-deep hole to groundwater on wet ground. Fills on its own; freezes without a fire beside it." },
   waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];

@@ -27,7 +27,7 @@ export interface CapabilityRow {
 }
 
 export const NOT_TIERS: StructureId[] = ["boughBed"];
-export const PRODUCERS: string[] = ["snares", "drying rack", "basket trap", "water trough"];
+export const PRODUCERS: string[] = ["snares", "drying rack", "basket trap", "water trough", "seep"];
 
 export const CAPABILITIES: CapabilityRow[] = [
   {
@@ -139,5 +139,14 @@ export const CAPABILITIES: CapabilityRow[] = [
     producer: true,
     gives: "a week of water at camp",
     limits: "the walk to fill it",
+  },
+  {
+    id: "seep",
+    keys: ["build:seep"],
+    tier: "structure",
+    receives: ["woodcraft"],
+    producer: true,
+    gives: "water that comes on its own: a pool at a bog or in damp forest, for a camp with no shore",
+    limits: "the ground's litres an hour, frost without a fire on its cell, a dry fortnight, a re-dig each year",
   },
 ];

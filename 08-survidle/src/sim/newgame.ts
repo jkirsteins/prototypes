@@ -86,6 +86,7 @@ export function newGame(seed: number, startDoy = START_DOY): { state: GameState;
     lastHour: 0,
     lastDay: 0,
     piles: {},
+    seeps: {},
     survivors: [newRecord(1, rollName(new Rng(derive(seed, 7)), []), { year: 1, doy: startDoy }, 0)],
     year: 1,
     landing: null,

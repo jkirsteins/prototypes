@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { yieldItem } from "../src/sim/intent";
-import { addItem, freshTool, pile, qty, takeUp } from "../src/sim/inventory";
+import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, orderMet } from "../src/sim/orders";
-import { placeAt } from "../src/sim/position";
+import { placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { beginTask, check } from "../src/sim/tasks";
-import { ICE_SHORE_CM, vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
+import { vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
 import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -106,17 +106,18 @@ describe("the fill task", () => {
     expect(o.skipped).toBe("needs a vessel");
   });
 
-  it("on a frozen shore the fill opens an ice hole first, and the hole is gone at dawn", () => {
+  it("the hole order cuts an ice hole first on a frozen shore, fills, and the hole is gone at dawn", () => {
     const { g, state, world, st, camp } = waterCamp();
     state.weather.iceCm = 10;
     state.weather.snowCm = 0;
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
     expect(check(state, world, cal, "iceHole", undefined, shore.cell).ok).toBe(true);
-    const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    const o = addOrder(state, world, { task: "fill", arg: "hole", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
     // The dawn roll melts April ice at 2 cm a degree of mean; pin it so the shore stays shut for the test.
     expect(until(g, () => { state.weather.iceCm = 10; return st.iceHole !== null; }, 4000)).toBe(true);
-    expect(st.iceHole!.cell).toBe(shore.cell);
-    placeAt(state, world, shore.cell);
+    // The camp is itself a shore cell, so the hole is cut at the nearest water: under the camp.
+    expect(watersideCell(world, st.iceHole!.cell)).toBe(true);
+    placeAt(state, world, st.iceHole!.cell);
     expect(waterSource(state, world)).toBe(true);
     expect(until(g, () => orderMet(state, world, o, true), 6000)).toBe(true);
     expect(qty(camp, "water")).toBeCloseTo(2, 5);
@@ -125,13 +126,13 @@ describe("the fill task", () => {
     expect(state.log.some((l) => l.text === "The ice hole has skinned over.")).toBe(true);
   });
 
-  it("a manual fill on a frozen shore cuts the hole itself, then fills the vessel", () => {
+  it("a manual hole fill on a frozen shore cuts the hole itself, then fills the vessel", () => {
     const { state, world } = waterCamp();
     state.weather.iceCm = 10;
     state.weather.snowCm = 0;
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
     placeAt(state, world, shore.cell);
-    expect(beginTask(state, world, cal, "fill")).toBe(true);
+    expect(beginTask(state, world, cal, "fill", "hole")).toBe(true);
     expect(state.task?.duration).toBe(25);
     advance(state, world, 25);
     const st = regionState(state, world, state.player.region);
@@ -139,57 +140,38 @@ describe("the fill task", () => {
     expect(vesselLitres(state.player)).toBeCloseTo(vesselLitresCapacity(state.player), 5);
   });
 
-  it("with no axe in reach a frozen shore blocks the fill and says so", () => {
+  it("the shore order on a frozen shore waits with 'iced over' and never cuts or melts", () => {
+    const { state, world, st } = waterCamp();
+    state.weather.iceCm = 10;
+    state.weather.snowCm = 20;
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    const o = check(state, world, cal, "fill", "shore", shore.cell);
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("iced over");
+    addOrder(state, world, { task: "fill", arg: "shore", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    advance(state, world, 180);
+    expect(st.iceHole).toBeNull();
+    expect(state.log.some((l) => l.text.includes("melting"))).toBe(false);
+    expect(qty(pile(state, st.campCell), "water")).toBe(0);
+  });
+
+  it("the hole order needs an axe, and is not offered on an open shore", () => {
     const { state, world } = waterCamp();
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    expect(check(state, world, cal, "fill", "hole", shore.cell).why).toBe("the shore is open, no hole needed");
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
     state.weather.iceCm = 10;
-    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
-    const o = check(state, world, cal, "fill", undefined, shore.cell);
+    const o = check(state, world, cal, "fill", "hole", shore.cell);
     expect(o.ok).toBe(false);
-    expect(o.why).toBe("iced over; needs an axe for an ice hole");
-  });
-});
-
-describe("the fill keep in winter", () => {
-  it("melts snow at the fire when the shore is iced and no hole can be cut, and the camp water rises", () => {
-    const { state, world } = newGame(17);
-    const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
-    st.structures.firePit = true;
-    st.fire.lit = true;
-    st.fire.fuelKg = 20;
-    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
-    state.player.tools.push(freshTool("barkBucket"));
-    // A bucket at camp too, as waterCamp() gives: with none, the camp pile has
-    // no water capacity at all, and a melted litre can never be poured out of
-    // the vessel carried, whatever the fire does.
-    addItem(pile(state, st.campCell), "barkBucket", 1);
-    state.weather.iceCm = ICE_SHORE_CM;
-    state.weather.snowCm = 20;
-    addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
-    const before = qty(pile(state, st.campCell), "water");
-    advance(state, world, 120);
-    expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(before);
+    expect(o.why).toBe("needs an axe");
   });
 
-  it("with an axe in hand, an iced shore, snow and a lit fire, the fill keep walks to the shore and cuts a hole rather than melting snow at camp", () => {
-    const { state, world } = newGame(17);
-    const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
-    st.structures.firePit = true;
-    st.fire.lit = true;
-    st.fire.fuelKg = 20;
-    state.player.tools.push(freshTool("barkBucket"));
-    addItem(pile(state, st.campCell), "barkBucket", 1);
-    state.weather.iceCm = ICE_SHORE_CM;
-    state.weather.snowCm = 20;
+  it("a fill with no method reads as the shore, so an old order still runs", () => {
+    const { state, world } = waterCamp();
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
-    addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
-    const before = qty(pile(state, st.campCell), "water");
-    advance(state, world, 120);
-    // Only the iceHole task ever sets a standing hole at the shore; the melt
-    // fallback never does, so its presence alone rules out melting having run.
-    expect(st.iceHole?.cell).toBe(shore.cell);
-    expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(before);
+    expect(check(state, world, cal, "fill", undefined, shore.cell).label).toBe("Fetch water from the shore");
   });
 });

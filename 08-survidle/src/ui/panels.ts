@@ -33,6 +33,7 @@ import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
+import { waterLine, waterList } from "./water";
 import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
@@ -313,6 +314,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 <dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
 <dt>animals</dt><dd>${rosterHtml(state, world, id, cal)}</dd>
 <dt>places</dt><dd class="spots">${spots}${loose}</dd>
+${here ? `<dt>water</dt><dd>${esc(waterLine(state, world, cal))}<br><small>${esc(waterList(state, world, cal))}</small></dd>` : ""}
 ${asCamp}
 <dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}</dd>
 </dl>${travel}`;

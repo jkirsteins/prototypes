@@ -50,6 +50,11 @@ export function defaultChoice(): RowChoice {
   return { until: "once", n: 10, deliver: "leave", where: "nearest" };
 }
 
+/** A row's plain-click choice: a fetch or a melt brings its water to camp, everything else leaves its yield where it is. */
+export function defaultChoiceFor(id: TaskId): RowChoice {
+  return { ...defaultChoice(), deliver: id === "fill" || id === "melt" ? "camp" : "leave" };
+}
+
 export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,

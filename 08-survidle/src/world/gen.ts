@@ -68,6 +68,10 @@ export function latticeOf(id: number): { lx: number; ly: number } {
   return { lx: id % LATTICE_W, ly: Math.floor(id / LATTICE_W) };
 }
 
+/** Fishing happens from land beside water. */
+const isShore = (world: World) => (c: Cell) =>
+  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => terrainOf(world, n % world.w, Math.floor(n / world.w)) === "water");
+
 function buildRegion(world: World, id: number): RegionDef {
   const { lx, ly } = latticeOf(id);
   const x0 = Math.max(0, (lx - 1) * LATTICE);
@@ -116,7 +120,12 @@ function buildRegion(world: World, id: number): RegionDef {
   const cx = sx / n;
   const cy = sy / n;
   const capacity = wildlifeCapacity(world.seed, area, shares, cx, cy);
-  const campCell = nearestCell(world, cells, cx, cy, (c) => passable(c.terrain)) ?? cells[0];
+  // Camp is the shore cell nearest the centroid: a survivor camps by the water,
+  // and the centroid is only where the region's middle happens to be. A region
+  // with no shore keeps the centroid camp.
+  const campCell = nearestCell(world, cells, cx, cy, isShore(world))
+    ?? nearestCell(world, cells, cx, cy, (c) => passable(c.terrain))
+    ?? cells[0];
   const rng = new Rng(derive(world.seed, 1000 + id));
   const r: RegionDef = {
     id,
@@ -152,12 +161,9 @@ type Pick = (c: Cell) => boolean;
 const IS_FOREST: Pick = (c) => c.terrain === "spruce" || c.terrain === "pine" || c.terrain === "birch";
 const IS_ROCK: Pick = (c) => c.terrain === "rock" || c.terrain === "fell";
 const IS_HEATH: Pick = (c) => c.terrain === "bog" || c.terrain === "meadow";
-/** Fishing happens from land beside water. */
-const isShore = (world: World) => (c: Cell) =>
-  passable(c.terrain) && neighbours(world, c.y * world.w + c.x).some((n) => terrainOf(world, n % world.w, Math.floor(n / world.w)) === "water");
 
 /**
- * Camp sits at the centroid. Each other spot is the matching cell in the
+ * Camp sits on the shore nearest the centroid. Each other spot is the matching cell in the
  * region whose walk from camp is nearest a target length that grows as the
  * terrain gets rarer: the forest is close in a forest region, the outcrop
  * far when rock is scarce.
@@ -169,7 +175,9 @@ function placeSpots(world: World, r: RegionDef): Spot[] {
   const wants: { id: SpotId; pick: Pick; km: number; share: number }[] = [
     { id: "forest", pick: IS_FOREST, km: 0.3 + 0.9 * (1 - r.forest), share: r.forest },
     { id: "outcrop", pick: IS_ROCK, km: 0.4 + 1.2 * (1 - r.rock), share: r.rock },
-    { id: "shore", pick: isShore(world), km: 0.3 + 1.0 * (1 - r.frac.water), share: r.frac.water },
+    // The camp stands on the shore, so the shore spot is the next shore cell along: the
+    // fishing place a minute away, never the camp's own cell.
+    { id: "shore", pick: isShore(world), km: 0, share: r.frac.water },
     { id: "heath", pick: IS_HEATH, km: 0.3 + 1.0 * (1 - r.frac.bog - r.frac.meadow), share: r.frac.bog + r.frac.meadow },
   ];
   for (const want of wants) {
@@ -273,6 +281,26 @@ function findStart(world: World): { id: number; ring: number } {
         if (r.forest >= 0.45 && r.landCells >= 120 && r.frac.water < 0.15 && r.spots.length >= 3
           && hasSpot(r, "shore") && hasSpot(r, "outcrop")) {
           const found = { id, ring };
+          STARTS.set(world.seed, found);
+          return found;
+        }
+      }
+    }
+  }
+  // No lattice cell passed the exact filter: take the nearest region that at least
+  // has a shore, since a start with no water is not a start. The anchor itself only
+  // if even that fails.
+  for (let ring = 0; ring < 40; ring++) {
+    for (let dy = -ring; dy <= ring; dy++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+        const lx = ax + dx;
+        const ly = ay + dy;
+        if (lx < 0 || ly < 0 || lx >= LATTICE_W || ly >= LATTICE_H) continue;
+        const id = ly * LATTICE_W + lx;
+        const r = regionAt(world, id);
+        if (r.landCells >= 120 && hasSpot(r, "shore")) {
+          const found = { id, ring: 39 };
           STARTS.set(world.seed, found);
           return found;
         }

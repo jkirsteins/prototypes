@@ -193,7 +193,7 @@ describe("what an order says", () => {
   it("a light keep reads as keeping it lit, not a number that means nothing", () => {
     const { state, world } = newGame(3);
     const o = addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(orderSentence(state, world, cal, o)).toBe("Light the fire, keep it lit");
+    expect(orderSentence(state, world, cal, o)).toBe("Light the fire at the pit, keep it lit");
   });
 });
 

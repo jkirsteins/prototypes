@@ -6,7 +6,7 @@
 import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { berriesOverloaded } from "./berries";
-import { addItem, carried, pile, qty, removeItem } from "./inventory";
+import { addItem, carried, pile, qty, removeItem, takeUp } from "./inventory";
 import { TOOLS, WATER_STORE_L } from "./items";
 import { type Activity, activityOf } from "./player";
 import { cellOf, watersideCell } from "./position";
@@ -45,11 +45,22 @@ export function iceHoleOpen(state: GameState, cell: number): boolean {
   return st?.iceHole?.cell === cell;
 }
 
-/** Open water under foot: a waterside cell with the shore not iced over, or an ice hole cut here. */
+/** Litres a source under foot could give: endless at open water or an open ice hole, the seep's liquid pool on its cell, nothing elsewhere. */
+export function sourceLitres(state: GameState, world: World, cell = cellOf(state, world)): number {
+  if (watersideCell(world, cell) && (state.weather.iceCm < ICE_SHORE_CM || iceHoleOpen(state, cell))) return Number.POSITIVE_INFINITY;
+  const s = state.seeps[cell];
+  return s ? s.litres : 0;
+}
+
+/** Water under foot to drink from or fill at. */
 export function waterSource(state: GameState, world: World): boolean {
-  const cell = cellOf(state, world);
-  if (!watersideCell(world, cell)) return false;
-  return state.weather.iceCm < ICE_SHORE_CM || iceHoleOpen(state, cell);
+  return sourceLitres(state, world) > 1e-9;
+}
+
+/** Takes litres out of the source under foot; open water is not counted down. */
+function drawSource(state: GameState, world: World, litres: number): void {
+  const s = state.seeps[cellOf(state, world)];
+  if (s) s.litres = Math.max(0, s.litres - litres);
 }
 
 export function vesselLitres(p: Player): number {
@@ -67,6 +78,51 @@ export function vesselLitresCapacity(p: Player): number {
 
 /** What holds water when it is left at camp. */
 export const VESSELS: ToolId[] = ["barkBucket", "waterskin"];
+/**
+ * The one vessel a fetch takes: in hand, in the pack or in the pile under
+ * foot, the one with the most room. A partly full vessel is chosen only when
+ * it is the only vessel there, which the room ordering gives for free. A
+ * vessel of a kind already in hand is the one in hand, since tools are one
+ * per kind and taking up another would drop it. Null when there is none.
+ */
+export function tripVessel(state: GameState, world: World): { id: ToolId; inHand: boolean; room: number } | null {
+  const p = state.player;
+  const here = pile(state, cellOf(state, world));
+  let best: { id: ToolId; inHand: boolean; room: number } | null = null;
+  for (const t of p.tools) {
+    const holds = TOOLS[t.id].litres ?? 0;
+    if (!holds) continue;
+    const room = t.frozen ? 0 : holds - (t.litres ?? 0);
+    if (!best || room > best.room) best = { id: t.id, inHand: true, room };
+  }
+  for (const v of VESSELS) {
+    if (p.tools.some((t) => t.id === v)) continue;
+    if (qty(p.pack, v) + qty(here, v) < 1) continue;
+    const room = TOOLS[v].litres!;
+    if (!best || room > best.room) best = { id: v, inHand: false, room };
+  }
+  return best;
+}
+
+/** Litres a fetch would add: the room in every vessel that will be in hand once the trip's vessel is taken up. */
+export function tripLitres(state: GameState, world: World): number {
+  const p = state.player;
+  let l = 0;
+  for (const t of p.tools) {
+    const holds = TOOLS[t.id].litres ?? 0;
+    if (holds && !t.frozen) l += holds - (t.litres ?? 0);
+  }
+  const v = tripVessel(state, world);
+  if (v && !v.inHand) l += v.room;
+  return l;
+}
+
+/** Takes the trip's vessel up when it is not in hand yet. */
+export function takeUpTripVessel(state: GameState, world: World): void {
+  const v = tripVessel(state, world);
+  if (v && !v.inHand) takeUp(state, world, v.id);
+}
+
 /** Litres an hour a fed fire thaws at camp. */
 export const THAW_L_PER_HOUR = 2;
 
@@ -124,23 +180,34 @@ export function drink(state: GameState, world: World): boolean {
     removeItem(camp, "water", take);
     want -= take;
   }
-  if (want > 1e-9 && waterSource(state, world)) want = 0;
+  if (want > 1e-9) {
+    const take = Math.min(want, sourceLitres(state, world));
+    if (take > 1e-9) {
+      drawSource(state, world, take);
+      want -= take;
+    }
+  }
   if (want === WATER_FULL - p.water) return false;
   p.water = WATER_FULL - want;
   return true;
 }
 
-/** Fills every vessel at a source. Returns litres added. */
+/** Fills every vessel at a source, as far as the source goes. Returns litres added. */
 export function fillVessels(state: GameState, world: World): number {
-  if (!waterSource(state, world)) return 0;
+  let avail = sourceLitres(state, world);
+  if (avail <= 1e-9) return 0;
   let added = 0;
   for (const t of state.player.tools) {
     const holds = TOOLS[t.id].litres ?? 0;
     if (!holds) continue;
-    added += holds - (t.litres ?? 0);
-    t.litres = holds;
+    const put = Math.min(holds - (t.litres ?? 0), avail);
+    if (put <= 1e-9) continue;
+    t.litres = (t.litres ?? 0) + put;
     t.frozen = false;
+    added += put;
+    avail -= put;
   }
+  drawSource(state, world, added);
   return added;
 }
 

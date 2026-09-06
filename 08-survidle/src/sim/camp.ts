@@ -13,9 +13,10 @@ import {
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { regionState, touchedRegions } from "./regionstate";
+import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { SPECIES_DEFS } from "./species";
-import { type DecayingId, type GameState, type RegionState, type SpotId, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { walkableIce } from "./weather";
 
@@ -267,6 +268,8 @@ export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok
 
 export interface SiteReport {
   spots: { id: SpotId; minutes: number | null }[];
+  /** The ground a seep could be dug in on this cell, or null. */
+  seep: SeepClass | null;
 }
 
 /** What a cell offers as a camp: the walk to each of the region's other spots from it. */
@@ -284,11 +287,11 @@ export function siteReport(state: GameState, world: World, cell: number): SiteRe
       const route = findRoute(world, cell, s.cell, ice);
       return { id: s.id, minutes: route ? Math.round(routeMinutes(world, route, speed, ice)) : null };
     });
-  return { spots };
+  return { spots, seep: seepGround(world, cell) };
 }
 
 /** "forest 6, outcrop 33, shore 22, heath 17 min" - the spots in the region's own order, one "min" for the lot. */
 export function siteLine(r: SiteReport): string {
   const parts = r.spots.map((s) => (s.minutes === null ? `${s.id} no way` : `${s.id} ${s.minutes}`));
-  return `${parts.join(", ")} min`;
+  return `${parts.join(", ")} min${r.seep ? ", seep possible" : ""}`;
 }

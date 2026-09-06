@@ -55,7 +55,7 @@ export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 
 
 /** The stock a keep holds and its target, or null for any other order - including "keep it lit", which holds no stock at all. */
 export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
-  if (o.kind !== "keep" || o.req.until.kind !== "campHas" || o.req.task === "light") return null;
+  if (o.kind !== "keep" || o.req.until.kind !== "campHas" || o.req.task === "light" || o.req.task === "lightIndoors") return null;
   return { item: yieldItem(o.req.task, o.req.arg)!, qty: o.req.until.qty };
 }
 
@@ -78,10 +78,12 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
     return live ? have >= keep.qty - 1e-9 : have >= keep.qty / 2 - 1e-9;
   }
   if (o.kind === "grind") return false;
+  // A seep stands on a cell, not at the camp: its dig is a job done once.
+  if (o.req.task === "build" && o.req.arg === "seep") return o.done >= 1;
   if (o.req.task === "build" && o.req.arg !== "snare") {
-    return st.structures[o.req.arg as Exclude<StructureId, "snare">] === true;
+    return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
-  if (o.req.task === "light") return st.fire.lit;
+  if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
   const u = o.req.until;
   switch (u.kind) {
     case "once": return o.done >= 1;
@@ -98,7 +100,7 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   const keep = keepTarget(o);
   const u = o.req.until;
   if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}`);
-  else if (o.kind === "keep" && o.req.task === "light") parts.push("keep it lit");
+  else if (o.kind === "keep" && (o.req.task === "light" || o.req.task === "lightIndoors")) parts.push("keep it lit");
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
@@ -217,9 +219,12 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   // empty when this ran (an order removed by hand) or the loop above just emptied
   // it. A manual intent (no orderId) is not this scheduler's to clear, but wait is:
   // startIntent gives it no orderId either, yet it is only ever started by this
-  // scheduler and belongs to it just the same.
+  // scheduler and belongs to it just the same. A met job that still owes camp its
+  // load winds down instead, so the last order on the list does not leave its
+  // bark in the pack at the forest the way one with a neighbour below it never did.
   if (!st.orders.length) {
-    if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;
+    if (live && live.orderId !== null && deliveryPending(state, world, live)) live.windDown = true;
+    else if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;
     return;
   }
   const chosen = chooseOrder(state, world, cal);

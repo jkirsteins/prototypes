@@ -15,6 +15,7 @@ import { current, record } from "./record";
 import { stepSpine } from "./spine";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
+import { stepSeeps } from "./seep";
 import { autoDrink } from "./water";
 import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
@@ -85,6 +86,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   const who: Presence | null = nobody ? null : { region: state.player.region, atCamp: atCamp(state, world) };
 
   stepCamp(state, world, ambient, dt, who);
+  stepSeeps(state, world, ambient, dt);
 
   let drains: Drains | null = null;
   if (!nobody) {

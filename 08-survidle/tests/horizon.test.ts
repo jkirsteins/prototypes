@@ -32,8 +32,9 @@ describe("the horizon stages", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world);
     // The three named hunts (elk, reindeer, deer) all gate above level 1, so they are absent here.
-    // The 400 kg woodpile keep gates by season too, and a 1 April stage is closed for it.
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 4);
+    // The 400 kg woodpile keep gates by season too, and a 1 April stage is closed for it, as are
+    // the two ice-hole fetches and the two melts, which wait for the shore to ice over, and the fire indoors, which waits for a hut.
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 9);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");

@@ -70,8 +70,8 @@ describe("the epitaph", () => {
     // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
     // the early days buy warmth at the fire; and the 400 kg woodpile keep is open only from 1 September to
     // 1 April, which a 1 April start reaches in neither of the sixty-day lives below.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved at camp, with nothing in the pack and 70 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 55. Starved at camp, with nothing in the pack and 49 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Landed 1 April, year 1."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 51. Starved at camp, with nothing in the pack and 34 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

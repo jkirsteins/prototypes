@@ -17,7 +17,7 @@ import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
-import { addItem, freshTool, listItems, pile, qty } from "./inventory";
+import { addItem, freshTool, hasTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, TOOLS } from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
@@ -32,6 +32,7 @@ import { RECOMMENDED, skillLevel } from "./skills";
 import { LARGE_GAME } from "./species";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { startTask } from "./tasks";
+import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
@@ -103,7 +104,9 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * grind, needing the axe kept well above it, runs last and forever.
  */
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
-  keep("fill", 2),
+  keep("fill", 2, "shore"),
+  keep("fill", 2, "hole"),
+  keep("melt", 2),
   job("stone", { kind: "campHas", qty: 8 }),
   keep("sticks", 10),
   keep("bark", 12),
@@ -111,6 +114,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("build", { kind: "once" }, "firePit"),
   job("craft", { kind: "once" }, "fireDrill"),
   keep("light", 1),
+  keep("lightIndoors", 1),
   keep("chop", 4),
   keep("split", 60),
   job("build", { kind: "once" }, "leanTo"),
@@ -135,7 +139,9 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("bark", { kind: "campHas", qty: 40 }),
   job("build", { kind: "once" }, "turfHut"),
   job("build", { kind: "once" }, "waterStore"),
-  keep("fill", 20),
+  keep("fill", 20, "shore"),
+  keep("fill", 20, "hole"),
+  keep("melt", 20),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", 400),
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
@@ -160,7 +166,31 @@ export const WINTER_WOOD_TO_DOY = 90;
  * elk with a stone point at level 1 is not competence, and the 400 kg
  * woodpile keep waits for the season it is stocked against.
  */
-export function wantOpen(state: GameState, w: { req: IntentRequest; kind: OrderKind }, cal: Calendar): boolean {
+/** The home shore is under ice: a shore fetch is shut and the winter methods are the question. */
+function shoreIced(state: GameState): boolean {
+  return state.weather.iceCm >= ICE_SHORE_CM;
+}
+
+/** An axe in hand, in the pack or in the camp pile: what a competent player would carry to the shore in winter. */
+function axeInReach(state: GameState, world: World): boolean {
+  if (hasTool(state.player, "axe")) return true;
+  const st = regionState(state, world, state.player.region);
+  return qty(state.player.pack, "axe") >= 1 || qty(pile(state, st.campCell), "axe") >= 1;
+}
+
+export function wantOpen(state: GameState, world: World, w: { req: IntentRequest; kind: OrderKind }, cal: Calendar): boolean {
+  // Water by method, chosen here in the open rather than by a fallback inside the
+  // intent: the shore while it is open, the hole with an axe once it ices, the fire's
+  // melt only when no axe is in reach.
+  if (w.req.task === "fill" && w.req.arg === "shore") return !shoreIced(state);
+  if (w.req.task === "fill" && w.req.arg === "hole") return shoreIced(state) && axeInReach(state, world);
+  if (w.req.task === "melt") return shoreIced(state) && !axeInReach(state, world);
+  // The fire by method: the pit until a hut or a hearth stands, the fire indoors after.
+  if (w.req.task === "light" || w.req.task === "lightIndoors") {
+    const st = regionState(state, world, state.player.region);
+    const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
+    return w.req.task === "lightIndoors" ? indoors : !indoors;
+  }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
@@ -332,7 +362,7 @@ export class ReferencePlayer {
         // woodpile given on 1 September would otherwise still be splitting
         // 400 kg through the following summer. It is withdrawn, not
         // finished, so the want is given again when the season reopens.
-        if (!wantOpen(state, this.wants[i], cal)) {
+        if (!wantOpen(state, world, this.wants[i], cal)) {
           removeOrder(state, world, g.id);
           this.given.delete(i);
           this.trueKind.delete(i);
@@ -347,7 +377,7 @@ export class ReferencePlayer {
     for (let i = 0; i < this.wants.length; i++) {
       if (this.finished.has(i) || this.given.has(i)) continue;
       const w = this.wants[i];
-      if (!wantOpen(state, w, cal)) continue;
+      if (!wantOpen(state, world, w, cal)) continue;
       const probe: Order = { id: -1, kind: w.kind, req: w.req, done: this.completed.get(i) ?? 0, minutes: 0, skipped: "" };
       if (orderMet(state, world, probe, false)) continue;
       const best = withinLadder(state, w.req, w.kind);

@@ -65,7 +65,7 @@ export function setUpStage(seed: number, stage: HorizonStage, startDoy = START_D
   for (const s of SKILL_IDS) setSkillLevel(g.state, s, stage.levels[s] ?? 1);
   const cal = calendar(g.state.minute, g.state.startDoy);
   for (const w of REFERENCE_ORDERS) {
-    if (!wantOpen(g.state, w, cal)) continue;
+    if (!wantOpen(g.state, g.world, w, cal)) continue;
     const best = withinLadder(g.state, w.req, w.kind);
     addOrder(g.state, g.world, best.req, best.kind);
   }
