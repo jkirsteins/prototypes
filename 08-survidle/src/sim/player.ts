@@ -8,7 +8,7 @@ import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { log } from "./log";
-import { body } from "./person";
+import { BIG_EATER_BURN, body, hasQuirk } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
@@ -255,12 +255,14 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
     burn = KCAL_PER_HOUR[a];
   }
   // The base is this body's resting burn and the work above it is scaled by its strength.
-  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn;
-  burn = d.baseBurn + above;
+  const eats = hasQuirk(state, "bigEater") ? BIG_EATER_BURN : 1;
+  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats;
+  const base = d.baseBurn * eats;
+  burn = base + above;
   const afterCold = felt < 0 ? burn * COLD_BURN_FACTOR : burn;
   const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;
   creditBurn(state, {
-    base: d.baseBurn * h,
+    base: base * h,
     activity: a === "walk" ? 0 : above * h,
     walk: a === "walk" ? above * h : 0,
     cold: (afterCold - burn) * h,
@@ -285,7 +287,9 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   // work drain exactly what eight asleep restore, so a working day ends
   // tired and a grind day needs nine, and the collapse threshold is what
   // real overwork does rather than the end of every third day.
-  const energyRate = a === "sleep" ? ENERGY_RATE.sleep
+  // A light sleeper on a windy night gets half a night's rest.
+  const sleepRate = x.storm && hasQuirk(state, "sleepsLight") ? ENERGY_RATE.sleep / 2 : ENERGY_RATE.sleep;
+  const energyRate = a === "sleep" ? sleepRate
     : a === "rest" && state.task?.id === "rest" ? (p.energy < 20 ? ENERGY_RATE.restSpent : ENERGY_RATE.rest)
     : a === "rest" ? ENERGY_RATE.camp
     : ENERGY_RATE.task;

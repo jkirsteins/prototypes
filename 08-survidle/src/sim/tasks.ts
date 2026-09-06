@@ -1,6 +1,6 @@
 import { Rng } from "../rng";
 import { CELL_KM } from "../units";
-import { body } from "./person";
+import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
@@ -268,6 +268,23 @@ export const SLEEP_CAP_MINUTES = 540;
  * `at` judges the task at another cell of this region, for an intent that
  * has not walked there yet; ground, camp and reach are all taken there.
  */
+/** Work done at the open shore: what a forest-born survivor will not do in a storm. */
+const SHORE_TASKS = new Set<TaskId>(["fish", "read", "setTrap", "emptyTrap", "iceHole"]);
+
+/**
+ * A fear refuses the way a ladder refusal does: the row says why, the runner
+ * reports the order blocked, and the scheduler moves to the next order.
+ */
+function feared(state: GameState, world: World, id: TaskId, arg: string | undefined, at: number, o: TaskOption): TaskOption {
+  if (!o.ok) return o;
+  if (fearsFell(state)) {
+    const target = id === "walk" || id === "travel" ? walkTarget(state, world, arg ?? "")?.cell : LOCATED.has(id) ? at : undefined;
+    if (target !== undefined && cellAt(world, target).terrain === "fell") return { ...o, ok: false, why: FELL_FEAR_LINE };
+  }
+  if (shunsShore(state) && (SHORE_TASKS.has(id) || (id === "fill" && (arg === "shore" || arg === "hole")))) return { ...o, ok: false, why: SHORE_FEAR_LINE };
+  return o;
+}
+
 export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
   const o = checkFresh(state, world, cal, id, arg, at);
   const fraction = pausedFraction(state, world, id, arg, at);
@@ -277,6 +294,13 @@ export function check(state: GameState, world: World, cal: Calendar, id: TaskId,
 }
 
 export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
+  const o = feared(state, world, id, arg, at, checkRaw(state, world, cal, id, arg, at));
+  // A big eater works a tenth faster at anything the body paces.
+  if (o.ok && WORK_TASKS.has(id) && hasQuirk(state, "bigEater")) return { ...o, duration: o.duration * BIG_EATER_PACE };
+  return o;
+}
+
+function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
   const p = state.player;
   const r = regionAt(world, p.region);
   const st = regionState(state, world, p.region);
@@ -564,7 +588,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "light": {
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       const o = needCamp(opt({
         group: "camp", label: "Light the fire at the pit",
         detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
@@ -596,7 +620,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (target.cell === from) return { ...o, ok: false, why: "you are here" };
       if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
       const ice = walkIceMode(state, target.thin);
-      const route = findRoute(world, from, target.cell, ice);
+      const route = findRoute(world, from, target.cell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "no way there on foot" };
       const v = baseWalkSpeed(state, cal, state.weather);
       const minutes = routeMinutes(world, route, v, ice);
@@ -615,7 +639,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const kg = weight(pile(state, at));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
-      const route = findRoute(world, here, campCell, ice);
+      const route = findRoute(world, here, campCell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
       const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
@@ -864,7 +888,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const target = walkTarget(state, world, arg ?? "")!;
     const ice = walkIceMode(state, target.thin);
     const from = cellOf(state, world);
-    const path = findRoute(world, from, target.cell, ice) ?? [];
+    const path = findRoute(world, from, target.cell, ice, fearsFell(state)) ?? [];
     state.route = { target: target.cell, path, walked: [from], label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
@@ -1355,7 +1379,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "lightIndoors": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
       if (wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       if (lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
         return;

@@ -5,6 +5,7 @@ import { regionDensity } from "./animals";
 import { cue } from "./cues";
 import { hourlyHazards } from "./hazards";
 import { log } from "./log";
+import { hasQuirk } from "./person";
 import { die, firelit, sheltered } from "./player";
 import { noteNight } from "./record";
 import type { GameState } from "./types";
@@ -30,11 +31,16 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambi
     if (cal.season === "winter") chance *= 2;
     if (chance > 0 && rng.chance(chance)) {
       wolvesTonight = true;
-      p.health = Math.max(0, p.health - 25);
-      p.injured = Math.max(p.injured, 24 * 60);
       cue("wolves");
-      log(state, "Wolves out of the dark. You fight them off, bleeding.", "bad");
-      if (p.health <= 0) die(state, "wolves", regionAt(world, p.region).name);
+      if (hasQuirk(state, "sleepsLight")) {
+        // Awake before they are close: the fire between them and the bed, and no wound.
+        log(state, "You wake at the wolves and sit up by the embers till they go.", "bad");
+      } else {
+        p.health = Math.max(0, p.health - 25);
+        p.injured = Math.max(p.injured, 24 * 60);
+        log(state, "Wolves out of the dark. You fight them off, bleeding.", "bad");
+        if (p.health <= 0) die(state, "wolves", regionAt(world, p.region).name);
+      }
     }
   }
   if (cal.isNight) noteNight(state, p.warmth, wolvesTonight);

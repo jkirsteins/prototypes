@@ -6,6 +6,7 @@
 import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
+import { fearsFell } from "./fears";
 import { enterRegion, VISITED } from "./regionstate";
 import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
@@ -115,7 +116,7 @@ export function byWater(state: GameState, world: World): boolean {
 
 /** Route length in km from the player to a cell, or null if unreachable. */
 export function kmTo(state: GameState, world: World, idx: number, ice: IceMode = "none"): number | null {
-  const route = findRoute(world, cellOf(state, world), idx, ice);
+  const route = findRoute(world, cellOf(state, world), idx, ice, fearsFell(state));
   return route ? routeKm(route) : null;
 }
 

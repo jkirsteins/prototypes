@@ -12,7 +12,7 @@ import { bodyStep, currentNeed, orderKit, provision, provisionKit } from "./body
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
-import { body } from "./person";
+import { body, fearsFell } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
@@ -150,7 +150,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     const cells = r.cells
       .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
       .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c)) return { cell: c, note: "" };
+    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return { cell: c, note: "" };
     return { cell: here, note: "" };
   }
   if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell, note: "" };

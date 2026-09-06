@@ -12,7 +12,7 @@ import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { axeInHand, hasTool, pile, qty, transfer, weight } from "./inventory";
-import { body } from "./person";
+import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -129,7 +129,7 @@ export function minutesToCamp(state: GameState, world: World, cal: Calendar): nu
   const here = cellOf(state, world);
   if (here === st.campCell) return 0;
   const ice = walkableIce(state.weather);
-  const route = findRoute(world, here, st.campCell, ice);
+  const route = findRoute(world, here, st.campCell, ice, fearsFell(state));
   if (!route) return null;
   return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice);
 }

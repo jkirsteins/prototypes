@@ -13,6 +13,8 @@ import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL } from "./player";
 import { current } from "./record";
 import type { Candidate, GameState, Grade, Person, QuirkId } from "./types";
 
+export { FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./fears";
+
 export const QUIRKS: QuirkId[] = ["coastBorn", "forestBorn", "sleepsLight", "bigEater", "steadyByTheFire"];
 /** The body the tables were written for. */
 export const MEDIAN_MASS_KG = 72;
@@ -99,9 +101,9 @@ export function body(state: GameState): Derived {
   return derived(personOf(state));
 }
 
-export function hasQuirk(state: GameState, q: QuirkId): boolean {
-  return personOf(state).quirks.includes(q);
-}
+/** A big eater's pace on work, and its burn on everything. */
+export const BIG_EATER_PACE = 0.9;
+export const BIG_EATER_BURN = 1.1;
 
 const HOURS_WORDS = ["eight", "nine", "ten", "eleven", "twelve"];
 const HANDS_WORDS = ["clumsy", "unsure hands", "ordinary hands", "sure hands", "steady hands"];

@@ -5,7 +5,7 @@
  */
 import type { World } from "../world/gen";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
-import { body } from "./person";
+import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
@@ -173,7 +173,10 @@ for (const s of fishSpecies()) {
 export function gap(state: GameState, key: string): number {
   const rec = RECOMMENDED[key];
   if (!rec) return 0;
-  return Math.max(0, rec.level - skillLevel(state, rec.skill));
+  let level = rec.level;
+  // Forest-born: the forest's game is known two levels early.
+  if (key.startsWith("hunt:") && SPECIES_DEFS[key.slice(5) as Species]?.hunt?.spot === "forest" && hasQuirk(state, "forestBorn")) level -= 2;
+  return Math.max(0, level - skillLevel(state, rec.skill));
 }
 
 /** The concrete extras, at mastery 20 and 50, by key; a key not here is speed only. A key with no at50 has nothing to promise there. */
