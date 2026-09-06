@@ -11,7 +11,6 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { ambientTemperature } from "../src/sim/weather";
 import { placeAt, straightKm } from "../src/sim/position";
-import { WINTER_WOOD_FROM_DOY } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
@@ -309,9 +308,12 @@ describe("thirst and the seep", () => {
 });
 
 describe("sleep by the model, not by the clock", () => {
+  /** 1 September, the evening these tests are read at. Its own date, not the woodpile want's, which now opens at midsummer. */
+  const SEPTEMBER_FIRST_DOY = 244;
+
   /** 20:00 on 1 September at camp, a felling intent live: minute 0 is 08:00 and sunset is 19:56, so this is the dark. */
   function septemberEvening() {
-    const g = newGame(17, WINTER_WOOD_FROM_DOY);
+    const g = newGame(17, SEPTEMBER_FIRST_DOY);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);

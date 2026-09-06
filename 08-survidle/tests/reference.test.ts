@@ -440,23 +440,26 @@ describe("wants by level", () => {
     const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.firewoodKg);
     player.tick(state, world);
     expect(woodpile().length).toBe(1);
-    // Forward to the thaw: the days left in the year from 1 September, then April's first day.
+    // Forward to the thaw: the days left in the year from the opening day, then April's first day.
     state.minute = (365 - WINTER_WOOD_FROM_DOY + WINTER_WOOD_TO_DOY) * 1440;
     expect(calendar(state.minute, state.startDoy).dayOfYear).toBe(WINTER_WOOD_TO_DOY);
     player.tick(state, world);
     expect(woodpile()).toEqual([]);
-    // A full year from the start: 1 September again, and the want reopens.
+    // A full year from the start: the opening day again, and the want reopens.
     state.minute = 365 * 1440;
     expect(calendar(state.minute, state.startDoy).dayOfYear).toBe(WINTER_WOOD_FROM_DOY);
     player.tick(state, world);
     expect(woodpile().length).toBe(1);
   });
 
-  it("opens the winter firewood keep from 1 September and not in April, staying open through winter until the thaw", () => {
+  // The window opens at midsummer, not 1 September: against the measured 6.6-tonne
+  // stock a camp that starts cutting on the first frost never catches up.
+  it("opens the winter firewood keep from midsummer and not in spring, staying open through winter until the thaw", () => {
     const { state, world } = newGame(17);
     const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
     expect(wantOpen(state, world, wood, calendar(0, 90))).toBe(false);
-    expect(wantOpen(state, world, wood, calendar(0, 200))).toBe(false);
+    expect(wantOpen(state, world, wood, calendar(0, 150))).toBe(false);
+    expect(wantOpen(state, world, wood, calendar(0, WINTER_WOOD_FROM_DOY))).toBe(true);
     expect(wantOpen(state, world, wood, calendar(0, 244))).toBe(true);
     expect(wantOpen(state, world, wood, calendar(0, 20))).toBe(true);
   });
@@ -478,9 +481,9 @@ describe("wants by level", () => {
     expect(at(stones[1])).toBe(at(REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "whetstone")!) - 1);
   });
 
-  it("the winter log keep sits beside the woodpile keep and above the named hunts, opened with it from 1 September", () => {
+  it("the winter log keep sits beside the woodpile keep and above the named hunts, opened with it from midsummer", () => {
     // A grind is never met and a grind above a keep starves it: with the log keep last, below the three
-    // named hunts, camp logs never passed five from 1 September and a level-20 camp froze in December.
+    // named hunts, camp logs never passed five through the autumn and a level-20 camp froze in December.
     const logs = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.logs)!;
     expect(logs.kind).toBe("keep");
     expect(REFERENCE_ORDERS.some((w) => w.req.task === "chop" && w.kind === "grind")).toBe(false);
