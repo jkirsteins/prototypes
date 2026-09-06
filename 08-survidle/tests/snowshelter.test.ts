@@ -92,4 +92,28 @@ describe("the snow shelter", () => {
     st.structures.leanTo = true;
     expect(bothCold).toBeCloseTo(snowOnly, 6);
   });
+
+  it("beside a turf hut with its fire unlit, reads the better of the hut and the snow floor", () => {
+    // Nothing clears a snow shelter but three warm days in a row, so a hut built beside a
+    // still-standing one, its fire not yet lit indoors, is a reachable state.
+    const { state, world } = newGame(17, 334);
+    const st = regionState(state, world, state.player.region);
+    st.structures.turfHut = true;
+    st.structures.snowShelter = true;
+    state.task = null;
+    expect(st.fire.lit).toBe(false);
+    // Mild cold: the hut's +10 roof bonus beats the snow floor, so both together read
+    // no colder than the hut alone.
+    const bothMild = feltTemperature(state, world, -4);
+    st.structures.snowShelter = false;
+    const hutOnly = feltTemperature(state, world, -4);
+    st.structures.snowShelter = true;
+    expect(bothMild).toBeCloseTo(hutOnly, 6);
+    // Deep cold: ambient + 10 is still colder than the floor, so both together read the floor.
+    const bothCold = feltTemperature(state, world, -25);
+    st.structures.turfHut = false;
+    const floorOnly = feltTemperature(state, world, -25);
+    st.structures.turfHut = true;
+    expect(bothCold).toBeCloseTo(floorOnly, 6);
+  });
 });

@@ -44,13 +44,18 @@ export function isCampTask(task: Task | null): boolean {
   return !task || CAMP_TASKS.has(task.id);
 }
 
-/** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
-export function shelterBonus(r: RegionState): number {
-  if (r.structures.snowShelter && !r.structures.cabin && !r.structures.turfHut) return 0;
+/** The roof's own warmth, whichever roof stands, regardless of a snow shelter beside it: cabin over turf hut over lean-to. */
+export function roofBonus(r: RegionState): number {
   if (r.structures.cabin) return 15;
   if (r.structures.turfHut) return 10;
   if (r.structures.leanTo) return 5;
   return 0;
+}
+
+/** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
+export function shelterBonus(r: RegionState): number {
+  if (r.structures.snowShelter && !r.structures.cabin && !r.structures.turfHut) return 0;
+  return roofBonus(r);
 }
 
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
@@ -137,11 +142,12 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   if (indoors) {
     felt = Math.max(ambient, inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) + insulation(state);
   } else if (inSnow) {
-    // A snow shelter's ground floor and a lean-to's open-air bonus do not stack; a camp
-    // with both stands under whichever roof is warmer at this ambient, not colder than
-    // either alone.
+    // A snow shelter's ground floor and a roof's open-air bonus do not stack; a camp
+    // with both stands under whichever is warmer at this ambient, not colder than
+    // either alone - reachable whenever a hut or cabin stands but its fire is unlit,
+    // since nothing clears a snow shelter but three warm days in a row.
     const withSnow = Math.max(ambient, SNOW_FLOOR_C);
-    const withRoof = ambient + (r.structures.leanTo ? 5 : 0);
+    const withRoof = ambient + roofBonus(r);
     felt = Math.max(withSnow, withRoof) + insulation(state);
   } else {
     felt = ambient + insulation(state);
