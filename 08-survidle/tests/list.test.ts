@@ -62,4 +62,12 @@ describe("the list after the axe", () => {
     expect(wantOpen(state, world, pile400[1], october)).toBe(true);
     expect(wantOpen(state, world, pile400[2], october)).toBe(true);
   });
+
+  it("keeps twenty snares set with the food and forty below the trough", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    const twenty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 20);
+    const forty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 40);
+    expect(twenty).toBe(tasks.indexOf("berries::keep") + 1);
+    expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
+  });
 });

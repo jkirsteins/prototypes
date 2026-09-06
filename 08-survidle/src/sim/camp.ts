@@ -8,7 +8,7 @@ import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
@@ -171,7 +171,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     if (st.structures.snares > 0) {
       const d = regionDensity(state, world, id, "hare", cal);
       for (let i = 0; i < st.structures.snares; i++) {
-        if (popOf(st, "hare") >= 1 && rng.chance(0.3 * d)) {
+        if (popOf(st, "hare") >= 1 && rng.chance(SNARE_ODDS_PER_NIGHT * d)) {
           st.pop.hare = popOf(st, "hare") - 1;
           st.snareCatch.count += 1;
         }

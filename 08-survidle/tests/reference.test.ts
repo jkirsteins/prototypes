@@ -103,8 +103,10 @@ describe("the reference player", () => {
     expect(tasks[cook - 1]).toBe("cook:fish");
     expect(tasks[cook + 1]).toBe("fish:any");
     expect(tasks[cook + 2]).toBe("berries:");
-    expect(tasks[cook + 3]).toBe("build:dryingRack");
-    expect(tasks[cook + 4]).toBe("craft:bow");
+    // The twenty-snare keep sits right after the berries, pushing the rack and the bow one further down.
+    expect(tasks[cook + 3]).toBe("build:snare");
+    expect(tasks[cook + 4]).toBe("build:dryingRack");
+    expect(tasks[cook + 5]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     expect(tasks[spear + 4]).toBe("cook:fish");
@@ -114,14 +116,15 @@ describe("the reference player", () => {
     expect(tasks.slice(hunt + 1, hunt + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
     expect(tasks.slice(hunt + 8, hunt + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
     const axe = tasks.indexOf("craft:flakedAxe");
-    expect(tasks.slice(axe + 1, axe + 8)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:shore", "fill:hole", "melt:"]);
-    expect(tasks[axe + 8]).toBe("hang:");
+    // The forty-snare keep sits right after the water trough, pushing the fill, melt, hang and winter-stock block one further down.
+    expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
+    expect(tasks[axe + 9]).toBe("hang:");
     // The winter-stock keeps sit together, the three firewood methods then the logs, and the list ends with the three named hunts as grinds.
-    expect(tasks.slice(axe + 9, axe + 13)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
-    expect(tasks.slice(axe + 13, axe + 16)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    expect(tasks.slice(axe + 10, axe + 14)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
+    expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 61: the bough bed keep added right after the lean-to.
-    expect(REFERENCE_ORDERS.length).toBe(61);
+    // 63: the bough bed keep after the lean-to, the twenty-snare keep after the berries, the forty-snare keep after the water trough.
+    expect(REFERENCE_ORDERS.length).toBe(63);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.

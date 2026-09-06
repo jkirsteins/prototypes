@@ -161,6 +161,18 @@ describe("the stand-in for a shut kind", () => {
     expect(withinLadder(state, lit, "keep")).toEqual({ req: lit, kind: "keep" });
   });
 
+  it("a structure keep below its rung is a once job of the one snare, never a camp-has on a null item", () => {
+    const { state } = newGame(3);
+    const snares = req("build", { kind: "campHas", qty: 20 }, "snare");
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: { ...snares, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "hunting", 3);
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: { ...snares, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "hunting", 9);
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: { ...snares, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "hunting", 10);
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: snares, kind: "keep" });
+  });
+
   it("the stand-in always passes the gate", () => {
     const { state } = newGame(3);
     for (const l of [1, 3, 5, 10]) {

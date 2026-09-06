@@ -550,7 +550,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (sid === "snare") {
         const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;
-        if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: "five snares is enough here" };
+        if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: `${MAX_SNARES} snares is enough here` };
         if (!kitInReach(state, world, "snare", invs)) return { ...o2, ok: false, why: "needs a snare" };
         return o2;
       }

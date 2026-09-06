@@ -84,7 +84,12 @@ describe("the epitaph", () => {
     // The tables audit's food pass (items.ts: meat down from 1,500 to 1,100 a kilo, dried
     // meat from 3,500 to 3,300, berries from 500 to 450) moves it again, from day 19 to
     // day 22, and the death is now at camp rather than 0.2 km out.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 22. Starved at camp, with nothing in the pack and 71 kg of firewood at camp."`);
+    // The trap line (items.ts: MAX_SNARES 5 to 40, SNARE_ODDS_PER_NIGHT 0.3 to 0.04; the
+    // twenty- and forty-snare keeps in reference.ts) leaves day 22 as it was but the wood
+    // pile smaller, at 36 kg rather than 71: the two new wants push everything after the
+    // berries keep down the list, so the reference player spends some of the days before
+    // the death setting snares that would otherwise have gone to splitting firewood.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 22. Starved at camp, with nothing in the pack and 36 kg of firewood at camp."`);
     // Seed 19 no longer reaches day 60: with a broken night resumed rather than
     // spent awake, its opening runs a different order sequence and it never gets
     // a food source going before the arrival kit is out.

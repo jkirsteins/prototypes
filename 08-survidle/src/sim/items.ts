@@ -146,14 +146,21 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   leanTo: { name: "lean-to", needs: [{ item: "stick", qty: 8 }, { item: "log", qty: 4 }, { item: "cordage", qty: 2 }], minutes: 240, desc: "Poles and boughs. A little warmer, half as wet." },
   cabin: { name: "log cabin", needs: [{ item: "log", qty: 40 }, { item: "stone", qty: 12 }, { item: "cordage", qty: 8 }], minutes: 3600, desc: "Walls and a roof. Warm, dry, and a long job." },
   dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 40 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps; four in rain. A second rack doubles it." },
-  snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
+  snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to forty per region." },
   boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat after four days." },
   turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
   seep: { name: "seep", needs: [{ item: "stick", qty: 4 }], minutes: 240, desc: "A knee-deep hole to groundwater on wet ground. Fills on its own; freezes without a fire beside it." },
   waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
-export const MAX_SNARES = 5;
+/**
+ * A trap line, not five snares: the Swedish handbook's 3 to 5 km of marked
+ * ground with a hundred snares after a few days, checked at dawn. Forty
+ * per region, a few percent a night each; five snares at 0.3 was the same
+ * catch as fifty at 0.03 with none of the work.
+ */
+export const MAX_SNARES = 40;
+export const SNARE_ODDS_PER_NIGHT = 0.04;
 /** Days a bough bed stays springy before it has to be laid again: Kochanski, a fresh layer every three or four days. */
 export const BOUGH_BED_DAYS = 4;
 
