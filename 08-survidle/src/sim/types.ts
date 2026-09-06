@@ -455,4 +455,6 @@ export interface GameState {
   landing: Landing | null;
   /** The season spine's memory: the year each threshold last fired and was last announced. */
   spine: { fired: Partial<Record<ThresholdId, number>>; announced: Partial<Record<ThresholdId, number>> };
+  /** The manual has been opened unasked once in this world. */
+  manualSeen: boolean;
 }

@@ -14,6 +14,7 @@ import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/ep
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
+import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { fmtName } from "../sim/names";
@@ -570,6 +571,19 @@ export function landingHtml(state: GameState, world: World): string {
 <p><label>Name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label></p>
 <button class="act" data-act="land">Land</button>
 <button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">next boat (${esc(fmtWorldDate(next))})</button>
+<button class="mini" data-act="manual-open">How to survive</button>
+</div>`;
+}
+
+export function manualHtml(): string {
+  const sections = MANUAL_SECTIONS.map((s) => `<h2>${esc(s.title)}</h2>${s.lines.map((l) => `<p>${esc(l)}</p>`).join("")}`).join("");
+  const links = MANUAL_LINKS.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join("");
+  return `<div class="box manual">
+<h1>How to survive</h1>
+${sections}
+<h2>More</h2>
+<ul>${links}</ul>
+<button class="act" data-act="manual-close">Close</button>
 </div>`;
 }
 

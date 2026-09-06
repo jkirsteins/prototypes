@@ -119,6 +119,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     year: 1,
     landing: null,
     spine: { fired: {}, announced: {} },
+    manualSeen: false,
   } as GameState;
   newPerson(state, world, start.campCell, world.start);
   enterRegion(state, world, world.start);

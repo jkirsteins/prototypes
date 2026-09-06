@@ -15,6 +15,8 @@ export interface UiState {
   confirmAbandon: boolean;
   /** The cemetery overlay is open. */
   cemetery: boolean;
+  /** The manual overlay is open. */
+  manual: boolean;
   /** Survivor index whose entry is expanded in the cemetery, or null for none. */
   cemeteryOpen: number | null;
   /** The cemetery's "leave this world" button is showing its confirm step. */
@@ -60,7 +62,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
-    cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, copiedUntil: 0, zoom: 0,
+    cemetery: false, manual: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, copiedUntil: 0, zoom: 0,
     open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [], folds: {},
     hurry: newHurry(),
   };
