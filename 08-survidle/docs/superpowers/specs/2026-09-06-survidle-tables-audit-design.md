@@ -743,3 +743,22 @@ thirst-death timeline slower than today's; fish capacities species by
 species; the rack in cold air; the arrival kit; the ice hole's re-cut
 rate; the axe's loss rate; the tree, its goals and Lineage points; sleep
 debt (H, the mind); the Norwegian handbook until it can be read.
+
+**Built.** The roadmap's build order marks the tables audit built with
+this spec's readings, and its F section carries a "Measured with the
+tables audit" paragraph with the same four final gates - April 3 of 4,
+winter 4 of 4, the year at level 20 2 of 4, lineage 0 of 4 within six
+lives - seed by seed, the January snow, the kills per species and the
+1 March woodpile, and the runner changes above with the death that
+asked for each; its Experience bullet names the quarter carry as landing
+here. The year loop's section 8 flags are annotated in the roadmap's
+build-order entry: snow depth and snare odds taken by this spec, the
+cook keep made to bite by the aging rule and the indoor water
+multiplier answered, with fish capacities, the hunting band, the rack in
+cold air, the arrival arrows, the ice hole's re-cut rate and the axe's
+loss rate standing. The idle curve spec's section 2.4 names the quarter
+carry as built. The README's body, camp, light, bedding, winter and
+journal paragraphs move with the numbers this spec corrected, a new
+"How to survive" paragraph names the manual, and "Where the numbers
+live" gains `src/sim/lean.ts`, `src/sim/manual.ts` and the snow
+constants in `weather.ts`.

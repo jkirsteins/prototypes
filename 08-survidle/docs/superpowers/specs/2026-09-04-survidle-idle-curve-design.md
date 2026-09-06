@@ -159,7 +159,10 @@ line per rung per skill per survivor, eighteen at most, none repeated.
 Until F lands the gate is per survivor. When F's carry nodes land
 (section 5.3) the heir's carried hours give the level and the level gives
 the rung; there is no separate "unlock carried" node. An heir who carries
-woodcraft to 10 has jobs, grinds and keeps in woodcraft from birth.
+woodcraft to 10 has jobs, grinds and keeps in woodcraft from birth. The
+tables audit built the first half early: a heir's skill minutes carry at
+a quarter as a rule of the world, ahead of the tree, and the rung lines
+already fire on the first tick for whatever level that quarter opens.
 
 ### 2.5 The reference player
 

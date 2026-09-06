@@ -113,7 +113,7 @@ Calibration targets for the sim, to steer by rather than to hit exactly:
 
 - Cold: warmth under 20 drains 6 health an hour; a night in the open at
   -3 C costs 30 to 55 warmth. This is the killer that actually kills.
-- Starvation: 6000 kcal full, 100 to 400 an hour burned, and only 2 health
+- Starvation: 6000 kcal full, 70 to 500 an hour burned, and only 2 health
   an hour once empty, so it is slow.
 - Wolves: two percent per night hour outside shelter at full local wolf
   density, twice that in winter; no wolves, quiet nights.
@@ -157,7 +157,7 @@ Late August, the same country:
 | large game, averaged | about 0 | 300 to 1,500 |
 | mixed total | 700 to 1,500 | 2,000 to 4,000 |
 
-Against a burn of 2,500 to 3,500 a day living outside in the cold, a
+Against a burn of 3,000 to 4,500 a day living outside in the cold, a
 beginner in April runs a deficit whatever they do; the game's job is to
 make that deficit take weeks to kill, not days. What the tables say for
 the roadmap, and where each note lands:
@@ -233,6 +233,37 @@ the roadmap, and where each note lands:
   fish in April, where animals cross, which lake is still safe. F's
   journal, dim map and trails are that knowledge accruing across
   survivors, and the risk forecast (B) is the modern stand-in for it.
+
+The tables audit read the game's numbers against two survival handbooks
+in full, and where they disagreed the game moved to the handbook's:
+
+| quantity | game | source |
+|---|---|---|
+| a day's burn | band 2,500 to 3,500 | settled survival day 3,000; camp-building day 4,500; hard work 4,400; a week at -30 to -40 C 6,000 (Swedish, energy table) |
+| walk with a heavy pack | 250 kcal/h | 545 kcal/h at 4 km/h with 27 kg (Swedish) |
+| heavy work | 400 kcal/h | 700 kcal/h for a hard march or heavy work (Swedish) |
+| sleep | 70 kcal/h | 70 kcal/h (Swedish) |
+| water | 2.4 L/day at rest, 3.3 to 4.8 indoors in winter | 2.5 to 3 L a day, 1.5 lying still (Swedish) |
+| food clause | 500 kcal/day | ration 500 kcal a day of carbohydrate, the least that helps (Swedish) |
+| hare | 1,500 kcal/kg | about 1,000 kcal/kg; hare alone shows starvation within a week however much is eaten (Kochanski) |
+| berries | 500 kcal/kg, 2 kg full credit, refuse at 4 kg | not over 2 L a day, about 1.2 kg (Swedish) |
+| open fire fuel | 3 kg/h at any temperature | at -40 C in an open lean-to a 30 cm spruce a night, a pile as long and wide as you are tall and half as high; a teepee a third to a quarter of that; an enclosed shelter with a stove a tenth (Kochanski) |
+| hut and cabin fuel | 0.4 and 0.27 of the open fire | teepee 0.25 to 0.33, stove 0.1 (Kochanski) |
+| bough bed | flat after 14 days | a fresh layer every three or four days (Kochanski) |
+| walking in the dark | 0.75 of day speed | 1 km/h in terrain (Swedish) |
+| meat stops rotting | at 0 C | freezing storage needs -10 to -15 C (Swedish) |
+| lean-to | 4 h and materials | 3 to 5 h (Swedish) |
+| snares | 5 per region at 0.3 a night | a trap line 3 to 5 km long checked at dawn, up to a hundred snares after a few days (Swedish) |
+
+The "game" column is what the tables audit found, not what ships; its
+corrections are the burn band, the cold burn and fuel that grow with the
+temperature, hare and the lean ceiling, snares as a trap line, and the
+four smaller ones, in `2026-09-06-survidle-tables-audit-design.md`.
+Sources: Försvarsmakten, *Handbok Överlevnad*, 1988 (M7734-472091), full
+text at
+https://archive.org/download/handbok_overlevnad_1988/Handbok_%C3%96verlevnad_1988_djvu.txt;
+Mors Kochanski, *Northern Bushcraft*, 1987, full text at
+https://archive.org/download/northern-bushcraft_202210/Northern%20Bushcraft_djvu.txt.
 
 ## The eight sub-projects, in order
 
@@ -379,9 +410,13 @@ landing month as an Arrival node, and the death site with the corpse
 run and its search order), then E hides and clothing (tanning, smoking, the fur shell, wear and
 mending: the depth and the ramp on top of the hide set the tree already
 sews, which is why it waits for the round), then the tables audit,
-sub-project 2 of the year loop (its section 8 lists the flags: snow
-depth, snare odds, the cook keep clearing raw meat, and whatever the
-winter water question found), then the rest of
+sub-project 2 of the year loop (`2026-09-06-survidle-tables-audit-design.md`:
+the year loop's flags are taken (snow depth, snare odds), made to bite
+(the cook keep, by aging raw meat at half rate to -10 C and not at all
+under it) or answered (the indoor water multiplier, moved onto work
+alone), with fish capacities, the hunting band, the rack in cold air, the
+arrival arrows, the ice hole's re-cut rate and the axe's loss rate
+standing; built, readings under F), then the rest of
 3 camp (the rest of the shelter ladder, the buildings with the
 cellar first) with the rest of C alongside and F's trails and the
 cellar's keep, then 4 animals, 5 injury
@@ -2827,6 +2862,75 @@ is short by the hours the latch used to spend sitting on it. Fuel cut in
 December rather than carried into it is J's second and third steps, and
 the fuel-stock rule beside them is where these two seeds live or die.
 
+Measured with the tables audit
+(`2026-09-06-survidle-tables-audit-design.md`, built 2026-09-06 on
+`worktree-tables-audit`, `npm test` green at 905 tests). Read before on
+origin/main at 3ec48f8, and again after the branch was rebased onto
+c9f1e96 (the sleep model), because the sleep model moved the gates
+between the audit's own reading and its build. Before, on 3ec48f8: April
+at the old day 26 passed 4 of 4, first lives ending on days 41, 207 and
+89 by starvation and seed 42 alive past day 251, the gate week reading
+burn 3,339 to 3,781 a day over its 2,500 to 3,500 band; the year at
+level 20 passed 3 of 4, seed 79 frozen on day 278 eating 2,016 against
+4,353 burned, seed 42 ending the year with 2.2 tonnes of rendered fat
+off a hunt row of 3,921 kcal a day against the expert large-game top of
+1,500 and seed 17 the same shape at 709 kg of fat, and seed 19 the
+honest pass, alive 1 February on 3,600 kcal at camp; the winter gate
+read 4 of 4 and the heir trend 2 of 4; snow read 79 to 271 cm by late
+December against 40 to 60 cm real.
+On c9f1e96, after the sleep model moved it: April 3 of 4, seed 19 frozen
+day 16 on a burn of 4,270 a day; the year at level 20 2 of 4, seeds 17
+and 19 frozen days 306 and 300 with food at camp.
+
+After, with the corrected bands, the day re-derived to 20 and the six
+runner changes below: April 3 of 4, the same seed short as before this
+task - seed 17 passes and starves day 25, seed 19 fails fed on 414 kcal
+a day eaten against the 500 clause and starves day 24, seed 42 passes
+and starves day 35, seed 79 passes and starves day 28. Winter 4 of 4, up
+from 0, all four alive on day 91. The year at level 20 stays 2 of 4, the
+same pair alive (seeds 42 and 79) with the same two dead by different
+causes: seed 17 now starves day 310 on the lean ceiling with 3 kg of fat
+left and a 1 January pile of 379 kg and 120 logs, rather than freezing
+day 300 beside an empty one; seed 19 starves day 148, up from day 48.
+Lineage reads 0 of 4 within six lives, days per life running 10 to 66,
+with seed 42's run of 35, 40, 38, 47, 66, 50 the one that climbs.
+January snow reads 25, 29 and 46 cm on the three year-probe seeds that
+reach it and 32, 28, 31 and 31 on the winter gate, against 40 to 60 cm
+real and the year loop's flagged 79 to 271. Kills per species against
+the expert large-game band of 0 to 1,500 kcal a day run 4,103 to 11,572
+across the four seeds, seven times over on a surviving level-20 camp -
+a steer, not a gate. The 1 March woodpile reads 386, 335, 35 and 24 kg
+of split firewood with 53, 47, 45 and 53 logs beside it, 935 to 1,446 kg
+of the 6,600 stocked left, a fifth the stock was sized to spare.
+
+Six runner changes, each with the death that asked for it, all Task
+13's. The stocked camp starved beside about 246,000 kcal of dried meat
+with eaten pinned at 1,600 lean kcal a day, so the winter stock now
+carries 20 kg of rendered fat beside its 80 kg of dried meat. The same stock was short
+on wood by a factor of two against a measured 60 kg a day over the
+ninety days, so it now carries 600 kg split and 300 logs, 6,600 kg in
+all. Two year seeds froze with the larder full and the woodpile empty
+because the hang grind sat above the winter-stock keeps, so the two
+keeps now head the surplus loop for the season; seed 79's 1 January pile
+went from 40 kg and five logs to 341 and 156, and it lives the year. A
+level-20 camp froze on 19 February with a bark bucket that had frozen
+full on 30 January: a frozen vessel read as empty rather than full, so
+the fetch's own legality passed it over with nothing to gain; a frozen
+vessel is now thawed by the fire before a fetch runs, and a fetch with
+every vessel frozen refuses with its own reason, "no vessel has room to
+fill", instead of running for nothing. Seed 17 reached 1 September with
+51 kg of firewood against 6,600 to cut, so the winter woodpile window
+now opens at midsummer instead of 1 September. And a level-20 survivor
+took twenty-six mallard beside seventy-six roe deer and starved, because
+hunt grounds were ranked by whether anything at all was about rather
+than by the meat an hour's hunting would bring, and the quiver filled
+only once a hunt was already the live order, so a bow hunt from anywhere
+but camp read "needs arrows in the pack"; grounds now rank by meat per
+hour per species at the hunter's own odds, and arrows ride in the pack
+whenever the bow leaves camp - seed 19 takes six roe deer and two elk
+where it took none and lives to day 148 rather than day 48, and seed
+17's kills gain 24 black grouse, 22 willow grouse and 22 hare.
+
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
 them, except what the tree below carries. The world is saved instead of
@@ -2953,7 +3057,9 @@ across lives, and are not what the tree is for:
   10, 14, 20; the square root keeps it from running away. Mastery and the
   pool are not rated. This is the branch that moves the skill wall, and
   a lineage that hurried woodcraft and carried hunting plays differently
-  from the reverse.
+  from the reverse. The quarter carry landed as a rule of the world with
+  the tables audit, ahead of the tree; these nodes are what lift it to a
+  half.
 - **Settlement.** Slower decay: the cabin stands a lifetime, the cellar
   keeps, tools rust less.
 
