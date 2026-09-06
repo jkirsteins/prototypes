@@ -7,7 +7,7 @@ import { calendar, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
-  BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
@@ -15,7 +15,7 @@ import { baseWalkSpeed } from "./player";
 import { regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
-import { SPECIES_DEFS } from "./species";
+import { type Species, SPECIES_DEFS } from "./species";
 import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean, walkableIce } from "./weather";
@@ -138,6 +138,18 @@ export function rackCapacity(st: RegionState): number {
   return RACK_MAX_KG * Math.max(1, st.racks);
 }
 
+/** The birds whose nests the spring gives: waterfowl at the shore, grouse on the heath. */
+export const NESTING: Species[] = ["mallard", "eider", "willowGrouse", "blackGrouse", "ptarmigan", "capercaillie", "hazelGrouse"];
+
+/** Clutches a region holds on 1 May: a clutch for every four nesting birds about. */
+export function nestsFor(world: World, state: GameState, region: number): number {
+  const r = regionAt(world, region);
+  const st = regionState(state, world, region);
+  let n = 0;
+  for (const s of NESTING) if (r.capacity[s]) n += popOf(st, s) / 4;
+  return n;
+}
+
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
 export function trapDraws(level: number): number {
   return Math.min(8, 4 + Math.floor(Math.max(0, level - 5) / 5));
@@ -237,6 +249,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       st.iceHole = null;
       if (who && id === who.region) log(state, "The ice hole has skinned over.");
     }
+    if (cal.dayOfYear === EGG_FROM_DOY) st.nests = nestsFor(world, state, id);
+    if (cal.dayOfYear === EGG_TO_DOY + 1) st.nests = 0;
     const forestCells = r.forest * r.cells.length;
     st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);
   }

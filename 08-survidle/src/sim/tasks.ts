@@ -13,8 +13,8 @@ import {
   removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, ROE_SHARE, SNOW_SHELTER_CM, STRUCTURES,
-  STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
+  RECIPES, RECIPE_IDS, ROE_SHARE, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
@@ -69,7 +69,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -90,7 +90,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
-  "setTrap", "emptyTrap", "makeCamp", "crack",
+  "setTrap", "emptyTrap", "makeCamp", "crack", "eggs",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -562,6 +562,15 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!o.ok) return o;
       if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
       if (totalQty(toolInvs, "stone") < 1 && !axeInHand(p)) return { ...o, ok: false, why: "needs a stone or the axe" };
+      return o;
+    }
+    case "eggs": {
+      const shore = watersideCell(world, at);
+      const heath = heathCell(world, at);
+      const o = opt({ group: "gather", label: "Gather eggs", detail: `${EGG_KG_PER_HOUR} kg an hour from the nests; May and June, and the nests empty`, duration: 60, repeatable: true });
+      if (!(shore || heath)) return { ...o, ok: false, why: "stand by the water or on the heath" };
+      if (cal.dayOfYear < EGG_FROM_DOY || cal.dayOfYear > EGG_TO_DOY) return { ...o, ok: false, why: "no eggs until May" };
+      if (st.nests <= 1e-9) return { ...o, ok: false, why: "the nests are empty" };
       return o;
     }
     case "craft": {
@@ -1397,6 +1406,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "crackedBone", 1);
       creditYield(state, "marrow", kg * FOODS.fat.kcalPerKg);
       log(state, `{You} {crack} a bone: ${Math.round(kg * 1000)} g of marrow.`, "good");
+      return;
+    }
+    case "eggs": {
+      const kg = Math.min(EGG_KG_PER_HOUR * yieldFactor(state, "foraging"), st.nests * EGG_CLUTCH_KG);
+      st.nests -= kg / EGG_CLUTCH_KG;
+      produce(state, world, "eggs", kg);
+      creditYield(state, "eggs", kg * FOODS.eggs.kcalPerKg);
+      log(state, `{You} {gather} the nests: ${(kg * 1000).toFixed(0)} g of eggs.`, "good");
       return;
     }
     case "craft": {

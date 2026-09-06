@@ -72,6 +72,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "bark": return "bark";
     case "stone": return "stone";
     case "berries": return "berries";
+    case "eggs": return "eggs";
     case "split": return "firewood";
     case "splitWedges": return "firewood";
     case "deadwood": return "firewood";
@@ -183,6 +184,10 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   if (task === "setTrap") {
     const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);
     if (cells.length) return { cell: cells[0], note: "" };
+  }
+  if (task === "eggs") {
+    const spot = (r.capacity.mallard || r.capacity.eider ? spotOf(r, "shore") : null) ?? spotOf(r, "heath");
+    return { cell: spot ? spot.cell : here, note: "" };
   }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
@@ -508,6 +513,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   bark: () => "stripping bark",
   stone: () => "gathering stone",
   berries: () => "picking berries",
+  eggs: () => "gathering eggs",
   split: () => "splitting a log",
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",

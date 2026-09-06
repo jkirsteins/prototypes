@@ -77,11 +77,13 @@ function fillDefaults(state: GameState): void {
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
     if (st.trap) st.trap.oilyKg ??= 0;
+    st.nests ??= 0;
   }
   for (const d of state.ledger) {
     d.yield.trap ??= 0;
     d.yield.marrow ??= 0;
     d.yield.roe ??= 0;
+    d.yield.eggs ??= 0;
   }
   if (state.intent) {
     state.intent.orderId ??= null;

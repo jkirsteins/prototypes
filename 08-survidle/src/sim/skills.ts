@@ -23,7 +23,7 @@ export const SKILL_NAMES: Record<SkillId, string> = {
 /** The actions each skill owns; the pool's capacity is 100 hours per key. */
 export const MASTERY_KEYS: Record<SkillId, string[]> = {
   woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split", "deadwood", "splitWedges"],
-  foraging: ["berries", "stone"],
+  foraging: ["berries", "stone", "eggs"],
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
@@ -103,7 +103,7 @@ export function masteryMinutes(m: number): number {
 }
 
 /** Keys the pool counts, for the skills whose rosters would otherwise put the perks out of reach. */
-const POOL_KEY_CAP: Partial<Record<SkillId, number>> = { hunting: 6, fishing: 3, woodcraft: 6 };
+const POOL_KEY_CAP: Partial<Record<SkillId, number>> = { hunting: 6, fishing: 3, woodcraft: 6, foraging: 2 };
 
 export function poolCapacity(skill: SkillId): number {
   return POOL_MINUTES_PER_KEY * Math.min(MASTERY_KEYS[skill].length, POOL_KEY_CAP[skill] ?? Number.POSITIVE_INFINITY);
@@ -132,7 +132,7 @@ export function masteryOf(state: GameState, skill: SkillId, key: string): number
 export function skillOf(id: TaskId, arg?: string): SkillId | null {
   switch (id) {
     case "chop": case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": return "woodcraft";
-    case "berries": case "stone": return "foraging";
+    case "berries": case "stone": case "eggs": return "foraging";
     case "hunt": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
     case "mend": return "building";
@@ -148,7 +148,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
 export function masteryKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
-    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone":
+    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs":
     case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang":
       return id;
     // "Anything" is not a thing you get better at: the species drawn is what the minutes go to.

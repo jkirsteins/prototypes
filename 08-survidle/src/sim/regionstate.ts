@@ -41,6 +41,7 @@ export function newRegionState(world: World, id: number): RegionState {
     nextOrderId: 1,
     iceHole: null,
     trap: null,
+    nests: 0,
   };
 }
 
