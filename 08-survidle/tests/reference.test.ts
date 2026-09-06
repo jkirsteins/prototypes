@@ -126,13 +126,13 @@ describe("the reference player", () => {
     expect(tasks[cook - 1]).toBe("cook:oilyFish");
     // The bone crack, then the two standing producers - the rack and the twenty-snare line, work
     // that finishes and feeds the camp afterwards - and only then the fat and carbohydrate item's
-    // own gathers: eggs, roots and its cook keep, inner bark and its grind, the sap tap and seaweed,
-    // all above the fish keep.
+    // own gathers: eggs, roots and its cook keep, the sap tap and seaweed, all above the fish
+    // keep. Inner bark and its grind are off the list; see tests/list.test.ts for why.
     expect(tasks.slice(cook + 1, cook + 4)).toEqual(["crack:", "build:dryingRack", "build:snare"]);
-    expect(tasks.slice(cook + 4, cook + 11)).toEqual(["eggs:", "roots:", "cook:roots", "innerBark:", "grindBark:", "tapSap:", "seaweed:"]);
-    expect(tasks[cook + 11]).toBe("fish:any");
-    expect(tasks[cook + 12]).toBe("berries:");
-    expect(tasks[cook + 13]).toBe("craft:bow");
+    expect(tasks.slice(cook + 4, cook + 9)).toEqual(["eggs:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 9]).toBe("fish:any");
+    expect(tasks[cook + 10]).toBe("berries:");
+    expect(tasks[cook + 11]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     // The rendered-fat keep sits above the two cook keeps, fat first: raw fat rots in three
@@ -153,13 +153,12 @@ describe("the reference player", () => {
     expect(tasks[axe + 13]).toBe("hang:");
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 75: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
+    // 73: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
     // twenty-snare keep and the rack above the gathering block, the forty-snare keep after the
     // water trough, the thaw grind at the head of the water block, and the fat and carbohydrate
-    // item's ten insertions around the cook keeps - the rendered-fat keep, the oily-fish cook
-    // keep, the bone crack, eggs, roots and its cook keep, inner bark and its grind, the sap
-    // tap and seaweed.
-    expect(REFERENCE_ORDERS.length).toBe(75);
+    // item's eight insertions around the cook keeps - the rendered-fat keep, the oily-fish cook
+    // keep, the bone crack, eggs, roots and its cook keep, the sap tap and seaweed.
+    expect(REFERENCE_ORDERS.length).toBe(73);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.

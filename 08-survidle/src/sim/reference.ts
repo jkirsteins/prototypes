@@ -173,6 +173,16 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * the year - the ninety-odd days from the thaw to midsummer - that they
  * are shut.
  *
+ * Inner bark is not on the list. At the handbook's own yield it is the
+ * worst hour a survivor can spend: about 275 kcal an hour against fishing's
+ * 420 and root digging's 414 at level 20, so the strip and its grind took
+ * an hour and a half a day off two better sources, and shutting them
+ * lengthened the level-20 year by 38 days on seed 17 and 52 on seed 79.
+ * The task, its season and its wantOpen branch all stay for a player who
+ * wants the fallback by hand; what is missing is only the standing want.
+ * Whether the yield or the strip season is what is wrong is the author's
+ * question and not the list's.
+ *
  * The catch is two items and wants two cook keeps: raw oily fish is not in
  * the auto-eat order and rots in a day and a half, so with only the lean
  * keep on the list a char or a trout was landed, carried home and thrown
@@ -273,8 +283,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("eggs", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   job("roots", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("cook", 1, "roots"),
-  keep("innerBark", 3),
-  keep("grindBark", 1),
   job("tapSap", { kind: "once" }),
   job("seaweed", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("fish", 1, "any"),
@@ -372,10 +380,12 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
   if (winterStockWant(w)) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
-  // The nests hold eggs only in their window; inner bark strips only April to July, when the
-  // rise the task itself half-rates outside of is also the whole window a beginner should
-  // bother stripping at all; the sap window is the same three weeks the task's own check reads.
+  // The nests hold eggs only in their window; the sap window is the same three weeks the
+  // task's own check reads.
   if (w.req.task === "eggs") return cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY;
+  // Inner bark strips only April to July, when the rise the task itself half-rates outside of
+  // is also the whole window a beginner should bother stripping at all. No row on the list
+  // carries this task any more; the branch is here for a player who adds one by hand.
   if (w.req.task === "innerBark") return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
   if (w.req.task === "tapSap") return cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY;
   // Roots dig by hand April to October; outside it the ground is frozen and only an ice hole,

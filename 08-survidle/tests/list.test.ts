@@ -94,17 +94,22 @@ describe("the list after the axe", () => {
     expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
   });
 
-  it("keeps the fat rendered above the cook keeps, cracks bones, and gathers eggs, roots, bark, sap and seaweed in their seasons", () => {
+  it("keeps the fat rendered above the cook keeps, cracks bones, and gathers eggs, roots, sap and seaweed in their seasons", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     expect(tasks.indexOf("cook:rawFat:keep")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
     expect(tasks.indexOf("crack::grind")).toBeGreaterThan(tasks.indexOf("cook::keep"));
-    for (const t of ["eggs::job", "roots::job", "cook:roots:keep", "innerBark::keep", "grindBark::keep", "tapSap::job", "seaweed::job"]) expect(tasks).toContain(t);
+    for (const t of ["eggs::job", "roots::job", "cook:roots:keep", "tapSap::job", "seaweed::job"]) expect(tasks).toContain(t);
+    // Inner bark and its grind are off the list: at 275 kcal an hour they cost more than they
+    // return, and the task stays in the game for a player who wants the fallback by hand.
+    for (const t of ["innerBark::keep", "grindBark::keep"]) expect(tasks).not.toContain(t);
     const { state, world } = newGame(17);
     expect(wantOpen(state, world, want("eggs::job"), calendar(0, 100))).toBe(false);
     expect(wantOpen(state, world, want("eggs::job"), calendar(0, 130))).toBe(true);
     expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 125))).toBe(true);
     expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 200))).toBe(false);
-    expect(wantOpen(state, world, want("innerBark::keep"), calendar(0, 250))).toBe(false);
+    const bark = { req: { task: "innerBark" as const, until: { kind: "campHas" as const, qty: 3 }, deliver: "camp" as const, where: "nearest" as const }, kind: "keep" as const };
+    expect(wantOpen(state, world, bark, calendar(0, 250))).toBe(false);
+    expect(wantOpen(state, world, bark, calendar(0, 120))).toBe(true);
     expect(wantOpen(state, world, want("roots::job"), calendar(0, 250))).toBe(true);
     state.player.tools = [];
     expect(wantOpen(state, world, want("roots::job"), calendar(0, 340))).toBe(false);
