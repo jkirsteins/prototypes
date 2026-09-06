@@ -5,11 +5,13 @@ import { dailyCamp, rootStockFor } from "../src/sim/camp";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, qty } from "../src/sim/inventory";
 import { FOODS, ROOT_KG_PER_HOUR, ROOT_STOCK_KG_PER_CELL, ROOT_WINTER_KG_PER_HOUR } from "../src/sim/items";
+import { resolveCell } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RECOMMENDED } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
+import { regionAt, spotOf } from "../src/world/gen";
 
 describe("roots and rhizomes", () => {
   it("a bog holds a season's roots, dug with a stick at 0.3 kg an hour by a forager who knows them and half that by one who does not", () => {
@@ -59,5 +61,25 @@ describe("roots and rhizomes", () => {
     expect(stock - st.roots).toBeCloseTo(ROOT_WINTER_KG_PER_HOUR, 6);
     placeAtSpot(state, world, region, "heath");
     expect(check(state, world, winter, "roots")).toMatchObject({ ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" });
+  });
+
+  it("a winter dig is sent to the open ice hole, not to the nearest root ground", () => {
+    // The want opens in winter on an axe in reach, but the walk went to the bog, where the dig
+    // is refused with "the ground is frozen" whatever the hole at the shore is doing: ruling R5,
+    // and the reason a winter roots row on the list never once ran.
+    const { state, world } = newGame(17);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    placeAtSpot(state, world, region, "heath");
+    const winter = calendar(0, 350);
+    const summer = calendar(0, 200);
+    const shore = spotOf(regionAt(world, region), "shore")!.cell;
+    st.iceHole = { cell: shore, minute: state.minute };
+    expect(resolveCell(state, world, winter, "roots", undefined, "nearest").cell).toBe(shore);
+    // In the digging season the ground itself is open and the hole is beside the point.
+    expect(resolveCell(state, world, summer, "roots", undefined, "nearest").cell).not.toBe(shore);
+    // No hole cut: the walk falls back to the nearest root ground, where the task says why it is shut.
+    st.iceHole = null;
+    expect(resolveCell(state, world, winter, "roots", undefined, "nearest").cell).not.toBe(shore);
   });
 });

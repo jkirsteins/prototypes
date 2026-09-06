@@ -13,7 +13,7 @@ import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
-import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
+import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_TO_DOY, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
@@ -207,6 +207,12 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   if (task === "tapSap") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "birch"), note: "" };
   if (task === "seaweed") return { cell: nearestCell(state, world, (c) => watersideCell(world, c, "sea")), note: "" };
   if (task === "roots") {
+    // Outside the digging season the bog and the meadow are frozen solid and only the water
+    // reaches the rhizomes, through a hole cut in the ice. So a winter dig goes to the open
+    // hole and not to the nearest root ground: sent to the bog it was refused with "the
+    // ground is frozen" every winter day, and the winter row on the list never once ran.
+    const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
+    if (winter && st.iceHole && watersideCell(world, st.iceHole.cell)) return { cell: st.iceHole.cell, note: "" };
     return {
       cell: nearestCell(state, world, (c) => watersideCell(world, c) || cellAt(world, c).terrain === "bog" || cellAt(world, c).terrain === "meadow"),
       note: "",
