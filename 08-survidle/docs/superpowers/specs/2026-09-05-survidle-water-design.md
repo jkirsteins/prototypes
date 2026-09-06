@@ -6,7 +6,7 @@ land on; fetching water is one plain trip with one vessel; and a seep,
 dug on wet ground, is the water source for a camp with no shore. Springs,
 boiling and multi-vessel trips are not in this work.
 
-What the code does today, surveyed at main 66a9dce. `RegionDef.campCell` is the
+What the code does today, surveyed at main ae85e1f, with the year loop landed. `RegionDef.campCell` is the
 passable cell nearest the region centroid (`src/world/gen.ts`), and every
 other spot is placed at a target walk from it that grows as its terrain
 gets rarer: the shore at 0.3 km plus 1 km scaled by how scarce water is,
@@ -46,22 +46,36 @@ derives terrain from per-cell moisture and elevation (`fieldsAt` in
 pine the dry heath. The weather counts dry days (`dryDays`) for the fire's
 tinder rule.
 
-What the year loop changes, in flight as this is written. The year loop
-(spec `2026-09-05-survidle-year-loop-design.md` at 33f8aa1, plan
-`2026-09-05-survidle-year-loop.md` at 66a9dce, code on
-`worktree-year-loop`) lands before this spec's plan is written, and the
-plan is written against main as it is then, not against the survey
-above. The pieces that meet this spec: its Task 11 rewrites the fill
-intent's fallback in `src/sim/intent.ts`, so a fill on an iced shore
-with no axe walks home and melts snow into the vessels, and exports
-`fireStep` and `campMeltReady` from `src/sim/body.ts` for it; the fetch
-trip in section 2 and the thirsty step in section 3 are written on top
-of that clause, not beside it. It adds `npm run year` with a year gate
-and a winter gate, and the winter gate's stocked December camp dies of
-thirst today walking to an iced shore, which is the reading section 6
-is for. `RegionState` gains `racks` and `trap.age` with defaults in
-`src/sim/save.ts`; `state.seeps` sits beside them. The reference list
-gains large game by name; nothing in this spec changes the list.
+What the year loop changed, landed at ae85e1f (spec
+`2026-09-05-survidle-year-loop-design.md`, plan
+`2026-09-05-survidle-year-loop.md`, readings in the roadmap's F section
+under "Measured with the year loop"). Where it meets this spec: the fill
+intent in `src/sim/intent.ts` now has a melt fallback, stated once in
+`meltInsteadOk` and read by `fetchAllowance` (which takes the calendar
+now), `intentOption`, `startIntent` and the running intent's `workStep`:
+a fill on an iced shore with no axe for a hole walks home and melts snow
+at the fire into the vessels, and the ice hole is judged at the fill's
+own cell, not under foot; `campMeltReady` and `fireStep` are exported
+from `src/sim/body.ts` for it. The fetch trip in section 2 is written on
+top of that clause and keeps it, and the two winter fill tests in
+`tests/fill.test.ts` stand. `thirstyStep` itself is unchanged. The
+decay ruling now reads in years: a lean-to's roof fails in a year, a
+rack lasts two, and "a structure that needs mending twice a summer is a
+chore rather than a decision"; the seep's upkeep in section 3 follows
+that ruling. `RegionState` gained `racks` and `trap.age` with defaults
+in `src/sim/save.ts`; `state.seeps` sits beside them. `npm run year`
+exists, with `--winter`, `--fresh`, `--level` and `--start`. The
+roadmap's build order now runs: the winter loop (a winter working day, a
+log keep in place of the felling grind, hunt grinds above the woodpile
+keep), then E hides and clothing, then the tables audit, then I. The
+tables audit opens on "winter thirst at a camp holding an axe": seeds
+17 and 19 die of thirst on winter days 23 and 34 from the stocked
+December camp, whose water is the generated shore 25 to 55 minutes
+away. The landing camp of section 1 puts that shore under foot, so this
+spec's re-measure is the reading the audit should open on, and section
+8 places this work before the winter loop for that reason. What the
+landing camp does not touch: the indoor floor's 1.3 water-loss factor
+above 20 C, which the roadmap names as the other half of that death.
 
 ## Decisions taken by the author's pre-approval
 
@@ -149,7 +163,10 @@ to camp; `rowRequest` sets `deliver: "camp"` for `fill` whatever the
 default choice, and the row's "leave where it is" toggle still works from
 the expansion for the player who wants the vessel filled and kept in
 hand. The raw "fill vessels" button in the actions row, shown when
-standing at a source, is unchanged.
+standing at a source, is unchanged. The year loop's melt fallback holds
+for the trip: on an iced shore with no axe the row reads "melts snow at
+the fire instead", and the trip goes to camp and melts snow into the
+vessel it took up, through `meltInsteadOk` as the keep does today.
 
 The trip's vessel: when the intent starts, it takes up one vessel from
 the pack or the pile, the one with the most room, comparing capacity
@@ -226,13 +243,15 @@ seep", drinking as it fills, until the reserve is over the thirsty line;
 the wait is idle time in the ledger, like waiting out a storm. Walking to
 an empty seep with a shore in reach never happens.
 
-**Upkeep.** The walls slump. A seep has a life of 60 days from `dug` and
-a mend of 1 hour and no materials, "Re-dig the seep", offered on the
-seep's own cell, not at camp, since the hole is where it is; `DECAYING`
-and `needsMending` are per region and stay as they are, and the seep's
-clock lives on the seep. Past two thirds of its life the mend row shows,
-past its life the pool stops refilling and the water line says "silted
-up" until it is re-dug.
+**Upkeep.** The walls slump in the thaw and the hole silts up over a
+year. A seep has a life of `SEEP_LIFE_DAYS = 365` from `dug`, in the
+roadmap's ruling that lifetimes read in years and a structure mended
+twice a summer is a chore, and a mend of 1 hour and no materials,
+"Re-dig the seep", offered on the seep's own cell, not at camp, since
+the hole is where it is; `DECAYING` and `needsMending` are per region
+and stay as they are, and the seep's clock lives on the seep. Past two
+thirds of its life the mend row shows, past its life the pool stops
+refilling and the water line says "silted up" until it is re-dug.
 
 **Map.** Every seep is a mark, "s", class `mk-seep`, drawn at its cell
 when nothing else takes the glyph, with a legend entry.
@@ -243,7 +262,8 @@ added to `PRODUCERS` and the coverage test picks it up.
 
 **Fill on a seep.** The `fill` intent's ground stays `shore`; a Fetch
 water order goes to the shore or the ice hole as today, and in a region
-with no open shore the row is greyed with "no shore here" while the
+with no shore at all the row is greyed with "no shore here" (an iced
+shore is not that case: the melt fallback serves it) while the
 runner's thirsty step still drinks at the seep. Filling at a seep is by
 hand: stand there and the actions row shows "fill vessels" with the
 litres available. Passed over: the runner walking to the seep for a
@@ -276,7 +296,8 @@ possible" for a cell with a seep ground.
 - fill: a plain Fetch water order delivers to camp; the trip takes the
   emptiest vessel, a partly full one only when it is alone; the row's
   litres equal capacity minus litres for the vessels in hand; a vessel
-  with nowhere to pour stays in hand full.
+  with nowhere to pour stays in hand full; the year loop's two winter
+  fill tests (melt snow with no axe, cut a hole with one) pass unchanged.
 - seep: `seepGround` on the seven cases of the table; dig refuses on
   dry ground, on a shore, and on a cell that has one; two seeps in one
   region refill on their own; the pool refills at its class rate and
@@ -294,17 +315,27 @@ possible" for a cell with a seep ground.
 
 ## 6. The re-measure
 
-`npm run reference`, `npm run horizon`, `npm run year` and
-`npm run year -- --winter` on the gate seeds, after part 1, with the
-numbers in the plan's record. The year loop's readings are the "before":
-its spec's section 0 and section 10 as measured when it lands. The
-"after" is written beside them under the same headings, not as a second
-unrelated set, since every gate number in the roadmap moves when the
-first camp is on the shore. The winter gate is the one this camp is
-expected to change most: a stocked December camp that dies of thirst on
-day 15 walking to an iced shore now has the shore under foot. The
-expectation everywhere is a shorter water walk and an easier gate; a
-gate that gets harder is a finding, not a number to bend.
+`npm run reference`, `npm run horizon`, `npm run year`,
+`npm run year -- --level=10`, `npm run year -- --fresh` and
+`npm run year -- --winter` on the gate seeds 17, 19, 42 and 79, after
+part 1, with the numbers in the plan's record and in the roadmap's F
+section as a "Measured with the landing camp" paragraph beside the
+"Measured with the year loop" ones, under the same gate names. The
+"before" is the year loop's closing set at 9deac2c: the April gate 4 of
+4 at day 26, then starving on days 52, 55, 39 and 46; the heir trend 2
+of 4; the year gate 0 of 4 at level 20 (days 68 starved, 245 froze, 218
+and 229 starved), at level 10 (82, 214 thirst, 177, 102) and fresh (52,
+55, 39, 46); the winter gate 0 of 4 (days 23 and 34 thirst, 6 and 8
+froze). Every one of these moves when the first camp is on the shore,
+so all six runs are re-read, not only the ones about water. The winter
+gate is the one this camp is expected to change most: the two thirst
+deaths are at a camp with an axe whose shore is 25 to 55 minutes off,
+and now the shore is under foot; the two frozen deaths are outdoor cold
+on a walking task, which is E's row and should not move. The indoor 1.3
+water-loss factor is not touched, so a thirst death that stays is that
+factor's reading and goes to the tables audit as such. The expectation
+everywhere is a shorter water walk and an easier gate; a gate that gets
+harder is a finding, not a number to bend.
 
 ## 7. The browser pass
 
@@ -317,6 +348,14 @@ is refused, and one on the next bog cell works and shows its own mark.
 
 ## 8. Roadmap edits
 
+- The build order: this spec goes in right after the year loop and
+  before the winter loop, because the tables audit's opening flag,
+  winter thirst at a camp with an axe, is a reading taken at a camp 25
+  to 55 minutes from its water, and the winter loop's three rules are
+  gated on the year probe, which this spec moves. Reading them in the
+  other order measures the winter loop twice.
+- The F section: a "Measured with the landing camp" paragraph beside
+  the year loop's, with section 6's runs.
 - Item 2: springs beside rapids, running water that never freezes, with
   the note that the ice hole owns winter water until they land.
 - Item 3: the seep's record, in the item's own built-then-said style.
