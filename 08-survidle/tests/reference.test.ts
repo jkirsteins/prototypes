@@ -45,8 +45,8 @@ describe("the reference player", () => {
     player.tick(state, world);
     const list = ordersHere(state, world);
     // The three named hunts (elk, reindeer, deer) gate on the species' recommended level,
-    // so a level-1 survivor's first tick never sees them; the 400 kg woodpile keep and the
-    // 150-log keep gate by season and a 1 April start is closed for both; the two ice-hole
+    // so a level-1 survivor's first tick never sees them; the woodpile keep and the
+    // log keep gate by season and a 1 April start is closed for both; the two ice-hole
     // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
     // and the hide coat, trousers and boots wait for Crafting 8; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
@@ -117,11 +117,12 @@ describe("the reference player", () => {
     expect(tasks.slice(hunt + 1, hunt + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
     expect(tasks.slice(hunt + 8, hunt + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
     const axe = tasks.indexOf("craft:flakedAxe");
-    // The forty-snare keep sits right after the water trough, pushing the fill, melt, hang and winter-stock block one further down.
+    // The forty-snare keep sits right after the water trough, pushing the fill, melt, winter-stock and hang block one further down.
     expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
-    expect(tasks[axe + 9]).toBe("hang:");
-    // The winter-stock keeps sit together, the three firewood methods then the logs, and the list ends with the three named hunts as grinds.
-    expect(tasks.slice(axe + 10, axe + 14)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
+    // The winter-stock keeps head the surplus loop, the three firewood methods then the logs: a grind
+    // above a keep starves it, and the hang grind starved the woodpile on a camp taking elk all autumn.
+    expect(tasks.slice(axe + 9, axe + 13)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
+    expect(tasks[axe + 13]).toBe("hang:");
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
     // 64: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
@@ -486,7 +487,7 @@ describe("wants by level", () => {
     // The wedge split and dead wood, the woodpile's two methods for a camp with no axe, sit between the two.
     expect(REFERENCE_ORDERS.indexOf(logs)).toBe(REFERENCE_ORDERS.indexOf(woodpile) + 3);
     const tail = REFERENCE_ORDERS.slice(REFERENCE_ORDERS.indexOf(logs) + 1);
-    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
+    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hang:undefined:grind", "hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
     const { state, world } = newGame(17);
     expect(wantOpen(state, world, logs, calendar(0, 90))).toBe(false);
     expect(wantOpen(state, world, logs, calendar(0, 244))).toBe(true);

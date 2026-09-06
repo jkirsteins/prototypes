@@ -109,7 +109,7 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
  * mittens at once. Below the hut group sits the surplus loop,
- * in this order: the hang grind, the two winter-stock keeps, and the three
+ * in this order: the two winter-stock keeps, the hang grind, and the three
  * named hunts as grinds. A roof and water outrank
  * days spent chasing an elk, which is why this loop sits below the hut
  * group rather than above it. The hang grind hangs whatever raw meat sits
@@ -121,19 +121,20 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * at its species' recommended level (wantOpen), since a competent player
  * does not walk at an elk with a stone point at level 1: elk, reindeer
  * and roe deer, listed hardest first (8, 6, 4). The two winter-stock
- * keeps, 400 kg of firewood and the 150 logs that are the stock's unsplit
- * half, sit together between the hang grind and the named hunts: stocking
- * wood for winter earns its place ahead of chasing large game, but behind
- * the hang grind that clears the rack. Both open only from the season they
- * are stocked against (wantOpen), so a list that reaches them in April
- * waits for autumn rather than splitting 400 kg no winter yet needs. The
- * 150-log keep replaced a felling grind that ran last and forever, which
- * burned 400 kcal an hour for nothing whenever everything above it was
- * blocked; a runner with nothing left to do rests instead. It sits above
- * the named hunts and not below them because a grind is never met, and a
- * grind above a keep starves the keep: below them, camp logs never passed
- * five from 1 September and a level-20 camp froze in December beside 2.7
- * million kcal of food.
+ * keeps, the split pile and the logs that are the stock's unsplit half,
+ * sit together at the head of the loop, above the hang grind and the named
+ * hunts alike. A grind is never met, and a grind above a keep starves the
+ * keep: with the log keep below the hunts, camp logs never passed five
+ * from 1 September and a level-20 camp froze in December beside 2.7
+ * million kcal of food; with it below the hang grind, a camp taking elk
+ * all autumn hung meat instead of cutting wood, and two year seeds froze
+ * on days 300 and 325 with hundreds of thousands of kcal at camp and a
+ * woodpile of two kilos. A survivor with a full rack and no woodpile cuts
+ * wood. Both keeps open only from the season they are stocked against
+ * (wantOpen), so a list that reaches them in April waits for autumn rather
+ * than splitting a pile no winter yet needs, and the hang grind has its
+ * old place at the head of the loop for the two thirds of the year they
+ * are shut.
  */
 
 /** 1 September: a competent player starts the winter woodpile when the nights first frost. */
@@ -226,11 +227,11 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 20, "shore"),
   keep("fill", 20, "hole"),
   keep("melt", 20),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", WINTER_STOCK.firewoodKg),
   keep("splitWedges", WINTER_STOCK.firewoodKg),
   keep("deadwood", WINTER_STOCK.firewoodKg),
   keep("chop", WINTER_STOCK.logs),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
