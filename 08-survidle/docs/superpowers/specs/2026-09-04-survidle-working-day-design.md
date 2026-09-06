@@ -34,6 +34,11 @@ any panel yet.
 
 ### 1.2 The need
 
+**Superseded by `2026-09-06-survidle-sleep-design.md`:** the spent need is
+the fatigue reserve against `SPENT_AT`, held to `RESTED_AT`, and the
+ten-hour count, the `restUntil` latch and the nightfall sleep this section
+describes are gone.
+
 `BodyNeed` gains `"spent"`. It holds in `currentNeed` after hunger and
 before "home before dark":
 

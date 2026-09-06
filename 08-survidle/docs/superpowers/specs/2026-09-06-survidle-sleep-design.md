@@ -96,6 +96,31 @@ What the code does today, in the words of the rules it has:
   `restUntil` holds the body at rest until the next dawn (`spentNow`).
 - `sleptTonight` stops a second sleep in the same night.
 
+## Measured after
+
+Built on `sleep-model`, 2026-09-06, the same four seeds, `npm test` green
+at 863 tests and `npm run build` clean:
+
+| gate | reading |
+|---|---|
+| April, day 26 | 4 of 4; first lives 58, 169, past 251 and 207 |
+| year, level 20 | 2 of 4; seeds 17 and 19 froze days 282 and 284, each with a full larder and no firewood |
+| year, level 10 | 1 of 4; seeds 17 and 19 froze days 290 and 271, seed 79 starved day 311 |
+| winter, stocked December camp | 4 of 4 |
+| heir, the trend gate | 2 of 4, where the winter loop left it |
+| horizon rows 3 to 6 | past 30 days alive on every seed, the stocked row in band |
+| December work, 30 days from 1 December | 7.5 to 8.8 h a day, 3.8 to 4.6 of it in the dark, of which 3.4 to 3.7 is the dark morning; sleep 8.0 h |
+| December night | one sleep a night, none begun by day; median asleep 22:41, median awake 06:41 |
+
+The December night is what the spec was written for: the body works the
+dark morning by firelight and sleeps the middle of the night, rather than
+sleeping from 15:42 and sitting out nine more hours of dark. The year
+gate's lost seed is item J's fuel gap, which the rest latch had been
+hiding: a body held down by the fire from the count's tenth hour to dawn
+is a body keeping its fire because it has nothing else it is allowed to
+do. The evening now ends at `RESTED_AT` and the runner goes back out, so
+the woodpile is short by the hours the latch used to sit on it.
+
 ## 1. The two processes
 
 Both live on the player and are stepped in `stepPlayer` beside kcal,
