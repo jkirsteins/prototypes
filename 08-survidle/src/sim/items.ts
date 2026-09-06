@@ -36,6 +36,8 @@ export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "be
  * the spec's table (fat and carbohydrate design, section 1): an
  * anti-overconsumption rule, not chemistry. Lean meat and lean fish are
  * all lean; fat and the plants none of it; the new foods sit between.
+ */
+/**
  * Lean wild meat: a kill's fat is its own item at 9,000, so the meat is
  * hare at about 1,000 kcal/kg (Kochanski) and venison at 1,100 to 1,200;
  * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.

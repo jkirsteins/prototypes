@@ -19,20 +19,17 @@ import type { GameState, ItemId } from "./types";
 /** The gut's own word for a capped food, for its refusal message; later capped foods add their word here. */
 const GUT_WORD: Partial<Record<FoodId, string>> = { berries: "berry" };
 
-/** A food the body will take right now: a capped food past its refusal, or a lean food past the ceiling, is refused. */
-export function edible(state: GameState, food: FoodId): boolean {
-  const p = state.player;
-  if (gutRefused(p, state.minute, food)) return false;
-  if (FOODS[food].leanShare > 0 && leanRefused(p, state.minute)) return false;
-  return true;
-}
-
-/** Why the eat row greys this food out right now, or null if it does not. The row's only reader. */
+/** Why this food is refused right now, or null if it is not: a capped food past its refusal, or a lean food past the ceiling. The one place either check lives. */
 export function refusalReason(state: GameState, food: FoodId): string | null {
   const p = state.player;
   if (gutRefused(p, state.minute, food)) return `not another ${GUT_WORD[food] ?? ITEM_NAMES[food]} today`;
   if (FOODS[food].leanShare > 0 && leanRefused(p, state.minute)) return "not more lean meat today";
   return null;
+}
+
+/** A food the body will take right now. */
+export function edible(state: GameState, food: FoodId): boolean {
+  return refusalReason(state, food) === null;
 }
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
