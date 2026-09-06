@@ -260,6 +260,11 @@ function kitInReach(state: GameState, world: World, item: ItemId, invs: Inventor
 /** No one sleeps past nine hours: a night's sleep for a working adult, the top of the real band. */
 export const SLEEP_CAP_MINUTES = 540;
 
+/** A patch gives this much to the most worn piece. */
+export const MEND_GAIN = 40;
+/** Mend when the most worn piece is at or under this: a patch of half a kilo of hide never buys less than its full gain. */
+export const MEND_AT = 100 - MEND_GAIN;
+
 /**
  * The one place a task's legality and duration are decided. availableTasks
  * and startTask both go through it so the button and the click agree.
@@ -476,10 +481,10 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "repair": {
-      const o = opt({ group: "camp", label: "Mend clothing", detail: "0.5 kg hide; +40 wear on the most worn piece", duration: 30 });
+      const o = opt({ group: "camp", label: "Mend clothing", detail: `0.5 kg hide; +${MEND_GAIN} wear on the most worn piece`, duration: 30 });
       if (!toolNear(p, "needle", toolInvs)) return { ...o, ok: false, why: "needs a bone needle" };
       if (totalQty(invs, "hide") < 0.5) return { ...o, ok: false, why: "needs 0.5 kg hide" };
-      if (!p.clothing.some((g) => g.durability < 100)) return { ...o, ok: false, why: "nothing needs mending" };
+      if (!p.clothing.some((g) => g.durability <= MEND_AT)) return { ...o, ok: false, why: "nothing worn enough to mend" };
       return o;
     }
     case "sharpen": {
@@ -1226,7 +1231,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       consume(invs, [{ item: "hide", qty: 0.5 }]);
       if (wearTool(state, "needle", 2 * wearFactor(state, world, "repair"))) record(state, { kind: "toolWorn", tool: "needle" });
       const worst = p.clothing.reduce((a, b) => (b.durability < a.durability ? b : a));
-      worst.durability = Math.min(100, worst.durability + 40);
+      worst.durability = Math.min(100, worst.durability + MEND_GAIN);
       log(state, `The ${CLOTHING[worst.id].name} is patched.`, "good");
       return;
     }
