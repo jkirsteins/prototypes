@@ -7,8 +7,8 @@ import { calendar, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
-  BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES,
-  SNARE_CATCH_MAX_AGE, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
@@ -31,7 +31,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
 
     if (st.fire.lit) {
       const roof = roofed(st);
-      const perMin = burnPerHour(state.weather, ambient, roof) / 60;
+      const perMin = burnPerHour(state.weather, ambient, st) / 60;
       const total = fuelTotal(st.fire);
       if (total > 0) {
         const share = st.fire.wetKg / total;
@@ -57,7 +57,8 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     stepSmoke(st, atCampHere, dt);
 
     if (st.rack.kg > 0) {
-      if (state.weather.precip === "none") st.rack.dried += dt;
+      // Dry air dries; rain dries at half the rate, so two dry days become four wet ones.
+      st.rack.dried += state.weather.precip === "none" ? dt : dt * (RACK_DRY_MINUTES / RACK_DRY_RAIN_MINUTES);
       if (st.rack.dried >= RACK_DRY_MINUTES) {
         const dried = st.rack.kg / 3;
         addItem(pile(state, st.campCell), "driedMeat", dried);
@@ -131,6 +132,11 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
   return qty(state.player.pack, "firewood") + qty(pile(state, regionState(state, world, region).campCell), "firewood");
 }
 
+/** Raw meat the camp's racks hold together. */
+export function rackCapacity(st: RegionState): number {
+  return RACK_MAX_KG * Math.max(1, st.racks);
+}
+
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
 export function trapDraws(level: number): number {
   return Math.min(8, 4 + Math.floor(Math.max(0, level - 5) / 5));
@@ -170,6 +176,14 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         }
       }
     }
+    if (st.trap && st.trap.kg > 0) {
+      st.trap.age += 1440;
+      if (st.trap.age > SNARE_CATCH_MAX_AGE) {
+        log(state, `The fish in the trap at ${r.name} have rotted.`, "bad");
+        st.trap.kg = 0;
+        st.trap.age = 0;
+      }
+    }
     if (st.trap) {
       if (state.weather.iceCm >= ICE_SHORE_CM) {
         log(state, `The ice has taken the trap at ${r.name}.`, "bad");
@@ -202,7 +216,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       if (st.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
       st.structures[sid] = false;
       delete st.structureAge[sid];
-      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; }
+      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; st.racks = 0; }
       if (sid === "turfHut") st.fire.indoors = false;
       log(state, FALLS[sid](r.name), "bad");
     }

@@ -24,6 +24,7 @@ export function newRegionState(world: World, id: number): RegionState {
     pop: startingPop(world, id),
     campCell: r.campCell,
     structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false, turfHut: false, waterStore: false },
+    racks: 0,
     boughBedAge: 0,
     structureAge: {},
     build: {},

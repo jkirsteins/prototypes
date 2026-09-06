@@ -5,14 +5,14 @@ import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { type Calendar, minutesUntilDawn } from "./calendar";
-import { canMoveCamp, needsMending, siteLine, siteReport } from "./camp";
+import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
   addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_SNARES, MEND, RACK_MAX_KG, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -322,9 +322,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "hang": {
       const raw = totalQty(invs, "rawMeat");
-      const room = RACK_MAX_KG - st.rack.kg;
+      const room = rackCapacity(st) - st.rack.kg;
       const kg = Math.min(raw, room);
-      const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${RACK_MAX_KG} kg on the rack, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
+      const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${rackCapacity(st)} kg on the racks, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
       if (raw <= 1e-9) return { ...o, ok: false, why: "no raw meat here" };
@@ -476,7 +476,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         return o2;
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
-      if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      if (sid === "dryingRack") {
+        if (st.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
+      } else if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
       if ((sid === "cabin" || sid === "turfHut") && !st.structures.firePit) return { ...o, ok: false, why: "build the fire pit first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% built; materials already laid out` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
@@ -488,7 +490,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const name = STRUCTURES[sid].name;
       const label = sid === "turfHut" ? "Re-roof the hut" : `Mend the ${name}`;
       const detail = sid === "turfHut" ? "20 bark; a new roof for another year and a half"
-        : `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another season" : "relash it for another season"}`;
+        : `${needsList(def.needs)}; ${sid === "leanTo" ? "re-roof it for another year" : "relash it for another two years"}`;
       const o = needCamp(opt({ group: "camp", label, detail, duration: def.minutes, repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };
@@ -509,6 +511,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!toolNear(p, "fireDrill", invs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
+      if (st.structures.turfHut && !st.structures.cabin) return { ...o, detail: `${o.detail}; under the smoke hole` };
       return o;
     }
     case "lightTorch": {
@@ -1123,7 +1126,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "setTrap": {
       const here = cellOf(state, world);
       consume(invs, [{ item: "basketTrap", qty: 1 }]);
-      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish] };
+      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish], age: 0 };
       log(state, `The trap is set at ${whereIs(state, world, here)}.`);
       state.stats.structures++;
       return;
@@ -1196,11 +1199,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       } else {
         st.structures[sid] = true;
         delete st.build[sid];
+        if (sid === "dryingRack") st.racks = Math.min(MAX_RACKS, st.racks + 1);
         if (sid === "boughBed") st.boughBedAge = 0;
         if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") st.structureAge[sid] = 0;
       }
       state.stats.structures++;
-      if (sid !== "snare" && !hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
+      // Once per structure per life; the first snare set is the record's snare line.
+      if (!hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : "finished"}.`, "good");
       return;
     }
@@ -1224,7 +1229,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.fire.lit = true;
       cue("fireCatches");
       st.fire.fuelKg += 1;
-      st.fire.indoors = id === "lightIndoors";
+      // lightIndoors is always indoors, and it refuses a cabin with a hearth in
+      // favour of a plain light - so the plain light is the one that lays a
+      // cabin's hearth fire, and it also joins the fire under a hut's smoke
+      // hole. A pit fire beside a cabin with no hearth is an open fire.
+      st.fire.indoors = id === "lightIndoors" || (st.structures.turfHut && !st.structures.cabin) || (st.structures.cabin && st.structures.hearth);
       log(state, "Smoke, then flame. The fire is lit.", "good");
       return;
     }
@@ -1303,6 +1312,7 @@ function takeTrapFish(state: GameState, world: World): number {
   const kg = st.trap?.kg ?? 0;
   if (!st.trap || kg <= 1e-9) return 0;
   st.trap.kg = 0;
+  st.trap.age = 0;
   produce(state, world, "fish", kg);
   creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
   state.stats.animals++;

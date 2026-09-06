@@ -41,7 +41,10 @@ function readyToSet(startDoy?: number) {
   const cell = cellOf(g.state, g.world);
   const obs = readShore(g.state, g.world, cell);
   const st = regionState(g.state, g.world, g.state.player.region);
-  for (const s of obs.fish) st.pop[s] = 50;
+  // A shore's fish capacity is biomass per hectare over mean weight, tens of
+  // thousands per km2, so the population is stocked on that scale for the trap
+  // to have anything to catch.
+  for (const s of obs.fish) st.pop[s] = 2500;
   addItem(g.state.player.pack, "basketTrap", 1);
   return { ...g, cell, st, obs };
 }
@@ -84,7 +87,8 @@ describe("the basket trap", () => {
     expect(g.st.trap!.kg).toBeGreaterThan(0);
     expect(g.st.trap!.kg).toBeLessThanOrEqual(TRAP_HOLD_KG);
     g.st.trap!.kg = TRAP_HOLD_KG;
-    advance(g.state, g.world, 3 * 1440);
+    g.st.trap!.age = 0;
+    advance(g.state, g.world, 1440);
     expect(g.st.trap!.kg).toBe(TRAP_HOLD_KG);
     expect(trapDraws(5)).toBe(4);
     expect(trapDraws(10)).toBe(5);
@@ -197,5 +201,19 @@ describe("the basket trap", () => {
     const region = file.state.regions[g.state.player.region];
     expect(region.trap).toMatchObject({ cell: g.cell, kg: 2.4 });
     expect(region.trap!.fish).toEqual(g.obs.fish);
+  });
+});
+
+describe("the trap's catch rots", () => {
+  it("is gone two days after it was drawn with nobody emptying it, and the trap keeps drawing", () => {
+    const g = readyToSet(200);
+    setTrap(g);
+    g.st.trap!.kg = 3;
+    g.state.dead = { cause: "starved", minute: g.state.minute };
+    advance(g.state, g.world, 3 * 1440, { nobody: true });
+    expect(g.st.trap).not.toBeNull();
+    // Drawn again since: the rot empties it, the dawn draws refill it, so kg is whatever the last day drew.
+    expect(g.st.trap!.age).toBeLessThan(2 * 1440 + 1);
+    expect(g.state.log.some((e) => /fish in the trap .* have rotted/.test(e.text))).toBe(true);
   });
 });

@@ -207,6 +207,8 @@ export interface RegionState {
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean };
+  /** Drying racks standing at the camp, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
+  racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
   boughBedAge: number;
   /** Minutes since each decaying structure was built or mended; each falls after its life span. */
@@ -227,8 +229,8 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
-  /** The basket trap set in this region's water: where, the live fish in it, and the species that shore holds. */
-  trap: { cell: number; kg: number; fish: Species[] } | null;
+  /** The basket trap set in this region's water: where, the live fish in it, the species that shore holds, and minutes since it was last emptied. */
+  trap: { cell: number; kg: number; fish: Species[]; age: number } | null;
 }
 
 export interface Player {

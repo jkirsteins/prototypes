@@ -3,12 +3,23 @@ import { regionAt, speciesHere, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import { type Calendar, monthName } from "./calendar";
 import { log } from "./log";
-import { regionState, touchedRegions } from "./regionstate";
+import { regionState, startingPop, touchedRegions } from "./regionstate";
 import { awayWord, isVoiceOnly, seasonFactor, type Species, SPECIES_DEFS, type SpeciesDef } from "./species";
 import type { GameState, RegionState } from "./types";
 import { ICE_THIN_CM } from "./weather";
 
 const MIGRATION = 0.03;
+/**
+ * Small game refills a hunted range from the country around it: hares
+ * disperse kilometres and a vacated range is full again within weeks. Each
+ * day a region below its seasonal capacity receives this share of its gap,
+ * scaled by its neighbours' mean density; 0.052 a day takes a half-empty
+ * region to nine tenths in thirty days with full neighbours, since
+ * 0.948^30 is 0.2. Runs in every month: hares move in winter too.
+ */
+export const SMALL_GAME_INFLOW = 0.052;
+/** The species the inflow rule moves; deer, elk, reindeer and the predators keep the slow migration. */
+export const SMALL_GAME: Species[] = ["hare", "squirrel", "willowGrouse", "ptarmigan", "blackGrouse", "capercaillie", "hazelGrouse"];
 /** Species whose comings and goings near the player are worth a log line. */
 const NOTABLE: Species[] = ["deer", "reindeer", "elk", "wolf", "bear"];
 
@@ -84,6 +95,46 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     }
   }
 
+  // Small game moves into a region with room from every neighbour, in
+  // proportion to the gap and the neighbours' density, never taking a
+  // neighbour under the receiver's own density. An untouched neighbour is
+  // read at its starting numbers and materialised only when it gives.
+  for (const id of touched) {
+    const r = regionAt(world, id);
+    const st = state.regions[id];
+    for (const s of speciesHere(r)) {
+      if (!SMALL_GAME.includes(s)) continue;
+      const k = seasonalCapacity(world, r.id, s, cal, state.weather.iceCm);
+      if (k <= 0) continue;
+      const pop = popOf(st, s);
+      const gap = k - pop;
+      if (gap <= 0.01) continue;
+      const nbs = r.neighbours.map((nb) => {
+        const nk = seasonalCapacity(world, nb.id, s, cal, state.weather.iceCm);
+        const npop = state.regions[nb.id] ? popOf(state.regions[nb.id], s) : (startingPop(world, nb.id)[s] ?? 0);
+        return { id: nb.id, k: nk, pop: npop, d: nk > 0 ? Math.min(1, npop / nk) : 0 };
+      }).filter((nb) => nb.k > 0);
+      if (!nbs.length) continue;
+      const meanD = nbs.reduce((a, nb) => a + nb.d, 0) / nbs.length;
+      const want = SMALL_GAME_INFLOW * gap * meanD;
+      if (want < 0.01) continue;
+      const after = (pop + want) / k;
+      const totalD = nbs.reduce((a, nb) => a + nb.d, 0);
+      let got = 0;
+      for (const nb of nbs) {
+        if (nb.d <= 0) continue;
+        const share = want * (nb.d / totalD);
+        const spare = Math.max(0, nb.pop - nb.k * after);
+        const give = Math.min(share, spare);
+        if (give < 0.001) continue;
+        const nst = regionState(state, world, nb.id);
+        nst.pop[s] = popOf(nst, s) - give;
+        got += give;
+      }
+      st.pop[s] = pop + got;
+    }
+  }
+
   // Migration: a share of each mammal population leaves for a touched neighbour
   // with room. Untouched country sits at its starting numbers, so nothing
   // moves in or out of it. Birds and fish do not shuffle.
@@ -94,7 +145,7 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     if (!nbs.length) continue;
     const st = state.regions[id];
     for (const s of speciesHere(r)) {
-      if (SPECIES_DEFS[s].kind !== "mammal") continue;
+      if (SPECIES_DEFS[s].kind !== "mammal" || SMALL_GAME.includes(s)) continue;
       const n = popOf(st, s) * MIGRATION;
       if (n < 0.01) continue;
       // Only neighbours with room; a region that never holds the species has weight 0 and must not be a fallback.

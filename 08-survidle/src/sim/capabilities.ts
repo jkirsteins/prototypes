@@ -53,7 +53,7 @@ export const CAPABILITIES: CapabilityRow[] = [
     tier: "structure",
     receives: ["woodcraft"],
     gives: "+5 C and half the wetting; a roof over the pit",
-    limits: "a season, then re-roofing",
+    limits: "a year, then re-roofing",
   },
   {
     id: "cabin",
@@ -70,7 +70,7 @@ export const CAPABILITIES: CapabilityRow[] = [
     receives: ["woodcraft", "hunting", "fishing"],
     producer: true,
     gives: "meat that keeps: 3 kg into 1",
-    limits: "6 kg at a time, two dry days",
+    limits: "40 kg a rack and two racks, two dry days",
   },
   {
     id: "snares",
@@ -121,7 +121,7 @@ export const CAPABILITIES: CapabilityRow[] = [
     receives: ["woodcraft", "crafting"],
     producer: true,
     gives: "passive fish: the first food a camp makes without you",
-    limits: "emptying, the rack's 6 kg, the ice",
+    limits: "emptying, the racks' 80 kg, the ice",
   },
   {
     id: "turf hut",

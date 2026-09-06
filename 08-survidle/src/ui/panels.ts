@@ -2,12 +2,12 @@ import { itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { berriesRefused } from "../sim/berries";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { canMoveCamp, needsMending, siteLine, siteReport } from "../sim/camp";
+import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { intentSentence } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KG_ITEMS, RACK_MAX_KG, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, KG_ITEMS, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
@@ -286,7 +286,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
     : "";
   const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${RACK_MAX_KG} kg max)</small></div>`
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
     : "";
   const campPile = pile(state, st.campCell);
   const cap = campWaterCapacity(campPile, st);
@@ -518,6 +518,13 @@ function entryLinesHtml(lines: string[]): string {
   return `<div class="entries">${lines.map((l) => `<div class="e">${esc(l)}</div>`).join("")}</div>`;
 }
 
+/** "Veikko Urbonas lived 49 days." under the epitaph, for every survivor but the first. */
+function ancestorLine(state: GameState): string {
+  const prev = state.survivors[state.survivors.length - 2];
+  if (!prev?.died) return "";
+  return `<p class="ancestor">${esc(fmtName(prev.name))} lived ${prev.died.day} days.</p>`;
+}
+
 export function tombstoneHtml(state: GameState, _world: World): string {
   const rec = current(state);
   const next = landingDate(worldDate(state, state.dead!.minute)).date;
@@ -525,6 +532,7 @@ export function tombstoneHtml(state: GameState, _world: World): string {
   return `<div class="box">
 <h1>${esc(fmtName(rec.name))}</h1>
 <p>${esc(epitaphTail(rec))}</p>
+${ancestorLine(state)}
 ${entryLinesHtml(lines.slice(1))}
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>

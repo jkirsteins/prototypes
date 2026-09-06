@@ -61,9 +61,22 @@ describe("the epitaph", () => {
     expect(entry(r)[0]).toBe("Eirik Kalnins. Landed 1 April, year 1.");
   });
 
-  it("is deterministic for the reference seeds", () => {
+  it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved 1.2 km from camp, with 2.4 kg of food in the pack and 70 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 49. Starved at camp, with 1.2 kg of food in the pack and no firewood at camp."`);
+    // What these two deaths rest on: a shore's fish capacity is biomass per hectare over mean weight, tens of
+    // thousands per km2, so a trap and a spear both find fish; a hunted small-game range refills from its
+    // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
+    // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
+    // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
+    // the early days buy warmth at the fire; and the 400 kg woodpile keep is open only from 1 September to
+    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 52. Starved at camp, with nothing in the pack and 70 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 55. Starved at camp, with nothing in the pack and 49 kg of firewood at camp."`);
+  });
+
+  it("writes the first snare set as its own line", () => {
+    const r = rec();
+    r.events.push({ kind: "built", structure: "snare", day: 3, date: { year: 1, doy: 92 } });
+    expect(entry(r)).toContain("Day 3. Set the first snare.");
   });
 });

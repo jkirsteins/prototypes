@@ -17,6 +17,7 @@ describe("nobody home", () => {
     const st = regionState(state, world, state.player.region);
     st.fire.lit = true;
     st.fire.fuelKg = 6;
+    st.structures.dryingRack = true;
     st.rack.kg = 3;
     st.snareCatch.count = 2;
     st.structures.snares = 2;
@@ -26,6 +27,8 @@ describe("nobody home", () => {
     advance(state, world, 90 * 1440, { nobody: true });
     expect(state.minute).toBeCloseTo(90 * 1440, 3);
     expect(st.fire.lit).toBe(false);
+    // The rack still stands after 90 days; the meat hung on it has dried and moved to the pile.
+    expect(st.structures.dryingRack).toBe(true);
     expect(st.rack.kg).toBe(0);
     // The catch cycles between being taken by the fox and re-caught by the standing snares over 90
     // untended days, so the count at the exact end is a coin flip on the seed; assert the fox rule ran.

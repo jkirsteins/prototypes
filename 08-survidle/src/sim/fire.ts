@@ -11,7 +11,6 @@ import { regionState, touchedRegions } from "./regionstate";
 import type { GameState, Inventory, RegionState, Weather } from "./types";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
-const BURN_KG_PER_HOUR = 3;
 
 export function fuelTotal(fire: RegionState["fire"]): number {
   return fire.fuelKg + fire.wetKg;
@@ -96,9 +95,22 @@ export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
   }
 }
 
-/** Fuel the fire eats per hour in this weather; a roof over the pit keeps the rain off. */
-export function burnPerHour(w: Weather, ambient: number, roofOverPit: boolean): number {
-  if (w.precip === "none" || roofOverPit) return BURN_KG_PER_HOUR;
+/**
+ * Fuel a fire eats an hour by where it burns. An open fire kept going is 2
+ * to 4 kg an hour; a hearth inside a turf hut kept through a winter night
+ * is 15 to 30 kg a day, and Nordic households with a stove burned 4 to 8
+ * tonnes a year, so 1.2 and 0.8. The hut and cabin rates apply only to a
+ * fire lit indoors; a fire at the pit outside a hut is an open fire.
+ */
+export const SHELTER_BURN_KG_PER_HOUR = { open: 3, turfHut: 1.2, cabin: 0.8 } as const;
+
+/** Fuel the fire eats per hour in this weather and this shelter; a roof over the pit keeps the rain off. */
+export function burnPerHour(w: Weather, ambient: number, st: RegionState): number {
+  if (st.fire.indoors) {
+    if (st.structures.cabin && st.structures.hearth) return SHELTER_BURN_KG_PER_HOUR.cabin;
+    if (st.structures.turfHut) return SHELTER_BURN_KG_PER_HOUR.turfHut;
+  }
+  if (w.precip === "none" || roofed(st)) return SHELTER_BURN_KG_PER_HOUR.open;
   const snowing = ambient <= 0;
   if (w.precip === "heavy" && !snowing) return 6;
   return 4.5;

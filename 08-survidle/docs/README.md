@@ -121,8 +121,9 @@ waiting, and everything done while you are away run at the one scale.
   drinks, shelters from a storm, is home before dark in winter and banks
   the fire it leaves, and nothing more.
 - **Camp.** Fire pit, then fire (needs a fire drill and firewood); lean-to,
-  then a cabin (40 logs, 60 hours); drying rack (3 kg raw to 1 kg that
-  keeps); snares on the heath. "Hang meat to dry" is a task, and a keep on
+  then a cabin (40 logs, 60 hours); drying rack (40 kg of raw meat,
+  3 kg raw to 1 kg that keeps, two dry days or four wet; a camp can stand
+  two); snares on the heath. "Hang meat to dry" is a task, and a keep on
   dried meat runs it as the rack has room. Auto-eat and auto-feed keep you
   alive while the tab is closed, as long as the food and firewood are
   there.
@@ -167,7 +168,9 @@ waiting, and everything done while you are away run at the one scale.
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
   Deer and elk thin out, the mallards and geese are gone south, the eider
   stay on the coast, and the lakes' birds leave with the ice. You need hide
-  clothing, a cabin, and a wood pile.
+  clothing, a cabin, and a wood pile. A fire under the turf hut's smoke
+  hole burns 1.2 kg an hour against an open fire's 3, and the hut holds
+  at 5 C while it is lit, whatever the air outside is doing.
 - **The journal** reads the life record: what season it is, what came before,
   and every ancestor's life under their epitaph.
 
@@ -191,7 +194,13 @@ waiting, and everything done while you are away run at the one scale.
     npm install
     npm run dev      # http://127.0.0.1:5173/prototypes/08/
     npm test
+    npm run test:slow
     npm run build
+
+`npm test` is the commit gate and stays under twenty seconds; it excludes
+`tests/slow/`, which holds the runs measured in whole simulated seasons -
+the three-life lineage on seed 17. `npm run test:slow` runs those, and is
+worth a run when the reference player, the lineage or the landing moves.
 
 Every browser pass runs at 1440 by 900 and at 390 wide against
 `docs/ux.md`.
@@ -218,6 +227,18 @@ of the first death. It checks how long an idle camp holds at each stage,
 against the roadmap's provisional bands. `npm run horizon -- --start=<doy>`
 opens each stage's camp on that day of year instead of 1 April (200 is
 20 July, 235 is 24 August). It is not part of `npm test`.
+
+`npm run year` runs the best survivor the sim can hold: a kitted camp with
+every producer, all six skills at 20, the reference list, from 1 April for
+a year, on the four seeds. It prints a line on the first of each month
+(kcal eaten and burned a day, the stock at camp), the day of the first
+hang and the first large-game kill, the week before the death, and the
+outcome; the gate is alive after a year on 4 seeds. `--level=N` sets the
+skills, `--fresh` runs the arrival kit at level 1, `--winter` runs a
+stocked December camp to 1 March (the winter gate), `--start=<doy>` opens
+on another day. About a minute; not part of `npm test`. The survivor is a
+diagnostic, not a claim about players: if this one cannot live a year, no
+lineage can.
 
 ## Where the numbers live
 

@@ -21,33 +21,35 @@ function camp(seed = 8) {
 }
 
 describe("structure decay", () => {
-  it("drops the lean-to and the rack after a season and keeps the cabin and the fire pit", () => {
+  it("drops the lean-to after a year and the rack after two, and keeps the cabin and the fire pit", () => {
     const { state, world, st } = camp();
     state.dead = { cause: "froze", minute: 0 };
-    advance(state, world, 89 * 1440, { nobody: true });
+    advance(state, world, 200 * 1440, { nobody: true });
     expect(st.structures.leanTo).toBe(true);
-    advance(state, world, 2 * 1440, { nobody: true });
+    expect(st.structures.dryingRack).toBe(true);
+    advance(state, world, 165 * 1440, { nobody: true });
     expect(st.structures.leanTo).toBe(false);
+    expect(st.structures.dryingRack).toBe(true);
+    advance(state, world, 365 * 1440, { nobody: true });
     expect(st.structures.dryingRack).toBe(false);
+    expect(st.racks).toBe(0);
     expect(st.structures.cabin).toBe(true);
     expect(st.structures.firePit).toBe(true);
-    advance(state, world, 300 * 1440, { nobody: true });
-    expect(st.structures.cabin).toBe(true);
   });
 
-  it("loses what hung on the rack when it rots", () => {
+  it("loses what hung on the rack when it rots after two years", () => {
     const { state, world, st } = camp();
     st.rack.kg = 3;
     state.weather.precip = "heavy";
-    st.structureAge.dryingRack = 91 * 1440;
+    st.structureAge.dryingRack = 731 * 1440;
     advance(state, world, 1440, { nobody: true });
     expect(st.structures.dryingRack).toBe(false);
     expect(st.rack.kg).toBe(0);
   });
 
-  it("asks for mending past two thirds, and mending resets the age and is recorded", () => {
+  it("asks for mending past two thirds (244 days), and mending resets the age and is recorded", () => {
     const { state, world, st } = camp();
-    st.structureAge.leanTo = 61 * 1440;
+    st.structureAge.leanTo = 244 * 1440;
     expect(needsMending(st, "leanTo")).toBe(true);
     addItem(pile(state, st.campCell), "stick", 2);
     const o = check(state, world, calendar(0), "mend", "leanTo");
@@ -62,7 +64,7 @@ describe("structure decay", () => {
 
   it("a mend order walks the runner to camp instead of reading skipped forever", () => {
     const { state, world, st } = camp();
-    st.structureAge.leanTo = 61 * 1440;
+    st.structureAge.leanTo = 244 * 1440;
     addItem(pile(state, st.campCell), "stick", 2);
     placeAtSpot(state, world, state.player.region, "forest");
     const o = addOrder(state, world, { task: "mend", arg: "leanTo", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");

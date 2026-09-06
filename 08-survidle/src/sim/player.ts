@@ -105,14 +105,31 @@ export function starvation(p: Player): number {
   return 1 - clamp(p.fat, 0, FAT_FULL) / FAT_FULL;
 }
 
+/**
+ * Air inside a walled shelter with its fire lit. A turf hut with a hearth
+ * stays above freezing at -30 C outside; a chinked cabin sits at 10 to 15
+ * by the fire. The outside air is the floor's lower bound, never its
+ * ceiling: a hut in July is July. The cabin row is reachable only where a
+ * cabin has a hearth, and the hearth has no build entry yet, so the row
+ * waits on the shelter ladder that adds one.
+ */
+export const INDOOR_C = { turfHut: 5, cabin: 10 } as const;
+
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
-  let felt = ambient + insulation(state);
+  // A cabin holds its room temperature only once the fire has a hearth to
+  // burn on: without one the fire is at the pit outside, and the walls are a
+  // roof and no more.
+  const inCabin = r.structures.cabin && r.structures.hearth;
+  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (r.structures.turfHut || inCabin);
+  const floor = indoors ? (inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) : -Infinity;
+  let felt = Math.max(ambient, floor) + insulation(state);
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
-  if (camp && campTask) felt += shelterBonus(r);
+  // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
+  if (camp && campTask && !indoors) felt += shelterBonus(r);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);

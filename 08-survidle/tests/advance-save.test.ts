@@ -78,6 +78,11 @@ describe("save", () => {
     expect(st.smoke).toBe(0);
     expect(st.structures.hearth).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });
+    // A rack standing and a trap set: the rack count is filled from the
+    // structure that says one stands, and a trap's age from the day it was set.
+    st.structures.dryingRack = true;
+    st.racks = 1;
+    st.trap = { cell: st.campCell, kg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
     delete raw.state.player.autoDrink;
@@ -97,6 +102,8 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].smoke;
     delete raw.state.regions[state.player.region].structures.hearth;
     delete raw.state.regions[state.player.region].logsWet;
+    delete raw.state.regions[state.player.region].racks;
+    delete raw.state.regions[state.player.region].trap.age;
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.player.water).toBe(2.5);
     expect(back.player.autoDrink).toBe(true);
@@ -117,6 +124,8 @@ describe("save", () => {
     expect(back.regions[state.player.region].smoke).toBe(0);
     expect(back.regions[state.player.region].structures.hearth).toBe(false);
     expect(back.regions[state.player.region].logsWet).toBe(1440);
+    expect(back.regions[state.player.region].racks).toBe(1);
+    expect(back.regions[state.player.region].trap!.age).toBe(0);
   });
 
   it("a save mid-walk from before the route remembered its walked cells loads with none", () => {

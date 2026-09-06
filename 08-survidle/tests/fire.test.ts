@@ -7,7 +7,7 @@ import { burnPerHour, fireSeason, fireWarmth, lightingInRain, smoky } from "../s
 import { hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { feltTemperature } from "../src/sim/player";
+import { feltTemperature, INDOOR_C, warmthTarget } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -65,15 +65,15 @@ describe("wet wood", () => {
   it("rain fights the fire: slower lighting that can fail, a faster burn, and heavy rain puts a low fire out", () => {
     const { state, world } = newGame(3);
     const w = state.weather;
-    expect(burnPerHour(w, 5, false)).toBe(3);
+    const st = regionState(state, world, state.player.region);
+    expect(burnPerHour(w, 5, st)).toBe(3);
     w.precip = "light";
-    expect(burnPerHour(w, 5, false)).toBe(4.5);
+    expect(burnPerHour(w, 5, st)).toBe(4.5);
     expect(lightingInRain(w, 5, false)).toEqual({ minutes: 20, failChance: 1 / 3, blocked: null });
     w.precip = "heavy";
-    expect(burnPerHour(w, 5, false)).toBe(6);
+    expect(burnPerHour(w, 5, st)).toBe(6);
     expect(lightingInRain(w, 5, false).blocked).toBe("too wet to light");
     expect(lightingInRain(w, 5, true).blocked).toBeNull();
-    const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 1.5;
@@ -86,7 +86,7 @@ describe("wet wood", () => {
     w.precip = "heavy";
     w.offset = -12;
     expect(ambientTemperature(cal, state.weather)).toBeLessThan(0);
-    expect(burnPerHour(w, ambientTemperature(cal, state.weather), false)).toBe(4.5);
+    expect(burnPerHour(w, ambientTemperature(cal, state.weather), st)).toBe(4.5);
     st.fire.lit = true;
     st.fire.fuelKg = 1.5;
     advance(state, world, 1);
@@ -262,5 +262,90 @@ describe("spread and smoke", () => {
     expect(state.player.health).toBeLessThan(h0 - 50);
     advance(state, world, 240);
     expect(state.dead?.cause).toBe("smoke");
+  });
+});
+
+describe("fuel by shelter", () => {
+  it("burns 3 kg an hour in the open and 1.2 under a hut's smoke hole", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const dry = { ...state.weather, precip: "none" as const };
+    st.fire.lit = true;
+    expect(burnPerHour(dry, 5, st)).toBe(3);
+    st.structures.leanTo = true;
+    expect(burnPerHour(dry, 5, st)).toBe(3);
+    st.structures.turfHut = true;
+    expect(burnPerHour(dry, 5, st)).toBe(3);
+    st.fire.indoors = true;
+    expect(burnPerHour(dry, -20, st)).toBe(1.2);
+  });
+
+  it("a cabin with a hearth burns 0.8 kg an hour and holds the room at 10 C, with the plain light laying the hearth fire", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.structures.cabin = true;
+    st.structures.hearth = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 10);
+    // Lighting indoors refuses a cabin that has a hearth, so the plain light is
+    // the one task that lays a cabin's fire, and what it lays burns indoors.
+    expect(check(state, world, cal, "lightIndoors").ok).toBe(false);
+    startTask(state, world, cal, "light");
+    advance(state, world, 15);
+    expect(st.fire.lit).toBe(true);
+    expect(st.fire.indoors).toBe(true);
+    expect(burnPerHour({ ...state.weather, precip: "none" as const }, -20, st)).toBe(0.8);
+    // The room is its own temperature: outside air below the floor makes no
+    // difference to a body resting in it, and air above the floor does.
+    st.fire.fuelKg = 10;
+    state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
+    expect(feltTemperature(state, world, -30)).toBe(feltTemperature(state, world, INDOOR_C.cabin));
+    expect(feltTemperature(state, world, INDOOR_C.cabin + 5)).toBe(feltTemperature(state, world, -30) + 5);
+  });
+
+  it("rain only eats an unroofed fire", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const rain = { ...state.weather, precip: "heavy" as const };
+    expect(burnPerHour(rain, 5, st)).toBe(6);
+    st.structures.turfHut = true;
+    expect(burnPerHour(rain, 5, st)).toBe(3);
+  });
+
+  it("lighting the fire with a hut standing puts it under the smoke hole", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.structures.turfHut = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 10);
+    expect(check(state, world, cal, "light").detail).toMatch(/under the smoke hole/);
+    startTask(state, world, cal, "light");
+    advance(state, world, 15);
+    expect(st.fire.lit).toBe(true);
+    expect(st.fire.indoors).toBe(true);
+  });
+});
+
+describe("inside is a temperature", () => {
+  it("holds a body in wool above 20 warmth asleep in a hut at -30 with the fire lit, and not with it out", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.structures.turfHut = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 10;
+    st.fire.indoors = true;
+    startTask(state, world, cal, "sleep");
+    const lit = feltTemperature(state, world, -30);
+    expect(warmthTarget(lit)).toBeGreaterThan(20);
+    st.fire.lit = false;
+    const out = feltTemperature(state, world, -30);
+    expect(out).toBeLessThan(lit - 10);
+    expect(INDOOR_C).toEqual({ turfHut: 5, cabin: 10 });
   });
 });

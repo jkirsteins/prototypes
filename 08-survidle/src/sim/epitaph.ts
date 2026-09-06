@@ -77,7 +77,7 @@ function eventLine(e: LifeEvent): string | null {
   switch (e.kind) {
     case "threshold": return `Day ${e.day}. ${cap(THRESHOLD_NAMES[e.id].replace(/^the /, ""))}.`;
     case "firstKill": return `Day ${e.day}. First ${SPECIES_DEFS[e.species].name}.`;
-    case "built": return `Day ${e.day}. Built the ${STRUCTURES[e.structure].name}.`;
+    case "built": return e.structure === "snare" ? `Day ${e.day}. Set the first snare.` : `Day ${e.day}. Built the ${STRUCTURES[e.structure].name}.`;
     case "repaired": return `Day ${e.day}. Mended the ${STRUCTURES[e.structure].name}.`;
     case "toolWorn": return `Day ${e.day}. The ${e.tool} wore out.`;
     case "frostbite": return `Day ${e.day}. Lost ${e.part} to frostbite.`;
