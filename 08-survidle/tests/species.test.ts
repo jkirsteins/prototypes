@@ -87,7 +87,8 @@ describe("the species catalogue", () => {
     expect(KG_ITEMS.has("fur")).toBe(true);
     expect(ITEM_KG.fat).toBe(1);
     expect(KG_ITEMS.has("fat")).toBe(true);
-    expect(FOODS.fat).toEqual({ kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 });
+    // Every food carries its lean share; fat's is 0 because it is never capped.
+    expect(FOODS.fat).toEqual({ kcalPerKg: 9000, portionKg: 0.1, sickChance: 0, leanShare: 0 });
     expect(AUTO_EAT_ORDER.at(-1)).toBe("fat");
     expect(SPECIES_DEFS.bear.yields?.fatKg).toBe(10);
     expect(awayWord(SPECIES_DEFS.bear)).toBe("denned");

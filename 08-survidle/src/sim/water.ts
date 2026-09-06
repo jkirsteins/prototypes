@@ -4,7 +4,7 @@
  * nothing, and snow is water only at a fire (tasks.ts, melt).
  */
 import type { World } from "../world/gen";
-import { berriesOverloaded } from "./berries";
+import { gutOverloaded } from "./gut";
 import { addItem, carried, pile, qty, removeItem, takeUp } from "./inventory";
 import { body } from "./person";
 import { TOOLS, WATER_STORE_L } from "./items";
@@ -32,7 +32,7 @@ export function waterLossPerHour(state: GameState, felt: number): number {
   // floor is 1.5 L a day lying still, whatever the room.
   const working = a === "light" || a === "walk" || a === "heavy";
   if (felt < -10 || (felt > 20 && working)) l *= 1.3;
-  if (p.sick > 0 || berriesOverloaded(p, state.minute)) l *= 1.2;
+  if (p.sick > 0 || gutOverloaded(p, state.minute)) l *= 1.2;
   return l;
 }
 

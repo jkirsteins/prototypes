@@ -3,6 +3,7 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { FoodId } from "./items";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
 
@@ -287,10 +288,8 @@ export interface Player {
   /** Lost to frostbite for good. */
   toes: boolean;
   fingers: boolean;
-  /** Kilos of berries eaten today, for the gut's ceiling: full credit to 1.2, half to two, none past it. */
-  berriesToday: { day: number; kg: number };
-  /** Lean kcal eaten today, for the ceiling meat and fish feed nothing past. */
-  leanToday: { day: number; kcal: number };
+  /** What the gut has taken today: kilos per capped food and the lean kcal, reset with the day. */
+  gut: { day: number; kg: Partial<Record<FoodId, number>>; leanKcal: number };
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
+import { BERRY_PICK_KG, FOODS, GUT } from "../src/sim/items";
 import { emptyYield, YIELD_SOURCES } from "../src/sim/ledger";
 import { BASE_KCAL_PER_HOUR, ENERGY_RATE, taskDrain, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { APRIL, BERRY, BURN, coldBand, isWinterDoy, LATE_AUGUST, SLEEP_HOURS, SOURCE_ROWS, sourceBand, tableFor, verdict } from "../src/sim/tables";
@@ -55,8 +55,8 @@ describe("the constants sit in their real bands", () => {
 
   it("a berry is about 500 kcal a kilo", () => {
     expect(verdict(FOODS.berries.kcalPerKg, BERRY.kcalPerKg)).toBe("in band");
-    expect(BERRY.fullCreditKg).toBe(1.2);
-    expect(BERRY.refuseKg).toBe(2);
+    // BERRY keeps only its picking numbers; the gut's ceilings are items.ts's GUT table.
+    expect(GUT.berries).toEqual({ fullCreditKg: 1.2, refuseKg: 2 });
   });
 
   it("an hour's picking at level one is what a hand picker takes", () => {

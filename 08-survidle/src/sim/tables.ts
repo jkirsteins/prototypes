@@ -127,15 +127,10 @@ export function coldBand(dayOfYear: number): Band {
 /** A night's sleep for a working adult. */
 export const SLEEP_HOURS = band(7, 9);
 
-/** Bilberries and lingonberries, and a hand picker at a good patch. The ceiling is the gut's, spec 5.2. */
+/** Bilberries and lingonberries, and a hand picker at a good patch. The gut's own ceiling is items.ts's GUT.berries. */
 export const BERRY = {
   kcalPerKg: band(400, 600),
   pickKgPerHour: band(0.5, 1.5),
-  // The Swedish handbook's not over two litres of berries a day, about 1.2 kg, past which the gut turns.
-  /** Kilos a day eaten at full credit. */
-  fullCreditKg: 1.2,
-  /** Kilos a day past which the body will not eat another. */
-  refuseKg: 2,
 };
 
 export function verdict(value: number, b: Band): "in band" | "under" | "over" {

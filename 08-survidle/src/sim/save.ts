@@ -129,8 +129,9 @@ function fillDefaults(state: GameState): void {
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
   p.fingers ??= false;
-  p.berriesToday ??= { day: 0, kg: 0 };
-  p.leanToday ??= { day: 0, kcal: 0 };
+  p.gut ??= { day: 0, kg: {}, leanKcal: 0 };
+  delete (p as { berriesToday?: unknown }).berriesToday;
+  delete (p as { leanToday?: unknown }).leanToday;
   // A save from before the two processes has one number for both: read its
   // fatigue as the debt's mirror, which is where a rested body sits, and no
   // night under way. The clock rules that number carried are gone and so are

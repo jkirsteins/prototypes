@@ -5,25 +5,34 @@
 import type { Rng } from "../rng";
 import { clamp } from "../units";
 import type { World } from "../world/gen";
-import { berriesRefused } from "./berries";
-import { dayNumber } from "./calendar";
 import { feedFire, rackCapacity } from "./camp";
+import { creditGut, creditLean, gutEatenToday, gutRefused, leanRefused } from "./gut";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
+import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS } from "./items";
 import { creditEaten } from "./ledger";
-import { creditLean, leanRefused } from "./lean";
 import { atCamp } from "./position";
 import { body } from "./person";
 import { regionState } from "./regionstate";
-import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS, LEAN_FOODS } from "./items";
 import { log } from "./log";
-import { BERRY } from "./tables";
 import type { GameState, ItemId } from "./types";
 
-/** A food the body will take right now: berries and lean foods each past their day's ceiling are refused. */
+/** The gut's own word for a capped food, for its refusal message; later capped foods add their word here. */
+const GUT_WORD: Partial<Record<FoodId, string>> = { berries: "berry" };
+
+/** A food the body will take right now: a capped food past its refusal, or a lean food past the ceiling, is refused. */
 export function edible(state: GameState, food: FoodId): boolean {
-  if (food === "berries") return !berriesRefused(state.player, state.minute);
-  if (LEAN_FOODS.has(food)) return !leanRefused(state.player, state.minute);
+  const p = state.player;
+  if (gutRefused(p, state.minute, food)) return false;
+  if (FOODS[food].leanShare > 0 && leanRefused(p, state.minute)) return false;
   return true;
+}
+
+/** Why the eat row greys this food out right now, or null if it does not. The row's only reader. */
+export function refusalReason(state: GameState, food: FoodId): string | null {
+  const p = state.player;
+  if (gutRefused(p, state.minute, food)) return `not another ${GUT_WORD[food] ?? ITEM_NAMES[food]} today`;
+  if (FOODS[food].leanShare > 0 && leanRefused(p, state.minute)) return "not more lean meat today";
+  return null;
 }
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
@@ -34,24 +43,18 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
   const invs = [p.pack, herePile(state, world)];
   const have = totalQty(invs, food);
   if (have <= 1e-9) return false;
-  let kg = Math.min(def.portionKg, have);
-  let gain = kg * def.kcalPerKg;
-  if (food === "berries") {
-    const day = dayNumber(state.minute);
-    if (p.berriesToday.day !== day) p.berriesToday = { day, kg: 0 };
-    const before = p.berriesToday.kg;
-    kg = Math.min(kg, BERRY.refuseKg - before);
-    // Past two kilos the gut absorbs half; past four it will not take another.
-    const full = Math.max(0, Math.min(kg, BERRY.fullCreditKg - before));
-    gain = (full + (kg - full) / 2) * def.kcalPerKg;
-    const after = before + kg;
-    p.berriesToday.kg = after;
-    if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
-    if (after >= BERRY.refuseKg - 1e-9) log(state, "{You} cannot face another berry.", "bad");
+  const wasFull = gutEatenToday(p, state.minute, food) > (GUT[food]?.fullCreditKg ?? Number.POSITIVE_INFINITY) + 1e-9;
+  const taken = creditGut(p, state.minute, food, Math.min(def.portionKg, have));
+  const kg = taken.kg;
+  if (kg <= 1e-9) return false;
+  let gain = kg * def.kcalPerKg * taken.credit;
+  if (GUT[food]) {
+    if (!wasFull && gutEatenToday(p, state.minute, food) > GUT[food]!.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
+    if (gutRefused(p, state.minute, food)) log(state, `{You} cannot face another ${GUT_WORD[food] ?? ITEM_NAMES[food]}.`, "bad");
   }
-  if (LEAN_FOODS.has(food)) {
+  if (def.leanShare > 0) {
     const wasRefused = leanRefused(p, state.minute);
-    gain = creditLean(p, state.minute, gain);
+    gain = creditLean(p, state.minute, gain, def.leanShare);
     if (!wasRefused && leanRefused(p, state.minute)) log(state, "Lean meat is not filling {you}. {You} {need} fat.", "bad");
   }
   let left = kg;

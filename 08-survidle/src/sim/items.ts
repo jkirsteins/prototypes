@@ -31,18 +31,23 @@ export const ITEM_NAMES: Record<ItemId, string> = {
 
 export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
 /**
+ * Every food: its kcal, its portion, its sick chance, and its lean share -
+ * the part of its kcal that counts toward LEAN_KCAL_PER_DAY. The share is
+ * the spec's table (fat and carbohydrate design, section 1): an
+ * anti-overconsumption rule, not chemistry. Lean meat and lean fish are
+ * all lean; fat and the plants none of it; the new foods sit between.
  * Lean wild meat: a kill's fat is its own item at 9,000, so the meat is
  * hare at about 1,000 kcal/kg (Kochanski) and venison at 1,100 to 1,200;
  * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.
  * Berries are wild bilberry, 400 to 600 a kilo, at 450.
  */
-export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number }> = {
-  rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25 },
-  cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0 },
-  driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0 },
-  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0 },
-  berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0 },
-  fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 },
+export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number; leanShare: number }> = {
+  rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25, leanShare: 1 },
+  cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0, leanShare: 1 },
+  driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0, leanShare: 1 },
+  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0, leanShare: 1 },
+  berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0, leanShare: 0 },
+  fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0, leanShare: 0 },
 };
 /**
  * The lean ceiling: Kochanski's rabbit starvation - on hare alone a body
@@ -52,7 +57,14 @@ export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickC
  * berries are never capped.
  */
 export const LEAN_KCAL_PER_DAY = 1600;
-export const LEAN_FOODS: ReadonlySet<FoodId> = new Set<FoodId>(["rawMeat", "cookedMeat", "driedMeat", "cookedFish"]);
+/**
+ * The gut's ceilings by food: full credit to the first line, half to the
+ * second, none past it. Berries are the Swedish handbook's two litres a
+ * day, about 1.2 kg; later foods add their own rows.
+ */
+export const GUT: Partial<Record<FoodId, { fullCreditKg: number; refuseKg: number }>> = {
+  berries: { fullCreditKg: 1.2, refuseKg: 2 },
+};
 /** Below this ambient a stack keeps: the Swedish handbook's freezing storage wants at least -10 to -15 C; between it and zero the rot runs at half speed. */
 export const FREEZE_KEEP_C = -10;
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */

@@ -57,8 +57,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     frostbite: { feet: 0, hands: 0 },
     toes: false,
     fingers: false,
-    berriesToday: { day: 1, kg: 0 },
-    leanToday: { day: 1, kcal: 0 },
+    gut: { day: 1, kg: {}, leanKcal: 0 },
     known: {},
   };
   state.task = null;
