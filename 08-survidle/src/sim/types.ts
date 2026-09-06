@@ -218,7 +218,7 @@ export interface RegionState {
   structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean };
   /** Drying racks standing at the camp, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
-  /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
+  /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
   /** Minutes since each decaying structure was built or mended; each falls after its life span. */
   structureAge: Partial<Record<DecayingId, number>>;

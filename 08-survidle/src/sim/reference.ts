@@ -173,6 +173,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("splitWedges", 60),
   keep("deadwood", 60),
   job("build", { kind: "once" }, "leanTo"),
+  keep("build", 1, "boughBed"),
   keep("craft", 1, "knife"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),

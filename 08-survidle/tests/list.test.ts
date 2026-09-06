@@ -8,6 +8,11 @@ const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
 
 describe("the list after the axe", () => {
+  it("keeps the bough bed laid right after the lean-to", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("build:boughBed:keep")).toBe(tasks.indexOf("build:leanTo:job") + 1);
+  });
+
   it("keeps stone, hones after the knife, and orders the three firewood methods", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     // The opening gathers eight as a job that re-gives until met; the keep beside the axe wants is what refills it for the celt and the hone.

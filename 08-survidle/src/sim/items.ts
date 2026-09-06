@@ -130,15 +130,15 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   cabin: { name: "log cabin", needs: [{ item: "log", qty: 40 }, { item: "stone", qty: 12 }, { item: "cordage", qty: 8 }], minutes: 3600, desc: "Walls and a roof. Warm, dry, and a long job." },
   dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 40 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps; four in rain. A second rack doubles it." },
   snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
-  boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat in a fortnight." },
+  boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat after four days." },
   turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
   seep: { name: "seep", needs: [{ item: "stick", qty: 4 }], minutes: 240, desc: "A knee-deep hole to groundwater on wet ground. Fills on its own; freezes without a fire beside it." },
   waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
 export const MAX_SNARES = 5;
-/** Days a bough bed stays springy before it has to be laid again. */
-export const BOUGH_BED_DAYS = 14;
+/** Days a bough bed stays springy before it has to be laid again: Kochanski, a fresh layer every three or four days. */
+export const BOUGH_BED_DAYS = 4;
 
 /** Days a decaying structure stands before the weather takes it down: a bough roof fails in a year while its frame stands, a lashed pole rack lasts two, a turf roof a year and a half. */
 export const STRUCTURE_LIFE_DAYS: Record<DecayingId, number> = { leanTo: 365, dryingRack: 730, turfHut: 540 };

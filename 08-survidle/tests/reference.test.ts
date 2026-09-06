@@ -91,7 +91,8 @@ describe("the reference player", () => {
     expect(at("lightIndoors::keep")).toBe(at("light::keep") + 1);
     expect(at("chop::keep")).toBe(at("light::keep") + 2);
     expect(at("build:leanTo:job:once")).toBeGreaterThan(at("chop::keep"));
-    expect(at("craft:knife:keep:campHas")).toBe(at("build:leanTo:job:once") + 1);
+    // The bough bed keep sits right after the lean-to (build:boughBed:keep), pushing the knife one further down.
+    expect(at("craft:knife:keep:campHas")).toBe(at("build:leanTo:job:once") + 2);
     expect(at("craft:snare:keep")).toBe(at("craft:knife:keep:campHas") + 1);
     expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
   });
@@ -119,7 +120,8 @@ describe("the reference player", () => {
     expect(tasks.slice(axe + 9, axe + 13)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
     expect(tasks.slice(axe + 13, axe + 16)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    expect(REFERENCE_ORDERS.length).toBe(60);
+    // 61: the bough bed keep added right after the lean-to.
+    expect(REFERENCE_ORDERS.length).toBe(61);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -284,7 +286,9 @@ describe("the reference player", () => {
   });
 
   it("the day-26 checkpoint's fed reads the week it prints, a full week by then", () => {
-    const r = runReference(17, 27);
+    // Seed 79, not 17: the bough bed keep right after the lean-to (reference.ts) moves seed 17's
+    // death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this checkpoint.
+    const r = runReference(79, 27);
     const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
     expect(c).toBeDefined();
     expect(c!.week.days).toBe(7);
@@ -317,11 +321,13 @@ describe("the reference player", () => {
 
   it("a capped run does not double the checkpoint", () => {
     // calendar()'s day is dayIndex + 1, so a run of REFERENCE_TARGET_DAY - 1 full days
-    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 17
-    // is alive there (it passes the April gate), so the day cap and the REFERENCE_TARGET_DAY
-    // checkpoint land on the same day, without hunting for a seed that dies there instead -
-    // this does not cover the death-landing-on-a-checkpoint variant of the same branch.
-    const r = runReference(17, REFERENCE_TARGET_DAY - 1);
+    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 79
+    // is alive there (it passes the April gate; seed 17 no longer does, since the bough
+    // bed keep right after the lean-to moves its death to day 19), so the day cap and the
+    // REFERENCE_TARGET_DAY checkpoint land on the same day, without hunting for a seed that
+    // dies there instead - this does not cover the death-landing-on-a-checkpoint variant of
+    // the same branch.
+    const r = runReference(79, REFERENCE_TARGET_DAY - 1);
     expect(r.outcome).toEqual({ kind: "reached", day: REFERENCE_TARGET_DAY });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
