@@ -286,7 +286,25 @@ fish capacities from biomass, small-game inflow, the trap's rot, a 40 kg
 rack and a second one, decay at one and two years, large game by name at
 level, fuel by shelter and an indoor temperature, the winter woodpile and
 the melt fallback, the wet-cold need, the journal clause and the
-ancestor's day; built, readings under F), then the first half of I the
+ancestor's day; built, readings under F), then the winter loop, three
+runner and list rules with the year probe as their gate, pulled ahead of
+everything because the year loop's last deaths name them and each is a
+day's work: a winter working day (camp chores by firelight, the night
+rule kept for travel, since seed 19 froze on 1 December with 446,000 kcal
+of fat and 670 logs at camp working two hours a day in five hours of
+light), "keep camp at N logs" in place of the felling grind (seed 17 at
+level 20 starved on day 68 beside 672 logs, burning 2,500 kcal a day
+felling), and the hunt grinds ranked above the woodpile keep in autumn
+(seeds 42 and 79 ate their July stock by November while every hour went
+to wood); and, if a hut winter then dies of fuel, the hearth as a build
+entry (Building 5, a dozen stones, four hours), since the cabin's 0.8 kg
+an hour and 10 C inside exist in the code and nothing in play builds the
+hearth they need; then E hides and clothing, pulled ahead of the rest of
+F because wool outdoors at -17 to -20 C is a measured death on two seeds
+and the tree's carry cannot touch it; then the tables audit, sub-project
+2 of the year loop (its section 8 lists the flags: the winter water path
+that fails with an axe and an open hole, snow depth, snare odds, the
+cook keep clearing raw meat); then the first half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
 quirks, the card and the face), then the first tester round: with B,
