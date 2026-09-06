@@ -56,9 +56,16 @@ export function newRegionState(world: World, id: number): RegionState {
  */
 export function fillPopulations(state: GameState, world: World): void {
   for (const [key, st] of Object.entries(state.regions)) {
-    const start = startingPop(world, Number(key));
+    const id = Number(key);
+    const start = startingPop(world, id);
     for (const k of Object.keys(st.pop)) if (!(k in start)) delete st.pop[k as Species];
     for (const s of Object.keys(start) as Species[]) st.pop[s] ??= start[s];
+    // A save from before the seasonal stocks carries -1 for its roots (save.ts marks it there,
+    // having no world to seed with). This is the first place after a load that has one, so a
+    // region that never knew about roots or nests is seeded here as though every roll up to
+    // today had run - otherwise it reads "the ground is dug out" until 1 April and "the nests
+    // are empty" until 1 May, everywhere, on a game that only ever did the right thing.
+    if (st.roots < 0) seedSeasonalStocks(state, world, st, id);
   }
 }
 

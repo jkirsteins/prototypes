@@ -89,8 +89,8 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
   return key ? (state.paused[key]?.fraction ?? 0) : 0;
 }
 
-/** Tasks whose pace depends on the body; the rest are walks and waits. */
-const WORK_TASKS = new Set<TaskId>([
+/** Tasks whose pace depends on the body; the rest are walks and waits. Exported so a test can hold availableTasks to covering every one of them. */
+export const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
@@ -916,7 +916,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   const out: TaskOption[] = [];
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
-  for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
+  for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries", "eggs", "innerBark", "roots", "tapSap", "seaweed"] as TaskId[]) out.push(check(state, world, cal, id));
   out.push(check(state, world, cal, "hunt", "any"));
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "fish", "any"));
@@ -926,6 +926,11 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "emptyTrap"));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
+  out.push(check(state, world, cal, "cook", "oilyFish"));
+  out.push(check(state, world, cal, "cook", "rawFat"));
+  out.push(check(state, world, cal, "cook", "roots"));
+  out.push(check(state, world, cal, "crack"));
+  out.push(check(state, world, cal, "grindBark"));
   out.push(check(state, world, cal, "light"));
   out.push(check(state, world, cal, "lightIndoors"));
   out.push(check(state, world, cal, "lightTorch"));

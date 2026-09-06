@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
 import { fillPopulations } from "../src/sim/regionstate";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { AWAY_HOURS_MAX } from "../src/units";
+import type { GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 
 class MemStorage implements Storage {
@@ -293,5 +295,28 @@ describe("the version 6 save", () => {
       expect(st.trap).toBeNull();
     }
     expect(file.state.ledger[0].yield.trap).toBe(0);
+  });
+
+  it("a save from before the seasonal stocks gets its roots and nests on load, with the world in hand", () => {
+    // fillDefaults has no world, so it marks the roots unset with -1 and fillPopulations - which
+    // walks the same regions with the world - seeds them. Without it every region read "the ground
+    // is dug out" until 1 April and "the nests are empty" until 1 May on a game that did nothing wrong.
+    const { state, world } = newGame(17, 160);
+    const id = state.player.region;
+    const raw = JSON.parse(serialize(state)) as { version: number; state: GameState };
+    raw.version = 6;
+    for (const st of Object.values(raw.state.regions)) {
+      delete (st as { roots?: number }).roots;
+      delete (st as { nests?: number }).nests;
+    }
+    const file = deserialize(JSON.stringify(raw))!;
+    expect(file.state.regions[id]!.roots).toBe(-1);
+    fillPopulations(file.state, world);
+    expect(file.state.regions[id]!.roots).toBeCloseTo(rootStockFor(world, id), 6);
+    expect(file.state.regions[id]!.nests).toBeGreaterThan(0);
+    // A region really dug out reads 0 and is left alone.
+    file.state.regions[id]!.roots = 0;
+    fillPopulations(file.state, world);
+    expect(file.state.regions[id]!.roots).toBe(0);
   });
 });

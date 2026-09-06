@@ -78,8 +78,12 @@ function fillDefaults(state: GameState): void {
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
     if (st.trap) st.trap.oilyKg ??= 0;
+    // A save older than the seasonal stocks knows neither. Zero is a real reading - a heath
+    // whose nests are gathered out, ground that is dug out - so it cannot stand for "never
+    // knew", and this function has no world to seed a real stock with. -1 says "unset" and
+    // fillPopulations, which walks the same regions with the world in hand, seeds it.
     st.nests ??= 0;
-    st.roots ??= 0;
+    st.roots ??= -1;
     st.sapTaps ??= { day: 0, n: 0 };
   }
   for (const d of state.ledger) {

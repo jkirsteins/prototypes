@@ -16,7 +16,7 @@ import { baseWalkSpeed } from "./player";
 import { regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
-import { SPECIES_DEFS } from "./species";
+import { fishItem, SPECIES_DEFS } from "./species";
 import { nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
@@ -214,7 +214,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           st.pop[s] = Math.max(0, popOf(st, s) - 1);
           const before = st.trap.kg;
           st.trap.kg = Math.min(TRAP_HOLD_KG, before + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
-          if (SPECIES_DEFS[s].oily) st.trap.oilyKg += st.trap.kg - before;
+          // The class through fishItem, the same call the spear's catch makes, so the without
+          // probe shuts the oily side in one place rather than leaking it into the trap.
+          if (fishItem(s) === "oilyFish") st.trap.oilyKg += st.trap.kg - before;
         }
       }
     }

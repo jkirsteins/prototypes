@@ -6,7 +6,7 @@ import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
-import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, stepTask, stopTask, WORK_TASKS } from "../src/sim/tasks";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
@@ -486,6 +486,15 @@ describe("mend clothing", () => {
     state.player.clothing[0].durability = MEND_AT;
     expect(chooseOrder(state, world, cal)?.req.task).toBe("repair");
     expect(ordersHere(state, world)[0].skipped).toBe("");
+  });
+
+  it("offers every task the body works at, so the raw-action panel can start it and the head can name it", () => {
+    // availableTasks feeds the advanced panel's buttons and the running-task head. A task
+    // missing from it cannot be started by hand and reads as its bare id while it runs: a
+    // survivor digging roots read "roots" and one rendering fat read "cook".
+    const { state, world } = newGame(3);
+    const offered = new Set(availableTasks(state, world, cal).map((o) => o.id));
+    for (const id of WORK_TASKS) expect(offered, id).toContain(id);
   });
 
   it("a floating-point residue of a food is not stock: the cook reads it as none rather than cooking it a minute at a time", () => {
