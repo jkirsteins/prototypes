@@ -285,8 +285,10 @@ export interface Player {
   /** Lost to frostbite for good. */
   toes: boolean;
   fingers: boolean;
-  /** Kilos of berries eaten today, for the gut's ceiling: full credit to two, half to four, none past it. */
+  /** Kilos of berries eaten today, for the gut's ceiling: full credit to 1.2, half to two, none past it. */
   berriesToday: { day: number; kg: number };
+  /** Lean kcal eaten today, for the ceiling meat and fish feed nothing past. */
+  leanToday: { day: number; kcal: number };
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }

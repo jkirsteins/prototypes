@@ -71,11 +71,13 @@ describe("camp", () => {
     expect(state.player.kcal).toBe(1000);
     addItem(state.player.pack, "cookedMeat", 1);
     autoEat(state, world, rng);
-    expect(state.player.kcal).toBeCloseTo(1450);
+    // cookedMeat: 1,100 kcal/kg (Kochanski's venison), 0.3 kg portion.
+    expect(state.player.kcal).toBeCloseTo(1330);
     expect(qty(state.player.pack, "cookedMeat")).toBeCloseTo(0.7);
     addItem(state.player.pack, "driedMeat", 1);
     expect(eat(state, world, "driedMeat", rng)).toBe(true);
-    expect(state.player.kcal).toBeCloseTo(1450 + 0.15 * 3500);
+    // driedMeat: 3,300 kcal/kg, three kilos to one rack kilo.
+    expect(state.player.kcal).toBeCloseTo(1330 + 0.15 * 3300);
   });
 
   it("wolves come only at night outside shelter", () => {

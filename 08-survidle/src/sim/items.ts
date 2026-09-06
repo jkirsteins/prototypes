@@ -30,14 +30,31 @@ export const ITEM_NAMES: Record<ItemId, string> = {
 };
 
 export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
+/**
+ * Lean wild meat: a kill's fat is its own item at 9,000, so the meat is
+ * hare at about 1,000 kcal/kg (Kochanski) and venison at 1,100 to 1,200;
+ * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.
+ * Berries are wild bilberry, 400 to 600 a kilo, at 450.
+ */
 export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number }> = {
-  rawMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0.25 },
-  cookedMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0 },
-  driedMeat: { kcalPerKg: 3500, portionKg: 0.15, sickChance: 0 },
+  rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25 },
+  cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0 },
+  driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0 },
   cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0 },
-  berries: { kcalPerKg: 500, portionKg: 0.2, sickChance: 0 },
+  berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0 },
   fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 },
 };
+/**
+ * The lean ceiling: Kochanski's rabbit starvation - on hare alone a body
+ * shows starvation within a week however much it eats. Meat and fish past
+ * this many kcal in a day feed nothing; about 1.5 kg of lean meat, the most
+ * the body turns to energy before the protein goes to waste. Fat and
+ * berries are never capped.
+ */
+export const LEAN_KCAL_PER_DAY = 1600;
+export const LEAN_FOODS: ReadonlySet<FoodId> = new Set<FoodId>(["rawMeat", "cookedMeat", "driedMeat", "cookedFish"]);
+/** Below this ambient a stack keeps: the Swedish handbook's freezing storage wants at least -10 to -15 C; between it and zero the rot runs at half speed. */
+export const FREEZE_KEEP_C = -10;
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
 export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
 /** Kilos an hour's picking takes at a patch by hand, before the foraging pool's factor: a beginner picker, near the real kilo an hour at the top of the pool. */

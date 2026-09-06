@@ -131,10 +131,11 @@ export const SLEEP_HOURS = band(7, 9);
 export const BERRY = {
   kcalPerKg: band(400, 600),
   pickKgPerHour: band(0.5, 1.5),
+  // The Swedish handbook's not over two litres of berries a day, about 1.2 kg, past which the gut turns.
   /** Kilos a day eaten at full credit. */
-  fullCreditKg: 2,
+  fullCreditKg: 1.2,
   /** Kilos a day past which the body will not eat another. */
-  refuseKg: 4,
+  refuseKg: 2,
 };
 
 export function verdict(value: number, b: Band): "in band" | "under" | "over" {

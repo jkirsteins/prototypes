@@ -55,6 +55,8 @@ describe("the constants sit in their real bands", () => {
 
   it("a berry is about 500 kcal a kilo", () => {
     expect(verdict(FOODS.berries.kcalPerKg, BERRY.kcalPerKg)).toBe("in band");
+    expect(BERRY.fullCreditKg).toBe(1.2);
+    expect(BERRY.refuseKg).toBe(2);
   });
 
   it("an hour's picking at level one is what a hand picker takes", () => {

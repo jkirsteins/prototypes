@@ -10,17 +10,20 @@ import { dayNumber } from "./calendar";
 import { feedFire, rackCapacity } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { creditEaten } from "./ledger";
+import { creditLean, leanRefused } from "./lean";
 import { atCamp } from "./position";
 import { body } from "./person";
 import { regionState } from "./regionstate";
-import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS } from "./items";
+import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS, LEAN_FOODS } from "./items";
 import { log } from "./log";
 import { BERRY } from "./tables";
 import type { GameState, ItemId } from "./types";
 
-/** A food the body will take right now: everything but berries past the day's ceiling. */
+/** A food the body will take right now: berries and lean foods each past their day's ceiling are refused. */
 export function edible(state: GameState, food: FoodId): boolean {
-  return food !== "berries" || !berriesRefused(state.player, state.minute);
+  if (food === "berries") return !berriesRefused(state.player, state.minute);
+  if (LEAN_FOODS.has(food)) return !leanRefused(state.player, state.minute);
+  return true;
 }
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
@@ -45,6 +48,11 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     p.berriesToday.kg = after;
     if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
     if (after >= BERRY.refuseKg - 1e-9) log(state, "{You} cannot face another berry.", "bad");
+  }
+  if (LEAN_FOODS.has(food)) {
+    const wasRefused = leanRefused(p, state.minute);
+    gain = creditLean(p, state.minute, gain);
+    if (!wasRefused && leanRefused(p, state.minute)) log(state, "Lean meat is not filling {you}. {You} {need} fat.", "bad");
   }
   let left = kg;
   for (const inv of invs) {

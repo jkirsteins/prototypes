@@ -30,7 +30,7 @@ describe("inventory", () => {
     expect(inv.stacks.rawMeat![0].age).toBe(0);
   });
 
-  it("spoils warm meat after 36 hours but not frozen meat", () => {
+  it("spoils warm meat after 36 hours but not meat kept below -10 C", () => {
     const warm = emptyInventory();
     addItem(warm, "rawMeat", 1);
     const lost = ageStacks(warm, 37 * 60, 5);
@@ -38,11 +38,11 @@ describe("inventory", () => {
     expect(qty(warm, "rawMeat")).toBe(0);
     const frozen = emptyInventory();
     addItem(frozen, "rawMeat", 1);
-    ageStacks(frozen, 1000 * 60, -5);
+    ageStacks(frozen, 1000 * 60, -15);
     expect(qty(frozen, "rawMeat")).toBe(1);
   });
 
-  it("berries keep three days in the warm and do not age in the cold", () => {
+  it("berries keep three days in the warm and do not age below -10 C", () => {
     const warm = emptyInventory();
     addItem(warm, "berries", 2);
     ageStacks(warm, 71 * 60, 10);
@@ -52,8 +52,21 @@ describe("inventory", () => {
     expect(qty(warm, "berries")).toBe(0);
     const cold = emptyInventory();
     addItem(cold, "berries", 2);
-    ageStacks(cold, 1000 * 60, -5);
+    ageStacks(cold, 1000 * 60, -15);
     expect(qty(cold, "berries")).toBeCloseTo(2, 6);
+  });
+
+  it("meat ages fully above zero, at half between 0 and -10, and not at all under -10", () => {
+    const inv = emptyInventory();
+    addItem(inv, "rawMeat", 1);
+    ageStacks(inv, 600, 5);
+    expect(inv.stacks.rawMeat![0].age).toBe(600);
+    ageStacks(inv, 600, -5);
+    expect(inv.stacks.rawMeat![0].age).toBe(900);
+    ageStacks(inv, 600, -12);
+    expect(inv.stacks.rawMeat![0].age).toBe(900);
+    ageStacks(inv, 600, 0);
+    expect(inv.stacks.rawMeat![0].age).toBe(1200);
   });
 
   it("routes produce to the pack until it is comfortable, and logs to the ground", () => {

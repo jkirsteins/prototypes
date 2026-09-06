@@ -27,10 +27,10 @@ describe("the fat reserve", () => {
     state.player.kcal = KCAL_FULL - 100;
     state.player.fat = 0;
     addItem(state.player.pack, "driedMeat", 1);
-    // driedMeat: 3500 kcal/kg, 0.15 kg portion = 525 kcal; 100 fills the stomach, 425 goes to fat.
+    // driedMeat: 3,300 kcal/kg (three kilos to one rack kilo), 0.15 kg portion = 495 kcal; 100 fills the stomach, 395 goes to fat.
     eat(state, world, "driedMeat", new Rng(1));
     expect(state.player.kcal).toBe(KCAL_FULL);
-    expect(state.player.fat).toBeCloseTo(425, 5);
+    expect(state.player.fat).toBeCloseTo(395, 5);
 
     state.player.kcal = KCAL_FULL;
     state.player.fat = FAT_FULL - 10;
@@ -65,38 +65,38 @@ describe("the berry ceiling", () => {
     return g;
   }
 
-  it("two kilos in a day credit their full 1,000 kcal", () => {
-    const { state, world } = berried(2);
+  it("1.2 kilos in a day credit their full 540 kcal", () => {
+    const { state, world } = berried(1.2);
     state.player.kcal = 1000;
-    for (let i = 0; i < 10; i++) expect(eat(state, world, "berries", new Rng(1))).toBe(true);
-    expect(state.player.kcal).toBeCloseTo(2000, 6);
-    expect(today(state).eaten).toBeCloseTo(1000, 6);
+    for (let i = 0; i < 6; i++) expect(eat(state, world, "berries", new Rng(1))).toBe(true);
+    expect(state.player.kcal).toBeCloseTo(1540, 6);
+    expect(today(state).eaten).toBeCloseTo(540, 6);
     expect(state.player.berriesToday.day).toBe(1);
-    expect(state.player.berriesToday.kg).toBeCloseTo(2, 6);
+    expect(state.player.berriesToday.kg).toBeCloseTo(1.2, 6);
     expect(state.log.some((e) => e.text === "{Your} stomach is turning.")).toBe(false);
   });
 
-  it("the third and fourth kilos credit half, turn the stomach once, and cost water like a fever", () => {
-    const { state, world } = berried(4);
+  it("past 1.2 kilos the gut credits half, turns the stomach once, and costs water like a fever", () => {
+    const { state, world } = berried(2);
     state.player.kcal = 1000;
-    for (let i = 0; i < 10; i++) eat(state, world, "berries", new Rng(1));
+    for (let i = 0; i < 6; i++) eat(state, world, "berries", new Rng(1));
     const plain = waterLossPerHour(state, 10);
-    for (let i = 0; i < 5; i++) eat(state, world, "berries", new Rng(1));
-    // 1,000 for the first two kilos, 250 for the third.
-    expect(state.player.kcal).toBeCloseTo(2250, 6);
+    for (let i = 0; i < 2; i++) eat(state, world, "berries", new Rng(1));
+    // 540 for the first 1.2 kilos, 90 for the next 0.4 at half credit.
+    expect(state.player.kcal).toBeCloseTo(1630, 6);
     expect(state.log.filter((e) => e.text === "{Your} stomach is turning.").length).toBe(1);
     expect(waterLossPerHour(state, 10)).toBeCloseTo(plain * 1.2, 6);
-    for (let i = 0; i < 5; i++) eat(state, world, "berries", new Rng(1));
-    expect(state.player.kcal).toBeCloseTo(2500, 6);
+    for (let i = 0; i < 2; i++) eat(state, world, "berries", new Rng(1));
+    expect(state.player.kcal).toBeCloseTo(1720, 6);
     expect(state.log.filter((e) => e.text === "{Your} stomach is turning.").length).toBe(1);
   });
 
-  it("the fifth kilo is refused, said once, and auto-eat passes over berries for the day", () => {
-    const { state, world } = berried(5);
+  it("at 2 kilos berries are refused, said once, and auto-eat passes over berries for the day", () => {
+    const { state, world } = berried(2.5);
     state.player.kcal = 1000;
     for (let i = 0; i < 20; i++) eat(state, world, "berries", new Rng(1));
-    expect(state.player.berriesToday.kg).toBeCloseTo(4, 6);
-    expect(qty(state.player.pack, "berries")).toBeCloseTo(1, 6);
+    expect(state.player.berriesToday.kg).toBeCloseTo(2, 6);
+    expect(qty(state.player.pack, "berries")).toBeCloseTo(0.5, 6);
     expect(eat(state, world, "berries", new Rng(1))).toBe(false);
     expect(berriesRefused(state.player, state.minute)).toBe(true);
     expect(edible(state, "berries")).toBe(false);
@@ -107,11 +107,11 @@ describe("the berry ceiling", () => {
     const k = state.player.kcal;
     autoEat(state, world, new Rng(1));
     expect(state.player.kcal).toBeGreaterThan(k);
-    expect(qty(state.player.pack, "berries")).toBeCloseTo(1, 6);
+    expect(qty(state.player.pack, "berries")).toBeCloseTo(0.5, 6);
   });
 
   it("the counter resets with the day", () => {
-    const { state, world } = berried(5);
+    const { state, world } = berried(2.5);
     state.player.kcal = 1000;
     for (let i = 0; i < 20; i++) eat(state, world, "berries", new Rng(1));
     state.minute = 24 * 60 - START_MINUTE_OF_DAY;
@@ -122,8 +122,9 @@ describe("the berry ceiling", () => {
     expect(calendar(state.minute).day).toBe(2);
   });
 
+  // The Swedish handbook's not over two litres of berries a day, about 1.2 kg, past which the gut turns.
   it("the ceiling's numbers are the table's", () => {
-    expect(BERRY.fullCreditKg).toBe(2);
-    expect(BERRY.refuseKg).toBe(4);
+    expect(BERRY.fullCreditKg).toBe(1.2);
+    expect(BERRY.refuseKg).toBe(2);
   });
 });

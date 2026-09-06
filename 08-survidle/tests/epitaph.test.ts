@@ -81,7 +81,10 @@ describe("the epitaph", () => {
     // The bough bed keep right after the lean-to (reference.ts) moves seed 17's death from
     // day 36 to day 19: laying and relaying the bed spends sticks and time the opening has
     // none to spare, and the shared rng stream draws differently from there on.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 19. Starved 0.2 km from camp, with nothing in the pack and 82 kg of firewood at camp."`);
+    // The tables audit's food pass (items.ts: meat down from 1,500 to 1,100 a kilo, dried
+    // meat from 3,500 to 3,300, berries from 500 to 450) moves it again, from day 19 to
+    // day 22, and the death is now at camp rather than 0.2 km out.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 22. Starved at camp, with nothing in the pack and 71 kg of firewood at camp."`);
     // Seed 19 no longer reaches day 60: with a broken night resumed rather than
     // spent awake, its opening runs a different order sequence and it never gets
     // a food source going before the arrival kit is out.
