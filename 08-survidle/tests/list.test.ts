@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { newGame } from "../src/sim/newgame";
-import { REFERENCE_ORDERS, wantOpen } from "../src/sim/reference";
+import { REFERENCE_ORDERS, wantOpen, WINTER_STOCK } from "../src/sim/reference";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
@@ -52,15 +52,17 @@ describe("the list after the axe", () => {
   it("keeps the winter pile's season rule on all three methods", () => {
     const { state, world } = newGame(17);
     const april = calendar(state.minute, state.startDoy);
-    const pile400 = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === 400);
-    expect(pile400.map(key)).toEqual(["split::keep", "splitWedges::keep", "deadwood::keep"]);
-    for (const w of pile400) expect(wantOpen(state, world, w, april)).toBe(false);
+    // Read off WINTER_STOCK.firewoodKg rather than a literal: the stock was
+    // sized from the measured hut winter, and the three methods move with it.
+    const winterPile = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg);
+    expect(winterPile.map(key)).toEqual(["split::keep", "splitWedges::keep", "deadwood::keep"]);
+    for (const w of winterPile) expect(wantOpen(state, world, w, april)).toBe(false);
     const october = calendar(0, 280);
-    expect(wantOpen(state, world, pile400[0], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[0], october)).toBe(true);
     state.player.tools = [];
-    expect(wantOpen(state, world, pile400[0], october)).toBe(false);
-    expect(wantOpen(state, world, pile400[1], october)).toBe(true);
-    expect(wantOpen(state, world, pile400[2], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[0], october)).toBe(false);
+    expect(wantOpen(state, world, winterPile[1], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[2], october)).toBe(true);
   });
 
   it("keeps twenty snares set with the food and forty below the trough", () => {

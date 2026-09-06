@@ -407,14 +407,16 @@ describe("wants by level", () => {
     expect(wantOpen(state, world, elk, cal)).toBe(true);
   });
 
-  it("the list hangs as a grind, keeps eight cordage, pins the winter woodpile at 400, and hunts elk, reindeer and roe deer by name", () => {
+  it("the list hangs as a grind, keeps eight cordage, pins the winter woodpile at the stock, and hunts elk, reindeer and roe deer by name", () => {
     const hang = REFERENCE_ORDERS.find((w) => w.req.task === "hang")!;
     expect(hang.kind).toBe("grind");
     expect(hang.req.until.kind).toBe("forever");
     const cordage = REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "cordage")!;
     expect(cordage.req.until).toEqual({ kind: "campHas", qty: 8 });
-    const woodpile = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === 400)!;
-    expect(woodpile.req.until).toEqual({ kind: "campHas", qty: 400 });
+    // The woodpile keep is the winter stock's own target, sized from the
+    // measured hut winter rather than pinned at a literal here.
+    const woodpile = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
+    expect(woodpile.req.until).toEqual({ kind: "campHas", qty: WINTER_STOCK.firewoodKg });
     const named = REFERENCE_ORDERS.filter((w) => w.req.task === "hunt" && w.req.arg !== "any").map((w) => w.req.arg);
     expect(named).toEqual(["elk", "reindeer", "deer"]);
   });
@@ -433,7 +435,7 @@ describe("wants by level", () => {
     const { state, world } = newGame(17, WINTER_WOOD_FROM_DOY);
     setSkillLevel(state, "woodcraft", 10);
     const player = new ReferencePlayer();
-    const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty === 400);
+    const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.firewoodKg);
     player.tick(state, world);
     expect(woodpile().length).toBe(1);
     // Forward to the thaw: the days left in the year from 1 September, then April's first day.
@@ -448,9 +450,9 @@ describe("wants by level", () => {
     expect(woodpile().length).toBe(1);
   });
 
-  it("opens the 400 kg firewood keep from 1 September and not in April, staying open through winter until the thaw", () => {
+  it("opens the winter firewood keep from 1 September and not in April, staying open through winter until the thaw", () => {
     const { state, world } = newGame(17);
-    const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === 400)!;
+    const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
     expect(wantOpen(state, world, wood, calendar(0, 90))).toBe(false);
     expect(wantOpen(state, world, wood, calendar(0, 200))).toBe(false);
     expect(wantOpen(state, world, wood, calendar(0, 244))).toBe(true);
@@ -474,7 +476,7 @@ describe("wants by level", () => {
     expect(at(stones[1])).toBe(at(REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "whetstone")!) - 1);
   });
 
-  it("the 150-log keep sits beside the woodpile keep and above the named hunts, opened with it from 1 September", () => {
+  it("the winter log keep sits beside the woodpile keep and above the named hunts, opened with it from 1 September", () => {
     // A grind is never met and a grind above a keep starves it: with the log keep last, below the three
     // named hunts, camp logs never passed five from 1 September and a level-20 camp froze in December.
     const logs = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.logs)!;

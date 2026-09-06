@@ -146,10 +146,23 @@ export const WINTER_WOOD_FROM_DOY = 244;
  */
 export const WINTER_WOOD_TO_DOY = 90;
 
-/** The winter stock (year loop spec 1.3): a hut winter is about 3 tonnes of firewood, of which 400 kg split and 150 logs to split, with 80 kg of dried meat. The stocked December camp starts with it; the list's winter keeps stock it. */
-export const WINTER_STOCK = { driedMeatKg: 80, firewoodKg: 400, logs: 150 };
+/**
+ * The winter stock: what a competent player has at camp on 1 December.
+ * A hut at the winter mean burned 60 kg of firewood a day over the stocked
+ * December camp's ninety days (measured on all four seeds, a mean air of
+ * -12 C, 5,410 to 5,522 kg), so the wood is 6,600 kg with a fifth to
+ * spare: 600 kg split and 300 logs to split, at 20 kg of firewood a log.
+ * The food is 80 kg of dried meat and 20 kg of rendered fat. The fat is
+ * not a garnish: the lean ceiling caps meat and fish at 1,600 kcal a day
+ * whatever the larder holds, and a winter body burns over 3,000, so a
+ * lean-only stock starves beside a quarter of a million kcal of it. The
+ * ninety days drew 16 kg of fat at most, and a fifth spare is 20.
+ * The stocked December camp starts with this; the list's winter keeps
+ * stock the wood half of it.
+ */
+export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
 
-/** The winter-stock keeps, the 400 kg split keep and the 150-log keep, told from the list's summer keeps by their targets. */
+/** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
   const firewood = w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood";

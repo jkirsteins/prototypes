@@ -29,7 +29,15 @@ describe("the year script", () => {
     const r = runWinter(17, 2);
     expect(r.startDoy).toBe(334);
     expect(r.kitted).toBe(true);
-    expect(r.stocked).toEqual({ driedMeatKg: 80, firewoodKg: 400, logs: 150 });
+    expect(r.stocked).toEqual({ driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 });
+  });
+
+  // The stock's fat is what the lean ceiling makes necessary: a lean-only
+  // larder feeds 1,600 kcal a day whatever it holds, and the stocked camp
+  // starved beside 246,000 kcal of dried meat until the fat went in.
+  it("stocks the December camp with rendered fat beside the dried meat", () => {
+    const r = runWinter(17, 2);
+    expect(r.stocked?.fatKg).toBeGreaterThan(0);
   });
 
   it("names the large game the surplus day is read from", () => {

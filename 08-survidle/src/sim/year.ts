@@ -150,6 +150,7 @@ export function runWinter(seed: number, days = WINTER_DAYS): YearReport {
   const st = regionState(state, world, state.player.region);
   const camp = pile(state, st.campCell);
   addItem(camp, "driedMeat", WINTER_STOCK.driedMeatKg);
+  addItem(camp, "fat", WINTER_STOCK.fatKg);
   addItem(camp, "firewood", WINTER_STOCK.firewoodKg);
   addItem(camp, "log", WINTER_STOCK.logs);
   const life = runLife(ref, days);

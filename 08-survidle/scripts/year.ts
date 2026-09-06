@@ -37,7 +37,7 @@ const runSeeds = seeds.length ? seeds : REFERENCE_SEEDS;
 
 function print(r: YearReport): void {
   const from = fmtDate(calendar(0, r.startDoy));
-  const who = r.stocked ? `stocked winter camp (${r.stocked.driedMeatKg} kg dried meat, ${r.stocked.firewoodKg} kg firewood, ${r.stocked.logs} logs)` : r.kitted ? `kitted camp, skills ${r.level}` : "fresh survivor, arrival kit";
+  const who = r.stocked ? `stocked winter camp (${r.stocked.driedMeatKg} kg dried meat, ${r.stocked.fatKg} kg fat, ${r.stocked.firewoodKg} kg firewood, ${r.stocked.logs} logs)` : r.kitted ? `kitted camp, skills ${r.level}` : "fresh survivor, arrival kit";
   console.log(`seed ${r.seed} (${who}, from ${from}):`);
   for (const m of r.months) {
     const food = Object.entries(m.stock.foodByKind).map(([k, v]) => `${k} ${v}`).join(", ") || "none";
