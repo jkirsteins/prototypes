@@ -74,7 +74,11 @@ describe("the epitaph", () => {
     // the end of the list is a 150-log keep shut until 1 September and placed beside the woodpile keep, so a
     // spring runner with nothing else able to run rests instead of felling; and stone is wanted twice, a
     // once job for eight at the opening and a keep of eight as the restock below the clothing block.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 41. Starved at camp, with nothing in the pack and 19 kg of firewood at camp."`);
+    // Seed 17's death moved from day 41 to day 58 when the sleep model replaced
+    // the clock rules: the rest latch that held a spent body down until dawn is
+    // gone, so the evening ends at the rested line and the runner gets more of
+    // the dark back as working hours.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 58. Starved at camp, with nothing in the pack and no firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Landed 1 April, year 1."`);
   });
 

@@ -131,8 +131,12 @@ function fillDefaults(state: GameState): void {
   p.berriesToday ??= { day: 0, kg: 0 };
   p.workHours ??= WORK_HOURS_DEFAULT;
   // A save from before the two processes has one number for both: read its
-  // fatigue as the debt's mirror, which is where a rested body sits.
+  // fatigue as the debt's mirror, which is where a rested body sits. The
+  // clock rules that number carried are gone and so are their markers, so a
+  // save holding them drops them here and round-trips clean.
   p.sleepDebt ??= 100 - p.energy;
+  delete (p as { restUntil?: number }).restUntil;
+  delete (p as { sleptTonight?: boolean }).sleptTonight;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;

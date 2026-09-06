@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { minutesToCamp } from "../src/sim/body";
+import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
@@ -36,7 +37,7 @@ function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
 }
 
 describe("the body tier", () => {
-  it("spent, it sets the tree aside, walks to camp and sleeps there", () => {
+  it("collapsing, it sets the tree aside, walks to camp and dozes there until it is rested", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     advance(state, world, 20);
@@ -48,26 +49,33 @@ describe("the body tier", () => {
     expect(Object.keys(state.paused)).toHaveLength(1);
     expect(until(g, () => state.task?.id === "sleep")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
-    expect(state.intent?.step).toBe("sleeping");
+    // A morning collapse is a doze by the fire and says so; only a sleep begun
+    // in the dark reads as sleeping.
+    expect(state.intent?.step).toBe("dozing by the fire");
     expect(until(g, () => state.task?.id !== "sleep", 700)).toBe(true);
     expect(state.intent?.need).toBeNull();
+    // It lay there until the fatigue an evening by the fire would have restored.
+    expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT);
     // Back to the tree it left, and on with the same intent.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     expect(state.task!.progress).toBeGreaterThan(15);
   });
 
-  it("night with the energy under 60 is bedtime; over it is not", () => {
+  it("bedtime is the onset line and not the dark: a sleepy body goes to bed, a fresh one works on through it", () => {
+    // 21:00 on 1 April is dark at 62 N, and the dark on its own decides nothing.
+    const hour = calendar(13 * 60).hour;
     const { g, state } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    // 21:00 on 1 April is dark at 62 N.
     state.minute = 13 * 60;
-    state.player.energy = 59;
+    state.player.energy = 100;
+    state.player.sleepDebt = SLEEP_ONSET + 1 + alertness(hour);
     advance(state, g.world, 1);
     expect(state.intent?.need).toBe("sleep");
     const other = felling();
     expect(until(other.g, () => other.state.task?.id === "chop")).toBe(true);
     other.state.minute = 13 * 60;
-    other.state.player.energy = 61;
+    other.state.player.energy = 40;
+    other.state.player.sleepDebt = SLEEP_ONSET - 5 + alertness(hour);
     advance(other.state, other.world, 1);
     expect(other.state.intent?.need).toBeNull();
     expect(other.state.task?.id).toBe("chop");
@@ -86,7 +94,7 @@ describe("the body tier", () => {
       if (steps.at(-1) !== s) steps.push(s);
       return state.task?.id === "sleep";
     }, 1500);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the night", "laying a fire pit", "splitting a log for the fire", "lighting the fire", "sleeping"]));
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp for the night", "laying a fire pit", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 
@@ -409,12 +417,16 @@ describe("the runner in the elements", () => {
     expect(c.season).toBe("winter");
     let arrivedAt = -1;
     until(g, () => {
+      // Kept fresh and out of debt every minute, so it is dusk that sends this
+      // body home and not the day's fatigue or the onset line.
+      state.player.energy = 100;
+      state.player.sleepDebt = 10;
       if (cellOf(state, world) === camp && arrivedAt < 0) arrivedAt = calendar(state.minute).hour;
       return arrivedAt >= 0;
     }, 900);
     expect(arrivedAt).toBeGreaterThan(0);
     expect(arrivedAt).toBeLessThanOrEqual(calendar(state.minute).sunset + 0.05);
-    expect(state.intent?.need === "home" || state.intent?.need === "sleep").toBe(true);
+    expect(state.intent?.need).toBe("home");
   });
 
   it("the home need holds sticky from the minute it first fires until night, without flickering the runner back out to work", () => {
@@ -612,25 +624,29 @@ describe("the runner in the elements", () => {
   });
 });
 
-describe("the sleep cap", () => {
-  it("a spent body at midday sleeps nine hours, not until dawn", () => {
+describe("how long a sleep runs", () => {
+  it("a body with a day's debt behind it sleeps the model's hours, with no dawn under them", () => {
     const { state, world } = newGame(1);
-    // 13:00 on 1 April: dawn is seventeen hours off, the body needs eight.
+    // 13:00 on 1 April: dawn is seventeen hours off, and the old floor would
+    // have held the body down for all of them.
     state.minute = 5 * 60;
+    const cal = calendar(state.minute);
     state.player.energy = 0;
-    const o = check(state, world, calendar(state.minute), "sleep");
+    state.player.sleepDebt = 64;
+    const o = check(state, world, cal, "sleep");
     expect(o.ok).toBe(true);
-    expect(o.duration).toBe(540);
+    expect(o.duration).toBe(minutesToWake(64, cal.hour));
+    expect(o.duration).toBeLessThan(minutesUntilDawn(state.minute));
+    expect(o.detail).toContain("until rested");
   });
 
-  it("a body at 60 at 22:00 sleeps until dawn, which is under the cap", () => {
+  it("a body with its debt paid lies down for the floor's hour and no more", () => {
     const { state, world } = newGame(1);
-    // 22:00 on 1 April: dawn is eight and a half hours off, inside the cap; the body needs about three.
+    // 22:00 on 1 April, and nothing owing: under an hour nothing is recovered,
+    // so an hour is the floor even for a body already past the wake line.
     state.minute = 14 * 60;
-    state.player.energy = 60;
-    const o = check(state, world, calendar(state.minute), "sleep");
-    expect(o.duration).toBeCloseTo(minutesUntilDawn(state.minute), 3);
-    expect(o.duration).toBeLessThanOrEqual(540);
+    state.player.sleepDebt = 0;
+    expect(check(state, world, calendar(state.minute), "sleep").duration).toBe(SLEEP_MIN_MINUTES);
   });
 
   it("an hour on a task costs seven energy; an hour of camp work four", () => {

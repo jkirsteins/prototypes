@@ -197,6 +197,8 @@ export interface Intent {
   restFromWarmth?: number;
   /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
   coldSpent?: boolean;
+  /** This sleep began on the collapse line rather than the onset line, so it holds past the wake line until fatigue is back at RESTED_AT. */
+  collapsed?: boolean;
   /** The order this intent serves, or null for one started by hand. */
   orderId: number | null;
   /** The scheduler has chosen another order: deliver what is owed, then end. */
@@ -279,12 +281,8 @@ export interface Player {
   fingers: boolean;
   /** Kilos of berries eaten today, for the gut's ceiling: full credit to two, half to four, none past it. */
   berriesToday: { day: number; kg: number };
-  /** Hours of task work a day before the body calls it a day and rests by the fire; a default the panel may expose later. */
+  /** Hours of task work a day the fatigue drain is scaled to; a default the panel may expose later. */
   workHours: number;
-  /** Set when the day's work is done: the minute of the next dawn, until which the runner rests. */
-  restUntil?: number;
-  /** Set when a sleep has run its cap while it is still dark; cleared at dawn. One sleep per night, then rest or chores by the fire until first light. */
-  sleptTonight?: boolean;
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }

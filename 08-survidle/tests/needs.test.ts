@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { canFeed, currentNeed, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
-import { calendar, minutesUntilDawn } from "../src/sim/calendar";
+import { canFeed, currentNeed, SLEEP_AT, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
+import { alertness, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
+import { calendar } from "../src/sim/calendar";
+import { WATER_FULL } from "../src/sim/water";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -13,7 +15,7 @@ import { WINTER_WOOD_FROM_DOY } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
-import { check, SLEEP_CAP_MINUTES, startTask } from "../src/sim/tasks";
+import { check, startTask } from "../src/sim/tasks";
 import type { Task } from "../src/sim/types";
 import { regionAt, spotOf } from "../src/world/gen";
 
@@ -306,8 +308,8 @@ describe("thirst and the seep", () => {
   });
 });
 
-describe("one sleep per night", () => {
-  /** 20:00 on 1 September at camp, a felling intent live: minute 0 is 08:00 and sunset is 19:56, so the cap of nine hours ends well before the 06:04 dawn. */
+describe("sleep by the model, not by the clock", () => {
+  /** 20:00 on 1 September at camp, a felling intent live: minute 0 is 08:00 and sunset is 19:56, so this is the dark. */
   function septemberEvening() {
     const g = newGame(17, WINTER_WOOD_FROM_DOY);
     const { state, world } = g;
@@ -320,38 +322,96 @@ describe("one sleep per night", () => {
     return { g, state, world, night };
   }
 
-  it("a spent body is laid down at nightfall; with the night's sleep had it rests until dawn instead", () => {
+  /** The debt that puts this hour's sleepiness on a wanted line. */
+  function debtFor(target: number, hour: number): number {
+    return target + alertness(hour);
+  }
+
+  it("the onset line lays the body down and the wake line gets it up: no clock is read either way", () => {
     const { state, world, night } = septemberEvening();
     const p = state.player;
     p.energy = 80;
-    p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
+    p.water = WATER_FULL;
+    // A point under the onset line at this hour: still up, whatever the dark.
+    p.sleepDebt = debtFor(SLEEP_ONSET - 1, night.hour);
+    expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
+    // A point over it: to bed.
+    p.sleepDebt = debtFor(SLEEP_ONSET + 1, night.hour);
     expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
-    p.sleptTonight = true;
-    expect(currentNeed(state, world, night, state.intent!)).toBe("spent");
+    // The sleep holds down to the wake line and lets go under it. The gap
+    // between the two lines is what stops a body stirring at every dip.
+    state.intent!.need = "sleep";
+    p.sleepDebt = debtFor(WAKE_AT + 1, night.hour);
+    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    p.sleepDebt = debtFor(WAKE_AT - 1, night.hour);
+    expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
   });
 
-  it("a body worked under 60 in the dark sleeps again, marker or not: that is a collapse, not a second night", () => {
+  it("a body under the collapse line sleeps parched and holds that sleep until it is rested", () => {
     const { state, world, night } = septemberEvening();
-    state.player.energy = 50;
-    state.player.sleptTonight = true;
+    const p = state.player;
+    // Nothing sleepy about it: the debt is at the bottom of the range.
+    p.sleepDebt = 0;
+    p.water = 0.1;
+    p.energy = SLEEP_AT;
     expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    expect(state.intent!.collapsed).toBe(true);
+    // Past the collapse line but not yet rested: still down.
+    p.energy = RESTED_AT - 1;
+    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    // Rested, and with no sleepiness to hold it there, it is up by the fire.
+    p.energy = RESTED_AT;
+    state.intent!.need = null;
+    expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
+    expect(state.intent!.collapsed).toBe(false);
   });
 
-  it("a sleep that ends in the dark sets the marker, and dawn clears it", () => {
+  it("a rested body with its debt paid works by firelight at 23:00, with no night clause to stop it", () => {
+    const { state, world } = septemberEvening();
+    const p = state.player;
+    state.minute = 15 * 60; // 23:00 on day 1
+    const late = calendar(state.minute, state.startDoy);
+    expect(late.isNight).toBe(true);
+    p.energy = 100;
+    p.water = WATER_FULL;
+    p.sleepDebt = 20;
+    expect(sleepiness(p.sleepDebt, late.hour)).toBeLessThan(SLEEP_ONSET);
+    expect(currentNeed(state, world, late, state.intent!)).toBeNull();
+  });
+
+  it("a spent body rests by the fire until it is rested, and not until a clock says dawn", () => {
+    const { state, world, night } = septemberEvening();
+    const p = state.player;
+    p.sleepDebt = 0;
+    p.water = WATER_FULL;
+    p.energy = SPENT_AT - 1;
+    expect(currentNeed(state, world, night, state.intent!)).toBe("spent");
+    state.intent!.need = "spent";
+    p.energy = RESTED_AT - 1;
+    expect(currentNeed(state, world, night, state.intent!)).toBe("spent");
+    p.energy = RESTED_AT;
+    expect(currentNeed(state, world, night, state.intent!)).not.toBe("spent");
+  });
+
+  it("the sleep task runs to the model's wake line, with no dawn floor and no cap", () => {
     const { state, world, night } = septemberEvening();
     state.intent = null;
     state.task = null;
+    state.player.sleepDebt = debtFor(SLEEP_ONSET, night.hour);
+    const minutes = sleepMinutes(state, night);
+    expect(check(state, world, night, "sleep").duration).toBe(minutes);
+    expect(check(state, world, night, "sleep").detail).toContain("until rested");
+    expect(minutes).toBeGreaterThanOrEqual(SLEEP_MIN_MINUTES);
+    expect(minutes).toBeLessThanOrEqual(SLEEP_MAX_MINUTES);
     expect(startTask(state, world, night, "sleep")).toBe(true);
-    expect(state.task!.duration).toBe(SLEEP_CAP_MINUTES);
-    advance(state, world, SLEEP_CAP_MINUTES);
+    expect(state.task!.duration).toBe(minutes);
+    advance(state, world, minutes);
     expect(state.task).toBeNull();
-    expect(state.player.sleptTonight).toBe(true);
-    expect(calendar(state.minute, state.startDoy).isNight).toBe(true);
-    advance(state, world, minutesUntilDawn(state.minute, state.startDoy) + 1);
-    expect(state.player.sleptTonight).toBe(false);
+    // It ended on the wake line, which is the body's own reading and not the sun's.
+    expect(sleepiness(state.player.sleepDebt, calendar(state.minute, state.startDoy).hour)).toBeLessThanOrEqual(WAKE_AT + 1);
   });
 
-  it("a wait intent at camp keeps its fire before it rests or sleeps", () => {
+  it("a wait intent at camp keeps its fire before it rests", () => {
     // Every camp chore the dark allows works by firelight, so a runner that
     // waited a fire out would have no way back to work before dawn. The same
     // step a spent body takes at camp.
@@ -363,25 +423,27 @@ describe("one sleep per night", () => {
     addItem(pile(state, st.campCell), "firewood", 5);
     state.intent = null;
     state.task = null;
-    state.player.sleptTonight = true;
+    state.player.sleepDebt = 0;
     startIntent(state, world, night, new Rng(1), { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
     expect((state.task as Task | null)?.id).toBe("light");
   });
 
-  it("a wait intent by night sleeps once and then rests", () => {
+  it("a wait intent never lies down of its own accord: the body's need is what puts it to bed", () => {
     const { state, world, night } = septemberEvening();
     state.intent = null;
     state.task = null;
     const wait = { task: "wait" as const, until: { kind: "forever" as const }, deliver: "leave" as const, where: "nearest" as const };
+    // Not sleepy, in the dark: it rests, where the old night clause slept.
+    state.player.sleepDebt = 0;
+    state.player.water = WATER_FULL;
     startIntent(state, world, night, new Rng(1), wait);
-    // The cast widens past the "= null" two lines up: tsc otherwise narrows
+    // The cast widens past the "= null" above: tsc otherwise narrows
     // state.task to null there and reads this access as unreachable, since it
     // cannot see that startIntent assigns a task of its own.
-    expect((state.task as Task | null)?.id).toBe("sleep");
-    state.intent = null;
-    state.task = null;
-    state.player.sleptTonight = true;
-    startIntent(state, world, night, new Rng(1), wait);
     expect((state.task as Task | null)?.id).toBe("rest");
+    // Sleepy: the body tier takes the rest over on the next minute.
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, calendar(state.minute, state.startDoy).hour);
+    advance(state, world, 1);
+    expect((state.task as Task | null)?.id).toBe("sleep");
   });
 });
