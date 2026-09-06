@@ -6,7 +6,7 @@ import type {
 /** Unit weight in kg. Kilogram items weigh 1 per unit by definition. */
 export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
-  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2,
+  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2, wedge: 0.3,
   firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
   water: 1, ice: 1,
@@ -21,7 +21,7 @@ export const KG_ITEMS = new Set<ItemId>([
 
 export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
-  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps",
+  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps", wedge: "wedges",
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
   wetFirewood: "wet firewood", water: "water", ice: "ice",
@@ -106,6 +106,8 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   torch: { name: "torch", needs: [{ item: "stick", qty: 1 }, { item: "bark", qty: 2 }], minutes: 20, out: { item: "torch", qty: 1 } },
   // A flat stone ground smooth on the outcrop: the edge's whole life, where a stone sharpen spends the stone.
   whetstone: { name: "whetstone", needs: [{ item: "stone", qty: 1 }], minutes: 30, out: { item: "whetstone", qty: 1 } },
+  // Driven with a stick swung as a maul: the way a log splits with no iron.
+  wedges: { name: "wedges x2", needs: [{ item: "stick", qty: 2 }], tool: "knife", minutes: 20, out: { item: "wedge", qty: 2 } },
   hideCoat: { name: "hide coat", needs: [{ item: "hide", qty: 6 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 480, out: { clothing: "hideCoat" } },
   hideTrousers: { name: "hide trousers", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 300, out: { clothing: "hideTrousers" } },
   hideBoots: { name: "hide boots", needs: [{ item: "hide", qty: 2 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 240, out: { clothing: "hideBoots" } },

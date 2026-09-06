@@ -67,7 +67,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole", "read"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -86,7 +86,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
-  "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
+  "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp",
 ]);
@@ -302,6 +302,12 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
+    case "deadwood": {
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of firewood off the forest floor; no axe`, duration: 60, repeatable: true }));
+      if (!o.ok) return o;
+      if (st.wood < DEADWOOD_TREE_SHARE) return { ...o, ok: false, why: "the forest is picked clean" };
+      return o;
+    }
     case "sticks":
       return ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather sticks", detail: "6 sticks", duration: 20, repeatable: true }));
     case "bark":
@@ -318,6 +324,14 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const sheltered = splitSheltered(state, world, at);
       const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
       if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
+      if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
+      return o;
+    }
+    case "splitWedges": {
+      const sheltered = splitSheltered(state, world, at);
+      const o = opt({ group: "camp", label: "Split a log with wedges", detail: `one log into 20 kg of firewood, driven with a stick; a third the axe's pace${sheltered ? ", under the roof" : ""}`, duration: 45, repeatable: true });
+      if (totalQty(invs, "wedge") < 2) return { ...o, ok: false, why: "needs two wedges" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
       if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
@@ -716,7 +730,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   const out: TaskOption[] = [];
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
-  for (const id of ["chop", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
+  for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
   out.push(check(state, world, cal, "hunt", "any"));
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "fish", "any"));
@@ -730,6 +744,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "lightIndoors"));
   out.push(check(state, world, cal, "lightTorch"));
   out.push(check(state, world, cal, "split"));
+  out.push(check(state, world, cal, "splitWedges"));
   out.push(check(state, world, cal, "hang"));
   out.push(check(state, world, cal, "sharpen"));
   out.push(check(state, world, cal, "hone"));
@@ -786,6 +801,12 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
  * as well as a fresh one; a flaked axe is half again as slow at any edge.
  */
 export const SLOW_EDGE = 50;
+/** An hour on the forest floor: deadfall and dry branches broken by hand, an evening's fire. */
+export const DEADWOOD_KG = 10;
+/** Dead wood draws the felling stock: eight gathers are one tree's worth. */
+export const DEADWOOD_TREE_SHARE = 1 / 8;
+/** One split in ten breaks a wedge along the grain. */
+export const WEDGE_BREAK = 0.1;
 /** The edge a hone is worth: above it the row refuses, so a hone grind blocks harmlessly on a sharp axe. */
 export const HONE_UNDER = 70;
 export function edgeFactor(state: GameState): number {
@@ -1104,6 +1125,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       }
       return;
     }
+    case "deadwood": {
+      st.wood -= DEADWOOD_TREE_SHARE;
+      produce(state, world, splitIsWet(state, world) ? "wetFirewood" : "firewood", DEADWOOD_KG);
+      return;
+    }
     case "sticks": produce(state, world, "stick", 6); return;
     case "bark": produce(state, world, "bark", 4); return;
     case "stone": {
@@ -1124,6 +1150,16 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
       produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      return;
+    }
+    case "splitWedges": {
+      consume(invs, [{ item: "log", qty: 1 }]);
+      const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
+      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      if (rng.chance(WEDGE_BREAK)) {
+        consume(invs, [{ item: "wedge", qty: 1 }]);
+        log(state, "A wedge splits along the grain.", "bad");
+      }
       return;
     }
     case "hunt": {

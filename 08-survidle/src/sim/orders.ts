@@ -112,6 +112,8 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
 const COUNT_WORDS: Partial<Record<TaskId, [string, string]>> = {
   chop: ["tree", "trees"],
   split: ["log", "logs"],
+  splitWedges: ["log", "logs"],
+  deadwood: ["load", "loads"],
   sticks: ["bundle", "bundles"],
   bark: ["strip", "strips"],
   stone: ["trip", "trips"],

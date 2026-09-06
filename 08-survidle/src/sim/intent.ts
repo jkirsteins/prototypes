@@ -31,14 +31,14 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
 const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
-  chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
+  chop: "forest", deadwood: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
   fill: "shore", iceHole: "shore", read: "shore", setTrap: "shore",
 };
 
@@ -73,6 +73,8 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "stone": return "stone";
     case "berries": return "berries";
     case "split": return "firewood";
+    case "splitWedges": return "firewood";
+    case "deadwood": return "firewood";
     case "hunt": return "rawMeat";
     case "fish": return "fish";
     case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
@@ -494,6 +496,8 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   stone: () => "gathering stone",
   berries: () => "picking berries",
   split: () => "splitting a log",
+  splitWedges: () => "splitting a log with wedges",
+  deadwood: () => "gathering dead wood",
   hunt: (arg) => (arg === "any" ? "hunting" : `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`),
   fish: (arg) => (arg === "any" ? "fishing" : `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`),
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
