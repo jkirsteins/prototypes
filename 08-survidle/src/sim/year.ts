@@ -37,6 +37,8 @@ export interface MonthLine {
   eatenPerDay: number;
   burnPerDay: number;
   stock: { foodKcal: number; foodByKind: Record<string, number>; firewoodKg: number; logs: number };
+  /** Snow on the ground, rounded cm. */
+  snowCm: number;
 }
 
 export interface YearReport {
@@ -102,7 +104,7 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
     if (surplus.largeGame === null && current(state).events.some((e) => e.kind === "firstKill" && LARGE_GAME.includes(e.species))) surplus.largeGame = cal.day;
     if (cal.dayOfMonth === 1 && cal.day > lastLineDay) {
       const avg = between(state.ledger, lastLineDay, cal.day);
-      months.push({ month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world) });
+      months.push({ month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm) });
       lastLineDay = cal.day;
     }
   }

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { newGame } from "../src/sim/newgame";
 import type { Weather } from "../src/sim/types";
-import { ambientTemperature, seasonalMean, stepWeather } from "../src/sim/weather";
+import { ambientTemperature, seasonalMean, SNOW_CM_PER_MINUTE, SNOW_SETTLE_PER_DAY, stepWeather } from "../src/sim/weather";
 
 function w(over: Partial<Weather> = {}): Weather {
   return { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: -1, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0, ...over };
@@ -61,6 +62,32 @@ describe("weather", () => {
     expect(rolled).toBe(true);
     expect(weather.dryDays).toBe(0);
     expect(weather.wetDay).toBe(true);
+  });
+
+  it("snow lays a quarter of what it did and the pack settles five percent at the day roll", () => {
+    expect(SNOW_CM_PER_MINUTE).toEqual({ light: 1 / 160, heavy: 1 / 80 });
+    expect(SNOW_SETTLE_PER_DAY).toBe(0.05);
+    const { state } = newGame(17, 334);
+    const w = state.weather;
+    w.snowCm = 0;
+    w.offset = -10;
+    const cal = calendar(0, 334);
+    const rng = new Rng(1);
+    // The stop-per-hour roll can flip precip off for a single minute; force
+    // heavy again each step so the hour reads as continuously heavy snow.
+    for (let m = 0; m < 60; m++) {
+      w.precip = "heavy";
+      stepWeather(w, calendar(m, 334), rng, 1, m);
+    }
+    expect(w.snowCm).toBeCloseTo(0.75, 1);
+    w.snowCm = 100;
+    w.precip = "none";
+    // December's sunrise at 62 N is past 10:00; 11:00 the next day is after the roll.
+    w.storm = null;
+    const dawn = calendar(1440 + 11 * 60, 334);
+    stepWeather(w, dawn, rng, 1, 1440 + 11 * 60);
+    expect(w.snowCm).toBeCloseTo(95, 0);
+    expect(cal.season).toBe("winter");
   });
 
   it("rolls a new daily offset at dawn only once", () => {

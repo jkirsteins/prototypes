@@ -98,8 +98,15 @@ describe("the epitaph", () => {
     // day 4 to day 9, with 1.2 kg of food in the pack rather than none at the end:
     // the faster cold-weather burn reorders the early feeding and food-gathering
     // grinds enough to buy five extra days before the cold catches up.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 20. Starved at camp, with nothing in the pack and 33 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 9. Died of cold at camp, with 1.2 kg of food in the pack and no firewood at camp."`);
+    // The snow pass (weather.ts: fresh snow a quarter as fast, the pack settling five
+    // percent a day) moves seed 17 from day 20 to 25 and the woodpile from 33 kg to 14:
+    // a shallower pack costs the walk less, so the days that used to go to breaking
+    // trail go to firewood and food instead, and starvation comes later with less
+    // wood banked against it. Seed 19 moves further, from a day 9 cold death to a day
+    // 24 starvation: the thinner snow no longer chills the reference player past the
+    // early frost, so the run survives on warmth long enough to run out of food instead.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 25. Starved at camp, with nothing in the pack and 14 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 38 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

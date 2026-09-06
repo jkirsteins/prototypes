@@ -18,6 +18,29 @@ const START_PER_HOUR: Record<Season, number> = { spring: 0.04, summer: 0.03, aut
 const STOP_PER_HOUR = 0.25;
 export const DEEP_SNOW_CM = 30;
 
+/**
+ * Snow on the ground. Fresh snow lays 0.375 cm an hour in light snow and
+ * 0.75 in heavy, a quarter of the old rates, and the pack settles five
+ * percent of its depth at each day roll; together they hold a 62 N inland
+ * January at 40 to 60 cm where it read 80 to 270 (the year loop's first
+ * flag). Melting above 2 C stays at 2 cm an hour.
+ *
+ * The settle constant was walked from 0.02 in steps of 0.005 against
+ * `npm run year -- 17 19 42 79`. At 0.02 the pack never stopped growing
+ * (1 Jan 47/63 cm on seeds 42/79, 1 Feb 97/108). At 0.05 it holds: 1 Jan
+ * 28/42/42 cm (seeds 17/42/79; 19 always dies in May before snow), 1 Feb
+ * 43/45 (seed 17 freezes on day 300, before its February line). Seed 17's
+ * January reading sits under the band; the other four readings are 42 to
+ * 45 and the five-reading mean is 40, so the constant stayed at 0.05
+ * rather than chasing that one seed - nearby steps (0.04, 0.045, 0.06)
+ * each pulled a different seed further out instead of narrowing the
+ * spread, evidence the day-roll settle interacts with the melt floor
+ * (snow cannot go below zero) in a way that is not monotonic in this
+ * constant.
+ */
+export const SNOW_CM_PER_MINUTE = { light: 1 / 160, heavy: 1 / 80 } as const;
+export const SNOW_SETTLE_PER_DAY = 0.05;
+
 /** Daily chance of a storm rolling in, by season. */
 const STORM_CHANCE: Record<Season, number> = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
 
@@ -69,6 +92,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
   const ev: WeatherEvents = { coldSnap: false, precipStarted: false, precipStopped: false };
   if (cal.dayIndex > w.rolledDay && cal.hour >= cal.sunrise) {
     stepIce(w, cal);
+    w.snowCm *= 1 - SNOW_SETTLE_PER_DAY;
     w.rolledDay = cal.dayIndex;
     // Winter anomalies lean cold: clear, still nights under a high sink far below the mean.
     w.offset = rng.gauss() * 4 - (cal.season === "winter" ? 3 : 0);
@@ -113,7 +137,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     ev.precipStopped = true;
   }
   if (w.precip !== "none" && ambient <= 0) {
-    w.snowCm += (w.precip === "heavy" ? 1 / 20 : 1 / 40) * dt;
+    w.snowCm += (w.precip === "heavy" ? SNOW_CM_PER_MINUTE.heavy : SNOW_CM_PER_MINUTE.light) * dt;
   } else if (ambient > 2 && w.snowCm > 0) {
     w.snowCm = Math.max(0, w.snowCm - dt / 30);
   }

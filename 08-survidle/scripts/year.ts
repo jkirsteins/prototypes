@@ -35,7 +35,7 @@ function print(r: YearReport): void {
   console.log(`seed ${r.seed} (${who}, from ${from}):`);
   for (const m of r.months) {
     const food = Object.entries(m.stock.foodByKind).map(([k, v]) => `${k} ${v}`).join(", ") || "none";
-    console.log(`  1 ${monthName(m.month)} (day ${m.day}): eaten ${m.eatenPerDay}/day, burned ${m.burnPerDay}/day; at camp ${m.stock.foodKcal} kcal (${food}), ${m.stock.firewoodKg} kg firewood, ${m.stock.logs} logs`);
+    console.log(`  1 ${monthName(m.month)} (day ${m.day}): eaten ${m.eatenPerDay}/day, burned ${m.burnPerDay}/day; at camp ${m.stock.foodKcal} kcal (${food}), ${m.stock.firewoodKg} kg firewood, ${m.stock.logs} logs, snow ${m.snowCm} cm`);
   }
   console.log(`  surplus: first hang ${r.surplus.hang === null ? "never" : `day ${r.surplus.hang}`}, first large game ${r.surplus.largeGame === null ? "never" : `day ${r.surplus.largeGame}`}`);
   for (const line of weekLines(r.lastWeek, r.lastDayOfYear)) console.log(`    ${line}`);
