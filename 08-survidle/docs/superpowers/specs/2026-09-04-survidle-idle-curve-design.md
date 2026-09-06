@@ -241,7 +241,7 @@ never because its dependency graph is elegant. Stone and the spare spear
 are the plainest case of it so far: the hunt row's bottleneck was three
 stone per five arrows and the fish row's was a spear lying at camp, and
 both were read off the year probe's deaths before the winter loop
-promoted a stone keep and a keep of one of every tool
+promoted a stone restock and a keep of one of every tool
 (`2026-09-06-survidle-winter-loop-design.md`, section 0.1). The
 capability spine
 (`2026-09-04-survidle-capability-spine-design.md`) lists the steps and
