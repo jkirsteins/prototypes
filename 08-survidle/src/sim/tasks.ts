@@ -10,7 +10,7 @@ import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from ".
 import { cue } from "./cues";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
-  removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
+  removeItem, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
 } from "./inventory";
 import {
   BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
@@ -498,7 +498,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${rackCapacity(st)} kg on the racks, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
-      if (raw <= 1e-9) return { ...o, ok: false, why: "no raw meat here" };
+      if (raw <= TRACE_KG) return { ...o, ok: false, why: "no raw meat here" };
       if (room <= 1e-9) return { ...o, ok: false, why: "the rack is full" };
       return o;
     }
@@ -619,7 +619,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = needCamp(opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true }));
       if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (kg <= 0) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
+      if (kg <= TRACE_KG) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
       if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
@@ -645,7 +645,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const kg = Math.min(1, totalQty(invs, "driedBark"));
       const o = needCamp(opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true }));
       if (!o.ok) return o;
-      if (kg <= 1e-9) return { ...o, ok: false, why: "no dried bark here" };
+      if (kg <= TRACE_KG) return { ...o, ok: false, why: "no dried bark here" };
       if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
@@ -795,7 +795,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false });
       if (here === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
       const kg = weight(pile(state, at));
-      if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
+      if (kg <= TRACE_KG) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
       const route = findRoute(world, here, campCell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
