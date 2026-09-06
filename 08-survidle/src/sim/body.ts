@@ -13,7 +13,7 @@ import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { hasTool, pile, qty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES } from "./items";
+import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
@@ -402,11 +402,12 @@ export const ARROWS_TO_CARRY = 10;
  */
 export const KIT_ITEMS = new Set<ItemId>(["arrow", "snare"]);
 
-/** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job, a basket for a set-trap job. */
+/** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job, a basket for a set-trap job, sticks for a seep dug away from camp. */
 export function orderKit(state: GameState): ItemId[] {
   const it = state.intent;
   if (it?.task === "hunt" && hasTool(state.player, "bow")) return ["arrow"];
   if (it?.task === "build" && it.arg === "snare") return ["snare"];
+  if (it?.task === "build" && it.arg === "seep") return ["stick"];
   if (it?.task === "setTrap") return ["basketTrap"];
   return [];
 }
@@ -443,6 +444,11 @@ export function provisionKit(state: GameState, world: World): number {
   if (kit.includes("basketTrap")) {
     if (qty(pack, "basketTrap") >= 1) return 0;
     return transfer(camp, pack, "basketTrap", Math.min(1, qty(camp, "basketTrap")));
+  }
+  if (kit.includes("stick")) {
+    const want = STRUCTURES.seep.needs[0].qty - qty(pack, "stick");
+    if (want <= 0) return 0;
+    return transfer(camp, pack, "stick", Math.min(want, qty(camp, "stick")));
   }
   return 0;
 }

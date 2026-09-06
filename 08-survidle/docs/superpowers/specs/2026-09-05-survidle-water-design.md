@@ -16,9 +16,9 @@ the same rule as the outcrop. So water is treated like any other resource
 spot, and it is the one resource a real survivor sites the camp by.
 Measured over the start regions of seeds 1 to 40: the nearest cell beside
 water is over 1 km from the camp, or absent, on 28 of them; three (seeds
-24, 35, 36) have no open water in the region at all, because
-`looksLikeStart` samples a 3x3 lattice box around the region and not the
-region itself. The heir already lands on a shore cell 3 to 20 km from the
+24, 35, 36) have no open water in the region at all, because the start
+search found no lattice cell passing its filter within 40 rings and fell
+back to the anchor region (`world.startRing` reads 40 on all three). The heir already lands on a shore cell 3 to 20 km from the
 old camp (`landingCell` in `src/sim/landing.ts`); only the first survivor
 starts at the generated centroid. The player can make camp elsewhere
 before the fire pit is dug (`makeCamp`, the siting spec), so the generated
@@ -177,10 +177,9 @@ it.
 ## 1. The first camp
 
 `generateWorld` keeps the start search. Once the start region is built,
-its `campCell` is the landing cell: a shore cell of that region chosen by
-the same rule as `landingCell`, restricted to the region's own cells,
-seeded from the world seed so a seed always lands the same way, and
-falling back to the shore cell nearest the centroid. The centroid stays
+its `campCell` is the landing cell: the shore cell nearest the centroid,
+which a seed fixes as surely as a draw would, and the centroid camp only
+in a region with no shore. The centroid stays
 as `cx, cy` for the wildlife capacity and the region name. `placeSpots`
 runs from the new camp as it does today, so the forest, outcrop and heath
 keep their scaled walks. The shore spot stays, and its rule changes: it is
@@ -193,9 +192,10 @@ spot would lose the trap in all of them without an error. Passed over:
 dropping the spot and teaching `kitTrap` to read the camp cell, which
 moves the exposure into every test instead of out of it.
 
-`looksLikeStart` gains a second pass: a lattice cell the box test accepts
-is built as a region and rejected when no cell of it is a shore. The box
-test stays as the cheap first filter.
+`findStart`'s fallback changes: when no lattice cell passes the exact
+filter, a second spiral takes the nearest region with at least 120 land
+cells and a shore, and the anchor is used only if that fails too. The
+box sampler stays as the cheap first filter.
 
 `newGame` places the survivor at `start.campCell` as today, which is now
 the shore. The landing screen's wording does not change. Heirs are
@@ -282,11 +282,16 @@ damp forest soil. Both live in `src/sim/seep.ts` as a table by class.
 
 **The task.** "Dig a seep" is a Build row, `build` with arg `seep`, in the
 Build group. Legal on a cell whose `seepGround` is not null and that has
-no seep yet; four hours; needs 4 sticks in reach and a bark bucket in
-reach to bail with; trains building; no skill gate. Its ground for the
-intent runner is a new spot kind `wet` resolved like the snare's heath:
-the nearest cell of the region with a seep ground and no seep, by route
-from the runner. `groundOf("build", "seep")` is `wet`. Digging on a cell
+no seep yet; four hours; needs 4 sticks and a vessel to bail with; trains
+building; no skill gate. The sticks are the order's kit: a dig given at
+camp pockets them from the camp pile as a snare job pockets its snares
+(`orderKit`, `provisionKit`), so the row judged from camp counts the
+camp's sticks, and away from camp only what is in the pack or under
+foot. Its place for the intent runner is decided in `resolveCell` the
+way the trap's is: the nearest cell of the region with a seep ground and
+no seep, by straight line then a route check, ahead of the rule that
+sends every other build to camp. No new spot kind: a `wet` spot would
+have joined every region's places list, which nothing asked for. Digging on a cell
 that has one refuses with "a seep is here already"; a silted seep is
 re-dug through its mend row, not dug again. A region may hold as many
 seeps as it has wet cells the player cares to dig; four hours and four
@@ -454,6 +459,17 @@ water-loss factor is not touched, so a thirst death that stays is that
 factor's reading and goes to the tables audit as such. The expectation
 everywhere is a shorter water walk and an easier gate; a gate that gets
 harder is a finding, not a number to bend.
+
+**Measured.** Built 2026-09-06 on main; the readings are in the
+roadmap's F section under "Measured with the landing camp", beside the
+year loop's. In short: the April gate 4 of 4 at day 26 with the first
+lives at days 61, 51, 50 and 114; the winter gate 4 of 4 from 0 of 4;
+the heir trend 2 of 4 as before; the year gate 0 of 4 at every level,
+the level-20 deaths now thirst in late October on three seeds, traced
+to the axe wearing out with no stone to make another, so no wood is
+split, no fire burns, the trough's water is ice and the shore keep
+reads "camp is full" when the shore ices. That is the tool chain's
+reading, not the water's, and it goes to the tables audit.
 
 ## 7. The browser pass
 

@@ -190,7 +190,9 @@ the roadmap, and where each note lands:
   from-scratch reference run from late August should reach the first
   snow, and April stays the hard opening a first run dies in.
 - **Water is not treated.** Drinking from a lake carries no risk; boiling
-  it (hot stones in a bark bucket) is a disease rule for 5.
+  it (hot stones in a bark bucket) is a disease rule for 5. A seep's
+  water is the water that rule would apply to first: turbid, and
+  tannin-stained on a bog.
 - **The runner sleeps 6.4 to 9.0 hours a day** in the April reference
   runs: seeds 17 and 19 inside the seven to nine band the calibration
   pass set, seed 42 at its top at 9.0 and seed 79 under it at 6.4. The
@@ -241,7 +243,8 @@ soonest, then what makes the death worth coming back from, then what
 makes the next death fair, then what makes the second run a different
 game and the lineage grow, then content. So: 1 (built), A standing orders
 (built), D species and sound (built), then the baseline (the section of
-that name under the idle loop: water at camp, the thirst priority, arrows
+that name under the idle loop: water at camp (and, for a camp with no
+shore, the seep), the thirst priority, arrows
 in the pack, wet wood, the rack as a task, tool keeps, and a start with a
 shore and rock, with the reference player as its gate; built), then the
 delegation ladder (the section of that name below: order kinds earned per
@@ -286,7 +289,15 @@ fish capacities from biomass, small-game inflow, the trap's rot, a 40 kg
 rack and a second one, decay at one and two years, large game by name at
 level, fuel by shelter and an indoor temperature, the winter woodpile and
 the melt fallback, the wet-cold need, the journal clause and the
-ancestor's day; built, readings under F), then the winter loop, four
+ancestor's day; built, readings under F), then water
+(`2026-09-05-survidle-water-design.md`, plan `2026-09-06-survidle-water.md`:
+the first camp on the shore it lands on, fetch water by a named method
+with the year loop's melt fallback taken out in favour of the list's own
+winter wants, the seep as a per-cell producer on wet ground, the water
+line, and the pit fire and the fire indoors as two rows; built, readings
+under F), placed here because the tables audit's opening flag, winter
+thirst at a camp holding an axe, was read at a camp 25 to 55 minutes
+from its water, then the winter loop, four
 runner and list rules and one question, with the year probe as their
 gate, pulled ahead of everything because the year loop's last deaths
 name them and none is content: a winter working day (camp chores by
@@ -539,7 +550,11 @@ stand beside them:
 - **Water.** A river cell is a shore for drinking and filling. A rapid
   never freezes, so a camp within reach of one has open water all
   winter beside the ice hole; the runner's drink and fill branches treat
-  it as a shore with no ice.
+  it as a shore with no ice. Springs belong here too when they land: a
+  point where groundwater comes out on its own at the foot of a slope,
+  placed from the moisture and elevation fields, running water that
+  never freezes, and a third owner of winter water beside the ice hole
+  and camp storage, which is why they wait.
 - **Ice.** 1 lands one thickness for the world; rivers refine it per
   water body: rapids open, rotten ice in the thaw, and ice that forms
   later on moving water, which is where 7's freeze-up delay applies.
@@ -665,6 +680,22 @@ lands. Every building is an answer to a
 threat from 1, 4, 7 or 8, and its cost is tuned against that threat.
 Water storage and the cellar are the two that answer what A's build
 measured, and they come first.
+
+**The seep.** Built in the water spec
+(`2026-09-05-survidle-water-design.md`, section 3). A knee-deep hole to
+groundwater, dug on one cell of wet ground - bog, spruce, or meadow and
+birch beside a bog, never a shore - for four hours, four sticks pocketed
+at camp and a vessel to bail with. It holds a pool of 10 litres that
+refills at 3 litres an hour on bog and 1 in damp forest; drinking and
+filling there draw only what is in it. It freezes in place in frost
+unless a fed fire burns on its own cell, stops after fourteen dry days,
+and silts up after a year unless re-dug for an hour on its cell. The
+thirsty body counts a seep by its pool, walks to the nearest source that
+would satisfy it, and waits beside a trickling seep before it burns wood
+to melt snow; a "Fetch water from the seep" order fills one vessel there.
+The map marks each seep "s"; the Here section's water line says what the
+cell under foot has to drink and how fast it comes back, and the
+region's water list names the nearest of each kind.
 
 ### 4. Animals as agents
 
@@ -1813,7 +1844,9 @@ of the slow files is this round's harness work.
 
 **Curve.** No row and no tier. Expected: a tester who knows what they
 want finds it in one look, nothing a check-in needs is off the screen,
-and the page fits a phone.
+and the page fits a phone. A note from the water spec: the keep order's
+default litres should follow camp capacity once a trough stands; today's
+default is a bucket's worth.
 
 The desktop today is three columns with one breakpoint at 1300px, a
 centre no narrower than 560px, and a map of 72 by 36 glyphs at 11px,
@@ -2486,6 +2519,59 @@ with touch emulation every one of the 130 controls measured 40 pixels or
 taller, the map legend stood, and nothing scrolled sideways. Nothing was
 found to fix.
 
+Measured with the landing camp (`2026-09-05-survidle-water-design.md`,
+built 2026-09-06 on main). The same runs as the year loop's closing set,
+on seeds 17, 19, 42 and 79, with `npm test` green at 761 tests. The
+April gate stays 4 of 4 at day 26, the first lives now starving on days
+61, 51, 50 and 114 against 52, 55, 39 and 46. The winter gate goes from
+0 of 4 to 4 of 4: the stocked December camp is alive on 1 March on every
+seed, where it died on days 23 and 34 of thirst and 6 and 8 frozen with
+the shore 25 to 55 minutes off; the water is under foot now, and the
+list's ice-hole keep cuts it there. The heir trend stays 2 of 4 against
+its 3 of 4: seed 17's three lives die on days 61, 102 and 180 and seed
+19's on 51, 92 and 200, both holding; seed 42's on 50, 105 and 60 and
+seed 79's on 114, 58 (froze) and 61, both breaking. The year gate stays
+0 of 4 at every level, and the days move both ways: at level 20 days
+208 (thirst), 187 (starved), 197 (thirst) and 211 (thirst) against 68,
+245, 218 and 229; at level 10 days 246 (froze), 85 (starved), 186
+(thirst) and 186 (starved) against 82, 214, 177 and 102; fresh at level
+1 days 61, 51, 50 and 114, the April run's own. The level-20 thirst
+deaths are one finding, traced on seed 17: by day 190 the axe and the
+fishing spear have worn out, the axe keep reads "missing materials" with
+one stone at camp, so 823 logs stand unsplit, no fire burns, the
+trough's 24 litres are ice and the shore keep reads "camp is full", and
+the shore's first ice days in late October kill by thirst while the
+survivor sleeps beside the water. The landing camp exposed it rather
+than caused it, since the same camp used to starve on day 68 before
+autumn came; it is the tool chain's reading for the tables audit, beside
+the axe's life and the stone the axe keep never gathers. The horizon
+stages read manual only 5, 8, 7 and 5 days (froze; band 0 to 2, over)
+against 5, 4, 6 and 5; jobs and grinds 4, 11, 13 and 4 (froze; band 1 to
+2, over) against 4, past 30, 5 and 5; keeps, the producers and the
+stocked camp past 30 on all four, as before, the stocked camp in band.
+
+The browser pass ran in Chrome on seed 17 at 1440 by 900. The survivor
+started on a shore and the Here section's water row read "shore,
+endless" over "shore 0 min, endless". With a bucket in hand, "Fetch water
+from the shore" read "5 min; 2.0 l, the bark bucket", and after the trip
+the row read "2.0 of 2.0 l at camp; shore, endless". "Dig a seep" from
+camp with four sticks in the pile read "4 h; 4 sticks and a bucket to
+bail; 10 l pool, +1 l/h", walked 0.9 km into the spruce, and two hours
+after "Dig a seep: done." the water row read "seep, 2.0 of 10 l, +1 l/h"
+over "shore 17 min, endless; seep 0 min, 2.0 of 10 l"; auto-drink took
+the pool to 0.0 when the reserve fell, the "s" mark showed once the
+survivor stepped off the cell, and the legend carried "s seep". With the
+shore iced and a hut standing, the shore row read "iced over", the hole
+row "25 min; 2.0 l, the bark bucket; cuts the hole first, wearing the
+axe", the seep row "0.4 l, the bark bucket, 0.4 of 10 l in the seep",
+the water row "iced over; an axe opens an ice hole" over "shore 0 min,
+iced over; seep 20 min, 0.4 of 10 l", and "Light the fire at the pit"
+and "Light a fire indoors" ("under the smoke hole") both stood. Two
+things were found and fixed: a dig ordered from camp left its sticks in
+the camp pile, so the seep's sticks are pocketed at camp as a snare's
+kit is; and the year loop's list left a met last order's load in the
+pack, which the water fetch made visible.
+
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
 them, except what the tree below carries. The world is saved instead of
@@ -3068,6 +3154,17 @@ cross a floor.
   player has learned. The two bullets after this one are its children.
 - Intents never plan around a new threat on the player's behalf; they carry
   it out and report. The player prepares, or does not.
+- An order names one method. The Do panel is the list of methods, and
+  the choice between them is the player's or the reference list's, made
+  in the open where a test reads it, never a fallback inside the intent
+  runner. "Hunt anything" and "fish anything" are the two exceptions,
+  since what comes past is not chosen; the body's own needs may choose
+  among sources, since they are reflexes and not orders; a delivery leg
+  is not a method. A row may be collapsed again only when play shows
+  the split is a chore, and this document records the decision. The
+  water spec (`2026-09-05-survidle-water-design.md`, section 0) is where
+  the rule was written, on the fill row that had three methods behind
+  one button.
 - Each sub-project ships with the browser pass that shows a run through
   its new danger, not only its tests.
 - Every task the sim offers is offered by the Do panel, or named in an

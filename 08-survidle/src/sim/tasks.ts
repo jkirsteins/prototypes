@@ -504,7 +504,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
         if (state.seeps[at]) return { ...o2, ok: false, why: "a seep is here already" };
         if (vesselLitresCapacity(p) <= 0 && !kitInReach(state, world, "barkBucket", invs) && !kitInReach(state, world, "waterskin", invs)) return { ...o2, ok: false, why: "needs a vessel to bail with" };
         if (done > 0) return { ...o2, detail: `${Math.round((done / def.minutes) * 100)}% dug` };
-        if (!canConsume(invs, def.needs)) return { ...o2, ok: false, why: "needs 4 sticks" };
+        // The sticks are pocketed at camp when the order sets out (provisionKit), so the camp pile counts from camp, as a snare's kit does.
+        const sticks = totalQty(invs, "stick") + (cellOf(state, world) === st.campCell && at !== st.campCell ? qty(pile(state, st.campCell), "stick") : 0);
+        if (sticks < def.needs[0].qty) return { ...o2, ok: false, why: "needs 4 sticks" };
         return o2;
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };

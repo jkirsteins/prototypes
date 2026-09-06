@@ -3,7 +3,8 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { PRODUCERS } from "../src/sim/capabilities";
 import { resolveCell } from "../src/sim/intent";
-import { addItem, freshTool, qty } from "../src/sim/inventory";
+import { addItem, freshTool, pile, qty } from "../src/sim/inventory";
+import { addOrder } from "../src/sim/orders";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
@@ -189,6 +190,23 @@ describe("digging a seep", () => {
     expect(seepGround(world, target)).not.toBeNull();
     expect(state.seeps[target]).toBeUndefined();
     expect(cellAt(world, target).region).toBe(state.player.region);
+  });
+
+  it("a dig ordered from camp pockets its sticks from the camp pile and digs at the nearest wet cell", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.player.tools.push(freshTool("barkBucket"));
+    addItem(pile(state, st.campCell), "stick", 4);
+    expect(check(state, world, cal, "build", "seep", resolveCell(state, world, cal, "build", "seep", "nearest").cell).ok).toBe(true);
+    addOrder(state, world, { task: "build", arg: "seep", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    let dug = false;
+    for (let i = 0; i < 60 && !dug; i++) {
+      advance(state, world, 10);
+      dug = Object.keys(state.seeps).length > 0;
+    }
+    expect(dug).toBe(true);
+    expect(qty(pile(state, st.campCell), "stick")).toBe(0);
   });
 
   it("re-digging is offered on the seep's cell past two thirds of its life and resets its clock", () => {
