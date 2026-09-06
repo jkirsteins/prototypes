@@ -79,27 +79,40 @@ sources.
 
 ## 0. Measured before
 
-On origin/main at 3ec48f8 (PR 7), `npm test` green at 841 tests.
+The audit was read on origin/main at 3ec48f8 (PR 7) and the branch was
+rebased onto c9f1e96 (PR 8, the sleep model) before the build; the
+sleep model moved the gates, and both readings are kept because the
+audit's findings were made on the first and the build starts from the
+second. `npm test` green at 865 tests on c9f1e96.
 
-- `npm run reference`: the April gate at day 26 with the food clause
-  passes 4 of 4. First lives end on days 41, 207 and 89 by starvation,
-  and seed 42 is alive at day 251. The gate week reads burn 3,339 to
-  3,781 a day, "over" the 2,500 to 3,500 band on three seeds; work
-  1,637 to 2,019 against its 700 to 1,700 share; snares 771 to 2,314
-  kcal a day against a beginner band of 0 to 150, on every seed the
-  food the gate is passed on. Three seeds show weeks at 4.7 hours of
-  sleep, under the 7 to 9 band, with no cost beyond energy.
-- `npm run year` (level 20): 3 of 4. Seed 79 froze on day 278, 3
-  January, eating 2,016 against 4,353 a day with 1,256 of it walking
-  and 696 in cold. Seed 42 ends the year with 2.2 tonnes of fat and 660
-  kg of dried meat at camp, about thirty elk, on a hunt row of 3,921
-  kcal a day against the expert large-game top of 1,500; seed 17 the
-  same shape at 709 kg of fat. Seed 19 is the honest pass, alive on 1
-  February with 3,600 kcal at camp.
-- The winter gate reads 4 of 4 and the heir trend 2 of 4 at item J's
-  last measurement; both are re-read at the start of the build.
+- `npm run reference` on 3ec48f8: the April gate at day 26 with the
+  food clause passes 4 of 4. First lives end on days 41, 207 and 89 by
+  starvation, and seed 42 is alive at day 251. The gate week reads burn
+  3,339 to 3,781 a day, "over" the 2,500 to 3,500 band on three seeds;
+  work 1,637 to 2,019 against its 700 to 1,700 share; snares 771 to
+  2,314 kcal a day against a beginner band of 0 to 150, on every seed
+  the food the gate is passed on. On c9f1e96 it passes 3 of 4: seed 19
+  froze on day 16 with a burn of 4,270 a day (the sleep spec records
+  it as the fuel gap's death, item J's), and the others live to 32,
+  past 251 and 91; the working day reads 9.4 to 12.2 hours, since the
+  sleep model has no count of hours, and sleep 7.9 to 8.0.
+- `npm run year` (level 20) on 3ec48f8: 3 of 4. Seed 79 froze on day
+  278, 3 January, eating 2,016 against 4,353 a day with 1,256 of it
+  walking and 696 in cold. Seed 42 ends the year with 2.2 tonnes of
+  fat and 660 kg of dried meat at camp, about thirty elk, on a hunt
+  row of 3,921 kcal a day against the expert large-game top of 1,500;
+  seed 17 the same shape at 709 kg of fat. Seed 19 is the honest pass,
+  alive on 1 February with 3,600 kcal at camp. On c9f1e96 the sleep
+  spec reads it at 2 of 4, seeds 17 and 19 frozen on days 306 and 300
+  with food at camp, and the year at level 10 at 2 of 4.
+- The winter gate reads 4 of 4 on both, and the heir trend 2 of 4 where
+  the winter loop left it.
 - Snow reads 79 to 271 cm by late December against 40 to 60 real, from
   the year loop's flag.
+
+Two of those deaths are the runner's rather than the world's: a body
+that freezes beside a woodpile, or with food at camp, is a runner a
+player would have kept alive by hand. Section 10 has the rule for them.
 
 The handbook against the game, the readings that opened the audit:
 
@@ -483,6 +496,17 @@ Done is all four green on seeds 17, 19, 42 and 79:
 - Year at level 20: alive on 1 April, 4 of 4.
 - Lineage: a life reaches a year within six lives, 4 of 4, with the
   days per life printed and read for a plausible climb.
+
+**Runner deaths are fixed, realism deaths are discussed.** The author's
+rule for the build: when a gate seed dies of something a player playing
+by hand would have avoided (a fire out beside a woodpile, food at camp
+uneaten, a walk into the dark, a keep ranked under the grind that
+starves it), the runner or the reference list is changed to do what
+the player would have done, in the same task, and the change is
+recorded with the death that asked for it. Only a death the world's
+corrected numbers make unavoidable is reported as a finding and left
+for a decision. "The runner now fails for an avoidable reason" is not
+a report; it is the next task.
 
 The build measures after each group of sections lands (1 to 3, then 4
 and 5, then 6, then 7), so each gate's move is attributable, and the
