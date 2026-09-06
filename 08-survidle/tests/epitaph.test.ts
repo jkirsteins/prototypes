@@ -69,9 +69,14 @@ describe("the epitaph", () => {
     // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
     // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
     // the early days buy warmth at the fire; and the 400 kg woodpile keep is open only from 1 September to
-    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Landed 1 April, year 1."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Day 51. Starved at camp, with nothing in the pack and 34 kg of firewood at camp."`);
+    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below. The winter loop moved
+    // both of these: stone is a keep of eight rather than a once job, and a want is judged met at half its
+    // target when it is given, so a level-1 opening tops camp up only once it is under four stone; and the
+    // felling grind at the end of the list is a 150-log keep shut until 1 September, so a spring runner with
+    // nothing else able to run rests instead of felling. Seed 17 starves on the gate day on that opening,
+    // and seed 19 outlives the sixty days it used to die inside.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 26. Starved at camp, with nothing in the pack and 54 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Landed 1 April, year 1."`);
   });
 
   it("writes the first snare set as its own line", () => {
