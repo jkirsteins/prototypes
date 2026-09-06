@@ -314,8 +314,9 @@ against its 3 of 4, where the water work left it at 2. Seed 17's three
 lives read 41, 113 and 162 days and seed 42's 203 and then past 251,
 both holding; seed 19's read 220, 222 and 207 and seed 79's 91, 67 and
 203, both breaking on a life that landed out of season. The trend breaks
-where a first life is long and its heir lands in autumn: seed 19's third
-life, landing 6 May, dies 13 days short of the mark its second set. The
+where a first life is long and its heir lands out of season: seed 19's
+third life, landing 6 May, dies 15 days short of the mark its second set.
+The
 gate compares death days across lives that land in different seasons,
 so a stronger opening reads to it as a regression; it is due to be
 re-derived rather than answered by a rule here.
@@ -339,7 +340,7 @@ beside it. That is why the two winter-stock keeps sit together (2.3).
 
 A night's sleep is one marker on the player, `sleptTonight`, set when a
 sleep task ends at the cap (`SLEEP_CAP_MINUTES`) while it is still night
-and cleared at dawn with `restUntil`. The two night clauses read it:
+and cleared at dawn, as `restUntil` is. The two night clauses read it:
 
 - `currentNeed`'s `isNight && (energy < NIGHT_SLEEP_UNDER || (spent &&
   !thirsty))` becomes `isNight && !sleptTonight && (...)`. The energy
@@ -420,7 +421,8 @@ lighting it wait for firelight would leave a camp whose fire has gone out
 unable to light another until dawn - no fire, no splitting, no firewood,
 no fire - and it is minutes of work rather than a working day, so the
 budget has no claim on it either. The away branch still runs first and
-never bites, since the lighting tasks resolve to camp.
+never bites for the fire or the fire indoors, which resolve to camp; a
+torch order given away from camp is caught by it as any away order is.
 
 A runner with every order skipped waits at camp, and a wait at camp keeps
 its fire before it rests or sleeps: it takes the same `fireStep` a spent
@@ -701,7 +703,10 @@ trigger was read against the two frozen seeds and did not trip.
 
 The browser pass ran in a headless Chrome at 1440 by 900 on seed 17,
 opened on 1 December (`?seed=17&day=334`) and driven through the app's
-own console handle and the page's real modules. At 16:21, with a felling
+own console handle and the page's real modules, before the review's fix
+wave: the lighting exemption, the waiting runner's fire and the hole
+fill's narrowed tool lookup are covered by their unit tests and were not
+seen in the page. At 16:21, with a felling
 grind and a 60 kg split keep on the list, four logs at camp and the fire
 lit, the felling row read "dark; at first light" in its step line and the
 activity log carried "Fell a tree, forever, bringing it to camp: dark; at
@@ -766,7 +771,8 @@ wraps or layers (E); no hearth unless section 3's trigger trips; no
 change to any water row, vessel, source or the melt fallback (water); no
 change to snow depth, the hole's life or the indoor factor (the audit);
 no cabin want; no new tables, bands or constants beyond `MEND_AT`,
-`sleptTonight` and the winter-stock clause.
+`sleptTonight`, the winter-stock clause and `LIGHTING`, the three
+lighting tasks the dark never stops.
 
 Two exceptions to "no change".
 

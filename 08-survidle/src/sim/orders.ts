@@ -166,8 +166,9 @@ export const NIGHT_SKIP = {
  * that made lighting it wait for firelight would leave a camp whose fire
  * has gone out unable to light another until dawn, and it is minutes of
  * work rather than a working day, so the budget has no claim on it either.
- * The away branch still applies and never bites, since the lighting tasks
- * resolve to camp.
+ * The away branch still applies and never bites for the fire or the fire
+ * indoors, which resolve to camp; a torch order given away from camp is
+ * caught by it as any away order is.
  */
 export function nightSkip(state: GameState, world: World, cal: Calendar, task: TaskId, cell: number): string | null {
   if (!cal.isNight) return null;
