@@ -1340,13 +1340,19 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       log(state, "You make camp here.");
       return;
     }
+    case "sleep":
+      // A sleep runs to dawn or to the cap, whichever comes first, so one that
+      // ends while it is still dark ran the cap: the night's sleep is had, and
+      // the night clauses in currentNeed and the wait intent read the marker
+      // rather than laying the body down again until dawn.
+      if (cal.isNight) state.player.sleptTonight = true;
+      return;
     case "haul":
     case "night":
     case "wait":
     case "travel":
     case "walk":
     case "rest":
-    case "sleep":
       return;
   }
 }

@@ -91,9 +91,13 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   // with no energy left sleeps parched, which is what a collapse is.
   // The sticky clause below only carries a sleep already in progress; it needs
   // its own exit or a rested body keeps sleeping into the morning it woke in.
+  // A spent body that has already slept its cap tonight is not laid down
+  // again: it rests by the fire, or works by it, until dawn. The energy clause
+  // stands, since a body worked under 60 in the dark is collapsing, not
+  // starting a second night.
   const sleep = (it.need === "sleep" && (cal.isNight || p.energy < NIGHT_SLEEP_UNDER))
     || p.energy <= SLEEP_AT
-    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || (spent && !thirsty)))
+    || (cal.isNight && (p.energy < NIGHT_SLEEP_UNDER || (spent && !thirsty && !p.sleptTonight)))
     || (it.task === "night" && it.done < 1);
   if (sleep) return "sleep";
   if (stormComing(state.weather, state.minute) || stormNow(state.weather, state.minute)) return "storm";
