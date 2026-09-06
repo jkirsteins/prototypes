@@ -151,8 +151,17 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
   seep: { name: "seep", needs: [{ item: "stick", qty: 4 }], minutes: 240, desc: "A knee-deep hole to groundwater on wet ground. Fills on its own; freezes without a fire beside it." },
   waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
+  snowShelter: { name: "snow shelter", needs: [], minutes: 300, desc: "A heaped and hollowed drift. Walls of snow hold -3 C whatever the night does; no fire inside." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
+/**
+ * Kochanski: pile snow, let it set, dig it out; the ground under a good
+ * cover sits at -3 to -5 C whatever the air. The Swedish handbook: the
+ * pile freezes together in four or five hours. Needs this much snow at
+ * camp and no tools; slumps after this many warm days in a row.
+ */
+export const SNOW_SHELTER_CM = 40;
+export const SNOW_MELT_DAYS = 3;
 /**
  * A trap line, not five snares: the Swedish handbook's 3 to 5 km of marked
  * ground with a hundred snares after a few days, checked at dawn. Forty

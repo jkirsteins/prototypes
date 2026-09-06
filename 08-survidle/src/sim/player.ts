@@ -46,6 +46,7 @@ export function isCampTask(task: Task | null): boolean {
 
 /** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
 export function shelterBonus(r: RegionState): number {
+  if (r.structures.snowShelter && !r.structures.cabin && !r.structures.turfHut) return 0;
   if (r.structures.cabin) return 15;
   if (r.structures.turfHut) return 10;
   if (r.structures.leanTo) return 5;
@@ -55,7 +56,7 @@ export function shelterBonus(r: RegionState): number {
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
 export function sheltered(state: GameState, world: World): boolean {
   const r = regionState(state, world, state.player.region);
-  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo || r.structures.turfHut);
+  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo || r.structures.turfHut || r.structures.snowShelter);
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
@@ -118,6 +119,9 @@ export function starvation(state: GameState): number {
  */
 export const INDOOR_C = { turfHut: 5, cabin: 10 } as const;
 
+/** The floor a snow shelter holds with no fire: Kochanski's -3 to -5 C at the ground under good snow. */
+export const SNOW_FLOOR_C = -3;
+
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
@@ -128,7 +132,8 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   // roof and no more.
   const inCabin = r.structures.cabin && r.structures.hearth;
   const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (r.structures.turfHut || inCabin);
-  const floor = indoors ? (inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) : -Infinity;
+  const inSnow = camp && campTask && r.structures.snowShelter && !indoors;
+  const floor = indoors ? (inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) : inSnow ? SNOW_FLOOR_C : -Infinity;
   let felt = Math.max(ambient, floor) + insulation(state);
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
   // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
@@ -262,7 +267,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   const roof = sheltered(state, world);
-  const walled = roof && (r.structures.cabin || r.structures.turfHut);
+  const walled = roof && (r.structures.cabin || r.structures.turfHut || r.structures.snowShelter);
   const h = dt / 60;
 
   const x: Exposure = {

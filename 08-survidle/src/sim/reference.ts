@@ -174,6 +174,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("deadwood", 60),
   job("build", { kind: "once" }, "leanTo"),
   keep("build", 1, "boughBed"),
+  job("build", { kind: "once" }, "snowShelter"),
   keep("craft", 1, "knife"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
@@ -254,6 +255,11 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const st = regionState(state, world, state.player.region);
     const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
     return w.req.task === "lightIndoors" ? indoors : !indoors;
+  }
+  // The snow shelter closes once a hut or a cabin stands: warmer walls, and the same cell to camp on.
+  if (w.req.task === "build" && w.req.arg === "snowShelter") {
+    const st = regionState(state, world, state.player.region);
+    return !(st.structures.turfHut || st.structures.cabin);
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
@@ -644,7 +650,7 @@ export interface LineageReport {
 function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landCell: number, trapKg: number | null): Found {
   const oldSt = regionState(state, world, oldRegion);
   const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore"] as const).filter((s) => oldSt.structures[s]);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSt.structures[s]);
   const lc = cellAt(world, landCell);
   const cc = cellAt(world, oldSt.campCell);
   return {

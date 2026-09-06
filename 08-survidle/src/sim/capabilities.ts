@@ -165,4 +165,12 @@ export const CAPABILITIES: CapabilityRow[] = [
     gives: "water that comes on its own: a pool at a bog or in damp forest, for a camp with no shore",
     limits: "the ground's litres an hour, frost without a fire on its cell, a dry fortnight, a re-dig each year",
   },
+  {
+    id: "snow shelter",
+    keys: ["build:snowShelter"],
+    tier: "structure",
+    receives: ["woodcraft"],
+    gives: "a winter roof from nothing but the snow: -3 C inside whatever the night, the bough bed under you",
+    limits: "40 cm of snow, no fire inside, three warm days and it is gone",
+  },
 ];

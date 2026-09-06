@@ -91,8 +91,9 @@ describe("the reference player", () => {
     expect(at("lightIndoors::keep")).toBe(at("light::keep") + 1);
     expect(at("chop::keep")).toBe(at("light::keep") + 2);
     expect(at("build:leanTo:job:once")).toBeGreaterThan(at("chop::keep"));
-    // The bough bed keep sits right after the lean-to (build:boughBed:keep), pushing the knife one further down.
-    expect(at("craft:knife:keep:campHas")).toBe(at("build:leanTo:job:once") + 2);
+    // The bough bed keep sits right after the lean-to (build:boughBed:keep), and the snow shelter
+    // job right after that, pushing the knife two further down.
+    expect(at("craft:knife:keep:campHas")).toBe(at("build:leanTo:job:once") + 3);
     expect(at("craft:snare:keep")).toBe(at("craft:knife:keep:campHas") + 1);
     expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
   });
@@ -123,8 +124,9 @@ describe("the reference player", () => {
     expect(tasks.slice(axe + 10, axe + 14)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 63: the bough bed keep after the lean-to, the twenty-snare keep after the berries, the forty-snare keep after the water trough.
-    expect(REFERENCE_ORDERS.length).toBe(63);
+    // 64: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
+    // twenty-snare keep after the berries, the forty-snare keep after the water trough.
+    expect(REFERENCE_ORDERS.length).toBe(64);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.

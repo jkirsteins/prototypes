@@ -56,7 +56,7 @@ export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 
 /** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
 export interface Observation { minute: number; fish: Species[] }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep";
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter";
 /** Structures the weather takes down unless they are mended. */
 export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
@@ -215,11 +215,13 @@ export interface RegionState {
   pop: Partial<Record<Species, number>>;
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean };
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
   /** Drying racks standing at the camp, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
+  /** Days in a row with a mean above freezing; a snow shelter slumps at SNOW_MELT_DAYS. */
+  meltDays: number;
   /** Minutes since each decaying structure was built or mended; each falls after its life span. */
   structureAge: Partial<Record<DecayingId, number>>;
   /** Build progress in minutes, per structure, kept between visits. */

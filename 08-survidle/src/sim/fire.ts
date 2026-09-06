@@ -70,9 +70,9 @@ export function fireWarms(st: RegionState): boolean {
   return st.structures.hearth || st.fire.indoors;
 }
 
-/** True when the camp has a roof over it: a lean-to, a turf hut, or a cabin. */
+/** True when the camp has a roof over it: a lean-to, a turf hut, a cabin, or a snow shelter. */
 export function roofed(st: RegionState): boolean {
-  return st.structures.leanTo || st.structures.cabin || st.structures.turfHut;
+  return st.structures.leanTo || st.structures.cabin || st.structures.turfHut || st.structures.snowShelter;
 }
 
 export const SMOKE_COUGH = 40;

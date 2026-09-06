@@ -172,7 +172,9 @@ function fillDefaults(state: GameState): void {
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
     st.structures.hearth ??= false;
+    st.structures.snowShelter ??= false;
     st.boughBedAge ??= 0;
+    st.meltDays ??= 0;
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
     st.fire.unattended ??= 0;

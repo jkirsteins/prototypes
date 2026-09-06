@@ -97,10 +97,10 @@ export function demoteFog(state: GameState): void {
   for (const id of Object.keys(state.discovered)) state.discovered[Number(id)] = DIM;
 }
 
-/** How much stands at a camp: the seven one-off structures plus however many snares. */
+/** How much stands at a camp: the eight one-off structures plus however many snares. */
 function campScore(st: RegionState): number {
   const s = st.structures;
-  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + (s.turfHut ? 1 : 0) + (s.waterStore ? 1 : 0) + s.snares;
+  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + (s.turfHut ? 1 : 0) + (s.waterStore ? 1 : 0) + (s.snowShelter ? 1 : 0) + s.snares;
 }
 
 /**

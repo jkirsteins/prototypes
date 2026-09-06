@@ -13,7 +13,7 @@ import {
   removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, SNOW_SHELTER_CM, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -569,6 +569,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         return o2;
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
+      if (sid === "snowShelter") {
+        if (st.structures.turfHut || st.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
+        if (st.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
+        if (state.weather.snowCm < SNOW_SHELTER_CM) return { ...o, ok: false, why: `needs ${SNOW_SHELTER_CM} cm of snow` };
+        if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% heaped` };
+        return o;
+      }
       if (sid === "dryingRack") {
         if (st.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
       } else if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
@@ -698,6 +705,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         duration: 10,
       }));
       if (!o.ok) return o;
+      if (st.structures.snowShelter && !st.structures.turfHut && !st.structures.cabin) return { ...o, ok: false, why: "snow does not take a fire" };
       if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
