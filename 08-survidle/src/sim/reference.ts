@@ -152,6 +152,12 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * the year - the ninety-odd days from the thaw to midsummer - that they
  * are shut.
  *
+ * The catch is two items and wants two cook keeps: raw oily fish is not in
+ * the auto-eat order and rots in a day and a half, so with only the lean
+ * keep on the list a char or a trout was landed, carried home and thrown
+ * away, and every reference seed died with an oily species standing in its
+ * shore's read.
+ *
  * Fat before meat: the render keep sits above the cook keeps because raw
  * fat rots in three days and is the calories the ceiling does not touch;
  * the crack grind takes the bones the hunts leave at camp; the gathering
@@ -238,6 +244,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("setTrap", { kind: "once" }),
   keep("cook", 1, "rawFat"),
   keep("cook", 1, "fish"),
+  keep("cook", 1, "oilyFish"),
   keep("cook", 1),
   { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("build", { kind: "once" }, "dryingRack"),

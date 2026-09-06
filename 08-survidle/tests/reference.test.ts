@@ -119,8 +119,11 @@ describe("the reference player", () => {
   it("the trap follows the spear with no empty keep, the hut group sits below the hunt keep, and the fish keep follows the cook keeps", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
-    expect(tasks[cook - 2]).toBe("cook:rawFat");
-    expect(tasks[cook - 1]).toBe("cook:fish");
+    // Fat rendered, then the two catches - the lean item and the oily one, which is eaten by
+    // nobody raw - and then the meat.
+    expect(tasks[cook - 3]).toBe("cook:rawFat");
+    expect(tasks[cook - 2]).toBe("cook:fish");
+    expect(tasks[cook - 1]).toBe("cook:oilyFish");
     // The bone crack, then the two standing producers - the rack and the twenty-snare line, work
     // that finishes and feeds the camp afterwards - and only then the fat and carbohydrate item's
     // own gathers: eggs, roots and its cook keep, inner bark and its grind, the sap tap and seaweed,
@@ -150,12 +153,13 @@ describe("the reference player", () => {
     expect(tasks[axe + 13]).toBe("hang:");
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 74: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
+    // 75: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
     // twenty-snare keep and the rack above the gathering block, the forty-snare keep after the
     // water trough, the thaw grind at the head of the water block, and the fat and carbohydrate
-    // item's nine insertions around the cook keeps - the rendered-fat keep, the bone crack,
-    // eggs, roots and its cook keep, inner bark and its grind, the sap tap and seaweed.
-    expect(REFERENCE_ORDERS.length).toBe(74);
+    // item's ten insertions around the cook keeps - the rendered-fat keep, the oily-fish cook
+    // keep, the bone crack, eggs, roots and its cook keep, inner bark and its grind, the sap
+    // tap and seaweed.
+    expect(REFERENCE_ORDERS.length).toBe(75);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.

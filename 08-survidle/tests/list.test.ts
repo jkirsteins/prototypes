@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, pile } from "../src/sim/inventory";
+import { AUTO_EAT_ORDER } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { REFERENCE_ORDERS, wantOpen, WINTER_STOCK } from "../src/sim/reference";
@@ -118,4 +119,13 @@ describe("the list after the axe", () => {
     expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(true);
   });
 
+  it("keeps a cook for the oily catch as well as the lean one, since raw oily fish is eaten by nobody", () => {
+    // cookedOilyFish is in the auto-eat order and the raw item is not, so a char landed
+    // without this keep is carried home and rots in a day and a half. Every reference seed
+    // died with an oily species standing in its shore's read.
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(AUTO_EAT_ORDER).not.toContain("oilyFish");
+    expect(AUTO_EAT_ORDER).toContain("cookedOilyFish");
+    expect(tasks.indexOf("cook:oilyFish:keep")).toBe(tasks.indexOf("cook:fish:keep") + 1);
+  });
 });
