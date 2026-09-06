@@ -18,7 +18,7 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, freshTool, hasTool, listItems, pile, qty } from "./inventory";
-import { FOODS, type FoodId, TOOLS } from "./items";
+import { FOODS, type FoodId, RECIPES, TOOLS } from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
@@ -33,7 +33,7 @@ import { LARGE_GAME } from "./species";
 import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
-import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, WorldDate } from "./types";
+import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
@@ -88,7 +88,16 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * right before it, the trough follows the hut it needs room to stand in,
  * and the top fill keep from the opening stays as it was, the trough's
  * own fill keep a second want for the greater capacity the trough gives
- * rather than a replacement. Below the hut group sits the surplus loop,
+ * rather than a replacement. Right after the small-game hunt keep, which
+ * is the want that brings hide to camp, sits the clothing block: the bone
+ * needle, a mend grind, and the hide coat, trousers and boots, the fur hat
+ * and the fur mittens as once jobs, since a made garment is put on and the
+ * old one left behind. The mend grind runs only while a piece is worn
+ * enough for a patch (MEND_AT) and hide is at camp, so it does not starve
+ * the hut group below it; without it every garment on every year seed was
+ * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
+ * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
+ * mittens at once. Below the hut group sits the surplus loop,
  * in this order: the hang grind, the winter woodpile keep, the three
  * named hunts as grinds, and the felling grind. A roof and water outrank
  * days spent chasing an elk, which is why this loop sits below the hut
@@ -162,6 +171,13 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
+  job("craft", { kind: "once" }, "needle"),
+  { req: { task: "repair", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  job("craft", { kind: "once" }, "hideCoat"),
+  job("craft", { kind: "once" }, "hideTrousers"),
+  job("craft", { kind: "once" }, "hideBoots"),
+  job("craft", { kind: "once" }, "furHat"),
+  job("craft", { kind: "once" }, "furMittens"),
   keep("craft", 1, "axe"),
   job("sticks", { kind: "campHas", qty: 20 }),
   job("bark", { kind: "campHas", qty: 40 }),
@@ -183,7 +199,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
  * waits for the species' recommended Hunting level, since walking at an
  * elk with a stone point at level 1 is not competence, and the
  * winter-stock keeps, 400 kg of firewood and 150 logs, wait for the
- * season they are stocked against.
+ * season they are stocked against, and a garment waits for its
+ * recommended Crafting level.
  */
 /** The home shore is under ice: a shore fetch is shut and the winter methods are the question. */
 function shoreIced(state: GameState): boolean {
@@ -212,6 +229,13 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
+    if (rec && skillLevel(state, rec.skill) < rec.level) return false;
+  }
+  // A garment waits for its recommended level, the way a named hunt does: a
+  // level-1 survivor with an elk's hide does not spoil six kilos of it on a
+  // coat. Tools and kit are not gated here; the ladder's stand-ins carry them.
+  if (w.req.task === "craft" && w.req.arg && RECIPES[w.req.arg as RecipeId]?.out.clothing) {
+    const rec = RECOMMENDED[`craft:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
   if (winterStockWant(w)) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;

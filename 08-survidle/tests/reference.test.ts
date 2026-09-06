@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar, coastOpen, START_DOY } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
-import { addItem, pile, qty } from "../src/sim/inventory";
+import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
@@ -32,7 +32,7 @@ import {
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { regionState } from "../src/sim/regionstate";
-import { levelMinutes } from "../src/sim/skills";
+import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
@@ -47,11 +47,11 @@ describe("the reference player", () => {
     // so a level-1 survivor's first tick never sees them; the 400 kg woodpile keep and the
     // 150-log keep gate by season and a 1 April start is closed for both; the two ice-hole
     // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
-    // every other want is open.
+    // and the hide coat, trousers and boots wait for Crafting 8; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 10);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 10);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 13);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 13);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -101,7 +101,8 @@ describe("the reference player", () => {
     expect(tasks[spear + 4]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
     const hunt = tasks.indexOf("hunt:any");
-    expect(tasks[hunt + 1]).toBe("craft:axe");
+    expect(tasks.slice(hunt + 1, hunt + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
+    expect(tasks[hunt + 8]).toBe("craft:axe");
     const axe = tasks.indexOf("craft:axe");
     expect(tasks.slice(axe + 1, axe + 8)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:shore", "fill:hole", "melt:"]);
     expect(tasks[axe + 8]).toBe("hang:");
@@ -109,7 +110,7 @@ describe("the reference player", () => {
     expect(tasks.slice(axe + 10, axe + 13)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(tasks[axe + 13]).toBe("chop:");
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("keep");
-    expect(REFERENCE_ORDERS.length).toBe(44);
+    expect(REFERENCE_ORDERS.length).toBe(51);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -455,6 +456,34 @@ describe("wants by level", () => {
     // The summer's 4-log keep is not a winter-stock want and stays open in April.
     const summer = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === 4)!;
     expect(wantOpen(state, world, summer, calendar(0, 90))).toBe(true);
+  });
+
+  it("the hide coat, trousers and boots wait for Crafting 8; the needle, the fur hat, the mittens and the bow do not", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(0);
+    const want = (arg: string) => REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === arg)!;
+    for (const arg of ["hideCoat", "hideTrousers", "hideBoots"]) expect(wantOpen(state, world, want(arg), cal), arg).toBe(false);
+    for (const arg of ["needle", "furHat", "furMittens", "bow"]) expect(wantOpen(state, world, want(arg), cal), arg).toBe(true);
+    setSkillLevel(state, "crafting", 8);
+    for (const arg of ["hideCoat", "hideTrousers", "hideBoots"]) expect(wantOpen(state, world, want(arg), cal), arg).toBe(true);
+  });
+
+  it("the clothing block is a needle, a mend grind and five garments as once jobs, right after the small-game hunt keep", () => {
+    const block = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
+    const hunt = block.indexOf("hunt:any:keep:campHas");
+    expect(block.slice(hunt + 1, hunt + 8)).toEqual([
+      "craft:needle:job:once", "repair::grind:forever",
+      "craft:hideCoat:job:once", "craft:hideTrousers:job:once", "craft:hideBoots:job:once", "craft:furHat:job:once", "craft:furMittens:job:once",
+    ]);
+  });
+
+  it("a kitted level-20 list makes one spare spear and stops", () => {
+    const ref = setUpReference(17, true);
+    for (const s of SKILL_IDS) setSkillLevel(ref.state, s, 20);
+    stepReference(ref, 20 * 1440);
+    const st = regionState(ref.state, ref.world, ref.state.player.region);
+    expect(hasTool(ref.state.player, "fishingSpear")).toBe(true);
+    expect(qty(pile(ref.state, st.campCell), "fishingSpear")).toBeLessThanOrEqual(1);
   });
 });
 

@@ -34,8 +34,9 @@ describe("the horizon stages", () => {
     // The three named hunts (elk, reindeer, deer) all gate above level 1, so they are absent here.
     // The 400 kg woodpile keep and the 150-log keep gate by season too, and a 1 April stage is
     // closed for both, as are the two ice-hole fetches and the two melts, which wait for the
-    // shore to ice over, and the fire indoors, which waits for a hut.
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 10);
+    // shore to ice over, and the fire indoors, which waits for a hut, and the hide coat, trousers
+    // and boots wait for Crafting 8.
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 13);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");
