@@ -822,10 +822,17 @@ export function withProgression(state: GameState, world: World, o: TaskOption): 
   return out;
 }
 
-/** Starts a task by hand. Whatever intent was running is over; the task set aside keeps its share. */
+/**
+ * Starts a task by hand. Whatever intent was running is over; the task set
+ * aside keeps its share. The runner's night goes with the intent: a hand
+ * that takes over mid-sleep is the player deciding the night is done, and a
+ * flag left set would put the next intent back to bed at the wake line
+ * rather than the onset line.
+ */
 export function startTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false, rng?: Rng): boolean {
   if (!beginTask(state, world, cal, id, arg, repeat, rng)) return false;
   state.intent = null;
+  state.player.sleeping = null;
   return true;
 }
 

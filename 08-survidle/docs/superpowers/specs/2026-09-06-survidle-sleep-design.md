@@ -121,10 +121,12 @@ sunset bedtime's 4.5 to 4.9 hours of dark work, all of it necessarily the
 evening, the model works 3.3 to 4.2 hours of dark, 2.8 to 3.1 of it the
 morning.
 
-Both level-20 deaths are still a full larder and a thin woodpile. Seed 17
-goes into January with 874,875 kcal at camp and 27 kg of firewood and one
-log, and freezes on day 306; seed 19 goes in with 318,617 kcal and no logs
-at all, and freezes on day 300 with its cold burn over band. That is item
+Both level-20 deaths are still a full larder and a fire that runs out.
+Seed 17 goes into January with 874,875 kcal at camp and 27 kg of
+firewood and one log, and freezes on day 306; seed 19 goes in with
+318,617 kcal, 206 kg of firewood and no logs at all, burns through the
+pile over the next 24 days with its cold burn over band, and freezes on
+day 300. That is item
 J's own flagged gap - nothing makes a runner stock the night's fire before
 its working day ends - and not the sleep model's to close: the rest latch
 used to hide it by holding a spent body at its fire from the count's tenth
@@ -254,8 +256,10 @@ snares, spent, home. What each reads changes:
   player's, `Player.sleeping`, set when the need first fires and cleared
   only when the model ends it, so a sleep broken to feed the fire or by
   an order changing under the sleeper is resumed on the next free minute
-  rather than dropped until the onset line comes round again. The thirst exception stands: a
-  thirsty body that can drink drinks first.
+  rather than dropped until the onset line comes round again. The thirst
+  exception stands: a thirsty body that can drink drinks first, except
+  under a storm, which outranks thirst, so a thirsty body sitting one out
+  sleeps rather than staying awake for a drink it will not go for.
 - **spent**: `energy < SPENT_AT`, holding while a spent rest is under
   way until `energy >= RESTED_AT` (55, about four hours of rest above the
   spent line) and while sleepiness is at or above `SLEEPY_AT`, so an
