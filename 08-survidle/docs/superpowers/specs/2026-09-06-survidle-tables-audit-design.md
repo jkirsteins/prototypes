@@ -317,9 +317,8 @@ fire that keeps it under 6,000 is nine kilos an hour.
 ### 6.3 Snow depth
 
 The year loop's first flag. In `src/sim/weather.ts`, precipitation lays
-a quarter of today's snow (0.75 cm/h light, 0.375 heavy becomes 1.5 and
-0.75 cm/h, both a quarter of what they were), and at the day roll the
-pack settles by 2 percent of its depth. Melting above 2 C stays at 2
+a quarter of today's snow: light snow 0.375 cm/h from 1.5, heavy 0.75
+from 3. At the day roll the pack settles by 2 percent of its depth. Melting above 2 C stays at 2
 cm/h. The year script prints the snow depth on every month line, and
 the constants are tuned on it until January reads 40 to 60 cm on the
 four seeds; `DEEP_SNOW_CM` at 30 then means what it says.
