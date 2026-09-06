@@ -30,14 +30,31 @@ export const ITEM_NAMES: Record<ItemId, string> = {
 };
 
 export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
+/**
+ * Lean wild meat: a kill's fat is its own item at 9,000, so the meat is
+ * hare at about 1,000 kcal/kg (Kochanski) and venison at 1,100 to 1,200;
+ * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.
+ * Berries are wild bilberry, 400 to 600 a kilo, at 450.
+ */
 export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number }> = {
-  rawMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0.25 },
-  cookedMeat: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0 },
-  driedMeat: { kcalPerKg: 3500, portionKg: 0.15, sickChance: 0 },
+  rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25 },
+  cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0 },
+  driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0 },
   cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0 },
-  berries: { kcalPerKg: 500, portionKg: 0.2, sickChance: 0 },
+  berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0 },
   fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 },
 };
+/**
+ * The lean ceiling: Kochanski's rabbit starvation - on hare alone a body
+ * shows starvation within a week however much it eats. Meat and fish past
+ * this many kcal in a day feed nothing; about 1.5 kg of lean meat, the most
+ * the body turns to energy before the protein goes to waste. Fat and
+ * berries are never capped.
+ */
+export const LEAN_KCAL_PER_DAY = 1600;
+export const LEAN_FOODS: ReadonlySet<FoodId> = new Set<FoodId>(["rawMeat", "cookedMeat", "driedMeat", "cookedFish"]);
+/** Below this ambient a stack keeps: the Swedish handbook's freezing storage wants at least -10 to -15 C; between it and zero the rot runs at half speed. */
+export const FREEZE_KEEP_C = -10;
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
 export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
 /** Kilos an hour's picking takes at a patch by hand, before the foraging pool's factor: a beginner picker, near the real kilo an hour at the top of the pool. */
@@ -129,16 +146,32 @@ export const STRUCTURES: Record<StructureId, StructureDef> = {
   leanTo: { name: "lean-to", needs: [{ item: "stick", qty: 8 }, { item: "log", qty: 4 }, { item: "cordage", qty: 2 }], minutes: 240, desc: "Poles and boughs. A little warmer, half as wet." },
   cabin: { name: "log cabin", needs: [{ item: "log", qty: 40 }, { item: "stone", qty: 12 }, { item: "cordage", qty: 8 }], minutes: 3600, desc: "Walls and a roof. Warm, dry, and a long job." },
   dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 40 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps; four in rain. A second rack doubles it." },
-  snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to five per region." },
-  boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat in a fortnight." },
+  snare: { name: "set a snare", needs: [{ item: "snare", qty: 1 }], minutes: 6, desc: "Catches hares overnight where hares live. Up to forty per region." },
+  boughBed: { name: "bough bed", needs: [{ item: "stick", qty: 12 }], minutes: 30, desc: "Spruce boughs off the cold ground. +4 C asleep here; goes flat after four days." },
   turfHut: { name: "turf hut", needs: [{ item: "log", qty: 4 }, { item: "stick", qty: 20 }, { item: "bark", qty: 40 }, { item: "cordage", qty: 4 }], minutes: 1200, desc: "Poles and a low earth wall under a bark roof, a smoke hole over the hearth. Warm, dry, and a fire inside is allowed." },
   seep: { name: "seep", needs: [{ item: "stick", qty: 4 }], minutes: 240, desc: "A knee-deep hole to groundwater on wet ground. Fills on its own; freezes without a fire beside it." },
   waterStore: { name: "water trough", needs: [{ item: "log", qty: 1 }, { item: "bark", qty: 8 }, { item: "cordage", qty: 2 }], minutes: 180, desc: "A hollowed log lined with bark. Holds 20 litres at camp." },
+  snowShelter: { name: "snow shelter", needs: [], minutes: 300, desc: "A heaped and hollowed drift. Walls of snow hold -3 C whatever the night does; no fire inside." },
 };
 export const STRUCTURE_IDS = Object.keys(STRUCTURES) as StructureId[];
-export const MAX_SNARES = 5;
-/** Days a bough bed stays springy before it has to be laid again. */
-export const BOUGH_BED_DAYS = 14;
+/**
+ * Kochanski: pile snow, let it set, dig it out; the ground under a good
+ * cover sits at -3 to -5 C whatever the air. The Swedish handbook: the
+ * pile freezes together in four or five hours. Needs this much snow at
+ * camp and no tools; slumps after this many warm days in a row.
+ */
+export const SNOW_SHELTER_CM = 40;
+export const SNOW_MELT_DAYS = 3;
+/**
+ * A trap line, not five snares: the Swedish handbook's 3 to 5 km of marked
+ * ground with a hundred snares after a few days, checked at dawn. Forty
+ * per region, a few percent a night each, so the catch comes from more
+ * snares checked rather than better odds per snare.
+ */
+export const MAX_SNARES = 40;
+export const SNARE_ODDS_PER_NIGHT = 0.04;
+/** Days a bough bed stays springy before it has to be laid again: Kochanski, a fresh layer every three or four days. */
+export const BOUGH_BED_DAYS = 4;
 
 /** Days a decaying structure stands before the weather takes it down: a bough roof fails in a year while its frame stands, a lashed pole rack lasts two, a turf roof a year and a half. */
 export const STRUCTURE_LIFE_DAYS: Record<DecayingId, number> = { leanTo: 365, dryingRack: 730, turfHut: 540 };

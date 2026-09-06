@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { minutesToCamp } from "../src/sim/body";
+import { ARROWS_TO_CARRY, minutesToCamp } from "../src/sim/body";
 import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
@@ -218,6 +218,33 @@ describe("the body tier", () => {
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(qty(state.player.pack, "driedMeat")).toBeCloseTo(2, 6);
     expect(weight(state.player.pack)).toBeLessThanOrEqual(PACK_COMFORTABLE_KG);
+  });
+
+  // A bow hunt is legal only with arrows in the pack, or standing at camp with
+  // arrows in the pile, and the order's own kit is pocketed only once a hunt is
+  // already live. So a named hunt judged from anywhere but camp read "needs
+  // arrows in the pack", and one at the foot of the list - which gets its turn
+  // only when everything above it is met or blocked, by which time the runner is
+  // out at the shore - was never once served on any gate seed.
+  it("the quiver is filled whenever the bow leaves camp, whatever the errand", () => {
+    const g = newGame(39);
+    const { state, world } = g;
+    const camp = regionState(state, world, state.player.region).campCell;
+    state.player.tools.push({ id: "bow", durability: 100, litres: 0 });
+    addItem(pile(state, camp), "arrow", 12);
+    expect(qty(state.player.pack, "arrow")).toBe(0);
+    // A stick-gathering errand, nothing to do with hunting.
+    startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    expect(qty(state.player.pack, "arrow")).toBe(ARROWS_TO_CARRY);
+  });
+
+  it("no bow, no arrows: an unarmed survivor leaves the quiver where it is", () => {
+    const g = newGame(39);
+    const { state, world } = g;
+    const camp = regionState(state, world, state.player.region).campCell;
+    addItem(pile(state, camp), "arrow", 12);
+    startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    expect(qty(state.player.pack, "arrow")).toBe(0);
   });
 
   it("provisioning at a waterside camp also fills every vessel", () => {

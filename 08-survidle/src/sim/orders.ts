@@ -13,7 +13,8 @@ import { body } from "./person";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { normalizeOrder } from "./ladder";
+import { STRUCTURES } from "./items";
+import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
@@ -55,9 +56,9 @@ export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 
   [list[i], list[j]] = [list[j], list[i]];
 }
 
-/** The stock a keep holds and its target, or null for any other order - including "keep it lit", which holds no stock at all. */
+/** The stock a keep holds and its target, or null for any other order - including "keep it lit" and a keep on a structure, which hold no stock at all. */
 export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
-  if (o.kind !== "keep" || o.req.until.kind !== "campHas" || o.req.task === "light" || o.req.task === "lightIndoors") return null;
+  if (o.kind !== "keep" || o.req.until.kind !== "campHas" || o.req.task === "light" || o.req.task === "lightIndoors" || structureKeep(o.req, o.kind)) return null;
   return { item: yieldItem(o.req.task, o.req.arg)!, qty: o.req.until.qty };
 }
 
@@ -78,6 +79,13 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
   if (keep) {
     const have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
     return live ? have >= keep.qty - 1e-9 : have >= keep.qty / 2 - 1e-9;
+  }
+  if (structureKeep(o.req, o.kind)) {
+    if (o.req.arg === "snare") {
+      const want = o.req.until.kind === "campHas" ? o.req.until.qty : 1;
+      return live ? st.structures.snares >= want : st.structures.snares >= want / 2;
+    }
+    return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.kind === "grind") return false;
   // A seep stands on a cell, not at the camp: its dig is a job done once.
@@ -103,6 +111,7 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   const u = o.req.until;
   if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}`);
   else if (o.kind === "keep" && (o.req.task === "light" || o.req.task === "lightIndoors")) parts.push("keep it lit");
+  else if (structureKeep(o.req, o.kind)) parts.push(o.req.arg === "snare" ? `keep ${u.kind === "campHas" ? u.qty : 1} snares set` : `keep the ${STRUCTURES[o.req.arg as StructureId].name} laid`);
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");

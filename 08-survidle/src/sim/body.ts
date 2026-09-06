@@ -491,4 +491,25 @@ export function provision(state: GameState, world: World): void {
   // A waterside camp tops off every vessel along with lunch, the same errand.
   if (waterSource(state, world)) fillVessels(state, world);
   provisionKit(state, world);
+  quiverUp(state, world);
+}
+
+/**
+ * Arrows go in the pack whenever the bow leaves camp, whatever the errand
+ * is. A bow hunt is legal only with arrows in the pack, or standing on the
+ * camp cell with arrows in the pile, and provisionKit fills the quiver only
+ * once a hunt is already the live order. So a survivor anywhere but camp
+ * reads every named hunt as "needs arrows in the pack", and a named hunt at
+ * the foot of the list - which only ever gets its turn when everything above
+ * it is met or blocked, and by then the runner is usually out at the shore
+ * or in the forest - was never once served. Nobody who owns a bow walks out
+ * of camp without arrows.
+ */
+function quiverUp(state: GameState, world: World): void {
+  const p = state.player;
+  if (!hasTool(p, "bow")) return;
+  const camp = pile(state, regionState(state, world, p.region).campCell);
+  const want = ARROWS_TO_CARRY - qty(p.pack, "arrow");
+  if (want <= 0) return;
+  transfer(camp, p.pack, "arrow", Math.min(want, qty(camp, "arrow")));
 }

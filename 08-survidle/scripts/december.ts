@@ -62,6 +62,7 @@ for (const seed of runSeeds) {
   for (const s of SKILL_IDS) setSkillLevel(state, s, level);
   const camp = pile(state, regionState(state, world, state.player.region).campCell);
   addItem(camp, "driedMeat", WINTER_STOCK.driedMeatKg);
+  addItem(camp, "fat", WINTER_STOCK.fatKg);
   addItem(camp, "firewood", WINTER_STOCK.firewoodKg);
   addItem(camp, "log", WINTER_STOCK.logs);
 

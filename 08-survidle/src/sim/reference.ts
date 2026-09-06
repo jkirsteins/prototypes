@@ -31,7 +31,7 @@ import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { LARGE_GAME } from "./species";
-import { APRIL, BURN, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { APRIL, BURN, coldBand, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, WorldDate } from "./types";
@@ -44,7 +44,16 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
 /**
  * The runner never gathers a prerequisite on its own, so the list is
  * ordered as a competent day one is: water at the top, waiting for its
- * bucket; then the fire-and-roof chain, worked with the arrival axe alone
+ * bucket. Above the fetch itself sits the thaw grind, because a vessel
+ * that froze full is not a vessel: the fill task tops off what room a
+ * vessel has, a frozen one has none, and the pour at camp passes it over,
+ * so a fetch with the whole camp's vessels frozen runs all day and draws
+ * nothing while every want under it waits. A level-20 camp did exactly
+ * that for twenty days from 30 January - the bucket froze full on a night
+ * the fire went out - and froze to death on 19 February with 109 logs
+ * lying at camp. The grind is blocked with "nothing is frozen" the rest of
+ * the year, which is what a want at the head of the list has to be. Then
+ * the fire-and-roof chain, worked with the arrival axe alone
  * - stone for the ring, sticks, bark and cordage as raw stock (cordage
  * kept to eight, since arrows, snares and the bucket all draw on it), the
  * fire pit, the fire drill, the keep that lights the fire and relights it,
@@ -109,7 +118,7 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
  * mittens at once. Below the hut group sits the surplus loop,
- * in this order: the hang grind, the two winter-stock keeps, and the three
+ * in this order: the two winter-stock keeps, the hang grind, and the three
  * named hunts as grinds. A roof and water outrank
  * days spent chasing an elk, which is why this loop sits below the hut
  * group rather than above it. The hang grind hangs whatever raw meat sits
@@ -121,23 +130,30 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * at its species' recommended level (wantOpen), since a competent player
  * does not walk at an elk with a stone point at level 1: elk, reindeer
  * and roe deer, listed hardest first (8, 6, 4). The two winter-stock
- * keeps, 400 kg of firewood and the 150 logs that are the stock's unsplit
- * half, sit together between the hang grind and the named hunts: stocking
- * wood for winter earns its place ahead of chasing large game, but behind
- * the hang grind that clears the rack. Both open only from the season they
- * are stocked against (wantOpen), so a list that reaches them in April
- * waits for autumn rather than splitting 400 kg no winter yet needs. The
- * 150-log keep replaced a felling grind that ran last and forever, which
- * burned 400 kcal an hour for nothing whenever everything above it was
- * blocked; a runner with nothing left to do rests instead. It sits above
- * the named hunts and not below them because a grind is never met, and a
- * grind above a keep starves the keep: below them, camp logs never passed
- * five from 1 September and a level-20 camp froze in December beside 2.7
- * million kcal of food.
+ * keeps, the split pile and the logs that are the stock's unsplit half,
+ * sit together at the head of the loop, above the hang grind and the named
+ * hunts alike. A grind is never met, and a grind above a keep starves the
+ * keep: with the log keep below the hunts, camp logs never passed five
+ * from 1 September and a level-20 camp froze in December beside 2.7
+ * million kcal of food; with it below the hang grind, a camp taking elk
+ * all autumn hung meat instead of cutting wood, and two year seeds froze
+ * on days 300 and 325 with hundreds of thousands of kcal at camp and a
+ * woodpile of two kilos. A survivor with a full rack and no woodpile cuts
+ * wood. Both keeps open only for the season they are stocked against
+ * (wantOpen): midsummer to the thaw, so a list that reaches them in April
+ * or May waits rather than splitting a pile no winter yet needs, and the
+ * hang grind has its old place at the head of the loop for the quarter of
+ * the year - the ninety-odd days from the thaw to midsummer - that they
+ * are shut.
  */
 
-/** 1 September: a competent player starts the winter woodpile when the nights first frost. */
-export const WINTER_WOOD_FROM_DOY = 244;
+/**
+ * Midsummer: from the day the light starts going, a competent player is
+ * cutting for the winter, a window sized against the measured 6.6-tonne
+ * stock. From midsummer, a level-20 camp stands at 385 and 381 kg of
+ * firewood with 152 and 151 logs on 1 September.
+ */
+export const WINTER_WOOD_FROM_DOY = MIDSUMMER_DOY;
 /**
  * The day the woodpile want closes again: the thaw begins with April, so a
  * pile stacked after it is next winter's rather than this one's, and a
@@ -146,10 +162,23 @@ export const WINTER_WOOD_FROM_DOY = 244;
  */
 export const WINTER_WOOD_TO_DOY = 90;
 
-/** The winter stock (year loop spec 1.3): a hut winter is about 3 tonnes of firewood, of which 400 kg split and 150 logs to split, with 80 kg of dried meat. The stocked December camp starts with it; the list's winter keeps stock it. */
-export const WINTER_STOCK = { driedMeatKg: 80, firewoodKg: 400, logs: 150 };
+/**
+ * The winter stock: what a competent player has at camp on 1 December.
+ * A hut at the winter mean burned 60 kg of firewood a day over the stocked
+ * December camp's ninety days (measured on all four seeds, a mean air of
+ * -12 C, 5,410 to 5,522 kg), so the wood is 6,600 kg with a fifth to
+ * spare: 600 kg split and 300 logs to split, at 20 kg of firewood a log.
+ * The food is 80 kg of dried meat and 20 kg of rendered fat. The fat is
+ * not a garnish: the lean ceiling caps meat and fish at 1,600 kcal a day
+ * whatever the larder holds, and a winter body burns over 3,000, so a
+ * lean-only stock starves beside a quarter of a million kcal of it. The
+ * ninety days drew 16 kg of fat at most, and a fifth spare is 20.
+ * The stocked December camp starts with this; the list's winter keeps
+ * stock the wood half of it.
+ */
+export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
 
-/** The winter-stock keeps, the 400 kg split keep and the 150-log keep, told from the list's summer keeps by their targets. */
+/** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
   const firewood = w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood";
@@ -157,6 +186,7 @@ export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boo
 }
 
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
+  { req: { task: "thaw", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("fill", 2, "shore"),
   keep("fill", 2, "hole"),
   keep("melt", 2),
@@ -173,6 +203,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("splitWedges", 60),
   keep("deadwood", 60),
   job("build", { kind: "once" }, "leanTo"),
+  keep("build", 1, "boughBed"),
+  job("build", { kind: "once" }, "snowShelter"),
   keep("craft", 1, "knife"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
@@ -185,6 +217,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("cook", 1),
   keep("fish", 1, "any"),
   keep("berries", 2),
+  keep("build", 20, "snare"),
   job("build", { kind: "once" }, "dryingRack"),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
@@ -206,14 +239,15 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("bark", { kind: "campHas", qty: 40 }),
   job("build", { kind: "once" }, "turfHut"),
   job("build", { kind: "once" }, "waterStore"),
+  keep("build", 40, "snare"),
   keep("fill", 20, "shore"),
   keep("fill", 20, "hole"),
   keep("melt", 20),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", WINTER_STOCK.firewoodKg),
   keep("splitWedges", WINTER_STOCK.firewoodKg),
   keep("deadwood", WINTER_STOCK.firewoodKg),
   keep("chop", WINTER_STOCK.logs),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
@@ -251,6 +285,11 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const st = regionState(state, world, state.player.region);
     const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
     return w.req.task === "lightIndoors" ? indoors : !indoors;
+  }
+  // The snow shelter closes once a hut or a cabin stands: warmer walls, and the same cell to camp on.
+  if (w.req.task === "build" && w.req.arg === "snowShelter") {
+    const st = regionState(state, world, state.player.region);
+    return !(st.structures.turfHut || st.structures.cabin);
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
@@ -558,7 +597,7 @@ export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
   return [
     `week (${week.days} d): yield/day ${yields}; vs ${table.name}`,
     `eaten/day ${r0(week.eaten)}, net ${net >= 0 ? "+" : ""}${r0(net)}`,
-    `burn/day ${r0(total)} (${verdict(total, BURN.day)}) = base ${r0(b.base)} (${verdict(b.base, BURN.base)}) + work ${r0(work)} (${verdict(work, BURN.work)}: activity ${r0(b.activity)}, walk ${r0(b.walk)}) + cold ${r0(b.cold)} (${verdict(b.cold, BURN.cold)}) + sick ${r0(b.sick)}`,
+    `burn/day ${r0(total)} (${verdict(total, BURN.day)}) = base ${r0(b.base)} (${verdict(b.base, BURN.base)}) + work ${r0(work)} (${verdict(work, BURN.work)}: activity ${r0(b.activity)}, walk ${r0(b.walk)}) + cold ${r0(b.cold)} (${verdict(b.cold, coldBand(dayOfYear))}) + sick ${r0(b.sick)}`,
     `sleep/day ${sleepH.toFixed(1)} h (${verdict(sleepH, SLEEP_HOURS)}), work/day ${(week.workMin / 60).toFixed(1)} h`,
   ];
 }
@@ -641,7 +680,7 @@ export interface LineageReport {
 function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landCell: number, trapKg: number | null): Found {
   const oldSt = regionState(state, world, oldRegion);
   const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore"] as const).filter((s) => oldSt.structures[s]);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSt.structures[s]);
   const lc = cellAt(world, landCell);
   const cc = cellAt(world, oldSt.campCell);
   return {
@@ -659,9 +698,11 @@ function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landC
  * Lives in one world, one after another (year loop spec 1.4): the from-scratch
  * reference run, then for each heir the gap, the landing near the old camp,
  * the walk home and a fresh reference run. A life still alive at the day cap
- * has no heir to raise, so the report ends there.
+ * has no heir to raise, so the report ends there. Six lives is the lineage
+ * gate's cap (tables audit spec 1.3): a seed passes when any of them reaches
+ * a year.
  */
-export function runLineage(seed: number, days: number, lives = 3): LineageReport {
+export function runLineage(seed: number, days: number, lives = 6): LineageReport {
   const ref = setUpReference(seed);
   const { state, world } = ref;
   const out: LifeReport[] = [];

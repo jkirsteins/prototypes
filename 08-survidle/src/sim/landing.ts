@@ -19,6 +19,7 @@ import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
 import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
+import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
 import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
 
 export const GAP_MIN_DAYS = 90;
@@ -97,10 +98,10 @@ export function demoteFog(state: GameState): void {
   for (const id of Object.keys(state.discovered)) state.discovered[Number(id)] = DIM;
 }
 
-/** How much stands at a camp: the seven one-off structures plus however many snares. */
+/** How much stands at a camp: the eight one-off structures plus however many snares. */
 function campScore(st: RegionState): number {
   const s = st.structures;
-  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + (s.turfHut ? 1 : 0) + (s.waterStore ? 1 : 0) + s.snares;
+  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + (s.turfHut ? 1 : 0) + (s.waterStore ? 1 : 0) + (s.snowShelter ? 1 : 0) + s.snares;
 }
 
 /**
@@ -268,8 +269,15 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   const oldName = regionAt(world, cellAt(world, oldCamp).region).name;
   const built = builtList(last);
   const journal = built ? ` The journal of ${fmtName(last.name)} lists ${built} at ${oldName}.` : "";
+  // The carry sentence reads the ancestor's record directly rather than carrySkills's
+  // return, so the landing line can be logged before the rung lines carrySkills logs (R2).
+  const carried = SKILL_IDS.map((id) => ({ skill: id, level: level((last.skills?.[id] ?? 0) * CARRY_SHARE) })).filter((c) => c.level >= 2);
+  const carry = carried.length
+    ? ` {You} {carry} a quarter of what ${fmtName(last.name)} knew: ${carried.map((c) => `${SKILL_NAMES[c.skill]} ${c.level}`).join(", ")}.`
+    : "";
   log(
     state,
-    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. {You} {land} at ${regionAt(world, l.region).name} with an axe, wool on {your} back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.${journal}`,
+    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. {You} {land} at ${regionAt(world, l.region).name} with an axe, wool on {your} back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.${journal}${carry}`,
   );
+  carrySkills(state, last);
 }

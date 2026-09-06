@@ -7,7 +7,7 @@ import { addItem, qty, weight } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
-import { BASE_KCAL_PER_HOUR, COLD_BURN_FACTOR, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, coldBurnFactor, feltTemperature, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { deserialize, serialize } from "../src/sim/save";
@@ -144,12 +144,24 @@ describe("burn in buckets", () => {
     const { state, world } = newGame(1);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k0 = state.player.kcal;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
+    // Sixty one-minute steps, the way advance() actually calls stepPlayer
+    // (its own dt is at most one minute). Clothing wears while worn outdoors,
+    // so the felt cold nudges down across the hour; the expected cold bucket
+    // is accumulated minute by minute at the felt each step actually used,
+    // not read back once from the state the loop leaves behind.
+    let expectedCold = 0;
+    for (let m = 0; m < 60; m++) {
+      const felt = feltTemperature(state, world, -30);
+      expectedCold += (500 * (coldBurnFactor(felt) - 1)) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
+    }
     const b = today(state).burn;
     expect(b.base).toBeCloseTo(70, 6);
-    expect(b.activity).toBeCloseTo(330, 6);
+    // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
+    expect(b.activity).toBeCloseTo(430, 6);
     expect(b.walk).toBe(0);
-    expect(b.cold).toBeCloseTo(400 * (COLD_BURN_FACTOR - 1), 6);
+    // The cold burn grows with the felt cold rather than sitting at a flat factor; -30 ambient is well below zero here.
+    expect(b.cold).toBeCloseTo(expectedCold, 6);
     expect(b.sick).toBe(0);
     expect(b.base + b.activity + b.cold).toBeCloseTo(k0 - state.player.kcal, 6);
     expect(today(state).workMin).toBe(60);
@@ -173,12 +185,25 @@ describe("burn in buckets", () => {
     const { state, world } = newGame(1);
     state.player.sick = 600;
     state.task = null;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
+    // Sixty one-minute steps, for the same reason as the heavy-work case
+    // above: the felt cold drifts across the hour as outdoor clothing wears,
+    // so the expected cold and sick buckets are accumulated minute by minute
+    // at the felt each step actually used.
+    let expectedCold = 0;
+    let expectedSick = 0;
+    for (let m = 0; m < 60; m++) {
+      const felt = feltTemperature(state, world, -30);
+      const factor = coldBurnFactor(felt);
+      expectedCold += (100 * (factor - 1)) / 60;
+      expectedSick += (100 * factor * 0.2) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
+    }
     const b = today(state).burn;
     expect(b.base).toBeCloseTo(70, 6);
     expect(b.activity).toBeCloseTo(30, 6);
-    expect(b.cold).toBeCloseTo(100 * 0.3, 6);
-    expect(b.sick).toBeCloseTo(100 * 1.3 * 0.2, 6);
+    // The cold burn grows with the felt cold rather than sitting at a flat factor.
+    expect(b.cold).toBeCloseTo(expectedCold, 6);
+    expect(b.sick).toBeCloseTo(expectedSick, 6);
   });
 
   it("over two hours of the real loop the buckets sum to what the stomach and the fat lost", () => {

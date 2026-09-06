@@ -1,6 +1,5 @@
-import { itemLabel } from "../sim/actions";
+import { edible, itemLabel } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
-import { berriesRefused } from "../sim/berries";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
@@ -15,6 +14,7 @@ import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/ep
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
+import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { fmtName } from "../sim/names";
@@ -145,7 +145,11 @@ export function skillsHtml(state: GameState): string {
       nextShown = true;
       return `<span class="">${RUNG_WORD[k]} ${at}${toGo}</span>`;
     }).join(" ");
-    return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}</span></div>
+    const carriedNote =
+      s.carried && s.carried > s.xp / 2 && state.survivors.length >= 2
+        ? ` carried from ${esc(fmtName(state.survivors[state.survivors.length - 2].name))}`
+        : "";
+    return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}${carriedNote}</span></div>
 <div class="bar dur"><div class="fill" style="width:${Math.round(share * 100)}%"></div></div>
 <div class="bar pool"><div class="fill" style="width:${Math.round(pool * 100)}%"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
 ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}<div class="rungs"><small>${rungs}</small></div></div>`;
@@ -286,6 +290,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
   if (st.structures.boughBed) built.push("bough bed");
   if (st.structures.waterStore) built.push("water trough");
+  if (st.structures.snowShelter) built.push("snow shelter");
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
   const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
@@ -452,8 +457,9 @@ export function instantHtml(state: GameState, world: World): string {
       const have = invs.reduce((a, inv) => a + qty(inv, f), 0);
       if (have <= 1e-9) return "";
       const def = FOODS[f];
-      const refused = f === "berries" && berriesRefused(p, state.minute);
-      return `<button class="mini" data-act="eat" data-food="${f}" ${refused ? "disabled" : ""}>eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>${refused ? "not another berry today" : `+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}`}</small></button>`;
+      const refused = !edible(state, f);
+      const reason = f === "berries" ? "not another berry today" : "not more lean meat today";
+      return `<button class="mini" data-act="eat" data-food="${f}" ${refused ? "disabled" : ""}>eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>${refused ? reason : `+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}`}</small></button>`;
     })
     .join(" ");
   const st = regionState(state, world, p.region);
@@ -565,6 +571,19 @@ export function landingHtml(state: GameState, world: World): string {
 <p><label>Name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label></p>
 <button class="act" data-act="land">Land</button>
 <button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">next boat (${esc(fmtWorldDate(next))})</button>
+<button class="mini" data-act="manual-open">How to survive</button>
+</div>`;
+}
+
+export function manualHtml(): string {
+  const sections = MANUAL_SECTIONS.map((s) => `<h2>${esc(s.title)}</h2>${s.lines.map((l) => `<p>${esc(l)}</p>`).join("")}`).join("");
+  const links = MANUAL_LINKS.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title)}</a></li>`).join("");
+  return `<div class="box manual">
+<h1>How to survive</h1>
+${sections}
+<h2>More</h2>
+<ul>${links}</ul>
+<button class="act" data-act="manual-close">Close</button>
 </div>`;
 }
 

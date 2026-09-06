@@ -3,6 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { startIntent, type IntentRequest } from "../src/sim/intent";
+import { normalizeOrder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
@@ -82,11 +83,11 @@ describe("the list", () => {
     expect(addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job").id).toBe(3);
   });
 
-  it("keep and camp-has need a countable yield; a build cannot be kept and becomes a once job", () => {
+  it("keep and camp-has need a countable yield, except a build keep, which stands on the structure and holds no stock", () => {
     const { state, world } = newGame(3);
     const o = addOrder(state, world, { task: "build", arg: "leanTo", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(o.kind).toBe("job");
-    expect(o.req.until).toEqual({ kind: "once" });
+    expect(o.kind).toBe("keep");
+    expect(o.req.until).toEqual({ kind: "campHas", qty: 2 });
     expect(keepTarget(o)).toBeNull();
     const k = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "leave", where: "nearest" }, "keep");
     expect(keepTarget(k)).toEqual({ item: "firewood", qty: 40 });
@@ -98,7 +99,7 @@ describe("the list", () => {
     expect(o.req.until).toEqual({ kind: "forever" });
   });
 
-  it("a keep whose task is light is allowed, the one keep besides the build job with no countable yield", () => {
+  it("a keep whose task is light is allowed, another keep besides a build keep with no countable yield", () => {
     const { state, world } = newGame(3);
     const o = addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
@@ -755,5 +756,48 @@ describe("the night", () => {
     expect(juneNight.isNight).toBe(true);
     expect(chooseOrder(june.state, june.world, juneNight)).toBeNull();
     expect(ordersHere(june.state, june.world)[0].skipped).toBe(NIGHT_SKIP.budget);
+  });
+});
+
+describe("a keep on a structure", () => {
+  it("stays a keep, holds no stock, and reads met while the structure stands", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const n = normalizeOrder({ task: "build", arg: "boughBed", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(n.kind).toBe("keep");
+    expect(n.req.until).toEqual({ kind: "campHas", qty: 1 });
+    const o = addOrder(state, world, n.req, n.kind);
+    expect(keepTarget(o)).toBeNull();
+    expect(orderMet(state, world, o, false)).toBe(false);
+    st.structures.boughBed = true;
+    expect(orderMet(state, world, o, true)).toBe(true);
+    st.structures.boughBed = false;
+    expect(orderMet(state, world, o, true)).toBe(false);
+    expect(orderSentence(state, world, calendar(0), o)).toContain("keep the bough bed laid");
+  });
+
+  it("a keep on snares reads met at its count live and at half idle", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const o = addOrder(state, world, { task: "build", arg: "snare", until: { kind: "campHas", qty: 20 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(o.kind).toBe("keep");
+    st.structures.snares = 10;
+    expect(orderMet(state, world, o, false)).toBe(true);
+    expect(orderMet(state, world, o, true)).toBe(false);
+    st.structures.snares = 20;
+    expect(orderMet(state, world, o, true)).toBe(true);
+    expect(orderSentence(state, world, calendar(0), o)).toContain("keep 20 snares set");
+  });
+
+  it("a seep is never a structure keep: it stands on a cell, not at camp, and collapses to a once job", () => {
+    const { state, world } = newGame(17);
+    const n = normalizeOrder({ task: "build", arg: "seep", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(n.kind).toBe("job");
+    expect(n.req.until).toEqual({ kind: "once" });
+    const o = addOrder(state, world, n.req, n.kind);
+    expect(keepTarget(o)).toBeNull();
+    expect(orderMet(state, world, o, false)).toBe(false);
+    o.done = 1;
+    expect(orderMet(state, world, o, false)).toBe(true);
   });
 });

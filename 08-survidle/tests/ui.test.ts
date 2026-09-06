@@ -4,7 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
-import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, moveOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
@@ -18,7 +18,7 @@ import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { mapHtml, mapKey, VIEW_H, VIEW_W, viewOrigin, ZOOMS } from "../src/ui/map";
 import { doHtml } from "../src/ui/dopanel";
-import { actionsHtml, clockHtml, forecastHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { actionsHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
@@ -376,6 +376,19 @@ describe("the Do panel", () => {
     expect(html).toContain('data-opt="intent:lightTorch:"');
     expect(html).not.toContain('class="tabs"');
     expect(html).toContain('data-act="advanced"');
+  });
+
+  it("a lean food past the day's ceiling shows a disabled eat button with its own reason; fat's stays open", () => {
+    const g = newGame(21);
+    const p = g.state.player;
+    p.leanToday = { day: 1, kcal: LEAN_KCAL_PER_DAY };
+    addItem(p.pack, "cookedMeat", 1);
+    addItem(p.pack, "fat", 1);
+    const html = instantHtml(g.state, g.world);
+    expect(html).toContain('data-act="eat" data-food="cookedMeat" disabled');
+    expect(html).toContain("not more lean meat today");
+    expect(html).toContain('data-act="eat" data-food="fat" >');
+    expect(html).not.toContain('data-act="eat" data-food="fat" disabled');
   });
 
   it("the Hunt group also offers reading the shore and setting and emptying the trap", () => {

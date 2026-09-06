@@ -1,5 +1,5 @@
 import type { World } from "../world/gen";
-import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
+import { CLOTHING, FREEZE_KEEP_C, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
 import { cellAt } from "../world/gen";
 import { log } from "./log";
 import { body } from "./person";
@@ -186,12 +186,14 @@ export function transfer(from: Inventory, to: Inventory, item: ItemId, n: number
 /** Ages perishable stacks by dt minutes when it is warm, and throws away what has gone off. Returns kg lost per item. */
 export function ageStacks(inv: Inventory, dt: number, ambient: number): Partial<Record<PerishableId, number>> {
   const lost: Partial<Record<PerishableId, number>> = {};
-  if (ambient <= 0) return lost;
+  // Frozen keeps; the cool tier between zero and the freeze rots at half speed.
+  const rate = ambient < FREEZE_KEEP_C ? 0 : ambient <= 0 ? 0.5 : 1;
+  if (rate === 0) return lost;
   for (const p of PERISHABLES) {
     const stacks = inv.stacks[p];
     if (!stacks?.length) continue;
     const limit = SPOIL_HOURS[p] * 60;
-    for (const s of stacks) s.age += dt;
+    for (const s of stacks) s.age += dt * rate;
     const keep = stacks.filter((s) => s.age < limit);
     if (keep.length !== stacks.length) {
       let gone = 0;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
 import { emptyYield, YIELD_SOURCES } from "../src/sim/ledger";
 import { BASE_KCAL_PER_HOUR, ENERGY_RATE, taskDrain, WALK_KCAL_PER_HOUR } from "../src/sim/player";
-import { APRIL, BERRY, BURN, LATE_AUGUST, SLEEP_HOURS, SOURCE_ROWS, sourceBand, tableFor, verdict } from "../src/sim/tables";
+import { APRIL, BERRY, BURN, coldBand, isWinterDoy, LATE_AUGUST, SLEEP_HOURS, SOURCE_ROWS, sourceBand, tableFor, verdict } from "../src/sim/tables";
 import { WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { minutesToWake } from "../src/sim/sleep";
 
@@ -55,6 +55,8 @@ describe("the constants sit in their real bands", () => {
 
   it("a berry is about 500 kcal a kilo", () => {
     expect(verdict(FOODS.berries.kcalPerKg, BERRY.kcalPerKg)).toBe("in band");
+    expect(BERRY.fullCreditKg).toBe(1.2);
+    expect(BERRY.refuseKg).toBe(2);
   });
 
   it("an hour's picking at level one is what a hand picker takes", () => {
@@ -71,10 +73,21 @@ describe("the constants sit in their real bands", () => {
     expect(WALK_KCAL_PER_HOUR).toBeLessThanOrEqual(300);
   });
 
-  it("the burn shares add up to the day band", () => {
-    expect(BURN.base.lo + BURN.work.lo + BURN.cold.lo).toBeGreaterThanOrEqual(BURN.day.lo - 100);
-    expect(BURN.base.hi + BURN.work.hi + BURN.cold.hi).toBeLessThanOrEqual(BURN.day.hi + 300);
+  it("the burn shares add up to the day band, with the warm cold share", () => {
+    expect(BURN.base.lo + BURN.work.lo + BURN.coldWarm.lo).toBeGreaterThanOrEqual(BURN.day.lo - 100);
+    expect(BURN.base.hi + BURN.work.hi + BURN.coldWarm.hi).toBeLessThanOrEqual(BURN.day.hi + 300);
     expect(SLEEP_HOURS).toEqual({ lo: 7, hi: 9 });
+  });
+
+  it("the day band is the handbook's settled day to its camp-building day, and the cold share is a winter band inside December to February", () => {
+    expect(BURN.day).toEqual({ lo: 3000, hi: 4500 });
+    expect(BURN.deepCold).toEqual({ lo: 4500, hi: 6000 });
+    expect(coldBand(90)).toEqual(BURN.coldWarm);
+    expect(coldBand(334)).toEqual(BURN.coldWinter);
+    expect(coldBand(10)).toEqual(BURN.coldWinter);
+    expect(coldBand(59)).toEqual(BURN.coldWarm);
+    expect(isWinterDoy(333)).toBe(false);
+    expect(isWinterDoy(58)).toBe(true);
   });
 
   it("the energy budget balances: twelve hours on a task and four of camp work drain what eight hours asleep restore", () => {

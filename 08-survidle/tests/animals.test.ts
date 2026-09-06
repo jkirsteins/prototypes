@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { dailyAnimals, densityLabel, popOf, seasonalCapacity } from "../src/sim/animals";
+import { BIG_GAME, BIG_GAME_MIGRATION, dailyAnimals, densityLabel, popOf, seasonalCapacity } from "../src/sim/animals";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { isVoiceOnly, SPECIES_DEFS, SPECIES_IDS, type Species } from "../src/sim/species";
@@ -133,6 +133,12 @@ describe("seasons", () => {
         if (SPECIES_DEFS[s].kind !== "mammal" && SPECIES_DEFS[s].season.kind === "resident" && !isVoiceOnly(s)) expect(st.pop[s]).toBeCloseTo(before[id][s]!, 9);
       }
     }
+  });
+
+  it("big game refills a shot-out range at a tenth of the predators' rate", () => {
+    expect(BIG_GAME).toEqual(["deer", "reindeer", "elk", "bear"]);
+    expect(BIG_GAME_MIGRATION).toBeCloseTo(0.003, 9);
+    expect(BIG_GAME_MIGRATION * 10).toBeCloseTo(0.03, 9);
   });
 });
 

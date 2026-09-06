@@ -120,11 +120,14 @@ waiting, and everything done while you are away run at the one scale.
   sets the volume and turns the ambience off on its own. Recordings and
   their licences are listed in `public/audio/manifest.md`; several are for
   this prototype only and are marked for replacement.
-- **Body.** Food is a kilocalorie reserve. Warmth settles toward what your
-  felt temperature can hold: ambient, plus clothing, fire and shelter at
-  camp, plus activity, minus wetness. Below 20 warmth you lose health fast.
-  Energy drains awake and faster working; below 20 you work at half speed,
-  and if you idle while spent you fall asleep where you stand.
+- **Body.** Food is a kilocalorie reserve. Lean meat and fish feed nothing
+  past 1,600 kcal a day - a hare or a deer alone starves you as surely as
+  no food at all - while fat and berries have no ceiling; two litres of
+  berries, about 1.2 kg, is a full day's worth. Warmth settles toward what
+  your felt temperature can hold: ambient, plus clothing, fire and shelter
+  at camp, plus activity, minus wetness. Below 20 warmth you lose health
+  fast. Energy drains awake and faster working; below 20 you work at half
+  speed, and if you idle while spent you fall asleep where you stand.
 - **The elements.** Water is a reserve like food: drink at a shore, carry it
   in a bark bucket or a waterskin, melt snow at the fire in winter for a kilo
   of wood a litre. Lakes freeze; thin ice is a shortcut that can take you,
@@ -139,24 +142,30 @@ waiting, and everything done while you are away run at the one scale.
   drinks, shelters from a storm, is home before dark in winter and banks
   the fire it leaves, and nothing more.
 - **Camp.** Fire pit, then fire (needs a fire drill and firewood); lean-to,
-  then a cabin (40 logs, 60 hours); drying rack (40 kg of raw meat,
-  3 kg raw to 1 kg that keeps, two dry days or four wet; a camp can stand
-  two); snares on the heath. "Hang meat to dry" is a task, and a keep on
-  dried meat runs it as the rack has room. Auto-eat and auto-feed keep you
-  alive while the tab is closed, as long as the food and firewood are
-  there.
+  then a cabin (40 logs, 60 hours), or, once 40 cm of snow lies at camp
+  and no hut or cabin stands, a snow shelter (no materials, five hours,
+  holds -3 C whatever the night does but takes no fire, and slumps after
+  three warm days running); drying rack (40 kg of raw meat at 1,100 kcal
+  a kilo, 3 kg raw to 1 kg dried at 3,300, the same kcal in less weight,
+  two dry days or four wet; a camp can stand two); a trap line of up to
+  forty snares on the heath, checked at dawn. "Hang meat to dry" is a
+  task, and a keep on dried meat runs it as the rack has room. Auto-eat
+  and auto-feed keep you alive while the tab is closed, as long as the
+  food and firewood are there.
 - **Spares.** A tool recipe yields a spare that is taken up when the one in
   hand breaks; "keep camp at 1 axe" is how the axe is never the end of the
   run.
 - **Light.** Every tile carries its ground's colour as a dark background.
   At night a lit fire glows on the map, two rings when it is fed and one
   when it burns low, and you can see your own camp from the next valley.
-  A torch (1 stick, 2 bark, 20 minutes; lit at a fire in a minute or with
-  the fire drill in ten) burns for an hour, lights one ring around you,
-  takes the night penalty off your walking, and keeps the wolves off.
+  Without a torch you walk at a third of day speed in the dark. A torch
+  (1 stick, 2 bark, 20 minutes; lit at a fire in a minute or with the
+  fire drill in ten) burns for an hour, lights one ring around you, takes
+  that night penalty off your walking, and keeps the wolves off.
 - **Bedding.** Most of a night's heat goes into the ground. A bough bed (12
   sticks, half an hour) gives +4 C asleep at that camp and goes flat after
-  a fortnight. A hide blanket (4 kg hide, 2 sinew, a needle, 4 hours) is
+  four days; a keep lays it again before then, for the same sticks and
+  half hour. A hide blanket (4 kg hide, 2 sinew, a needle, 4 hours) is
   3 kg in the pack and gives +8 C asleep or resting anywhere. The sleep
   button says what you lie on and under: "on bare ground, in the open" or
   "on a bough bed, under your blanket and the roof, by the fire".
@@ -185,12 +194,21 @@ waiting, and everything done while you are away run at the one scale.
 - **Winter** is December to February at 62 N: about five hours of light,
   -9 C mean, cold snaps to -30 C, deep snow that halves your walking speed.
   Deer and elk thin out, the mallards and geese are gone south, the eider
-  stay on the coast, and the lakes' birds leave with the ice. You need hide
-  clothing, a cabin, and a wood pile. A fire under the turf hut's smoke
-  hole burns 1.2 kg an hour against an open fire's 3, and the hut holds
-  at 5 C while it is lit, whatever the air outside is doing.
+  stay on the coast, and the lakes' birds leave with the ice. You need
+  hide clothing, a cabin or a snow shelter, and a wood pile. An open fire
+  burns 3 kg an hour at zero and more as the cold deepens - 6 at -10, 9 at
+  -20, 15 at -40; a fire under the turf hut's smoke hole takes 40 percent
+  of that, and the hut holds at 5 C while it is lit, whatever the air
+  outside is doing.
 - **The journal** reads the life record: what season it is, what came before,
-  and every ancestor's life under their epitaph.
+  and every ancestor's life under their epitaph. A heir carries a quarter
+  of what the last survivor knew in every skill, named at landing and
+  marked "carried from {name}" in the skills panel.
+- **How to survive.** A one-page manual - the first days in order, what
+  kills you and how fast, food and the seasons, orders and being away -
+  opens once, unasked, on a world's first landing, and after that from
+  the landing screen's "how to survive" button or the button beside the
+  away dial; it links the two handbooks it was read against.
 
 ## Debug URL parameters
 
@@ -277,12 +295,14 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/ui/face.ts`: the face templates and palette; `src/ui/card.ts`: the card's lines and the story rank; `src/sim/voice.ts`: the log's tokens and the third-person rule.
 - `src/sim/inventory.ts`: the three axes, their wear factors and the blunt line; `src/sim/tasks.ts`: the edge's slowdown, honing, dead wood and the wedge split.
 - `src/sim/items.ts`: weights, foods, recipes, structures.
+- `src/sim/lean.ts`: the lean ceiling, the daily cap on meat and fish.
 - `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls.
 - `src/world/wildlife.ts`: how a region's habitat and a species' range become a capacity.
 - `src/sim/player.ts`: kcal burn, warmth balance, fatigue, wetness, health, the fat reserve.
 - `src/sim/sleep.ts`: the two processes sleep runs on, their lines, and how long a night is.
 - `src/sim/body.ts`: when an intent sleeps, warms up, eats and provisions.
-- `src/sim/weather.ts`: the temperature curve, precipitation, snow.
+- `src/sim/weather.ts`: the temperature curve, precipitation, snow depth
+  and the constants it lays, settles and melts by.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
@@ -292,5 +312,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
 - `src/sim/hazards.ts`: the hourly rolls: frostbite, fire spread, ice underfoot, freezing vessels.
 - `src/audio/manifest.ts`: every sound slot, its files and gain; `src/sim/soundscape.ts`: which beds and calls are open where.
+- `src/sim/manual.ts`: the one-page manual's four sections, the handbook
+  links, and when a world opens it unasked.
 - `src/sim/reference.ts`: the reference player's order list and checkpoints.
 - `src/sim/forecast.ts`: the forecast's runs per horizon and the horizons themselves; `src/sim/forecast.worker.ts`: the worker that runs them off the main thread; `src/sim/forecaster.ts`: the worker client and the month number; `src/ui/dial.ts`: the away dial.

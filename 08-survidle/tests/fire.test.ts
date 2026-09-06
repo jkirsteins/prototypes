@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { feedFire } from "../src/sim/camp";
-import { burnPerHour, fireSeason, fireWarmth, lightingInRain, smoky } from "../src/sim/fire";
+import { burnPerHour, fireSeason, fireWarmth, lightingInRain, openBurnPerHour, smoky } from "../src/sim/fire";
 import { hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -85,8 +85,10 @@ describe("wet wood", () => {
     // The mirror case: heavy snowfall burns at half strength and never puts a fire out at once.
     w.precip = "heavy";
     w.offset = -12;
-    expect(ambientTemperature(cal, state.weather)).toBeLessThan(0);
-    expect(burnPerHour(w, ambientTemperature(cal, state.weather), st)).toBe(4.5);
+    const snowAmbient = ambientTemperature(cal, state.weather);
+    expect(snowAmbient).toBeLessThan(0);
+    // Heavy rain while it is actually snowing burns at 1.5x the open rate, the same as light rain.
+    expect(burnPerHour(w, snowAmbient, st)).toBeCloseTo(openBurnPerHour(snowAmbient) * 1.5, 6);
     st.fire.lit = true;
     st.fire.fuelKg = 1.5;
     advance(state, world, 1);
@@ -130,6 +132,37 @@ describe("wet wood", () => {
     state.weather.precip = "heavy";
     advance(state, world, 60);
     expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(8, 6);
+  });
+});
+
+describe("fuel by the cold", () => {
+  it("the open fire burns 3 kg/h at zero, 6 at -10, 9 at -20 and 15 at -40; the hut and cabin keep their ratios on top", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const w = state.weather;
+    expect(openBurnPerHour(5)).toBe(3);
+    expect(openBurnPerHour(0)).toBe(3);
+    expect(openBurnPerHour(-10)).toBe(6);
+    expect(openBurnPerHour(-20)).toBe(9);
+    expect(openBurnPerHour(-40)).toBe(15);
+    expect(burnPerHour(w, -10, st)).toBe(6);
+    st.structures.turfHut = true;
+    st.fire.indoors = true;
+    expect(burnPerHour(w, -10, st)).toBeCloseTo(2.4, 6);
+    st.structures.turfHut = false;
+    st.structures.cabin = true;
+    st.structures.hearth = true;
+    expect(burnPerHour(w, -10, st)).toBeCloseTo(1.62, 6);
+  });
+
+  it("rain still multiplies the open fire's appetite", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const w = state.weather;
+    w.precip = "light";
+    expect(burnPerHour(w, -10, st)).toBeCloseTo(9, 6);
+    w.precip = "heavy";
+    expect(burnPerHour(w, 5, st)).toBe(6);
   });
 });
 
@@ -276,7 +309,7 @@ describe("spread and smoke", () => {
 });
 
 describe("fuel by shelter", () => {
-  it("burns 3 kg an hour in the open and 1.2 under a hut's smoke hole", () => {
+  it("burns 3 kg an hour in the open and 3.6 under a hut's smoke hole at -20", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     const dry = { ...state.weather, precip: "none" as const };
@@ -287,10 +320,11 @@ describe("fuel by shelter", () => {
     st.structures.turfHut = true;
     expect(burnPerHour(dry, 5, st)).toBe(3);
     st.fire.indoors = true;
-    expect(burnPerHour(dry, -20, st)).toBe(1.2);
+    // 0.4 of an open fire at -20, 9 kg/h.
+    expect(burnPerHour(dry, -20, st)).toBeCloseTo(3.6, 6);
   });
 
-  it("a cabin with a hearth burns 0.8 kg an hour and holds the room at 10 C, with the fire indoors laying the hearth fire", () => {
+  it("a cabin with a hearth burns 2.43 kg an hour at -20 and holds the room at 10 C, with the fire indoors laying the hearth fire", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
@@ -305,7 +339,8 @@ describe("fuel by shelter", () => {
     advance(state, world, 15);
     expect(st.fire.lit).toBe(true);
     expect(st.fire.indoors).toBe(true);
-    expect(burnPerHour({ ...state.weather, precip: "none" as const }, -20, st)).toBe(0.8);
+    // 0.27 of an open fire at -20, 9 kg/h.
+    expect(burnPerHour({ ...state.weather, precip: "none" as const }, -20, st)).toBeCloseTo(2.43, 6);
     // The room is its own temperature: outside air below the floor makes no
     // difference to a body resting in it, and air above the floor does.
     st.fire.fuelKg = 10;

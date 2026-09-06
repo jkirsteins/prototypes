@@ -9,7 +9,7 @@ import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
-import type { GameState, ItemId, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
+import type { GameState, ItemId, LifeRecord, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
@@ -58,6 +58,30 @@ export const POOL_MINUTES_PER_KEY = 100 * 60;
 export function newSkills(): Record<SkillId, SkillState> {
   const out = {} as Record<SkillId, SkillState>;
   for (const id of SKILL_IDS) out[id] = { xp: 0, mastery: {}, pool: 0 };
+  return out;
+}
+
+/**
+ * The carry (tables audit spec, section 7; idle curve spec 2.4): a heir
+ * lands with this share of the ancestor's practice minutes in every skill,
+ * as a rule of the world; the Lineage tree's nodes later lift a skill to
+ * a half. Mastery and the pool are per action and start empty.
+ */
+export const CARRY_SHARE = 0.25;
+
+/** Sets the heir's skills from the ancestor's record and logs the rungs the carried levels open. Returns the skills at level 2 or above. */
+export function carrySkills(state: GameState, from: LifeRecord): { skill: SkillId; level: number }[] {
+  const out: { skill: SkillId; level: number }[] = [];
+  for (const id of SKILL_IDS) {
+    const minutes = (from.skills?.[id] ?? 0) * CARRY_SHARE;
+    if (minutes <= 0) continue;
+    const s = state.skills[id];
+    s.xp = minutes;
+    s.carried = minutes;
+    const l = level(minutes);
+    if (l >= 2) out.push({ skill: id, level: l });
+    for (const k of RUNG_ORDER) if (l >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
+  }
   return out;
 }
 

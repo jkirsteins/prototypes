@@ -58,12 +58,13 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     toes: false,
     fingers: false,
     berriesToday: { day: 1, kg: 0 },
+    leanToday: { day: 1, kcal: 0 },
     known: {},
   };
   state.task = null;
   state.log = [];
   state.dead = null;
-  state.stats = { trees: 0, animals: 0, structures: 0, km: 0 };
+  state.stats = { trees: 0, animals: 0, structures: 0, km: 0, kills: {} };
   state.skills = newSkills();
   state.paused = {};
   state.route = null;
@@ -118,6 +119,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     year: 1,
     landing: null,
     spine: { fired: {}, announced: {} },
+    manualSeen: false,
   } as GameState;
   newPerson(state, world, start.campCell, world.start);
   enterRegion(state, world, world.start);

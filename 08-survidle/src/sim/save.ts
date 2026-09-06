@@ -52,6 +52,7 @@ function fillDefaults(state: GameState): void {
   state.year ??= 1;
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
+  state.manualSeen ??= false;
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.
@@ -67,6 +68,7 @@ function fillDefaults(state: GameState): void {
   }
   state.player.known ??= {};
   state.seeps ??= {};
+  state.stats.kills ??= {};
   for (const st of Object.values(state.regions)) {
     st.structureAge ??= {};
     st.racks ??= st.structures.dryingRack ? 1 : 0;
@@ -128,6 +130,7 @@ function fillDefaults(state: GameState): void {
   p.toes ??= false;
   p.fingers ??= false;
   p.berriesToday ??= { day: 0, kg: 0 };
+  p.leanToday ??= { day: 0, kcal: 0 };
   // A save from before the two processes has one number for both: read its
   // fatigue as the debt's mirror, which is where a rested body sits, and no
   // night under way. The clock rules that number carried are gone and so are
@@ -171,7 +174,9 @@ function fillDefaults(state: GameState): void {
   for (const st of Object.values(state.regions)) {
     st.structures.boughBed ??= false;
     st.structures.hearth ??= false;
+    st.structures.snowShelter ??= false;
     st.boughBedAge ??= 0;
+    st.meltDays ??= 0;
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
     st.fire.unattended ??= 0;

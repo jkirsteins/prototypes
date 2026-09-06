@@ -18,6 +18,7 @@ import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { giveOrder, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
+import { openManualOnFirstLanding } from "./sim/manual";
 import { newWorld } from "./sim/newgame";
 import { moveOrder, removeOrder } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
@@ -37,7 +38,7 @@ import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
 import { legendHtml, mapHtml, mapKey, ZOOMS } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
+  manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
@@ -172,7 +173,10 @@ function render() {
   updateSky(state, cal, ambient);
 
   const overlay = document.getElementById("overlay")!;
-  if (ui.cemetery) {
+  if (ui.manual) {
+    setPanel("overlay", manualHtml());
+    overlay.hidden = false;
+  } else if (ui.cemetery) {
     setPanel("overlay", cemeteryHtml(state, ui));
     overlay.hidden = false;
   } else if (ui.away) {
@@ -316,6 +320,7 @@ function onClick(ev: Event) {
       land(state, world);
       // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
       if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
+      if (wasLanding && state.landing === null && openManualOnFirstLanding(state, heir)) ui.manual = true;
       ui.confirmAbandon = false;
       resetForecastAt();
       break;
@@ -350,6 +355,12 @@ function onClick(ev: Event) {
       ui.cemetery = false;
       ui.cemeteryOpen = null;
       ui.confirmLeave = false;
+      break;
+    case "manual-open":
+      ui.manual = true;
+      break;
+    case "manual-close":
+      ui.manual = false;
       break;
     case "leave-world":
       ui.confirmLeave = true;

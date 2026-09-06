@@ -121,12 +121,13 @@ describe("lighting a torch", () => {
 });
 
 describe("what a torch does", () => {
-  it("takes the night off your feet: 3.0 km/h with it, 2.25 without, 3.0 by day either way", () => {
+  it("takes the night off your feet: 3.0 km/h with it, 1.0 without, 3.0 by day either way", () => {
     const { state } = newGame(1);
     const day = calendar(4 * 60);
     const night = calendar(16 * 60);
     const clear = { ...state.weather, snowCm: 0 };
-    expect(baseWalkSpeed(state, night, clear, 5)).toBeCloseTo(2.25);
+    // The Swedish handbook's 1 km/h in terrain against 3 by day, NIGHT_WALK_FACTOR.
+    expect(baseWalkSpeed(state, night, clear, 5)).toBeCloseTo(1.0);
     state.player.torch = { lit: true, minutes: 30 };
     expect(baseWalkSpeed(state, night, clear, 5)).toBeCloseTo(3.0);
     expect(baseWalkSpeed(state, day, clear, 5)).toBeCloseTo(3.0);

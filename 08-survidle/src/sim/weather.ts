@@ -18,6 +18,22 @@ const START_PER_HOUR: Record<Season, number> = { spring: 0.04, summer: 0.03, aut
 const STOP_PER_HOUR = 0.25;
 export const DEEP_SNOW_CM = 30;
 
+/**
+ * Snow on the ground. Fresh snow lays a quarter of the fall: 0.375 cm an
+ * hour in light snow, 0.75 in heavy. The pack settles five percent of its
+ * depth at each day roll. Melting above 2 C stays at 2 cm an hour. Fall and
+ * settle together aim at a 62 N inland January of 40 to 60 cm.
+ *
+ * The current reading: January runs 25, 29 and 46 cm on the year probe's
+ * three seeds and 32, 28, 31 and 31 on the winter gate's four - one of the
+ * seven in the band, mean about 32, under it. The constant stays at 0.05
+ * rather than chasing the band, because across this branch's other
+ * changes the depth moved with the runner and the reference list, not with
+ * the settle rate.
+ */
+export const SNOW_CM_PER_MINUTE = { light: 1 / 160, heavy: 1 / 80 } as const;
+export const SNOW_SETTLE_PER_DAY = 0.05;
+
 /** Daily chance of a storm rolling in, by season. */
 const STORM_CHANCE: Record<Season, number> = { spring: 0.04, summer: 0.02, autumn: 0.04, winter: 0.08 };
 
@@ -69,6 +85,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
   const ev: WeatherEvents = { coldSnap: false, precipStarted: false, precipStopped: false };
   if (cal.dayIndex > w.rolledDay && cal.hour >= cal.sunrise) {
     stepIce(w, cal);
+    w.snowCm *= 1 - SNOW_SETTLE_PER_DAY;
     w.rolledDay = cal.dayIndex;
     // Winter anomalies lean cold: clear, still nights under a high sink far below the mean.
     w.offset = rng.gauss() * 4 - (cal.season === "winter" ? 3 : 0);
@@ -113,7 +130,7 @@ export function stepWeather(w: Weather, cal: Calendar, rng: Rng, dt: number, min
     ev.precipStopped = true;
   }
   if (w.precip !== "none" && ambient <= 0) {
-    w.snowCm += (w.precip === "heavy" ? 1 / 20 : 1 / 40) * dt;
+    w.snowCm += (w.precip === "heavy" ? SNOW_CM_PER_MINUTE.heavy : SNOW_CM_PER_MINUTE.light) * dt;
   } else if (ambient > 2 && w.snowCm > 0) {
     w.snowCm = Math.max(0, w.snowCm - dt / 30);
   }

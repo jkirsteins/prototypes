@@ -10,7 +10,9 @@ import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { candidateWeight, check, stepTask, stopTask } from "../src/sim/tasks";
+import { candidateWeight, check, huntGroundValue, stepTask, stopTask } from "../src/sim/tasks";
+import { setSkillLevel } from "../src/sim/horizon";
+import { SKILL_IDS } from "../src/sim/skills";
 import { takeStep } from "../src/sim/steps";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import type { Intent, TaskId } from "../src/sim/types";
@@ -130,6 +132,36 @@ describe("where the work is done", () => {
     expect(heaviest.cell).toBe(heath);
     expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heaviest.cell);
     expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).not.toBe(spotOf(r, "forest")!.cell);
+  });
+
+  // A camp sited on a shore where mallard swim read "something is about here"
+  // every day of the year and hunted ducks, with seventy-six roe deer standing
+  // in the forest two cells off: a level-20 survivor took 26 mallard in 48 days
+  // and starved at the lean ceiling. Ground is ranked by the meat a day's
+  // hunting on it would bring home, and the value reads the hunter's own odds,
+  // so a beginner is not sent after game they cannot take.
+  it("a hunter at level walks to the forest where the deer are; a beginner stays where the small game is", () => {
+    // The same fixture as the test above, which pins the beginner's half: on a
+    // heath full of hare, a level-1 hunter stays put, because the roe deer in
+    // the forest are over their head and do not count toward that ground.
+    const g = newGame(1);
+    const { state, world } = g;
+    const r = regionAt(world, state.player.region);
+    state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false });
+    addItem(state.player.pack, "arrow", 10);
+    const forest = spotOf(r, "forest")!.cell;
+    const heath = spotOf(r, "heath")!.cell;
+    placeAt(state, world, heath);
+    expect(resolveCell(state, world, cal, "hunt", "any", "nearest").cell).toBe(heath);
+    // At level the big game counts, and a load of it an hour beats a hare: the
+    // hunt leaves the heath for the best ground in the region, whichever that
+    // is - this region's outcrop holds reindeer as well as its forest holding
+    // roe deer.
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    expect(huntGroundValue(state, world, cal, forest)).toBeGreaterThan(huntGroundValue(state, world, cal, heath));
+    const chosen = resolveCell(state, world, cal, "hunt", "any", "nearest").cell;
+    expect(chosen).not.toBe(heath);
+    expect(huntGroundValue(state, world, cal, chosen)).toBeGreaterThanOrEqual(huntGroundValue(state, world, cal, forest));
   });
 
   it("the button is judged at the resolved cell, so ground is never the reason", () => {

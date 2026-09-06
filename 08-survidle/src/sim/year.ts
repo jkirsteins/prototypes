@@ -16,8 +16,8 @@ import { current } from "./record";
 import { type ReferenceReport, type ReferencePlayer, setUpReference, stepReference, WINTER_STOCK } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
-import { LARGE_GAME } from "./species";
-import type { GameState } from "./types";
+import { LARGE_GAME, SPECIES_DEFS } from "./species";
+import type { GameState, Species } from "./types";
 
 /**
  * 1 December: the winter gate's start, a fortnight before the dark and a
@@ -30,13 +30,15 @@ export const WINTER_START_DOY = 334;
 export const WINTER_DAYS = 90;
 
 export interface MonthLine {
-  /** The month that just began, 1 to 12, and the day of the run it began on. */
+  /** The month that just began, 0-based (December 11, January 0, February 1), and the day of the run it began on. */
   month: number;
   day: number;
   /** Averages over the days since the last line. */
   eatenPerDay: number;
   burnPerDay: number;
   stock: { foodKcal: number; foodByKind: Record<string, number>; firewoodKg: number; logs: number };
+  /** Snow on the ground, rounded cm. */
+  snowCm: number;
 }
 
 export interface YearReport {
@@ -51,6 +53,10 @@ export interface YearReport {
   outcome: ReferenceReport["outcome"];
   lastWeek: WeekAverage;
   lastDayOfYear: number;
+  /** Kills by species over the run (tables audit spec 1.4). */
+  kills: Partial<Record<Species, number>>;
+  /** kcal of large game (LARGE_GAME plus bear) among those kills, read against APRIL.rows.largeGame. */
+  killsKcal: number;
 }
 
 export interface YearOptions {
@@ -88,8 +94,21 @@ function stockAt(state: GameState, world: World): MonthLine["stock"] {
   return { foodKcal: Math.round(foodKcal), foodByKind, firewoodKg: Math.round(qty(camp, "firewood")), logs: Math.round(qty(camp, "log")) };
 }
 
+/** Large game's kcal from a kill count: raw meat plus fat, the yields a hunt credits. */
+export function largeGameKcal(kills: Partial<Record<Species, number>>): number {
+  let kcal = 0;
+  for (const s of [...LARGE_GAME, "bear" as const]) {
+    const n = kills[s];
+    if (!n) continue;
+    const y = SPECIES_DEFS[s].yields;
+    if (!y) continue;
+    kcal += n * (y.meatKg * FOODS.rawMeat.kcalPerKg + (y.fatKg ?? 0) * FOODS.fat.kcalPerKg);
+  }
+  return kcal;
+}
+
 /** Runs one life a day at a time, writing a month line on the first of each month and the surplus days as they happen. */
-function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear"> {
+function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal"> {
   const { state, world } = ref;
   const months: MonthLine[] = [];
   const surplus: YearReport["surplus"] = { hang: null, largeGame: null };
@@ -102,13 +121,14 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
     if (surplus.largeGame === null && current(state).events.some((e) => e.kind === "firstKill" && LARGE_GAME.includes(e.species))) surplus.largeGame = cal.day;
     if (cal.dayOfMonth === 1 && cal.day > lastLineDay) {
       const avg = between(state.ledger, lastLineDay, cal.day);
-      months.push({ month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world) });
+      months.push({ month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm) });
       lastLineDay = cal.day;
     }
   }
   const day = calendar(state.dead ? state.dead.minute : state.minute, state.startDoy).day;
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
-  return { months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear };
+  const kills = { ...state.stats.kills };
+  return { months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear, kills, killsKcal: largeGameKcal(kills) };
 }
 
 export function runYear(seed: number, opts: YearOptions = {}): YearReport {
@@ -130,6 +150,7 @@ export function runWinter(seed: number, days = WINTER_DAYS): YearReport {
   const st = regionState(state, world, state.player.region);
   const camp = pile(state, st.campCell);
   addItem(camp, "driedMeat", WINTER_STOCK.driedMeatKg);
+  addItem(camp, "fat", WINTER_STOCK.fatKg);
   addItem(camp, "firewood", WINTER_STOCK.firewoodKg);
   addItem(camp, "log", WINTER_STOCK.logs);
   const life = runLife(ref, days);

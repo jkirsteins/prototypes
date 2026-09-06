@@ -56,7 +56,7 @@ export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 
 /** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
 export interface Observation { minute: number; fish: Species[] }
 
-export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep";
+export type StructureId = "firePit" | "leanTo" | "cabin" | "dryingRack" | "snare" | "boughBed" | "turfHut" | "waterStore" | "seep" | "snowShelter";
 /** Structures the weather takes down unless they are mended. */
 export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
@@ -215,11 +215,13 @@ export interface RegionState {
   pop: Partial<Record<Species, number>>;
   /** The cell the camp, fire and shelter stand on. */
   campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean };
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
   /** Drying racks standing at the camp, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
-  /** Minutes since the bough bed was laid; boughs go flat and brown after a fortnight. */
+  /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
+  /** Days in a row with a mean above freezing; a snow shelter slumps at SNOW_MELT_DAYS. */
+  meltDays: number;
   /** Minutes since each decaying structure was built or mended; each falls after its life span. */
   structureAge: Partial<Record<DecayingId, number>>;
   /** Build progress in minutes, per structure, kept between visits. */
@@ -285,8 +287,10 @@ export interface Player {
   /** Lost to frostbite for good. */
   toes: boolean;
   fingers: boolean;
-  /** Kilos of berries eaten today, for the gut's ceiling: full credit to two, half to four, none past it. */
+  /** Kilos of berries eaten today, for the gut's ceiling: full credit to 1.2, half to two, none past it. */
   berriesToday: { day: number; kg: number };
+  /** Lean kcal eaten today, for the ceiling meat and fish feed nothing past. */
+  leanToday: { day: number; kcal: number };
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }
@@ -369,6 +373,8 @@ export interface LifeRecord {
   worst: { day: number; warmth: number; wolves: boolean } | null;
   forecast: (number | null)[];
   died: Died | null;
+  /** Practice minutes per skill at death, what a heir carries a share of. */
+  skills?: Partial<Record<SkillId, number>>;
 }
 
 /**
@@ -393,7 +399,7 @@ export interface Landing {
   oldCamp: number | null;
 }
 
-export interface RunStats { trees: number; animals: number; structures: number; km: number }
+export interface RunStats { trees: number; animals: number; structures: number; km: number; kills: Partial<Record<Species, number>> }
 
 export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building";
 
@@ -405,6 +411,8 @@ export interface SkillState {
   mastery: Record<string, number>;
   /** Minutes in the mastery pool, capped at the skill's capacity. */
   pool: number;
+  /** Minutes carried from the ancestor at landing; the panel names the ancestor while these are the larger share. */
+  carried?: number;
 }
 
 export interface GameState {
@@ -447,4 +455,6 @@ export interface GameState {
   landing: Landing | null;
   /** The season spine's memory: the year each threshold last fired and was last announced. */
   spine: { fired: Partial<Record<ThresholdId, number>>; announced: Partial<Record<ThresholdId, number>> };
+  /** The manual has been opened unasked once in this world. */
+  manualSeen: boolean;
 }

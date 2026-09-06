@@ -10,6 +10,14 @@ import { ICE_THIN_CM } from "./weather";
 
 const MIGRATION = 0.03;
 /**
+ * Elk, deer, reindeer and bear hold ranges for seasons; a range shot out
+ * refills over a year or two, not weeks. A tenth of the predators' daily
+ * share, so a lone hunter with a bow takes a few a year from a region, the
+ * tables' expert band, and not thirty.
+ */
+export const BIG_GAME: Species[] = ["deer", "reindeer", "elk", "bear"];
+export const BIG_GAME_MIGRATION = 0.003;
+/**
  * Small game refills a hunted range from the country around it: hares
  * disperse kilometres and a vacated range is full again within weeks. Each
  * day a region below its seasonal capacity receives this share of its gap,
@@ -146,7 +154,7 @@ export function dailyAnimals(state: GameState, world: World, cal: Calendar, rng:
     const st = state.regions[id];
     for (const s of speciesHere(r)) {
       if (SPECIES_DEFS[s].kind !== "mammal" || SMALL_GAME.includes(s)) continue;
-      const n = popOf(st, s) * MIGRATION;
+      const n = popOf(st, s) * (BIG_GAME.includes(s) ? BIG_GAME_MIGRATION : MIGRATION);
       if (n < 0.01) continue;
       // Only neighbours with room; a region that never holds the species has weight 0 and must not be a fallback.
       const candidates = nbs

@@ -8,7 +8,7 @@ import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
@@ -18,7 +18,7 @@ import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { SPECIES_DEFS } from "./species";
 import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
-import { walkableIce } from "./weather";
+import { seasonalMean, walkableIce } from "./weather";
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
@@ -171,7 +171,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     if (st.structures.snares > 0) {
       const d = regionDensity(state, world, id, "hare", cal);
       for (let i = 0; i < st.structures.snares; i++) {
-        if (popOf(st, "hare") >= 1 && rng.chance(0.3 * d)) {
+        if (popOf(st, "hare") >= 1 && rng.chance(SNARE_ODDS_PER_NIGHT * d)) {
           st.pop.hare = popOf(st, "hare") - 1;
           st.snareCatch.count += 1;
         }
@@ -209,6 +209,15 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         st.structures.boughBed = false;
         st.boughBedAge = 0;
         log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
+      }
+    }
+    if (st.structures.snowShelter) {
+      const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
+      st.meltDays = mean > 0 ? st.meltDays + 1 : 0;
+      if (st.meltDays >= SNOW_MELT_DAYS) {
+        st.structures.snowShelter = false;
+        st.meltDays = 0;
+        log(state, `The snow shelter at ${r.name} has slumped.`, "bad");
       }
     }
     for (const sid of DECAYING) {
@@ -249,6 +258,7 @@ const STRUCTURE_WORD: Partial<Record<keyof RegionState["structures"], string>> =
   hearth: "hearth",
   turfHut: STRUCTURES.turfHut.name,
   waterStore: STRUCTURES.waterStore.name,
+  snowShelter: STRUCTURES.snowShelter.name,
 };
 
 /** Whether the camp may be moved: nothing built at it, no fire banked, nothing lying in its pile. */

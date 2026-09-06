@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { LARGE_GAME } from "../src/sim/species";
-import { runWinter, runYear } from "../src/sim/year";
+import { FOODS } from "../src/sim/items";
+import { setUpReference } from "../src/sim/reference";
+import { LARGE_GAME, SPECIES_DEFS } from "../src/sim/species";
+import { largeGameKcal, runWinter, runYear } from "../src/sim/year";
 
 describe("the year script", () => {
   it("runs a kitted level-20 survivor from 1 April and reports months, the surplus days and the outcome", () => {
@@ -28,10 +30,28 @@ describe("the year script", () => {
     const r = runWinter(17, 2);
     expect(r.startDoy).toBe(334);
     expect(r.kitted).toBe(true);
-    expect(r.stocked).toEqual({ driedMeatKg: 80, firewoodKg: 400, logs: 150 });
+    expect(r.stocked).toEqual({ driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 });
+  });
+
+  // The stock's fat is what the lean ceiling makes necessary: a lean-only
+  // larder feeds 1,600 kcal a day whatever it holds, and the stocked camp
+  // starved beside 246,000 kcal of dried meat until the fat went in.
+  it("stocks the December camp with rendered fat beside the dried meat", () => {
+    const r = runWinter(17, 2);
+    expect(r.stocked?.fatKg).toBeGreaterThan(0);
   });
 
   it("names the large game the surplus day is read from", () => {
     expect(LARGE_GAME).toEqual(["deer", "reindeer", "elk"]);
+  });
+
+  it("reads one elk kill into killsKcal as raw meat plus fat", () => {
+    const ref = setUpReference(17);
+    expect(ref.state.stats.kills).toEqual({});
+    ref.state.stats.kills.elk = 1;
+    const kills = { ...ref.state.stats.kills };
+    expect(kills.elk).toBe(1);
+    const y = SPECIES_DEFS.elk.yields!;
+    expect(largeGameKcal(kills)).toBe(y.meatKg * FOODS.rawMeat.kcalPerKg + (y.fatKg ?? 0) * FOODS.fat.kcalPerKg);
   });
 });

@@ -27,7 +27,11 @@ export function waterLossPerHour(state: GameState, felt: number): number {
   let a = activityOf(state.task);
   if (a === "walk" && carried(p) > body(state).packComfortableKg) a = "heavy";
   let l = LOSS_PER_HOUR[a];
-  if (felt > 20 || felt < -10) l *= 1.3;
+  // Cold dry air takes water from the breath whatever you do; a warm room
+  // costs nothing at rest and 30 percent more at work. The Swedish handbook's
+  // floor is 1.5 L a day lying still, whatever the room.
+  const working = a === "light" || a === "walk" || a === "heavy";
+  if (felt < -10 || (felt > 20 && working)) l *= 1.3;
   if (p.sick > 0 || berriesOverloaded(p, state.minute)) l *= 1.2;
   return l;
 }
@@ -74,6 +78,22 @@ export function vesselLitresCapacity(p: Player): number {
   let l = 0;
   for (const t of p.tools) l += TOOLS[t.id].litres ?? 0;
   return l;
+}
+
+/**
+ * Litres a fetch could actually put in the vessels in hand: what the unfrozen
+ * ones have left. A vessel that froze full is a block of ice - fillVessels
+ * cannot top it up and pourVessels will not empty it - so it holds no room,
+ * and a fetch with none of it anywhere has nothing to gain by going.
+ */
+export function vesselRoom(p: Player): number {
+  let room = 0;
+  for (const t of p.tools) {
+    const holds = TOOLS[t.id].litres ?? 0;
+    if (!holds || t.frozen) continue;
+    room += Math.max(0, holds - (t.litres ?? 0));
+  }
+  return room;
 }
 
 /** What holds water when it is left at camp. */

@@ -413,6 +413,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 
 /* The boat: three cards side by side, the chosen one lit; the card is a button so a tap picks it. */
 #overlay .box.landing { max-width: 960px; }
+#overlay .box.manual { max-width: 640px; }
+#overlay .box.manual h2 { font-size: 1em; margin: 12px 0 4px; }
+#overlay .box.manual p { margin: 2px 0; }
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
 .card {
   flex: 1 1 0; min-width: 0; text-align: left;

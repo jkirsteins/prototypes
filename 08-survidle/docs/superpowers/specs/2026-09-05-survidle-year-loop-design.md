@@ -425,20 +425,27 @@ the ancestor's day beside the heir's.
 
 ## 8. Flags for sub-project 2, the tables audit
 
-Found here, not changed here, each with the reading that raised it:
+Found here, not changed here, each with the reading that raised it, and
+now with what the tables audit did about it:
 
 - Snow depth: 79 to 271 cm by late December on the four seeds against
   40 to 60 in the real inland north; `stepWeather` lays 1.5 to 3 cm an
   hour of precipitation and melts only above 2 C. Deep snow halves
-  walking and doubles every haul.
-- Snare odds at 0.3 a night per snare.
+  walking and doubles every haul. Taken by the tables audit:
+  precipitation now lays a quarter as fast and the pack settles five
+  percent of its depth a day; January reads 25 to 46 cm on the year
+  probe and 28 to 32 on the winter gate, one of the seven readings in
+  the 40 to 60 cm band and the rest under it.
+- Snare odds at 0.3 a night per snare. Taken by the tables audit: the
+  snare is a trap line now, forty of them kept at 0.04 a night.
 - Every fish capacity, now with a source, to be checked species by
-  species; sea species in particular.
+  species; sea species in particular. Stands.
 - The hunting row's beginner band, since small game by "hunt anything"
-  reads 110 kcal an hour of hunting and the band may be honest.
+  reads 110 kcal an hour of hunting and the band may be honest. Stands.
 - The rack's drying time in cold dry air, and whether frozen strips
-  count as dried.
+  count as dried. Stands.
 - The arrival kit's ten arrows against what a boat would land with.
+  Stands.
 
 ## 9. Out of scope
 

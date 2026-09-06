@@ -2,12 +2,28 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { newGame } from "../src/sim/newgame";
-import { REFERENCE_ORDERS, wantOpen } from "../src/sim/reference";
+import { REFERENCE_ORDERS, wantOpen, WINTER_STOCK } from "../src/sim/reference";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
 
 describe("the list after the axe", () => {
+  // A vessel that froze full has no room, so a fill tops off nothing and the
+  // pour at camp passes it over: a fetch keep with every vessel frozen runs
+  // all day and draws nothing. A level-20 camp did that for twenty days from
+  // 30 January and froze on 19 February with 109 logs at camp. The thaw is a
+  // grind, blocked with "nothing is frozen" the rest of the year.
+  it("thaws a frozen vessel above every water fetch", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks[0]).toBe("thaw::grind");
+    for (const t of ["fill:shore:keep", "fill:hole:keep", "melt::keep"]) expect(tasks.indexOf(t)).toBeGreaterThan(0);
+  });
+
+  it("keeps the bough bed laid right after the lean-to", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("build:boughBed:keep")).toBe(tasks.indexOf("build:leanTo:job") + 1);
+  });
+
   it("keeps stone, hones after the knife, and orders the three firewood methods", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     // The opening gathers eight as a job that re-gives until met; the keep beside the axe wants is what refills it for the celt and the hone.
@@ -47,14 +63,24 @@ describe("the list after the axe", () => {
   it("keeps the winter pile's season rule on all three methods", () => {
     const { state, world } = newGame(17);
     const april = calendar(state.minute, state.startDoy);
-    const pile400 = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === 400);
-    expect(pile400.map(key)).toEqual(["split::keep", "splitWedges::keep", "deadwood::keep"]);
-    for (const w of pile400) expect(wantOpen(state, world, w, april)).toBe(false);
+    // Read off WINTER_STOCK.firewoodKg rather than a literal: the stock was
+    // sized from the measured hut winter, and the three methods move with it.
+    const winterPile = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg);
+    expect(winterPile.map(key)).toEqual(["split::keep", "splitWedges::keep", "deadwood::keep"]);
+    for (const w of winterPile) expect(wantOpen(state, world, w, april)).toBe(false);
     const october = calendar(0, 280);
-    expect(wantOpen(state, world, pile400[0], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[0], october)).toBe(true);
     state.player.tools = [];
-    expect(wantOpen(state, world, pile400[0], october)).toBe(false);
-    expect(wantOpen(state, world, pile400[1], october)).toBe(true);
-    expect(wantOpen(state, world, pile400[2], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[0], october)).toBe(false);
+    expect(wantOpen(state, world, winterPile[1], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[2], october)).toBe(true);
+  });
+
+  it("keeps twenty snares set with the food and forty below the trough", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    const twenty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 20);
+    const forty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 40);
+    expect(twenty).toBe(tasks.indexOf("berries::keep") + 1);
+    expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
   });
 });

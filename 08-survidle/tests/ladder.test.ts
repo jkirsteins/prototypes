@@ -43,8 +43,10 @@ describe("the normalised kind", () => {
     expect(normalizeOrder(req("chop", { kind: "once" }), "grind")).toEqual({ req: req("chop", { kind: "forever" }), kind: "grind" });
   });
 
-  it("a keep or a camp-has of something uncountable is a once job, except keep it lit", () => {
-    expect(normalizeOrder(req("build", { kind: "campHas", qty: 1 }, "cabin"), "keep")).toEqual({ req: req("build", { kind: "once" }, "cabin"), kind: "job" });
+  it("a keep or a camp-has of something uncountable is a once job, except keep it lit and a keep on a structure", () => {
+    // A keep is the one that stands on the structure (structureKeep); the same request given as a job
+    // has no structure to stand on and still falls back to a once job.
+    expect(normalizeOrder(req("build", { kind: "campHas", qty: 1 }, "cabin"), "keep")).toEqual({ req: req("build", { kind: "campHas", qty: 1 }, "cabin"), kind: "keep" });
     expect(normalizeOrder(req("build", { kind: "campHas", qty: 1 }, "cabin"), "job")).toEqual({ req: req("build", { kind: "once" }, "cabin"), kind: "job" });
     expect(normalizeOrder(req("light", { kind: "campHas", qty: 1 }), "keep").kind).toBe("keep");
   });
@@ -77,9 +79,9 @@ describe("the gate", () => {
     expect(orderGate(state, req("fill", { kind: "campHas", qty: 2 }), "keep").ok).toBe(false);
   });
 
-  it("the gate reads the kind after the fallback: build a cabin as a keep is a once job and open", () => {
+  it("a keep on a structure is gated on its own kind, since it no longer falls back to a once job", () => {
     const { state } = newGame(3);
-    expect(orderGate(state, req("build", { kind: "campHas", qty: 1 }, "cabin"), "keep")).toEqual({ ok: true });
+    expect(orderGate(state, req("build", { kind: "campHas", qty: 1 }, "cabin"), "keep")).toEqual({ ok: false, why: "keeps at Building 10, {you} {are} 1", skill: "building", level: 1, at: 10 });
   });
 
   it("keep it lit is a keep, gated on building", () => {
@@ -157,6 +159,18 @@ describe("the stand-in for a shut kind", () => {
     expect(withinLadder(state, lit, "keep")).toEqual({ req: { ...lit, until: { kind: "once" } }, kind: "job" });
     setLevel(state, "building", 10);
     expect(withinLadder(state, lit, "keep")).toEqual({ req: lit, kind: "keep" });
+  });
+
+  it("a structure keep below its rung is a once job of the one snare, never a camp-has on a null item", () => {
+    const { state } = newGame(3);
+    const snares = req("build", { kind: "campHas", qty: 20 }, "snare");
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: { ...snares, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "hunting", 3);
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: { ...snares, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "hunting", 9);
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: { ...snares, until: { kind: "once" } }, kind: "job" });
+    setLevel(state, "hunting", 10);
+    expect(withinLadder(state, snares, "keep")).toEqual({ req: snares, kind: "keep" });
   });
 
   it("the stand-in always passes the gate", () => {

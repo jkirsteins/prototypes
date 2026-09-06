@@ -44,18 +44,24 @@ export function isCampTask(task: Task | null): boolean {
   return !task || CAMP_TASKS.has(task.id);
 }
 
-/** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
-export function shelterBonus(r: RegionState): number {
+/** The roof's own warmth, whichever roof stands, regardless of a snow shelter beside it: cabin over turf hut over lean-to. */
+export function roofBonus(r: RegionState): number {
   if (r.structures.cabin) return 15;
   if (r.structures.turfHut) return 10;
   if (r.structures.leanTo) return 5;
   return 0;
 }
 
+/** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
+export function shelterBonus(r: RegionState): number {
+  if (r.structures.snowShelter && !r.structures.cabin && !r.structures.turfHut) return 0;
+  return roofBonus(r);
+}
+
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
 export function sheltered(state: GameState, world: World): boolean {
   const r = regionState(state, world, state.player.region);
-  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo || r.structures.turfHut);
+  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo || r.structures.turfHut || r.structures.snowShelter);
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
@@ -118,6 +124,9 @@ export function starvation(state: GameState): number {
  */
 export const INDOOR_C = { turfHut: 5, cabin: 10 } as const;
 
+/** The floor a snow shelter holds with no fire: Kochanski's -3 to -5 C at the ground under good snow. */
+export const SNOW_FLOOR_C = -3;
+
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
@@ -128,11 +137,24 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   // roof and no more.
   const inCabin = r.structures.cabin && r.structures.hearth;
   const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (r.structures.turfHut || inCabin);
-  const floor = indoors ? (inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) : -Infinity;
-  let felt = Math.max(ambient, floor) + insulation(state);
+  const inSnow = camp && campTask && r.structures.snowShelter && !indoors;
+  let felt: number;
+  if (indoors) {
+    felt = Math.max(ambient, inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) + insulation(state);
+  } else if (inSnow) {
+    // A snow shelter's ground floor and a roof's open-air bonus do not stack; a camp
+    // with both stands under whichever is warmer at this ambient, not colder than
+    // either alone - reachable whenever a hut or cabin stands but its fire is unlit,
+    // since nothing clears a snow shelter but three warm days in a row.
+    const withSnow = Math.max(ambient, SNOW_FLOOR_C);
+    const withRoof = ambient + roofBonus(r);
+    felt = Math.max(withSnow, withRoof) + insulation(state);
+  } else {
+    felt = ambient + insulation(state);
+    // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
+    if (camp && campTask) felt += shelterBonus(r);
+  }
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
-  // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
-  if (camp && campTask && !indoors) felt += shelterBonus(r);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
@@ -164,7 +186,7 @@ export function workSpeed(state: GameState, world: World): number {
 export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather, loadKg = carried(state.player)): number {
   let v = 3.0;
   if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
-  if (cal.isNight && !state.player.torch.lit) v *= 0.75;
+  if (cal.isNight && !state.player.torch.lit) v *= NIGHT_WALK_FACTOR;
   const d = body(state);
   if (loadKg > d.packHardKg) v *= 0.6;
   else if (loadKg > d.packComfortableKg) v *= 0.8;
@@ -179,8 +201,13 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
   return baseWalkSpeed(state, cal, weather, loadKg) * speedOf(terrain, ice);
 }
 
-/** Flat kcal/h for activities that do not depend on the ground: walking is computed separately, by terrain. */
-const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 400 };
+/**
+ * Flat kcal/h for activities that do not depend on the ground. Heavy is axe
+ * work by the MET tables (6 to 7 MET at 72 kg), under the Swedish
+ * handbook's 700 for a hard march or heavy work.
+ */
+const KCAL_PER_HOUR: Record<Exclude<Activity, "walk">, number> = { sleep: 70, rest: 100, light: 200, heavy: 500 };
+export const KCAL_PER_HOUR_FOR_TEST = KCAL_PER_HOUR;
 /**
  * Base kcal/h for walking on ground at ordinary (open-forest) speed; the
  * ground and load scale it from here. Walking at three kilometres an hour
@@ -194,8 +221,23 @@ export const WALK_KCAL_PER_HOUR = 200;
  * The ledger's base bucket; what an activity costs is counted above it.
  */
 export const BASE_KCAL_PER_HOUR = KCAL_PER_HOUR.sleep;
-/** Burn under a felt temperature below zero, as a multiple of the burn before it. */
-export const COLD_BURN_FACTOR = 1.3;
+/**
+ * What a load adds to an hour's walking: the Swedish handbook's 545 kcal/h
+ * at 4 km/h with 27 kg against 240 unloaded, so 300 over the hard limit
+ * and half that over the comfortable one.
+ */
+export const LOAD_KCAL_PER_HOUR = { comfortable: 150, hard: 300 } as const;
+/**
+ * Burn under a felt temperature below zero, as a multiple of the burn
+ * before it: 2 percent a degree, capped at double. 1.3 at -15; 1.6 at
+ * -30, which with a working day reads the handbook's 6,000 kcal for a
+ * week at -30 to -40 C.
+ */
+export function coldBurnFactor(felt: number): number {
+  return Math.min(2, 1 + 0.02 * Math.max(0, -felt));
+}
+/** Walking in the dark with no torch: the Swedish handbook's 1 km/h in terrain against 3 by day. */
+export const NIGHT_WALK_FACTOR = 1 / 3;
 /** Burn while sick, as a multiple of the burn before it. */
 export const SICK_BURN_FACTOR = 1.2;
 
@@ -242,7 +284,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   const roof = sheltered(state, world);
-  const walled = roof && (r.structures.cabin || r.structures.turfHut);
+  const walled = roof && (r.structures.cabin || r.structures.turfHut || r.structures.snowShelter);
   const h = dt / 60;
 
   const x: Exposure = {
@@ -263,7 +305,8 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   if (a === "walk") {
     burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
     if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
-    if (carried(p) > d.packComfortableKg) burn += 50;
+    if (carried(p) > d.packHardKg) burn += LOAD_KCAL_PER_HOUR.hard;
+    else if (carried(p) > d.packComfortableKg) burn += LOAD_KCAL_PER_HOUR.comfortable;
   } else {
     burn = KCAL_PER_HOUR[a];
   }
@@ -272,7 +315,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats;
   const base = d.baseBurn * eats;
   burn = base + above;
-  const afterCold = felt < 0 ? burn * COLD_BURN_FACTOR : burn;
+  const afterCold = burn * coldBurnFactor(felt);
   const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;
   creditBurn(state, {
     base: base * h,

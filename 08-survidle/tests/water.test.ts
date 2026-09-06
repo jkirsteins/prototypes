@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { openBurnPerHour } from "../src/sim/fire";
 import { hourlyHazards, hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, produce, qty, takeUp } from "../src/sim/inventory";
 import { itemLabel, take } from "../src/sim/actions";
@@ -14,6 +15,7 @@ import {
   campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
+import { ambientTemperature } from "../src/sim/weather";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 
@@ -124,13 +126,15 @@ describe("vessels and snow", () => {
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 1, frozen: true });
     expect(check(state, world, cal, "melt").ok).toBe(true);
     startTask(state, world, cal, "melt");
+    // The open rate rises with the cold: at this start's ~-1.8 C it is a touch over 3 kg/h, not flat 3.
+    const openRate = openBurnPerHour(ambientTemperature(calendar(state.minute, state.startDoy), state.weather));
     advance(state, world, 20);
     // Precision 1, not 6: the fire's warmth pushes felt above the hot threshold
     // for the whole 20 minutes, so the pre-existing thirst drain (waterLossPerHour)
     // also nibbles at the reserve alongside the litre melt adds - the same reason
     // the fuel check below is a loose match rather than an exact one.
     expect(state.player.water).toBeCloseTo(2, 1);
-    expect(st.fire.fuelKg).toBeCloseTo(10 - 1 - (3 / 60) * 20, 1);
+    expect(st.fire.fuelKg).toBeCloseTo(10 - 1 - (openRate / 60) * 20, 1);
     expect(check(state, world, cal, "thaw").ok).toBe(true);
     startTask(state, world, cal, "thaw");
     advance(state, world, 15);
@@ -247,5 +251,16 @@ describe("water at camp", () => {
     expect(qty(camp, "ice")).toBe(1);
     expect(qty(state.player.pack, "water")).toBe(0);
     expect(qty(state.player.pack, "ice")).toBe(0);
+  });
+
+  it("a warm room costs no extra water at rest; work in it does, and cold dry air does whatever you do", () => {
+    const { state, world } = newGame(17);
+    state.task = null;
+    const rest = waterLossPerHour(state, 25);
+    expect(rest).toBeCloseTo(0.1, 6);
+    expect(waterLossPerHour(state, -15)).toBeCloseTo(0.13, 6);
+    placeAtSpot(state, world, state.player.region, "forest");
+    startTask(state, world, calendar(0), "sticks");
+    expect(waterLossPerHour(state, 25)).toBeCloseTo(0.15 * 1.3, 6);
   });
 });

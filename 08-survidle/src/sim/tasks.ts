@@ -13,7 +13,7 @@ import {
   removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, SNOW_SHELTER_CM, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -40,7 +40,7 @@ import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
   type SpotId, type StructureId, type TaskId, type ToolId,
 } from "./types";
-import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource, WATER_FULL } from "./water";
+import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
@@ -227,12 +227,38 @@ function candidates(state: GameState, world: World, cal: Calendar, id: "hunt" | 
   return out;
 }
 
+/**
+ * Why a fetch has nothing to gain, or null when it has. fillVessels tops
+ * every carried vessel off in one call, so a fetch with no room left in any
+ * of them repeats forever at the water instead of walking the load home to
+ * pour - and a vessel that froze full has no room at all, since fillVessels
+ * cannot add to it and pourVessels will not empty it. The frozen case is
+ * given its own reason and not "the vessels are full", because the answer to
+ * it is the fire and not the walk home: a level-20 camp whose only bucket
+ * froze on 30 January ran the fetch every daylight hour for twenty days,
+ * drew nothing, and starved the woodpile keep beneath it into a cold death.
+ */
+function noVesselRoom(state: GameState, world: World): string | null {
+  const p = state.player;
+  if (vesselLitresCapacity(p) <= 0) return null;
+  if (vesselRoom(p) > 1e-9) return null;
+  if (p.tools.some((t) => t.frozen && (TOOLS[t.id].litres ?? 0) > 0)) return "no vessel has room to fill";
+  const homeSt = regionState(state, world, p.region);
+  return campWaterRoom(pile(state, homeSt.campCell), homeSt) > 0 ? "the vessels are full" : "camp is full";
+}
+
 /** How much is about for a hunt or a cast from this cell, by the same weights the draw uses. 0 when the ground suits nothing. */
 export function candidateWeight(state: GameState, world: World, cal: Calendar, id: "hunt" | "fish", at: number): number {
   return candidates(state, world, cal, id, at).reduce((a, x) => a + x.w, 0);
 }
 
-/** What "anything" turns out to be: drawn by how likely each species is to be met. Null when nothing is about. */
+/**
+ * What "anything" turns out to be: drawn by how likely each species is to
+ * be met from this cell, hunt and cast alike. What walks past is not the
+ * hunter's choice; the ground is, and huntGroundValue below is what
+ * chooses it, so a hunt that draws mallard drew it on a shore the hunter
+ * had a reason to be standing on. Null when nothing is about.
+ */
 export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: Rng, id: "hunt" | "fish", at: number): Species | null {
   const c = candidates(state, world, cal, id, at);
   const total = c.reduce((a, x) => a + x.w, 0);
@@ -243,6 +269,35 @@ export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: 
     if (pick <= 0) return x.s;
   }
   return c[c.length - 1].s;
+}
+
+/**
+ * What a hunt from this cell is worth to a hunter of this level: the meat a
+ * day's hunting here would be expected to bring home, per hour. Every
+ * species this ground could give counts, at its real odds - which read the
+ * hunter's own skill, so an elk that a beginner has no chance at adds
+ * almost nothing - times the meat one trip carries home, over the hours the
+ * hunt takes. It is what ranks one ground against another: a shore where
+ * mallard swim ranks below a forest two cells away holding seventy-six roe
+ * deer, unless the mallard are truly the better catch. Zero when nothing
+ * here can be hunted at all.
+ */
+export function huntGroundValue(state: GameState, world: World, cal: Calendar, at: number): number {
+  const c = candidates(state, world, cal, "hunt", at);
+  // Game the hunter has the level for counts; a ground offering nothing but
+  // game they have no business at is worth what it is worth to them anyway,
+  // so a beginner with only deer about still goes hunting.
+  const own = c.filter(({ s }) => gap(state, `hunt:${s}`) === 0);
+  let value = 0;
+  for (const { s } of own.length ? own : c) {
+    const def = SPECIES_DEFS[s];
+    const d = regionDensity(state, world, state.player.region, s, cal);
+    // The meat that counts is the meat one trip brings home: a ground is
+    // worth what a load is worth, not what the whole animal weighs.
+    const kg = Math.min(def.yields?.meatKg ?? 0, body(state).packHardKg);
+    value += (huntOdds(state, world, cal, d, s) * kg * 60) / def.hunt!.minutes;
+  }
+  return value;
 }
 
 /**
@@ -391,11 +446,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (holds <= 0) return { ...base, ok: false, why: "needs a vessel" };
         const s = state.seeps[at];
         if (!s) return { ...base, ok: false, why: Object.keys(state.seeps).some((k) => cellAt(world, Number(k)).region === p.region) ? "walk to the seep" : "no seep dug" };
-        if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
-          const homeSt = regionState(state, world, p.region);
-          const why = campWaterRoom(pile(state, homeSt.campCell), homeSt) > 0 ? "the vessels are full" : "camp is full";
-          return { ...base, ok: false, why };
-        }
+        const noRoom = noVesselRoom(state, world);
+        if (noRoom) return { ...base, ok: false, why: noRoom };
         if (s.litres <= 1e-9) return { ...base, ok: false, why: s.ice > 1e-9 ? "the seep is frozen" : "the seep is empty" };
         const v = tripVessel(state, world);
         const litres = Math.min(tripLitres(state, world), s.litres);
@@ -406,15 +458,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (holds <= 0) return { ...o0, ok: false, why: "needs a vessel" };
       const v = tripVessel(state, world);
       const o = { ...o0, detail: `${tripLitres(state, world).toFixed(1)} l${v ? `, the ${TOOLS[v.id].name}` : ""}` };
-      // fillVessels tops every carried vessel off in one call, so a vessel already at
-      // capacity has nothing left to gain from another cycle; without this the task
-      // repeats forever at the shore instead of walking the full vessel home to pour.
-      if (vesselLitresCapacity(p) > 0 && vesselLitres(p) >= vesselLitresCapacity(p) - 1e-9) {
-        const homeSt = regionState(state, world, p.region);
-        const camp = pile(state, homeSt.campCell);
-        const why = campWaterRoom(camp, homeSt) > 0 ? "the vessels are full" : "camp is full";
-        return { ...o, ok: false, why };
-      }
+      const noRoom = noVesselRoom(state, world);
+      if (noRoom) return { ...o, ok: false, why: noRoom };
       const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
@@ -550,7 +595,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (sid === "snare") {
         const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;
-        if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: "five snares is enough here" };
+        if (st.structures.snares >= MAX_SNARES) return { ...o2, ok: false, why: `${MAX_SNARES} snares is enough here` };
         if (!kitInReach(state, world, "snare", invs)) return { ...o2, ok: false, why: "needs a snare" };
         return o2;
       }
@@ -569,6 +614,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         return o2;
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
+      if (sid === "snowShelter") {
+        if (st.structures.turfHut || st.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
+        if (st.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
+        if (state.weather.snowCm < SNOW_SHELTER_CM) return { ...o, ok: false, why: `needs ${SNOW_SHELTER_CM} cm of snow` };
+        if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% heaped` };
+        return o;
+      }
       if (sid === "dryingRack") {
         if (st.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
       } else if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
@@ -698,6 +750,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         duration: 10,
       }));
       if (!o.ok) return o;
+      if (st.structures.snowShelter && !st.structures.turfHut && !st.structures.cabin) return { ...o, ok: false, why: "snow does not take a fire" };
       if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
@@ -1225,6 +1278,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
+        state.stats.kills[s] = (state.stats.kills[s] ?? 0) + 1;
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const x = huntExtras(state, s);
         const where = produce(state, world, "rawMeat", x.meatKg);

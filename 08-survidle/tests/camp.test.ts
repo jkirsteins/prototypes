@@ -5,8 +5,11 @@ import { calendar } from "../src/sim/calendar";
 import { dailyCamp, stepCamp } from "../src/sim/camp";
 import { hourlyEvents } from "../src/sim/events";
 import { addItem, pile, qty } from "../src/sim/inventory";
+import { MAX_SNARES, SNARE_ODDS_PER_NIGHT } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 
 describe("camp", () => {
@@ -71,11 +74,13 @@ describe("camp", () => {
     expect(state.player.kcal).toBe(1000);
     addItem(state.player.pack, "cookedMeat", 1);
     autoEat(state, world, rng);
-    expect(state.player.kcal).toBeCloseTo(1450);
+    // cookedMeat: 1,100 kcal/kg (Kochanski's venison), 0.3 kg portion.
+    expect(state.player.kcal).toBeCloseTo(1330);
     expect(qty(state.player.pack, "cookedMeat")).toBeCloseTo(0.7);
     addItem(state.player.pack, "driedMeat", 1);
     expect(eat(state, world, "driedMeat", rng)).toBe(true);
-    expect(state.player.kcal).toBeCloseTo(1450 + 0.15 * 3500);
+    // driedMeat: 3,300 kcal/kg, three kilos to one rack kilo.
+    expect(state.player.kcal).toBeCloseTo(1330 + 0.15 * 3300);
   });
 
   it("wolves come only at night outside shelter", () => {
@@ -97,5 +102,38 @@ describe("camp", () => {
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBe(0);
+  });
+});
+
+describe("the trap line", () => {
+  it("forty snares stand per region at 0.04 a night each, and the forty-first is refused", () => {
+    expect(MAX_SNARES).toBe(40);
+    expect(SNARE_ODDS_PER_NIGHT).toBe(0.04);
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    st.structures.snares = 40;
+    addItem(state.player.pack, "snare", 1);
+    // The build/snare check grounds on heath before the count; stand there so the count is what refuses it.
+    placeAtSpot(state, world, state.player.region, "heath");
+    const o = check(state, world, calendar(0), "build", "snare");
+    expect(o.ok).toBe(false);
+    expect(o.why).toBe("40 snares is enough here");
+  });
+
+  it("forty snares at full hare density catch about a hare and a half a night", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    st.structures.snares = 40;
+    st.pop.hare = 100000;
+    const r = regionAt(world, state.player.region);
+    r.capacity.hare = 100000;
+    let caught = 0;
+    for (let d = 0; d < 200; d++) {
+      st.snareCatch = { count: 0, age: 0 };
+      dailyCamp(state, world, calendar(d * 1440), new Rng(d), null);
+      caught += st.snareCatch.count;
+    }
+    expect(caught / 200).toBeGreaterThan(1.2);
+    expect(caught / 200).toBeLessThan(2.0);
   });
 });
