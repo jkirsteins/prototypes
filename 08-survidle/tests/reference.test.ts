@@ -65,11 +65,12 @@ describe("the reference player", () => {
     // so a level-1 survivor's first tick never sees them; the woodpile keep and the
     // log keep gate by season and a 1 April start is closed for both; the two ice-hole
     // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
-    // and the hide coat, trousers and boots wait for Crafting 8; every other want is open.
+    // and the hide coat, trousers and boots wait for Crafting 8; the rack waits for meat to dry;
+    // every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 23);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 23);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 24);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 24);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -120,14 +121,14 @@ describe("the reference player", () => {
     const cook = tasks.lastIndexOf("cook:");
     expect(tasks[cook - 2]).toBe("cook:rawFat");
     expect(tasks[cook - 1]).toBe("cook:fish");
-    // The fat and carbohydrate item's own gathers: a bone crack, eggs, roots and its cook keep,
-    // inner bark and its grind, the sap tap and seaweed, all between the cook keeps and the fish keep.
-    expect(tasks.slice(cook + 1, cook + 9)).toEqual(["crack:", "eggs:", "roots:", "cook:roots", "innerBark:", "grindBark:", "tapSap:", "seaweed:"]);
-    expect(tasks[cook + 9]).toBe("fish:any");
-    expect(tasks[cook + 10]).toBe("berries:");
-    // The twenty-snare keep sits right after the berries, pushing the rack and the bow one further down.
-    expect(tasks[cook + 11]).toBe("build:snare");
-    expect(tasks[cook + 12]).toBe("build:dryingRack");
+    // The bone crack, then the two standing producers - the rack and the twenty-snare line, work
+    // that finishes and feeds the camp afterwards - and only then the fat and carbohydrate item's
+    // own gathers: eggs, roots and its cook keep, inner bark and its grind, the sap tap and seaweed,
+    // all above the fish keep.
+    expect(tasks.slice(cook + 1, cook + 4)).toEqual(["crack:", "build:dryingRack", "build:snare"]);
+    expect(tasks.slice(cook + 4, cook + 11)).toEqual(["eggs:", "roots:", "cook:roots", "innerBark:", "grindBark:", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 11]).toBe("fish:any");
+    expect(tasks[cook + 12]).toBe("berries:");
     expect(tasks[cook + 13]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
@@ -150,10 +151,10 @@ describe("the reference player", () => {
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
     // 74: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
-    // twenty-snare keep after the berries, the forty-snare keep after the water trough, the
-    // thaw grind at the head of the water block, and the fat and carbohydrate item's nine
-    // insertions around the cook keeps - the rendered-fat keep, the bone crack, eggs, roots
-    // and its cook keep, inner bark and its grind, the sap tap and seaweed.
+    // twenty-snare keep and the rack above the gathering block, the forty-snare keep after the
+    // water trough, the thaw grind at the head of the water block, and the fat and carbohydrate
+    // item's nine insertions around the cook keeps - the rendered-fat keep, the bone crack,
+    // eggs, roots and its cook keep, inner bark and its grind, the sap tap and seaweed.
     expect(REFERENCE_ORDERS.length).toBe(74);
   });
 

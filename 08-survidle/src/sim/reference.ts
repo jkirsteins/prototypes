@@ -157,6 +157,17 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * the crack grind takes the bones the hunts leave at camp; the gathering
  * keeps open by season in wantOpen, and a seaweed keep opens only for a
  * camp on the sea.
+ *
+ * The rack and the twenty-snare line sit above that gathering block, not
+ * below it, because both are work that finishes and then feeds the camp
+ * without being asked again: an hour builds the rack, a few minutes sets a
+ * snare, and every kilo after that is free. The gathering keeps are the
+ * opposite - a keep measured in food at camp can never read met while the
+ * body eats what it brings home, so it takes the whole day and everything
+ * under it waits. With the block above them, a level-20 camp set three
+ * snares in a hundred days, never built a rack, never dried a kilo and
+ * starved in July on four seeds out of four while digging rhizomes three
+ * hours a day.
  */
 
 /**
@@ -229,6 +240,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("cook", 1, "fish"),
   keep("cook", 1),
   { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  job("build", { kind: "once" }, "dryingRack"),
+  keep("build", 20, "snare"),
   keep("eggs", 2),
   keep("roots", 2),
   keep("cook", 1, "roots"),
@@ -238,8 +251,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("seaweed", 2),
   keep("fish", 1, "any"),
   keep("berries", 2),
-  keep("build", 20, "snare"),
-  job("build", { kind: "once" }, "dryingRack"),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
@@ -348,6 +359,14 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   if (w.req.task === "roots") return (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY) || axeInReach(state, world);
   // Seaweed grows only on a sea shore: a camp on an inland lake never has this want to give.
   if (w.req.task === "seaweed") return regionAt(world, state.player.region).sea > 0;
+  // The rack waits for something to dry. The list ranks it above the gathering keeps because it is
+  // an hour that then preserves every kilo the day cannot eat, but an hour is an hour: a beginner
+  // with no kill yet spends it on wood and food instead, and one seed froze on day 22 when the rack
+  // was built on nothing. Raw meat anywhere in reach opens it, which is the state a kill leaves.
+  if (w.req.task === "build" && w.req.arg === "dryingRack") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "rawMeat") > 0 || qty(state.player.pack, "rawMeat") > 0;
+  }
   // A cracked bone wants a bone: the hunts leave them at camp, and the want waits for one to sit there.
   if (w.req.task === "crack") {
     const st = regionState(state, world, state.player.region);

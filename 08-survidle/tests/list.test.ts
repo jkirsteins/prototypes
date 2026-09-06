@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
+import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { regionState } from "../src/sim/regionstate";
 import { REFERENCE_ORDERS, wantOpen, WINTER_STOCK } from "../src/sim/reference";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
@@ -76,11 +78,15 @@ describe("the list after the axe", () => {
     expect(wantOpen(state, world, winterPile[2], october)).toBe(true);
   });
 
-  it("keeps twenty snares set with the food and forty below the trough", () => {
+  it("keeps twenty snares set above the gathering block, with the rack, and forty below the trough", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     const twenty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 20);
     const forty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 40);
-    expect(twenty).toBe(tasks.indexOf("berries::keep") + 1);
+    // The rack and the snare line are work that finishes; the gathering keeps below them are
+    // measured in food at camp and can never read met, so they must not outrank a standing producer.
+    expect(tasks[twenty - 1]).toBe("build:dryingRack:job");
+    expect(twenty).toBeLessThan(tasks.indexOf("eggs::keep"));
+    expect(twenty).toBeLessThan(tasks.indexOf("fish:any:keep"));
     expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
   });
 
@@ -99,4 +105,17 @@ describe("the list after the axe", () => {
     state.player.tools = [];
     expect(wantOpen(state, world, want("roots::keep"), calendar(0, 340))).toBe(false);
   });
+
+  it("wants the rack only once there is meat to dry, so the hour is not spent on an empty one", () => {
+    // The rack outranks the gathering keeps, so nothing shuts it but this: a beginner who
+    // builds it on day five with no kill yet loses the hour off the woodpile, and seed 19
+    // froze on day 22 when it did.
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const april = calendar(0, 100);
+    expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(false);
+    addItem(pile(state, st.campCell), "rawMeat", 2);
+    expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(true);
+  });
+
 });
