@@ -254,7 +254,10 @@ export interface Player {
   /** Body fat reserve in kilocalories, 0..FAT_FULL: what an empty stomach draws on before health does. */
   fat: number;
   warmth: number;
+  /** Fatigue from work, 0..100: what the day's tasks drain and rest and sleep restore. */
   energy: number;
+  /** The homeostatic sleep pressure, 0..100: it rises with every waking minute and only sleep pays it. */
+  sleepDebt: number;
   wetness: number;
   /** Minutes remaining. */
   sick: number;

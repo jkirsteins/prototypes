@@ -130,7 +130,9 @@ function fillDefaults(state: GameState): void {
   p.fingers ??= false;
   p.berriesToday ??= { day: 0, kg: 0 };
   p.workHours ??= WORK_HOURS_DEFAULT;
-  p.sleptTonight ??= false;
+  // A save from before the two processes has one number for both: read its
+  // fatigue as the debt's mirror, which is where a rested body sits.
+  p.sleepDebt ??= 100 - p.energy;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;
