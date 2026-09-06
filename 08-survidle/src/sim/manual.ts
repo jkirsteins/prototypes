@@ -27,7 +27,7 @@ export const MANUAL_SECTIONS: { title: string; lines: string[] }[] = [
   {
     title: "Food and the seasons",
     lines: [
-      "Hare alone starves you; you need fat, and fish.",
+      "Hare alone starves you; you need fat: marrow, oily fish, eggs and roe in their season.",
       "A trap in the water works while you sleep. Berries are a season, and two litres is a day's worth.",
       "A deer is weeks of food that rots in a day unless you dry it.",
       "Winter needs a hut or a snow shelter, a woodpile, and stores.",

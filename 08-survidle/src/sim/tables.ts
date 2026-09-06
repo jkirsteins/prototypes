@@ -77,6 +77,7 @@ export const SOURCE_ROWS: Record<YieldSource, TableRow[]> = {
   kit: [],
   // Marrow is a large-game bone's own row until Task 9 gives it a proper one.
   marrow: ["hunting", "largeGame"],
+  roe: ["fishing"],
 };
 
 /** The band a source is measured against in a table: its rows' bands summed, or null when the table has none of them. */

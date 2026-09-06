@@ -77,7 +77,7 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "deadwood": return "firewood";
     case "hunt": return "rawMeat";
     case "fish": return "fish";
-    case "cook": return arg === "fish" ? "cookedFish" : arg === "rawFat" ? "fat" : "cookedMeat";
+    case "cook": return arg === "fish" ? "cookedFish" : arg === "oilyFish" ? "cookedOilyFish" : arg === "rawFat" ? "fat" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
     case "melt": return "water";
@@ -96,6 +96,9 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "fill" || task === "melt") return ["water"];
   // Hang moves raw meat onto the rack; nothing lands in the pack for a delivery to carry.
   if (task === "hang") return [];
+  // A catch can be either fish class, and a spawning one brings roe too.
+  if (task === "fish") return ["fish", "oilyFish", "roe"];
+  if (task === "emptyTrap") return ["fish", "oilyFish"];
   const one = yieldItem(task, arg);
   return one ? [one] : [];
 }

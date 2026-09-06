@@ -26,14 +26,14 @@ export type CountItem =
 /** Items measured in kilograms. */
 export type KgItem =
   | "firewood" | "hide" | "fur" | "fat" | "rawFat" | "rawMeat" | "cookedMeat" | "driedMeat"
-  | "fish" | "cookedFish" | "berries" | "wetFirewood"
+  | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "wetFirewood"
   /** Litres, at a kilo a litre; only ever in a pile. */
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
-export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "berries" | "rawFat";
-export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "berries", "rawFat"];
+export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat";
+export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat"];
 
 export interface Stack { kg: number; age: number }
 
@@ -241,8 +241,8 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
-  /** The basket trap set in this region's water: where, the live fish in it, the species that shore holds, and minutes since it was last emptied. */
-  trap: { cell: number; kg: number; fish: Species[]; age: number } | null;
+  /** The basket trap set in this region's water: where, the live fish in it (oilyKg is the oily-species share of kg), the species that shore holds, and minutes since it was last emptied. */
+  trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number } | null;
 }
 
 export interface Player {

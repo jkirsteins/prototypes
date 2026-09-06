@@ -55,6 +55,10 @@ export interface SpeciesDef {
   calls?: Call[];
   /** Where this fish lies off a shore, as the read names it. */
   lie?: string;
+  /** The oily class: 1,500 kcal/kg, a 0.6 lean share, defined once in FOODS. */
+  oily?: true;
+  /** Spawning months, 0-based inclusive; a catch inside yields roe. */
+  spawn?: [number, number];
 }
 
 const resident = (winter?: number): SeasonRule => (winter === undefined ? { kind: "resident" } : { kind: "resident", winter });
@@ -79,6 +83,8 @@ const fish = (name: string, lake: number | null, sea: number | null, range: numb
   yields: { meatKg },
   ...(extra.needs ? { needs: extra.needs } : {}),
   ...(extra.lie ? { lie: extra.lie } : {}),
+  ...(extra.oily ? { oily: extra.oily } : {}),
+  ...(extra.spawn ? { spawn: extra.spawn } : {}),
 });
 
 const SPECIES_DEFS_RAW = {
@@ -150,19 +156,20 @@ const SPECIES_DEFS_RAW = {
   woodpecker: { name: "great spotted woodpecker", kind: "bird", habitat: { spruce: 2, pine: 2, birch: 2 }, range: 0.8, season: resident(), growth: 0.005,
     calls: [{ sound: "woodpecker", when: "day", months: [2, 4], weight: 2 }] },
 
-  // Lake fish: biomass per hectare over mean weight (perKm2).
-  perch: fish("perch", perKm2(30, 0.08), null, 0.9, 0.6, 0.3, { lie: "along the reeds" }),
-  roach: fish("roach", perKm2(20, 0.1), null, 0.6, 0.7, 0.2, { lie: "in the shallows" }),
-  pike: fish("pike", perKm2(15, 1.5), null, 0.8, 0.35, 2.0, { level: 3, lie: "in the reeds" }),
-  whitefish: fish("whitefish", perKm2(10, 0.5), null, 0.6, 0.5, 0.6, { level: 2, lie: "off the point" }),
-  char: fish("arctic char", perKm2(5, 0.6), null, 0.3, 0.45, 0.8, { level: 4, lie: "in the deep water" }),
-  trout: fish("brown trout", perKm2(5, 0.5), null, 0.5, 0.4, 0.7, { level: 3, lie: "at the inflow" }),
-  burbot: fish("burbot", perKm2(5, 1.0), null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5), lie: "on the bottom" }),
+  // Lake fish: biomass per hectare over mean weight (perKm2). spawn windows
+  // are the fat and carbohydrate design's section 3 table, 0-based inclusive.
+  perch: fish("perch", perKm2(30, 0.08), null, 0.9, 0.6, 0.3, { lie: "along the reeds", spawn: [3, 4] }),
+  roach: fish("roach", perKm2(20, 0.1), null, 0.6, 0.7, 0.2, { lie: "in the shallows", spawn: [3, 4] }),
+  pike: fish("pike", perKm2(15, 1.5), null, 0.8, 0.35, 2.0, { level: 3, lie: "in the reeds", spawn: [3, 4] }),
+  whitefish: fish("whitefish", perKm2(10, 0.5), null, 0.6, 0.5, 0.6, { level: 2, lie: "off the point", spawn: [9, 10] }),
+  char: fish("arctic char", perKm2(5, 0.6), null, 0.3, 0.45, 0.8, { level: 4, lie: "in the deep water", oily: true, spawn: [8, 9] }),
+  trout: fish("brown trout", perKm2(5, 0.5), null, 0.5, 0.4, 0.7, { level: 3, lie: "at the inflow", oily: true, spawn: [8, 9] }),
+  burbot: fish("burbot", perKm2(5, 1.0), null, 0.5, 0.4, 1.2, { level: 2, night: 1.3, season: resident(1.5), lie: "on the bottom", spawn: [0, 1] }),
 
   // Sea fish, the coastal strip: cod and saithe thin, herring in shoals.
-  cod: fish("cod", null, perKm2(5, 2.5), 0.9, 0.5, 2.5, { level: 2, lie: "off the rocks" }),
-  saithe: fish("saithe", null, perKm2(5, 1.5), 0.7, 0.5, 1.5, { lie: "off the rocks" }),
-  herring: fish("herring", null, perKm2(30, 0.15), 0.6, 0.8, 0.15, { lie: "off the point" }),
+  cod: fish("cod", null, perKm2(5, 2.5), 0.9, 0.5, 2.5, { level: 2, lie: "off the rocks", spawn: [2, 3] }),
+  saithe: fish("saithe", null, perKm2(5, 1.5), 0.7, 0.5, 1.5, { lie: "off the rocks", spawn: [1, 2] }),
+  herring: fish("herring", null, perKm2(30, 0.15), 0.6, 0.8, 0.15, { lie: "off the point", oily: true, spawn: [2, 3] }),
 } satisfies Record<string, SpeciesDef>;
 
 export type Species = keyof typeof SPECIES_DEFS_RAW;
@@ -205,6 +212,17 @@ export function speciesDef(s: Species): SpeciesDef {
 
 export function isFish(s: Species): boolean {
   return SPECIES_DEFS[s].kind === "fish";
+}
+
+/** Which item a catch produces: the oily class or the plain one, by species. */
+export function fishItem(s: Species): "fish" | "oilyFish" {
+  return SPECIES_DEFS[s].oily ? "oilyFish" : "fish";
+}
+
+/** Whether a species is spawning this month: a catch inside the window also brings roe. */
+export function inSpawn(s: Species, month: number): boolean {
+  const w = SPECIES_DEFS[s].spawn;
+  return w !== undefined && month >= w[0] && month <= w[1];
 }
 
 export function isHunted(s: Species): boolean {

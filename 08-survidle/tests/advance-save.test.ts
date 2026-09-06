@@ -82,7 +82,7 @@ describe("save", () => {
     // structure that says one stands, and a trap's age from the day it was set.
     st.structures.dryingRack = true;
     st.racks = 1;
-    st.trap = { cell: st.campCell, kg: 0, fish: [], age: 0 };
+    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
     delete raw.state.player.autoDrink;

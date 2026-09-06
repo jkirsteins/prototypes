@@ -13,7 +13,7 @@ import {
   removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, SNOW_SHELTER_CM, STRUCTURES,
+  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, ROE_SHARE, SNOW_SHELTER_CM, STRUCTURES,
   STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditYield } from "./ledger";
@@ -34,7 +34,7 @@ import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from 
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
-import { fatSeason, fishSpecies, huntedLand, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
+import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
@@ -547,7 +547,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "cook": {
-      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "rawFat";
+      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "oilyFish" | "rawFat";
       const kg = Math.min(1, totalQty(invs, food));
       const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
       const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
@@ -1350,10 +1350,16 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         state.stats.animals++;
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
-        produce(state, world, "fish", kg);
+        const item = fishItem(s);
+        produce(state, world, item, kg);
         // Raw fish is not eaten; the yield is what it cooks to.
-        creditYield(state, "fish", kg * FOODS.cookedFish.kcalPerKg);
-        log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
+        creditYield(state, "fish", kg * FOODS[item === "fish" ? "cookedFish" : "cookedOilyFish"].kcalPerKg);
+        if (inSpawn(s, cal.month)) {
+          const roe = Math.round(kg * ROE_SHARE * 100) / 100;
+          produce(state, world, "roe", roe);
+          creditYield(state, "roe", roe * FOODS.roe.kcalPerKg);
+          log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg, and ${Math.round(roe * 1000)} g of roe.`, "good");
+        } else log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
       return;
     }
@@ -1366,7 +1372,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "setTrap": {
       const here = cellOf(state, world);
       consume(invs, [{ item: "basketTrap", qty: 1 }]);
-      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish], age: 0 };
+      st.trap = { cell: here, kg: 0, oilyKg: 0, fish: [...state.player.known[here].fish], age: 0 };
       log(state, `The trap is set at ${whereIs(state, world, here)}.`);
       state.stats.structures++;
       return;
@@ -1377,10 +1383,11 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "cook": {
-      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "rawFat";
+      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "oilyFish" | "rawFat";
       const kg = Math.min(1, totalQty(invs, food));
       consume(invs, [{ item: food, qty: kg }]);
-      produce(state, world, food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : "fat", kg);
+      const out = food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : food === "oilyFish" ? "cookedOilyFish" : "fat";
+      produce(state, world, out, kg);
       return;
     }
     case "crack": {
@@ -1570,15 +1577,24 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
   }
 }
 
-/** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken. */
+/** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken (fish and oily fish together). */
 function takeTrapFish(state: GameState, world: World): number {
   const st = regionState(state, world, state.player.region);
   const kg = st.trap?.kg ?? 0;
   if (!st.trap || kg <= 1e-9) return 0;
+  const oilyKg = st.trap.oilyKg;
+  const leanKg = kg - oilyKg;
   st.trap.kg = 0;
+  st.trap.oilyKg = 0;
   st.trap.age = 0;
-  produce(state, world, "fish", kg);
-  creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
+  if (leanKg > 1e-9) {
+    produce(state, world, "fish", leanKg);
+    creditYield(state, "trap", leanKg * FOODS.cookedFish.kcalPerKg);
+  }
+  if (oilyKg > 1e-9) {
+    produce(state, world, "oilyFish", oilyKg);
+    creditYield(state, "trap", oilyKg * FOODS.cookedOilyFish.kcalPerKg);
+  }
   state.stats.animals++;
   return kg;
 }

@@ -182,6 +182,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       if (st.trap.age > SNARE_CATCH_MAX_AGE) {
         log(state, `The fish in the trap at ${r.name} have rotted.`, "bad");
         st.trap.kg = 0;
+        st.trap.oilyKg = 0;
         st.trap.age = 0;
       }
     }
@@ -199,7 +200,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           const d = regionDensity(state, world, id, s, cal);
           if (!rng.chance(d * SPECIES_DEFS[s].hunt!.odds * TRAP_ODDS * factor)) continue;
           st.pop[s] = Math.max(0, popOf(st, s) - 1);
-          st.trap.kg = Math.min(TRAP_HOLD_KG, st.trap.kg + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
+          const before = st.trap.kg;
+          st.trap.kg = Math.min(TRAP_HOLD_KG, before + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
+          if (SPECIES_DEFS[s].oily) st.trap.oilyKg += st.trap.kg - before;
         }
       }
     }

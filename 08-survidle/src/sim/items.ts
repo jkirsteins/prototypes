@@ -8,14 +8,14 @@ export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3, crackedBone: 0.3,
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2, wedge: 0.3,
   firewood: 1, hide: 1, fur: 1, fat: 1, rawFat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
-  fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
+  fish: 1, cookedFish: 1, oilyFish: 1, cookedOilyFish: 1, roe: 1, berries: 1, wetFirewood: 1,
   water: 1, ice: 1,
   axe: 1.5, stoneAxe: 1.4, flakedAxe: 1.2, whetstone: 0.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
   needle: 0.01, barkBucket: 0.3, waterskin: 0.4,
 };
 
 export const KG_ITEMS = new Set<ItemId>([
-  "firewood", "hide", "fur", "fat", "rawFat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
+  "firewood", "hide", "fur", "fat", "rawFat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "wetFirewood",
   "water", "ice",
 ]);
 
@@ -23,13 +23,13 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
   bone: "bone", crackedBone: "cracked bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps", wedge: "wedges",
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawFat: "raw fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
-  driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
+  driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", oilyFish: "oily fish", cookedOilyFish: "cooked oily fish", roe: "roe", berries: "berries",
   wetFirewood: "wet firewood", water: "water", ice: "ice",
   axe: "iron axes", stoneAxe: "stone axes", flakedAxe: "flaked axes", whetstone: "whetstones", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
 
-export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
+export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "cookedOilyFish" | "roe" | "berries" | "fat";
 /**
  * Every food: its kcal, its portion, its sick chance, and its lean share -
  * the part of its kcal that counts toward LEAN_KCAL_PER_DAY. The share is
@@ -41,16 +41,23 @@ export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "be
  * Lean wild meat: a kill's fat is its own item at 9,000, so the meat is
  * hare at about 1,000 kcal/kg (Kochanski) and venison at 1,100 to 1,200;
  * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.
- * Berries are wild bilberry, 400 to 600 a kilo, at 450.
+ * Berries are wild bilberry, 400 to 600 a kilo, at 450. Oily fish is one
+ * class - herring, char, trout, salmon when it lands - about 1,500 kcal/kg
+ * with 0.6 lean; roe 1,600 at half lean, a tenth of a spawning catch, the
+ * spec's shortcut.
  */
 export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number; leanShare: number }> = {
   rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25, leanShare: 1 },
   cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0, leanShare: 1 },
   driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0, leanShare: 1 },
   cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0, leanShare: 1 },
+  cookedOilyFish: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0, leanShare: 0.6 },
+  roe: { kcalPerKg: 1600, portionKg: 0.2, sickChance: 0, leanShare: 0.5 },
   berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0, leanShare: 0 },
   fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0, leanShare: 0 },
 };
+/** A spawning catch's roe: a tenth of the fish's own weight, not a separate haul. */
+export const ROE_SHARE = 0.1;
 /**
  * The lean ceiling: Kochanski's rabbit starvation - on hare alone a body
  * shows starvation within a week however much it eats. Meat and fish past
@@ -70,7 +77,7 @@ export const GUT: Partial<Record<FoodId, { fullCreditKg: number; refuseKg: numbe
 /** Below this ambient a stack keeps: the Swedish handbook's freezing storage wants at least -10 to -15 C; between it and zero the rot runs at half speed. */
 export const FREEZE_KEEP_C = -10;
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
-export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
+export const AUTO_EAT_ORDER: FoodId[] = ["berries", "roe", "cookedFish", "cookedOilyFish", "cookedMeat", "driedMeat", "fat"];
 /** Kilos an hour's picking takes at a patch by hand, before the foraging pool's factor: a beginner picker, near the real kilo an hour at the top of the pool. */
 export const BERRY_PICK_KG = 0.7;
 
@@ -79,6 +86,7 @@ export const KCAL_FULL = 6000;
 /** Hours above 0 C before a stack is thrown away. Raw fat keeps like cooked meat and no longer; rendered it keeps for the winter. */
 export const SPOIL_HOURS: Record<PerishableId, number> = {
   rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72, berries: 72, rawFat: 72,
+  oilyFish: 36, cookedOilyFish: 72, roe: 36,
 };
 
 /** Kochanski: marrow from the larger bones. A tenth of a kilo a bone at a full animal; marrowFactor scales it by the season. */

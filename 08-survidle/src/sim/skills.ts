@@ -27,7 +27,7 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
-  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:rawFat", "crack"],
+  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:oilyFish", "cook:rawFat", "crack"],
 };
 
 export const SKILL_CAP = 50;

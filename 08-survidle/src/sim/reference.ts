@@ -386,7 +386,7 @@ export function kitTrap(state: GameState, world: World): void {
   const fish = shoreFish(world, regionAt(world, p.region), shore.cell);
   if (!fish.length) return;
   state.player.known[shore.cell] = { minute: 0, fish };
-  st.trap = { cell: shore.cell, kg: 0, fish, age: 0 };
+  st.trap = { cell: shore.cell, kg: 0, oilyKg: 0, fish, age: 0 };
 }
 
 /**
