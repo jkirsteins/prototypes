@@ -7,8 +7,9 @@ import { cellAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
+import { BARK_DRY_RATIO } from "./items";
 import { regionState, touchedRegions } from "./regionstate";
-import type { GameState, Inventory, RegionState, Weather } from "./types";
+import type { GameState, Inventory, ItemId, RegionState, Weather } from "./types";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
 
@@ -155,15 +156,20 @@ export function splitSheltered(state: GameState, world: World, at: number): bool
   return at === st.campCell && roofed(st);
 }
 
-/** Dries up to `perHour * dt / 60` kg total, drawn from whichever of `invs` has wet stock first. */
-function dryBudget(invs: Inventory[], perHour: number, dt: number): void {
+/**
+ * Dries up to `perHour * dt / 60` kg total off `from`, drawn from whichever
+ * of `invs` has stock first, and adds `moved / ratio` of `to`. The default
+ * pair is wet firewood drying one for one; a second call with `freshBark`,
+ * `driedBark` and `BARK_DRY_RATIO` runs the same budget over the bark.
+ */
+function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId = "wetFirewood", to: ItemId = "firewood", ratio = 1): void {
   let budget = (perHour / 60) * dt;
   for (const inv of invs) {
     if (budget <= 1e-9) break;
-    const wet = qty(inv, "wetFirewood");
+    const wet = qty(inv, from);
     if (wet <= 1e-9) continue;
-    const moved = removeItem(inv, "wetFirewood", Math.min(wet, budget));
-    addItem(inv, "firewood", moved);
+    const moved = removeItem(inv, from, Math.min(wet, budget));
+    addItem(inv, to, moved / ratio);
     budget -= moved;
   }
 }
@@ -174,7 +180,9 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number): void {
  * whatever the weather - the heat, or the roof, keeps the rain out of it.
  * A lean-to alone is not that complete a shelter: 2 kg an hour in dry
  * weather, none in rain. Every other pile, and the pack away from any camp,
- * dries at 0.5 an hour in dry weather, none in rain.
+ * dries at 0.5 an hour in dry weather, none in rain. Fresh inner bark runs
+ * the same rates to dried bark, at BARK_DRY_RATIO, but only in a camp pile
+ * or the pack: it is not left drying in a pile out in the field.
  */
 export function dryWood(state: GameState, dt: number, who: Presence | null): void {
   const w = state.weather;
@@ -188,6 +196,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     const atThisCamp = who !== null && id === who.region && who.atCamp;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
     dryBudget(invs, perHour, dt);
+    dryBudget(invs, perHour, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
   if (!dry) return;
   for (const k of Object.keys(state.piles)) {
@@ -198,5 +207,8 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     if (!isCampPile) dryBudget([inv], 0.5, dt);
   }
   // Away from every camp, the pack dries in the open like any other stack; nobody carries one with nobody home.
-  if (who && !who.atCamp) dryBudget([state.player.pack], 0.5, dt);
+  if (who && !who.atCamp) {
+    dryBudget([state.player.pack], 0.5, dt);
+    dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
+  }
 }

@@ -13,6 +13,7 @@ import {
   removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
+  BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
   BERRY_PICK_KG, CLOTHING, DECAYING, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
   RECIPES, RECIPE_IDS, ROE_SHARE, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
@@ -69,7 +70,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -90,7 +91,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
-  "setTrap", "emptyTrap", "makeCamp", "crack", "eggs",
+  "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -106,6 +107,7 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "fill": return "barkBucket";
     case "iceHole": return "axe";
     case "mend": return null;
+    case "innerBark": return "knife";
     default: return null;
   }
 }
@@ -113,6 +115,11 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
 /** Berries ripen mid-July and are gone by mid-October. */
 export function berrySeason(cal: Calendar): boolean {
   return cal.dayOfYear >= BERRY_FROM_DOY && cal.dayOfYear <= BERRY_TO_DOY;
+}
+
+/** Inner bark strips full rate off young spring branches; the rest of the year, half. */
+export function barkSeason(cal: Calendar): boolean {
+  return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
 }
 
 function needsList(needs: { item: string; qty: number; alt?: string }[]): string {
@@ -410,6 +417,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
       return o;
     }
+    case "innerBark": {
+      const o = opt({ group: "gather", label: "Strip inner bark", detail: `${BARK_FRESH_KG_PER_HOUR} kg an hour on pine, half outside spring; dries three to one, grinds to flour`, duration: 60, repeatable: true });
+      if (terrain !== "pine") return { ...o, ok: false, why: "stand in pine forest" };
+      if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
+      if (st.wood < 1) return { ...o, ok: false, why: "the pines are stripped" };
+      return o;
+    }
     case "split": {
       const sheltered = splitSheltered(state, world, at);
       const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
@@ -571,6 +585,14 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!(shore || heath)) return { ...o, ok: false, why: "stand by the water or on the heath" };
       if (cal.dayOfYear < EGG_FROM_DOY || cal.dayOfYear > EGG_TO_DOY) return { ...o, ok: false, why: "no eggs until May" };
       if (st.nests <= 1e-9) return { ...o, ok: false, why: "the nests are empty" };
+      return o;
+    }
+    case "grindBark": {
+      const kg = Math.min(1, totalQty(invs, "driedBark"));
+      const o = needCamp(opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true }));
+      if (!o.ok) return o;
+      if (kg <= 1e-9) return { ...o, ok: false, why: "no dried bark here" };
+      if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       return o;
     }
     case "craft": {
@@ -1279,6 +1301,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
       return;
     }
+    case "innerBark": {
+      const kg = BARK_FRESH_KG_PER_HOUR * yieldFactor(state, "foraging") * (barkSeason(cal) ? 1 : 0.5);
+      st.wood -= kg * BARK_TREE_SHARE;
+      produce(state, world, "freshBark", kg);
+      creditYield(state, "bark", (kg / BARK_DRY_RATIO) * FOODS.barkFlour.kcalPerKg);
+      log(state, `{You} {strip} the pines: ${(kg * 1000).toFixed(0)} g of inner bark.`, "good");
+      return;
+    }
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
@@ -1414,6 +1444,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "eggs", kg);
       creditYield(state, "eggs", kg * FOODS.eggs.kcalPerKg);
       log(state, `{You} {gather} the nests: ${(kg * 1000).toFixed(0)} g of eggs.`, "good");
+      return;
+    }
+    case "grindBark": {
+      const kg = Math.min(1, totalQty(invs, "driedBark"));
+      consume(invs, [{ item: "driedBark", qty: kg }]);
+      produce(state, world, "barkFlour", kg);
+      log(state, `{You} {grind} the bark: ${(kg * 1000).toFixed(0)} g of flour.`, "good");
       return;
     }
     case "craft": {

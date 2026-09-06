@@ -5,7 +5,7 @@
  * the tasks do, exactly as when a player clicks them one by one.
  */
 import type { Rng } from "../rng";
-import { regionAt, spotOf, type World } from "../world/gen";
+import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit } from "./body";
@@ -31,7 +31,7 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend", "crack"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend", "crack", "grindBark"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
@@ -73,6 +73,8 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "stone": return "stone";
     case "berries": return "berries";
     case "eggs": return "eggs";
+    case "innerBark": return "freshBark";
+    case "grindBark": return "barkFlour";
     case "split": return "firewood";
     case "splitWedges": return "firewood";
     case "deadwood": return "firewood";
@@ -148,6 +150,19 @@ function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where
   return forest ? { cell: forest.cell, note: note("forest") } : { cell: here, note: "" };
 }
 
+/**
+ * The nearest cell of this region matching `pred`, by straight line then a
+ * route check, `here` when none does. Lifted out of the seep branch's own
+ * nearest-wet-cell search so Tasks 7 and 8 can reuse it too.
+ */
+export function nearestCell(state: GameState, world: World, pred: (cell: number) => boolean): number {
+  const here = cellOf(state, world);
+  const r = regionAt(world, state.player.region);
+  const cells = r.cells.filter(pred).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return c;
+  return here;
+}
+
 /** Where the work is done, decided once. The note says when the chosen spot did not suit. */
 export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
   const here = cellOf(state, world);
@@ -160,12 +175,8 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   const st = regionState(state, world, state.player.region);
   if (HERE.has(task)) return { cell: here, note: "" };
   if (task === "build" && arg === "seep") {
-    // The nearest wet cell with no seep on it, by straight line then a route check.
-    const cells = r.cells
-      .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
-      .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return { cell: c, note: "" };
-    return { cell: here, note: "" };
+    // The nearest wet cell with no seep on it.
+    return { cell: nearestCell(state, world, (c) => seepGround(world, c) !== null && !state.seeps[c]), note: "" };
   }
   if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell, note: "" };
   if (task === "craft") {
@@ -189,6 +200,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     const spot = (r.capacity.mallard || r.capacity.eider ? spotOf(r, "shore") : null) ?? spotOf(r, "heath");
     return { cell: spot ? spot.cell : here, note: "" };
   }
+  if (task === "innerBark") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "pine"), note: "" };
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
   const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
@@ -514,6 +526,8 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   stone: () => "gathering stone",
   berries: () => "picking berries",
   eggs: () => "gathering eggs",
+  innerBark: () => "stripping inner bark",
+  grindBark: () => "grinding bark flour",
   split: () => "splitting a log",
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",
