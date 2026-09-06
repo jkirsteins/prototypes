@@ -109,6 +109,7 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "iceHole": return "axe";
     case "mend": return null;
     case "innerBark": return "knife";
+    case "tapSap": return "knife";
     default: return null;
   }
 }
@@ -418,18 +419,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "stone":
       return ground(rockCell(world, at), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
     case "berries": {
-      if (winterBerries(cal)) {
-        const kg = BERRY_PICK_KG * BERRY_WINTER_SHARE * yieldFactor(state, "foraging");
-        const o = ground(
-          heathCell(world, at), "heath", "heath",
-          opt({ group: "gather", label: "Pick frozen lingon under the snow", detail: `${kg.toFixed(2)} kg berries, dug from under the snow`, duration: 60, repeatable: true }),
-        );
-        if (!o.ok) return o;
+      const winter = winterBerries(cal);
+      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging") * (winter ? BERRY_WINTER_SHARE : 1);
+      const label = winter ? "Pick frozen lingon under the snow" : "Pick berries";
+      const detail = winter ? `${kg.toFixed(2)} kg berries, dug from under the snow` : `${kg.toFixed(1)} kg berries, mid-July to mid-October`;
+      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label, detail, duration: 60, repeatable: true }));
+      if (!o.ok) return o;
+      if (winter) {
         if (state.weather.snowCm >= DEEP_SNOW_CM) return { ...o, ok: false, why: "under too much snow" };
         return o;
       }
-      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(BERRY_PICK_KG * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
-      if (!o.ok) return o;
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
       return o;
     }

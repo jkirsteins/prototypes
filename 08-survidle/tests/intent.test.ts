@@ -4,7 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
 import { addItem, hasTool, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
-import { ITEM_KG } from "../src/sim/items";
+import { ITEM_KG, SAP_FROM_DOY } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
@@ -16,9 +16,19 @@ import { SKILL_IDS } from "../src/sim/skills";
 import { takeStep } from "../src/sim/steps";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import type { Intent, TaskId } from "../src/sim/types";
-import { cellAt, regionAt, spotOf } from "../src/world/gen";
+import { cellAt, cellIdx, regionAt, spotOf, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
 
 const cal = calendar(0);
+
+/** No reference seed's home region has a birch cell, so the tap-a-birch provisioning test scans the terrain grid for one directly. */
+function findBirchCell(world: World): number {
+  for (let y = 0; y < WORLD_H; y += 3) {
+    for (let x = 0; x < WORLD_W; x += 3) {
+      if (terrainOf(world, x, y) === "birch") return cellIdx(world, x, y);
+    }
+  }
+  throw new Error("no birch cell found anywhere in the world");
+}
 
 describe("the intent record", () => {
   it("a new game has no intent", () => {
@@ -559,5 +569,22 @@ describe("a spare tool at camp", () => {
     addItem(pile(state, st.campCell), "axe", 1);
     placeAtSpot(state, world, state.player.region, "forest");
     expect(check(state, world, cal, "chop").why).toBe("needs an axe");
+  });
+
+  it("a birch tap judged from camp with the only knife in the camp pile is able to run, and starting it takes the knife up", () => {
+    const { state, world } = newGame(17, SAP_FROM_DOY);
+    const birch = findBirchCell(world);
+    const st = regionState(state, world, cellAt(world, birch).region);
+    st.campCell = birch;
+    placeAt(state, world, birch);
+    state.player.tools = state.player.tools.filter((t) => t.id !== "knife");
+    addItem(pile(state, birch), "knife", 1);
+    expect(hasTool(state.player, "knife")).toBe(false);
+    const sapCal = calendar(0, SAP_FROM_DOY);
+    expect(intentOption(state, world, sapCal, "tapSap", undefined, "nearest").ok).toBe(true);
+    const req: IntentRequest = { task: "tapSap", until: { kind: "once" }, deliver: "leave", where: "nearest" };
+    expect(startIntent(state, world, sapCal, new Rng(1), req)).toBe(true);
+    expect(hasTool(state.player, "knife")).toBe(true);
+    expect(qty(pile(state, birch), "knife")).toBe(0);
   });
 });

@@ -8,7 +8,23 @@ import { newGame } from "../src/sim/newgame";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { WATER_FULL } from "../src/sim/water";
-import { cellAt, cellIdx, regionAt } from "../src/world/gen";
+import { cellAt, cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+
+/**
+ * No reference seed's home region has a birch cell (the brief's own
+ * region-scoped lookup finds none for 17, 19, 42 or 79), so the sap test
+ * scans the terrain grid directly, the way the seaweed test hand-finds a
+ * coastline. Throws rather than skipping quietly: a birch-less world would
+ * mean the test asserts nothing, which is the defect this replaces.
+ */
+function findBirchCell(world: World): number {
+  for (let y = 0; y < WORLD_H; y += 3) {
+    for (let x = 0; x < WORLD_W; x += 3) {
+      if (terrainOf(world, x, y) === "birch") return cellIdx(world, x, y);
+    }
+  }
+  throw new Error("no birch cell found anywhere in the world");
+}
 
 describe("sap, seaweed and winter berries", () => {
   it("the auto-eat order is the spec's, fat last", () => {
@@ -17,9 +33,7 @@ describe("sap, seaweed and winter berries", () => {
 
   it("a birch tapped in the sap rise fills the body with water and 125 kcal, three taps a day", () => {
     const { state, world } = newGame(17, SAP_FROM_DOY);
-    const region = state.player.region;
-    const birch = regionAt(world, region).cells.find((c) => cellAt(world, c).terrain === "birch");
-    if (birch === undefined) return;
+    const birch = findBirchCell(world);
     placeAt(state, world, birch);
     state.player.tools.push({ id: "knife", durability: 100 });
     state.player.water = 1;
