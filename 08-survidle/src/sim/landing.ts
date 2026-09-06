@@ -9,17 +9,17 @@ import { cellAt, neighbours, regionOf, type World } from "../world/cells";
 import { regionAt } from "../world/gen";
 import { passable } from "../world/route";
 import { advance } from "./advance";
-import { calendar, coastOpen } from "./calendar";
+import { calendar, coastOpen, fmtDate, START_DOY } from "./calendar";
 import { fmtWorldDate } from "./epitaph";
 import { addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
-import { fmtName, rollName, sexOfName } from "./names";
-import { medianPerson } from "./person";
+import { fmtName } from "./names";
+import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
 import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
-import type { GameState, ItemId, LifeEvent, LifeRecord, RegionState, WorldDate } from "./types";
+import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
 
 export const GAP_MIN_DAYS = 90;
 export const LANDING_MIN_KM = 3;
@@ -162,17 +162,61 @@ export function beginAgain(state: GameState, world: World): void {
   state.log = [];
   demoteFog(state);
   const cell = landingCell(world, oldCamp, state.seed, state.survivors.length + 1);
-  const rng = new Rng(derive(state.seed, 500 + state.survivors.length));
-  const name = rollName(rng, rng.int(2) === 0 ? "f" : "m", state.survivors.map((s) => s.name));
-  state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, name, oldCamp };
+  const candidates = rollCandidates(state.seed, state.survivors.length + 1, 0, state.survivors.map((s) => s.name));
+  state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, candidates, boat: 0, chosen: 0, name: candidates[0].name, oldCamp };
 }
 
-/** Rolls another name for the landing screen, never one already used in this world. */
-export function rerollName(state: GameState): void {
-  if (!state.landing) return;
-  const rng = new Rng(state.rng);
-  state.landing.name = rollName(rng, rng.int(2) === 0 ? "f" : "m", [...state.survivors.map((s) => s.name), state.landing.name]);
-  state.rng = rng.s;
+/** Highlights a card; the name field takes that person's name until the player edits it. */
+export function pickCandidate(state: GameState, i: 0 | 1 | 2): void {
+  const l = state.landing;
+  if (!l || !l.candidates[i]) return;
+  l.chosen = i;
+  l.name = l.candidates[i].name;
+}
+
+/** The day the next boat would land: a week on, and then the first open-coast day. */
+export function nextBoatDate(from: WorldDate): { date: WorldDate; added: number } {
+  let { year, doy } = from;
+  let added = 0;
+  const step = () => {
+    doy += 1;
+    added += 1;
+    if (doy >= 365) {
+      doy = 0;
+      year += 1;
+    }
+  };
+  for (let i = 0; i < 7; i++) step();
+  while (!coastOpen(doy)) step();
+  return { date: { year, doy }, added };
+}
+
+/**
+ * Asks for the next boat: the world runs the week (or the winter, past the
+ * coast's close) with nobody home, the date and the gap move, and three new
+ * people are aboard. The first survivor's boat is rebuilt by newWorld instead,
+ * since there is no world yet to run.
+ */
+export function nextBoat(state: GameState, world: World): void {
+  const l = state.landing;
+  if (!l || l.oldCamp === null) return;
+  const { date, added } = nextBoatDate(l.date);
+  advance(state, world, added * 1440, { nobody: true });
+  state.year = worldDate(state).year;
+  state.startDoy = date.doy;
+  state.minute = 0;
+  state.lastHour = 0;
+  state.lastDay = 0;
+  state.weather.rolledDay = 0;
+  state.weather.storm = null;
+  for (const st of Object.values(state.regions)) st.iceHole = null;
+  state.log = [];
+  l.date = date;
+  l.gapDays += added;
+  l.boat += 1;
+  l.chosen = 0;
+  l.candidates = rollCandidates(state.seed, state.survivors.length + 1, l.boat, state.survivors.map((s) => s.name));
+  l.name = l.candidates[0].name;
 }
 
 export function daysInWords(n: number): string {
@@ -190,13 +234,31 @@ function builtList(rec: LifeRecord): string {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
-/** Confirms the name and starts the heir's run. */
-export function land(state: GameState, world: World, name = state.landing?.name): void {
+/**
+ * Confirms the landing: the chosen card's person under the name in the field,
+ * and the run starts. The first survivor replaces the placeholder record a
+ * new world keeps under the overlay; an heir is pushed after the dead. A
+ * person given explicitly (the reference player's median) stands in for the
+ * card.
+ */
+export function land(state: GameState, world: World, name = state.landing?.name, person?: Person): void {
   const l = state.landing;
   if (!l || !name) return;
+  const chosen = l.candidates[l.chosen];
+  const p = person ?? chosen.person;
+  if (l.oldCamp === null) {
+    state.survivors = [newRecord(1, name, l.date, 0, p)];
+    newPerson(state, world, l.cell, l.region);
+    state.landing = null;
+    enterRegion(state, world, l.region);
+    const here = regionAt(world, l.region).name;
+    if (l.date.doy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${here}. You have an axe, wool on your back and a kilo of dried meat.`);
+    else log(state, `${fmtDate(calendar(0, l.date.doy))}. You wake at ${here} with an axe, wool on your back and a kilo of dried meat.`);
+    return;
+  }
   const last = current(state);
   const oldCamp = l.oldCamp;
-  state.survivors.push(newRecord(state.survivors.length + 1, name, l.date, l.gapDays, medianPerson(sexOfName(name.first) ?? "m")));
+  state.survivors.push(newRecord(state.survivors.length + 1, name, l.date, l.gapDays, p));
   newPerson(state, world, l.cell, l.region);
   state.landing = null;
   enterRegion(state, world, l.region);

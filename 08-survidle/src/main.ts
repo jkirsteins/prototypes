@@ -17,8 +17,8 @@ import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { giveOrder, orderGate } from "./sim/ladder";
-import { beginAgain, land, rerollName } from "./sim/landing";
-import { newGame } from "./sim/newgame";
+import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
+import { newWorld } from "./sim/newgame";
 import { moveOrder, removeOrder } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
@@ -94,8 +94,8 @@ function resetForecastAt(): void {
 // boot(), when there is nothing yet to refresh.
 let awayDial: AwayDial | null = null;
 
-function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
-  const g = newGame(seed, startDoy);
+function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0) {
+  const g = newWorld(seed, boat, startDoy);
   state = g.state;
   world = g.world;
   wasDead = false;
@@ -299,14 +299,21 @@ function onClick(ev: Event) {
       beginAgain(state, world);
       resetForecastAt();
       break;
-    case "reroll-name":
-      rerollName(state);
+    case "pick-candidate":
+      pickCandidate(state, Number(target.dataset.index) as 0 | 1 | 2);
+      break;
+    case "next-boat":
+      // The first boat has no world to run yet: it is rebuilt a week later from the same seed.
+      if (state.landing && state.landing.oldCamp === null) fresh(state.seed, startDoy, state.landing.boat + 1);
+      else nextBoat(state, world);
+      resetForecastAt();
       break;
     case "land": {
       const wasLanding = state.landing !== null;
+      const heir = state.survivors.length >= 1 && state.landing?.oldCamp !== null;
       land(state, world);
-      // land() no-ops without a landing or a name; only count a real landing as a begin-again.
-      if (wasLanding && state.landing === null) beacon.beganAgain(state, Date.now());
+      // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
+      if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
       ui.confirmAbandon = false;
       resetForecastAt();
       break;

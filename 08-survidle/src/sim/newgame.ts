@@ -8,7 +8,7 @@ import { creditYield } from "./ledger";
 import { log } from "./log";
 import { newRecord } from "./record";
 import { rollName } from "./names";
-import { derived, medianPerson, personOf } from "./person";
+import { derived, medianPerson, personOf, rollCandidates } from "./person";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, LifeRecord, Person } from "./types";
@@ -74,6 +74,21 @@ export function firstRecord(seed: number, startDoy: number, person?: Person): Li
   const sex = rng.int(2) === 0 ? "f" : "m";
   const p = person ?? medianPerson(sex);
   return newRecord(1, rollName(rng, p.sex, []), { year: 1, doy: startDoy }, 0, p);
+}
+
+/**
+ * A new world as the player meets it: on the landing screen, three people
+ * aboard the first boat, the date a week later per boat asked for. The
+ * placeholder under the overlay is the median survivor, which land replaces.
+ */
+export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state: GameState; world: World } {
+  const doy = startDoy + 7 * boat;
+  const g = newGame(seed, doy);
+  const start = regionAt(g.world, g.world.start);
+  const candidates = rollCandidates(seed, 1, boat, []);
+  g.state.log = [];
+  g.state.landing = { cell: start.campCell, region: g.world.start, date: { year: 1, doy }, gapDays: 0, candidates, boat, chosen: 0, name: candidates[0].name, oldCamp: null };
+  return g;
 }
 
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */

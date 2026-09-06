@@ -14,7 +14,8 @@ import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species"
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
-import { daysInWords, landingDate } from "../sim/landing";
+import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
+import { gradeLines, quirkLine } from "../sim/person";
 import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
@@ -27,7 +28,7 @@ import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { GameState, Garment, ItemId, LogEntry, SkillId } from "../sim/types";
+import type { Candidate, GameState, Garment, ItemId, LogEntry, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND } from "../units";
@@ -546,13 +547,24 @@ ${entryLinesHtml(lines.slice(1))}
 
 export function landingHtml(state: GameState, world: World): string {
   const l = state.landing!;
-  const last = current(state);
-  return `<div class="box">
+  const first = l.oldCamp === null;
+  const gap = first ? "" : `${esc(daysInWords(l.gapDays))} days after ${esc(fmtName(current(state).name))} died. `;
+  const next = first ? { year: 1, doy: l.date.doy + 7 } : nextBoatDate(l.date).date;
+  const cards = l.candidates.map((c, i) => `<button class="card${i === l.chosen ? " chosen" : ""}" data-act="pick-candidate" data-index="${i}">${candidateCardHtml(c)}</button>`).join("");
+  return `<div class="box landing">
 <h1>${esc(fmtWorldDate(l.date))}</h1>
-<p>${esc(daysInWords(l.gapDays))} days after ${esc(fmtName(last.name))} died. A boat puts you ashore at ${esc(regionAt(world, l.region).name)}.</p>
-<p><label>Your name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label> <button class="mini" data-act="reroll-name">another name</button></p>
+<p>${gap}A boat puts in at ${esc(regionAt(world, l.region).name)} with three aboard. Choose one; the other two sail on.</p>
+<div class="cards">${cards}</div>
+<p><label>Name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label></p>
 <button class="act" data-act="land">Land</button>
+<button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">next boat (${esc(fmtWorldDate(next))})</button>
 </div>`;
+}
+
+/** A candidate as the landing screen shows it: name, the four grades, the quirks. The face joins in the card module. */
+function candidateCardHtml(c: Candidate): string {
+  const lines = [...gradeLines(c.person), ...c.person.quirks.map(quirkLine)];
+  return `<b>${esc(fmtName(c.name))}</b>${lines.map((t) => `<div class="e">${esc(t)}</div>`).join("")}`;
 }
 
 export function cemeteryHtml(state: GameState, ui: UiState): string {

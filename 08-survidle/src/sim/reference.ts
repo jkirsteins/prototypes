@@ -26,6 +26,7 @@ import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledg
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
+import { medianPerson } from "./person";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
@@ -614,10 +615,13 @@ export function runLineage(seed: number, days: number, lives = 3): LineageReport
     const oldSt = regionState(state, world, oldRegion);
     const trapKg = oldSt.trap ? Math.round(oldSt.trap.kg * 10) / 10 : null;
     beginAgain(state, world);
+    // The gates measure the list, not the boat: the heir is the median person under the first card's name.
+    const l = state.landing!;
+    const median = medianPerson(l.candidates[0].person.sex);
     // land() clears state.landing once it confirms the name, so the cell it chose
     // has to be read off the landing itself, not off the player it then places.
     const landCell = state.landing!.cell;
-    land(state, world);
+    land(state, world, undefined, median);
     const found = foundAtOldCamp(state, world, oldRegion, landCell, trapKg);
     const heirRef = { state, world, player: new ReferencePlayer(REFERENCE_ORDERS, oldRegion) };
     const report = measure(heirRef, days);

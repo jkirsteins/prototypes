@@ -364,15 +364,26 @@ export interface LifeRecord {
   died: Died | null;
 }
 
-/** Set between "Begin again" and the name being confirmed: where the next survivor lands and how long the world sat empty. */
+/**
+ * Set between "Begin again" and the landing being confirmed, and for a new
+ * world before its first survivor: where the boat puts in, how long the
+ * world sat empty, and the three people aboard.
+ */
 export interface Landing {
   cell: number;
   region: number;
   date: WorldDate;
   gapDays: number;
+  /** The three people aboard this boat. */
+  candidates: Candidate[];
+  /** "Next boat" presses, from 0. */
+  boat: number;
+  /** Index into candidates: the highlighted card. */
+  chosen: 0 | 1 | 2;
+  /** The name in the field: the chosen candidate's until the player edits it. */
   name: { first: string; last: string };
-  /** The camp cell the heir's distance and bearing are read against: the old survivor's, not wherever they died. */
-  oldCamp: number;
+  /** The camp cell the heir's distance and bearing are read against: the old survivor's, not wherever they died. Null for the first survivor. */
+  oldCamp: number | null;
 }
 
 export interface RunStats { trees: number; animals: number; structures: number; km: number }

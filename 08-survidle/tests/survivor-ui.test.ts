@@ -32,14 +32,18 @@ describe("the tombstone", () => {
 });
 
 describe("the landing screen", () => {
-  it("shows the date, the gap, the prefilled name, a reroll and Land", () => {
+  it("shows the date, the gap, three cards with the chosen one marked, the prefilled name, the next boat and Land", () => {
     const { state, world } = dead();
     beginAgain(state, world);
     const html = landingHtml(state, world);
     expect(html).toContain("year 1");
     expect(html).toContain("90 days after");
     expect(html).toContain(`value="${fmtName(state.landing!.name)}"`);
-    expect(html).toContain('data-act="reroll-name"');
+    expect(html.match(/data-act="pick-candidate"/g)).toHaveLength(3);
+    expect(html).toContain('class="card chosen" data-act="pick-candidate" data-index="0"');
+    for (const c of state.landing!.candidates) expect(html).toContain(fmtName(c.name));
+    expect(html).toContain('data-act="next-boat"');
+    expect(html).not.toContain('data-act="reroll-name"');
     expect(html).toContain('data-act="land"');
   });
 });

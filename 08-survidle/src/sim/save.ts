@@ -9,7 +9,7 @@ import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
 import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
-import { medianPerson } from "./person";
+import { medianPerson, rollCandidates } from "./person";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, Inventory, LogEntry, TaskId } from "./types";
@@ -57,6 +57,15 @@ function fillDefaults(state: GameState): void {
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.
   for (const s of state.survivors) s.person ??= { ...medianPerson(sexOfName(s.name.first) ?? (s.index % 2 ? "m" : "f")), face: s.index };
+  // A landing from before the boat: three people rolled for it, the old name kept in the field.
+  if (state.landing) {
+    const l = state.landing;
+    l.candidates ??= rollCandidates(state.seed, state.survivors.length + 1, 0, state.survivors.map((s) => s.name));
+    l.boat ??= 0;
+    l.chosen ??= 0;
+    l.name ??= l.candidates[l.chosen].name;
+    l.oldCamp ??= null;
+  }
   state.player.known ??= {};
   state.seeps ??= {};
   for (const st of Object.values(state.regions)) {
