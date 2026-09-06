@@ -1,49 +1,221 @@
-# Survidle: the survivor, first half
+# Survidle: before the round - the axe and the survivor
 
-The roadmap's item I, the part that lands before the first tester round
-(`2026-09-03-survidle-realism-roadmap.md`, "I. The survivor" and the
-build order): the survivor becomes a person the player is given, leaves
-alone, and keeps as a prize. Today the survivor is a name and a set of
-bars, and the away report says "you". After this: the log while away is
-in third person by name; a boat lands three candidates and the player
-picks one; four body axes set real quantities and show as words; five
-quirks name a capability and a fear each; a card carries all of it from
-the landing screen to the cemetery; and an 8x8 face is drawn from the
+The two roadmap items that stand between main and the first tester
+round (`2026-09-03-survidle-realism-roadmap.md`, the build order): J,
+the axe and the wood without one, and the first half of I, the
+survivor. J lands first, since it is first in the order and the year
+probe is its gate; the survivor follows; the round's own preparation
+closes the document, since the round is what both are for.
+
+**J** answers the year probe's level-20 deaths: a camp that dies of
+thirst in October beside 823 logs, because the axe wore out and the
+list never gathered the stone for another. After J a fire needs no
+axe, an iron axe blunts and is honed rather than wearing out, a stone
+axe costs its real hours, and the list keeps stone.
+
+**I's first half** makes the survivor a person the player is given,
+leaves alone, and keeps as a prize: the log while away is in third
+person by name; a boat lands three candidates and the player picks
+one; four body axes set real quantities and show as words; five quirks
+name a capability and a fear each; a card carries all of it from the
+landing screen to the cemetery; and an 8x8 face is drawn from the
 person. The reference player runs a fixed median person, so every gate
 keeps measuring the list and not the boat.
 
 The second half of I, found knowledge and earned traits, waits for the
-round (section 12). This spec also carries the round's own preparation,
-since the round is what the item is for (section 10).
+round (section 19).
 
 ## Decisions confirmed with the author
 
-- Scope is I's first half plus round prep. E hides and clothing and the
-  tables audit keep their slot after the round: the round checks a first
-  run's twenty days, a first run dies in April or May, and neither
-  changes what a tester meets. The whole of I is not pulled in: earned
-  traits read H and 5, which do not exist, and found knowledge is a
-  sub-project the size of this one that the away runner never walks into.
+- Scope is J, I's first half and round prep, in one branch and one PR.
+  E hides and clothing and the tables audit keep their slot after the
+  round: the round checks a first run's twenty days, a first run dies
+  in April or May, and neither changes what a tester meets. The whole
+  of I is not pulled in: earned traits read H and 5, which do not
+  exist, and found knowledge is a sub-project the size of I's first
+  half that the away runner never walks into.
+- The iron axe is lost only through the ice. Its wear is realistic,
+  honing and a blunt edge, even if that means the arrival axe stays
+  around a long time. The haft break and the loss at a kill were
+  offered and not taken.
+- Two stone axe recipes: a flaked axe in ninety minutes that shatters,
+  and a ground celt at twenty hours with a real edge.
 - The voice is templates in every log string, not a transform at render
   time and not two strings per call.
 - The first survivor's boat works like an heir's: a new world opens on
   the landing screen with three candidates, and "next boat" costs a week.
 - All five quirks from the roadmap ship: coast-born, forest-born, sleeps
-  light, big eater, steady by the fire.
+  light, big eater, steady by the fire. A fear refuses an order, and a
+  refused order is skipped for the next one, never a stall.
 - The face shows in six places: the three candidate cards, the journal
   card, the tombstone, the cemetery, the stats panel header and the top
-  of the away report.
+  of the away report. Screenshots of a woman's and a man's card go to
+  the author when the faces read well; if the drawn faces read badly, a
+  third-party pixel avatar library is the fallback (section 14).
 - The person has a sex. First names are drawn from the matching half of
   the pool; the pools stay Scandinavian and Baltic together for first
   names and surnames alike, combined freely. Latvian and Lithuanian
   surnames carry a paired feminine form, since those languages inflect
   them; every other surname is one form for anyone. The face reads the
   sex for beards. The body axes never read it.
-- The work runs in its own worktree on a branch and lands by PR.
+- The work runs in its own worktree on a branch and lands by PR. The author's standing authorisation covers the calls that
+  come up in the spec, the plan and the build; the merge waits on the
+  author approving the face screenshots.
 
-## 1. The person
+# Part J: the axe and the wood without one
 
-### 1.1 The shape
+## 1. What the code does today
+
+The arrival axe and a crafted stone axe are one tool, `axe`, with a
+durability that felling, splitting, ice holes and butchering wear down
+to zero, when it is gone. "Sharpen the axe" spends a stone for +30. The
+one recipe, `axe`, is 3 stone, a stick and 2 cordage, 90 minutes with a
+knife, at no tier, and its output is the same iron axe. Firewood comes
+from one source, splitting a log with an axe. The reference list gathers
+8 stone once and never hones. On seed 17 at level 20 that adds up to
+day 190: the axe and the spear worn out, the axe keep reading "missing
+materials" with one stone at camp, 823 logs unsplit, no fire, the
+trough's 24 litres ice, and thirst in late October.
+
+## 2. Three axes
+
+`ToolId` gains `stoneAxe` and `flakedAxe`; `axe` is the iron one.
+`AXES: ToolId[] = ["axe", "stoneAxe", "flakedAxe"]` is the preference
+order; `axeInHand(p)` returns the best held, `axeNear(p, invs)` any of
+the three in hand or in reach, and every `toolNear(p, "axe", ...)` and
+`toolFor` read that returns `"axe"` today reads through them. Piles
+hold tools as counts, so three ids rather than a head field on one is
+what survives a pile.
+
+| tool | kg | edge wears | at edge 0 |
+|---|---|---|---|
+| `axe`, iron | 1.5 | x1, today's rate | blunt: stays, hones |
+| `stoneAxe`, the celt | 1.4 | x1.5 | blunt: stays, hones |
+| `flakedAxe` | 1.2 | x4 | shatters: gone, the stone spent |
+
+`durability` is the edge. `wearTool` for an axe multiplies the wear by
+the table and, for the iron axe and the celt, clamps at 0 and keeps the
+tool; the flaked axe is removed as any tool is today, with the
+`toolWorn` record and "The flaked axe shatters on the stroke." Felling
+and splitting take longer as the edge goes: duration x `(2 - edge /
+100)`, so a blunt axe is twice as slow; the flaked axe is x1.5 on top
+at any edge. Once per honing cycle, at an edge of 25 or under, the log
+says "The axe is blunt; it wants honing." The ice hole and the hunt's
+butchering wear the edge as today.
+
+Old saves: every `axe` stays `axe`, so a crafted stone axe in an old
+save becomes iron; the mastery key `craft:axe` is renamed
+`craft:stoneAxe`.
+
+## 3. Honing and the whetstone
+
+`whetstone` is a tool, 0.5 kg, from the recipe `whetstone`: 1 stone,
+30 minutes, no tool, no tier ("a flat stone ground smooth on the
+outcrop"). "Hone the axe" (`hone`, camp group, camp-bound like
+`sharpen`) needs a whetstone in reach and the held axe under an edge of
+70, refusing "sharp enough" above it; 10 minutes, the edge to 100, the
+whetstone wears 1. "Sharpen the axe on a stone" is today's `sharpen`
+row renamed, kept for a survivor with no whetstone under the
+one-method rule. Both work the held axe from `axeInHand`.
+
+## 4. The loss
+
+In `fallThrough`, on the survived branch, if an axe is in hand, one
+time in two it is gone: the tool is removed, the record gets a new
+event `{ kind: "toolLost"; tool }`, and the log says "The axe went to
+the bottom and stayed there." The drowned branch already loses
+everything. The tables audit sets the rate later from how often an
+axe is lost in a year of use; one in two per survived fall is the
+number until then.
+
+## 5. Dead wood
+
+`deadwood`, a located forest task in the gather group: "Gather dead
+wood", no tool, 60 minutes, 10 kg of firewood, or wet firewood when a
+split here and now would come out wet (`splitIsWet`). It draws the
+region's felling stock by an eighth of a tree per gather, so 80 kg of
+dead wood is one tree and the standing stock stands for both; it
+refuses "the forest is picked clean" when the stock is under an eighth.
+Its mastery key is `deadwood` under woodcraft, the level's speed and no
+perk. The fire's fuel is 4 to 6 kg an hour, so an hour on the forest
+floor is an evening's fire, as the roadmap says.
+
+## 6. Wedges
+
+`wedge` is an item, 0.3 kg, from the recipe `wedges`: 2 sticks, a
+knife, 20 minutes, no tier, out 2 wedges. `splitWedges`, "Split a log
+with wedges", a camp-group located task like `split`: needs 2 wedges in
+reach and a log, 45 minutes, 20 kg of firewood with the same wet rule
+as `split`; one split in ten breaks a wedge, removing one with "A wedge
+splits along the grain." The maul is a stick swung, not an item.
+
+## 7. The list
+
+`REFERENCE_ORDERS` changes:
+
+- `job("stone", campHas 8)` becomes `keep("stone", 8)`.
+- After the knife: `job("craft", once, "whetstone")`, then a hone grind
+  `{ task: "hone", until: forever }`, which refuses harmlessly at an
+  edge of 70 and above, then `keep("craft", 2, "wedges")` counted as
+  `wedge` at camp.
+- After `keep("split", 60)`: `keep("splitWedges", 60)` and
+  `keep("deadwood", 60)`. `wantOpen` opens `split` when an axe is in
+  reach and the other two when none is; the wedge split sits above
+  dead wood so a log camp splits before it forages. The 400 kg winter
+  keep gets the same two beside it under the same season rule.
+- `keep("craft", 1, "axe")` becomes `keep("craft", 1, "stoneAxe")`,
+  open at Crafting 5 and above, and `keep("craft", 1, "flakedAxe")`
+  beside it, open under Crafting 5 when no axe is in reach.
+
+`axeInReach` reads all three ids. The recipes: `flakedAxe` is 2 stone,
+a stick, 2 cordage, a knife, 90 minutes, no tier; `stoneAxe` is 1
+stone, a stick, 2 cordage, the whetstone as the tool, 1,200 minutes,
+recommended Crafting 5 (`craft:stoneAxe`), so under it the celt can
+spoil as any craft does.
+
+## 8. Tests for J
+
+- `axes`: the three ids wear at their factors; the iron axe and the
+  celt stay at 0; the flaked axe is removed at 0 with the record; a
+  felling at edge 0 takes twice the minutes and a flaked felling 1.5
+  times; `axeInHand` prefers iron over celt over flaked; the blunt line
+  logs once per cycle.
+- `hone`: the row refuses without a whetstone, refuses at 70, restores
+  to 100 and wears the whetstone 1; the stone sharpen still gives +30
+  for a stone.
+- `loss`: with a seeded rng that survives the fall and rolls under a
+  half, the axe is gone and the record has `toolLost`; over a half it
+  stays.
+- `deadwood`: 10 kg firewood in an hour, wet after rain, the stock down
+  an eighth, refused at under an eighth.
+- `wedges`: the recipe makes 2; the split needs 2 and a log, takes 45
+  minutes, yields 20 kg; a seeded break removes one.
+- `list`: `wantOpen` opens `split` with an axe and `splitWedges` and
+  `deadwood` without; the stone keep refills; the celt keep opens at 5
+  and the flaked keep under 5 with no axe; the whetstone and hone sit
+  after the knife.
+- The April gate in `tests/reference.test.ts` stays green.
+
+## 9. The gate and the browser pass
+
+`npm run year` on seeds 17, 19, 42 and 79 at level 20, the October
+thirst deaths as the before (days 208, 187, 197 and 211 with causes
+thirst, starved, thirst, thirst). Expected: no camp with 800 logs and a
+cold pit, and the level-20 deaths moved into the winter. The readings
+go under J in the roadmap the way the water readings went under F. The
+run takes a quarter of an hour and goes in the background.
+
+Browser pass, seed 17 at 1440 by 900: with the axe left in the camp
+pile and the survivor in the forest, "Gather dead wood" stands and
+"Fell a tree" reads "needs an axe"; make wedges and split a log with
+them; craft a whetstone, run the edge down and hone; the Do rows read
+as written above.
+
+# Part I: the survivor
+
+## 10. The person
+
+### 10.1 The shape
 
 ```ts
 type Grade = -2 | -1 | 0 | 1 | 2;
@@ -61,16 +233,15 @@ interface Person {
 `LifeRecord` gains `person: Person`. The record is what the cemetery
 keeps, so the person outlives the player. `Player` keeps its fields;
 the numbers the person sets are read through `src/sim/person.ts`
-(section 2) at the seams that hold the constants today, and
+(section 11) at the seams that hold the constants today, and
 `workHours` is set from it at `newPerson`.
 
 `medianPerson(sex)` is all four axes at 0, no quirk, face 0. It is
-what `newGame` uses when no person is passed, with the sex of the name it
-rolls, so the reference player,
-the horizon, the year script and every existing test keep their
-numbers and their rng streams.
+what `newGame` uses when no person is passed, with the sex of the name
+it rolls, so the reference player, the horizon, the year script and
+every existing test keep their numbers and their rng streams.
 
-### 1.2 The roll
+### 10.2 The roll
 
 Three candidates per boat, from `new Rng(derive(seed, 700 + index * 16
 + boat))`, where `index` is the survivor's index in the world and
@@ -79,13 +250,13 @@ the world's rng, so a candidate roll never moves the sim. Per
 candidate, in this order:
 
 1. sex: `int(2)`, 0 is "f".
-2. name: section 1.3.
+2. name: section 10.3.
 3. each axis: `int(3) + int(3) - 2`, strength, build, hands, eyes. Two
    three-sided dice minus four, so the shares are 1, 2, 3, 2, 1 in nine
    and the median is the commonest.
 4. quirk count: `int(3) === 0` gives two, otherwise one. Quirks are
    drawn without replacement from the five in the order listed in
-   1.1; if the second drawn would put coast-born and forest-born
+   10.1; if the second drawn would put coast-born and forest-born
    together, it is dropped and the person has one.
 5. face: `int(2 ** 31)`.
 
@@ -93,7 +264,7 @@ A name already used in this world, or held by another candidate of
 the same boat, is not offered. No point budget balances the axes; the
 choice of three does that.
 
-### 1.3 Names
+### 10.3 Names
 
 `FIRST_NAMES` splits into `WOMEN` and `MEN`, each still Scandinavian
 (Norwegian, Swedish, Danish, Finnish) and Baltic (Latvian, Lithuanian,
@@ -101,33 +272,34 @@ Estonian) together. `LAST_NAMES` becomes entries of one or two forms:
 `"Berg"` for a surname that is the same for anyone, and `{ m:
 "Kalnins", f: "Kalnina" }` where the language inflects it. The
 Latvian pairs are Kalnins/Kalnina, Berzins/Berzina, Ozols/Ozola,
-Liepa/Liepa, Krumins/Krumina, Balodis/Balode, Zarins/Zarina,
-Vitols/Vitola, Eglitis/Eglite, Dzenis/Dzene. The Lithuanian pairs use
-the unmarried form: Kazlauskas/Kazlauskaite, Petrauskas/Petrauskaite,
-Jankauskas/Jankauskaite, Zukauskas/Zukauskaite, Butkus/Butkute,
-Urbonas/Urbonaite. Scandinavian, Finnish and Estonian surnames stay
-single. A first name from either region can carry a surname from
-either, as today.
+Krumins/Krumina, Balodis/Balode, Zarins/Zarina, Vitols/Vitola,
+Eglitis/Eglite, Dzenis/Dzene; Liepa is one form. The Lithuanian pairs
+use the unmarried form: Kazlauskas/Kazlauskaite,
+Petrauskas/Petrauskaite, Jankauskas/Jankauskaite,
+Zukauskas/Zukauskaite, Butkus/Butkute, Urbonas/Urbonaite.
+Scandinavian, Finnish and Estonian surnames stay single. A first name
+from either region can carry a surname from either, as today.
 
 `rollName(rng, sex, taken)` draws the first name from the sex's list
 and the surname's form for that sex. `nameTaken` compares first and
 last as typed. The "the younger" fallback stays.
 
-### 1.4 Old saves
+### 10.4 Old saves
 
-Save version goes to 7. A version 6 record gets `medianPerson(sex)` with
-`face` set to the record's index and the sex inferred from which list
-the first name is in; a first name in neither list (typed by the
+Save version goes to 7. A version 6 record gets `medianPerson(sex)`
+with `face` set to the record's index and the sex inferred from which
+list the first name is in; a first name in neither list (typed by the
 player) takes the face seed's parity. A version 6 landing in progress
 gets `candidates` rolled for boat 0 and `chosen` 0; its `name` field
-is dropped. Versions 3 to 5 still load, through the same path.
+is dropped. Versions 3 to 5 still load, through the same path. The
+same bump carries J's mastery key rename.
 
-## 2. What the axes set
+## 11. What the axes set
 
 `src/sim/person.ts` exports `derived(person): Derived`, every field a
 real quantity, and the seams below read it in place of the constant
-they hold today. `derived(medianPerson(sex))` equals today's numbers exactly for
-either sex.
+they hold today. `derived(medianPerson(sex))` equals today's numbers
+exactly for either sex.
 
 | axis | -2 | 0 (today) | +2 | seam |
 |---|---|---|---|---|
@@ -156,7 +328,7 @@ Where a constant is read in a worker or a script with no person at
 hand (`horizon.ts`, the forecast worker), the state's current record
 carries the person, so the read is the same call.
 
-### 2.1 The words
+### 11.1 The words
 
 Grades show as words or quantities, never the number:
 
@@ -170,7 +342,7 @@ Grades show as words or quantities, never the number:
 The strength line is "carries 30 kg all day, 42 at a push; works
 twelve hours", the hours in words. Half kilos print as "22.5 kg".
 
-## 3. Quirks
+## 12. Quirks
 
 Each quirk is a capability or a fear with a source, never a modifier
 with a name. Its card line, its seam, and the number its test reads:
@@ -180,10 +352,9 @@ with a name. Its card line, its seam, and the number its test reads:
   (`readShore`), so the read-water hour is never spent; the landing
   region counts. On a day that is not clear, routing treats fell as
   impassable and a task sited on a fell cell is refused with "will not
-  go up on the fell in this cloud", which the runner reports as blocked
-  like any refusal. Test: at minute 0 of a seeded run the shore is read
-  and `isRead` is true; on an overcast day a route across fell is null
-  where the median's is not.
+  go up on the fell in this cloud". Test: at minute 0 of a seeded run
+  the shore is read and `isRead` is true; on an overcast day a route
+  across fell is null where the median's is not.
 - **Forest-born.** "Knows the forest's game two levels early; will not
   work the open shore in a storm." For a `hunt:<species>` key whose
   hunt spot is `forest`, the levels short of the recommendation are
@@ -207,6 +378,10 @@ with a name. Its card line, its seam, and the number its test reads:
   minutes stay. Test: `lightingInRain` under heavy rain reports
   `failChance` 0 with the quirk and 1/3 without.
 
+A fear refuses the way a ladder refusal does today: the row says why,
+the runner reports the order as blocked, and the scheduler, greedy
+top-down, moves to the next order. A refusal never stalls the list.
+
 The roadmap's rule is that a quirk earns its place if two people with
 different quirks write different order lists. The tests above are that
 rule made a number: each names what a seeded run reads differently.
@@ -215,9 +390,9 @@ The predicates live in `person.ts` (`hasQuirk(state, id)`, reading the
 current record) so a seam asks one question and never reads the
 record's shape.
 
-## 4. The boat
+## 13. The boat
 
-### 4.1 The landing shape
+### 13.1 The landing shape
 
 ```ts
 interface Candidate { name: { first: string; last: string }; person: Person }
@@ -235,7 +410,7 @@ interface Landing {
 
 `Landing.name` and `rerollName` go: the boat is the reroll.
 
-### 4.2 The first survivor
+### 13.2 The first survivor
 
 `newWorld(seed, boat = 0)` in `newgame.ts` builds the state as `newGame`
 does at `START_DOY + 7 * boat`, then empties `survivors`, and sets
@@ -258,7 +433,7 @@ person, runs `newPerson` with it, and writes the 1 April line that
 Grey Shore. {You} {have} an axe, wool on {your} back and a kilo of
 dried meat.", or the dated form for any other day).
 
-### 4.3 The heir
+### 13.3 The heir
 
 `beginAgain` rolls three candidates for the heir's index and boat 0.
 "Next boat" (`nextBoat(state, world)`): `boat` becomes `boat + 1`; the
@@ -271,25 +446,25 @@ day markers 0, the storm cleared, the ice holes gone, the log empty);
 boat. A wait that crosses the coast's close on 3 November jumps to 6
 May: the world sits empty all winter, and that is a story.
 
-### 4.4 The screen
+### 13.4 The screen
 
 The landing overlay shows the date, the gap line as today, and three
 cards side by side (stacked at the phone width), each a candidate's
-card (section 5) with a face, the name, four grade lines and the quirk
+card (section 14) with a face, the name, four grade lines and the quirk
 lines. Clicking a card highlights it. Under the cards: the name field,
 prefilled with the highlighted candidate's name and editable, the
 rule from the F core spec that what the player types is taken as typed
 and empty means the prefilled name; "Land"; and "next boat (a week
 later)", which shows the date it would land on.
 
-## 5. The card
+## 14. The card and the face
 
 `src/ui/card.ts` renders one card two ways, `cardHtml` and `cardText`,
 from the same lines, so what the copy button puts on the clipboard is
 what the screen shows without the markup.
 
-Every card: the face, the name, the four grade lines from 2.1, one
-line per quirk from section 3.
+Every card: the face, the name, the four grade lines from 11.1, one
+line per quirk from section 12.
 
 The living survivor's card, in the journal panel above the entry, adds:
 
@@ -300,16 +475,17 @@ The living survivor's card, in the journal panel above the entry, adds:
 - What they fear: the fear clause of each quirk that has one; "Nothing
   they will say." with no fearing quirk.
 - What they have lost: toes and fingers to frostbite, and each tool
-  worn out with its day, from the record's events; "Nothing." when
-  there is nothing.
+  worn out or lost with its day, from the record's `toolWorn` and
+  `toolLost` events; "Nothing." when there is nothing.
 - Three stories: the record's event lines ranked, three at most,
   oldest first. The rank is the worst night with wolves, then the
   first kill of a large-game species, then the cold snap, the first
   snow and the dark, then the cabin or the turf hut built, then any
   other threshold, then any other structure, then any other first
-  kill, then a tool worn, then a storm, then a mend, then the worst
-  night without wolves. Ties by day. `stories(rec)` lives in
-  `epitaph.ts` beside `entry`, so the two selectors share the lines.
+  kill, then a tool lost, then a tool worn, then a storm, then a mend,
+  then the worst night without wolves. Ties by day. `stories(rec)`
+  lives in `epitaph.ts` beside `entry`, so the two selectors share the
+  lines.
 
 The tombstone shows the whole card under the name with the epitaph
 and the entry as today. The cemetery shows it under an opened grave.
@@ -322,7 +498,7 @@ writes `cardText` to the clipboard and flashes "copied"; where the
 clipboard API is refused, the text opens in a read-only textarea under
 the card for copying by hand.
 
-## 6. The face
+### 14.1 The face
 
 `src/ui/face.ts` draws an 8x8 portrait: a four-column half mirrored,
 five colours, as an inline SVG of rects with `shape-rendering:
@@ -352,9 +528,20 @@ The browser pass screenshots it and judges each face for whether it
 reads as a person by shape and colour; if 8x8 does not read, the
 constant flips to 12 and the templates at 8 stay for the page.
 
-## 7. The voice
+**The author's look.** When the faces read well, a screenshot of a
+woman's card and a man's card goes to the author. **The fallback.** If
+neither size reads as a person, the drawn templates give way to a
+third-party pixel avatar library, `pixel-avatar-lib` (Apache-2.0, on
+npm, a 24 by 24 grid drawn on a canvas from a DNA string) or another
+found at the time; the person's face seed becomes the DNA, the canvas
+is drawn once per face into a data URL so the string panels stay
+strings, and the sex and the eye and jaw rules are dropped where the
+library has no hook for them. The decision and its reason go in the
+roadmap's Built line.
 
-### 7.1 Templates
+## 15. The voice
+
+### 15.1 Templates
 
 Every log string with a second-person word becomes a template.
 Tokens: `{You}`, `{you}`, `{Your}`, `{your}`, and a verb in braces in
@@ -370,14 +557,14 @@ never a pronoun, so no gender is needed and the agreement is always
 right: "Too tired to stand, Veikko sleeps where Veikko is." The name
 is the first name.
 
-The strings are in about thirty files, most in `tasks.ts` (34), `player.ts`
-(20), `panels.ts` (12), `map.ts` (8), `intent.ts` (7) and
+The strings are in about thirty files, most in `tasks.ts` (34),
+`player.ts` (20), `panels.ts` (12), `map.ts` (8), `intent.ts` (7) and
 `hazards.ts` (7). `DEATH_LINES` and the landing and new-game lines
 are among them. Strings that only describe ("Feed the fire ... while
 you are there" in a button title, a JSDoc) are not log lines and are
 left alone; the scan below reads only what reaches `log`.
 
-### 7.2 Which entries are by name
+### 15.2 Which entries are by name
 
 `LogEntry` gains `away?: true`. `catchUp` marks every entry it wrote.
 The away report and the log panel render an entry through `voice`
@@ -393,35 +580,35 @@ you were away", since it addresses the player.
 The ledger, the forecast worker and the scripts never render a line,
 so nothing there changes.
 
-### 7.3 The scan
+### 15.3 The scan
 
 A test reads every `.ts` under `src/sim`, `src/ui` and `src/main.ts`,
 finds each string literal that is an argument of `log(` or an entry of
 `DEATH_LINES`, and fails on a bare `you`, `You`, `your` or `Your`
 outside braces, naming the file and line. A second test renders a
 fixed list of templates both ways against golden strings, one per
-grammar rule in 7.1.
+grammar rule in 15.1.
 
-## 8. The reference player and the scripts
+## 16. The reference player and the scripts
 
 `newGame(seed, startDoy = START_DOY, person?: Person)`; with no person,
-the median for the rolled name's sex.
-`runReference`, `runHeir`, the horizon and the year script pass
-nothing and get the median. `runHeir` lands the heir with the median
-too: it replaces the boat's candidates with one median candidate, sets
-`chosen` to 0 and calls `land(state, world)` as today. The
-April gate, the heir gate, the year gate and the winter gate read the
-same numbers before and after this work; `tests/reference.test.ts`
-already asserts the gate outputs and stays green without edits.
+the median for the rolled name's sex. `runReference`, `runHeir`, the
+horizon and the year script pass nothing and get the median. `runHeir`
+lands the heir with the median too: it replaces the boat's candidates
+with one median candidate, sets `chosen` to 0 and calls `land(state,
+world)` as today. The April gate, the heir gate, the year gate and the
+winter gate read the same numbers before and after the survivor's
+work; `tests/reference.test.ts` already asserts the gate outputs and
+stays green without edits.
 
-## 9. Tests
+## 17. Tests for I
 
 All in `tests/`, vitest, fast:
 
 - `person`: the roll on a seed is the same twice; over 9,000 rolls
   each grade's share is within two points of 1/9, 2/9, 3/9, 2/9, 1/9;
   one or two quirks, never coast-born with forest-born; `derived` at
-  -2, 0 and +2 matches the table in section 2 exactly; the median's
+  -2, 0 and +2 matches the table in section 11 exactly; the median's
   `derived` equals today's constants.
 - `names`: a woman draws a feminine Latvian or Lithuanian form and a
   man never does; a seed exists whose first name is Scandinavian and
@@ -433,7 +620,7 @@ All in `tests/`, vitest, fast:
   spoil chance one level short is 0.7 of the attempt; at +2 eyes the
   neighbours' neighbours are `SEEN` on entry and `huntOdds` by day is
   1.2 times the median's and by night the same.
-- `quirks`: the five tests in section 3.
+- `quirks`: the five tests in section 12.
 - `boat`: `newWorld` opens in the landing phase with three candidates
   on 1 April; "next boat" lands on 8 April with three different
   candidates in the same world; an heir's "next boat" adds seven days
@@ -452,9 +639,11 @@ All in `tests/`, vitest, fast:
   the name lists; a version 7 file round-trips; a version 6 landing
   loads with three candidates.
 
-## 10. Round prep
+# Part R: the round
 
-After the item is built, `docs/testing.md` gains three sections:
+## 18. Round prep
+
+After both items are built, `docs/testing.md` gains three sections:
 
 - **The invite.** The text a tester receives: the link with
   `?tester=<cohort>`, that it is a browser game saved on that device,
@@ -474,7 +663,7 @@ After the item is built, `docs/testing.md` gains three sections:
   390 wide with touch emulation, including the landing screen's cards
   and the journal card; the copy button on a phone.
 
-## 11. Browser pass
+## 19. Browser pass for I
 
 At 1440 by 900 and at 390 wide with touch emulation, recorded with
 both widths named. On a fresh seed: the landing screen shows three
@@ -489,31 +678,36 @@ cemetery and find the ancestor's face. Back-date the save and reload
 the way the survidle browser gotchas memory says (a new tab, not the
 pagehide path) so the away report shows lines by name and the log
 panel keeps them by name after "Continue". Open `?faces=1` and judge
-the page; record the verdict on 8x8.
+the page; record the verdict on 8x8. Screenshot a woman's card and a
+man's card for the author.
 
-## 12. Out of scope
+## 20. Out of scope
 
 Found knowledge and earned traits (the second half of I; found
 knowledge is the first content after the round if the survey says
-there is nothing to do but wait), pronouns in the voice, an age in
-years, any physiology by sex, a re-roll button, a point budget, a
-trait that is a percentage with a name, the tree buying anything
+there is nothing to do but wait), the haft break and the loss at a
+kill, a saw, a forge, a tree felled by fire, pronouns in the voice, an
+age in years, any physiology by sex, a re-roll button, a point budget,
+a trait that is a percentage with a name, the tree buying anything
 here, the kit variant, the save sync, and the RUM application ids.
 
-## 13. Coordination and bookkeeping
+## 21. Coordination and bookkeeping
 
-The winter loop and water part 1 are in flight on their own branches
-with no commits yet. From their specs they touch `body.ts`,
-`reference.ts`, `intent.ts`, `orders.ts`, `tasks.ts`, `water.ts`,
-`camp.ts` and `world/gen.ts`. This work touches `body.ts` (one line,
+The water work landed on main on 2026-09-06 and this branch is rebased
+on it. The winter loop is in flight on its own branch with no commits
+yet; from its spec it touches `body.ts`, `reference.ts`, `intent.ts`,
+`orders.ts` and `tasks.ts`. J touches `reference.ts` (the list) and
+`tasks.ts` (the rows) heavily; I touches `body.ts` (one line,
 `workHours`), `reference.ts` (the `newGame` signature) and `tasks.ts`
 (the voice templates and three seams). The voice conversion is the
-last code task, done after a rebase onto main once those branches
-land or, if they have not, after a rebase onto whatever main holds
-then, so the string edits meet their final form once.
+last code task, done after a rebase onto whatever main holds then, so
+the string edits meet their final form once. If the winter loop lands
+during this work, the branch rebases before its next task.
 
-When this lands: the roadmap's build order marks I's first half built
-with a pointer to this spec and its plan; the I section gains the
-"Built" line the other items carry; `docs/README.md` names `?faces=1`
-under the debug parameters and the boat under "How it plays"; and
-`docs/testing.md` carries section 10.
+When this lands: the roadmap's build order marks J and I's first half
+built with a pointer to this spec and its plan; the J and I sections
+gain the "Built" lines the other items carry, J's with the year probe's
+readings and I's with the face verdict and the size or library chosen;
+`docs/README.md` names `?faces=1` under the debug parameters, the boat
+under "How it plays" and the three axes and dead wood under "Where the
+numbers live"; and `docs/testing.md` carries section 18.
