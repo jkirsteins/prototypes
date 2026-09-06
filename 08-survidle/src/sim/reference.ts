@@ -18,7 +18,11 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
-import { FOODS, type FoodId, RECIPES, TOOLS } from "./items";
+import { nearestCell } from "./intent";
+import {
+  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, RECIPES, ROOT_FROM_DOY, ROOT_TO_DOY,
+  SAP_FROM_DOY, SAP_TO_DOY, TOOLS,
+} from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
@@ -27,10 +31,12 @@ import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
+import { heathCell, watersideCell } from "./position";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
-import { LARGE_GAME } from "./species";
+import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
+import { nestsFor, rootStockFor } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
@@ -357,6 +363,90 @@ export function fed(week: WeekAverage): boolean {
   return week.days > 0 && week.eaten >= FOOD_CLAUSE_KCAL;
 }
 
+const kcalFmt = (n: number) => `${Math.round(n).toLocaleString("en-US")} kcal`;
+
+/**
+ * The non-lean calories accessible at a starvation death and not taken
+ * (fat and carbohydrate design, section 1): fat, roe and eggs at camp or
+ * in the pack, raw fat unrendered, bones uncracked at camp, a nest or
+ * root stock above zero in its season, pine ground in the strip season,
+ * an oily or spawning species already read at a shore, sap on birch
+ * ground in its window, seaweed on a sea shore. Read from the state at
+ * the death, not from the without probe's disabled sources - the probe
+ * asks a different question (section 7).
+ */
+export function unexploited(state: GameState, world: World): { name: string; amount: string }[] {
+  const out: { name: string; amount: string }[] = [];
+  const cal = calendar(state.minute, state.startDoy);
+  const region = state.player.region;
+  const st = regionState(state, world, region);
+  const camp = pile(state, st.campCell);
+  const pack = state.player.pack;
+
+  const atCampOrPack = (food: FoodId, campName: string, packName: string) => {
+    const c = qty(camp, food);
+    if (c > 1e-9) out.push({ name: campName, amount: kcalFmt(c * FOODS[food].kcalPerKg) });
+    const k = qty(pack, food);
+    if (k > 1e-9) out.push({ name: packName, amount: kcalFmt(k * FOODS[food].kcalPerKg) });
+  };
+  atCampOrPack("fat", "fat at camp", "fat in the pack");
+  atCampOrPack("roe", "roe at camp", "roe in the pack");
+  atCampOrPack("eggs", "eggs at camp", "eggs in the pack");
+
+  const rawFat = qty(camp, "rawFat") + qty(pack, "rawFat");
+  if (rawFat > 1e-9) out.push({ name: "raw fat unrendered", amount: `${rawFat.toFixed(1)} kg` });
+
+  const bones = qty(camp, "bone");
+  if (bones > 1e-9) out.push({ name: "bones uncracked", amount: `${Math.round(bones)}` });
+
+  // Above zero and in season: nestsFor and rootStockFor confirm the region
+  // structurally supports the stock, beside the run's own depleting count.
+  if (cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY && st.nests > 1e-9 && nestsFor(world, st, region) > 1e-9) {
+    out.push({ name: "nests", amount: `${st.nests.toFixed(1)} clutches` });
+  }
+
+  const rootGround = (c: number) => heathCell(world, c) || watersideCell(world, c);
+  if (
+    cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY && st.roots > 1e-9 && rootStockFor(world, region) > 1e-9 &&
+    rootGround(nearestCell(state, world, rootGround))
+  ) {
+    out.push({ name: "roots", amount: `${st.roots.toFixed(1)} kg` });
+  }
+
+  if (cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY) {
+    const pineGround = (c: number) => cellAt(world, c).terrain === "pine";
+    if (pineGround(nearestCell(state, world, pineGround))) out.push({ name: "pine ground", amount: "reachable" });
+  }
+
+  let oilyRead = false;
+  let spawnRead = false;
+  for (const [cellStr, obs] of Object.entries(state.player.known)) {
+    if (cellAt(world, Number(cellStr)).region !== region) continue;
+    for (const s of obs.fish) {
+      if (SPECIES_DEFS[s].oily) oilyRead = true;
+      if (inSpawn(s, cal.month)) spawnRead = true;
+    }
+  }
+  if (oilyRead) out.push({ name: "oily fish read", amount: "at the shore" });
+  if (spawnRead) out.push({ name: "spawning fish read", amount: "roe at the shore" });
+
+  if (cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY) {
+    const birchGround = (c: number) => cellAt(world, c).terrain === "birch";
+    if (birchGround(nearestCell(state, world, birchGround))) out.push({ name: "birch sap", amount: "in its window" });
+  }
+
+  const seaGround = (c: number) => watersideCell(world, c, "sea");
+  if (seaGround(nearestCell(state, world, seaGround))) out.push({ name: "seaweed", amount: "on the sea shore" });
+
+  return out;
+}
+
+/** The unexploited line a starvation death's report carries: what sat accessible and was not taken, or "none" for luck or strategy (spec section 7). */
+export function starvationCause(state: GameState, world: World): string {
+  const u = unexploited(state, world);
+  return u.length ? `unexploited: ${u.map((x) => `${x.name} ${x.amount}`).join(", ")}` : "unexploited: none";
+}
+
 function checkpointDays(gate: Gate): number[] {
   return gate.kind === "day" ? [gate.day, 90, DECEMBER_DAY] : [90, DECEMBER_DAY];
 }
@@ -557,6 +647,8 @@ export interface ReferenceReport {
   surplus: { hang: number | null; largeGame: number | null };
   /** The life record, for the selector: epitaph, entry and since read this. */
   record: LifeRecord;
+  /** For a starvation death, the unexploited line read at the moment it fell; null for any other outcome (spec 7). */
+  unexploited: string | null;
 }
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
@@ -598,7 +690,7 @@ export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
     `week (${week.days} d): yield/day ${yields}; vs ${table.name}`,
     `eaten/day ${r0(week.eaten)}, net ${net >= 0 ? "+" : ""}${r0(net)}`,
     `burn/day ${r0(total)} (${verdict(total, BURN.day)}) = base ${r0(b.base)} (${verdict(b.base, BURN.base)}) + work ${r0(work)} (${verdict(work, BURN.work)}: activity ${r0(b.activity)}, walk ${r0(b.walk)}) + cold ${r0(b.cold)} (${verdict(b.cold, coldBand(dayOfYear))}) + sick ${r0(b.sick)}`,
-    `sleep/day ${sleepH.toFixed(1)} h (${verdict(sleepH, SLEEP_HOURS)}), work/day ${(week.workMin / 60).toFixed(1)} h`,
+    `sleep/day ${sleepH.toFixed(1)} h (${verdict(sleepH, SLEEP_HOURS)}), work/day ${(week.workMin / 60).toFixed(1)} h, lean-wall days ${week.leanWallDays} of ${week.days}`,
   ];
 }
 
@@ -642,7 +734,8 @@ export function measure(ref: { state: GameState; world: World; player: Reference
   // death after the gate comes later in the list, and a death before it fails passesGate.
   const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
   const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
-  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state) };
+  const unexploitedLine = state.dead?.cause === "starved" ? starvationCause(state, world) : null;
+  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state), unexploited: unexploitedLine };
 }
 
 export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {

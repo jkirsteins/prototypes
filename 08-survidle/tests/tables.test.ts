@@ -8,6 +8,7 @@ import { minutesToWake } from "../src/sim/sleep";
 
 describe("the tables", () => {
   it("carry the roadmap's April and late-August rows", () => {
+    expect(APRIL.rows.plants!.beginner).toEqual({ lo: 0, hi: 400 });
     expect(APRIL.rows.fishing!.beginner).toEqual({ lo: 0, hi: 400 });
     expect(APRIL.rows.total!.experienced).toEqual({ lo: 1500, hi: 3500 });
     expect(APRIL.rows.largeGame!.beginner).toEqual({ lo: 0, hi: 0 });
@@ -19,7 +20,7 @@ describe("the tables", () => {
   it("a source's band is the sum of its rows; a source with no row has none", () => {
     expect(sourceBand(APRIL, "hunt", "beginner")).toEqual({ lo: 0, hi: 100 });
     expect(sourceBand(APRIL, "fish", "beginner")).toEqual({ lo: 0, hi: 400 });
-    expect(sourceBand(APRIL, "berries", "beginner")).toEqual({ lo: 0, hi: 150 });
+    expect(sourceBand(APRIL, "berries", "beginner")).toEqual({ lo: 0, hi: 400 });
     expect(sourceBand(LATE_AUGUST, "snare", "experienced")).toEqual({ lo: 200, hi: 700 });
     expect(sourceBand(APRIL, "kit", "beginner")).toBeNull();
   });

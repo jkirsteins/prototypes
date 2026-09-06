@@ -405,7 +405,11 @@ export interface Landing {
   oldCamp: number | null;
 }
 
-export interface RunStats { trees: number; animals: number; structures: number; km: number; kills: Partial<Record<Species, number>> }
+export interface RunStats {
+  trees: number; animals: number; structures: number; km: number; kills: Partial<Record<Species, number>>;
+  /** kcal of large game and bear kills, from the actual yield of each kill (raw meat plus raw fat, both at the season it fell). */
+  killsKcal: number;
+}
 
 export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building";
 

@@ -7,6 +7,7 @@
  * Key order is load-bearing: a species' position seeds its range noise, so
  * reordering the catalogue redraws every range. Append new species.
  */
+import { disabled } from "./probe";
 import type { SpotId, Terrain } from "./types";
 
 export type Habitat = Exclude<Terrain, "water"> | "lake" | "sea";
@@ -214,9 +215,9 @@ export function isFish(s: Species): boolean {
   return SPECIES_DEFS[s].kind === "fish";
 }
 
-/** Which item a catch produces: the oily class or the plain one, by species. */
+/** Which item a catch produces: the oily class or the plain one, by species. The probe reads an oily catch as lean when the source is shut. */
 export function fishItem(s: Species): "fish" | "oilyFish" {
-  return SPECIES_DEFS[s].oily ? "oilyFish" : "fish";
+  return SPECIES_DEFS[s].oily && !disabled("oilyFish") ? "oilyFish" : "fish";
 }
 
 /** Whether a species is spawning this month: a catch inside the window also brings roe. */

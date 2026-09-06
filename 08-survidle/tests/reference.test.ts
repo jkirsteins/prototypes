@@ -252,7 +252,7 @@ describe("the reference player", () => {
     const { state, world } = newGame(19);
     state.player.kcal = 0;
     state.minute = 25 * 1440;
-    for (let day = 19; day <= 25; day++) state.ledger.push({ day, yield: emptyYield(), eaten: 2971, burn: emptyBurn(), sleepMin: 0, workMin: 0 });
+    for (let day = 19; day <= 25; day++) state.ledger.push({ day, yield: emptyYield(), eaten: 2971, leanKcal: 0, nonLeanKcal: 2971, leanAtCamp: false, burn: emptyBurn(), sleepMin: 0, workMin: 0 });
     expect(campFoodKcal(state, world)).toBe(0);
     expect(fed(weekBefore(state.ledger, 26))).toBe(true);
     // A body on the fat alone with nothing eaten all week is not, whatever the stomach reads.
@@ -310,7 +310,7 @@ describe("the reference player", () => {
   });
 
   it("weekLines reads a week against the table for its date", () => {
-    const week = { days: 7, yield: { fish: 310, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0, marrow: 0, roe: 0, eggs: 0, bark: 0, roots: 0, sap: 0, seaweed: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
+    const week = { days: 7, yield: { fish: 310, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0, marrow: 0, roe: 0, eggs: 0, bark: 0, roots: 0, sap: 0, seaweed: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672, leanWallDays: 3 };
     const lines = weekLines(week, 115);
     expect(lines[0]).toContain("fish 310 (in band)");
     expect(lines[0]).toContain("kit 0");
@@ -322,6 +322,7 @@ describe("the reference player", () => {
     expect(lines[2]).toContain("cold 200 (in band)");
     expect(lines[3]).toContain("sleep/day 8.4 h (in band)");
     expect(lines[3]).toContain("work/day 11.2 h");
+    expect(lines[3]).toContain("lean-wall days 3 of 7");
     const none = weekLines({ ...week, days: 0 }, 115);
     expect(none[0]).toContain("no full day yet");
   });

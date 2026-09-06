@@ -69,6 +69,7 @@ function fillDefaults(state: GameState): void {
   state.player.known ??= {};
   state.seeps ??= {};
   state.stats.kills ??= {};
+  state.stats.killsKcal ??= 0;
   for (const st of Object.values(state.regions)) {
     st.structureAge ??= {};
     st.racks ??= st.structures.dryingRack ? 1 : 0;
@@ -87,8 +88,12 @@ function fillDefaults(state: GameState): void {
     d.yield.roe ??= 0;
     d.yield.eggs ??= 0;
     d.yield.roots ??= 0;
+    d.yield.bark ??= 0;
     d.yield.sap ??= 0;
     d.yield.seaweed ??= 0;
+    d.leanKcal ??= 0;
+    d.nonLeanKcal ??= 0;
+    d.leanAtCamp ??= false;
   }
   if (state.intent) {
     state.intent.orderId ??= null;

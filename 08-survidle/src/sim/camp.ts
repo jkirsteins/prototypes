@@ -4,12 +4,13 @@ import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./inventory";
+import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
-  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, ROOT_FROM_DOY, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
+import { noteLarder } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { regionState, touchedRegions } from "./regionstate";
@@ -159,11 +160,18 @@ const FALLS: Record<DecayingId, (name: string) => string> = {
   turfHut: (n) => `The roof of the hut at ${n} has come down.`,
 };
 
+/** Lean food: fully lean meat and fish (FOODS.leanShare 1), the kind the ceiling caps outright. */
+const LEAN_FOOD_IDS = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].leanShare === 1);
+
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
 export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
     const r = regionAt(world, id);
     const st = state.regions[id];
+    if (who && id === who.region) {
+      const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty([state.player.pack, pile(state, st.campCell)], f) > 1e-9);
+      noteLarder(state, leanAtCamp);
+    }
     if (st.snareCatch.count > 0) {
       st.snareCatch.age += 1440;
       if (st.snareCatch.age > SNARE_CATCH_MAX_AGE) {

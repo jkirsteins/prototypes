@@ -25,7 +25,8 @@ const row = (beginner: Band, experienced: Band): Record<Tier, Band> => ({ beginn
 export const APRIL: YieldTable = {
   name: "April",
   rows: {
-    plants: row(band(0, 150), band(100, 400)),
+    // The Swedish handbook budgets three hours a day of plant work for the 500 kcal ration.
+    plants: row(band(0, 400), band(200, 800)),
     fishing: row(band(0, 400), band(300, 1200)),
     passiveFishing: row(band(0, 500), band(800, 2500)),
     traps: row(band(0, 150), band(200, 700)),

@@ -21,6 +21,7 @@ import {
 import { creditEaten, creditYield } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
+import { disabled } from "./probe";
 import { hasEvent, record } from "./record";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
@@ -434,6 +435,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "innerBark": {
       const o = opt({ group: "gather", label: "Strip inner bark", detail: `${BARK_FRESH_KG_PER_HOUR} kg an hour on pine, half outside spring; dries three to one, grinds to flour`, duration: 60, repeatable: true });
+      if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
       if (terrain !== "pine") return { ...o, ok: false, why: "stand in pine forest" };
       if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
       if (st.wood < 1) return { ...o, ok: false, why: "the pines are stripped" };
@@ -444,6 +446,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
       const rate = winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR;
       const o = opt({ group: "gather", label: "Dig roots", detail: `${rate} kg an hour with a digging stick; cattail and reed at the water, dandelion on the meadow; cook them`, duration: 60, repeatable: true });
+      if (disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       if (!ground) return { ...o, ok: false, why: "stand by the water, on the bog or on the meadow" };
       if (winter && !(watersideCell(world, at) && iceHoleOpen(state, at))) return { ...o, ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" };
       if (totalQty(invs, "stick") < 1) return { ...o, ok: false, why: "needs a stick to dig with" };
@@ -452,6 +455,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "tapSap": {
       const o = opt({ group: "gather", label: "Tap a birch", detail: `${SAP_LITRES} litres of sap drunk on the spot, ${SAP_KCAL} kcal; early May until the leaves open`, duration: 30, repeatable: true });
+      if (disabled("sap")) return { ...o, ok: false, why: "disabled for the probe" };
       if (terrain !== "birch") return { ...o, ok: false, why: "stand among birches" };
       if (cal.dayOfYear < SAP_FROM_DOY || cal.dayOfYear > SAP_TO_DOY) return { ...o, ok: false, why: cal.dayOfYear < SAP_FROM_DOY ? "the sap has not risen" : "the sap has stopped" };
       if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
@@ -460,6 +464,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "seaweed": {
       const o = opt({ group: "gather", label: "Gather seaweed", detail: `${SEAWEED_KG_PER_HOUR} kg an hour off the rocks; two kilos a day is all a body takes`, duration: 60, repeatable: true });
+      if (disabled("seaweed")) return { ...o, ok: false, why: "disabled for the probe" };
       if (!watersideCell(world, at, "sea")) return { ...o, ok: false, why: "stand on the sea shore" };
       if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is iced over" };
       return o;
@@ -606,6 +611,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
       const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
       const o = needCamp(opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true }));
+      if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
       if (kg <= 0) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
@@ -613,6 +619,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "crack": {
       const o = needCamp(opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true }));
+      if (disabled("marrow")) return { ...o, ok: false, why: "disabled for the probe" };
       if (!o.ok) return o;
       if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
       if (totalQty(toolInvs, "stone") < 1 && !axeInHand(p)) return { ...o, ok: false, why: "needs a stone or the axe" };
@@ -622,6 +629,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const shore = watersideCell(world, at);
       const heath = heathCell(world, at);
       const o = opt({ group: "gather", label: "Gather eggs", detail: `${EGG_KG_PER_HOUR} kg an hour from the nests; May and June, and the nests empty`, duration: 60, repeatable: true });
+      if (disabled("eggs")) return { ...o, ok: false, why: "disabled for the probe" };
       if (!(shore || heath)) return { ...o, ok: false, why: "stand by the water or on the heath" };
       if (cal.dayOfYear < EGG_FROM_DOY || cal.dayOfYear > EGG_TO_DOY) return { ...o, ok: false, why: "no eggs until May" };
       if (st.nests <= 1e-9) return { ...o, ok: false, why: "the nests are empty" };
@@ -630,6 +638,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "grindBark": {
       const kg = Math.min(1, totalQty(invs, "driedBark"));
       const o = needCamp(opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true }));
+      if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
       if (!o.ok) return o;
       if (kg <= 1e-9) return { ...o, ok: false, why: "no dried bark here" };
       if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
@@ -1366,7 +1375,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       st.sapTaps = st.sapTaps.day === day ? { day, n: st.sapTaps.n + 1 } : { day, n: 1 };
       p.water = WATER_FULL;
       p.kcal = Math.min(KCAL_FULL, p.kcal + SAP_KCAL);
-      creditEaten(state, SAP_KCAL);
+      creditEaten(state, SAP_KCAL, 0);
       creditYield(state, "sap", SAP_KCAL);
       log(state, "{You} {drink} the sap as it runs.", "good");
       return;
@@ -1417,6 +1426,9 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         if (x.furKg) produce(state, world, "fur", x.furKg);
         if (x.fatKg) produce(state, world, "rawFat", x.fatKg);
         creditYield(state, "hunt", x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg);
+        if (LARGE_GAME.includes(s) || s === "bear") {
+          state.stats.killsKcal += x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg;
+        }
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
         log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than {you} can carry; it lies where it fell" : ""}.`, "good");
@@ -1462,7 +1474,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         produce(state, world, item, kg);
         // Raw fish is not eaten; the yield is what it cooks to.
         creditYield(state, "fish", kg * FOODS[item === "fish" ? "cookedFish" : "cookedOilyFish"].kcalPerKg);
-        if (inSpawn(s, cal.month)) {
+        if (inSpawn(s, cal.month) && !disabled("roe")) {
           const roe = Math.round(kg * ROE_SHARE * 100) / 100;
           produce(state, world, "roe", roe);
           creditYield(state, "roe", roe * FOODS.roe.kcalPerKg);

@@ -6,7 +6,7 @@ import type { Rng } from "../rng";
 import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
-import { creditGut, creditLean, gutEatenToday, gutRefused, leanRefused } from "./gut";
+import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "./gut";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS } from "./items";
 import { creditEaten } from "./ledger";
@@ -49,9 +49,12 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     if (!wasFull && gutEatenToday(p, state.minute, food) > GUT[food]!.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
     if (gutRefused(p, state.minute, food)) log(state, `{You} cannot face another ${GUT_WORD[food] ?? ITEM_NAMES[food]}.`, "bad");
   }
+  let leanPart = 0;
   if (def.leanShare > 0) {
     const wasRefused = leanRefused(p, state.minute);
+    const before = leanEatenToday(p, state.minute);
     gain = creditLean(p, state.minute, gain, def.leanShare);
+    leanPart = leanEatenToday(p, state.minute) - before;
     if (!wasRefused && leanRefused(p, state.minute)) log(state, "Lean meat is not filling {you}. {You} {need} fat.", "bad");
   }
   let left = kg;
@@ -67,7 +70,7 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     p.kcal = KCAL_FULL;
     p.fat = clamp(p.fat + (gain - room), 0, body(state).fatFull);
   }
-  creditEaten(state, gain);
+  creditEaten(state, gain, leanPart);
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
     log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");

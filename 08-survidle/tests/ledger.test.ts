@@ -3,13 +3,14 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { eat } from "../src/sim/actions";
 import { calendar, dayNumber, START_MINUTE_OF_DAY } from "../src/sim/calendar";
-import { addItem, qty, weight } from "../src/sim/inventory";
+import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { BASE_KCAL_PER_HOUR, coldBurnFactor, feltTemperature, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
+import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { beginTask } from "../src/sim/tasks";
 import { cellAt } from "../src/world/gen";
@@ -41,7 +42,7 @@ describe("the ledger", () => {
     const kit = today(state).yield.kit;
     creditYield(state, "fish", 300);
     creditYield(state, "fish", 200);
-    creditEaten(state, 525);
+    creditEaten(state, 525, 400);
     creditBurn(state, { base: 70, activity: 30, walk: 0, cold: 10, sick: 0 });
     creditBurn(state, { base: 70, activity: 0, walk: 230, cold: 0, sick: 5 });
     creditTime(state, "sleep", 60);
@@ -58,7 +59,7 @@ describe("the ledger", () => {
   it("averages the seven records before a day, and reports how many it found", () => {
     const ledger: DayLedger[] = [];
     for (let day = 1; day <= 10; day++) {
-      ledger.push({ day, yield: { ...emptyYield(), fish: day * 100 }, eaten: 50, burn: { ...emptyBurn(), base: 1680, cold: day }, sleepMin: 480, workMin: 600 });
+      ledger.push({ day, yield: { ...emptyYield(), fish: day * 100 }, eaten: 50, leanKcal: 0, nonLeanKcal: 50, leanAtCamp: false, burn: { ...emptyBurn(), base: 1680, cold: day }, sleepMin: 480, workMin: 600 });
     }
     const w = weekBefore(ledger, 9);
     expect(w.days).toBe(7);
@@ -78,7 +79,7 @@ describe("the ledger", () => {
     expect(none.burn.base).toBe(0);
   });
 
-  it("lists the five sources once each", () => {
+  it("lists each source once, in order", () => {
     expect(YIELD_SOURCES).toEqual(["fish", "trap", "snare", "hunt", "berries", "kit", "marrow", "roe", "eggs", "bark", "roots", "sap", "seaweed"]);
   });
 
@@ -254,5 +255,18 @@ describe("yield and intake", () => {
     const picked = qty(state.player.pack, "berries") - before;
     expect(picked).toBeGreaterThan(0);
     expect(today(state).yield.berries).toBeCloseTo(picked * FOODS.berries.kcalPerKg, 6);
+  });
+
+  it("a day whose lean intake hit the ceiling with lean food at camp and nothing else eaten is a lean-wall day", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "cookedMeat", 10);
+    state.player.kcal = 100;
+    const rng = new Rng(1);
+    let n = 0;
+    while (n++ < 40 && eat(state, world, "cookedMeat", rng)) {}
+    advance(state, world, 1440);
+    const w = weekBefore(state.ledger, 2);
+    expect(w.leanWallDays).toBe(1);
   });
 });
