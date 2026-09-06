@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
 import { emptyYield, YIELD_SOURCES } from "../src/sim/ledger";
-import { BASE_KCAL_PER_HOUR, ENERGY_RATE, WALK_KCAL_PER_HOUR } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, ENERGY_RATE, taskDrain, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { APRIL, BERRY, BURN, LATE_AUGUST, SLEEP_HOURS, SOURCE_ROWS, sourceBand, tableFor, verdict } from "../src/sim/tables";
-import { SLEEP_CAP_MINUTES } from "../src/sim/tasks";
+import { WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { minutesToWake } from "../src/sim/sleep";
 
 describe("the tables", () => {
   it("carry the roadmap's April and late-August rows", () => {
@@ -77,7 +78,13 @@ describe("the constants sit in their real bands", () => {
   });
 
   it("the energy budget balances: twelve hours on a task and four of camp work drain what eight hours asleep restore", () => {
-    expect(12 * -ENERGY_RATE.task + 4 * -ENERGY_RATE.camp).toBeCloseTo(8 * ENERGY_RATE.sleep, 6);
-    expect(verdict(SLEEP_CAP_MINUTES / 60, SLEEP_HOURS)).toBe("in band");
+    expect(12 * taskDrain(WORK_HOURS_DEFAULT) + 4 * -ENERGY_RATE.camp).toBeCloseTo(8 * ENERGY_RATE.sleep, 6);
+  });
+
+  it("the night the sleep model gives is inside the sleep band", () => {
+    // No cap holds the hours in the band any more: the night is however long
+    // the debt takes to fall to the wake line from where the onset line laid
+    // the body down, which for the spec's December evening is 8.2 hours.
+    expect(verdict(minutesToWake(64, 22 + 20 / 60) / 60, SLEEP_HOURS)).toBe("in band");
   });
 });

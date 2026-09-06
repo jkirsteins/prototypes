@@ -13,6 +13,7 @@ import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
+import { debtStep, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
@@ -212,8 +213,19 @@ export function warmthTarget(felt: number, comfortC = COMFORT_C): number {
   return clamp(50 + (felt - comfortC) * 5, 0, 100);
 }
 
-/** Energy an hour: asleep, on a task, at camp work (the rest activity class on a task), and the explicit rest task. */
-export const ENERGY_RATE = { sleep: 12.5, task: -7, camp: -4, rest: 6, restSpent: 4 };
+/** Energy an hour: asleep, at camp work (the rest activity class on a task), and the explicit rest task. A task's own drain is this body's, below. */
+export const ENERGY_RATE = { sleep: 12.5, camp: -4, rest: 6, restSpent: 4 };
+
+/**
+ * Fatigue a task drains an hour for a body whose working day is this long:
+ * enough that a fresh body ends its own day of task work on the spent line
+ * and no lower. The strength axis sets workHours, so a strong body's day is
+ * eleven hours and a weak one's nine with no count kept anywhere, and the
+ * card's "works ten hours" is the drain rather than a clock.
+ */
+export function taskDrain(workHours: number): number {
+  return (100 - SPENT_AT) / workHours;
+}
 
 /**
  * One step of the body: kcal, warmth, energy, wetness, clothing wear, health.
@@ -282,17 +294,21 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   const target = warmthTarget(felt, d.comfortC);
   p.warmth = clamp(p.warmth + (target - p.warmth) * WARMTH_RATE * dt, 0, 100);
 
-  // Energy.
-  // The budget balances at eight hours: twelve on a task and four of camp
-  // work drain exactly what eight asleep restore, so a working day ends
-  // tired and a grind day needs nine, and the collapse threshold is what
-  // real overwork does rather than the end of every third day.
-  // A light sleeper on a windy night gets half a night's rest.
-  const sleepRate = x.storm && hasQuirk(state, "sleepsLight") ? ENERGY_RATE.sleep / 2 : ENERGY_RATE.sleep;
-  const energyRate = a === "sleep" ? sleepRate
+  // Sleep debt, the homeostatic process: the clock builds it and only sleep
+  // pays it, so a felling day and a sewing day are equally long awake and
+  // an evening by the fire gives none of it back. A light sleeper on a windy
+  // night clears it at half the rate.
+  const asleep = a === "sleep";
+  p.sleepDebt = debtStep(p.sleepDebt, asleep, dt, asleep && x.storm && hasQuirk(state, "sleepsLight"));
+
+  // Fatigue: what the work drains and what rest and sleep give back. The
+  // budget balances at eight hours - twelve on a task and four of camp work
+  // drain what eight asleep restore - so a working day ends tired and a grind
+  // day needs nine.
+  const energyRate = asleep ? ENERGY_RATE.sleep
     : a === "rest" && state.task?.id === "rest" ? (p.energy < 20 ? ENERGY_RATE.restSpent : ENERGY_RATE.rest)
     : a === "rest" ? ENERGY_RATE.camp
-    : ENERGY_RATE.task;
+    : -taskDrain(d.workHours);
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.

@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { newGame } from "../src/sim/newgame";
+import type { TaskId } from "../src/sim/types";
+import { derived, medianPerson } from "../src/sim/person";
+import { stepPlayer, taskDrain } from "../src/sim/player";
+import { SPENT_AT } from "../src/sim/sleep";
 import {
   CIRCADIAN_PEAK_HOUR, ULTRADIAN_AMPLITUDE,
   alertness, circadian, debtStep, minutesToWake, sleepiness,
@@ -41,6 +47,45 @@ describe("sleep debt, the homeostatic process", () => {
     expect(awake(10, 8)).toBeCloseTo(awake(10, 8), 12);
     expect(debtStep(40, false, 1)).toBeGreaterThan(40);
     expect(debtStep(40, true, 1)).toBeLessThan(40);
+  });
+});
+
+describe("fatigue, the reserve the work drains", () => {
+  /** Hours of one task, stepped a minute at a time in mild air so nothing else has a say. */
+  function run(taskId: TaskId, hours: number, energy = 100) {
+    const { state, world } = newGame(17);
+    state.player.energy = energy;
+    state.player.sleepDebt = 20;
+    state.task = { id: taskId, progress: 0, duration: 1e6, repeat: false };
+    for (let m = 0; m < hours * 60; m++) stepPlayer(state, world, 10, 1);
+    return state.player;
+  }
+
+  it("ten hours of task work take a median body from full to the spent line, eleven for a strong one", () => {
+    expect(WORK_HOURS_DEFAULT).toBe(10);
+    expect(100 - WORK_HOURS_DEFAULT * taskDrain(WORK_HOURS_DEFAULT)).toBeCloseTo(SPENT_AT, 6);
+    const strong = derived({ ...medianPerson("f"), axes: { strength: 1, build: 0, hands: 0, eyes: 0 } });
+    expect(strong.workHours).toBe(11);
+    expect(100 - strong.workHours * taskDrain(strong.workHours)).toBeCloseTo(SPENT_AT, 6);
+    // And the body itself reads its own hours through the seam, not a constant.
+    expect(run("chop", WORK_HOURS_DEFAULT).energy).toBeCloseTo(SPENT_AT, 6);
+  });
+
+  it("rest restores 6 an hour and never moves the debt", () => {
+    const rested = run("rest", 1, 50);
+    expect(rested.energy).toBeCloseTo(56, 6);
+    const worked = run("chop", 1);
+    expect(worked.energy).toBeCloseTo(100 - taskDrain(WORK_HOURS_DEFAULT), 6);
+    // An hour by the fire builds the same debt an hour of felling does: only
+    // sleep pays it, which is why a spent body eventually gets sleepy sitting.
+    expect(rested.sleepDebt).toBeCloseTo(worked.sleepDebt, 9);
+    expect(rested.sleepDebt).toBeGreaterThan(20);
+  });
+
+  it("a sleep pays the debt and restores fatigue at once", () => {
+    const slept = run("sleep", 8, 40);
+    expect(slept.sleepDebt).toBeLessThan(5);
+    expect(slept.energy).toBe(100);
   });
 });
 

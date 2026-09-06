@@ -98,16 +98,24 @@ describe("the quirks", () => {
     expect(light.state.log.some((e) => e.text.includes("{wake} at the wolves"))).toBe(true);
     expect(median.state.player.health).toBe(75);
     expect(median.state.player.injured).toBeGreaterThan(0);
-    // The storm night: asleep through a storm, the light sleeper gains half.
+    // The storm night: asleep through a storm, the light sleeper pays off half
+    // the sleep debt the sound sleeper does. The quirk is on the debt's fall
+    // rather than on fatigue, so the rest of the body is unchanged: the hour
+    // gives back the same energy either way, and it is the pressure that is
+    // still there in the morning.
     const stormy = withQuirk(17, "sleepsLight");
     const calm = withQuirk(17, null);
     for (const g of [stormy, calm]) {
       g.state.player.energy = 20;
+      g.state.player.sleepDebt = 60;
       g.state.weather.storm = { from: 0, until: 10 * 60, warned: true };
       g.state.task = { id: "sleep", progress: 0, duration: 120, repeat: false };
       advance(g.state, g.world, 60);
     }
-    expect(stormy.state.player.energy - 20).toBeCloseTo((calm.state.player.energy - 20) / 2, 1);
+    // Half the rate is a shade over half the hour's fall, since the fall is on
+    // the debt still owed and the light sleeper still owes more of it.
+    expect(60 - stormy.state.player.sleepDebt).toBeCloseTo((60 - calm.state.player.sleepDebt) / 2, 0);
+    expect(stormy.state.player.energy).toBeCloseTo(calm.state.player.energy, 6);
   });
 
   it("big eater: a tenth faster at work and a tenth more burnt in every bucket", () => {
