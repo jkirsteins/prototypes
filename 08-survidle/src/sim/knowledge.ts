@@ -52,7 +52,7 @@ export function readCells(state: GameState, world: World, region: number): numbe
 export function readLine(state: GameState, world: World, cal: Calendar, cell: number): string {
   const name = regionAt(world, cellAt(world, cell).region).name;
   const obs = state.player.known[cell];
-  if (!obs || obs.fish.length === 0) return `You read the water at ${name}: nothing lives in this water.`;
+  if (!obs || obs.fish.length === 0) return `{You} {read} the water at ${name}: nothing lives in this water.`;
   const here: string[] = [];
   const away: string[] = [];
   for (const s of obs.fish) {
@@ -61,5 +61,5 @@ export function readLine(state: GameState, world: World, cal: Calendar, cell: nu
     if (gone) away.push(`the ${def.name} are ${def.lie ?? "off the point"}, ${gone}`);
     else here.push(fishLie(s));
   }
-  return `You read the water at ${name}: ${[here.join(", "), away.join(", ")].filter(Boolean).join("; ")}.`;
+  return `{You} {read} the water at ${name}: ${[here.join(", "), away.join(", ")].filter(Boolean).join("; ")}.`;
 }

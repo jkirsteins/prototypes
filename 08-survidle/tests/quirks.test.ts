@@ -95,7 +95,7 @@ describe("the quirks", () => {
     }
     expect(light.state.player.health).toBe(100);
     expect(light.state.player.injured).toBe(0);
-    expect(light.state.log.some((e) => e.text.includes("wake at the wolves"))).toBe(true);
+    expect(light.state.log.some((e) => e.text.includes("{wake} at the wolves"))).toBe(true);
     expect(median.state.player.health).toBe(75);
     expect(median.state.player.injured).toBeGreaterThan(0);
     // The storm night: asleep through a storm, the light sleeper gains half.

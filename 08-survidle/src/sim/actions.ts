@@ -43,8 +43,8 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     gain = (full + (kg - full) / 2) * def.kcalPerKg;
     const after = before + kg;
     p.berriesToday.kg = after;
-    if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "Your stomach is turning.", "bad");
-    if (after >= BERRY.refuseKg - 1e-9) log(state, "You cannot face another berry.", "bad");
+    if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
+    if (after >= BERRY.refuseKg - 1e-9) log(state, "{You} cannot face another berry.", "bad");
   }
   let left = kg;
   for (const inv of invs) {
@@ -62,7 +62,7 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
   creditEaten(state, gain);
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
-    log(state, "The raw meat turns your stomach. A fever follows.", "bad");
+    log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");
   }
   return true;
 }

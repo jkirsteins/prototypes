@@ -258,7 +258,7 @@ describe("spread and smoke", () => {
     startTask(state, world, cal, "sleep");
     const h0 = state.player.health;
     advance(state, world, 240);
-    expect(state.log.some((e) => e.text === "The air is thick. You wake coughing.")).toBe(true);
+    expect(state.log.some((e) => e.text === "The air is thick. {You} {wake} coughing.")).toBe(true);
     expect(state.player.health).toBeLessThan(h0 - 50);
     advance(state, world, 240);
     expect(state.dead?.cause).toBe("smoke");

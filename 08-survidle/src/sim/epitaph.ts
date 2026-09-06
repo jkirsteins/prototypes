@@ -137,7 +137,7 @@ export function stories(rec: LifeRecord): string[] {
 }
 
 /** One sentence of what happened on or after `day`, for the away report. */
-export function since(rec: LifeRecord, day: number): string {
+export function since(rec: LifeRecord, day: number, name?: string): string {
   const parts: string[] = [];
   for (const e of rec.events) {
     if (e.day < day) continue;
@@ -146,5 +146,5 @@ export function since(rec: LifeRecord, day: number): string {
   }
   if (rec.worst && rec.worst.day >= day) parts.push(`the worst night on day ${rec.worst.day}`);
   if (!parts.length) return "Nothing worth telling.";
-  return `${cap(parts.join("; "))}.`;
+  return name ? `${name} ${parts.join("; ")}.` : `${cap(parts.join("; "))}.`;
 }

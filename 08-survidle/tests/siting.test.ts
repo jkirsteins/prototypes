@@ -186,7 +186,7 @@ describe("make camp here", () => {
     expect(beginTask(state, world, calendar(state.minute, state.startDoy), "makeCamp")).toBe(true);
     advance(state, world, 25);
     expect(st.campCell).toBe(next);
-    expect(state.log.some((e) => e.text === "You make camp here.")).toBe(true);
+    expect(state.log.some((e) => e.text === "{You} {make} camp here.")).toBe(true);
   });
 
   it("names why it cannot start: a structure at the old camp, or a loose pile there", () => {

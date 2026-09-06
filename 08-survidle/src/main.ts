@@ -176,7 +176,7 @@ function render() {
     setPanel("overlay", cemeteryHtml(state, ui));
     overlay.hidden = false;
   } else if (ui.away) {
-    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay), current(state).person));
+    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay, current(state).name.first), current(state).person, current(state).name.first));
     overlay.hidden = false;
   } else if (state.landing) {
     setPanel("overlay", landingHtml(state, world));

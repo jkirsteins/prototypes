@@ -43,9 +43,9 @@ export const RUNG_ORDER: OrderKind[] = ["job", "grind", "keep"];
 
 /** What the log says as each rung opens, once per skill per survivor. */
 export const RUNG_LINE: Record<OrderKind, (skill: string) => string> = {
-  job: (s) => `You know ${s.toLowerCase()} well enough to set a task and walk away: jobs with a count or a target from ${s}.`,
+  job: (s) => `{You} {know} ${s.toLowerCase()} well enough to set a task and walk away: jobs with a count or a target from ${s}.`,
   grind: (s) => `${s} is second nature now: grinds, work that never ends, from ${s}.`,
-  keep: (s) => `You keep count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
+  keep: (s) => `{You} {keep} count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
 };
 
 export const MASTERY_CAP = 99;

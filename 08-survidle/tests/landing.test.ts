@@ -109,7 +109,7 @@ describe("the landing", () => {
     expect(current(state).index).toBe(2);
     expect(current(state).gapDays).toBe(90);
     expect(state.player.health).toBe(100);
-    expect(state.log[0].text).toMatch(/^\d+ July, year 1\. 90 days after .* died\. You land at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
+    expect(state.log[0].text).toMatch(/^\d+ July, year 1\. 90 days after .* died\. \{You\} \{land\} at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
   });
 });
 

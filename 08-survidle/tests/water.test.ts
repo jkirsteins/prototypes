@@ -47,7 +47,7 @@ describe("water", () => {
     for (let m = 0; m < 60; m++) drains = stepPlayer(state, world, 15, 1);
     expect(h0 - state.player.health).toBeCloseTo(4, 1);
     expect(causeFrom(drains)).toBe("thirst");
-    expect(state.log.some((e) => e.text === "You are thirsty.")).toBe(true);
+    expect(state.log.some((e) => e.text === "{You} {are} thirsty.")).toBe(true);
   });
 
   it("drinks at a shore and not away from water; auto-drink keeps the reserve up while the tab runs", () => {

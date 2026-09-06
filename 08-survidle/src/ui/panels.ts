@@ -36,6 +36,7 @@ import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND } from
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
+import { plain, voice } from "../sim/voice";
 import { waterLine, waterList } from "./water";
 import { skyHtml } from "./sky";
 
@@ -260,7 +261,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       const km = kmBetween(world, myCell, cell, walkableIce(state.weather));
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
-        : ` <small>${esc(walk.why)}</small>`;
+        : ` <small>${esc(plain(walk.why))}</small>`;
       const thin = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
       return `<div>${SPOT_NAMES[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
     })
@@ -302,13 +303,13 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     const go = check(state, world, cal, "travel", `region:${id}`);
     travel = go.ok
       ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
-      : `<div style="margin-top:6px"><span class="dim">${esc(go.why)}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
+      : `<div style="margin-top:6px"><span class="dim">${esc(plain(go.why))}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
   }
   // What this cell offers as a camp, shown only when it is not the camp already; a move
   // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.
   const move = here && myCell !== campCellOf(state, world, id) ? canMoveCamp(state, world) : null;
   const asCamp = move
-    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(move.why)})`}</dd>`
+    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(plain(move.why))})`}</dd>`
     : "";
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
@@ -332,7 +333,7 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
   const waiting = it?.task === "wait"
-    ? `<div class="step">Waiting at camp: ${esc(it.step)}</div>${state.task ? TASK_BAR : ""}`
+    ? `<div class="step">Waiting at camp: ${esc(plain(it.step))}</div>${state.task ? TASK_BAR : ""}`
     : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
@@ -340,7 +341,7 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     const clicks = live && hurryKind(state) === "click";
     const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
     const second = live
-      ? `<div class="step">${esc(it!.step)}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
+      ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(o.skipped || (orderMet(state, world, o, false) ? "met" : "waiting"))}</div>`;
     const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
@@ -360,7 +361,7 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
     ? `<div class="aside"><small>Set aside</small>${aside
         .map(({ task, option, here: isHere }) => {
           const pct = Math.round(task.fraction * 100);
-          const note = !isHere || !option.ok ? ` <small>${esc(option.why)}</small>` : "";
+          const note = !isHere || !option.ok ? ` <small>${esc(plain(option.why))}</small>` : "";
           const resume = option.ok
             ? ` <button class="mini" data-act="task" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}">resume</button>`
             : "";
@@ -377,7 +378,7 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   let head = "";
   if (it && !scheduled) {
     head = `<div class="head"><b>${esc(intentSentence(state, world, cal, it))}</b><button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button></div>
-<div class="step">${esc(it.step)}</div>${t ? TASK_BAR : ""}`;
+<div class="step">${esc(plain(it.step))}</div>${t ? TASK_BAR : ""}`;
   } else if (!it && t) {
     const opts = availableTasks(state, world, cal);
     let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
@@ -430,13 +431,13 @@ function optHtml(o: TaskOption): string {
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
   if (!o.ok) {
-    return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</span></div>`;
+    return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</span></div>`;
   }
   const time = `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}`;
   const rep = o.repeatable
     ? `<button class="rep" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}" data-repeat="1" title="Keep doing it until it cannot continue">loop</button>`
     : "";
-  return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${time}${o.detail ? `; ${esc(o.detail)}` : ""}</small>${bar}</button>${rep}</div>`;
+  return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${time}${o.detail ? `; ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${rep}</div>`;
 }
 
 /** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
@@ -512,10 +513,12 @@ export function fmtLogTime(e: LogEntry): string {
   return `d${day} ${fmtClock(hour)}`;
 }
 
+/** The log: "you" for what the player watched, the survivor's name for what happened while they were away. */
 export function logHtml(state: GameState): string {
   const entries = state.log.slice(-60).reverse();
+  const name = current(state).name.first;
   return `<h2>Log</h2><div class="entries">${entries
-    .map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`)
+    .map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`)
     .join("")}</div>`;
 }
 
@@ -599,11 +602,11 @@ function awayOrderLine(o: AwayOrder): string {
   return `<div class="e ${o.skipped && !o.gone ? "bad" : ""}">${esc(o.label)}: ${esc([did, now].filter(Boolean).join("; "))}.</div>`;
 }
 
-export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean, sinceLine: string, person?: Person): string {
+export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean, sinceLine: string, person?: Person, name: string | null = null): string {
   const h = Math.floor(realSeconds / 3600);
   const m = Math.floor((realSeconds % 3600) / 60);
   const gameMin = realSeconds * GAME_MINUTES_PER_REAL_SECOND;
-  const moved = away.movedTo ? `<p>You are now in ${esc(away.movedTo)}.</p>` : "";
+  const moved = away.movedTo ? `<p>${esc(voice(`{You} {are} now in ${away.movedTo}.`, name))}</p>` : "";
   const orders = away.orders.length ? `<div class="entries orders">${away.orders.map(awayOrderLine).join("")}</div>` : "";
   const entries = away.entries;
   return `<div class="box">
@@ -611,7 +614,7 @@ export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean
 <p>${h ? `${h} h ` : ""}${m} min of the clock; ${fmtDuration(gameMin)} in the north${capped ? " (a day is as much as the world runs on without you)" : ""}.</p>
 <p>${person ? faceSvg(person, 32) : ""} ${esc(sinceLine)}</p>
 ${moved}${orders}
-${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
+${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
 <button class="act" data-act="dismiss">Continue</button>
 </div>`;
 }

@@ -6,6 +6,7 @@ import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween } from "../sim/position";
 import { levelMinutes, SKILL_NAMES } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
+import { plain } from "../sim/voice";
 import { SPOT_NAMES, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
@@ -160,10 +161,10 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     // it gets no "add it anyway" queue path, only the reason it is grey.
     const queueable = o.id !== "makeCamp";
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  const line = [time, o.detail].filter(Boolean).join("; ");
+  const line = [time, o.detail ? plain(o.detail) : ""].filter(Boolean).join("; ");
   return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
 }
 

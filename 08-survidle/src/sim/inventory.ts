@@ -280,7 +280,7 @@ export function wearTool(state: GameState, id: ToolId, n: number): boolean {
   p.tools = p.tools.filter((x) => x !== t);
   if (removeItem(p.pack, id, 1) >= 1) {
     p.tools.push(freshTool(id));
-    log(state, `The ${TOOLS[id].name} has broken; you take up the spare.`);
+    log(state, `The ${TOOLS[id].name} has broken; {you} {take} up the spare.`);
   }
   return true;
 }

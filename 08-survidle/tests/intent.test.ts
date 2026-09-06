@@ -167,7 +167,7 @@ describe("the work tier", () => {
     startIntent(state, world, cal, rng(), req("chop", { until: { kind: "forever" } }));
     expect(until(g, () => state.intent === null)).toBe(true);
     expect(state.stats.trees).toBe(1);
-    expect(state.log.some((e) => e.text === "Fell a tree: nothing left worth felling. You stop.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Fell a tree: nothing left worth felling. {You} {stop}.")).toBe(true);
   });
 
   it("N times counts completions of the work only", () => {
@@ -318,7 +318,7 @@ describe("the work tier", () => {
     addItem(state.player.pack, "stone", 34 / ITEM_KG.stone);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
     expect(until(g, () => state.intent === null, 500)).toBe(true);
-    expect(state.log.some((e) => e.text === "lean-to: missing materials at camp. You stop.")).toBe(true);
+    expect(state.log.some((e) => e.text === "lean-to: missing materials at camp. {You} {stop}.")).toBe(true);
   });
 
   it("a build already finished is never offered a fetch, whatever sits elsewhere in the region", () => {

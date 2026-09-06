@@ -487,7 +487,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Read the water", detail: "an hour watching this shore: what lives in it and where it lies", duration: 60, repeatable: false }));
       if (!o.ok) return o;
       if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
-      if (isRead(state, at)) return { ...o, ok: false, why: "you have read this water" };
+      if (isRead(state, at)) return { ...o, ok: false, why: "{you} {have} read this water" };
       return o;
     }
     case "cook": {
@@ -615,9 +615,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const target = walkTarget(state, world, arg ?? "");
       const o = opt({ group: "move", label: id === "travel" ? `Go to ${target?.label ?? "?"}` : `Walk to ${target?.label ?? "?"}`, detail: "" });
       if (!target) return { ...o, ok: false, why: "no such place" };
-      if (id === "travel" && discovery(state, cellAt(world, target.cell).region) === 0) return { ...o, ok: false, why: "you know nothing of that country" };
+      if (id === "travel" && discovery(state, cellAt(world, target.cell).region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
       const from = cellOf(state, world);
-      if (target.cell === from) return { ...o, ok: false, why: "you are here" };
+      if (target.cell === from) return { ...o, ok: false, why: "{you} {are} here" };
       if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
       const ice = walkIceMode(state, target.thin);
       const route = findRoute(world, from, target.cell, ice, fearsFell(state));
@@ -635,7 +635,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const campCell = st.campCell;
       // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
       const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false });
-      if (here === campCell) return { ...o, ok: false, why: "you are at camp" };
+      if (here === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
       const kg = weight(pile(state, at));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
@@ -721,7 +721,7 @@ export function bedText(state: GameState, world: World): string {
   const roof = camp && roofed(st);
   const blanket = state.player.clothing.some((g) => CLOTHING[g.id].slot === "blanket");
   const on = bed ? "on a bough bed" : "on bare ground";
-  const under = blanket && roof ? "under your blanket and the roof" : blanket ? "under your blanket" : roof ? "under the roof" : "in the open";
+  const under = blanket && roof ? "under {your} blanket and the roof" : blanket ? "under {your} blanket" : roof ? "under the roof" : "in the open";
   const fire = camp && st.fire.lit ? ", by the fire" : "";
   return `${on}, ${under}${fire}`;
 }
@@ -1023,8 +1023,8 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (repeat && !state.dead) {
     // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
     const o = check(state, world, cal, id, wanted);
-    if (!o.ok) log(state, `${o.label}: ${o.why}. You stop.`);
-    else if (!beginTask(state, world, cal, id, wanted, true, rng)) log(state, `${o.label}: nothing about. You stop.`);
+    if (!o.ok) log(state, `${o.label}: ${o.why}. {You} {stop}.`);
+    else if (!beginTask(state, world, cal, id, wanted, true, rng)) log(state, `${o.label}: nothing about. {You} {stop}.`);
   }
 }
 
@@ -1049,7 +1049,7 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
   state.route = null;
   state.task = null;
   state.intent = null;
-  log(state, "Through the ice. You crawl out soaked and shaking.", "bad");
+  log(state, "Through the ice. {You} {crawl} out soaked and shaking.", "bad");
   // The one way an iron axe ends: one time in two the hand that went under opens.
   const axe = axeInHand(p);
   if (axe && rng.chance(0.5)) {
@@ -1116,7 +1116,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
     state.route = null;
     state.task = null;
     placeAt(state, world, cellOf(state, world));
-    if (wasTravel) log(state, `You reach ${label}.`);
+    if (wasTravel) log(state, `{You} {reach} ${label}.`);
     if (spotHere(state, world) === "heath") collectSnares(state, world);
     collectTrap(state, world);
   }
@@ -1129,7 +1129,7 @@ function cutIceHole(state: GameState, world: World): void {
   if (!axeInHand(p)) for (const id of AXES) if (takeUp(state, world, id)) break;
   wearAxe(state, world);
   st.iceHole = { cell: cellOf(state, world), minute: state.minute };
-  log(state, "You cut a hole in the ice.");
+  log(state, "{You} {cut} a hole in the ice.");
 }
 
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
@@ -1148,7 +1148,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(axeInjury)) {
         p.injured = Math.max(p.injured, 24 * 60);
         p.health = Math.max(1, p.health - 10);
-        log(state, "The axe glances off a knot into your shin. You will limp for a day.", "bad");
+        log(state, "The axe glances off a knot into {your} shin. {You} will limp for a day.", "bad");
       }
       return;
     }
@@ -1213,19 +1213,19 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         creditYield(state, "hunt", x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg);
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
-        log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
+        log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than {you} can carry; it lies where it fell" : ""}.`, "good");
         const injury = injuryChance(state, s);
         if (injury > 0 && rng.chance(injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);
-          log(state, "It did not go down easily. You are hurt.", "bad");
+          log(state, "It did not go down easily. {You} {are} hurt.", "bad");
         }
       } else {
         const hurt = gapInjury(state, s);
         if (hurt > 0 && rng.chance(hurt)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);
-          log(state, `The ${def.name} turns on you. You are hurt.`, "bad");
+          log(state, `The ${def.name} turns on {you}. {You} {are} hurt.`, "bad");
         }
         const loss = huntExtras(state, s).arrowLoss;
         if (loss > 0 && rng.chance(loss)) {
@@ -1275,7 +1275,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "emptyTrap": {
       const kg = takeTrapFish(state, world);
-      log(state, `You empty the trap: ${kg.toFixed(1)} kg of fish.`, "good");
+      log(state, `{You} {empty} the trap: ${kg.toFixed(1)} kg of fish.`, "good");
       return;
     }
     case "cook": {
@@ -1308,13 +1308,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         const old = p.clothing.find((g) => CLOTHING[g.id].slot === slot);
         p.clothing = p.clothing.filter((g) => g !== old);
         p.clothing.push({ id: rec.out.clothing, durability: 100 });
-        log(state, `You put on the ${rec.name}${old ? ` and leave the ${CLOTHING[old.id].name} behind` : ""}.`, "good");
+        log(state, `{You} {put} on the ${rec.name}${old ? ` and leave the ${CLOTHING[old.id].name} behind` : ""}.`, "good");
       } else if (rec.out.item) {
         const item = rec.out.item;
         produce(state, world, item, rec.out.qty ?? 1);
         if (item in TOOLS) {
-          if (hasTool(p, item as ToolId)) log(state, `You have a spare ${rec.name}.`, "good");
-          else if (takeUp(state, world, item as ToolId)) log(state, `You have a ${rec.name}.`, "good");
+          if (hasTool(p, item as ToolId)) log(state, `{You} {have} a spare ${rec.name}.`, "good");
+          else if (takeUp(state, world, item as ToolId)) log(state, `{You} {have} a ${rec.name}.`, "good");
         }
       }
       return;
@@ -1365,7 +1365,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (arg === "seep") {
         const s = state.seeps[cellOf(state, world)];
         if (s) s.dug = state.minute;
-        log(state, "You dig the seep out again.", "good");
+        log(state, "{You} {dig} the seep out again.", "good");
         return;
       }
       const sid = arg as DecayingId;
@@ -1431,12 +1431,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "fill": {
       if (arg === "hole" && !waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
       const added = fillVessels(state, world);
-      if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
+      if (added > 1e-9) log(state, `{You} {fill} ${added.toFixed(1)} litres.`);
       return;
     }
     case "hang": {
       const kg = loadRack(state, world);
-      if (kg > 0) log(state, `You hang ${kg.toFixed(1)} kg of meat to dry.`);
+      if (kg > 0) log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
       return;
     }
     case "iceHole": {
@@ -1447,7 +1447,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const here = cellOf(state, world);
       st.campCell = here;
       if (state.intent) state.intent.campCell = here;
-      log(state, "You make camp here.");
+      log(state, "{You} {make} camp here.");
       return;
     }
     case "haul":
@@ -1479,7 +1479,7 @@ function collectTrap(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
   if (!st.trap || cellOf(state, world) !== st.trap.cell) return;
   const kg = takeTrapFish(state, world);
-  if (kg > 1e-9) log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; you take them.`, "good");
+  if (kg > 1e-9) log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; {you} {take} them.`, "good");
 }
 
 /** Hares hanging in the snares come with you when you pass the heath. */

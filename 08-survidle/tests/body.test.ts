@@ -98,8 +98,8 @@ describe("the body tier", () => {
     state.player.energy = 20;
     advance(state, world, 1);
     expect(state.task?.id).toBe("sleep");
-    expect(state.intent?.step).toContain("where you stand");
-    expect(state.log.some((e) => e.text.includes("You sleep where you are"))).toBe(true);
+    expect(state.intent?.step).toContain("where {you} {stand}");
+    expect(state.log.some((e) => e.text.includes("{You} {sleep} where {you} {are}"))).toBe(true);
   });
 
   it("cold, it goes to camp and rests until warm again, and sleep outranks cold", () => {

@@ -252,8 +252,8 @@ export function land(state: GameState, world: World, name = state.landing?.name,
     state.landing = null;
     enterRegion(state, world, l.region);
     const here = regionAt(world, l.region).name;
-    if (l.date.doy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${here}. You have an axe, wool on your back and a kilo of dried meat.`);
-    else log(state, `${fmtDate(calendar(0, l.date.doy))}. You wake at ${here} with an axe, wool on your back and a kilo of dried meat.`);
+    if (l.date.doy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${here}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
+    else log(state, `${fmtDate(calendar(0, l.date.doy))}. {You} {wake} at ${here} with an axe, wool on {your} back and a kilo of dried meat.`);
     return;
   }
   const last = current(state);
@@ -270,6 +270,6 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   const journal = built ? ` The journal of ${fmtName(last.name)} lists ${built} at ${oldName}.` : "";
   log(
     state,
-    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. You land at ${regionAt(world, l.region).name} with an axe, wool on your back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.${journal}`,
+    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. {You} {land} at ${regionAt(world, l.region).name} with an axe, wool on {your} back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.${journal}`,
   );
 }

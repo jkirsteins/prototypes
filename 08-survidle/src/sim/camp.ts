@@ -91,7 +91,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     reportSpoil(state, ageStacks(inv, dt, ambient), region === who?.region ? "" : ` at ${regionAt(world, region).name}`);
   }
   // Nobody is carrying a pack with nobody home.
-  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in your pack");
+  if (who) reportSpoil(state, ageStacks(state.player.pack, dt, ambient), " in {your} pack");
   tidyPiles(state);
 }
 
@@ -163,7 +163,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     if (st.snareCatch.count > 0) {
       st.snareCatch.age += 1440;
       if (st.snareCatch.age > SNARE_CATCH_MAX_AGE) {
-        log(state, `A fox got to the snares at ${r.name} before you did.`, "bad");
+        log(state, `A fox got to the snares at ${r.name} before {you} did.`, "bad");
         st.snareCatch.count = 0;
         st.snareCatch.age = 0;
       }

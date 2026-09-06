@@ -358,7 +358,7 @@ describe("the scheduler", () => {
     addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
     advance(state, world, 10);
     expect(state.intent?.task).toBe("wait");
-    expect(state.log.filter((e) => e.text === "Nothing to do. You wait at camp.").length).toBe(1);
+    expect(state.log.filter((e) => e.text === "Nothing to do. {You} {wait} at camp.").length).toBe(1);
   });
 
   it("removing the last order while a wait intent is live still clears it", () => {
@@ -425,7 +425,7 @@ describe("waiting at camp", () => {
     advance(state, world, 1);
     expect(state.intent?.task).toBe("wait");
     expect(state.task?.id).toBe("walk");
-    expect(state.log.some((e) => e.text === "Nothing to do. You wait at camp.")).toBe(true);
+    expect(state.log.some((e) => e.text === "Nothing to do. {You} {wait} at camp.")).toBe(true);
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(st.campCell);
     expect(state.intent?.step).toBe("waiting at camp");

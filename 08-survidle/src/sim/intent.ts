@@ -365,7 +365,7 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
     // An order's intent says nothing here either: the scheduler re-judges the
     // route next free minute and logs the reason once, through chooseOrder.
     if (it.orderId !== null) state.intent = null;
-    else endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. You stop.`, "bad");
+    else endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. {You} {stop}.`, "bad");
     return undefined;
   }
   if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
@@ -554,7 +554,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     // done line and re-judges a blocked one, logging the reason once.
     if (it.orderId !== null || it.windDown) state.intent = null;
     else if (met) endIntent(state, `${label}: done.`, "good");
-    else endIntent(state, `${label}: ${o!.why}. You stop.`, "bad");
+    else endIntent(state, `${label}: ${o!.why}. {You} {stop}.`, "bad");
     return undefined;
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
@@ -571,7 +571,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     : { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
   if (!takeStep(state, world, cal, step, rng)) {
     if (it.orderId !== null) state.intent = null;
-    else endIntent(state, `${label}: cannot go on. You stop.`, "bad");
+    else endIntent(state, `${label}: cannot go on. {You} {stop}.`, "bad");
   } else if (it.task === "wait" && step.id === "sleep") {
     // Sticky like a body-tier sleep, so a need such as hunger cannot preempt it mid-night.
     it.need = "sleep";

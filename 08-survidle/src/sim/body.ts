@@ -59,7 +59,7 @@ export function spentNow(state: GameState): boolean {
   }
   if (today(state).workMin < p.workHours * 60) return false;
   p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
-  log(state, "A day's work done. You rest by the fire.");
+  log(state, "A day's work done. {You} {rest} by the fire.");
   return true;
 }
 
@@ -361,18 +361,18 @@ function campStep(state: GameState, world: World, cal: Calendar, it: Intent, nee
     const why = need === "sleep" ? " for the night" : need === "cold" ? " to warm up" : " for the evening";
     if (check(state, world, cal, "walk", `cell:${st.campCell}`).ok) return walkStep(state, world, st.campCell, why);
     const s: Step = need === "sleep"
-      ? { id: "sleep", step: "sleeping where you stand; no way to camp" }
+      ? { id: "sleep", step: "sleeping where {you} {stand}; no way to camp" }
       : need === "cold"
         ? { id: "rest", step: "resting to warm up; no way to camp" }
         : { id: "rest", step: "resting after the day's work; no way to camp" };
-    if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. You sleep where you are.", "bad");
+    if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
     return s;
   }
   const fs = fireStep(state, world, cal, st.campCell);
   if (fs) return fs;
   if (need === "sleep") {
     const s: Step = { id: "sleep", step: "sleeping" };
-    if (!isRunning(state, s) && st.campCell !== it.campCell) log(state, `You turn in at camp in ${regionAt(world, p.region).name}.`);
+    if (!isRunning(state, s) && st.campCell !== it.campCell) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
     return s;
   }
   if (need === "cold") return { id: "rest", step: st.fire.lit ? "warming up by the fire" : "resting to warm up" };

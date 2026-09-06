@@ -242,5 +242,5 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     return;
   }
   startIntent(state, world, cal, rng, WAIT);
-  log(state, "Nothing to do. You wait at camp.");
+  log(state, "Nothing to do. {You} {wait} at camp.");
 }

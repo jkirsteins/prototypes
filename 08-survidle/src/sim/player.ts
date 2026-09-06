@@ -354,20 +354,20 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   }
 
   // Milestone warnings, once per crossing.
-  warn(state, "kcal", p.kcal <= 1200, "You are starving.");
-  warn(state, "thin", p.fat < FAT_THIN * d.fatFull, "You are getting thin.");
-  warn(state, "ribs", p.fat < FAT_RIBS * d.fatFull, "Your ribs show.");
-  warn(state, "wasting", p.fat < FAT_WASTING * d.fatFull, "You are wasting away.");
-  warn(state, "warm", p.warmth < 30, "You are shivering hard. Find warmth.");
-  warn(state, "wet", p.wetness >= 60, "You are soaked through.");
-  warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");
-  warn(state, "thirst", p.water < THIRSTY_L, "You are thirsty.");
+  warn(state, "kcal", p.kcal <= 1200, "{You} {are} starving.");
+  warn(state, "thin", p.fat < FAT_THIN * d.fatFull, "{You} {are} getting thin.");
+  warn(state, "ribs", p.fat < FAT_RIBS * d.fatFull, "{Your} ribs show.");
+  warn(state, "wasting", p.fat < FAT_WASTING * d.fatFull, "{You} {are} wasting away.");
+  warn(state, "warm", p.warmth < 30, "{You} {are} shivering hard. Find warmth.");
+  warn(state, "wet", p.wetness >= 60, "{You} {are} soaked through.");
+  warn(state, "tired", p.energy < 20, "{You} can barely lift {your} arms. Sleep.");
+  warn(state, "thirst", p.water < THIRSTY_L, "{You} {are} thirsty.");
   const here = cellOf(state, world);
   const onThinIce = cellAt(world, here).terrain === "water" && w.iceCm < ICE_SAFE_CM;
   warn(state, "thinice", onThinIce, "The ice is thin here.");
   warn(state, "icedover", watersideCell(world, here) && w.iceCm >= ICE_SHORE_CM, "The shore is iced over.");
   warn(state, "smoke", camp && r.smoke > SMOKE_COUGH, "The fire is smoking the place out.");
-  warn(state, "co", smoking, "The air is thick. You wake coughing.");
+  warn(state, "co", smoking, "The air is thick. {You} {wake} coughing.");
 
   return drains;
 }
@@ -396,14 +396,14 @@ export function causeFrom(d: Drains): DeathCause {
 
 /** What the log says, and the death screen's cause paragraph, for each way to go: one table so the two always agree. */
 export const DEATH_LINES: Record<DeathCause, string> = {
-  starved: "You starved.",
-  froze: "The cold took you.",
+  starved: "{You} starved.",
+  froze: "The cold took {you}.",
   wolves: "The wolves finished it.",
   sickness: "The fever won.",
-  thirst: "Thirst took you.",
-  smoke: "The smoke took you in your sleep.",
-  drowned: "The ice gave way. The lake kept you.",
-  gaveUp: "You sat down by the cold fire and did not get up.",
+  thirst: "Thirst took {you}.",
+  smoke: "The smoke took {you} in {your} sleep.",
+  drowned: "The ice gave way. The lake kept {you}.",
+  gaveUp: "{You} sat down by the cold fire and did not get up.",
 };
 
 export function die(state: GameState, cause: DeathCause, regionName = ""): void {

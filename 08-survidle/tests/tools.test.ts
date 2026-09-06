@@ -34,7 +34,7 @@ describe("tools as items", () => {
     expect(hasTool(p, "flakedAxe")).toBe(true);
     expect(tool(p, "flakedAxe")!.durability).toBe(100);
     expect(qty(p.pack, "flakedAxe")).toBe(0);
-    expect(state.log.at(-1)?.text).toBe("The flaked axe has broken; you take up the spare.");
+    expect(state.log.at(-1)?.text).toBe("The flaked axe has broken; {you} {take} up the spare.");
   });
 
   it("a shattered flaked axe with no spare is gone, and a worn iron axe is blunt and stays", () => {

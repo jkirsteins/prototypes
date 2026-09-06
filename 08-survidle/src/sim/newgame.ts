@@ -117,7 +117,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
   } as GameState;
   newPerson(state, world, start.campCell, world.start);
   enterRegion(state, world, world.start);
-  if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
-  else log(state, `${fmtDate(calendar(0, startDoy))}. You wake at ${start.name} with an axe, wool on your back and a kilo of dried meat.`);
+  if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
+  else log(state, `${fmtDate(calendar(0, startDoy))}. {You} {wake} at ${start.name} with an axe, wool on {your} back and a kilo of dried meat.`);
   return { state, world };
 }

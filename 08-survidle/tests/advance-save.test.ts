@@ -43,7 +43,7 @@ describe("advance", () => {
     state.player.energy = 9;
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
-    expect(state.log.some((e) => e.text.includes("sleep where you are"))).toBe(true);
+    expect(state.log.some((e) => e.text.includes("sleep} where {you} {are}"))).toBe(true);
   });
 
   it("survives the first day with the starting kit", () => {

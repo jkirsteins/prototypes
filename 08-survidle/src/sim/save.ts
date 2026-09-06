@@ -224,6 +224,8 @@ export function catchUp(state: GameState, world: World, realSecondsElapsed: numb
   // its counters, and its "until" is what says how many completions that took.
   const snap = ordersHere(state, world).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
   advance(state, world, minutes);
+  // Written while nobody watched: the panels render these by name.
+  for (const e of state.log.slice(before)) if (e.minute > firstMinute) e.away = true;
   const after = regionState(state, world, region).orders;
   const orders = snap.map((s) => {
     const o = after.find((x) => x.id === s.id);
