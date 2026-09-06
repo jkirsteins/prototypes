@@ -1,7 +1,10 @@
 /**
- * Seasonal stocks a region holds without anyone tending them: the spring
- * nests today, the root cellar's wild stock (Task 7) beside it later, same
- * seed-and-clear shape.
+ * Seasonal stocks a region holds without anyone tending them - the spring
+ * nests, the wild roots of its shore and bog ground - each set two ways:
+ * on its own day-of-year roll for a region already being simulated, and
+ * again here the instant a region's state first comes into being, so a
+ * region first touched mid-window reads no differently from one that has
+ * been rolling since the season opened.
  *
  * Kept out of both regionstate.ts and camp.ts on purpose. camp.ts already
  * imports regionState from regionstate.ts, and regionstate.ts is where a
@@ -40,7 +43,12 @@ export function nestsFor(world: World, st: RegionState, region: number): number 
   return n;
 }
 
-/** Ground roots grow in: the shore, the bog, the meadow. */
+/**
+ * Ground roots grow in: the shore, the bog, the meadow. The shore half of
+ * this duplicates position.ts's watersideCell rather than importing it -
+ * that import is the cycle the module comment above explains - so a
+ * change to what counts as shore there must be carried here too.
+ */
 function rootGround(world: World, idx: number): boolean {
   const t = cellAt(world, idx).terrain;
   return t === "bog" || t === "meadow" || neighbours(world, idx).some((n) => cellAt(world, n).terrain === "water");

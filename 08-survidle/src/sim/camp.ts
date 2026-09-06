@@ -17,12 +17,12 @@ import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { SPECIES_DEFS } from "./species";
 import { nestsFor, rootStockFor } from "./stocks";
-
-/** Re-exported so a region's dailyCamp reset and every caller that wants the figure (tests included) reach it in one place. */
-export { rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean, walkableIce } from "./weather";
+
+/** Re-exported so every caller that wants the figure (tests included) reaches it through camp.ts, beside dailyCamp's own use of it. */
+export { rootStockFor };
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {

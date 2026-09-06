@@ -4,9 +4,9 @@ import { calendar } from "../src/sim/calendar";
 import { dailyCamp, rootStockFor } from "../src/sim/camp";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, qty } from "../src/sim/inventory";
-import { FOODS, ROOT_KG_PER_HOUR, ROOT_STOCK_KG_PER_CELL } from "../src/sim/items";
+import { FOODS, ROOT_KG_PER_HOUR, ROOT_STOCK_KG_PER_CELL, ROOT_WINTER_KG_PER_HOUR } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RECOMMENDED } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -38,5 +38,26 @@ describe("roots and rhizomes", () => {
     expect(check(state, world, cal, "roots").why).toBe("the ground is dug out");
     dailyCamp(state, world, calendar(0, 200), new Rng(2), null);
     expect(st.roots).toBe(0);
+  });
+
+  it("a winter dig needs an open ice hole at the shore; the bog and the meadow are frozen solid, hole or no hole", () => {
+    const { state, world } = newGame(17);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    placeAtSpot(state, world, region, "shore");
+    const shoreCell = cellOf(state, world);
+    addItem(state.player.pack, "stick", 1);
+    const winter = calendar(0, 350);
+    expect(check(state, world, winter, "roots")).toMatchObject({ ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" });
+    st.iceHole = { cell: shoreCell, minute: state.minute };
+    const o = check(state, world, winter, "roots");
+    expect(o.ok).toBe(true);
+    expect(o.detail).toContain(`${ROOT_WINTER_KG_PER_HOUR} kg an hour`);
+    const stock = st.roots;
+    startTask(state, world, winter, "roots");
+    for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, winter, new Rng(m), 1);
+    expect(stock - st.roots).toBeCloseTo(ROOT_WINTER_KG_PER_HOUR, 6);
+    placeAtSpot(state, world, region, "heath");
+    expect(check(state, world, winter, "roots")).toMatchObject({ ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" });
   });
 });
