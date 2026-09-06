@@ -146,7 +146,7 @@ prize (the Swedish text calls the net the most effective method).
 ### Measured after
 
 Read on the branch with sections 1 to 9 built, before and after the five
-runner changes below. `npm test` green at 903 tests.
+runner changes below. `npm test` green at 905 tests.
 
 **The four gates, seed by seed.**
 
@@ -157,8 +157,9 @@ runner changes below. `npm test` green at 903 tests.
   Before this task: the same 3 of 4, the same seed short.
 - Winter, the stocked December camp alive on 1 March: **4 of 4**, up from
   0 of 4. All four alive on day 91.
-- Year at level 20, alive on 1 April: **2 of 4**, up from 2 of 4 with a
-  different pair standing. Seed 17 starved day 310 (it froze on day 300
+- Year at level 20, alive on 1 April: **2 of 4**, the same 2 of 4 it read
+  before, and the same pair alive - seeds 42 and 79 both ways. What moved
+  is the two deaths. Seed 17 starved day 310 (it froze on day 300
   before the woodpile changes; its 1 January pile is now 379 kg and 120
   logs, and what kills it is the lean ceiling with 3 kg of fat left);
   seed 19 starved day 148, up from day 48; seeds 42 and 79 alive at day
@@ -191,8 +192,14 @@ runner changes below. `npm test` green at 903 tests.
   9.1, 11.3 and 10.7 h; burn 4,340, 3,976, 3,987 and 4,207 a day, every
   one inside the corrected 3,000 to 4,500 band, with the work share over
   its own band on two of the four.
-- Year at level 10, reported: **0 of 4**. Seed 17 froze day 277; seed 19
-  starved day 46; seed 42 starved day 96; seed 79 starved day 67.
+- Year at level 10, reported: **0 of 4**, down from 1 of 4. Seed 17 froze
+  day 277; seed 19 starved day 46; seed 42 starved day 96; seed 79 starved
+  day 67. Seed 42 is the one that lost its year, and it lost it to the
+  winter-keep reorder - the change that took the winter gate from 0 of 4
+  to 4 of 4 by putting the woodpile above the hang grind. A camp at level
+  10 cuts wood slower than it hangs meat, and the hours the reorder moves
+  are hours it was living on. Recorded rather than chased: the level-10
+  year is a diagnostic and not a gate.
 - Horizon, reported: every stage over its band except the last. Manual
   only froze on days 3 to 5 against a band of 0 to 2; jobs and grinds held
   30+ days on three seeds and froze on day 5 on seed 79, against 1 to 2;
@@ -237,6 +244,17 @@ runner changes below. `npm test` green at 903 tests.
   goes in as a grind at the head of the list, blocked with "nothing is
   frozen" the rest of the year. Seed 42 now lives the year with 500 kg of
   firewood and a full trough.
+  The class is closed under the want as well as by it: the fetch's own
+  legality read the vessels through `vesselLitres`, which passes a frozen
+  vessel over as though it were empty, so the full-vessel guard never fired
+  on one and the fetch stayed legal with nothing to gain. It now reads the
+  room in the unfrozen vessels and refuses with "no vessel has room to
+  fill", which is its own reason rather than "the vessels are full"
+  because the answer to it is the fire and not the walk home. Without that
+  the thaw grind is a workaround: it needs a lit fire, and the light keep
+  sits eleven rows below the fetches, so a camp whose fire went out could
+  still spin. No gate reading moves on it - the year on seed 42 and the
+  winter gate read identically before and after.
 - *The winter woodpile was cut too late for the corrected stock.* Seed 17
   reached 1 September with 51 kg of firewood and five logs against 6,600
   kg to cut. The window opened on 1 September, sized against a 3-tonne
@@ -294,16 +312,22 @@ runner changes below. `npm test` green at 903 tests.
   number.* Its shore gives 414 kcal a day at Fishing 1, its ten snares
   caught nothing in ten nights, hunting at level 1 caught nothing, and
   April has no berries. The clause is the Swedish 500 kcal ration and does
-  not move. Three list rankings were measured against it and none is green
-  on all three gates: the food keeps raised from 1 kg to 2 changed nothing
-  (the yield, not the target, is what binds); the 60 kg woodpile keep moved
-  below the food block reads April 4 of 4 but drops winter to 1 of 4 and
-  the year to 1 of 4, three winter seeds freezing; the same keep ranked by
-  season - below the food from the thaw to midsummer, above it from
-  midsummer to the thaw - reads April 4 of 4 and winter 4 of 4 but drops
-  the year to 1 of 4, a level-20 camp starving in October. The April food
-  clause and the winter fire want the same hours and the list can serve
-  one or the other.
+  not move. Four list rankings were measured against it and none is green
+  on all three gates, so all four were reverted:
+
+  | ranking tried | April | winter | year |
+  |---|---|---|---|
+  | the cook and fish keeps raised from 1 kg to 2 | 3 of 4, unchanged | not run | not run |
+  | the twenty-snare keep above the cook keeps | 3 of 4, seed 17 failing instead of seed 19 | not run | not run |
+  | the 60 kg woodpile keep below the food block | 4 of 4 | 1 of 4 | 1 of 4 |
+  | the same keep ranked by season, below the food from the thaw to midsummer and above it after | 4 of 4 | 4 of 4 | 1 of 4 |
+  | left as it is | 3 of 4 | 4 of 4 | 2 of 4 |
+
+  Raising the food keeps changed nothing at all, because the yield and not
+  the target is what binds. Moving the woodpile below the food froze three
+  winter seeds; ranking it by season saved the winter but starved a
+  level-20 camp in October. The April food clause and the winter fire want
+  the same hours and the list can serve one or the other.
 - *The three named hunt grinds still take nothing, and the hunt-any keep
   above them is what feeds a camp: a flag, not a fault.* With the quiver
   fixed they are legal wherever the runner stands, but they sit at the
