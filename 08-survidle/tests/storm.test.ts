@@ -47,7 +47,7 @@ function burnForTerrain(state: GameState, world: World, terrains: Terrain[], sno
   placeAt(state, world, cell);
   state.player.kcal = 5000;
   const k0 = state.player.kcal;
-  for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+  for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
   return k0 - state.player.kcal;
 }
 
@@ -126,7 +126,7 @@ describe("the body at work", () => {
     expect(craftSuccess(state, "bow")).toBeCloseTo(1 - Math.min(1, 2 * (1 - c)), 6);
     state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
     const e0 = state.player.energy;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(state.player.energy - e0).toBeCloseTo(4, 1);
   });
 });

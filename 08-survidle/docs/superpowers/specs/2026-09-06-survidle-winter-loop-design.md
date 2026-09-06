@@ -338,6 +338,11 @@ beside it. That is why the two winter-stock keeps sit together (2.3).
 
 ### 1.1 One sleep per night
 
+**Superseded by `2026-09-06-survidle-sleep-design.md`:** a sleep runs to
+the model's wake line and the body lies down again when the onset line says
+so, with no `sleptTonight` marker, no rest latch and no night clause left
+to read. Sections 1.2 and 1.3 below stand.
+
 A night's sleep is one marker on the player, `sleptTonight`, set when a
 sleep task ends at the cap (`SLEEP_CAP_MINUTES`) while it is still night
 and cleared at dawn, as `restUntil` is. The two night clauses read it:

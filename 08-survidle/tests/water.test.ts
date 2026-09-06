@@ -32,7 +32,7 @@ describe("water", () => {
     // 5 C ambient plus the starting wool's insulation keeps felt well under
     // the hot threshold (10 C ambient plus that insulation lands at 20.1 C,
     // just over it, which would fold in the 1.3x and hide the plain rate).
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(w0 - state.player.water).toBeCloseTo(0.1, 2);
   });
 
@@ -44,7 +44,7 @@ describe("water", () => {
     state.player.water = 0;
     const h0 = state.player.health;
     let drains = { starve: 0, cold: 0, sick: 0, thirst: 0, smoke: 0 };
-    for (let m = 0; m < 60; m++) drains = stepPlayer(state, world, 15, 1);
+    for (let m = 0; m < 60; m++) drains = stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(h0 - state.player.health).toBeCloseTo(4, 1);
     expect(causeFrom(drains)).toBe("thirst");
     expect(state.log.some((e) => e.text === "{You} {are} thirsty.")).toBe(true);

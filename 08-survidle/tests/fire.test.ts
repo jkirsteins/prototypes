@@ -255,12 +255,22 @@ describe("spread and smoke", () => {
     expect(st.smoke).toBeGreaterThan(40);
     expect(state.log.some((e) => e.text === "The fire is smoking the place out.")).toBe(true);
     state.player.energy = 30;
+    state.player.sleepDebt = 100;
     startTask(state, world, cal, "sleep");
     const h0 = state.player.health;
-    advance(state, world, 240);
+    // The smoke works on a sleeper, and a sleep now runs to the model's wake
+    // line rather than to a fixed cap, so the body is laid back down each time
+    // one ends: eight hours in the smoke, however many sleeps they take.
+    const sleepOn = (minutes: number) => {
+      for (let m = 0; m < minutes && !state.dead; m += 10) {
+        advance(state, world, 10);
+        if (!state.task) startTask(state, world, calendar(state.minute, state.startDoy), "sleep");
+      }
+    };
+    sleepOn(240);
     expect(state.log.some((e) => e.text === "The air is thick. {You} {wake} coughing.")).toBe(true);
     expect(state.player.health).toBeLessThan(h0 - 50);
-    advance(state, world, 240);
+    sleepOn(240);
     expect(state.dead?.cause).toBe("smoke");
   });
 });

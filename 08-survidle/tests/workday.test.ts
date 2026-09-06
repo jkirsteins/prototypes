@@ -1,21 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { currentNeed, iceHoleSite, NIGHT_SLEEP_UNDER, snaresWaiting, spentNow, WORK_HOURS_DEFAULT } from "../src/sim/body";
-import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
-import { today } from "../src/sim/ledger";
+import { currentNeed, iceHoleSite, snaresWaiting, WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { body } from "../src/sim/person";
 import { addOrder } from "../src/sim/orders";
-import { placeAtSpot } from "../src/sim/position";
+import { taskDrain } from "../src/sim/player";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
+import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
-
-const LINE = "A day's work done. {You} {rest} by the fire.";
 
 /** A kitted camp on seed 17 with one endless felling grind, the survivor fresh at 08:00. */
 function felling() {
@@ -28,9 +29,9 @@ function felling() {
   return g;
 }
 
-/** The day's work counted as done, so the spent marker holds on the next reading. */
-function workedTheDay(state: GameState): void {
-  today(state).workMin = state.player.workHours * 60;
+/** The debt that puts this hour's sleepiness on a wanted line. */
+function debtFor(target: number, hour: number): number {
+  return target + alertness(hour);
 }
 
 /** The first minute from here that is night with no storm about, so only the clause under test can hold. */
@@ -44,19 +45,47 @@ function calmNight(state: GameState): number {
 }
 
 describe("the working day", () => {
-  it("is ten hours by default, on a new game and on a save without it", () => {
+  it("is ten hours by default, and it is the fatigue drain's divisor rather than a count", () => {
     const { state } = newGame(1);
     expect(WORK_HOURS_DEFAULT).toBe(10);
-    expect(state.player.workHours).toBe(10);
-    expect(state.player.restUntil).toBeUndefined();
-    const raw = JSON.parse(serialize(state));
-    delete raw.state.player.workHours;
-    expect(deserialize(JSON.stringify(raw))!.state.player.workHours).toBe(10);
+    // The person is the only source of the number: the drain and the night
+    // chore budget both read it there, and nothing keeps a copy.
+    expect(body(state).workHours).toBe(10);
+    // The day is over when the drain says so: ten hours of task work from full
+    // land exactly on the spent line, and nothing anywhere adds hours up.
+    expect(100 - body(state).workHours * taskDrain(body(state).workHours)).toBeCloseTo(SPENT_AT, 6);
   });
 
-  it("a runner on a felling grind stops at ten hours, rests by the fire until dawn, and sleeps at nightfall", () => {
+  it("a save from before the two processes derives its debt from its fatigue and drops the old markers", () => {
+    const { state } = newGame(1);
+    const raw = JSON.parse(serialize(state));
+    raw.state.player.energy = 70;
+    delete raw.state.player.sleepDebt;
+    delete raw.state.player.sleeping;
+    raw.state.player.restUntil = 12345;
+    raw.state.player.sleptTonight = true;
+    raw.state.player.workHours = 9;
+    const p = deserialize(JSON.stringify(raw))!.state.player as unknown as Record<string, unknown>;
+    expect(p.sleepDebt).toBe(30);
+    expect(p.sleeping).toBeNull();
+    expect(p.restUntil).toBeUndefined();
+    expect(p.sleptTonight).toBeUndefined();
+    expect(p.workHours).toBeUndefined();
+  });
+
+  it("a night under way survives a save and load, so a run reloaded mid-sleep goes back to bed", () => {
     const { state, world } = felling();
-    // To 23:59 on day 1, an hour at a time, watching for the need.
+    const cal = calendar(state.minute, state.startDoy);
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
+    state.player.water = WATER_FULL;
+    expect(currentNeed(state, world, cal, state.intent!)).toBe("sleep");
+    expect(state.player.sleeping).toEqual({ collapsed: false });
+    const back = deserialize(serialize(state))!.state;
+    expect(back.player.sleeping).toEqual({ collapsed: false });
+  });
+
+  it("a runner on a felling grind works itself to the spent line and takes its evening by the fire", () => {
+    const { state, world } = felling();
     let sawSpent = false;
     let sawRest = false;
     for (let h = 0; h < 16; h++) {
@@ -68,67 +97,70 @@ describe("the working day", () => {
     }
     expect(sawSpent).toBe(true);
     expect(sawRest).toBe(true);
+    // A day of task minutes near the working day, arrived at by the drain and
+    // not by a count: the ledger reads it, nothing enforces it.
     const day1 = state.ledger.find((d) => d.day === 1)!;
-    expect(day1.workMin).toBeGreaterThanOrEqual(state.player.workHours * 60);
-    expect(day1.workMin).toBeLessThan(state.player.workHours * 60 + 60);
-    expect(state.log.filter((e) => e.text === LINE).length).toBe(1);
-    // Nightfall: asleep whatever the energy, with the marker still set.
-    expect(calendar(state.minute).isNight).toBe(true);
-    expect(state.task?.id).toBe("sleep");
-    expect(state.player.restUntil).toBeDefined();
+    expect(day1.workMin / 60).toBeGreaterThan(8);
+    expect(day1.workMin / 60).toBeLessThan(13);
   });
 
-  it("the marker points at the next dawn, and clears there so the runner works again", () => {
+  it("the evening's rest ends when the body is rested, in the dark, with no dawn waited for", () => {
     const { state, world } = felling();
-    advance(state, world, 15 * 60);
-    const until = state.player.restUntil!;
-    expect(until).toBeGreaterThan(state.minute);
-    // Dawn is where minutesUntilDawn said it was when the marker was set: at or before the sunrise after it.
-    const dawnCal = calendar(until);
-    expect(Math.abs(dawnCal.hour - dawnCal.sunrise)).toBeLessThan(0.02);
-    // Step to an hour past that dawn: marker gone, day 2's count fresh, and the grind back on.
-    advance(state, world, until - state.minute + 60);
-    expect(state.player.restUntil).toBeUndefined();
-    expect(spentNow(state)).toBe(false);
-    expect(today(state).workMin).toBeLessThan(120);
-    expect(state.intent?.need ?? null).not.toBe("spent");
-    expect(state.task).not.toBeNull();
-    expect(["chop", "walk", "travel", "haul", "split"]).toContain(state.task!.id);
+    let sawRest = false;
+    let releasedAt: number | null = null;
+    for (let m = 0; m < 20 * 60 && releasedAt === null; m++) {
+      advance(state, world, 1);
+      if (state.intent?.need === "spent" && state.task?.id === "rest") sawRest = true;
+      else if (sawRest && state.player.energy >= RESTED_AT) releasedAt = state.minute;
+    }
+    expect(sawRest).toBe(true);
+    expect(releasedAt).not.toBeNull();
+    expect(calendar(releasedAt!, state.startDoy).isNight).toBe(true);
   });
 
-  it("spentNow sets the marker once at the cap and logs once", () => {
-    const { state } = newGame(1);
-    today(state).workMin = state.player.workHours * 60;
-    expect(spentNow(state)).toBe(true);
-    const until = state.player.restUntil!;
-    expect(until).toBe(state.minute + minutesUntilDawn(state.minute, state.startDoy));
-    expect(spentNow(state)).toBe(true);
-    expect(state.player.restUntil).toBe(until);
-    expect(state.log.filter((e) => e.text === LINE).length).toBe(1);
-    state.minute = until;
-    expect(spentNow(state)).toBe(false);
-    expect(state.player.restUntil).toBeUndefined();
+  it("the night falls out of the model: to bed on the onset line, up on the wake line, seven to nine hours between", () => {
+    const { state, world } = felling();
+    let bed: number | null = null;
+    let up: number | null = null;
+    let bedSleepy = 0;
+    for (let m = 0; m < 30 * 60 && up === null; m++) {
+      advance(state, world, 1);
+      if (state.task?.id === "sleep") {
+        if (bed === null) {
+          bed = state.minute;
+          bedSleepy = sleepiness(state.player.sleepDebt, calendar(state.minute, state.startDoy).hour);
+        }
+      } else if (bed !== null) up = state.minute;
+    }
+    expect(bed).not.toBeNull();
+    expect(up).not.toBeNull();
+    const hours = (up! - bed!) / 60;
+    expect(hours).toBeGreaterThan(7);
+    expect(hours).toBeLessThan(9);
+    // It lay down because it was sleepy, and not because the sun went down:
+    // sunset was more than an hour earlier.
+    expect(bedSleepy).toBeGreaterThanOrEqual(SLEEP_ONSET);
+    const down = calendar(bed!, state.startDoy);
+    expect(down.hour).toBeGreaterThan(down.sunset + 1);
   });
 
-  it("a chop started by hand has no intent and keeps going past ten hours", () => {
+  it("a chop started by hand has no intent, so no body need takes it off the tree", () => {
     const { state, world } = newGame(17);
     kitOut(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.energy = 100;
-    today(state).workMin = 11 * 60;
     const cal = calendar(state.minute);
     expect(startTask(state, world, cal, "chop", undefined, true)).toBe(true);
     expect(state.intent).toBeNull();
     advance(state, world, 30);
     expect(state.task?.id).toBe("chop");
-    expect(state.player.restUntil).toBeUndefined();
     expect(START_MINUTE_OF_DAY).toBe(480);
   });
 
   it("a spent body drinks its fill before it sits down for the evening", () => {
     const { state, world } = felling();
     const it = state.intent!;
-    workedTheDay(state);
+    state.player.energy = SPENT_AT - 1;
     placeAtSpot(state, world, state.player.region, "shore");
     state.player.water = 1.5;
     expect(state.player.water).toBeLessThan(WATER_FULL - 0.5);
@@ -138,54 +170,86 @@ describe("the working day", () => {
     expect(currentNeed(state, world, calendar(state.minute), it)).toBe("spent");
   });
 
-  it("at night a rested spent body gets up to drink, and goes to bed once it is full", () => {
+  it("a sleepy body gets up to drink first, and lies down once it is full", () => {
     const { state, world } = felling();
     const it = state.intent!;
-    workedTheDay(state);
     placeAtSpot(state, world, state.player.region, "shore");
     state.minute = calmNight(state);
+    const cal = calendar(state.minute);
+    // Rested but a day's debt behind it: the onset line, not the collapse.
     state.player.energy = 100;
-    expect(state.player.energy).toBeGreaterThanOrEqual(NIGHT_SLEEP_UNDER);
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 2, cal.hour);
     state.player.water = THIRSTY_L / 2;
-    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("thirsty");
+    expect(currentNeed(state, world, cal, it)).toBe("thirsty");
     state.player.water = WATER_FULL;
-    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("sleep");
+    expect(currentNeed(state, world, cal, it)).toBe("sleep");
   });
 
-  it("a sleep already in progress lets go by day once the body is rested, but not by night or while it is tired", () => {
+  it("a sleep in progress lets go at the wake line, and the same reading holds by day and by night", () => {
     const { state, world } = felling();
     const it = state.intent!;
-    it.need = "sleep";
-    state.minute = 25 * 60; // day 2, 09:00: a full day after the 08:00 day-1 start.
-    let cal = calendar(state.minute);
-    expect(cal.hour).toBe(9);
-    expect(cal.isNight).toBe(false);
     state.player.energy = 100;
-    expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
-    // Still tired, still daylight: the sticky clause's other exit is energy, not the clock.
-    state.player.energy = 40;
-    expect(currentNeed(state, world, cal, it)).toBe("sleep");
-    // Rested again, but now night: the clock keeps it.
-    state.player.energy = 100;
-    state.minute = 14 * 60; // 22:00 on day 1.
-    cal = calendar(state.minute);
-    expect(cal.isNight).toBe(true);
-    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+    state.player.water = WATER_FULL;
+    for (const minute of [25 * 60, 14 * 60]) {
+      // 09:00 on day 2, then 22:00 on day 1: the clock is asked nothing.
+      state.minute = minute;
+      const cal = calendar(state.minute);
+      it.need = "sleep";
+      state.player.sleepDebt = debtFor(SLEEP_ONSET, cal.hour);
+      expect(currentNeed(state, world, cal, it)).toBe("sleep");
+      it.need = "sleep";
+      state.player.sleepDebt = debtFor(0, cal.hour);
+      expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
+      expect(sleepiness(state.player.sleepDebt, cal.hour)).toBeCloseTo(0, 6);
+    }
   });
 
-  it("a sleep set aside clears the sleep need, so the next minute decides afresh", () => {
+  it("a sleep set aside is a night interrupted, not a night over: the body goes back to bed", () => {
     const { state, world } = felling();
     const it = state.intent!;
     const cal = calendar(state.minute);
-    expect(beginTask(state, world, cal, "sleep")).toBe(true);
-    it.need = "sleep";
-    setAside(state, world);
-    expect(state.task).toBeNull();
-    expect(it.need).toBeNull();
-    // Rested, watered and in daylight: nothing sends this body back to bed.
     state.player.energy = 100;
     state.player.water = WATER_FULL;
-    expect(currentNeed(state, world, calendar(state.minute), it)).not.toBe("sleep");
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
+    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+    expect(beginTask(state, world, cal, "sleep")).toBe(true);
+    // Whatever takes the body off the bed - a fire to feed, an order changing
+    // under it - the night is the player's and only the model ends it.
+    setAside(state, world);
+    expect(state.task).toBeNull();
+    expect(state.player.sleeping).toEqual({ collapsed: false });
+    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("sleep");
+    // Past the wake line, and only then, it is up.
+    state.player.sleepDebt = debtFor(WAKE_AT - 1, cal.hour);
+    expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
+    expect(state.player.sleeping).toBeNull();
+  });
+
+  it("a sleep broken to feed the fire is resumed, and an order switching under the sleeper does not end the night", () => {
+    const { state, world } = felling();
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = false;
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 5);
+    placeAt(state, world, st.campCell);
+    state.player.energy = 100;
+    state.player.water = WATER_FULL;
+    state.player.sleepDebt = debtFor(SLEEP_ONSET + 5, calendar(state.minute, state.startDoy).hour);
+    // The fire step comes first at camp, so the sleep waits on it.
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("sleep");
+    expect(["light", "lightIndoors"]).toContain(state.task?.id);
+    expect(state.player.sleeping).toEqual({ collapsed: false });
+    // The order the runner was serving is dropped mid-night; the night stands.
+    state.intent = null;
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    let sleeping = false;
+    for (let m = 0; m < 120 && !sleeping; m++) {
+      advance(state, world, 1);
+      sleeping = state.task?.id === "sleep";
+    }
+    expect(sleeping).toBe(true);
   });
 });
 

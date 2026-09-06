@@ -5,7 +5,7 @@ import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
-import { type Calendar, minutesUntilDawn } from "./calendar";
+import type { Calendar } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
@@ -18,13 +18,14 @@ import {
 } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
-import { baseWalkSpeed, die, ENERGY_RATE, walkSpeed, workSpeed } from "./player";
+import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { hasEvent, record } from "./record";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
   masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
   skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
+import { sleepMinutes } from "./sleep";
 import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
@@ -258,9 +259,6 @@ function kitInReach(state: GameState, world: World, item: ItemId, invs: Inventor
   const st = regionState(state, world, state.player.region);
   return cellOf(state, world) === st.campCell && qty(pile(state, st.campCell), item) >= 1;
 }
-
-/** No one sleeps past nine hours: a night's sleep for a working adult, the top of the real band. */
-export const SLEEP_CAP_MINUTES = 540;
 
 /** A patch gives this much to the most worn piece. */
 export const MEND_GAIN = 40;
@@ -673,10 +671,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
     case "sleep": {
-      // Until dawn or until rested, whichever is later, and never past the cap.
-      const toRested = ((100 - p.energy) / ENERGY_RATE.sleep) * 60;
-      const minutes = Math.min(SLEEP_CAP_MINUTES, Math.max(60, minutesUntilDawn(state.minute, state.startDoy), toRested));
-      return opt({ group: "camp", label: "Sleep", detail: `until dawn or rested, at most 9 h; ${bedText(state, world)}`, duration: minutes });
+      // However long the model says this body will lie there: the minutes
+      // from now to the wake line, with no dawn under it and no cap over it.
+      const minutes = sleepMinutes(state, cal);
+      return opt({ group: "camp", label: "Sleep", detail: `until rested, about ${Math.round(minutes / 60)} h; ${bedText(state, world)}`, duration: minutes });
     }
     case "melt": {
       const o = needCamp(opt({ group: "camp", label: "Melt snow", detail: "1 kg of the fire's wood for a litre", duration: 15, repeatable: true }));
@@ -824,10 +822,17 @@ export function withProgression(state: GameState, world: World, o: TaskOption): 
   return out;
 }
 
-/** Starts a task by hand. Whatever intent was running is over; the task set aside keeps its share. */
+/**
+ * Starts a task by hand. Whatever intent was running is over; the task set
+ * aside keeps its share. The runner's night goes with the intent: a hand
+ * that takes over mid-sleep is the player deciding the night is done, and a
+ * flag left set would put the next intent back to bed at the wake line
+ * rather than the onset line.
+ */
 export function startTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false, rng?: Rng): boolean {
   if (!beginTask(state, world, cal, id, arg, repeat, rng)) return false;
   state.intent = null;
+  state.player.sleeping = null;
   return true;
 }
 
@@ -957,10 +962,11 @@ export function setAside(state: GameState, world: World): void {
       state.paused[key] = { id: t.id, arg: t.arg, fraction, cell: LOCATED.has(t.id) ? cellOf(state, world) : -1 };
     }
   }
-  // The sticky sleep need lives only as long as the sleep it started. A sleep
-  // set aside never reaches the completion that clears it, so clearing it here
-  // leaves the next minute to decide bed or otherwise afresh.
-  if (t.id === "sleep" && state.intent?.need === "sleep") state.intent.need = null;
+  // A sleep set aside keeps nothing here on purpose. The night under way is
+  // the player's `sleeping`, and only the model ends it, so a sleep broken to
+  // feed the fire or by an order changing under the sleeper is resumed on the
+  // next free minute rather than dropped until the onset line comes round
+  // again, which for a body woken at sleepiness 40 would be the next evening.
   state.task = null;
 }
 
@@ -1021,6 +1027,8 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       it.done++;
       if (order) order.done++;
     }
+    // The sleep this need asked for is done; whether the body lies down again
+    // is the model's to say next minute, off the player's own night.
     if (id === "sleep" && it.need === "sleep") it.need = null;
     // A rest that barely warmed anyone is not worth repeating: give the need up until warmth
     // recovers some other way, rather than resting here forever for less than a point of gain.
@@ -1463,17 +1471,9 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       log(state, "{You} {make} camp here.");
       return;
     }
+    // A sleep leaves nothing behind it: it ran to the wake line, and whether
+    // the body lies down again is the model's to say next minute.
     case "sleep":
-      // A sleep runs to dawn or to the cap, whichever comes first, so one that
-      // ends while it is still dark ran the cap: the night's sleep is had, and
-      // the night clauses in currentNeed and the wait intent read the marker
-      // rather than laying the body down again until dawn.
-      // The day's rest is not ended with it: `restUntil` runs to dawn and
-      // stays, so a body spent at nightfall rests out the rest of the dark
-      // rather than working the night's chore budget. Clearing it here was
-      // measured and withdrawn on the April gate (spec 1.1).
-      if (cal.isNight) state.player.sleptTonight = true;
-      return;
     case "haul":
     case "night":
     case "wait":

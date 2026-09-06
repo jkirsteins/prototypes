@@ -55,8 +55,6 @@ export function advance(state: GameState, world: World, dtMinutes: number, opts:
 function step(state: GameState, world: World, rng: Rng, dt: number, nobody: boolean): void {
   state.minute += dt;
   const cal = calendar(state.minute, state.startDoy);
-  // Dawn ends the night's sleep marker whether or not anyone is running orders.
-  if (!cal.isNight) state.player.sleptTonight = false;
 
   const hadStorm = state.weather.storm !== null;
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
@@ -92,7 +90,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
 
   let drains: Drains | null = null;
   if (!nobody) {
-    drains = stepPlayer(state, world, ambient, dt);
+    drains = stepPlayer(state, world, cal, ambient, dt);
     autoEat(state, world, rng);
     autoDrink(state, world);
     iceUnderFoot(state, world, rng);

@@ -13,7 +13,8 @@ import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
-import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
+import type { DeathCause, GameState, IceMode, LogEntry, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
@@ -212,14 +213,26 @@ export function warmthTarget(felt: number, comfortC = COMFORT_C): number {
   return clamp(50 + (felt - comfortC) * 5, 0, 100);
 }
 
-/** Energy an hour: asleep, on a task, at camp work (the rest activity class on a task), and the explicit rest task. */
-export const ENERGY_RATE = { sleep: 12.5, task: -7, camp: -4, rest: 6, restSpent: 4 };
+/** Energy an hour: asleep, at camp work (the rest activity class on a task), and the explicit rest task. A task's own drain is this body's, below. */
+export const ENERGY_RATE = { sleep: 12.5, camp: -4, rest: 6, restSpent: 4 };
 
 /**
- * One step of the body: kcal, warmth, energy, wetness, clothing wear, health.
- * dt is at most one minute. Returns the health drains so a death can be named.
+ * Fatigue a task drains an hour for a body whose working day is this long:
+ * enough that a fresh body ends its own day of task work on the spent line
+ * and no lower. The strength axis sets workHours, so a strong body's day is
+ * eleven hours and a weak one's nine with no count kept anywhere, and the
+ * card's "works ten hours" is the drain rather than a clock.
  */
-export function stepPlayer(state: GameState, world: World, ambient: number, dt: number): Drains {
+export function taskDrain(workHours: number): number {
+  return (100 - SPENT_AT) / workHours;
+}
+
+/**
+ * One step of the body: kcal, warmth, the two sleep processes, wetness,
+ * clothing wear, health. dt is at most one minute. Returns the health drains
+ * so a death can be named.
+ */
+export function stepPlayer(state: GameState, world: World, cal: Calendar, ambient: number, dt: number): Drains {
   const p = state.player;
   const d = body(state);
   const r = regionState(state, world, p.region);
@@ -282,17 +295,21 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   const target = warmthTarget(felt, d.comfortC);
   p.warmth = clamp(p.warmth + (target - p.warmth) * WARMTH_RATE * dt, 0, 100);
 
-  // Energy.
-  // The budget balances at eight hours: twelve on a task and four of camp
-  // work drain exactly what eight asleep restore, so a working day ends
-  // tired and a grind day needs nine, and the collapse threshold is what
-  // real overwork does rather than the end of every third day.
-  // A light sleeper on a windy night gets half a night's rest.
-  const sleepRate = x.storm && hasQuirk(state, "sleepsLight") ? ENERGY_RATE.sleep / 2 : ENERGY_RATE.sleep;
-  const energyRate = a === "sleep" ? sleepRate
+  // Sleep debt, the homeostatic process: the clock builds it and only sleep
+  // pays it, so a felling day and a sewing day are equally long awake and
+  // an evening by the fire gives none of it back. A light sleeper on a windy
+  // night clears it at half the rate.
+  const asleep = a === "sleep";
+  p.sleepDebt = debtStep(p.sleepDebt, asleep, dt, asleep && debtFallHalved(state));
+
+  // Fatigue: what the work drains and what rest and sleep give back. The
+  // budget balances at eight hours - twelve on a task and four of camp work
+  // drain what eight asleep restore - so a working day ends tired and a grind
+  // day needs nine.
+  const energyRate = asleep ? ENERGY_RATE.sleep
     : a === "rest" && state.task?.id === "rest" ? (p.energy < 20 ? ENERGY_RATE.restSpent : ENERGY_RATE.rest)
     : a === "rest" ? ENERGY_RATE.camp
-    : ENERGY_RATE.task;
+    : -taskDrain(d.workHours);
   p.energy = clamp(p.energy + energyRate * h, 0, 100);
 
   // Wetness.
@@ -361,6 +378,10 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   warn(state, "warm", p.warmth < 30, "{You} {are} shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "{You} {are} soaked through.");
   warn(state, "tired", p.energy < 20, "{You} can barely lift {your} arms. Sleep.");
+  warn(state, "sleepy", sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT, "{You} can barely keep {your} eyes open.");
+  // The evening by the fire announces itself the way the yawn does, and it is
+  // news rather than a warning.
+  warn(state, "spent", p.energy < SPENT_AT, "A day's work done. {You} {rest} by the fire.", "plain");
   warn(state, "thirst", p.water < THIRSTY_L, "{You} {are} thirsty.");
   const here = cellOf(state, world);
   const onThinIce = cellAt(world, here).terrain === "water" && w.iceCm < ICE_SAFE_CM;
@@ -373,7 +394,12 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 }
 
 const warned = new WeakMap<GameState, Set<string>>();
-function warn(state: GameState, key: string, active: boolean, text: string) {
+/**
+ * Says a line the first minute a threshold is crossed, and not again until the
+ * body comes back over it. Most of these are bad news; "plain" is for a
+ * crossing that is only news, and reads in the log's ordinary voice.
+ */
+function warn(state: GameState, key: string, active: boolean, text: string, kind: LogEntry["kind"] | "plain" = "bad") {
   let set = warned.get(state);
   if (!set) {
     set = new Set();
@@ -381,7 +407,7 @@ function warn(state: GameState, key: string, active: boolean, text: string) {
   }
   if (active && !set.has(key)) {
     set.add(key);
-    log(state, text, "bad");
+    log(state, text, kind === "plain" ? undefined : kind);
   } else if (!active && set.has(key)) {
     set.delete(key);
   }

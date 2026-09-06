@@ -53,16 +53,16 @@ describe("wet clothing", () => {
     const { state, world } = newGame(1);
     expect(skinExposure(state)).toBe(0);
     state.weather.precip = "light";
-    for (let m = 0; m < 30; m++) stepPlayer(state, world, 10, 1);
+    for (let m = 0; m < 30; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 10, 1);
     expect(state.player.wetness).toBeLessThan(5);
     const d0 = state.player.clothing[0].durability;
     for (const g of state.player.clothing) g.wet = 100;
     state.weather.precip = "none";
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, 10, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 10, 1);
     const wetWear = d0 - state.player.clothing[0].durability;
     const { state: s2, world: w2 } = newGame(1);
     const e0 = s2.player.clothing[0].durability;
-    for (let m = 0; m < 60; m++) stepPlayer(s2, w2, 10, 1);
+    for (let m = 0; m < 60; m++) stepPlayer(s2, w2, calendar(s2.minute, s2.startDoy), 10, 1);
     expect(wetWear).toBeCloseTo((e0 - s2.player.clothing[0].durability) * 1.5, 3);
   });
 });
@@ -100,7 +100,7 @@ describe("frostbite", () => {
     expect(state.log.some((e) => e.text === "{Your} feet are numb.")).toBe(true);
     expect(baseWalkSpeed(state, calendar(0), state.weather)).toBeCloseTo(3 * 0.6, 6);
     // In the open nothing heals.
-    for (let m = 0; m < 600; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 600; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(state.player.frostbite.feet).toBe(3 * 1440);
     // Under a roof by a fire it counts down.
     const st = regionState(state, world, state.player.region);
@@ -110,7 +110,7 @@ describe("frostbite", () => {
     st.fire.fuelKg = 30;
     placeAtSpot(state, world, state.player.region, "camp");
     state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 600; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 600; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(state.player.frostbite.feet).toBe(3 * 1440 - 600);
     // A second bite while the first holds is for good.
     state.player.frostbite.feet = 100;

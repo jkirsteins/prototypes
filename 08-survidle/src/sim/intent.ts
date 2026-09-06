@@ -560,27 +560,21 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   if (it.task === "night") return undefined;
-  // Waiting rests by day; by night it sleeps once, then rests, or a running
-  // rest keeps raising energy and the sleep need's night clause (night and
-  // energy under 60) never gets the chance to fire. Started afresh each time
-  // the slot frees; the body tier still preempts either one.
+  // A wait rests and never lies down of its own accord: sleep is the body's
+  // need now, and the body tier takes the rest over the moment the onset line
+  // is crossed, whatever the hour.
   // A runner waiting at camp keeps its fire, the way a spent one does
   // (campStep in body.ts): every camp chore the dark allows works by
   // firelight, so a wait that let the fire burn out would be a wait with no
   // way back to work before dawn. Null once the fire is lit or nothing more
-  // can be done about it, and the rest or the sleep follows as before.
+  // can be done about it, and the rest follows as before.
   const fire = it.task === "wait" && here === it.campCell ? fireStep(state, world, cal, it.campCell) : null;
   const step: Step = fire ?? (it.task === "wait"
-    ? cal.isNight && !state.player.sleptTonight
-      ? { id: "sleep", step: "sleeping at camp" }
-      : { id: "rest", step: "waiting at camp" }
+    ? { id: "rest", step: "waiting at camp" }
     : { id: it.task, arg: it.arg, step: workGerund(state, world, it) });
   if (!takeStep(state, world, cal, step, rng)) {
     if (it.orderId !== null) state.intent = null;
     else endIntent(state, `${label}: cannot go on. {You} {stop}.`, "bad");
-  } else if (it.task === "wait" && step.id === "sleep") {
-    // Sticky like a body-tier sleep, so a need such as hunger cannot preempt it mid-night.
-    it.need = "sleep";
   }
   return undefined;
 }
@@ -595,6 +589,11 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   const it = state.intent;
   const need = currentNeed(state, world, cal, it);
   it.need = need;
+  // The model ends a sleep, not the task's own clock. A sleep task is as long
+  // as the model expects the night to be, and the two can disagree by minutes;
+  // when the body is past the wake line it gets up on that minute rather than
+  // lying out the rest of an hour it no longer needs.
+  if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
   if (need) {
     const s = bodyStep(state, world, cal, rng, it, need);
     if (s) {

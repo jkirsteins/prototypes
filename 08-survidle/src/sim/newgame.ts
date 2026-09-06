@@ -33,6 +33,11 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     fat: d.fatFull,
     warmth: 80,
     energy: 90,
+    // The debt a body carries off a full night and two hours up, which is
+    // where an 08:00 landing starts; the same reading a save without the
+    // reserve derives from its fatigue.
+    sleepDebt: 10,
+    sleeping: null,
     wetness: 0,
     sick: 0,
     injured: 0,
@@ -53,7 +58,6 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     toes: false,
     fingers: false,
     berriesToday: { day: 1, kg: 0 },
-    workHours: d.workHours,
     known: {},
   };
   state.task = null;

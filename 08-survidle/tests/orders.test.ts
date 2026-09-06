@@ -4,6 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
+import { body } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { catchUp, deserialize, serialize } from "../src/sim/save";
@@ -706,7 +707,7 @@ describe("the night", () => {
   it("night chores stop once today's work reaches the working day less the day's light", () => {
     const { state, world, night } = decemberChores();
     // 1 December has 5.4 hours of light: 4.6 hours of the ten may be done in the dark.
-    const budget = (state.player.workHours - night.daylightHours) * 60;
+    const budget = (body(state).workHours - night.daylightHours) * 60;
     expect(budget).toBeGreaterThan(4 * 60);
     expect(budget).toBeLessThan(5 * 60);
     today(state).workMin = budget - 1;
@@ -726,7 +727,7 @@ describe("the night", () => {
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 5);
     addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep", 0);
-    today(state).workMin = (state.player.workHours - night.daylightHours) * 60;
+    today(state).workMin = (body(state).workHours - night.daylightHours) * 60;
     expect(chooseOrder(state, world, night)?.req.task).toBe("light");
     expect(ordersHere(state, world)[0].skipped).toBe("");
     expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.noFire);
@@ -737,7 +738,7 @@ describe("the night", () => {
 
   it("by day the budget does not apply, and in June no chores run at night at all", () => {
     const { state, world, night } = decemberChores();
-    today(state).workMin = (state.player.workHours - night.daylightHours) * 60;
+    today(state).workMin = (body(state).workHours - night.daylightHours) * 60;
     state.minute = 200;
     const day = calendar(state.minute, state.startDoy);
     expect(day.isNight).toBe(false);

@@ -74,8 +74,15 @@ describe("the epitaph", () => {
     // the end of the list is a 150-log keep shut until 1 September and placed beside the woodpile keep, so a
     // spring runner with nothing else able to run rests instead of felling; and stone is wanted twice, a
     // once job for eight at the opening and a keep of eight as the restock below the clothing block.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 41. Starved at camp, with nothing in the pack and 19 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Landed 1 April, year 1."`);
+    // Seed 17's death day rests on the sleep model as well: no rest latch holds
+    // a spent body down until dawn, so the evening ends at the rested line and
+    // the dark is worked rather than sat out, which spends the arrival kit at a
+    // different pace.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 32. Starved at camp, with nothing in the pack and 32 kg of firewood at camp."`);
+    // Seed 19 no longer reaches day 60: with a broken night resumed rather than
+    // spent awake, its opening runs a different order sequence and it never gets
+    // a food source going before the arrival kit is out.
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 16. Died of cold at camp, with 2.4 kg of food in the pack and no firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

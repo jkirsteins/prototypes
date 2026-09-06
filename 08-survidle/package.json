@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "reference": "vite-node scripts/reference.ts",
     "horizon": "vite-node scripts/horizon.ts",
-    "year": "vite-node scripts/year.ts"
+    "year": "vite-node scripts/year.ts",
+    "december": "vite-node scripts/december.ts"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

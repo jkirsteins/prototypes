@@ -261,6 +261,15 @@ on another day. About a minute; not part of `npm test`. The survivor is a
 diagnostic, not a claim about players: if this one cannot live a year, no
 lineage can.
 
+`npm run december` runs thirty days of that stocked December camp against
+the shortest days of the year and prints, per seed, hours asleep a day,
+hours of work by light and by dark with the dark morning split from the
+dark evening, the median hour the body falls asleep and wakes, and how
+many sleeps begin in daylight. It is the only probe that reads the working
+day against the sun, which is what the sleep model was written to change.
+`--days=N` and `--level=N` change the span and the skills. About a minute;
+not part of `npm test`, and it has no gate: every line is a reading.
+
 ## Where the numbers live
 
 - `src/units.ts`: the time scale and the median pack limits.
@@ -270,7 +279,8 @@ lineage can.
 - `src/sim/items.ts`: weights, foods, recipes, structures.
 - `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls.
 - `src/world/wildlife.ts`: how a region's habitat and a species' range become a capacity.
-- `src/sim/player.ts`: kcal burn, warmth balance, energy, wetness, health, the fat reserve.
+- `src/sim/player.ts`: kcal burn, warmth balance, fatigue, wetness, health, the fat reserve.
+- `src/sim/sleep.ts`: the two processes sleep runs on, their lines, and how long a night is.
 - `src/sim/body.ts`: when an intent sleeps, warms up, eats and provisions.
 - `src/sim/weather.ts`: the temperature curve, precipitation, snow.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.

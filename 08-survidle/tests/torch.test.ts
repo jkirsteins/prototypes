@@ -89,9 +89,9 @@ describe("lighting a torch", () => {
     expect(tool(state.player, "fireDrill")!.durability).toBe(49);
     expect(state.player.torch).toEqual({ lit: true, minutes: TORCH_BURN_MINUTES });
     expect(state.log.some((e) => e.text === "The torch catches.")).toBe(true);
-    for (let m = 0; m < 59; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 59; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(state.player.torch).toEqual({ lit: true, minutes: 1 });
-    for (let m = 0; m < 5; m++) stepPlayer(state, world, 5, 1);
+    for (let m = 0; m < 5; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 5, 1);
     expect(state.player.torch).toEqual({ lit: false, minutes: 0 });
     expect(state.log.filter((e) => e.text === "The torch gutters out.")).toHaveLength(1);
   });
