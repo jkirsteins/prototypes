@@ -261,6 +261,21 @@ export const WINTER_WOOD_TO_DOY = 90;
  */
 export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
 
+/**
+ * The larder that turns a hunter into a woodcutter: the kcal of the winter
+ * stock's food, the 80 kg of dried meat and 20 kg of rendered fat that are
+ * "what a competent player has at camp on 1 December". The hunt keep and the
+ * fish keep are promises about raw food at camp, and a body eats what it
+ * brings home, so neither ever reads met while there is meat to hang; they
+ * take the day and the woodpile keeps beneath them never run. A level-20
+ * camp on seed 19 froze on day 305 with ten elk behind it, 829,835 kcal at
+ * camp and three logs. A player with a winter's food already at the fire
+ * cuts wood, so the two rows shut at this line and open again under it.
+ * Derived from the stock and the foods, so it moves with them and not
+ * otherwise.
+ */
+export const WINTER_FOOD_KCAL = WINTER_STOCK.driedMeatKg * FOODS.driedMeat.kcalPerKg + WINTER_STOCK.fatKg * FOODS.fat.kcalPerKg;
+
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
@@ -381,6 +396,12 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   if (w.req.task === "build" && w.req.arg === "snowShelter") {
     const st = regionState(state, world, state.player.region);
     return !(st.structures.turfHut || st.structures.cabin);
+  }
+  // A winter's food already at camp shuts the two rows that chase more of it. The trap and the
+  // snare line are not here: both are set once and cost nothing standing, and a hare in a snare
+  // is not an hour spent.
+  if (w.req.task === "hunt" || (w.req.task === "fish" && w.req.arg === "any")) {
+    if (campFoodKcal(state, world) >= WINTER_FOOD_KCAL) return false;
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];

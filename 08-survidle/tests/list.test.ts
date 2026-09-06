@@ -6,7 +6,7 @@ import { AUTO_EAT_ORDER, FOODS, LEAN_KCAL_PER_DAY, SPOIL_HOURS } from "../src/si
 import { newGame } from "../src/sim/newgame";
 import { ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
-import { HANG_ABOVE_KG, PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_STOCK } from "../src/sim/reference";
+import { HANG_ABOVE_KG, PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_FOOD_KCAL, WINTER_STOCK } from "../src/sim/reference";
 import { SKILL_IDS } from "../src/sim/skills";
 import { PLANT_HOURS_PER_DAY } from "../src/sim/tables";
 
@@ -143,6 +143,28 @@ describe("the list after the axe", () => {
     state.minute += 24 * 60;
     player.tick(state, world);
     expect(roots()).toBeDefined();
+  });
+
+  it("shuts the hunt and the fish once the larder is a winter's worth, and opens them again under it", () => {
+    // Both rows are promises about raw food at camp and the body eats what it brings home, so
+    // neither ever reads met while there is meat to hang: they take the day and the woodpile
+    // keeps beneath them never run. Seed 19 froze on day 305 with ten elk behind it, 829,835
+    // kcal at camp and three logs. The line is the winter stock's own food, derived.
+    expect(WINTER_FOOD_KCAL).toBe(WINTER_STOCK.driedMeatKg * FOODS.driedMeat.kcalPerKg + WINTER_STOCK.fatKg * FOODS.fat.kcalPerKg);
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "hunting", 20);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const july = calendar(0, 200);
+    const rows = ["hunt:any:keep", "fish:any:keep", "hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"];
+    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(true);
+    // A kilo under the line the rows are still open; a kilo over it they shut.
+    addItem(camp, "driedMeat", WINTER_FOOD_KCAL / FOODS.driedMeat.kcalPerKg - 1);
+    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(true);
+    addItem(camp, "driedMeat", 2);
+    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(false);
+    // The trap and the snare line are set once and cost nothing standing: the larder is not their business.
+    for (const t of ["setTrap::job", "build:snare:keep"]) expect(wantOpen(state, world, want(t), july), t).toBe(true);
   });
 
   it("hunts above the plant band and above the fish keep, with the bow and the arrows left below them", () => {
