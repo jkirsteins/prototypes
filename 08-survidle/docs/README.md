@@ -207,8 +207,8 @@ waiting, and everything done while you are away run at the one scale.
 - **How to survive.** A one-page manual - the first days in order, what
   kills you and how fast, food and the seasons, orders and being away -
   opens once, unasked, on a world's first landing, and after that from
-  the landing screen's "how to survive" button or the settings strip; it
-  links the two handbooks it was read against.
+  the landing screen's "how to survive" button or the button beside the
+  away dial; it links the two handbooks it was read against.
 
 ## Debug URL parameters
 

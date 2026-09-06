@@ -434,7 +434,8 @@ now with what the tables audit did about it:
   walking and doubles every haul. Taken by the tables audit:
   precipitation now lays a quarter as fast and the pack settles five
   percent of its depth a day; January reads 25 to 46 cm on the year
-  probe and 28 to 32 on the winter gate.
+  probe and 28 to 32 on the winter gate, one of the seven readings in
+  the 40 to 60 cm band and the rest under it.
 - Snare odds at 0.3 a night per snare. Taken by the tables audit: the
   snare is a trap line now, forty of them kept at 0.04 a night.
 - Every fish capacity, now with a source, to be checked species by

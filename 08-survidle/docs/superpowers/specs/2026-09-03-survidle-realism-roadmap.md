@@ -2895,8 +2895,9 @@ day 300 beside an empty one; seed 19 starves day 148, up from day 48.
 Lineage reads 0 of 4 within six lives, days per life running 10 to 66,
 with seed 42's run of 35, 40, 38, 47, 66, 50 the one that climbs.
 January snow reads 25, 29 and 46 cm on the three year-probe seeds that
-reach it and 32, 28, 31 and 31 on the winter gate, against 40 to 60 cm
-real and the year loop's flagged 79 to 271. Kills per species against
+reach it and 32, 28, 31 and 31 on the winter gate - one of the seven
+readings in the 40 to 60 cm real band, mean about 32, under it - against
+the year loop's flagged 79 to 271. Kills per species against
 the expert large-game band of 0 to 1,500 kcal a day run 4,103 to 11,572
 across the four seeds, seven times over on a surviving level-20 camp -
 a steer, not a gate. The 1 March woodpile reads 386, 335, 35 and 24 kg

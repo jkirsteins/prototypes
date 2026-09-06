@@ -145,7 +145,7 @@ prize (the Swedish text calls the net the most effective method).
 
 ### Measured after
 
-Read on the branch with sections 1 to 9 built, before and after the five
+Read on the branch with sections 1 to 9 built, before and after the six
 runner changes below. `npm test` green at 905 tests.
 
 **The four gates, seed by seed.**
@@ -173,8 +173,12 @@ runner changes below. `npm test` green at 905 tests.
 
 - January snow, the year probe's 1 January lines: 25, 29 and 46 cm on the
   three seeds that reach it; the winter gate's own 1 January reads 32, 28,
-  31 and 31 cm. Against the year loop's flagged 79 to 271 cm, and against
-  40 to 60 cm real, the snow now lies where it should.
+  31 and 31 cm. Against the year loop's flagged 79 to 271 cm the pack is
+  far shallower, but against 40 to 60 cm real only one of the seven
+  readings sits in the band, mean about 32, under it. Left there: across
+  this task's other changes the depth moved with the runner and the
+  reference list rather than with the settle rate, so there is no settle
+  value left to chase the band with.
 - Kills per species over the year, large game against the expert band of
   0 to 1,500 kcal a day: seed 17 reindeer 16, ptarmigan 17, black grouse
   24, willow grouse 22, hare 22, fox 6 - 4,129 a day, over; seed 19
@@ -531,10 +535,12 @@ fire that keeps it under 6,000 is nine kilos an hour.
 
 The year loop's first flag. In `src/sim/weather.ts`, precipitation lays
 a quarter of today's snow: light snow 0.375 cm/h from 1.5, heavy 0.75
-from 3. At the day roll the pack settles by 2 percent of its depth. Melting above 2 C stays at 2
-cm/h. The year script prints the snow depth on every month line, and
-the constants are tuned on it until January reads 40 to 60 cm on the
-four seeds; `DEEP_SNOW_CM` at 30 then means what it says.
+from 3. At the day roll the pack settles by 5 percent of its depth (the
+calibration pass started from 2 percent and moved it here). Melting
+above 2 C stays at 2 cm/h. The year script prints the snow depth on
+every month line, and the constants are tuned on it until January reads
+40 to 60 cm on the four seeds; `DEEP_SNOW_CM` at 30 then means what it
+says.
 
 ### 6.4 The snow shelter
 
@@ -662,7 +668,7 @@ the snapshot tests of the reference opening move with the list. New:
 - The open fire at -10 burns 6 kg/h, the hut 2.4; the cold burn factor
   at -15 is 1.3 and at -50 is 2.
 - Snow: a day of light snow lays what the constant says, and the pack
-  settles 2 percent at the day roll.
+  settles 5 percent at the day roll.
 - The snow shelter: refused under 40 cm and with a hut standing; felt
   temperature at camp reads -3 with the air at -25 and no fire; a fire
   inside is refused; it slumps on the third warm day.
