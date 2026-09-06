@@ -20,6 +20,18 @@
 - Stage with explicit paths under `08-survidle/`; never `git add -A`. Commit messages end with the session's attribution trailer.
 - Work from `08-survidle/` for every `npm` and `npx` command below.
 
+## Rebase notes: main moved after the spec was read
+
+The spec's section 0 was read on main 22976fe. The branch was then rebased onto 66386e4, which carries the water work (the landing camp, fill by method, a melt keep) and roadmap item J. What that changes for the tasks below, and nothing else does:
+
+- `wantOpen` now takes the world: `wantOpen(state, world, w, cal)`. Every call in Tasks 6 and 7, code and tests, passes `world` (from `newGame` or `setUpReference`).
+- The list is 44 wants long, not 39: the two fill wants became `fill shore`, `fill hole` and `melt` at 2 and at 20 litres, and `lightIndoors` joined `light`. So Task 6 leaves it at 45 and Task 7 at 52. The wants closed at level 1 on 1 April are 9 today (three hunts, the 400 kg keep, both hole keeps, both melt keeps, `lightIndoors`), 10 after Task 6 (the 150-log keep) and 13 after Task 7 (the three hide garments). Where a step below says 39, 46, 5 or 8, read 44, 52, 10 and 13. The position tests in `tests/reference.test.ts` were rewritten by the water work; adjust them to the same shape the steps describe rather than to the exact lines quoted.
+- Roadmap item J ("The axe and the wood without one") claims a stone keep as its step 5. Task 6 builds it now; Task 8 writes into J's step 5 that the stone keep landed with the winter loop, and leaves the rest of J alone.
+- The roadmap's level-20 readings now say the camp dies of thirst in October beside 823 logs with a worn-out axe and one stone (seeds 17, 42, 79 on days 190, 197, 211). That is the same cause the spec's section 0 names, read one item later; Task 8's "measured after" is against it.
+- `provisionKit` and `wantOpen` gained water clauses (`axeInReach`, the fill-method clauses). Task 4 adds its tool take-up beside the kit, and Task 6's `winterStockWant` clause goes after the fill clauses; neither touches them.
+
+**Ceremony.** The author asked for minimal ceremony and for existing-test fixes to be deferred. So for Tasks 1 to 7: write the task's own tests, make them pass, run only that task's test file plus `npx tsc --noEmit`, and commit. A pre-existing test elsewhere that the change breaks is left failing and named in the commit body ("leaves tests/x.test.ts red: <test name>") for Task 8, whose first step is `npm test` and the fixing of every such test in one commit. Do not weaken a new rule to keep an old test green.
+
 ---
 
 ## File structure
