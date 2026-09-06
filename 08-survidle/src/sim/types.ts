@@ -62,7 +62,7 @@ export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
 export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
-  | "snare" | "needle" | "axe" | "torch"
+  | "snare" | "needle" | "axe" | "torch" | "whetstone"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
   | "hideBlanket" | "barkBucket" | "waterskin" | "basketTrap";
 
@@ -76,7 +76,7 @@ export const FILL_METHODS: FillMethod[] = ["shore", "hole", "seep"];
 
 export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
-  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build" | "mend"
+  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp";
@@ -84,7 +84,7 @@ export type TaskId =
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split",
-  "hunt", "fish", "cook", "craft", "repair", "sharpen", "build", "mend",
+  "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp",

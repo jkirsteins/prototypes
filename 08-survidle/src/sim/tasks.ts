@@ -69,7 +69,7 @@ export const SPOT_NAMES = SPOT_WORDS;
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
 const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole", "read"]);
 /** Work you carry in your hands wherever you go. */
-const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightIndoors", "lightTorch"]);
+const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
 /** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
 export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string, at = cellOf(state, world)): string | null {
@@ -87,7 +87,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
+  "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp",
 ]);
 
@@ -99,6 +99,7 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "fish": return "fishingSpear";
     case "craft": return RECIPES[arg as RecipeId]?.tool ?? null;
     case "repair": return "needle";
+    case "hone": return "whetstone";
     case "light": case "lightIndoors": return "fireDrill";
     case "fill": return "barkBucket";
     case "iceHole": return "axe";
@@ -476,11 +477,19 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "sharpen": {
-      const o = opt({ group: "camp", label: "Sharpen the axe", detail: "1 stone; axe +30", duration: 15 });
+      const o = opt({ group: "camp", label: "Sharpen the axe on a stone", detail: "1 stone; the edge +30", duration: 15 });
       const axe = axeInHand(p);
       if (!axe) return { ...o, ok: false, why: "no axe" };
       if (totalQty(invs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (axe.durability >= 100) return { ...o, ok: false, why: "already sharp" };
+      return o;
+    }
+    case "hone": {
+      const o = opt({ group: "camp", label: "Hone the axe", detail: "ten minutes on the whetstone; the edge back to full", duration: 10 });
+      const axe = axeInHand(p);
+      if (!axe) return { ...o, ok: false, why: "no axe" };
+      if (!toolNear(p, "whetstone", invs)) return { ...o, ok: false, why: "needs a whetstone" };
+      if (axe.durability >= HONE_UNDER) return { ...o, ok: false, why: "sharp enough" };
       return o;
     }
     case "build": {
@@ -723,6 +732,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "split"));
   out.push(check(state, world, cal, "hang"));
   out.push(check(state, world, cal, "sharpen"));
+  out.push(check(state, world, cal, "hone"));
   out.push(check(state, world, cal, "repair"));
   out.push(check(state, world, cal, "rest"));
   out.push(check(state, world, cal, "sleep"));
@@ -776,6 +786,8 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
  * as well as a fresh one; a flaked axe is half again as slow at any edge.
  */
 export const SLOW_EDGE = 50;
+/** The edge a hone is worth: above it the row refuses, so a hone grind blocks harmlessly on a sharp axe. */
+export const HONE_UNDER = 70;
 export function edgeFactor(state: GameState): number {
   const axe = axeInHand(state.player);
   if (!axe) return 1;
@@ -1249,6 +1261,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       consume(invs, [{ item: "stone", qty: 1 }]);
       const axe = axeInHand(p);
       if (axe) axe.durability = Math.min(100, axe.durability + 30);
+      return;
+    }
+    case "hone": {
+      const axe = axeInHand(p);
+      if (axe) axe.durability = 100;
+      wearTool(state, "whetstone", 1);
       return;
     }
     case "build": {

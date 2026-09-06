@@ -31,7 +31,7 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw", "wait", "hang", "mend"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
@@ -500,6 +500,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,
   repair: () => "mending clothing",
   sharpen: () => "sharpening the axe",
+  hone: () => "honing the axe",
   build: (arg) => `building the ${STRUCTURES[arg as StructureId].name}`,
   mend: (arg) => `mending the ${STRUCTURES[arg as StructureId].name}`,
   light: () => "lighting the fire",

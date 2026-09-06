@@ -503,6 +503,6 @@ describe("the rungs", () => {
   it("TASK_IDS lists every task once", () => {
     expect(new Set(TASK_IDS).size).toBe(TASK_IDS.length);
     for (const id of ["chop", "haul", "fill", "wait", "sleep", "night", "melt", "thaw"]) expect(TASK_IDS).toContain(id);
-    expect(TASK_IDS.length).toBe(33);
+    expect(TASK_IDS.length).toBe(34);
   });
 });
