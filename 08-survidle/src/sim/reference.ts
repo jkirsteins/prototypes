@@ -668,9 +668,11 @@ function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landC
  * Lives in one world, one after another (year loop spec 1.4): the from-scratch
  * reference run, then for each heir the gap, the landing near the old camp,
  * the walk home and a fresh reference run. A life still alive at the day cap
- * has no heir to raise, so the report ends there.
+ * has no heir to raise, so the report ends there. Six lives is the lineage
+ * gate's cap (tables audit spec 1.3): a seed passes when any of them reaches
+ * a year.
  */
-export function runLineage(seed: number, days: number, lives = 3): LineageReport {
+export function runLineage(seed: number, days: number, lives = 6): LineageReport {
   const ref = setUpReference(seed);
   const { state, world } = ref;
   const out: LifeReport[] = [];

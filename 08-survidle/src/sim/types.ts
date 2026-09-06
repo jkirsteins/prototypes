@@ -399,7 +399,7 @@ export interface Landing {
   oldCamp: number | null;
 }
 
-export interface RunStats { trees: number; animals: number; structures: number; km: number }
+export interface RunStats { trees: number; animals: number; structures: number; km: number; kills: Partial<Record<Species, number>> }
 
 export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building";
 

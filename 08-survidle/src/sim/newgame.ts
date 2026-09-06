@@ -64,7 +64,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   state.task = null;
   state.log = [];
   state.dead = null;
-  state.stats = { trees: 0, animals: 0, structures: 0, km: 0 };
+  state.stats = { trees: 0, animals: 0, structures: 0, km: 0, kills: {} };
   state.skills = newSkills();
   state.paused = {};
   state.route = null;

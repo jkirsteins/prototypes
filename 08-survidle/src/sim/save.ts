@@ -67,6 +67,7 @@ function fillDefaults(state: GameState): void {
   }
   state.player.known ??= {};
   state.seeps ??= {};
+  state.stats.kills ??= {};
   for (const st of Object.values(state.regions)) {
     st.structureAge ??= {};
     st.racks ??= st.structures.dryingRack ? 1 : 0;

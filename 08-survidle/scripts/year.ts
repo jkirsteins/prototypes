@@ -7,9 +7,15 @@
  * seeds (--level), alive on 1 March on 4 seeds (--winter). On demand, not
  * part of npm test. The exit code is 0 either way: a red gate is a reading
  * for the roadmap, not a failure of the script.
+ *
+ * Each seed's block prints a kills line (large game read against the
+ * expert large-game band, spec 1.4) and, on its December, January and
+ * February month lines, a deep-cold verdict beside the burn (spec 1.1) -
+ * both diagnostics, gating nothing.
  */
 import { calendar, fmtDate, monthName } from "../src/sim/calendar";
 import { REFERENCE_SEEDS, weekLines } from "../src/sim/reference";
+import { APRIL, BURN, verdict } from "../src/sim/tables";
 import { runWinter, runYear, type YearReport } from "../src/sim/year";
 
 const rawArgs = process.argv.slice(2);
@@ -35,9 +41,13 @@ function print(r: YearReport): void {
   console.log(`seed ${r.seed} (${who}, from ${from}):`);
   for (const m of r.months) {
     const food = Object.entries(m.stock.foodByKind).map(([k, v]) => `${k} ${v}`).join(", ") || "none";
-    console.log(`  1 ${monthName(m.month)} (day ${m.day}): eaten ${m.eatenPerDay}/day, burned ${m.burnPerDay}/day; at camp ${m.stock.foodKcal} kcal (${food}), ${m.stock.firewoodKg} kg firewood, ${m.stock.logs} logs, snow ${m.snowCm} cm`);
+    // December, January and February (deep-cold spec 1.1): the winter month lines carry the verdict, gating nothing.
+    const deepCold = m.month === 11 || m.month === 0 || m.month === 1 ? `; deep-cold band ${verdict(m.burnPerDay, BURN.deepCold)}` : "";
+    console.log(`  1 ${monthName(m.month)} (day ${m.day}): eaten ${m.eatenPerDay}/day, burned ${m.burnPerDay}/day; at camp ${m.stock.foodKcal} kcal (${food}), ${m.stock.firewoodKg} kg firewood, ${m.stock.logs} logs, snow ${m.snowCm} cm${deepCold}`);
   }
   console.log(`  surplus: first hang ${r.surplus.hang === null ? "never" : `day ${r.surplus.hang}`}, first large game ${r.surplus.largeGame === null ? "never" : `day ${r.surplus.largeGame}`}`);
+  const daysRun = r.outcome.day;
+  console.log(`  kills: ${Object.entries(r.kills).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}; large game ${Math.round(r.killsKcal / daysRun)} kcal a day (${verdict(r.killsKcal / daysRun, APRIL.rows.largeGame!.experienced)})`);
   for (const line of weekLines(r.lastWeek, r.lastDayOfYear)) console.log(`    ${line}`);
   console.log(`  ${r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `alive at day ${r.outcome.day}`}`);
 }

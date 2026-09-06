@@ -16,8 +16,8 @@ import { current } from "./record";
 import { type ReferenceReport, type ReferencePlayer, setUpReference, stepReference, WINTER_STOCK } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
-import { LARGE_GAME } from "./species";
-import type { GameState } from "./types";
+import { LARGE_GAME, SPECIES_DEFS } from "./species";
+import type { GameState, Species } from "./types";
 
 /**
  * 1 December: the winter gate's start, a fortnight before the dark and a
@@ -53,6 +53,10 @@ export interface YearReport {
   outcome: ReferenceReport["outcome"];
   lastWeek: WeekAverage;
   lastDayOfYear: number;
+  /** Kills by species over the run (tables audit spec 1.4). */
+  kills: Partial<Record<Species, number>>;
+  /** kcal of large game (LARGE_GAME plus bear) among those kills, read against APRIL.rows.largeGame. */
+  killsKcal: number;
 }
 
 export interface YearOptions {
@@ -90,8 +94,21 @@ function stockAt(state: GameState, world: World): MonthLine["stock"] {
   return { foodKcal: Math.round(foodKcal), foodByKind, firewoodKg: Math.round(qty(camp, "firewood")), logs: Math.round(qty(camp, "log")) };
 }
 
+/** Large game's kcal from a kill count: raw meat plus fat, the yields a hunt credits. */
+function largeGameKcal(kills: Partial<Record<Species, number>>): number {
+  let kcal = 0;
+  for (const s of [...LARGE_GAME, "bear" as const]) {
+    const n = kills[s];
+    if (!n) continue;
+    const y = SPECIES_DEFS[s].yields;
+    if (!y) continue;
+    kcal += n * (y.meatKg * FOODS.rawMeat.kcalPerKg + (y.fatKg ?? 0) * FOODS.fat.kcalPerKg);
+  }
+  return kcal;
+}
+
 /** Runs one life a day at a time, writing a month line on the first of each month and the surplus days as they happen. */
-function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear"> {
+function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal"> {
   const { state, world } = ref;
   const months: MonthLine[] = [];
   const surplus: YearReport["surplus"] = { hang: null, largeGame: null };
@@ -110,7 +127,8 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
   }
   const day = calendar(state.dead ? state.dead.minute : state.minute, state.startDoy).day;
   const outcome: ReferenceReport["outcome"] = state.dead ? { kind: "died", day, cause: state.dead.cause } : { kind: "reached", day };
-  return { months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear };
+  const kills = { ...state.stats.kills };
+  return { months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear, kills, killsKcal: largeGameKcal(kills) };
 }
 
 export function runYear(seed: number, opts: YearOptions = {}): YearReport {

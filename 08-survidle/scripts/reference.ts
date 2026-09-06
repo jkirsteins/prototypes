@@ -21,17 +21,20 @@
  * That day is the morning the check ran, the day after the fall, and a
  * start that opens with snow already lying has no first snow to report.
  *
- * --heir, anywhere in the args, runs a lineage of three lives per seed after
- * the from-scratch (and, if given, kitted) blocks: the reference run to
- * death, then for each heir the gap, the landing near the old camp, the
- * walk home before it gives an order, and a fresh reference run. It prints
- * each life's landing, what it found at the old camp, the day it got there,
- * the surplus days (first hang, first large-game kill), the life's
- * checkpoints and pass line, then a trend line for the seed and a
+ * --heir, anywhere in the args, runs a lineage of up to six lives per seed
+ * (the day cap raised to 366 if given lower) after the from-scratch (and,
+ * if given, kitted) blocks: the reference run to death, then for each heir
+ * the gap, the landing near the old camp, the walk home before it gives an
+ * order, and a fresh reference run - stopping early at the first life that
+ * reaches the day cap. It prints each life's landing, what it found at the
+ * old camp, the day it got there, the surplus days (first hang, first
+ * large-game kill), the life's checkpoints and pass line, then a trend
+ * line for the seed, the seed's days ("52, 94, 172, 366"), a
  * "trend gate: N of M seeds" line - whether each life in the lineage died
- * at or past the one before it. Like --kitted, it is a diagnostic and never
- * touches the exit code - the from-scratch run from scratch is still the
- * gate.
+ * at or past the one before it - and a "lineage gate: N of M seeds reached
+ * a year within six lives" line. Like --kitted, it is a diagnostic and
+ * never touches the exit code - the from-scratch run from scratch is still
+ * the gate.
  */
 import { calendar, fmtDate } from "../src/sim/calendar";
 import { fmtWorldDate } from "../src/sim/epitaph";
@@ -89,8 +92,9 @@ if (kitted) {
 
 if (heir) {
   let trend = 0;
+  let reached = 0;
   for (const seed of seeds) {
-    const l = runLineage(seed, days, 3);
+    const l = runLineage(seed, Math.max(days, 366), 6);
     console.log(`seed ${seed} (lineage):`);
     let lastDeath: number | null = null;
     let climbs = true;
@@ -114,8 +118,11 @@ if (heir) {
     }
     if (climbs && l.lives.length > 1) trend++;
     console.log(` trend: ${climbs ? "each life at or past the one before" : "a life died sooner than the one before"}`);
+    console.log(` days: ${l.lives.map((x) => x.report.outcome.kind === "died" ? x.report.outcome.day : `${x.report.outcome.day}+`).join(", ")}`);
+    if (l.lives.some((x) => x.report.outcome.kind === "reached")) reached++;
   }
   console.log(`trend gate: ${trend} of ${seeds.length} seeds (gate is 3 of 4)`);
+  console.log(`lineage gate: ${reached} of ${seeds.length} seeds reached a year within six lives`);
 }
 
 process.exit(passed === seeds.length ? 0 : 1);

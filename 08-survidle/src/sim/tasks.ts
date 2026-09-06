@@ -1233,6 +1233,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (rng.chance(huntOdds(state, world, cal, d, s))) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
         state.stats.animals++;
+        state.stats.kills[s] = (state.stats.kills[s] ?? 0) + 1;
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const x = huntExtras(state, s);
         const where = produce(state, world, "rawMeat", x.meatKg);

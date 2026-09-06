@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { newGame } from "../src/sim/newgame";
 import { LARGE_GAME } from "../src/sim/species";
 import { runWinter, runYear } from "../src/sim/year";
 
@@ -33,5 +34,14 @@ describe("the year script", () => {
 
   it("names the large game the surplus day is read from", () => {
     expect(LARGE_GAME).toEqual(["deer", "reindeer", "elk"]);
+  });
+
+  it("counts kills per species on the run and the report", () => {
+    const { state } = newGame(17);
+    expect(state.stats.kills).toEqual({});
+    state.stats.kills.elk = 2;
+    const r = runYear(17, { days: 2 });
+    expect(r.kills).toBeDefined();
+    expect(typeof r.killsKcal).toBe("number");
   });
 });

@@ -574,3 +574,14 @@ describe("wants by method", () => {
     expect(wantOpen(state, world, indoors, cal)).toBe(true);
   });
 });
+
+describe("the lineage gate", () => {
+  it("runs up to six lives and stops at the first that reaches the day cap", () => {
+    const l = runLineage(17, 3, 6);
+    expect(l.lives.length).toBeGreaterThanOrEqual(1);
+    expect(l.lives.length).toBeLessThanOrEqual(6);
+    const last = l.lives[l.lives.length - 1].report;
+    if (last.outcome.kind === "reached") expect(last.outcome.day).toBeGreaterThanOrEqual(3);
+    for (const life of l.lives.slice(0, -1)) expect(life.report.outcome.kind).toBe("died");
+  });
+});
