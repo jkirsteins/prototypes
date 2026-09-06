@@ -218,11 +218,11 @@ skipped at night with the reason "dark; at first light". It is judged
 like every other skip, so the row shows the reason and clears it at
 dawn. The body tier is exempt on purpose: a thirsty body still walks to
 the shore at night and a spent one still walks home, because those are
-reflexes and not orders. The live intent is not interrupted by nightfall
-either: an order that started by day finishes its walk home under
-winter's home-before-dark rule as today, and in the other seasons its
-work is ended by the working day, by sleep or by the load being full,
-never by the clock.
+reflexes and not orders. A task already under way finishes, since the
+scheduler runs only when the task slot is free; the order is then not
+chosen again until first light, and a runner with a load owed to camp
+delivers it first, as today. In winter the home-before-dark rule still
+brings the runner in before sunset.
 
 ### 1.3 Camp chores by firelight, the light kept for the outdoors
 

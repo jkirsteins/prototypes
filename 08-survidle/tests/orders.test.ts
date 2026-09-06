@@ -4,15 +4,16 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
-import { cellOf, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
-  addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord,
+  addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
 import { addItem, pile, qty } from "../src/sim/inventory";
+import { WINTER_START_DOY } from "../src/sim/year";
 
 const cal = calendar(0);
 
@@ -657,5 +658,24 @@ describe("rank", () => {
     expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "bark", "berries"]);
     addOrder(state, world, { ...stone, task: "chop" }, "job", 2);
     expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "chop", "bark", "berries"]);
+  });
+});
+
+describe("the night", () => {
+  it("an order for the forest is skipped at night with 'dark; at first light' and chosen at dawn", () => {
+    const { state, world } = newGame(17, WINTER_START_DOY);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    state.minute = 500;
+    const night = calendar(state.minute, state.startDoy);
+    expect(night.isNight).toBe(true);
+    expect(chooseOrder(state, world, night)).toBeNull();
+    expect(ordersHere(state, world)[0].skipped).toBe(NIGHT_SKIP.away);
+    state.minute = 200;
+    const day = calendar(state.minute, state.startDoy);
+    expect(day.isNight).toBe(false);
+    expect(chooseOrder(state, world, day)?.req.task).toBe("chop");
+    expect(ordersHere(state, world)[0].skipped).toBe("");
   });
 });

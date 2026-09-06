@@ -136,6 +136,28 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
   o.skipped = why;
 }
 
+/** The reasons the clock gives for skipping an order; the Do panel shows them on the row like any other. */
+export const NIGHT_SKIP = {
+  away: "dark; at first light",
+  noFire: "dark; no fire to work by",
+  budget: "the day's work waits for the light",
+} as const;
+
+/**
+ * Whether the night keeps an order from running now, and why. Nobody sets
+ * out for the forest, the shore or the hunt in the dark, so work away from
+ * camp waits for first light; the body tier's own walks (thirst, home) are
+ * reflexes rather than orders and are not judged here, and a task already
+ * under way finishes, since this runs only when the task slot is free. By day
+ * nothing here applies.
+ */
+export function nightSkip(state: GameState, world: World, cal: Calendar, cell: number): string | null {
+  if (!cal.isNight) return null;
+  const st = regionState(state, world, state.player.region);
+  if (cell !== st.campCell) return NIGHT_SKIP.away;
+  return null;
+}
+
 /**
  * Every order, top down, is judged afresh: met, blocked, or able to run.
  * The first able to run is returned, but the rows below it are judged too,
@@ -184,6 +206,11 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       continue;
     }
     const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
+    const night = nightSkip(state, world, cal, cell);
+    if (night) {
+      markSkipped(state, world, cal, o, night);
+      continue;
+    }
     if (cell !== here) {
       const w = check(state, world, cal, "walk", `cell:${cell}`);
       if (!w.ok) {
