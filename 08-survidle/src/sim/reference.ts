@@ -17,7 +17,7 @@ import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
-import { addItem, freshTool, hasTool, listItems, pile, qty } from "./inventory";
+import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, TOOLS } from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
@@ -173,9 +173,9 @@ function shoreIced(state: GameState): boolean {
 
 /** An axe in hand, in the pack or in the camp pile: what a competent player would carry to the shore in winter. */
 function axeInReach(state: GameState, world: World): boolean {
-  if (hasTool(state.player, "axe")) return true;
+  if (axeInHand(state.player)) return true;
   const st = regionState(state, world, state.player.region);
-  return qty(state.player.pack, "axe") >= 1 || qty(pile(state, st.campCell), "axe") >= 1;
+  return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pile(state, st.campCell), id) >= 1);
 }
 
 export function wantOpen(state: GameState, world: World, w: { req: IntentRequest; kind: OrderKind }, cal: Calendar): boolean {

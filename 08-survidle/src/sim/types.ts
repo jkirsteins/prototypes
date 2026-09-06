@@ -43,7 +43,7 @@ export interface Inventory {
   stacks: Partial<Record<PerishableId, Stack[]>>;
 }
 
-export type ToolId = "axe" | "knife" | "bow" | "fishingSpear" | "fireDrill" | "needle" | "barkBucket" | "waterskin";
+export type ToolId = "axe" | "stoneAxe" | "flakedAxe" | "whetstone" | "knife" | "bow" | "fishingSpear" | "fireDrill" | "needle" | "barkBucket" | "waterskin";
 export interface Tool { id: ToolId; durability: number; /** water carried, vessels only */ litres?: number; frozen?: boolean }
 
 export type ClothingId =

@@ -10,7 +10,7 @@ export const ITEM_KG: Record<ItemId, number> = {
   firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
   water: 1, ice: 1,
-  axe: 1.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
+  axe: 1.5, stoneAxe: 1.4, flakedAxe: 1.2, whetstone: 0.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
   needle: 0.01, barkBucket: 0.3, waterskin: 0.4,
 };
 
@@ -25,7 +25,7 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
   wetFirewood: "wet firewood", water: "water", ice: "ice",
-  axe: "axes", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
+  axe: "iron axes", stoneAxe: "stone axes", flakedAxe: "flaked axes", whetstone: "whetstones", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
 
@@ -51,7 +51,10 @@ export const SPOIL_HOURS: Record<PerishableId, number> = {
 };
 
 export const TOOLS: Record<ToolId, { name: string; kg: number; litres?: number }> = {
-  axe: { name: "axe", kg: 1.5 },
+  axe: { name: "iron axe", kg: 1.5 },
+  stoneAxe: { name: "stone axe", kg: 1.4 },
+  flakedAxe: { name: "flaked axe", kg: 1.2 },
+  whetstone: { name: "whetstone", kg: 0.5 },
   knife: { name: "knife", kg: 0.2 },
   bow: { name: "bow", kg: 0.8 },
   fishingSpear: { name: "fishing spear", kg: 1.0 },

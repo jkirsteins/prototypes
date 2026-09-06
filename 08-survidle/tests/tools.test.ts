@@ -25,23 +25,26 @@ describe("tools as items", () => {
     expect(keepTarget(o)).toEqual({ item: "axe", qty: 1 });
   });
 
-  it("a broken axe with a spare in the pack is replaced at once", () => {
+  it("a shattered flaked axe with a spare in the pack is replaced at once", () => {
     const { state } = newGame(17);
     const p = state.player;
-    tool(p, "axe")!.durability = 1;
-    addItem(p.pack, "axe", 1);
-    expect(wearTool(state, "axe", 5)).toBe(true);
-    expect(hasTool(p, "axe")).toBe(true);
-    expect(tool(p, "axe")!.durability).toBe(100);
-    expect(qty(p.pack, "axe")).toBe(0);
-    expect(state.log.at(-1)?.text).toBe("The axe has broken; you take up the spare.");
+    p.tools = [{ id: "flakedAxe", durability: 1 }];
+    addItem(p.pack, "flakedAxe", 1);
+    expect(wearTool(state, "flakedAxe", 5)).toBe(true);
+    expect(hasTool(p, "flakedAxe")).toBe(true);
+    expect(tool(p, "flakedAxe")!.durability).toBe(100);
+    expect(qty(p.pack, "flakedAxe")).toBe(0);
+    expect(state.log.at(-1)?.text).toBe("The flaked axe has broken; you take up the spare.");
   });
 
-  it("a broken axe with no spare is gone", () => {
+  it("a shattered flaked axe with no spare is gone, and a worn iron axe is blunt and stays", () => {
     const { state } = newGame(17);
-    tool(state.player, "axe")!.durability = 1;
-    expect(wearTool(state, "axe", 5)).toBe(true);
-    expect(hasTool(state.player, "axe")).toBe(false);
+    state.player.tools = [{ id: "flakedAxe", durability: 1 }];
+    expect(wearTool(state, "flakedAxe", 5)).toBe(true);
+    expect(hasTool(state.player, "flakedAxe")).toBe(false);
+    state.player.tools = [{ id: "axe", durability: 1 }];
+    expect(wearTool(state, "axe", 5)).toBe(false);
+    expect(tool(state.player, "axe")!.durability).toBe(0);
   });
 
   it("a spare on the ground is taken up when a task needing it starts there", () => {

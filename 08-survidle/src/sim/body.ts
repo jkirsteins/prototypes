@@ -12,7 +12,7 @@ import { eat, edible } from "./actions";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
-import { hasTool, pile, qty, transfer, weight } from "./inventory";
+import { axeInHand, hasTool, pile, qty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -195,7 +195,7 @@ export function iceHoleSite(state: GameState, world: World, cal: Calendar): numb
   if (state.weather.iceCm < ICE_SHORE_CM) return null;
   const st = regionState(state, world, state.player.region);
   if (st.iceHole) return null;
-  if (!hasTool(state.player, "axe")) return null;
+  if (!axeInHand(state.player)) return null;
   const here = cellOf(state, world);
   if (watersideCell(world, here)) return here;
   const r = regionAt(world, state.player.region);

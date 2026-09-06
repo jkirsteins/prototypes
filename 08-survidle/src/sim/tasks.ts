@@ -8,8 +8,8 @@ import { type Calendar, minutesUntilDawn } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
-  addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
-  removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
+  addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
+  removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
   BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, STRUCTURES,
@@ -294,10 +294,10 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
 
   switch (id) {
     case "chop": {
-      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: terrain === "spruce" ? 50 : 60, repeatable: true }));
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: (terrain === "spruce" ? 50 : 60) * edgeFactor(state), repeatable: true }));
       if (!o.ok) return o;
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
       return o;
     }
@@ -315,8 +315,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "split": {
       const sheltered = splitSheltered(state, world, at);
-      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15, repeatable: true });
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
+      if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
       if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
@@ -368,7 +368,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const iced = state.weather.iceCm >= ICE_SHORE_CM && !iceHoleOpen(state, at);
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
       return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
     }
     case "iceHole": {
@@ -376,7 +376,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
       if (iceHoleOpen(state, at)) return { ...o, ok: false, why: "already open here" };
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
       return o;
     }
     case "hunt": {
@@ -477,7 +477,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "sharpen": {
       const o = opt({ group: "camp", label: "Sharpen the axe", detail: "1 stone; axe +30", duration: 15 });
-      const axe = tool(p, "axe");
+      const axe = axeInHand(p);
       if (!axe) return { ...o, ok: false, why: "no axe" };
       if (totalQty(invs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (axe.durability >= 100) return { ...o, ok: false, why: "already sharp" };
@@ -770,6 +770,30 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
  * Starts a task without touching the intent: what the runner calls for each
  * of its steps. Whatever was under way is set aside first, with its share done kept.
  */
+/**
+ * Felling and splitting slow once the edge is under half: twice as long at
+ * 0, unchanged at 50 and above, since an axe a few strokes off sharp cuts
+ * as well as a fresh one; a flaked axe is half again as slow at any edge.
+ */
+export const SLOW_EDGE = 50;
+export function edgeFactor(state: GameState): number {
+  const axe = axeInHand(state.player);
+  if (!axe) return 1;
+  const f = 1 + Math.max(0, (SLOW_EDGE - axe.durability) / SLOW_EDGE);
+  return axe.id === "flakedAxe" ? f * 1.5 : f;
+}
+
+/** A stroke's wear on the axe in hand; only a flaked axe can shatter, and the record keeps that. */
+function wearAxe(state: GameState, world: World): void {
+  const axe = axeInHand(state.player);
+  if (!axe) return;
+  if (wearTool(state, axe.id, wearFactor(state, world, "chop"))) {
+    record(state, { kind: "toolWorn", tool: axe.id });
+    cue("toolBreaks");
+    log(state, "The flaked axe shatters on the stroke.", "bad");
+  }
+}
+
 export function beginTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false, rng?: Rng): boolean {
   if (state.dead) return false;
   if (id === "night") return false;
@@ -780,7 +804,9 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const need = toolFor(id, arg);
   // A fetch takes up the one vessel with the most room, whatever is already in hand.
   if (id === "fill") takeUpTripVessel(state, world);
-  else if (need && !hasTool(state.player, need)) takeUp(state, world, need);
+  else if (need === "axe") {
+    if (!axeInHand(state.player)) for (const id of AXES) if (takeUp(state, world, id)) break;
+  } else if (need && !hasTool(state.player, need)) takeUp(state, world, need);
   setAside(state, world);
   let any = false;
   if ((id === "hunt" || id === "fish") && arg === "any") {
@@ -1033,8 +1059,8 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
 function cutIceHole(state: GameState, world: World): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
-  if (!hasTool(p, "axe")) takeUp(state, world, "axe");
-  if (wearTool(state, "axe", wearFactor(state, world, "chop"))) record(state, { kind: "toolWorn", tool: "axe" });
+  if (!axeInHand(p)) for (const id of AXES) if (takeUp(state, world, id)) break;
+  wearAxe(state, world);
   st.iceHole = { cell: cellOf(state, world), minute: state.minute };
   log(state, "You cut a hole in the ice.");
 }
@@ -1050,11 +1076,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "log", 4);
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
-      if (wearTool(state, "axe", wearFactor(state, world, "chop"))) {
-        record(state, { kind: "toolWorn", tool: "axe" });
-        cue("toolBreaks");
-        log(state, "The axe head splits on the last stroke. It is done for.", "bad");
-      }
+      wearAxe(state, world);
       const axeInjury = p.energy < 20 ? 0.03 : p.energy < 30 ? 0.02 : 0.01;
       if (rng.chance(axeInjury)) {
         p.injured = Math.max(p.injured, 24 * 60);
@@ -1225,7 +1247,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "sharpen": {
       consume(invs, [{ item: "stone", qty: 1 }]);
-      const axe = tool(p, "axe");
+      const axe = axeInHand(p);
       if (axe) axe.durability = Math.min(100, axe.durability + 30);
       return;
     }
