@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, pile } from "../src/sim/inventory";
-import { AUTO_EAT_ORDER } from "../src/sim/items";
+import { AUTO_EAT_ORDER, FOODS, LEAN_KCAL_PER_DAY, SPOIL_HOURS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
-import { PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_STOCK } from "../src/sim/reference";
+import { HANG_ABOVE_KG, PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_STOCK } from "../src/sim/reference";
 import { SKILL_IDS } from "../src/sim/skills";
 import { PLANT_HOURS_PER_DAY } from "../src/sim/tables";
 
@@ -143,6 +143,25 @@ describe("the list after the axe", () => {
     state.minute += 24 * 60;
     player.tick(state, world);
     expect(roots()).toBeDefined();
+  });
+
+  it("hangs only what the body cannot eat before it rots, and hangs it above the plant band", () => {
+    // A grind is never met, so an ungated hang runs on every kilo a snare brings in: the
+    // list's own record is two year seeds frozen on days 300 and 325 under one. The threshold
+    // is derived and not chosen - raw meat's spoil hours against the lean ceiling at raw
+    // meat's kcal a kilo - so a kill that will rot opens it and a hare does not.
+    expect(HANG_ABOVE_KG).toBeCloseTo((SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / FOODS.rawMeat.kcalPerKg));
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("hang::grind")).toBeLessThan(tasks.indexOf("roots::job"));
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const april = calendar(0, 100);
+    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(false);
+    addItem(camp, "rawMeat", HANG_ABOVE_KG);
+    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(false);
+    addItem(camp, "rawMeat", 1);
+    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(true);
   });
 
   it("wants the rack only once there is meat to dry, so the hour is not spent on an empty one", () => {

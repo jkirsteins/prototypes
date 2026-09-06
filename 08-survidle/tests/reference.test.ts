@@ -65,12 +65,12 @@ describe("the reference player", () => {
     // so a level-1 survivor's first tick never sees them; the woodpile keep and the
     // log keep gate by season and a 1 April start is closed for both; the two ice-hole
     // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
-    // and the hide coat, trousers and boots wait for Crafting 8; the rack waits for meat to dry;
-    // every other want is open.
+    // and the hide coat, trousers and boots wait for Crafting 8; the rack waits for meat to dry and
+    // the hang grind for more of it than a body can eat in time; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 24);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 24);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 25);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 25);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -128,11 +128,11 @@ describe("the reference player", () => {
     // that finishes and feeds the camp afterwards - and only then the fat and carbohydrate item's
     // own gathers: eggs, roots and its cook keep, the sap tap and seaweed, all above the fish
     // keep. Inner bark and its grind are off the list; see tests/list.test.ts for why.
-    expect(tasks.slice(cook + 1, cook + 4)).toEqual(["crack:", "build:dryingRack", "build:snare"]);
-    expect(tasks.slice(cook + 4, cook + 9)).toEqual(["eggs:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
-    expect(tasks[cook + 9]).toBe("fish:any");
-    expect(tasks[cook + 10]).toBe("berries:");
-    expect(tasks[cook + 11]).toBe("craft:bow");
+    expect(tasks.slice(cook + 1, cook + 5)).toEqual(["crack:", "build:dryingRack", "build:snare", "hang:"]);
+    expect(tasks.slice(cook + 5, cook + 10)).toEqual(["eggs:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 10]).toBe("fish:any");
+    expect(tasks[cook + 11]).toBe("berries:");
+    expect(tasks[cook + 12]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     // The rendered-fat keep sits above the two cook keeps, fat first: raw fat rots in three
@@ -149,9 +149,9 @@ describe("the reference player", () => {
     expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
     // The winter-stock keeps head the surplus loop, the three firewood methods then the logs: a grind
     // above a keep starves it, and the hang grind starved the woodpile on a camp taking elk all autumn.
+    // The hang itself is no longer down here: gated on meat that will rot, it sits above the plant band.
     expect(tasks.slice(axe + 9, axe + 13)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
-    expect(tasks[axe + 13]).toBe("hang:");
-    expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    expect(tasks.slice(axe + 13, axe + 16)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
     // 73: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
     // twenty-snare keep and the rack above the gathering block, the forty-snare keep after the
@@ -620,7 +620,9 @@ describe("wants by level", () => {
     // The wedge split and dead wood, the woodpile's two methods for a camp with no axe, sit between the two.
     expect(REFERENCE_ORDERS.indexOf(logs)).toBe(REFERENCE_ORDERS.indexOf(woodpile) + 3);
     const tail = REFERENCE_ORDERS.slice(REFERENCE_ORDERS.indexOf(logs) + 1);
-    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hang:undefined:grind", "hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
+    // The three named hunts are all that is left below it: the hang grind moved above the plant
+    // band once its own gate shut it on anything a body can eat in time.
+    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
     const { state, world } = newGame(17);
     expect(wantOpen(state, world, logs, calendar(0, 90))).toBe(false);
     expect(wantOpen(state, world, logs, calendar(0, 244))).toBe(true);

@@ -20,8 +20,8 @@ import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
 import { nearestCell } from "./intent";
 import {
-  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, RECIPES, ROOT_FROM_DOY, ROOT_TO_DOY,
-  SAP_FROM_DOY, SAP_TO_DOY, TOOLS,
+  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, RECIPES,
+  ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
 } from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
@@ -46,6 +46,18 @@ const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
 const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
+
+/**
+ * The raw meat a camp hangs rather than eats: what the body cannot get
+ * through before the stack rots. Raw meat keeps SPOIL_HOURS.rawMeat and the
+ * ceiling lets LEAN_KCAL_PER_DAY of lean food through in a day, so the kilos
+ * a survivor can eat off a fresh kill are those hours' worth of the ceiling
+ * at raw meat's own kcal a kilo. Everything past that is meat that will be
+ * lost if it is not on the rack, which is when the grind is worth its five
+ * minutes a kilo and not before. Derived, so it moves with the spoil hours
+ * and the ceiling and with nothing else.
+ */
+export const HANG_ABOVE_KG = (SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / FOODS.rawMeat.kcalPerKg);
 
 /**
  * The plant band: work the list asks for by the day and not until a target
@@ -280,6 +292,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("build", { kind: "once" }, "dryingRack"),
   keep("build", 20, "snare"),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("eggs", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   job("roots", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("cook", 1, "roots"),
@@ -315,7 +328,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("splitWedges", WINTER_STOCK.firewoodKg),
   keep("deadwood", WINTER_STOCK.firewoodKg),
   keep("chop", WINTER_STOCK.logs),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
@@ -404,6 +416,14 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   if (w.req.task === "build" && w.req.arg === "dryingRack") {
     const st = regionState(state, world, state.player.region);
     return qty(pile(state, st.campCell), "rawMeat") > 0 || qty(state.player.pack, "rawMeat") > 0;
+  }
+  // The hang grind waits for meat the body cannot eat in time. A grind is never met, so
+  // without this it runs on every kilo a snare brings in, and it is the one row that must
+  // not: the list's own record is two year seeds frozen on days 300 and 325 when an ungated
+  // hang sat above the woodpile keeps. Gated, it costs no hour until a kill is going to rot.
+  if (w.req.task === "hang") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "rawMeat") + qty(state.player.pack, "rawMeat") > HANG_ABOVE_KG;
   }
   // A cracked bone wants a bone: the hunts leave them at camp, and the want waits for one to sit there.
   if (w.req.task === "crack") {
