@@ -15,7 +15,8 @@ import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/ep
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
-import { gradeLines, quirkLine } from "../sim/person";
+import { cardHtml, deadExtras, livingExtras } from "./card";
+import { faceSvg } from "./face";
 import { fmtName } from "../sim/names";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
@@ -28,7 +29,7 @@ import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { Candidate, GameState, Garment, ItemId, LogEntry, SkillId } from "../sim/types";
+import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND } from "../units";
@@ -83,7 +84,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
-  return `<h2>You <span class="r">day ${cal.day}</span></h2>
+  return `<h2><span class="stat-face">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food")}
 <div class="dim">fat: ${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg</div>
@@ -530,7 +531,7 @@ function ancestorLine(state: GameState): string {
   return `<p class="ancestor">${esc(fmtName(prev.name))} lived ${prev.died.day} days.</p>`;
 }
 
-export function tombstoneHtml(state: GameState, _world: World): string {
+export function tombstoneHtml(state: GameState, _world: World, ui: UiState): string {
   const rec = current(state);
   const next = landingDate(worldDate(state, state.dead!.minute)).date;
   const lines = entry(rec);
@@ -538,6 +539,7 @@ export function tombstoneHtml(state: GameState, _world: World): string {
 <h1>${esc(fmtName(rec.name))}</h1>
 <p>${esc(epitaphTail(rec))}</p>
 ${ancestorLine(state)}
+<div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>
 ${entryLinesHtml(lines.slice(1))}
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>
@@ -550,7 +552,7 @@ export function landingHtml(state: GameState, world: World): string {
   const first = l.oldCamp === null;
   const gap = first ? "" : `${esc(daysInWords(l.gapDays))} days after ${esc(fmtName(current(state).name))} died. `;
   const next = first ? { year: 1, doy: l.date.doy + 7 } : nextBoatDate(l.date).date;
-  const cards = l.candidates.map((c, i) => `<button class="card${i === l.chosen ? " chosen" : ""}" data-act="pick-candidate" data-index="${i}">${candidateCardHtml(c)}</button>`).join("");
+  const cards = l.candidates.map((c, i) => `<button class="card${i === l.chosen ? " chosen" : ""}" data-act="pick-candidate" data-index="${i}">${cardHtml(c.person, c.name)}</button>`).join("");
   return `<div class="box landing">
 <h1>${esc(fmtWorldDate(l.date))}</h1>
 <p>${gap}A boat puts in at ${esc(regionAt(world, l.region).name)} with three aboard. Choose one; the other two sail on.</p>
@@ -561,17 +563,12 @@ export function landingHtml(state: GameState, world: World): string {
 </div>`;
 }
 
-/** A candidate as the landing screen shows it: name, the four grades, the quirks. The face joins in the card module. */
-function candidateCardHtml(c: Candidate): string {
-  const lines = [...gradeLines(c.person), ...c.person.quirks.map(quirkLine)];
-  return `<b>${esc(fmtName(c.name))}</b>${lines.map((t) => `<div class="e">${esc(t)}</div>`).join("")}`;
-}
 
 export function cemeteryHtml(state: GameState, ui: UiState): string {
   const dead = [...state.survivors].filter((s) => s.died !== null).reverse();
   const rows = dead.map((s) => {
     const open = ui.cemeteryOpen === s.index;
-    const lines = open ? entryLinesHtml(entry(s).slice(1)) : "";
+    const lines = open ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>${entryLinesHtml(entry(s).slice(1))}` : "";
     return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
   });
   const leave = ui.confirmLeave
@@ -585,13 +582,15 @@ ${rows.length ? rows.join("") : `<p class="dim">No one has died here yet.</p>`}
 </div>`;
 }
 
-export function journalHtml(state: GameState, cal: Calendar): string {
+export function journalHtml(state: GameState, cal: Calendar, ui: UiState): string {
   const n = nextThreshold(state, cal);
   const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
   const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
+  const rec = current(state);
+  const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48, copy: true, copied: ui.copiedUntil > Date.now() })}</div>`;
   const mine = entry(current(state));
   const ancestors = state.survivors.slice(0, -1).reverse().map((s) => `<div class="e"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(fmtName(s.name))}</button> ${esc(epitaphTail(s))}</div>`);
-  return `<h2>Journal</h2>${season}${entryLinesHtml(mine)}${ancestors.length ? `<h3>Before you</h3><div class="entries">${ancestors.join("")}</div>` : ""}<button class="mini" data-act="cemetery">cemetery</button>`;
+  return `<h2>Journal</h2>${season}${card}${entryLinesHtml(mine)}${ancestors.length ? `<h3>Before you</h3><div class="entries">${ancestors.join("")}</div>` : ""}<button class="mini" data-act="cemetery">cemetery</button>`;
 }
 
 function awayOrderLine(o: AwayOrder): string {
@@ -600,7 +599,7 @@ function awayOrderLine(o: AwayOrder): string {
   return `<div class="e ${o.skipped && !o.gone ? "bad" : ""}">${esc(o.label)}: ${esc([did, now].filter(Boolean).join("; "))}.</div>`;
 }
 
-export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean, sinceLine: string): string {
+export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean, sinceLine: string, person?: Person): string {
   const h = Math.floor(realSeconds / 3600);
   const m = Math.floor((realSeconds % 3600) / 60);
   const gameMin = realSeconds * GAME_MINUTES_PER_REAL_SECOND;
@@ -610,7 +609,7 @@ export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean
   return `<div class="box">
 <h1>While you were away</h1>
 <p>${h ? `${h} h ` : ""}${m} min of the clock; ${fmtDuration(gameMin)} in the north${capped ? " (a day is as much as the world runs on without you)" : ""}.</p>
-<p>${esc(sinceLine)}</p>
+<p>${person ? faceSvg(person, 32) : ""} ${esc(sinceLine)}</p>
 ${moved}${orders}
 ${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(e.text)}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
 <button class="act" data-act="dismiss">Continue</button>

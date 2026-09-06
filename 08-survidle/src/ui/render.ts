@@ -21,6 +21,8 @@ export interface UiState {
   confirmLeave: boolean;
   /** The day catchUp was called on, so the away report's since-line reads from where the player left off. */
   awayFromDay: number;
+  /** The copy button reads "copied" until this real-time millisecond. */
+  copiedUntil: number;
   /** Index into ZOOMS: 0 is one cell per glyph. */
   zoom: number;
   /** The Do row whose kinds are open, or null. */
@@ -58,7 +60,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
-    cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: 0,
+    cemetery: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, copiedUntil: 0, zoom: 0,
     open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [], folds: {},
     hurry: newHurry(),
   };

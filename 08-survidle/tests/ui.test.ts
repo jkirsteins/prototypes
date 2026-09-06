@@ -287,7 +287,7 @@ describe("panels", () => {
   it("tombstone names the cause through the epitaph and offers to begin again, never a restart", () => {
     const { state, world } = newGame(21);
     die(state, "froze", regionAt(world, state.player.region).name);
-    setPanel("overlay", tombstoneHtml(state, world));
+    setPanel("overlay", tombstoneHtml(state, world, newUiState()));
     expect(document.querySelector("#overlay")!.textContent).toContain("Died of cold");
     expect(document.querySelector(`#overlay [data-act="begin-again"]`)).not.toBeNull();
     expect(document.querySelector(`#overlay [data-act="restart"]`)).toBeNull();

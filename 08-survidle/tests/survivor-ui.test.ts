@@ -21,7 +21,7 @@ function dead() {
 describe("the tombstone", () => {
   it("shows the name, the epitaph, the entry, the next boat and Begin again, and no line about the save", () => {
     const { state, world } = dead();
-    const html = tombstoneHtml(state, world);
+    const html = tombstoneHtml(state, world, newUiState());
     expect(html).toContain(fmtName(current(state).name));
     expect(html).toContain(epitaphTail(current(state)));
     expect(html).toMatch(/The next boat lands in July, year 1\./);
@@ -83,7 +83,7 @@ describe("the cemetery and the journal", () => {
     const { state, world } = dead();
     beginAgain(state, world);
     land(state, world);
-    const html = journalHtml(state, calendar(state.minute, state.startDoy));
+    const html = journalHtml(state, calendar(state.minute, state.startDoy), newUiState());
     expect(html).toContain("Next:");
     expect(html).toContain(fmtName(current(state).name));
     expect(html).toContain(fmtName(state.survivors[0].name));

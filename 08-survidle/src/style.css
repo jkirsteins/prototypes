@@ -424,6 +424,12 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .card b { display: block; margin-bottom: 4px; }
 .card .e { border-bottom: none; padding: 1px 0; color: var(--dim); }
 .card .face, .stat-face { display: inline-block; vertical-align: middle; margin-right: 6px; }
+.cardhead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cardhead b { margin: 0; }
+.card .cardbody { display: block; }
+.card pre.cardtext { white-space: pre-wrap; font: inherit; color: var(--text); margin: 6px 0 0; }
+#journal .card, #overlay .card { display: block; margin: 8px 0; cursor: default; }
+#overlay .box p .face { vertical-align: middle; margin-right: 8px; }
 @media (max-width: 700px) {
   .cards { flex-direction: column; }
 }

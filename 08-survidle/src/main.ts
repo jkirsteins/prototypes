@@ -166,7 +166,7 @@ function render() {
   setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
-  setPanel("journal", journalHtml(state, cal));
+  setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
   updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
@@ -176,13 +176,13 @@ function render() {
     setPanel("overlay", cemeteryHtml(state, ui));
     overlay.hidden = false;
   } else if (ui.away) {
-    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay)));
+    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay), current(state).person));
     overlay.hidden = false;
   } else if (state.landing) {
     setPanel("overlay", landingHtml(state, world));
     overlay.hidden = false;
   } else if (state.dead) {
-    setPanel("overlay", tombstoneHtml(state, world));
+    setPanel("overlay", tombstoneHtml(state, world, ui));
     overlay.hidden = false;
   } else {
     overlay.hidden = true;
@@ -324,6 +324,21 @@ function onClick(ev: Event) {
       ui.cemetery = true;
       ui.confirmLeave = false;
       break;
+    case "copy-card": {
+      // The card's text sits beside the button; where the clipboard is refused, it is shown for copying by hand.
+      const pre = target.closest(".cardbody")?.querySelector<HTMLElement>(".cardtext");
+      if (!pre) break;
+      navigator.clipboard?.writeText(pre.textContent ?? "").then(
+        () => {
+          ui.copiedUntil = Date.now() + 1500;
+          render();
+        },
+        () => {
+          pre.hidden = false;
+        },
+      );
+      break;
+    }
     case "cemetery-open":
       ui.cemetery = true;
       ui.cemeteryOpen = Number(target.dataset.index);

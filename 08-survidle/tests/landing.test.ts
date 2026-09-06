@@ -158,7 +158,7 @@ describe("what the heir is told", () => {
     // The tombstone after the heir dies names the ancestor's day.
     advance(state, world, 3 * 1440);
     die(state, "froze");
-    const html = tombstoneHtml(state, world);
+    const html = tombstoneHtml(state, world, newUiState());
     expect(html).toContain(`${fmtName(state.survivors[0].name)} lived ${firstDay} days.`);
   });
 
@@ -167,7 +167,7 @@ describe("what the heir is told", () => {
     placeAtSpot(state, world, state.player.region, "shore");
     advance(state, world, 2 * 1440);
     die(state, "starved");
-    const html = tombstoneHtml(state, world);
+    const html = tombstoneHtml(state, world, newUiState());
     expect(html).not.toContain(" lived ");
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });

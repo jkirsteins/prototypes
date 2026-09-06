@@ -5,7 +5,7 @@
  * record; templates over real quantities, no adjectives, no generated prose.
  */
 import { fmtName } from "./names";
-import { SPECIES_DEFS } from "./species";
+import { LARGE_GAME, SPECIES_DEFS } from "./species";
 import { STRUCTURES, TOOLS } from "./items";
 import type { DeathCause, LifeEvent, LifeRecord, ThresholdId, WorldDate } from "./types";
 
@@ -104,6 +104,36 @@ export function entry(rec: LifeRecord): string[] {
   let kept = middle.map((m) => m.text);
   while (kept.length > room) kept = [...kept.slice(0, 3), ...kept.slice(4)];
   return [head, ...kept, ...tail];
+}
+
+/**
+ * The rank of a line for the card's three stories: the worst night with
+ * wolves, the first large kill, the winter thresholds, the walls raised, then
+ * the rest of the entry's kinds in the order a listener would ask about them.
+ */
+function storyRank(e: LifeEvent): number {
+  switch (e.kind) {
+    case "firstKill": return LARGE_GAME.includes(e.species) ? 1 : 6;
+    case "threshold": return e.id === "coldSnap" || e.id === "firstSnow" || e.id === "dark" ? 2 : 4;
+    case "built": return e.structure === "cabin" || e.structure === "turfHut" ? 3 : 5;
+    case "toolLost": return 7;
+    case "toolWorn": return 8;
+    case "storm": return 9;
+    case "repaired": return 10;
+    default: return 99;
+  }
+}
+
+/** Three lines of the record at most, the best ranked, oldest first: what the card tells of a life. */
+export function stories(rec: LifeRecord): string[] {
+  const ranked: { rank: number; day: number; text: string }[] = [];
+  for (const e of rec.events) {
+    const t = eventLine(e);
+    if (t) ranked.push({ rank: storyRank(e), day: e.day, text: t });
+  }
+  if (rec.worst) ranked.push({ rank: rec.worst.wolves ? 0 : 11, day: rec.worst.day, text: `Day ${rec.worst.day}. The worst night: warmth ${rec.worst.warmth}${rec.worst.wolves ? ", wolves at the fire" : ""}.` });
+  ranked.sort((a, b) => a.rank - b.rank || a.day - b.day);
+  return ranked.slice(0, 3).sort((a, b) => a.day - b.day).map((s) => s.text);
 }
 
 /** One sentence of what happened on or after `day`, for the away report. */
