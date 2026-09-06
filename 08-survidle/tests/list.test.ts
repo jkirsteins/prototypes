@@ -8,6 +8,17 @@ const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
 
 describe("the list after the axe", () => {
+  // A vessel that froze full has no room, so a fill tops off nothing and the
+  // pour at camp passes it over: a fetch keep with every vessel frozen runs
+  // all day and draws nothing. A level-20 camp did that for twenty days from
+  // 30 January and froze on 19 February with 109 logs at camp. The thaw is a
+  // grind, blocked with "nothing is frozen" the rest of the year.
+  it("thaws a frozen vessel above every water fetch", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks[0]).toBe("thaw::grind");
+    for (const t of ["fill:shore:keep", "fill:hole:keep", "melt::keep"]) expect(tasks.indexOf(t)).toBeGreaterThan(0);
+  });
+
   it("keeps the bough bed laid right after the lean-to", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     expect(tasks.indexOf("build:boughBed:keep")).toBe(tasks.indexOf("build:leanTo:job") + 1);

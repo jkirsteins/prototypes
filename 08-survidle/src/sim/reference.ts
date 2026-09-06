@@ -44,7 +44,16 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
 /**
  * The runner never gathers a prerequisite on its own, so the list is
  * ordered as a competent day one is: water at the top, waiting for its
- * bucket; then the fire-and-roof chain, worked with the arrival axe alone
+ * bucket. Above the fetch itself sits the thaw grind, because a vessel
+ * that froze full is not a vessel: the fill task tops off what room a
+ * vessel has, a frozen one has none, and the pour at camp passes it over,
+ * so a fetch with the whole camp's vessels frozen runs all day and draws
+ * nothing while every want under it waits. A level-20 camp did exactly
+ * that for twenty days from 30 January - the bucket froze full on a night
+ * the fire went out - and froze to death on 19 February with 109 logs
+ * lying at camp. The grind is blocked with "nothing is frozen" the rest of
+ * the year, which is what a want at the head of the list has to be. Then
+ * the fire-and-roof chain, worked with the arrival axe alone
  * - stone for the ring, sticks, bark and cordage as raw stock (cordage
  * kept to eight, since arrows, snares and the bucket all draw on it), the
  * fire pit, the fire drill, the keep that lights the fire and relights it,
@@ -171,6 +180,7 @@ export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boo
 }
 
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
+  { req: { task: "thaw", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("fill", 2, "shore"),
   keep("fill", 2, "hole"),
   keep("melt", 2),

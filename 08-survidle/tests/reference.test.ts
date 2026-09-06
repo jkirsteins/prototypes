@@ -125,9 +125,10 @@ describe("the reference player", () => {
     expect(tasks[axe + 13]).toBe("hang:");
     expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 64: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
-    // twenty-snare keep after the berries, the forty-snare keep after the water trough.
-    expect(REFERENCE_ORDERS.length).toBe(64);
+    // 65: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
+    // twenty-snare keep after the berries, the forty-snare keep after the water trough, the
+    // thaw grind at the head of the water block.
+    expect(REFERENCE_ORDERS.length).toBe(65);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
