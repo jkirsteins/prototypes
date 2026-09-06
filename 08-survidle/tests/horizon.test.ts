@@ -32,9 +32,10 @@ describe("the horizon stages", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world);
     // The three named hunts (elk, reindeer, deer) all gate above level 1, so they are absent here.
-    // The 400 kg woodpile keep gates by season too, and a 1 April stage is closed for it, as are
-    // the two ice-hole fetches and the two melts, which wait for the shore to ice over, and the fire indoors, which waits for a hut.
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 9);
+    // The 400 kg woodpile keep and the 150-log keep gate by season too, and a 1 April stage is
+    // closed for both, as are the two ice-hole fetches and the two melts, which wait for the
+    // shore to ice over, and the fire indoors, which waits for a hut.
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 10);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");
@@ -57,11 +58,13 @@ describe("the horizon stages", () => {
     }
   });
 
-  it("the grinds stage has the chop grind, camp-has jobs for the keeps, and no keep", () => {
+  it("the grinds stage has the deer hunt grind last, camp-has jobs for the keeps, and no keep", () => {
     const { state, world } = setUpStage(17, stage("grinds"));
     const list = ordersHere(state, world);
     expect(list.some((o) => o.kind === "keep")).toBe(false);
-    expect(list.at(-1)).toMatchObject({ kind: "grind", req: { task: "chop" } });
+    // The 150-log keep closes on 1 April, so the last open want here is the deer
+    // hunt grind, the hardest of the three named hunts that opens at level 5.
+    expect(list.at(-1)).toMatchObject({ kind: "grind", req: { task: "hunt", arg: "deer" } });
     const fill = list.find((o) => o.req.task === "fill")!;
     expect(fill).toMatchObject({ kind: "job", req: { until: { kind: "campHas", qty: 2 } } });
   });

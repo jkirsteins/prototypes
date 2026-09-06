@@ -71,10 +71,15 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * first, so the trap can be set on the way to the shore. The hut and the
  * trough sit below the small-game hunt keep and above the surplus loop,
  * because the first month cannot afford their hours: that part of the
- * list is reached only when everything above it is met or blocked. Tools
- * the survivor holds are once jobs, since the first one made is taken up
- * and a keep would craft a second; the axe stays a keep because the
- * arrival axe wears out and the spare is the point. Auto-eat, auto-feed
+ * list is reached only when everything above it is met or blocked. Every
+ * tool is a keep of one at camp: the first one made is taken up, a keep
+ * then crafts a second, and the second is the point, since the arrival
+ * tools wear out and a survivor at the shore with a spear in the camp
+ * pile takes it up on the way out. The basket trap is the one craft that
+ * is not, since it is set and not held. Stone is a keep of eight for the
+ * same reason: arrows take three per five and a stone axe three, and a
+ * once job that ran out left every year seed with no arrows, no axe and a
+ * felling grind for company. Auto-eat, auto-feed
  * and auto-drink stay on, as they are for every player. Two kilos of
  * berries at camp sit with the cook keeps: in season they are the
  * cheapest kcal there is, and out of it the keep blocks harmlessly on
@@ -100,55 +105,12 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * winter earns its place ahead of chasing large game, but behind the
  * hang grind that clears the rack. It opens only from the season it is
  * stocked against (wantOpen), so a list that reaches it in April waits for
- * autumn rather than splitting 400 kg no winter yet needs. The felling
- * grind, needing the axe kept well above it, runs last and forever.
+ * autumn rather than splitting 400 kg no winter yet needs. The list ends
+ * with a 150-log keep, the winter stock's unsplit half, under the
+ * woodpile's season clause: a felling grind at the end of the list burned
+ * 400 kcal an hour for nothing when everything above it was blocked, and a
+ * runner with nothing left to do rests instead.
  */
-export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
-  keep("fill", 2, "shore"),
-  keep("fill", 2, "hole"),
-  keep("melt", 2),
-  job("stone", { kind: "campHas", qty: 8 }),
-  keep("sticks", 10),
-  keep("bark", 12),
-  keep("craft", 8, "cordage"),
-  job("build", { kind: "once" }, "firePit"),
-  job("craft", { kind: "once" }, "fireDrill"),
-  keep("light", 1),
-  keep("lightIndoors", 1),
-  keep("chop", 4),
-  keep("split", 60),
-  job("build", { kind: "once" }, "leanTo"),
-  job("craft", { kind: "once" }, "knife"),
-  keep("craft", 1, "snare"),
-  job("build", { kind: "times", n: 5 }, "snare"),
-  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
-  job("craft", { kind: "once" }, "fishingSpear"),
-  job("read", { kind: "once" }),
-  job("craft", { kind: "once" }, "basketTrap", "leave"),
-  job("setTrap", { kind: "once" }),
-  keep("cook", 1, "fish"),
-  keep("cook", 1),
-  keep("fish", 1, "any"),
-  keep("berries", 2),
-  job("build", { kind: "once" }, "dryingRack"),
-  job("craft", { kind: "once" }, "bow"),
-  keep("craft", 10, "arrows"),
-  keep("hunt", 2, "any"),
-  keep("craft", 1, "axe"),
-  job("sticks", { kind: "campHas", qty: 20 }),
-  job("bark", { kind: "campHas", qty: 40 }),
-  job("build", { kind: "once" }, "turfHut"),
-  job("build", { kind: "once" }, "waterStore"),
-  keep("fill", 20, "shore"),
-  keep("fill", 20, "hole"),
-  keep("melt", 20),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
-  keep("split", 400),
-  { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-  { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-  { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-  { req: { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-];
 
 /** 1 September: a competent player starts the winter woodpile when the nights first frost. */
 export const WINTER_WOOD_FROM_DOY = 244;
@@ -160,11 +122,68 @@ export const WINTER_WOOD_FROM_DOY = 244;
  */
 export const WINTER_WOOD_TO_DOY = 90;
 
+/** The winter stock (year loop spec 1.3): a hut winter is about 3 tonnes of firewood, of which 400 kg split and 150 logs to split, with 80 kg of dried meat. The stocked December camp starts with it; the list's winter keeps stock it. */
+export const WINTER_STOCK = { driedMeatKg: 80, firewoodKg: 400, logs: 150 };
+
+/** The winter-stock keeps, the 400 kg split keep and the 150-log keep, told from the list's summer keeps by their targets. */
+export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
+  if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
+  return (w.req.task === "split" && w.req.until.qty >= WINTER_STOCK.firewoodKg) || (w.req.task === "chop" && w.req.until.qty >= WINTER_STOCK.logs);
+}
+
+export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
+  keep("fill", 2, "shore"),
+  keep("fill", 2, "hole"),
+  keep("melt", 2),
+  keep("stone", 8),
+  keep("sticks", 10),
+  keep("bark", 12),
+  keep("craft", 8, "cordage"),
+  job("build", { kind: "once" }, "firePit"),
+  keep("craft", 1, "fireDrill"),
+  keep("light", 1),
+  keep("lightIndoors", 1),
+  keep("chop", 4),
+  keep("split", 60),
+  job("build", { kind: "once" }, "leanTo"),
+  keep("craft", 1, "knife"),
+  keep("craft", 1, "snare"),
+  job("build", { kind: "times", n: 5 }, "snare"),
+  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
+  keep("craft", 1, "fishingSpear"),
+  job("read", { kind: "once" }),
+  job("craft", { kind: "once" }, "basketTrap", "leave"),
+  job("setTrap", { kind: "once" }),
+  keep("cook", 1, "fish"),
+  keep("cook", 1),
+  keep("fish", 1, "any"),
+  keep("berries", 2),
+  job("build", { kind: "once" }, "dryingRack"),
+  keep("craft", 1, "bow"),
+  keep("craft", 10, "arrows"),
+  keep("hunt", 2, "any"),
+  keep("craft", 1, "axe"),
+  job("sticks", { kind: "campHas", qty: 20 }),
+  job("bark", { kind: "campHas", qty: 40 }),
+  job("build", { kind: "once" }, "turfHut"),
+  job("build", { kind: "once" }, "waterStore"),
+  keep("fill", 20, "shore"),
+  keep("fill", 20, "hole"),
+  keep("melt", 20),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  keep("split", WINTER_STOCK.firewoodKg),
+  { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
+  { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
+  { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
+  keep("chop", WINTER_STOCK.logs),
+];
+
 /**
  * Whether a competent player would give this want today: a named hunt
  * waits for the species' recommended Hunting level, since walking at an
- * elk with a stone point at level 1 is not competence, and the 400 kg
- * woodpile keep waits for the season it is stocked against.
+ * elk with a stone point at level 1 is not competence, and the
+ * winter-stock keeps, 400 kg of firewood and 150 logs, wait for the
+ * season they are stocked against.
  */
 /** The home shore is under ice: a shore fetch is shut and the winter methods are the question. */
 function shoreIced(state: GameState): boolean {
@@ -195,9 +214,7 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
-  if (w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty >= 400) {
-    return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
-  }
+  if (winterStockWant(w)) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
   return true;
 }
 

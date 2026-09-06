@@ -26,6 +26,7 @@ import {
   stepReference,
   wantOpen,
   weekLines,
+  WINTER_STOCK,
   WINTER_WOOD_FROM_DOY,
   WINTER_WOOD_TO_DOY,
 } from "../src/sim/reference";
@@ -43,13 +44,14 @@ describe("the reference player", () => {
     player.tick(state, world);
     const list = ordersHere(state, world);
     // The three named hunts (elk, reindeer, deer) gate on the species' recommended level,
-    // so a level-1 survivor's first tick never sees them; the 400 kg woodpile keep gates
-    // by season and a 1 April start is closed for it too; the two ice-hole fetches and
-    // the two melts wait for the shore to ice over, and the fire indoors for a hut; every other want is open.
+    // so a level-1 survivor's first tick never sees them; the 400 kg woodpile keep and the
+    // 150-log keep gate by season and a 1 April start is closed for both; the two ice-hole
+    // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
+    // every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 9);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 9);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 10);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 10);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -57,14 +59,15 @@ describe("the reference player", () => {
     });
   });
 
-  it("the knife, fire drill, fishing spear and bow are made once; the axe keep stays, for the spare", () => {
-    for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) {
+  it("the knife, fire drill, fishing spear, bow and axe are keeps of one spare; the basket trap stays a once job, since it is set and not held", () => {
+    for (const id of ["knife", "fireDrill", "fishingSpear", "bow", "axe"] as const) {
       const o = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === id)!;
-      expect(o.kind, id).toBe("job");
-      expect(o.req.until.kind, id).toBe("once");
+      expect(o.kind, id).toBe("keep");
+      expect(o.req.until, id).toEqual({ kind: "campHas", qty: 1 });
     }
-    const axe = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === "axe")!;
-    expect(axe.kind).toBe("keep");
+    const trap = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === "basketTrap")!;
+    expect(trap.kind).toBe("job");
+    expect(trap.req.until.kind).toBe("once");
   });
 
   it("the basket trap is carried, not stocked: its craft want leaves it in the pack, unlike every other craft want", () => {
@@ -80,8 +83,8 @@ describe("the reference player", () => {
     expect(at("lightIndoors::keep")).toBe(at("light::keep") + 1);
     expect(at("chop::keep")).toBe(at("light::keep") + 2);
     expect(at("build:leanTo:job:once")).toBeGreaterThan(at("chop::keep"));
-    expect(at("craft:knife:job:once")).toBe(at("build:leanTo:job:once") + 1);
-    expect(at("craft:snare:keep")).toBe(at("craft:knife:job:once") + 1);
+    expect(at("craft:knife:keep:campHas")).toBe(at("build:leanTo:job:once") + 1);
+    expect(at("craft:snare:keep")).toBe(at("craft:knife:keep:campHas") + 1);
     expect(at("build:snare:job:times")).toBe(at("craft:snare:keep") + 1);
   });
 
@@ -105,6 +108,7 @@ describe("the reference player", () => {
     expect(tasks[axe + 9]).toBe("split:");
     expect(tasks.slice(axe + 10, axe + 13)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(tasks[axe + 13]).toBe("chop:");
+    expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("keep");
     expect(REFERENCE_ORDERS.length).toBe(44);
   });
 
@@ -430,6 +434,27 @@ describe("wants by level", () => {
     expect(wantOpen(state, world, wood, calendar(0, 200))).toBe(false);
     expect(wantOpen(state, world, wood, calendar(0, 244))).toBe(true);
     expect(wantOpen(state, world, wood, calendar(0, 20))).toBe(true);
+  });
+
+  it("stone is a keep of eight: three for arrows, three for an axe, two for a knife, and a once job ran out on every year seed", () => {
+    const stone = REFERENCE_ORDERS.find((w) => w.req.task === "stone")!;
+    expect(stone.kind).toBe("keep");
+    expect(stone.req.until).toEqual({ kind: "campHas", qty: 8 });
+  });
+
+  it("the list ends with a 150-log keep in place of the felling grind, opened with the woodpile from 1 September", () => {
+    const last = REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1];
+    expect(last.req.task).toBe("chop");
+    expect(last.kind).toBe("keep");
+    expect(last.req.until).toEqual({ kind: "campHas", qty: WINTER_STOCK.logs });
+    expect(REFERENCE_ORDERS.some((w) => w.req.task === "chop" && w.kind === "grind")).toBe(false);
+    const { state, world } = newGame(17);
+    expect(wantOpen(state, world, last, calendar(0, 90))).toBe(false);
+    expect(wantOpen(state, world, last, calendar(0, 244))).toBe(true);
+    expect(wantOpen(state, world, last, calendar(0, 20))).toBe(true);
+    // The summer's 4-log keep is not a winter-stock want and stays open in April.
+    const summer = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === 4)!;
+    expect(wantOpen(state, world, summer, calendar(0, 90))).toBe(true);
   });
 });
 
