@@ -15,6 +15,7 @@ import {
   addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
 import { addItem, pile, qty } from "../src/sim/inventory";
+import { BARK_DRY_RATIO } from "../src/sim/items";
 import { WINTER_START_DOY } from "../src/sim/year";
 import { today } from "../src/sim/ledger";
 
@@ -141,16 +142,21 @@ describe("when an order is met", () => {
     expect(orderMet(state, world, arrows, true)).toBe(true);
   });
 
-  it("an inner bark keep reads the fresh strip and the dried one together, since a lit fire dries the strip out from under a keep that reads only the fresh kind", () => {
+  it("an inner bark keep reads the fresh strip and the dried one together, scaled by BARK_DRY_RATIO since a kilo of the dried kind is that many kilos of the fresh strip it dried from", () => {
     const { state, world } = newGame(3);
     const camp = pile(state, regionState(state, world, state.player.region).campCell);
     const o = addOrder(state, world, { task: "innerBark", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" }, "keep");
     addItem(camp, "freshBark", 1);
     expect(orderMet(state, world, o, false)).toBe(false);
-    addItem(camp, "driedBark", 2);
+    // A 1-for-1 sum would read 1 + 1 = 2, still under the idle threshold of 1.5; scaled by
+    // BARK_DRY_RATIO the dried kilo is worth 3 fresh-strip kilos, well over it.
+    addItem(camp, "driedBark", 1);
     expect(orderMet(state, world, o, false)).toBe(true);
     camp.items.freshBark = 0;
-    camp.items.driedBark = 3;
+    camp.items.driedBark = 1;
+    // One kilo of dried bark alone reaches the 3 kg fresh-strip target, since BARK_DRY_RATIO
+    // is 3: this fails at ratio 1, which is the bug the ratio fixes.
+    expect(BARK_DRY_RATIO).toBe(3);
     expect(orderMet(state, world, o, true)).toBe(true);
   });
 

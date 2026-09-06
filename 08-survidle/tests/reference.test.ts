@@ -7,7 +7,7 @@ import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { FAT_FULL } from "../src/sim/player";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
   fed,
@@ -33,6 +33,7 @@ import {
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
+import { readShore } from "../src/sim/knowledge";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
@@ -176,7 +177,7 @@ describe("the reference player", () => {
     else expect(tasks).not.toContain("bark");
   });
 
-  it("a once job with nothing to keep is given again the day after it finishes, since nothing is left standing for the trueKind rule to close off", () => {
+  it("tapSap, the one REOPENING_TASKS want, is given again the day after it finishes", () => {
     const { state, world } = newGame(17, SAP_FROM_DOY);
     const birch = findBirchCell(world);
     placeAt(state, world, birch);
@@ -199,6 +200,79 @@ describe("the reference player", () => {
     // otherwise be made again); a tap drunk on the spot leaves nothing standing to make
     // that true, so three days in the window book more than one day's three-tap cap.
     expect(sapTotal()).toBeGreaterThan(SAP_KCAL * SAP_TAPS_PER_DAY);
+  });
+
+  // Every other once job pins the opposite: given as itself, it finishes for good, and a
+  // second look the next day leaves nothing new done and no order standing. REOPENING_TASKS
+  // holds only "tapSap"; these four are the shapes a general no-yield rule wrongly reopened.
+  it("a garment craft is finished for good: one coat's materials, not a fresh one every day camp holds hides", () => {
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "crafting", 8);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.player.tools.push({ id: "needle", durability: 100 });
+    const camp = pile(state, st.campCell);
+    addItem(camp, "hide", 60);
+    addItem(camp, "sinew", 20);
+    const player = new ReferencePlayer([
+      { req: { task: "craft", arg: "hideCoat", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    expect(qty(camp, "hide")).toBe(54);
+    expect(ordersHere(state, world).some((o) => o.req.task === "craft")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(qty(camp, "hide")).toBe(54);
+    expect(ordersHere(state, world).some((o) => o.req.task === "craft")).toBe(false);
+  });
+
+  it("a build:snare times-5 job is finished for good at five snares, not re-issued to forty", () => {
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "hunting", 20);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "snare", 10);
+    const player = new ReferencePlayer([
+      { req: { task: "build", arg: "snare", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, kind: "job" },
+    ]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    expect(st.structures.snares).toBe(5);
+    expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(st.structures.snares).toBe(5);
+    expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
+  });
+
+  it("read is finished for good after its one hour, not re-given the next day", () => {
+    const { state, world } = newGame(17);
+    placeAtSpot(state, world, state.player.region, "shore");
+    const player = new ReferencePlayer([{ req: { task: "read", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" }]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    const known1 = Object.keys(state.player.known).length;
+    expect(known1).toBeGreaterThan(0);
+    expect(ordersHere(state, world).some((o) => o.req.task === "read")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(Object.keys(state.player.known).length).toBe(known1);
+    expect(ordersHere(state, world).some((o) => o.req.task === "read")).toBe(false);
+  });
+
+  it("setTrap is finished for good once the trap is set, not re-set the next day while it stands", () => {
+    const { state, world } = newGame(4, 200);
+    placeAtSpot(state, world, state.player.region, "shore");
+    const cell = cellOf(state, world);
+    const obs = readShore(state, world, cell);
+    const st = regionState(state, world, state.player.region);
+    for (const s of obs.fish) st.pop[s] = 2500;
+    addItem(state.player.pack, "basketTrap", 1);
+    const player = new ReferencePlayer([{ req: { task: "setTrap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" }]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    expect(st.trap).not.toBeNull();
+    expect(ordersHere(state, world).some((o) => o.req.task === "setTrap")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(ordersHere(state, world).some((o) => o.req.task === "setTrap")).toBe(false);
   });
 
   it("a times want counts its stand-ins' units: given exactly twice at woodcraft 1, and once as itself at woodcraft 3", () => {

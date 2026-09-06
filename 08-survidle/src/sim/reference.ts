@@ -18,7 +18,7 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
-import { nearestCell, yieldItem } from "./intent";
+import { nearestCell } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, RECIPES, ROOT_FROM_DOY, ROOT_TO_DOY,
   SAP_FROM_DOY, SAP_TO_DOY, TOOLS,
@@ -40,7 +40,7 @@ import { nestsFor, rootStockFor } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
-import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, WorldDate } from "./types";
+import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, TaskId, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
@@ -340,7 +340,11 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   if (w.req.task === "innerBark") return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
   if (w.req.task === "tapSap") return cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY;
   // Roots dig by hand April to October; outside it the ground is frozen and only an ice hole,
-  // cut and kept open with an axe, reaches the rhizomes under it.
+  // cut and kept open with an axe, reaches the rhizomes under it. axeInReach is a proxy for
+  // that hole, not the hole itself - resolveCell walks to the nearest waterside, bog or
+  // meadow cell rather than the cut hole, so the task's own check still refuses most winter
+  // days with "an ice hole reaches the rhizomes"; the want sits skipped, at no cost, until
+  // a hole happens to be open where the walk lands.
   if (w.req.task === "roots") return (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY) || axeInReach(state, world);
   // Seaweed grows only on a sea shore: a camp on an inland lake never has this want to give.
   if (w.req.task === "seaweed") return regionAt(world, state.player.region).sea > 0;
@@ -546,12 +550,22 @@ export function kitOut(state: GameState, world: World, producers = true): void {
 export const OPENING_TICK_MINUTES = 60;
 
 /**
+ * Work that leaves nothing behind for the next look to read: no stock at camp,
+ * no structure standing, so the want is judged by its window rather than closed
+ * for good the first time it is done. A tap is drunk on the spot; a knife is
+ * not, and a knife want that re-opened would be made again every day.
+ */
+const REOPENING_TASKS = new Set<TaskId>(["tapSap"]);
+
+/**
  * The player script (idle curve spec, section 2.5): the reference list is
  * what a competent player wants, and this gives each want as the best
  * kind the skill has earned, ranked where the want sits. A stand-in that
  * drops off is given again when the want is unmet; a want given as its
  * own kind that drops off is a finished job and is never given twice, or
- * the knife would be made again. A keep given as a keep stays for good.
+ * the knife would be made again - except a REOPENING_TASKS want, which
+ * leaves nothing behind to read and is reconsidered on the next look
+ * instead. A keep given as a keep stays for good.
  * A `times` want's own probe reads `done`, which a fresh probe never
  * carries, so a once-job stand-in's units are banked in `completed` when
  * it drops off and fed back as the probe's `done` - otherwise a five-times
@@ -605,13 +619,9 @@ export class ReferencePlayer {
         }
         continue;
       }
-      // A completed want given as its own kind is normally a finished job for good, or the
-      // knife would be made again - but nothing is left standing for a want with no yield to
-      // count: a tap drunk on the spot is not a possession the way a knife is, so the sap
-      // window's want is reconsidered on the very next look rather than closed for the season
-      // after its first drink. "Read" has no yield either and is reconsidered the same way,
-      // harmlessly: its own check refuses a second look at water it has already read.
-      if (this.trueKind.get(i)) { if (yieldItem(this.wants[i].req.task, this.wants[i].req.arg) !== null) this.finished.add(i); }
+      // A completed want given as its own kind is a finished job for good, or the knife
+      // would be made again, unless the task is named in REOPENING_TASKS below.
+      if (this.trueKind.get(i) && !REOPENING_TASKS.has(this.wants[i].req.task)) this.finished.add(i);
       else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);

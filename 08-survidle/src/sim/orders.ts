@@ -13,7 +13,7 @@ import { body } from "./person";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { STRUCTURES } from "./items";
+import { BARK_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -68,9 +68,14 @@ export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
  * within the hour a lit fire is going, faster than a beginner strips more
  * of it, so a keep counting only the fresh strip never reads met and
  * spends the whole day stripping bark forever with a pile of the dried
- * kind sitting beside it unground.
+ * kind sitting beside it unground. The stock is read in the keep's own
+ * unit, fresh-strip kilos: a kilo of the dried kind is `ratio` kilos of
+ * the fresh strip it dried from (BARK_DRY_RATIO), so the also-item is
+ * scaled up before it joins the sum rather than counted one for one.
  */
-const KEEP_ALSO: Partial<Record<TaskId, ItemId>> = { innerBark: "driedBark" };
+const KEEP_ALSO: Partial<Record<TaskId, { item: ItemId; ratio: number }>> = {
+  innerBark: { item: "driedBark", ratio: BARK_DRY_RATIO },
+};
 
 /**
  * Whether the order asks for nothing right now. A keep is unmet under half
@@ -88,7 +93,7 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
   const keep = keepTarget(o);
   if (keep) {
     const also = KEEP_ALSO[o.req.task];
-    const have = qty(camp, keep.item) + (also ? qty(camp, also) : 0) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
+    const have = qty(camp, keep.item) + (also ? qty(camp, also.item) * also.ratio : 0) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
     return live ? have >= keep.qty - 1e-9 : have >= keep.qty / 2 - 1e-9;
   }
   if (structureKeep(o.req, o.kind)) {
@@ -120,7 +125,11 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   const parts = [check(state, world, cal, o.req.task, o.req.arg, cell).label];
   const keep = keepTarget(o);
   const u = o.req.until;
-  if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}`);
+  // A keep whose stock reads a KEEP_ALSO pair names both forms it counts, or the row
+  // would claim to watch the fresh strip alone while it reads met on the dried one too.
+  const also = keep && KEEP_ALSO[o.req.task];
+  if (keep && also) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}, fresh or dried`);
+  else if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}`);
   else if (o.kind === "keep" && (o.req.task === "light" || o.req.task === "lightIndoors")) parts.push("keep it lit");
   else if (structureKeep(o.req, o.kind)) parts.push(o.req.arg === "snare" ? `keep ${u.kind === "campHas" ? u.qty : 1} snares set` : `keep the ${STRUCTURES[o.req.arg as StructureId].name} laid`);
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
