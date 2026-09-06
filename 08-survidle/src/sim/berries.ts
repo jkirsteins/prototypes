@@ -1,8 +1,8 @@
 /**
- * The gut's ceiling on berries (calibration pass spec, section 5.2): full
- * credit to two kilos a day, half credit and the water cost of a turning
- * stomach to four, and none past that. The counter lives on the player
- * and resets with the day number.
+ * The gut's ceiling on berries (tables audit spec, section 3): full credit
+ * to BERRY.fullCreditKg a day, half credit and the water cost of a turning
+ * stomach to BERRY.refuseKg, and none past that. The counter lives on the
+ * player and resets with the day number.
  */
 import { dayNumber } from "./calendar";
 import { BERRY } from "./tables";
