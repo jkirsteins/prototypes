@@ -6,11 +6,11 @@ import type {
 /** Unit weight in kg. Kilogram items weigh 1 per unit by definition. */
 export const ITEM_KG: Record<ItemId, number> = {
   log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
-  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2,
+  sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2, wedge: 0.3,
   firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
   water: 1, ice: 1,
-  axe: 1.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
+  axe: 1.5, stoneAxe: 1.4, flakedAxe: 1.2, whetstone: 0.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
   needle: 0.01, barkBucket: 0.3, waterskin: 0.4,
 };
 
@@ -21,11 +21,11 @@ export const KG_ITEMS = new Set<ItemId>([
 
 export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
-  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps",
+  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps", wedge: "wedges",
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
   wetFirewood: "wet firewood", water: "water", ice: "ice",
-  axe: "axes", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
+  axe: "iron axes", stoneAxe: "stone axes", flakedAxe: "flaked axes", whetstone: "whetstones", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
 
@@ -51,7 +51,10 @@ export const SPOIL_HOURS: Record<PerishableId, number> = {
 };
 
 export const TOOLS: Record<ToolId, { name: string; kg: number; litres?: number }> = {
-  axe: { name: "axe", kg: 1.5 },
+  axe: { name: "iron axe", kg: 1.5 },
+  stoneAxe: { name: "stone axe", kg: 1.4 },
+  flakedAxe: { name: "flaked axe", kg: 1.2 },
+  whetstone: { name: "whetstone", kg: 0.5 },
   knife: { name: "knife", kg: 0.2 },
   bow: { name: "bow", kg: 0.8 },
   fishingSpear: { name: "fishing spear", kg: 1.0 },
@@ -99,8 +102,14 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   fishingSpear: { name: "fishing spear", needs: [{ item: "stick", qty: 1 }, { item: "stone", qty: 1 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 30, out: { item: "fishingSpear", qty: 1 } },
   snare: { name: "snare", needs: [{ item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 20, out: { item: "snare", qty: 1 } },
   needle: { name: "bone needle", needs: [{ item: "bone", qty: 1 }], tool: "knife", minutes: 20, out: { item: "needle", qty: 1 } },
-  axe: { name: "stone axe", needs: [{ item: "stone", qty: 3 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 90, out: { item: "axe", qty: 1 } },
+  // A flaked edge in an evening: it chops badly and shatters; the celt is a cobble pecked and ground on the whetstone over days, a real edge that hones like iron.
+  flakedAxe: { name: "flaked axe", needs: [{ item: "stone", qty: 2 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 90, out: { item: "flakedAxe", qty: 1 } },
+  stoneAxe: { name: "stone axe", needs: [{ item: "stone", qty: 1 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "whetstone", minutes: 1200, out: { item: "stoneAxe", qty: 1 } },
   torch: { name: "torch", needs: [{ item: "stick", qty: 1 }, { item: "bark", qty: 2 }], minutes: 20, out: { item: "torch", qty: 1 } },
+  // A flat stone ground smooth on the outcrop: the edge's whole life, where a stone sharpen spends the stone.
+  whetstone: { name: "whetstone", needs: [{ item: "stone", qty: 1 }], minutes: 30, out: { item: "whetstone", qty: 1 } },
+  // Driven with a stick swung as a maul: the way a log splits with no iron.
+  wedges: { name: "wedges x2", needs: [{ item: "stick", qty: 2 }], tool: "knife", minutes: 20, out: { item: "wedge", qty: 2 } },
   hideCoat: { name: "hide coat", needs: [{ item: "hide", qty: 6 }, { item: "sinew", qty: 2 }], tool: "needle", minutes: 480, out: { clothing: "hideCoat" } },
   hideTrousers: { name: "hide trousers", needs: [{ item: "hide", qty: 4 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 300, out: { clothing: "hideTrousers" } },
   hideBoots: { name: "hide boots", needs: [{ item: "hide", qty: 2 }, { item: "sinew", qty: 1 }], tool: "needle", minutes: 240, out: { clothing: "hideBoots" } },

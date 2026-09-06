@@ -3,7 +3,7 @@
  * putting down. Tasks with a duration live in tasks.ts.
  */
 import type { Rng } from "../rng";
-import { clamp, PACK_HARD_KG } from "../units";
+import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { berriesRefused } from "./berries";
 import { dayNumber } from "./calendar";
@@ -11,7 +11,7 @@ import { feedFire, rackCapacity } from "./camp";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
-import { FAT_FULL } from "./player";
+import { body } from "./person";
 import { regionState } from "./regionstate";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS } from "./items";
 import { log } from "./log";
@@ -43,8 +43,8 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     gain = (full + (kg - full) / 2) * def.kcalPerKg;
     const after = before + kg;
     p.berriesToday.kg = after;
-    if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "Your stomach is turning.", "bad");
-    if (after >= BERRY.refuseKg - 1e-9) log(state, "You cannot face another berry.", "bad");
+    if (before <= BERRY.fullCreditKg + 1e-9 && after > BERRY.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
+    if (after >= BERRY.refuseKg - 1e-9) log(state, "{You} cannot face another berry.", "bad");
   }
   let left = kg;
   for (const inv of invs) {
@@ -57,12 +57,12 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     p.kcal += gain;
   } else {
     p.kcal = KCAL_FULL;
-    p.fat = clamp(p.fat + (gain - room), 0, FAT_FULL);
+    p.fat = clamp(p.fat + (gain - room), 0, body(state).fatFull);
   }
   creditEaten(state, gain);
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
-    log(state, "The raw meat turns your stomach. A fever follows.", "bad");
+    log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");
   }
   return true;
 }
@@ -107,7 +107,7 @@ export function take(state: GameState, world: World, item: ItemId, n: number): n
   if (item === "water" || item === "ice") return 0;
   const p = state.player;
   const from = herePile(state, world);
-  const room = PACK_HARD_KG - weight(p.pack);
+  const room = body(state).packHardKg - weight(p.pack);
   const unit = ITEM_KG[item];
   const max = unit >= 1 ? Math.floor(room / unit + 1e-9) : room / unit;
   const want = Math.min(n, qty(from, item), Math.max(0, max));

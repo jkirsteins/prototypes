@@ -63,12 +63,12 @@ describe("the gate", () => {
     const times = req("chop", { kind: "times", n: 5 });
     const has = req("split", { kind: "campHas", qty: 40 });
     const grind = req("chop", { kind: "forever" });
-    expect(orderGate(state, times, "job")).toEqual({ ok: false, why: "jobs at Woodcraft 3, you are 1", skill: "woodcraft", level: 1, at: 3 });
+    expect(orderGate(state, times, "job")).toEqual({ ok: false, why: "jobs at Woodcraft 3, {you} {are} 1", skill: "woodcraft", level: 1, at: 3 });
     setLevel(state, "woodcraft", 3);
     expect(orderGate(state, times, "job")).toEqual({ ok: true });
     expect(orderGate(state, has, "job")).toEqual({ ok: true });
-    expect(orderGate(state, grind, "grind")).toEqual({ ok: false, why: "grinds at Woodcraft 5, you are 3", skill: "woodcraft", level: 3, at: 5 });
-    expect(orderGate(state, has, "keep")).toEqual({ ok: false, why: "keeps at Woodcraft 10, you are 3", skill: "woodcraft", level: 3, at: 10 });
+    expect(orderGate(state, grind, "grind")).toEqual({ ok: false, why: "grinds at Woodcraft 5, {you} {are} 3", skill: "woodcraft", level: 3, at: 5 });
+    expect(orderGate(state, has, "keep")).toEqual({ ok: false, why: "keeps at Woodcraft 10, {you} {are} 3", skill: "woodcraft", level: 3, at: 10 });
     setLevel(state, "woodcraft", 5);
     expect(orderGate(state, grind, "grind")).toEqual({ ok: true });
     setLevel(state, "woodcraft", 10);
@@ -86,7 +86,7 @@ describe("the gate", () => {
     const { state } = newGame(3);
     const g = orderGate(state, req("light", { kind: "campHas", qty: 1 }), "keep");
     expect(g.ok).toBe(false);
-    if (!g.ok) expect(g.why).toBe("keeps at Building 10, you are 1");
+    if (!g.ok) expect(g.why).toBe("keeps at Building 10, {you} {are} 1");
   });
 
   it("every skill has the same three levels", () => {
@@ -103,7 +103,7 @@ describe("the gate", () => {
 describe("giving an order", () => {
   it("a shut gate throws with the reason and adds nothing", () => {
     const { state, world } = newGame(3);
-    expect(() => giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep")).toThrow("keeps at Woodcraft 10, you are 1");
+    expect(() => giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep")).toThrow("keeps at Woodcraft 10, {you} {are} 1");
     expect(ordersHere(state, world)).toEqual([]);
   });
 
@@ -199,8 +199,8 @@ describe("the rung log lines", () => {
   });
 
   it("the lines name the kind and the skill", () => {
-    expect(RUNG_LINE.job("Woodcraft")).toBe("You know woodcraft well enough to set a task and walk away: jobs with a count or a target from Woodcraft.");
+    expect(RUNG_LINE.job("Woodcraft")).toBe("{You} {know} woodcraft well enough to set a task and walk away: jobs with a count or a target from Woodcraft.");
     expect(RUNG_LINE.grind("Fishing")).toBe("Fishing is second nature now: grinds, work that never ends, from Fishing.");
-    expect(RUNG_LINE.keep("Building")).toBe("You keep count of building without thinking: keeps from Building.");
+    expect(RUNG_LINE.keep("Building")).toBe("{You} {keep} count of building without thinking: keeps from Building.");
   });
 });

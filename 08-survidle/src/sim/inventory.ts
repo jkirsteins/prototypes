@@ -1,8 +1,8 @@
-import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
 import { cellAt } from "../world/gen";
 import { log } from "./log";
+import { body } from "./person";
 import { cellOf } from "./position";
 import {
   type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
@@ -168,7 +168,7 @@ export function consume(invs: Inventory[], needs: Need[]): void {
 export function produce(state: GameState, world: World, item: ItemId, n: number): "pack" | "pile" {
   const p = state.player;
   const addedKg = n * ITEM_KG[item];
-  if (item !== "log" && item !== "water" && item !== "ice" && weight(p.pack) + addedKg <= PACK_COMFORTABLE_KG + 1e-9) {
+  if (item !== "log" && item !== "water" && item !== "ice" && weight(p.pack) + addedKg <= body(state).packComfortableKg + 1e-9) {
     addItem(p.pack, item, n);
     return "pack";
   }
@@ -216,6 +216,27 @@ export function toolNear(p: Player, id: ToolId, invs: Inventory[]): boolean {
   return hasTool(p, id) || totalQty(invs, id) > 0;
 }
 
+/** Every axe, best first: the iron one holds its edge longest and the flaked one shatters. */
+export const AXES: ToolId[] = ["axe", "stoneAxe", "flakedAxe"];
+/** How fast each head blunts against the iron axe's rate. */
+export const AXE_WEAR: Partial<Record<ToolId, number>> = { axe: 1, stoneAxe: 1.5, flakedAxe: 4 };
+/** The edge at or under which the log says the axe wants honing, once per honing. */
+export const BLUNT_EDGE = 25;
+
+/** The best axe held, or none. */
+export function axeInHand(p: Player): Tool | undefined {
+  for (const id of AXES) {
+    const t = tool(p, id);
+    if (t) return t;
+  }
+  return undefined;
+}
+
+/** An axe of any kind in hand or lying in reach. */
+export function axeNear(p: Player, invs: Inventory[]): boolean {
+  return AXES.some((id) => toolNear(p, id, invs));
+}
+
 /** A fresh tool: full durability, and a vessel starts empty and thawed. */
 export function freshTool(id: ToolId): Tool {
   return TOOLS[id].litres !== undefined ? { id, durability: 100, litres: 0, frozen: false } : { id, durability: 100 };
@@ -237,17 +258,29 @@ export function takeUp(state: GameState, world: World, id: ToolId): boolean {
   return false;
 }
 
-/** Wears a tool by n points; returns true if it broke. A spare in the pack is taken up in the same breath. */
+/**
+ * Wears a tool by n points; returns true if it broke. A spare in the pack is
+ * taken up in the same breath. An axe's durability is its edge: the iron axe
+ * and the celt blunt to 0 and stay, wanting a hone, and only the flaked axe
+ * shatters.
+ */
 export function wearTool(state: GameState, id: ToolId, n: number): boolean {
   const p = state.player;
   const t = tool(p, id);
   if (!t) return false;
-  t.durability -= n;
+  const worn = n * (AXE_WEAR[id] ?? 1);
+  if (id === "axe" || id === "stoneAxe") {
+    const before = t.durability;
+    t.durability = Math.max(0, t.durability - worn);
+    if (before > BLUNT_EDGE && t.durability <= BLUNT_EDGE) log(state, "The axe is blunt; it wants honing.");
+    return false;
+  }
+  t.durability -= worn;
   if (t.durability > 0) return false;
   p.tools = p.tools.filter((x) => x !== t);
   if (removeItem(p.pack, id, 1) >= 1) {
     p.tools.push(freshTool(id));
-    log(state, `The ${TOOLS[id].name} has broken; you take up the spare.`);
+    log(state, `The ${TOOLS[id].name} has broken; {you} {take} up the spare.`);
   }
   return true;
 }

@@ -1,38 +1,66 @@
 /**
- * Survivor names: first and last names from Scandinavian and Baltic pools,
- * combined freely, so a Norwegian first name may carry a Latvian surname.
- * Plain ASCII spellings, since the UI and the epitaph are typed text.
+ * Survivor names: first names and surnames from Scandinavian and Baltic
+ * pools, combined freely, so a Norwegian first name may carry a Latvian
+ * surname. First names are drawn for the person's sex; a Latvian or
+ * Lithuanian surname carries the form that language gives a woman, and
+ * every other surname is one form for anyone. Plain ASCII spellings,
+ * since the UI and the epitaph are typed text.
  */
 import type { Rng } from "../rng";
 
-export const FIRST_NAMES = [
+export type Sex = "f" | "m";
+
+export const WOMEN = [
   // Norwegian, Swedish, Danish, Finnish
-  "Eirik", "Sigrid", "Ingrid", "Bjorn", "Astrid", "Leif", "Solveig", "Torvald", "Ragnhild", "Halvard",
-  "Gunnar", "Helga", "Sven", "Kari", "Olav", "Liv", "Arne", "Tove", "Aino", "Eero", "Kaisa", "Mikko",
-  "Tuula", "Veikko", "Sanna", "Matti", "Ilkka", "Riikka", "Jorunn", "Sten",
+  "Sigrid", "Ingrid", "Astrid", "Solveig", "Ragnhild", "Helga", "Kari", "Liv", "Tove", "Aino", "Kaisa", "Tuula", "Sanna", "Riikka", "Jorunn",
   // Latvian, Lithuanian, Estonian
-  "Janis", "Ilze", "Andris", "Liga", "Maris", "Dace", "Juris", "Inese", "Valdis", "Rasa",
-  "Jonas", "Egle", "Vytas", "Ruta", "Kazys", "Aldona", "Mart", "Kadri", "Toomas", "Liis", "Priit", "Anu",
+  "Ilze", "Liga", "Dace", "Inese", "Rasa", "Egle", "Ruta", "Aldona", "Kadri", "Liis", "Anu",
 ];
 
-export const LAST_NAMES = [
+export const MEN = [
+  // Norwegian, Swedish, Danish, Finnish
+  "Eirik", "Bjorn", "Leif", "Torvald", "Halvard", "Gunnar", "Sven", "Olav", "Arne", "Eero", "Mikko", "Matti", "Ilkka", "Sten",
+  // Latvian, Lithuanian, Estonian
+  "Janis", "Andris", "Maris", "Juris", "Valdis", "Jonas", "Vytas", "Kazys", "Mart", "Toomas", "Priit",
+];
+
+export const FIRST_NAMES = [...WOMEN, ...MEN];
+
+/** One form for anyone, or the man's and the woman's form where the language inflects a surname. */
+export type Surname = string | { m: string; f: string };
+
+export const LAST_NAMES: Surname[] = [
   "Berg", "Dahl", "Haugen", "Lund", "Nygard", "Solberg", "Strand", "Vik", "Bakke", "Moen",
   "Lindqvist", "Nyman", "Sjoberg", "Holm", "Ek", "Aalto", "Koskinen", "Niemi", "Salo", "Virtanen",
-  "Kalnins", "Berzins", "Ozols", "Liepa", "Krumins", "Balodis", "Zarins", "Vitols", "Eglitis", "Dzenis",
-  "Kazlauskas", "Petrauskas", "Jankauskas", "Zukauskas", "Butkus", "Urbonas", "Tamm", "Saar", "Sepp", "Magi", "Kask", "Kukk",
+  { m: "Kalnins", f: "Kalnina" }, { m: "Berzins", f: "Berzina" }, { m: "Ozols", f: "Ozola" }, "Liepa", { m: "Krumins", f: "Krumina" },
+  { m: "Balodis", f: "Balode" }, { m: "Zarins", f: "Zarina" }, { m: "Vitols", f: "Vitola" }, { m: "Eglitis", f: "Eglite" }, { m: "Dzenis", f: "Dzene" },
+  { m: "Kazlauskas", f: "Kazlauskaite" }, { m: "Petrauskas", f: "Petrauskaite" }, { m: "Jankauskas", f: "Jankauskaite" }, { m: "Zukauskas", f: "Zukauskaite" },
+  { m: "Butkus", f: "Butkute" }, { m: "Urbonas", f: "Urbonaite" }, "Tamm", "Saar", "Sepp", "Magi", "Kask", "Kukk",
 ];
+
+export function surnameFor(s: Surname, sex: Sex): string {
+  return typeof s === "string" ? s : s[sex];
+}
+
+/** Which list a first name is in, or null for a name the player typed. */
+export function sexOfName(first: string): Sex | null {
+  if (WOMEN.includes(first)) return "f";
+  if (MEN.includes(first)) return "m";
+  return null;
+}
 
 export function nameTaken(name: { first: string; last: string }, taken: { first: string; last: string }[]): boolean {
   return taken.some((t) => t.first === name.first && t.last === name.last);
 }
 
-/** A name not used in this world yet. The pools are far larger than any lineage, so the loop is short. */
-export function rollName(rng: Rng, taken: { first: string; last: string }[]): { first: string; last: string } {
+/** A name for this sex not used in this world yet. The pools are far larger than any lineage, so the loop is short. */
+export function rollName(rng: Rng, sex: Sex, taken: { first: string; last: string }[]): { first: string; last: string } {
+  const firsts = sex === "f" ? WOMEN : MEN;
   for (let i = 0; i < 100; i++) {
-    const name = { first: FIRST_NAMES[rng.int(FIRST_NAMES.length)], last: LAST_NAMES[rng.int(LAST_NAMES.length)] };
+    const name = { first: firsts[rng.int(firsts.length)], last: surnameFor(LAST_NAMES[rng.int(LAST_NAMES.length)], sex) };
     if (!nameTaken(name, taken)) return name;
   }
-  return { first: FIRST_NAMES[rng.int(FIRST_NAMES.length)], last: `${LAST_NAMES[rng.int(LAST_NAMES.length)]} the younger` };
+  return { first: firsts[rng.int(firsts.length)], last: `${surnameFor(LAST_NAMES[rng.int(LAST_NAMES.length)], sex)} the younger` };
 }
 
 export function fmtName(name: { first: string; last: string }): string {

@@ -113,6 +113,8 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
 const COUNT_WORDS: Partial<Record<TaskId, [string, string]>> = {
   chop: ["tree", "trees"],
   split: ["log", "logs"],
+  splitWedges: ["log", "logs"],
+  deadwood: ["load", "loads"],
   sticks: ["bundle", "bundles"],
   bark: ["strip", "strips"],
   stone: ["trip", "trips"],
@@ -290,5 +292,5 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     return;
   }
   startIntent(state, world, cal, rng, WAIT);
-  log(state, "Nothing to do. You wait at camp.");
+  log(state, "Nothing to do. {You} {wait} at camp.");
 }

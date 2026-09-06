@@ -15,7 +15,7 @@ import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
 
-const LINE = "A day's work done. You rest by the fire.";
+const LINE = "A day's work done. {You} {rest} by the fire.";
 
 /** A kitted camp on seed 17 with one endless felling grind, the survivor fresh at 08:00. */
 function felling() {

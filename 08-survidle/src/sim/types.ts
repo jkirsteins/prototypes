@@ -20,7 +20,7 @@ export type { Habitat, Species } from "./species";
 /** Items counted in pieces. A tool not in hand is one of these. */
 export type CountItem =
   | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew"
-  | "snare" | "arrow" | "torch" | "basketTrap"
+  | "snare" | "arrow" | "torch" | "basketTrap" | "wedge"
   | ToolId;
 /** Items measured in kilograms. */
 export type KgItem =
@@ -43,7 +43,7 @@ export interface Inventory {
   stacks: Partial<Record<PerishableId, Stack[]>>;
 }
 
-export type ToolId = "axe" | "knife" | "bow" | "fishingSpear" | "fireDrill" | "needle" | "barkBucket" | "waterskin";
+export type ToolId = "axe" | "stoneAxe" | "flakedAxe" | "whetstone" | "knife" | "bow" | "fishingSpear" | "fireDrill" | "needle" | "barkBucket" | "waterskin";
 export interface Tool { id: ToolId; durability: number; /** water carried, vessels only */ litres?: number; frozen?: boolean }
 
 export type ClothingId =
@@ -62,7 +62,7 @@ export type DecayingId = "leanTo" | "dryingRack" | "turfHut";
 
 export type RecipeId =
   | "cordage" | "knife" | "fireDrill" | "bow" | "arrows" | "fishingSpear"
-  | "snare" | "needle" | "axe" | "torch"
+  | "snare" | "needle" | "stoneAxe" | "flakedAxe" | "torch" | "whetstone" | "wedges"
   | "hideCoat" | "hideTrousers" | "hideBoots" | "furHat" | "furMittens"
   | "hideBlanket" | "barkBucket" | "waterskin" | "basketTrap";
 
@@ -75,16 +75,16 @@ export type FillMethod = "shore" | "hole" | "seep";
 export const FILL_METHODS: FillMethod[] = ["shore", "hole", "seep"];
 
 export type TaskId =
-  | "chop" | "sticks" | "bark" | "stone" | "berries" | "split"
-  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "build" | "mend"
+  | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
+  | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
-  "chop", "sticks", "bark", "stone", "berries", "split",
-  "hunt", "fish", "cook", "craft", "repair", "sharpen", "build", "mend",
+  "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
+  "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp",
@@ -304,7 +304,8 @@ export interface Weather {
   iceCm: number;
 }
 
-export interface LogEntry { minute: number; text: string; kind?: "bad" | "good" }
+/** A log line; `away` marks one written while nobody was watching, which the panels render by name. */
+export interface LogEntry { minute: number; text: string; kind?: "bad" | "good"; away?: true }
 
 export type DeathCause = "starved" | "froze" | "wolves" | "sickness" | "thirst" | "smoke" | "drowned" | "gaveUp";
 
@@ -319,6 +320,7 @@ export type LifeEventBody =
   | { kind: "built"; structure: StructureId }
   | { kind: "entered"; region: string }
   | { kind: "toolWorn"; tool: ToolId }
+  | { kind: "toolLost"; tool: ToolId }
   | { kind: "frostbite"; part: "toes" | "fingers" }
   | { kind: "storm" }
   | { kind: "repaired"; structure: StructureId }
@@ -338,9 +340,23 @@ export interface Died {
   after: { threshold: ThresholdId; nights: number } | null;
 }
 
+export type Grade = -2 | -1 | 0 | 1 | 2;
+export type QuirkId = "coastBorn" | "forestBorn" | "sleepsLight" | "bigEater" | "steadyByTheFire";
+/** Who the survivor is: rolled per candidate, kept on the record, read through person.ts. */
+export interface Person {
+  sex: "f" | "m";
+  axes: { strength: Grade; build: Grade; hands: Grade; eyes: Grade };
+  /** One or two, never coastBorn with forestBorn. */
+  quirks: QuirkId[];
+  /** Seeds the face; the ancestor keeps their face in the cemetery. */
+  face: number;
+}
+export interface Candidate { name: { first: string; last: string }; person: Person }
+
 /** One survivor's whole life, kept after death: the journal, the epitaph and the away report read this, not the log. */
 export interface LifeRecord {
   name: { first: string; last: string };
+  person: Person;
   index: number;
   landed: WorldDate;
   gapDays: number;
@@ -350,15 +366,26 @@ export interface LifeRecord {
   died: Died | null;
 }
 
-/** Set between "Begin again" and the name being confirmed: where the next survivor lands and how long the world sat empty. */
+/**
+ * Set between "Begin again" and the landing being confirmed, and for a new
+ * world before its first survivor: where the boat puts in, how long the
+ * world sat empty, and the three people aboard.
+ */
 export interface Landing {
   cell: number;
   region: number;
   date: WorldDate;
   gapDays: number;
+  /** The three people aboard this boat. */
+  candidates: Candidate[];
+  /** "Next boat" presses, from 0. */
+  boat: number;
+  /** Index into candidates: the highlighted card. */
+  chosen: 0 | 1 | 2;
+  /** The name in the field: the chosen candidate's until the player edits it. */
   name: { first: string; last: string };
-  /** The camp cell the heir's distance and bearing are read against: the old survivor's, not wherever they died. */
-  oldCamp: number;
+  /** The camp cell the heir's distance and bearing are read against: the old survivor's, not wherever they died. Null for the first survivor. */
+  oldCamp: number | null;
 }
 
 export interface RunStats { trees: number; animals: number; structures: number; km: number }

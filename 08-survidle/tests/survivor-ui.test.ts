@@ -21,7 +21,7 @@ function dead() {
 describe("the tombstone", () => {
   it("shows the name, the epitaph, the entry, the next boat and Begin again, and no line about the save", () => {
     const { state, world } = dead();
-    const html = tombstoneHtml(state, world);
+    const html = tombstoneHtml(state, world, newUiState());
     expect(html).toContain(fmtName(current(state).name));
     expect(html).toContain(epitaphTail(current(state)));
     expect(html).toMatch(/The next boat lands in July, year 1\./);
@@ -32,14 +32,18 @@ describe("the tombstone", () => {
 });
 
 describe("the landing screen", () => {
-  it("shows the date, the gap, the prefilled name, a reroll and Land", () => {
+  it("shows the date, the gap, three cards with the chosen one marked, the prefilled name, the next boat and Land", () => {
     const { state, world } = dead();
     beginAgain(state, world);
     const html = landingHtml(state, world);
     expect(html).toContain("year 1");
     expect(html).toContain("90 days after");
     expect(html).toContain(`value="${fmtName(state.landing!.name)}"`);
-    expect(html).toContain('data-act="reroll-name"');
+    expect(html.match(/data-act="pick-candidate"/g)).toHaveLength(3);
+    expect(html).toContain('class="card chosen" data-act="pick-candidate" data-index="0"');
+    for (const c of state.landing!.candidates) expect(html).toContain(fmtName(c.name));
+    expect(html).toContain('data-act="next-boat"');
+    expect(html).not.toContain('data-act="reroll-name"');
     expect(html).toContain('data-act="land"');
   });
 });
@@ -79,7 +83,7 @@ describe("the cemetery and the journal", () => {
     const { state, world } = dead();
     beginAgain(state, world);
     land(state, world);
-    const html = journalHtml(state, calendar(state.minute, state.startDoy));
+    const html = journalHtml(state, calendar(state.minute, state.startDoy), newUiState());
     expect(html).toContain("Next:");
     expect(html).toContain(fmtName(current(state).name));
     expect(html).toContain(fmtName(state.survivors[0].name));

@@ -117,11 +117,13 @@ export function burnPerHour(w: Weather, ambient: number, st: RegionState): numbe
 }
 
 /** What rain does to lighting: longer, chancy, or not at all. */
-export function lightingInRain(w: Weather, ambient: number, roofOverPit: boolean): { minutes: number; failChance: number; blocked: string | null } {
+export function lightingInRain(w: Weather, ambient: number, roofOverPit: boolean, steady = false): { minutes: number; failChance: number; blocked: string | null } {
   if (w.precip === "none" || roofOverPit) return { minutes: 10, failChance: 0, blocked: null };
   const snowing = ambient <= 0;
-  if (w.precip === "heavy" && !snowing) return { minutes: 20, failChance: 1 / 3, blocked: "too wet to light" };
-  return { minutes: 20, failChance: 1 / 3, blocked: null };
+  // Steady by the fire: the twenty minutes stay, the one-in-three fail does not.
+  const failChance = steady ? 0 : 1 / 3;
+  if (w.precip === "heavy" && !snowing) return { minutes: 20, failChance, blocked: "too wet to light" };
+  return { minutes: 20, failChance, blocked: null };
 }
 
 /** True when a log split here and now comes out wet: rain, or rain within six hours. */

@@ -16,32 +16,35 @@ const cal = calendar(0);
 
 describe("tools as items", () => {
   it("a tool recipe yields a countable item, so a keep on it stays a keep", () => {
-    expect(RECIPES.axe.out).toEqual({ item: "axe", qty: 1 });
-    expect(yieldItem("craft", "axe")).toBe("axe");
+    expect(RECIPES.stoneAxe.out).toEqual({ item: "stoneAxe", qty: 1 });
+    expect(yieldItem("craft", "stoneAxe")).toBe("stoneAxe");
     expect(ITEM_KG.axe).toBe(1.5);
     const { state, world } = newGame(17);
-    const o = addOrder(state, world, { task: "craft", arg: "axe", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    const o = addOrder(state, world, { task: "craft", arg: "stoneAxe", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
-    expect(keepTarget(o)).toEqual({ item: "axe", qty: 1 });
+    expect(keepTarget(o)).toEqual({ item: "stoneAxe", qty: 1 });
   });
 
-  it("a broken axe with a spare in the pack is replaced at once", () => {
+  it("a shattered flaked axe with a spare in the pack is replaced at once", () => {
     const { state } = newGame(17);
     const p = state.player;
-    tool(p, "axe")!.durability = 1;
-    addItem(p.pack, "axe", 1);
-    expect(wearTool(state, "axe", 5)).toBe(true);
-    expect(hasTool(p, "axe")).toBe(true);
-    expect(tool(p, "axe")!.durability).toBe(100);
-    expect(qty(p.pack, "axe")).toBe(0);
-    expect(state.log.at(-1)?.text).toBe("The axe has broken; you take up the spare.");
+    p.tools = [{ id: "flakedAxe", durability: 1 }];
+    addItem(p.pack, "flakedAxe", 1);
+    expect(wearTool(state, "flakedAxe", 5)).toBe(true);
+    expect(hasTool(p, "flakedAxe")).toBe(true);
+    expect(tool(p, "flakedAxe")!.durability).toBe(100);
+    expect(qty(p.pack, "flakedAxe")).toBe(0);
+    expect(state.log.at(-1)?.text).toBe("The flaked axe has broken; {you} {take} up the spare.");
   });
 
-  it("a broken axe with no spare is gone", () => {
+  it("a shattered flaked axe with no spare is gone, and a worn iron axe is blunt and stays", () => {
     const { state } = newGame(17);
-    tool(state.player, "axe")!.durability = 1;
-    expect(wearTool(state, "axe", 5)).toBe(true);
-    expect(hasTool(state.player, "axe")).toBe(false);
+    state.player.tools = [{ id: "flakedAxe", durability: 1 }];
+    expect(wearTool(state, "flakedAxe", 5)).toBe(true);
+    expect(hasTool(state.player, "flakedAxe")).toBe(false);
+    state.player.tools = [{ id: "axe", durability: 1 }];
+    expect(wearTool(state, "axe", 5)).toBe(false);
+    expect(tool(state.player, "axe")!.durability).toBe(0);
   });
 
   it("a spare on the ground is taken up when a task needing it starts there", () => {
@@ -91,10 +94,10 @@ describe("tools as items", () => {
     expect(itemLabel("fishingSpear", 1)).toBe("1 fishing spears");
   });
 
-  it("saves are version 6 and a version 3 file still loads", () => {
+  it("saves are version 7 and a version 3 file still loads", () => {
     const { state } = newGame(17);
     const raw = JSON.parse(serialize(state));
-    expect(raw.version).toBe(6);
+    expect(raw.version).toBe(7);
     raw.version = 3;
     expect(deserialize(JSON.stringify(raw))).not.toBeNull();
   });

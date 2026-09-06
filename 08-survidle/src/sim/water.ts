@@ -3,10 +3,10 @@
  * water is, or from a vessel you filled there; a shore under ice gives
  * nothing, and snow is water only at a fire (tasks.ts, melt).
  */
-import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { berriesOverloaded } from "./berries";
 import { addItem, carried, pile, qty, removeItem, takeUp } from "./inventory";
+import { body } from "./person";
 import { TOOLS, WATER_STORE_L } from "./items";
 import { type Activity, activityOf } from "./player";
 import { cellOf, watersideCell } from "./position";
@@ -25,7 +25,7 @@ const LOSS_PER_HOUR: Record<Activity, number> = { sleep: 0.1, rest: 0.1, light: 
 export function waterLossPerHour(state: GameState, felt: number): number {
   const p = state.player;
   let a = activityOf(state.task);
-  if (a === "walk" && carried(p) > PACK_COMFORTABLE_KG) a = "heavy";
+  if (a === "walk" && carried(p) > body(state).packComfortableKg) a = "heavy";
   let l = LOSS_PER_HOUR[a];
   if (felt > 20 || felt < -10) l *= 1.3;
   if (p.sick > 0 || berriesOverloaded(p, state.minute)) l *= 1.2;

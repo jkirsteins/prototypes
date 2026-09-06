@@ -48,7 +48,7 @@ export function orderGate(state: GameState, req: IntentRequest, kind: OrderKind)
   const level = skillLevel(state, skill);
   const at = RUNG_LEVEL[n.kind];
   if (level >= at) return { ok: true };
-  return { ok: false, why: `${RUNG_WORD[n.kind]} at ${SKILL_NAMES[skill]} ${at}, you are ${level}`, skill, level, at };
+  return { ok: false, why: `${RUNG_WORD[n.kind]} at ${SKILL_NAMES[skill]} ${at}, {you} {are} ${level}`, skill, level, at };
 }
 
 /** The door the Do panel and the player script use: the gate, then addOrder. */

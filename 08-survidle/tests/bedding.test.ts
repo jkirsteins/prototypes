@@ -131,11 +131,11 @@ describe("bough bed and blanket in play", () => {
     const detail = () => check(state, world, cal, "sleep").detail;
     expect(detail()).toContain("on bare ground, in the open");
     state.player.clothing.push({ id: "hideBlanket", durability: 100 });
-    expect(detail()).toContain("on bare ground, under your blanket");
+    expect(detail()).toContain("on bare ground, under {your} blanket");
     st.structures.leanTo = true;
     st.structures.boughBed = true;
     st.fire.lit = true;
-    expect(detail()).toContain("on a bough bed, under your blanket and the roof, by the fire");
+    expect(detail()).toContain("on a bough bed, under {your} blanket and the roof, by the fire");
     state.player.clothing = state.player.clothing.filter((g) => g.id !== "hideBlanket");
     expect(detail()).toContain("on a bough bed, under the roof, by the fire");
     placeAtSpot(state, world, state.player.region, "forest");

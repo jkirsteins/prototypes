@@ -57,7 +57,7 @@ describe("tasks", () => {
     run(g, 200);
     expect(state.task).toBeNull();
     expect(qty(herePile(state, world), "log")).toBe(8);
-    expect(state.log.some((e) => e.text.includes("You stop"))).toBe(true);
+    expect(state.log.some((e) => e.text.includes("{You} {stop}"))).toBe(true);
   });
 
   it("walks along a route at the speed of the ground and arrives at the spot", () => {
@@ -132,7 +132,7 @@ describe("tasks", () => {
     done(g, 5000);
     expect(state.player.region).toBe(nb.id);
     expect(cellOf(state, world)).toBe(regionAt(world, nb.id).campCell);
-    expect(state.log.some((e) => e.text.includes(`You reach ${regionAt(world, nb.id).name}`))).toBe(true);
+    expect(state.log.some((e) => e.text.includes(`{You} {reach} ${regionAt(world, nb.id).name}`))).toBe(true);
   });
 
   it("crafts through the chain: cordage, a fire drill that needs no knife, then the knife itself", () => {

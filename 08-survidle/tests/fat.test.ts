@@ -52,7 +52,7 @@ describe("the fat reserve", () => {
     state.player.fat = FAT_FULL * 0.25 - 1;
     for (let m = 0; m < 5; m++) stepPlayer(state, world, 15, 1);
     const texts = state.log.map((e) => e.text);
-    for (const line of ["You are getting thin.", "Your ribs show.", "You are wasting away."]) {
+    for (const line of ["{You} {are} getting thin.", "{Your} ribs show.", "{You} {are} wasting away."]) {
       expect(texts.filter((t) => t === line).length).toBe(1);
     }
   });
@@ -73,7 +73,7 @@ describe("the berry ceiling", () => {
     expect(today(state).eaten).toBeCloseTo(1000, 6);
     expect(state.player.berriesToday.day).toBe(1);
     expect(state.player.berriesToday.kg).toBeCloseTo(2, 6);
-    expect(state.log.some((e) => e.text === "Your stomach is turning.")).toBe(false);
+    expect(state.log.some((e) => e.text === "{Your} stomach is turning.")).toBe(false);
   });
 
   it("the third and fourth kilos credit half, turn the stomach once, and cost water like a fever", () => {
@@ -84,11 +84,11 @@ describe("the berry ceiling", () => {
     for (let i = 0; i < 5; i++) eat(state, world, "berries", new Rng(1));
     // 1,000 for the first two kilos, 250 for the third.
     expect(state.player.kcal).toBeCloseTo(2250, 6);
-    expect(state.log.filter((e) => e.text === "Your stomach is turning.").length).toBe(1);
+    expect(state.log.filter((e) => e.text === "{Your} stomach is turning.").length).toBe(1);
     expect(waterLossPerHour(state, 10)).toBeCloseTo(plain * 1.2, 6);
     for (let i = 0; i < 5; i++) eat(state, world, "berries", new Rng(1));
     expect(state.player.kcal).toBeCloseTo(2500, 6);
-    expect(state.log.filter((e) => e.text === "Your stomach is turning.").length).toBe(1);
+    expect(state.log.filter((e) => e.text === "{Your} stomach is turning.").length).toBe(1);
   });
 
   it("the fifth kilo is refused, said once, and auto-eat passes over berries for the day", () => {
@@ -101,7 +101,7 @@ describe("the berry ceiling", () => {
     expect(berriesRefused(state.player, state.minute)).toBe(true);
     expect(edible(state, "berries")).toBe(false);
     expect(edible(state, "driedMeat")).toBe(true);
-    expect(state.log.filter((e) => e.text === "You cannot face another berry.").length).toBe(1);
+    expect(state.log.filter((e) => e.text === "{You} cannot face another berry.").length).toBe(1);
     state.player.kcal = 1000;
     addItem(state.player.pack, "driedMeat", 1);
     const k = state.player.kcal;

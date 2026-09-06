@@ -17,8 +17,8 @@ import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
 import { giveOrder, orderGate } from "./sim/ladder";
-import { beginAgain, land, rerollName } from "./sim/landing";
-import { newGame } from "./sim/newgame";
+import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
+import { newWorld } from "./sim/newgame";
 import { moveOrder, removeOrder } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
@@ -45,6 +45,8 @@ import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
+// The face self-test page: a page of generated faces to judge, in place of the game.
+if (params.has("faces")) location.replace(`${import.meta.env.BASE_URL}faces.html`);
 /** Test aid: how many times faster than 60x the clock runs. Not a game feature. */
 const speed = Math.max(0.1, Number(params.get("speed")) || 1);
 const forcedSeed = params.get("seed");
@@ -94,8 +96,8 @@ function resetForecastAt(): void {
 // boot(), when there is nothing yet to refresh.
 let awayDial: AwayDial | null = null;
 
-function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number) {
-  const g = newGame(seed, startDoy);
+function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boat = 0) {
+  const g = newWorld(seed, boat, startDoy);
   state = g.state;
   world = g.world;
   wasDead = false;
@@ -164,7 +166,7 @@ function render() {
   setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
   setPanel("inventory", inventoryHtml(state, world));
   setPanel("log", logHtml(state));
-  setPanel("journal", journalHtml(state, cal));
+  setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
   updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
@@ -174,13 +176,13 @@ function render() {
     setPanel("overlay", cemeteryHtml(state, ui));
     overlay.hidden = false;
   } else if (ui.away) {
-    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay)));
+    setPanel("overlay", awayHtml(ui.away, awayInfo?.seconds ?? 0, awayInfo?.capped ?? false, since(current(state), ui.awayFromDay, current(state).name.first), current(state).person, current(state).name.first));
     overlay.hidden = false;
   } else if (state.landing) {
     setPanel("overlay", landingHtml(state, world));
     overlay.hidden = false;
   } else if (state.dead) {
-    setPanel("overlay", tombstoneHtml(state, world));
+    setPanel("overlay", tombstoneHtml(state, world, ui));
     overlay.hidden = false;
   } else {
     overlay.hidden = true;
@@ -299,14 +301,21 @@ function onClick(ev: Event) {
       beginAgain(state, world);
       resetForecastAt();
       break;
-    case "reroll-name":
-      rerollName(state);
+    case "pick-candidate":
+      pickCandidate(state, Number(target.dataset.index) as 0 | 1 | 2);
+      break;
+    case "next-boat":
+      // The first boat has no world to run yet: it is rebuilt a week later from the same seed.
+      if (state.landing && state.landing.oldCamp === null) fresh(state.seed, startDoy, state.landing.boat + 1);
+      else nextBoat(state, world);
+      resetForecastAt();
       break;
     case "land": {
       const wasLanding = state.landing !== null;
+      const heir = state.survivors.length >= 1 && state.landing?.oldCamp !== null;
       land(state, world);
-      // land() no-ops without a landing or a name; only count a real landing as a begin-again.
-      if (wasLanding && state.landing === null) beacon.beganAgain(state, Date.now());
+      // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
+      if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
       ui.confirmAbandon = false;
       resetForecastAt();
       break;
@@ -315,6 +324,24 @@ function onClick(ev: Event) {
       ui.cemetery = true;
       ui.confirmLeave = false;
       break;
+    case "copy-card": {
+      // The card's text sits beside the button; where the clipboard is refused, it is shown for copying by hand.
+      const pre = target.closest(".cardbody")?.querySelector<HTMLElement>(".cardtext");
+      if (!pre) break;
+      const copied = navigator.clipboard?.writeText(pre.textContent ?? "");
+      if (!copied) pre.hidden = false;
+      else
+        copied.then(
+          () => {
+            ui.copiedUntil = Date.now() + 1500;
+            render();
+          },
+          () => {
+            pre.hidden = false;
+          },
+        );
+      break;
+    }
     case "cemetery-open":
       ui.cemetery = true;
       ui.cemeteryOpen = Number(target.dataset.index);

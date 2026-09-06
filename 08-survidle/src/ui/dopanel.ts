@@ -6,6 +6,7 @@ import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween } from "../sim/position";
 import { levelMinutes, SKILL_NAMES } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
+import { plain } from "../sim/voice";
 import { SPOT_NAMES, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
@@ -63,7 +64,7 @@ export function makeFirst<T extends { ok: boolean }>(rows: T[]): T[] {
  */
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
-    { label: "Gather", items: [{ id: "chop" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
+    { label: "Gather", items: [{ id: "chop" }, { id: "deadwood" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }] },
     { label: "Hunt", items: [
       { id: "hunt" as TaskId, arg: "any" },
       ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
@@ -71,7 +72,7 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
       { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
     ] },
-    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
+    { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
     { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
   ];
@@ -160,10 +161,10 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     // it gets no "add it anyway" queue path, only the reason it is grey.
     const queueable = o.id !== "makeCamp";
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(o.why)}${o.detail ? ` - ${esc(o.detail)}` : ""}</small>${bar}</button>${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  const line = [time, o.detail].filter(Boolean).join("; ");
+  const line = [time, o.detail ? plain(o.detail) : ""].filter(Boolean).join("; ");
   return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
 }
 

@@ -77,20 +77,20 @@ function frostbite(state: GameState, felt: number, rng: Rng): void {
     if (alreadyNumb && !p.toes) {
       p.toes = true;
       record(state, { kind: "frostbite", part: "toes" });
-      log(state, "You will not get those toes back.", "bad");
+      log(state, "{You} will not get those toes back.", "bad");
     }
     p.frostbite.feet = FROSTBITE_MINUTES;
-    if (!alreadyNumb) log(state, "Your feet are numb.", "bad");
+    if (!alreadyNumb) log(state, "{Your} feet are numb.", "bad");
   }
   if (coldHands(state, felt) && rng.chance(chance)) {
     const alreadyNumb = p.frostbite.hands > 0;
     if (alreadyNumb && !p.fingers) {
       p.fingers = true;
       record(state, { kind: "frostbite", part: "fingers" });
-      log(state, "You will not get those fingers back.", "bad");
+      log(state, "{You} will not get those fingers back.", "bad");
     }
     p.frostbite.hands = FROSTBITE_MINUTES;
-    if (!alreadyNumb) log(state, "You cannot feel your fingers.", "bad");
+    if (!alreadyNumb) log(state, "{You} cannot feel {your} fingers.", "bad");
   }
 }
 

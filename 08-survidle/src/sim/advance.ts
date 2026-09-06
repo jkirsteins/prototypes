@@ -78,7 +78,7 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     runIntent(state, world, cal, rng);
     // A body left idle and spent lies down on its own.
     if (!state.task && state.player.energy < EXHAUSTED && beginTask(state, world, cal, "sleep")) {
-      log(state, "Too tired to stand, you sleep where you are.");
+      log(state, "Too tired to stand, {you} {sleep} where {you} {are}.");
     }
   }
 

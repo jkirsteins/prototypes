@@ -1,18 +1,17 @@
 import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
-import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
-import { FAT_FULL } from "./player";
 import { newRecord } from "./record";
 import { rollName } from "./names";
+import { derived, medianPerson, personOf, rollCandidates } from "./person";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
-import type { GameState } from "./types";
+import type { GameState, LifeRecord, Person } from "./types";
 import { seasonalMean } from "./weather";
 
 /** The stomach a survivor arrives with, in kcal. */
@@ -22,6 +21,7 @@ export const ARRIVAL_DRIED_MEAT_KG = 1;
 
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
+  const d = derived(personOf(state));
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   state.player = {
@@ -30,7 +30,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     region,
     health: 100,
     kcal: START_KCAL,
-    fat: FAT_FULL,
+    fat: d.fatFull,
     warmth: 80,
     energy: 90,
     wetness: 0,
@@ -53,7 +53,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     toes: false,
     fingers: false,
     berriesToday: { day: 1, kg: 0 },
-    workHours: WORK_HOURS_DEFAULT,
+    workHours: d.workHours,
     known: {},
   };
   state.task = null;
@@ -68,8 +68,31 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
 }
 
+/** The first survivor's record for the direct path: a name for the sex the seed rolls, and the median person unless one is given. */
+export function firstRecord(seed: number, startDoy: number, person?: Person): LifeRecord {
+  const rng = new Rng(derive(seed, 7));
+  const sex = rng.int(2) === 0 ? "f" : "m";
+  const p = person ?? medianPerson(sex);
+  return newRecord(1, rollName(rng, p.sex, []), { year: 1, doy: startDoy }, 0, p);
+}
+
+/**
+ * A new world as the player meets it: on the landing screen, three people
+ * aboard the first boat, the date a week later per boat asked for. The
+ * placeholder under the overlay is the median survivor, which land replaces.
+ */
+export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state: GameState; world: World } {
+  const doy = startDoy + 7 * boat;
+  const g = newGame(seed, doy);
+  const start = regionAt(g.world, g.world.start);
+  const candidates = rollCandidates(seed, 1, boat, []);
+  g.state.log = [];
+  g.state.landing = { cell: start.campCell, region: g.world.start, date: { year: 1, doy }, gapDays: 0, candidates, boat, chosen: 0, name: candidates[0].name, oldCamp: null };
+  return g;
+}
+
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
-export function newGame(seed: number, startDoy = START_DOY): { state: GameState; world: World } {
+export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
   // The weather opens for the season: past the thaw there is no ice and no snow.
@@ -87,14 +110,14 @@ export function newGame(seed: number, startDoy = START_DOY): { state: GameState;
     lastDay: 0,
     piles: {},
     seeps: {},
-    survivors: [newRecord(1, rollName(new Rng(derive(seed, 7)), []), { year: 1, doy: startDoy }, 0)],
+    survivors: [firstRecord(seed, startDoy, person)],
     year: 1,
     landing: null,
     spine: { fired: {}, announced: {} },
   } as GameState;
   newPerson(state, world, start.campCell, world.start);
   enterRegion(state, world, world.start);
-  if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. You have an axe, wool on your back and a kilo of dried meat.`);
-  else log(state, `${fmtDate(calendar(0, startDoy))}. You wake at ${start.name} with an axe, wool on your back and a kilo of dried meat.`);
+  if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
+  else log(state, `${fmtDate(calendar(0, startDoy))}. {You} {wake} at ${start.name} with an axe, wool on {your} back and a kilo of dried meat.`);
   return { state, world };
 }

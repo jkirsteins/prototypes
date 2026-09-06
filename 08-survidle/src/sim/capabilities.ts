@@ -90,6 +90,22 @@ export const CAPABILITIES: CapabilityRow[] = [
     limits: "the first kill comes first",
   },
   {
+    id: "whetstone",
+    keys: ["craft:whetstone", "craft:wedges"],
+    tier: { skill: "crafting", level: 1 },
+    receives: ["foraging", "woodcraft"],
+    gives: "an edge honed for nothing, and a log split with no axe",
+    limits: "the axe is still the pace",
+  },
+  {
+    id: "stone axe",
+    keys: ["rec:craft:stoneAxe", "craft:flakedAxe"],
+    tier: { skill: "crafting", level: 5 },
+    receives: ["foraging", "woodcraft"],
+    gives: "the second axe: a real edge in twenty hours, or a flaked one in an evening that shatters",
+    limits: "stone at camp, and the whetstone",
+  },
+  {
     id: "bow",
     keys: ["rec:craft:bow"],
     tier: { skill: "crafting", level: 5 },

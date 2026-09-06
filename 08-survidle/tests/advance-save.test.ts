@@ -43,7 +43,7 @@ describe("advance", () => {
     state.player.energy = 9;
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
-    expect(state.log.some((e) => e.text.includes("sleep where you are"))).toBe(true);
+    expect(state.log.some((e) => e.text.includes("sleep} where {you} {are}"))).toBe(true);
   });
 
   it("survives the first day with the starting kit", () => {
@@ -248,7 +248,7 @@ describe("the world save", () => {
 
   it("writes version 6 and reads 4 by wrapping the survivor as the first of the world", () => {
     const { state } = newGame(8);
-    expect(JSON.parse(serialize(state)).version).toBe(6);
+    expect(JSON.parse(serialize(state)).version).toBe(7);
     const v4 = JSON.parse(serialize(state)) as { version: number; savedAt: number; state: Record<string, unknown> };
     v4.version = 4;
     delete v4.state.survivors;
@@ -274,7 +274,7 @@ describe("the version 6 save", () => {
   it("writes version 6 and fills the producers' fields into an older save", () => {
     const { state } = newGame(8);
     const text = serialize(state);
-    expect(JSON.parse(text).version).toBe(6);
+    expect(JSON.parse(text).version).toBe(7);
     const old = JSON.parse(text);
     old.version = 5;
     delete old.state.player.known;

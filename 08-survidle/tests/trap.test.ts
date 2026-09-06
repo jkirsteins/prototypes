@@ -137,7 +137,7 @@ describe("the basket trap", () => {
     expect(g.st.trap!.kg).toBe(0);
     expect(qty(g.state.player.pack, "fish")).toBeCloseTo(1.2, 6);
     expect(today(g.state).yield.trap).toBeCloseTo(1200, 6);
-    expect(g.state.log.some((l) => l.text === "1.2 kg of fish in the trap at the shore; you take them.")).toBe(true);
+    expect(g.state.log.some((l) => l.text === "1.2 kg of fish in the trap at the shore; {you} {take} them.")).toBe(true);
     // Arriving at an empty trap says nothing.
     const before = g.state.log.length;
     placeAtSpot(g.state, g.world, g.state.player.region, "camp");

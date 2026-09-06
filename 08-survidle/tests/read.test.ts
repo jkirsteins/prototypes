@@ -34,7 +34,7 @@ describe("reading water", () => {
     expect(startTask(state, world, cal, "read")).toBe(true);
     advance(state, world, 60);
     expect(isRead(state, cell)).toBe(true);
-    expect(check(state, world, cal, "read")).toMatchObject({ ok: false, why: "you have read this water" });
+    expect(check(state, world, cal, "read")).toMatchObject({ ok: false, why: "{you} {have} read this water" });
   });
 
   it("writes the fish of this water, not the other kind of water, and says where each lies", () => {
@@ -47,7 +47,7 @@ describe("reading water", () => {
     expect(obs.fish).toEqual(fish);
     expect(state.player.known[cell]).toBe(obs);
     const line = readLine(state, world, cal, cell);
-    expect(line.startsWith(`You read the water at ${r.name}:`)).toBe(true);
+    expect(line.startsWith(`{You} {read} the water at ${r.name}:`)).toBe(true);
     expect(line).toContain(SPECIES_DEFS[fish[0]].lie!);
   });
 

@@ -149,7 +149,7 @@ export function openCalls(state: GameState, world: World, cal: Calendar): OpenCa
   return out;
 }
 
-const KNAPPED = new Set<RecipeId>(["knife", "axe", "arrows", "fishingSpear"]);
+const KNAPPED = new Set<RecipeId>(["knife", "flakedAxe", "stoneAxe", "arrows", "fishingSpear"]);
 
 /** The repeating sound of the task under way: footsteps, the axe, the knapping stone. Null for everything else. */
 export function activityLoop(state: GameState, s: Surroundings): { slot: string; period: number } | null {

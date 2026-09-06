@@ -78,7 +78,7 @@ describe("frostbite", () => {
       hours++;
     }
     expect(state.player.frostbite.hands).toBe(3 * 1440);
-    expect(state.log.some((e) => e.text === "You cannot feel your fingers.")).toBe(true);
+    expect(state.log.some((e) => e.text === "{You} cannot feel {your} fingers.")).toBe(true);
   });
 
   it("wet boots in frost freeze the feet within a night; a fire under a roof heals them; a second time costs toes", () => {
@@ -97,7 +97,7 @@ describe("frostbite", () => {
     }
     expect(state.player.frostbite.feet).toBe(3 * 1440);
     expect(hours).toBeLessThan(120);
-    expect(state.log.some((e) => e.text === "Your feet are numb.")).toBe(true);
+    expect(state.log.some((e) => e.text === "{Your} feet are numb.")).toBe(true);
     expect(baseWalkSpeed(state, calendar(0), state.weather)).toBeCloseTo(3 * 0.6, 6);
     // In the open nothing heals.
     for (let m = 0; m < 600; m++) stepPlayer(state, world, 5, 1);
@@ -134,8 +134,8 @@ describe("frostbite", () => {
       hours++;
     }
     expect(state.player.toes).toBe(true);
-    expect(state.log.filter((e) => e.text === "Your feet are numb.")).toHaveLength(1);
-    expect(state.log.filter((e) => e.text === "You will not get those toes back.")).toHaveLength(1);
+    expect(state.log.filter((e) => e.text === "{Your} feet are numb.")).toHaveLength(1);
+    expect(state.log.filter((e) => e.text === "{You} will not get those toes back.")).toHaveLength(1);
   });
 
   it("frostbitten hands halve the hunting odds and double the chance the craft spoils", () => {

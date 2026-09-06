@@ -1,4 +1,3 @@
-import { derive, Rng } from "../rng";
 import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
@@ -8,8 +7,9 @@ import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
-import { newRecord } from "./record";
-import { rollName } from "./names";
+import { firstRecord } from "./newgame";
+import { sexOfName } from "./names";
+import { medianPerson, rollCandidates } from "./person";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, Inventory, LogEntry, TaskId } from "./types";
@@ -21,17 +21,17 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 6; savedAt: number; state: GameState }
+export interface SaveFile { version: 7; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 6, savedAt: now, state };
+  const file: SaveFile = { version: 7, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if ((file?.version !== 3 && file?.version !== 4 && file?.version !== 5 && file?.version !== 6) || !file.state || typeof file.savedAt !== "number") return null;
+    if (!(file?.version >= 3 && file?.version <= 7) || !file.state || typeof file.savedAt !== "number") return null;
     fillDefaults(file.state);
     return file as unknown as SaveFile;
   } catch {
@@ -54,7 +54,18 @@ function fillDefaults(state: GameState): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
-  state.survivors ??= [newRecord(1, rollName(new Rng(derive(state.seed, 7)), []), { year: 1, doy: state.startDoy }, 0)];
+  state.survivors ??= [firstRecord(state.seed, state.startDoy)];
+  // A record from before the person: the median survivor, with the sex its name says and a face of its own.
+  for (const s of state.survivors) s.person ??= { ...medianPerson(sexOfName(s.name.first) ?? (s.index % 2 ? "m" : "f")), face: s.index };
+  // A landing from before the boat: three people rolled for it, the old name kept in the field.
+  if (state.landing) {
+    const l = state.landing;
+    l.candidates ??= rollCandidates(state.seed, state.survivors.length + 1, 0, state.survivors.map((s) => s.name));
+    l.boat ??= 0;
+    l.chosen ??= 0;
+    l.name ??= l.candidates[l.chosen].name;
+    l.oldCamp ??= null;
+  }
   state.player.known ??= {};
   state.seeps ??= {};
   for (const st of Object.values(state.regions)) {
@@ -74,14 +85,22 @@ function fillDefaults(state: GameState): void {
   delete (state as unknown as Record<string, unknown>).plan;
   // The one-species fish and the one grouse became a roster: a fish task with no
   // species fishes for anything, and the old grouse is the willow grouse.
+  // The one stone axe recipe became the ground celt, under its own id.
   const renameArg = (t: { id: TaskId; arg?: string } | null | undefined) => {
     if (!t) return;
     if (t.id === "fish" && !t.arg) t.arg = "any";
     if (t.id === "hunt" && t.arg === "grouse") t.arg = "willowGrouse";
+    if (t.id === "craft" && t.arg === "axe") t.arg = "stoneAxe";
   };
   renameArg(state.task);
   if (state.intent && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
   if (state.intent && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
+  if (state.intent && state.intent.task === "craft" && state.intent.arg === "axe") state.intent.arg = "stoneAxe";
+  const crafting = state.skills.crafting.mastery;
+  if (crafting["craft:axe"] !== undefined) {
+    crafting["craft:stoneAxe"] = (crafting["craft:stoneAxe"] ?? 0) + crafting["craft:axe"];
+    delete crafting["craft:axe"];
+  }
   // A paused entry's dictionary key is built from its own arg (tasks.ts pauseKey: "id:arg@cell"
   // for located work, "id:arg" for carried work, cell -1). Renaming .arg without moving the
   // entry to the recomputed key would strand it under the old key, unresumable and undeletable.
@@ -98,6 +117,7 @@ function fillDefaults(state: GameState): void {
     for (const o of st.orders ?? []) {
       if (o.req.task === "fish" && !o.req.arg) o.req.arg = "any";
       if (o.req.task === "hunt" && o.req.arg === "grouse") o.req.arg = "willowGrouse";
+      if (o.req.task === "craft" && o.req.arg === "axe") o.req.arg = "stoneAxe";
     }
   }
   const p = state.player;
@@ -205,6 +225,8 @@ export function catchUp(state: GameState, world: World, realSecondsElapsed: numb
   // its counters, and its "until" is what says how many completions that took.
   const snap = ordersHere(state, world).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
   advance(state, world, minutes);
+  // Written while nobody watched: the panels render these by name.
+  for (const e of state.log.slice(before)) if (e.minute > firstMinute) e.away = true;
   const after = regionState(state, world, region).orders;
   const orders = snap.map((s) => {
     const o = after.find((x) => x.id === s.id);

@@ -8,10 +8,10 @@ import { WORLD_W } from "../world/terrain";
 import { calendar } from "./calendar";
 import { qty } from "./inventory";
 import { FOODS, type FoodId } from "./items";
-import type { DeathCause, Died, GameState, LifeEvent, LifeEventBody, LifeRecord, WorldDate } from "./types";
+import type { DeathCause, Died, GameState, LifeEvent, LifeEventBody, LifeRecord, Person, WorldDate } from "./types";
 
-export function newRecord(index: number, name: LifeRecord["name"], landed: WorldDate, gapDays: number): LifeRecord {
-  return { name, index, landed, gapDays, events: [], worst: null, forecast: [], died: null };
+export function newRecord(index: number, name: LifeRecord["name"], landed: WorldDate, gapDays: number, person: Person): LifeRecord {
+  return { name, person, index, landed, gapDays, events: [], worst: null, forecast: [], died: null };
 }
 
 /** The living survivor's record: the last in the list. */

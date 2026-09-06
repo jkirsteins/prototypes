@@ -37,7 +37,7 @@ const caches = new WeakMap<World, Map<string, number[] | null>>();
  * `to`, or null when no land route exists within the search box. An empty
  * array means already there.
  */
-export function findRoute(world: World, from: number, to: number, ice: IceMode = "none"): number[] | null {
+export function findRoute(world: World, from: number, to: number, ice: IceMode = "none", avoidFell = false): number[] | null {
   if (from === to) return [];
   let cache = caches.get(world);
   if (!cache) {
@@ -46,15 +46,17 @@ export function findRoute(world: World, from: number, to: number, ice: IceMode =
   }
   // Callers consume the array they get (a walk shifts cells off it), so the
   // cache hands out copies and keeps its own.
-  const key = `${from}>${to}>${ice}`;
+  const key = `${from}>${to}>${ice}${avoidFell ? ">nofell" : ""}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit ? hit.slice() : null;
-  const route = astar(world, from, to, ice);
+  const route = astar(world, from, to, ice, avoidFell);
   cache.set(key, route);
   return route ? route.slice() : null;
 }
 
-function astar(world: World, from: number, to: number, ice: IceMode): number[] | null {
+function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: boolean): number[] | null {
+  // A walker who will not go up on the fell treats it as water with no ice.
+  const sp = (t: Terrain) => (avoidFell && t === "fell" ? 0 : speedOf(t, ice));
   const W = world.w;
   const fx = from % W;
   const fy = Math.floor(from / W);
@@ -63,7 +65,7 @@ function astar(world: World, from: number, to: number, ice: IceMode): number[] |
   // Impassable ground at either end blocks the whole route: standing on ice
   // that has thinned past the mode asked for is a dead end, not just a wall
   // ahead, since there is no legal first step out of it.
-  if (!passable(terrainOf(world, fx, fy), ice) || !passable(terrainOf(world, tx, ty), ice)) return null;
+  if (sp(terrainOf(world, fx, fy)) <= 0 || sp(terrainOf(world, tx, ty)) <= 0) return null;
   // The search box.
   const x0 = Math.max(0, Math.min(fx, tx) - ROUTE_MARGIN);
   const y0 = Math.max(0, Math.min(fy, ty) - ROUTE_MARGIN);
@@ -76,7 +78,7 @@ function astar(world: World, from: number, to: number, ice: IceMode): number[] |
   const start = local(fx, fy);
   const goal = local(tx, ty);
   const speed = new Float32Array(n);
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) speed[local(x, y)] = speedOf(terrainOf(world, x, y), ice);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) speed[local(x, y)] = sp(terrainOf(world, x, y));
 
   const g = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
   const f = new Float64Array(n).fill(Number.POSITIVE_INFINITY);

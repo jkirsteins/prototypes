@@ -17,7 +17,7 @@ import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
-import { addItem, freshTool, hasTool, listItems, pile, qty } from "./inventory";
+import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
 import { FOODS, type FoodId, RECIPES, TOOLS } from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
@@ -26,6 +26,7 @@ import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledg
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
+import { medianPerson } from "./person";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
@@ -151,7 +152,8 @@ export const WINTER_STOCK = { driedMeatKg: 80, firewoodKg: 400, logs: 150 };
 /** The winter-stock keeps, the 400 kg split keep and the 150-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
-  return (w.req.task === "split" && w.req.until.qty >= WINTER_STOCK.firewoodKg) || (w.req.task === "chop" && w.req.until.qty >= WINTER_STOCK.logs);
+  const firewood = w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood";
+  return (firewood && w.req.until.qty >= WINTER_STOCK.firewoodKg) || (w.req.task === "chop" && w.req.until.qty >= WINTER_STOCK.logs);
 }
 
 export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
@@ -168,6 +170,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("lightIndoors", 1),
   keep("chop", 4),
   keep("split", 60),
+  keep("splitWedges", 60),
+  keep("deadwood", 60),
   job("build", { kind: "once" }, "leanTo"),
   keep("craft", 1, "knife"),
   keep("craft", 1, "snare"),
@@ -193,7 +197,11 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("craft", { kind: "once" }, "furHat"),
   job("craft", { kind: "once" }, "furMittens"),
   keep("stone", 8),
-  keep("craft", 1, "axe"),
+  job("craft", { kind: "once" }, "whetstone"),
+  { req: { task: "hone", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  keep("craft", 2, "wedges"),
+  keep("craft", 1, "stoneAxe"),
+  keep("craft", 1, "flakedAxe"),
   job("sticks", { kind: "campHas", qty: 20 }),
   job("bark", { kind: "campHas", qty: 40 }),
   job("build", { kind: "once" }, "turfHut"),
@@ -203,6 +211,8 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("melt", 20),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", WINTER_STOCK.firewoodKg),
+  keep("splitWedges", WINTER_STOCK.firewoodKg),
+  keep("deadwood", WINTER_STOCK.firewoodKg),
   keep("chop", WINTER_STOCK.logs),
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
@@ -224,9 +234,9 @@ function shoreIced(state: GameState): boolean {
 
 /** An axe in hand, in the pack or in the camp pile: what a competent player would carry to the shore in winter. */
 function axeInReach(state: GameState, world: World): boolean {
-  if (hasTool(state.player, "axe")) return true;
+  if (axeInHand(state.player)) return true;
   const st = regionState(state, world, state.player.region);
-  return qty(state.player.pack, "axe") >= 1 || qty(pile(state, st.campCell), "axe") >= 1;
+  return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pile(state, st.campCell), id) >= 1);
 }
 
 export function wantOpen(state: GameState, world: World, w: { req: IntentRequest; kind: OrderKind }, cal: Calendar): boolean {
@@ -246,6 +256,15 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
+  // Firewood by method: the axe while one is in reach, wedges and dead wood when none is; the
+  // winter stock's rows open by the season on top of that.
+  if (w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood") {
+    const withAxe = axeInReach(state, world);
+    if (w.req.task === "split" ? !withAxe : withAxe) return false;
+  }
+  // The spare axe by tier: the celt once Crafting reaches its level, a flaked one under it and only with no axe to hand.
+  if (w.req.task === "craft" && w.req.arg === "stoneAxe") return skillLevel(state, "crafting") >= RECOMMENDED["craft:stoneAxe"].level;
+  if (w.req.task === "craft" && w.req.arg === "flakedAxe") return skillLevel(state, "crafting") < RECOMMENDED["craft:stoneAxe"].level && !axeInReach(state, world);
   // A garment waits for its recommended level, the way a named hunt does: a
   // level-1 survivor with an elk's hide does not spoil six kilos of it on a
   // coat. Tools and kit are not gated here; the ladder's stand-ins carry them.
@@ -653,10 +672,13 @@ export function runLineage(seed: number, days: number, lives = 3): LineageReport
     const oldSt = regionState(state, world, oldRegion);
     const trapKg = oldSt.trap ? Math.round(oldSt.trap.kg * 10) / 10 : null;
     beginAgain(state, world);
+    // The gates measure the list, not the boat: the heir is the median person under the first card's name.
+    const l = state.landing!;
+    const median = medianPerson(l.candidates[0].person.sex);
     // land() clears state.landing once it confirms the name, so the cell it chose
     // has to be read off the landing itself, not off the player it then places.
     const landCell = state.landing!.cell;
-    land(state, world);
+    land(state, world, undefined, median);
     const found = foundAtOldCamp(state, world, oldRegion, landCell, trapKg);
     const heirRef = { state, world, player: new ReferencePlayer(REFERENCE_ORDERS, oldRegion) };
     const report = measure(heirRef, days);

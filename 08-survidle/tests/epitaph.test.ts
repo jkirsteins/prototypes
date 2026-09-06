@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { entry, epitaph, epitaphTail, since } from "../src/sim/epitaph";
 import { newRecord } from "../src/sim/record";
+import { medianPerson } from "../src/sim/person";
 import { runReference } from "../src/sim/reference";
 import type { LifeRecord } from "../src/sim/types";
 
 function rec(): LifeRecord {
-  const r = newRecord(1, { first: "Eirik", last: "Kalnins" }, { year: 1, doy: 90 }, 0);
+  const r = newRecord(1, { first: "Eirik", last: "Kalnins" }, { year: 1, doy: 90 }, 0, medianPerson("m"));
   r.events.push({ kind: "entered", region: "Hareskog", day: 1, date: { year: 1, doy: 90 } });
   r.events.push({ kind: "built", structure: "firePit", day: 2, date: { year: 1, doy: 91 } });
   r.events.push({ kind: "firstKill", species: "hare", day: 5, date: { year: 1, doy: 94 } });
@@ -73,8 +74,8 @@ describe("the epitaph", () => {
     // the end of the list is a 150-log keep shut until 1 September and placed beside the woodpile keep, so a
     // spring runner with nothing else able to run rests instead of felling; and stone is wanted twice, a
     // once job for eight at the opening and a keep of eight as the restock below the clothing block.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Veikko Urbonas. Day 41. Starved at camp, with nothing in the pack and 19 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Kari Nygard. Landed 1 April, year 1."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 41. Starved at camp, with nothing in the pack and 19 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Landed 1 April, year 1."`);
   });
 
   it("writes the first snare set as its own line", () => {

@@ -5,7 +5,6 @@
  * the tasks do, exactly as when a player clicks them one by one.
  */
 import type { Rng } from "../rng";
-import { PACK_HARD_KG } from "../units";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
@@ -13,6 +12,7 @@ import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit } fr
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
+import { body, fearsFell } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
@@ -31,14 +31,14 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "cook", "light", "lightIndoors", "repair", "sharpen", "melt", "thaw", "wait", "hang", "mend"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
 const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
-  chop: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
+  chop: "forest", deadwood: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
   fill: "shore", iceHole: "shore", read: "shore", setTrap: "shore",
 };
 
@@ -73,6 +73,8 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "stone": return "stone";
     case "berries": return "berries";
     case "split": return "firewood";
+    case "splitWedges": return "firewood";
+    case "deadwood": return "firewood";
     case "hunt": return "rawMeat";
     case "fish": return "fish";
     case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
@@ -148,7 +150,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     const cells = r.cells
       .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
       .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c)) return { cell: c, note: "" };
+    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return { cell: c, note: "" };
     return { cell: here, note: "" };
   }
   if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell, note: "" };
@@ -315,7 +317,7 @@ function packCarries(state: GameState, world: World, it: Intent): boolean {
     return vesselLitres(state.player) > 0 && room > 0;
   }
   const pack = state.player.pack;
-  if (weight(pack) >= PACK_HARD_KG - 1e-9) return true;
+  if (weight(pack) >= body(state).packHardKg - 1e-9) return true;
   const items = yieldItems(it.task, it.arg);
   if (items === "all") return !isEmpty(pack);
   return items.some((i) => qty(pack, i) > 1e-9);
@@ -335,7 +337,7 @@ export function deliveryPending(state: GameState, world: World, it: Intent): boo
 
 function loadFull(state: GameState, it: Intent): boolean {
   if (it.cell === it.campCell) return false;
-  return weight(state.player.pack) + weight(pile(state, it.cell)) >= PACK_HARD_KG - 1e-9;
+  return weight(state.player.pack) + weight(pile(state, it.cell)) >= body(state).packHardKg - 1e-9;
 }
 
 function dropEverything(state: GameState, world: World): void {
@@ -363,7 +365,7 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
     // An order's intent says nothing here either: the scheduler re-judges the
     // route next free minute and logs the reason once, through chooseOrder.
     if (it.orderId !== null) state.intent = null;
-    else endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. You stop.`, "bad");
+    else endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why}. {You} {stop}.`, "bad");
     return undefined;
   }
   if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
@@ -380,7 +382,7 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   const here = cellOf(state, world);
   const pack = state.player.pack;
   // The work cell and the camp pile are the same pile when they are the same cell: nothing to load.
-  if (it.cell !== it.campCell && here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < PACK_HARD_KG - 1e-9) {
+  if (it.cell !== it.campCell && here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < body(state).packHardKg - 1e-9) {
     const before = weight(pack);
     loadPack(state, world);
     if (weight(pack) > before + 1e-9) {
@@ -466,7 +468,7 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   if (here !== src.cell) return walkTo(state, world, cal, it, src.cell, " for materials");
   // The missing things first, then whatever else fits.
   const before = weight(p.pack);
-  let room = PACK_HARD_KG - weight(p.pack);
+  let room = body(state).packHardKg - weight(p.pack);
   for (const n of missing) {
     for (const item of [n.item, n.alt].filter((x): x is ItemId => x !== undefined)) {
       const have = qty(src.inv, item);
@@ -494,12 +496,15 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   stone: () => "gathering stone",
   berries: () => "picking berries",
   split: () => "splitting a log",
+  splitWedges: () => "splitting a log with wedges",
+  deadwood: () => "gathering dead wood",
   hunt: (arg) => (arg === "any" ? "hunting" : `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`),
   fish: (arg) => (arg === "any" ? "fishing" : `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`),
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,
   repair: () => "mending clothing",
   sharpen: () => "sharpening the axe",
+  hone: () => "honing the axe",
   build: (arg) => `building the ${STRUCTURES[arg as StructureId].name}`,
   mend: (arg) => `mending the ${STRUCTURES[arg as StructureId].name}`,
   light: () => "lighting the fire",
@@ -549,7 +554,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     // done line and re-judges a blocked one, logging the reason once.
     if (it.orderId !== null || it.windDown) state.intent = null;
     else if (met) endIntent(state, `${label}: done.`, "good");
-    else endIntent(state, `${label}: ${o!.why}. You stop.`, "bad");
+    else endIntent(state, `${label}: ${o!.why}. {You} {stop}.`, "bad");
     return undefined;
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
@@ -572,7 +577,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     : { id: it.task, arg: it.arg, step: workGerund(state, world, it) });
   if (!takeStep(state, world, cal, step, rng)) {
     if (it.orderId !== null) state.intent = null;
-    else endIntent(state, `${label}: cannot go on. You stop.`, "bad");
+    else endIntent(state, `${label}: cannot go on. {You} {stop}.`, "bad");
   } else if (it.task === "wait" && step.id === "sleep") {
     // Sticky like a body-tier sleep, so a need such as hunger cannot preempt it mid-night.
     it.need = "sleep";

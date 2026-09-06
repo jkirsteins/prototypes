@@ -1,5 +1,6 @@
 import { Rng } from "../rng";
-import { CELL_KM, PACK_HARD_KG } from "../units";
+import { CELL_KM } from "../units";
+import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
@@ -8,8 +9,8 @@ import { type Calendar, minutesUntilDawn } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
-  addItem, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
-  removeItem, takeUp, tool, toolNear, totalQty, transfer, wearTool, weight,
+  addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
+  removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
 } from "./inventory";
 import {
   BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, STRUCTURES,
@@ -67,9 +68,9 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook", "iceHole", "read"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read"]);
 /** Work you carry in your hands wherever you go. */
-const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "light", "lightIndoors", "lightTorch"]);
+const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
 /** Where a task's unfinished share is remembered, or null if it is not the kind that can be. */
 export function pauseKey(state: GameState, world: World, id: TaskId, arg?: string, at = cellOf(state, world)): string | null {
@@ -86,8 +87,8 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 
 /** Tasks whose pace depends on the body; the rest are walks and waits. */
 const WORK_TASKS = new Set<TaskId>([
-  "chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "cook",
-  "craft", "repair", "sharpen", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
+  "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
+  "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp",
 ]);
 
@@ -99,6 +100,7 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "fish": return "fishingSpear";
     case "craft": return RECIPES[arg as RecipeId]?.tool ?? null;
     case "repair": return "needle";
+    case "hone": return "whetstone";
     case "light": case "lightIndoors": return "fireDrill";
     case "fill": return "barkBucket";
     case "iceHole": return "axe";
@@ -271,6 +273,23 @@ export const MEND_AT = 100 - MEND_GAIN;
  * `at` judges the task at another cell of this region, for an intent that
  * has not walked there yet; ground, camp and reach are all taken there.
  */
+/** Work done at the open shore: what a forest-born survivor will not do in a storm. */
+const SHORE_TASKS = new Set<TaskId>(["fish", "read", "setTrap", "emptyTrap", "iceHole"]);
+
+/**
+ * A fear refuses the way a ladder refusal does: the row says why, the runner
+ * reports the order blocked, and the scheduler moves to the next order.
+ */
+function feared(state: GameState, world: World, id: TaskId, arg: string | undefined, at: number, o: TaskOption): TaskOption {
+  if (!o.ok) return o;
+  if (fearsFell(state)) {
+    const target = id === "walk" || id === "travel" ? walkTarget(state, world, arg ?? "")?.cell : LOCATED.has(id) ? at : undefined;
+    if (target !== undefined && cellAt(world, target).terrain === "fell") return { ...o, ok: false, why: FELL_FEAR_LINE };
+  }
+  if (shunsShore(state) && (SHORE_TASKS.has(id) || (id === "fill" && (arg === "shore" || arg === "hole")))) return { ...o, ok: false, why: SHORE_FEAR_LINE };
+  return o;
+}
+
 export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
   const o = checkFresh(state, world, cal, id, arg, at);
   const fraction = pausedFraction(state, world, id, arg, at);
@@ -280,6 +299,13 @@ export function check(state: GameState, world: World, cal: Calendar, id: TaskId,
 }
 
 export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
+  const o = feared(state, world, id, arg, at, checkRaw(state, world, cal, id, arg, at));
+  // A big eater works a tenth faster at anything the body paces.
+  if (o.ok && WORK_TASKS.has(id) && hasQuirk(state, "bigEater")) return { ...o, duration: o.duration * BIG_EATER_PACE };
+  return o;
+}
+
+function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
   const p = state.player;
   const r = regionAt(world, p.region);
   const st = regionState(state, world, p.region);
@@ -306,11 +332,17 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
 
   switch (id) {
     case "chop": {
-      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: terrain === "spruce" ? 50 : 60, repeatable: true }));
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: (terrain === "spruce" ? 50 : 60) * edgeFactor(state), repeatable: true }));
       if (!o.ok) return o;
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
-      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       if (st.wood < 1) return { ...o, ok: false, why: "nothing left worth felling" };
+      return o;
+    }
+    case "deadwood": {
+      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Gather dead wood", detail: `${DEADWOOD_KG} kg of firewood off the forest floor; no axe`, duration: 60, repeatable: true }));
+      if (!o.ok) return o;
+      if (st.wood < DEADWOOD_TREE_SHARE) return { ...o, ok: false, why: "the forest is picked clean" };
       return o;
     }
     case "sticks":
@@ -327,8 +359,16 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
     }
     case "split": {
       const sheltered = splitSheltered(state, world, at);
-      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15, repeatable: true });
-      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
+      const o = opt({ group: "camp", label: "Split a log", detail: `one log into 20 kg of firewood${sheltered ? ", under the roof" : ""}`, duration: 15 * edgeFactor(state), repeatable: true });
+      if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
+      if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
+      if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
+      return o;
+    }
+    case "splitWedges": {
+      const sheltered = splitSheltered(state, world, at);
+      const o = opt({ group: "camp", label: "Split a log with wedges", detail: `one log into 20 kg of firewood, driven with a stick; a third the axe's pace${sheltered ? ", under the roof" : ""}`, duration: 45, repeatable: true });
+      if (totalQty(invs, "wedge") < 2) return { ...o, ok: false, why: "needs two wedges" };
       if (totalQty(invs, "log") < 1) return { ...o, ok: false, why: "no logs here" };
       if (!sheltered && splitIsWet(state, world)) return { ...o, ok: false, why: "waiting for dry weather" };
       return o;
@@ -381,7 +421,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (method === "shore") return iced ? { ...o, ok: false, why: "iced over" } : o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open, no hole needed" };
       // The pack and the work cell only: the vessel and the axe for a fill are the fill task's own rule, and provisionKit leaves a fill's kit to it, so a camp-pile axe is never taken up on the way out.
-      if (!toolNear(p, "axe", invs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!axeNear(p, invs)) return { ...o, ok: false, why: "needs an axe" };
       return iced ? { ...o, detail: `${o.detail}; cuts the hole first, wearing the axe`, duration: 25 } : o;
     }
     case "iceHole": {
@@ -389,7 +429,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       if (!o.ok) return o;
       if (state.weather.iceCm < ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is open" };
       if (iceHoleOpen(state, at)) return { ...o, ok: false, why: "already open here" };
-      if (!toolNear(p, "axe", toolInvs)) return { ...o, ok: false, why: "needs an axe" };
+      if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
       return o;
     }
     case "hunt": {
@@ -460,7 +500,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const o = ground(watersideCell(world, at), "shore", "water", opt({ group: "hunt", label: "Read the water", detail: "an hour watching this shore: what lives in it and where it lies", duration: 60, repeatable: false }));
       if (!o.ok) return o;
       if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the water is under ice" };
-      if (isRead(state, at)) return { ...o, ok: false, why: "you have read this water" };
+      if (isRead(state, at)) return { ...o, ok: false, why: "{you} {have} read this water" };
       return o;
     }
     case "cook": {
@@ -476,8 +516,8 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const rid = arg as RecipeId;
       const rec = RECIPES[rid];
       const needs = effectiveNeeds(state, rid);
-      const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${rec.tool === "needle" ? "needle" : rec.tool}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
-      if (rec.tool && !toolNear(p, rec.tool, toolInvs)) return { ...o, ok: false, why: `needs a ${rec.tool === "fishingSpear" ? "fishing spear" : rec.tool}` };
+      const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${TOOLS[rec.tool].name}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
+      if (rec.tool && !toolNear(p, rec.tool, toolInvs)) return { ...o, ok: false, why: `needs a ${TOOLS[rec.tool].name}` };
       if (!canConsume(invs, needs)) return { ...o, ok: false, why: "missing materials" };
       return o;
     }
@@ -489,11 +529,19 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "sharpen": {
-      const o = opt({ group: "camp", label: "Sharpen the axe", detail: "1 stone; axe +30", duration: 15 });
-      const axe = tool(p, "axe");
+      const o = opt({ group: "camp", label: "Sharpen the axe on a stone", detail: "1 stone; the edge +30", duration: 15 });
+      const axe = axeInHand(p);
       if (!axe) return { ...o, ok: false, why: "no axe" };
       if (totalQty(invs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
       if (axe.durability >= 100) return { ...o, ok: false, why: "already sharp" };
+      return o;
+    }
+    case "hone": {
+      const o = opt({ group: "camp", label: "Hone the axe", detail: "ten minutes on the whetstone; the edge back to full", duration: 10 });
+      const axe = axeInHand(p);
+      if (!axe) return { ...o, ok: false, why: "no axe" };
+      if (!toolNear(p, "whetstone", invs)) return { ...o, ok: false, why: "needs a whetstone" };
+      if (axe.durability >= HONE_UNDER) return { ...o, ok: false, why: "sharp enough" };
       return o;
     }
     case "build": {
@@ -553,7 +601,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       return o;
     }
     case "light": {
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       const o = needCamp(opt({
         group: "camp", label: "Light the fire at the pit",
         detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
@@ -580,19 +628,19 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const target = walkTarget(state, world, arg ?? "");
       const o = opt({ group: "move", label: id === "travel" ? `Go to ${target?.label ?? "?"}` : `Walk to ${target?.label ?? "?"}`, detail: "" });
       if (!target) return { ...o, ok: false, why: "no such place" };
-      if (id === "travel" && discovery(state, cellAt(world, target.cell).region) === 0) return { ...o, ok: false, why: "you know nothing of that country" };
+      if (id === "travel" && discovery(state, cellAt(world, target.cell).region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
       const from = cellOf(state, world);
-      if (target.cell === from) return { ...o, ok: false, why: "you are here" };
+      if (target.cell === from) return { ...o, ok: false, why: "{you} {are} here" };
       if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
       const ice = walkIceMode(state, target.thin);
-      const route = findRoute(world, from, target.cell, ice);
+      const route = findRoute(world, from, target.cell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "no way there on foot" };
       const v = baseWalkSpeed(state, cal, state.weather);
       const minutes = routeMinutes(world, route, v, ice);
       let detail = `${routeKm(route).toFixed(1)} km on foot`;
       if (ice === "thin") detail += `; thin ice, ${Math.round(fallChance(state.weather.iceCm) * 100)}% per crossing cell`;
       const o2 = { ...o, duration: minutes, detail };
-      if (weight(p.pack) > PACK_HARD_KG) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
+      if (weight(p.pack) > body(state).packHardKg) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
       return o2;
     }
     case "haul": {
@@ -600,15 +648,15 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const campCell = st.campCell;
       // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
       const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false });
-      if (here === campCell) return { ...o, ok: false, why: "you are at camp" };
+      if (here === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
       const kg = weight(pile(state, at));
       if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
-      const route = findRoute(world, here, campCell, ice);
+      const route = findRoute(world, here, campCell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
-      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, PACK_HARD_KG + 5), ice);
+      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
-      return { ...o, duration: loaded + empty, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
+      return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
     case "makeCamp": {
       const o = opt({ group: "camp", label: "Make camp here", detail: "", duration: 20 });
@@ -686,7 +734,7 @@ export function bedText(state: GameState, world: World): string {
   const roof = camp && roofed(st);
   const blanket = state.player.clothing.some((g) => CLOTHING[g.id].slot === "blanket");
   const on = bed ? "on a bough bed" : "on bare ground";
-  const under = blanket && roof ? "under your blanket and the roof" : blanket ? "under your blanket" : roof ? "under the roof" : "in the open";
+  const under = blanket && roof ? "under {your} blanket and the roof" : blanket ? "under {your} blanket" : roof ? "under the roof" : "in the open";
   const fire = camp && st.fire.lit ? ", by the fire" : "";
   return `${on}, ${under}${fire}`;
 }
@@ -706,6 +754,8 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
+  // Sharp eyes find game by day; the night is the same dark for everyone.
+  if (!cal.isNight) odds *= body(state).dayOdds;
   return Math.min(0.95, odds);
 }
 
@@ -720,7 +770,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   const out: TaskOption[] = [];
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
-  for (const id of ["chop", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
+  for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
   out.push(check(state, world, cal, "hunt", "any"));
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "fish", "any"));
@@ -734,8 +784,10 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "lightIndoors"));
   out.push(check(state, world, cal, "lightTorch"));
   out.push(check(state, world, cal, "split"));
+  out.push(check(state, world, cal, "splitWedges"));
   out.push(check(state, world, cal, "hang"));
   out.push(check(state, world, cal, "sharpen"));
+  out.push(check(state, world, cal, "hone"));
   out.push(check(state, world, cal, "repair"));
   out.push(check(state, world, cal, "rest"));
   out.push(check(state, world, cal, "sleep"));
@@ -783,6 +835,38 @@ export function startTask(state: GameState, world: World, cal: Calendar, id: Tas
  * Starts a task without touching the intent: what the runner calls for each
  * of its steps. Whatever was under way is set aside first, with its share done kept.
  */
+/**
+ * Felling and splitting slow once the edge is under half: twice as long at
+ * 0, unchanged at 50 and above, since an axe a few strokes off sharp cuts
+ * as well as a fresh one; a flaked axe is half again as slow at any edge.
+ */
+export const SLOW_EDGE = 50;
+/** An hour on the forest floor: deadfall and dry branches broken by hand, an evening's fire. */
+export const DEADWOOD_KG = 10;
+/** Dead wood draws the felling stock: eight gathers are one tree's worth. */
+export const DEADWOOD_TREE_SHARE = 1 / 8;
+/** One split in ten breaks a wedge along the grain. */
+export const WEDGE_BREAK = 0.1;
+/** The edge a hone is worth: above it the row refuses, so a hone grind blocks harmlessly on a sharp axe. */
+export const HONE_UNDER = 70;
+export function edgeFactor(state: GameState): number {
+  const axe = axeInHand(state.player);
+  if (!axe) return 1;
+  const f = 1 + Math.max(0, (SLOW_EDGE - axe.durability) / SLOW_EDGE);
+  return axe.id === "flakedAxe" ? f * 1.5 : f;
+}
+
+/** A stroke's wear on the axe in hand; only a flaked axe can shatter, and the record keeps that. */
+function wearAxe(state: GameState, world: World): void {
+  const axe = axeInHand(state.player);
+  if (!axe) return;
+  if (wearTool(state, axe.id, wearFactor(state, world, "chop"))) {
+    record(state, { kind: "toolWorn", tool: axe.id });
+    cue("toolBreaks");
+    log(state, "The flaked axe shatters on the stroke.", "bad");
+  }
+}
+
 export function beginTask(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, repeat = false, rng?: Rng): boolean {
   if (state.dead) return false;
   if (id === "night") return false;
@@ -793,7 +877,9 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const need = toolFor(id, arg);
   // A fetch takes up the one vessel with the most room, whatever is already in hand.
   if (id === "fill") takeUpTripVessel(state, world);
-  else if (need && !hasTool(state.player, need)) takeUp(state, world, need);
+  else if (need === "axe") {
+    if (!axeInHand(state.player)) for (const id of AXES) if (takeUp(state, world, id)) break;
+  } else if (need && !hasTool(state.player, need)) takeUp(state, world, need);
   setAside(state, world);
   let any = false;
   if ((id === "hunt" || id === "fish") && arg === "any") {
@@ -815,7 +901,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const target = walkTarget(state, world, arg ?? "")!;
     const ice = walkIceMode(state, target.thin);
     const from = cellOf(state, world);
-    const path = findRoute(world, from, target.cell, ice) ?? [];
+    const path = findRoute(world, from, target.cell, ice, fearsFell(state)) ?? [];
     state.route = { target: target.cell, path, walked: [from], label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
@@ -833,7 +919,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
 export function loadPack(state: GameState, world: World): void {
   const from = herePile(state, world);
   const pack = state.player.pack;
-  let room = PACK_HARD_KG - weight(pack);
+  let room = body(state).packHardKg - weight(pack);
   const items = listItems(from).sort((a, b) => ITEM_KG[b.item] - ITEM_KG[a.item]);
   for (const { item, qty: have } of items) {
     if (room <= 1e-9) break;
@@ -950,8 +1036,8 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (repeat && !state.dead) {
     // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
     const o = check(state, world, cal, id, wanted);
-    if (!o.ok) log(state, `${o.label}: ${o.why}. You stop.`);
-    else if (!beginTask(state, world, cal, id, wanted, true, rng)) log(state, `${o.label}: nothing about. You stop.`);
+    if (!o.ok) log(state, `${o.label}: ${o.why}. {You} {stop}.`);
+    else if (!beginTask(state, world, cal, id, wanted, true, rng)) log(state, `${o.label}: nothing about. {You} {stop}.`);
   }
 }
 
@@ -976,7 +1062,14 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
   state.route = null;
   state.task = null;
   state.intent = null;
-  log(state, "Through the ice. You crawl out soaked and shaking.", "bad");
+  log(state, "Through the ice. {You} {crawl} out soaked and shaking.", "bad");
+  // The one way an iron axe ends: one time in two the hand that went under opens.
+  const axe = axeInHand(p);
+  if (axe && rng.chance(0.5)) {
+    p.tools = p.tools.filter((t) => t !== axe);
+    record(state, { kind: "toolLost", tool: axe.id });
+    log(state, `The ${TOOLS[axe.id].name} went to the bottom and stayed there.`, "bad");
+  }
 }
 
 /**
@@ -1036,7 +1129,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
     state.route = null;
     state.task = null;
     placeAt(state, world, cellOf(state, world));
-    if (wasTravel) log(state, `You reach ${label}.`);
+    if (wasTravel) log(state, `{You} {reach} ${label}.`);
     if (spotHere(state, world) === "heath") collectSnares(state, world);
     collectTrap(state, world);
   }
@@ -1046,10 +1139,10 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
 function cutIceHole(state: GameState, world: World): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
-  if (!hasTool(p, "axe")) takeUp(state, world, "axe");
-  if (wearTool(state, "axe", wearFactor(state, world, "chop"))) record(state, { kind: "toolWorn", tool: "axe" });
+  if (!axeInHand(p)) for (const id of AXES) if (takeUp(state, world, id)) break;
+  wearAxe(state, world);
   st.iceHole = { cell: cellOf(state, world), minute: state.minute };
-  log(state, "You cut a hole in the ice.");
+  log(state, "{You} {cut} a hole in the ice.");
 }
 
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
@@ -1063,17 +1156,18 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       produce(state, world, "log", 4);
       produce(state, world, "stick", chopSticks(state, world));
       state.stats.trees++;
-      if (wearTool(state, "axe", wearFactor(state, world, "chop"))) {
-        record(state, { kind: "toolWorn", tool: "axe" });
-        cue("toolBreaks");
-        log(state, "The axe head splits on the last stroke. It is done for.", "bad");
-      }
+      wearAxe(state, world);
       const axeInjury = p.energy < 20 ? 0.03 : p.energy < 30 ? 0.02 : 0.01;
       if (rng.chance(axeInjury)) {
         p.injured = Math.max(p.injured, 24 * 60);
         p.health = Math.max(1, p.health - 10);
-        log(state, "The axe glances off a knot into your shin. You will limp for a day.", "bad");
+        log(state, "The axe glances off a knot into {your} shin. {You} will limp for a day.", "bad");
       }
+      return;
+    }
+    case "deadwood": {
+      st.wood -= DEADWOOD_TREE_SHARE;
+      produce(state, world, splitIsWet(state, world) ? "wetFirewood" : "firewood", DEADWOOD_KG);
       return;
     }
     case "sticks": produce(state, world, "stick", 6); return;
@@ -1096,6 +1190,16 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
       produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      return;
+    }
+    case "splitWedges": {
+      consume(invs, [{ item: "log", qty: 1 }]);
+      const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
+      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      if (rng.chance(WEDGE_BREAK)) {
+        consume(invs, [{ item: "wedge", qty: 1 }]);
+        log(state, "A wedge splits along the grain.", "bad");
+      }
       return;
     }
     case "hunt": {
@@ -1122,19 +1226,19 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         creditYield(state, "hunt", x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg);
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
-        log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than you can carry; it lies where it fell" : ""}.`, "good");
+        log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than {you} can carry; it lies where it fell" : ""}.`, "good");
         const injury = injuryChance(state, s);
         if (injury > 0 && rng.chance(injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);
-          log(state, "It did not go down easily. You are hurt.", "bad");
+          log(state, "It did not go down easily. {You} {are} hurt.", "bad");
         }
       } else {
         const hurt = gapInjury(state, s);
         if (hurt > 0 && rng.chance(hurt)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);
-          log(state, `The ${def.name} turns on you. You are hurt.`, "bad");
+          log(state, `The ${def.name} turns on {you}. {You} {are} hurt.`, "bad");
         }
         const loss = huntExtras(state, s).arrowLoss;
         if (loss > 0 && rng.chance(loss)) {
@@ -1184,7 +1288,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "emptyTrap": {
       const kg = takeTrapFish(state, world);
-      log(state, `You empty the trap: ${kg.toFixed(1)} kg of fish.`, "good");
+      log(state, `{You} {empty} the trap: ${kg.toFixed(1)} kg of fish.`, "good");
       return;
     }
     case "cook": {
@@ -1217,13 +1321,13 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         const old = p.clothing.find((g) => CLOTHING[g.id].slot === slot);
         p.clothing = p.clothing.filter((g) => g !== old);
         p.clothing.push({ id: rec.out.clothing, durability: 100 });
-        log(state, `You put on the ${rec.name}${old ? ` and leave the ${CLOTHING[old.id].name} behind` : ""}.`, "good");
+        log(state, `{You} {put} on the ${rec.name}${old ? ` and leave the ${CLOTHING[old.id].name} behind` : ""}.`, "good");
       } else if (rec.out.item) {
         const item = rec.out.item;
         produce(state, world, item, rec.out.qty ?? 1);
         if (item in TOOLS) {
-          if (hasTool(p, item as ToolId)) log(state, `You have a spare ${rec.name}.`, "good");
-          else if (takeUp(state, world, item as ToolId)) log(state, `You have a ${rec.name}.`, "good");
+          if (hasTool(p, item as ToolId)) log(state, `{You} {have} a spare ${rec.name}.`, "good");
+          else if (takeUp(state, world, item as ToolId)) log(state, `{You} {have} a ${rec.name}.`, "good");
         }
       }
       return;
@@ -1238,8 +1342,14 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "sharpen": {
       consume(invs, [{ item: "stone", qty: 1 }]);
-      const axe = tool(p, "axe");
+      const axe = axeInHand(p);
       if (axe) axe.durability = Math.min(100, axe.durability + 30);
+      return;
+    }
+    case "hone": {
+      const axe = axeInHand(p);
+      if (axe) axe.durability = 100;
+      wearTool(state, "whetstone", 1);
       return;
     }
     case "build": {
@@ -1268,7 +1378,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (arg === "seep") {
         const s = state.seeps[cellOf(state, world)];
         if (s) s.dug = state.minute;
-        log(state, "You dig the seep out again.", "good");
+        log(state, "{You} {dig} the seep out again.", "good");
         return;
       }
       const sid = arg as DecayingId;
@@ -1282,7 +1392,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "lightIndoors": {
       consume(invs, [{ item: "firewood", qty: 1 }]);
       if (wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st));
+      const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       if (lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
         return;
@@ -1334,12 +1444,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "fill": {
       if (arg === "hole" && !waterSource(state, world) && state.weather.iceCm >= ICE_SHORE_CM) cutIceHole(state, world);
       const added = fillVessels(state, world);
-      if (added > 1e-9) log(state, `You fill ${added.toFixed(1)} litres.`);
+      if (added > 1e-9) log(state, `{You} {fill} ${added.toFixed(1)} litres.`);
       return;
     }
     case "hang": {
       const kg = loadRack(state, world);
-      if (kg > 0) log(state, `You hang ${kg.toFixed(1)} kg of meat to dry.`);
+      if (kg > 0) log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
       return;
     }
     case "iceHole": {
@@ -1350,7 +1460,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       const here = cellOf(state, world);
       st.campCell = here;
       if (state.intent) state.intent.campCell = here;
-      log(state, "You make camp here.");
+      log(state, "{You} {make} camp here.");
       return;
     }
     case "sleep":
@@ -1392,7 +1502,7 @@ function collectTrap(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
   if (!st.trap || cellOf(state, world) !== st.trap.cell) return;
   const kg = takeTrapFish(state, world);
-  if (kg > 1e-9) log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; you take them.`, "good");
+  if (kg > 1e-9) log(state, `${kg.toFixed(1)} kg of fish in the trap at ${whereIs(state, world, st.trap.cell)}; {you} {take} them.`, "good");
 }
 
 /** Hares hanging in the snares come with you when you pass the heath. */

@@ -5,8 +5,8 @@
  * record; templates over real quantities, no adjectives, no generated prose.
  */
 import { fmtName } from "./names";
-import { SPECIES_DEFS } from "./species";
-import { STRUCTURES } from "./items";
+import { LARGE_GAME, SPECIES_DEFS } from "./species";
+import { STRUCTURES, TOOLS } from "./items";
 import type { DeathCause, LifeEvent, LifeRecord, ThresholdId, WorldDate } from "./types";
 
 export const THRESHOLD_NAMES: Record<ThresholdId, string> = {
@@ -79,7 +79,8 @@ function eventLine(e: LifeEvent): string | null {
     case "firstKill": return `Day ${e.day}. First ${SPECIES_DEFS[e.species].name}.`;
     case "built": return e.structure === "snare" ? `Day ${e.day}. Set the first snare.` : `Day ${e.day}. Built the ${STRUCTURES[e.structure].name}.`;
     case "repaired": return `Day ${e.day}. Mended the ${STRUCTURES[e.structure].name}.`;
-    case "toolWorn": return `Day ${e.day}. The ${e.tool} wore out.`;
+    case "toolWorn": return `Day ${e.day}. The ${TOOLS[e.tool].name} wore out.`;
+    case "toolLost": return `Day ${e.day}. The ${TOOLS[e.tool].name} was lost.`;
     case "frostbite": return `Day ${e.day}. Lost ${e.part} to frostbite.`;
     case "storm": return `Day ${e.day}. A storm passed.`;
     case "abandoned": return null;
@@ -105,8 +106,38 @@ export function entry(rec: LifeRecord): string[] {
   return [head, ...kept, ...tail];
 }
 
+/**
+ * The rank of a line for the card's three stories: the worst night with
+ * wolves, the first large kill, the winter thresholds, the walls raised, then
+ * the rest of the entry's kinds in the order a listener would ask about them.
+ */
+function storyRank(e: LifeEvent): number {
+  switch (e.kind) {
+    case "firstKill": return LARGE_GAME.includes(e.species) ? 1 : 6;
+    case "threshold": return e.id === "coldSnap" || e.id === "firstSnow" || e.id === "dark" ? 2 : 4;
+    case "built": return e.structure === "cabin" || e.structure === "turfHut" ? 3 : 5;
+    case "toolLost": return 7;
+    case "toolWorn": return 8;
+    case "storm": return 9;
+    case "repaired": return 10;
+    default: return 99;
+  }
+}
+
+/** Three lines of the record at most, the best ranked, oldest first: what the card tells of a life. */
+export function stories(rec: LifeRecord): string[] {
+  const ranked: { rank: number; day: number; text: string }[] = [];
+  for (const e of rec.events) {
+    const t = eventLine(e);
+    if (t) ranked.push({ rank: storyRank(e), day: e.day, text: t });
+  }
+  if (rec.worst) ranked.push({ rank: rec.worst.wolves ? 0 : 11, day: rec.worst.day, text: `Day ${rec.worst.day}. The worst night: warmth ${rec.worst.warmth}${rec.worst.wolves ? ", wolves at the fire" : ""}.` });
+  ranked.sort((a, b) => a.rank - b.rank || a.day - b.day);
+  return ranked.slice(0, 3).sort((a, b) => a.day - b.day).map((s) => s.text);
+}
+
 /** One sentence of what happened on or after `day`, for the away report. */
-export function since(rec: LifeRecord, day: number): string {
+export function since(rec: LifeRecord, day: number, name?: string): string {
   const parts: string[] = [];
   for (const e of rec.events) {
     if (e.day < day) continue;
@@ -115,5 +146,5 @@ export function since(rec: LifeRecord, day: number): string {
   }
   if (rec.worst && rec.worst.day >= day) parts.push(`the worst night on day ${rec.worst.day}`);
   if (!parts.length) return "Nothing worth telling.";
-  return `${cap(parts.join("; "))}.`;
+  return name ? `${name}: ${cap(parts.join("; "))}.` : `${cap(parts.join("; "))}.`;
 }

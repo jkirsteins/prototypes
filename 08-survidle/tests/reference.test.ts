@@ -51,8 +51,8 @@ describe("the reference player", () => {
     // and the hide coat, trousers and boots wait for Crafting 8; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 13);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 13);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 19);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 19);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -60,12 +60,19 @@ describe("the reference player", () => {
     });
   });
 
-  it("the knife, fire drill, fishing spear, bow and axe are keeps of one spare; the basket trap stays a once job, since it is set and not held", () => {
-    for (const id of ["knife", "fireDrill", "fishingSpear", "bow", "axe"] as const) {
+  it("the knife, fire drill, fishing spear and bow are keeps of one spare, the celt and the flaked axe too; the basket trap stays a once job, since it is set and not held", () => {
+    for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) {
       const o = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === id)!;
       expect(o.kind, id).toBe("keep");
       expect(o.req.until, id).toEqual({ kind: "campHas", qty: 1 });
     }
+    for (const id of ["stoneAxe", "flakedAxe"] as const) {
+      const axe = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === id)!;
+      expect(axe.kind, id).toBe("keep");
+    }
+    const whet = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === "whetstone")!;
+    expect(whet.kind).toBe("job");
+    expect(REFERENCE_ORDERS.find((o) => o.req.task === "hone")!.kind).toBe("grind");
     const trap = REFERENCE_ORDERS.find((o) => o.req.task === "craft" && o.req.arg === "basketTrap")!;
     expect(trap.kind).toBe("job");
     expect(trap.req.until.kind).toBe("once");
@@ -102,19 +109,17 @@ describe("the reference player", () => {
     expect(tasks[spear + 4]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
     const hunt = tasks.indexOf("hunt:any");
+    // The clothing block, then the stone restock, then the edge's whole life with the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
     expect(tasks.slice(hunt + 1, hunt + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
-    // The stone restock closes the clothing block, right above the axe keep that spends stone.
-    expect(tasks[hunt + 8]).toBe("stone:");
-    expect(tasks[hunt + 9]).toBe("craft:axe");
-    const axe = tasks.indexOf("craft:axe");
+    expect(tasks.slice(hunt + 8, hunt + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
+    const axe = tasks.indexOf("craft:flakedAxe");
     expect(tasks.slice(axe + 1, axe + 8)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "fill:shore", "fill:hole", "melt:"]);
     expect(tasks[axe + 8]).toBe("hang:");
-    // The two winter-stock keeps sit together, and the list ends with the three named hunts as grinds.
-    expect(tasks[axe + 9]).toBe("split:");
-    expect(tasks[axe + 10]).toBe("chop:");
-    expect(tasks.slice(axe + 11, axe + 14)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    // The winter-stock keeps sit together, the three firewood methods then the logs, and the list ends with the three named hunts as grinds.
+    expect(tasks.slice(axe + 9, axe + 13)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
+    expect(tasks.slice(axe + 13, axe + 16)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    expect(REFERENCE_ORDERS.length).toBe(52);
+    expect(REFERENCE_ORDERS.length).toBe(60);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -454,7 +459,8 @@ describe("wants by level", () => {
     expect(stones[1].req.until).toEqual({ kind: "campHas", qty: 8 });
     const at = (w: (typeof REFERENCE_ORDERS)[number]) => REFERENCE_ORDERS.indexOf(w);
     expect(at(stones[0])).toBeLessThan(at(REFERENCE_ORDERS.find((w) => w.req.arg === "firePit")!));
-    expect(at(stones[1])).toBe(at(REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "axe")!) - 1);
+    // The restock sits right above the whetstone, the first of the edge's wants, which spend stone.
+    expect(at(stones[1])).toBe(at(REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "whetstone")!) - 1);
   });
 
   it("the 150-log keep sits beside the woodpile keep and above the named hunts, opened with it from 1 September", () => {
@@ -464,7 +470,8 @@ describe("wants by level", () => {
     expect(logs.kind).toBe("keep");
     expect(REFERENCE_ORDERS.some((w) => w.req.task === "chop" && w.kind === "grind")).toBe(false);
     const woodpile = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
-    expect(REFERENCE_ORDERS.indexOf(logs)).toBe(REFERENCE_ORDERS.indexOf(woodpile) + 1);
+    // The wedge split and dead wood, the woodpile's two methods for a camp with no axe, sit between the two.
+    expect(REFERENCE_ORDERS.indexOf(logs)).toBe(REFERENCE_ORDERS.indexOf(woodpile) + 3);
     const tail = REFERENCE_ORDERS.slice(REFERENCE_ORDERS.indexOf(logs) + 1);
     expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
     const { state, world } = newGame(17);

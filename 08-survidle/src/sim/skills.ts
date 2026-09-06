@@ -5,6 +5,7 @@
  */
 import type { World } from "../world/gen";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
+import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
@@ -20,11 +21,11 @@ export const SKILL_NAMES: Record<SkillId, string> = {
 
 /** The actions each skill owns; the pool's capacity is 100 hours per key. */
 export const MASTERY_KEYS: Record<SkillId, string[]> = {
-  woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split"],
+  woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split", "deadwood", "splitWedges"],
   foraging: ["berries", "stone"],
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
-  crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen"],
+  crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
   building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish"],
 };
 
@@ -42,9 +43,9 @@ export const RUNG_ORDER: OrderKind[] = ["job", "grind", "keep"];
 
 /** What the log says as each rung opens, once per skill per survivor. */
 export const RUNG_LINE: Record<OrderKind, (skill: string) => string> = {
-  job: (s) => `You know ${s.toLowerCase()} well enough to set a task and walk away: jobs with a count or a target from ${s}.`,
+  job: (s) => `{You} {know} ${s.toLowerCase()} well enough to set a task and walk away: jobs with a count or a target from ${s}.`,
   grind: (s) => `${s} is second nature now: grinds, work that never ends, from ${s}.`,
-  keep: (s) => `You keep count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
+  keep: (s) => `{You} {keep} count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
 };
 
 export const MASTERY_CAP = 99;
@@ -77,7 +78,7 @@ export function masteryMinutes(m: number): number {
 }
 
 /** Keys the pool counts, for the skills whose rosters would otherwise put the perks out of reach. */
-const POOL_KEY_CAP: Partial<Record<SkillId, number>> = { hunting: 6, fishing: 3 };
+const POOL_KEY_CAP: Partial<Record<SkillId, number>> = { hunting: 6, fishing: 3, woodcraft: 6 };
 
 export function poolCapacity(skill: SkillId): number {
   return POOL_MINUTES_PER_KEY * Math.min(MASTERY_KEYS[skill].length, POOL_KEY_CAP[skill] ?? Number.POSITIVE_INFINITY);
@@ -105,13 +106,13 @@ export function masteryOf(state: GameState, skill: SkillId, key: string): number
 /** The skill a task trains, or null for walks and waits. */
 export function skillOf(id: TaskId, arg?: string): SkillId | null {
   switch (id) {
-    case "chop": case "sticks": case "bark": case "split": return "woodcraft";
+    case "chop": case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": return "woodcraft";
     case "berries": case "stone": return "foraging";
     case "hunt": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
     case "mend": return "building";
     case "fish": case "read": case "setTrap": case "emptyTrap": return "fishing";
-    case "craft": case "repair": case "sharpen": return "crafting";
+    case "craft": case "repair": case "sharpen": case "hone": return "crafting";
     case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": return "building";
     case "fill": case "iceHole": return "foraging";
     default: return null;
@@ -122,8 +123,8 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
 export function masteryKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
-    case "sticks": case "bark": case "split": case "berries": case "stone":
-    case "repair": case "sharpen": case "light": case "lightTorch": case "hang":
+    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone":
+    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang":
       return id;
     // "Anything" is not a thing you get better at: the species drawn is what the minutes go to.
     case "fish": return arg === "any" ? null : `fish:${arg}`;
@@ -143,6 +144,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
 /** Recommended levels. Under them the odds are punished; over them nothing extra. */
 export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
   "craft:bow": { skill: "crafting", level: 5 },
+  "craft:stoneAxe": { skill: "crafting", level: 5 },
   "craft:hideBlanket": { skill: "crafting", level: 6 },
   "craft:hideCoat": { skill: "crafting", level: 8 },
   "craft:hideTrousers": { skill: "crafting", level: 8 },
@@ -171,7 +173,10 @@ for (const s of fishSpecies()) {
 export function gap(state: GameState, key: string): number {
   const rec = RECOMMENDED[key];
   if (!rec) return 0;
-  return Math.max(0, rec.level - skillLevel(state, rec.skill));
+  let level = rec.level;
+  // Forest-born: the forest's game is known two levels early.
+  if (key.startsWith("hunt:") && SPECIES_DEFS[key.slice(5) as Species]?.hunt?.spot === "forest" && hasQuirk(state, "forestBorn")) level -= 2;
+  return Math.max(0, level - skillLevel(state, rec.skill));
 }
 
 /** The concrete extras, at mastery 20 and 50, by key; a key not here is speed only. A key with no at50 has nothing to promise there. */
@@ -271,6 +276,8 @@ export function gapInjury(state: GameState, species: Species): number {
 /** Chance a piece comes out: halved per level short of the recommendation. */
 export function craftSuccess(state: GameState, recipe: RecipeId): number {
   let f = 0.5 ** gap(state, `craft:${recipe}`);
+  // Clumsy hands spoil more of what the level would, steady hands less.
+  f = 1 - Math.min(1, (1 - f) * body(state).spoilFactor);
   // Cold hands double the chance of spoiling the piece, not halve the chance of success.
   if (state.player.frostbite.hands > 0) f = 1 - Math.min(1, 2 * (1 - f));
   // Spent past energy 20, hands fumble the piece: the spoil chance doubles the same way.
@@ -313,7 +320,7 @@ export function wearFactor(state: GameState, world: World, id: TaskId, arg?: str
     else if (share >= 0.25) f *= 0.5;
   }
   if (id === "chop" && masteryOf(state, skill, masteryKey(state, world, id)!) >= 50) f = 0;
-  return f;
+  return f * body(state).wearFactor;
 }
 
 /** Odds multiplier for a hunt or a cast: the skill's level, halved per level short of the recommendation. */
@@ -324,7 +331,7 @@ export function oddsFactor(state: GameState, species: Species): number {
   let f = (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
   if (state.player.frostbite.hands > 0) f *= 0.5;
   if (state.player.fingers) f *= 0.9;
-  f *= 1 - 0.5 * starvation(state.player);
+  f *= 1 - 0.5 * starvation(state);
   if (!fishing) f *= huntExtras(state, species).oddsFactor;
   return f;
 }

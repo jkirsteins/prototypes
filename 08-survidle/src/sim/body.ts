@@ -5,14 +5,14 @@
  * an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
-import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { eat, edible } from "./actions";
 import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
-import { hasTool, pile, qty, takeUp, transfer, weight } from "./inventory";
+import { AXES, axeInHand, hasTool, pile, qty, takeUp, transfer, weight } from "./inventory";
+import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -59,7 +59,7 @@ export function spentNow(state: GameState): boolean {
   }
   if (today(state).workMin < p.workHours * 60) return false;
   p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
-  log(state, "A day's work done. You rest by the fire.");
+  log(state, "A day's work done. {You} {rest} by the fire.");
   return true;
 }
 
@@ -133,7 +133,7 @@ export function minutesToCamp(state: GameState, world: World, cal: Calendar): nu
   const here = cellOf(state, world);
   if (here === st.campCell) return 0;
   const ice = walkableIce(state.weather);
-  const route = findRoute(world, here, st.campCell, ice);
+  const route = findRoute(world, here, st.campCell, ice, fearsFell(state));
   if (!route) return null;
   return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice);
 }
@@ -199,7 +199,7 @@ export function iceHoleSite(state: GameState, world: World, cal: Calendar): numb
   if (state.weather.iceCm < ICE_SHORE_CM) return null;
   const st = regionState(state, world, state.player.region);
   if (st.iceHole) return null;
-  if (!hasTool(state.player, "axe")) return null;
+  if (!axeInHand(state.player)) return null;
   const here = cellOf(state, world);
   if (watersideCell(world, here)) return here;
   const r = regionAt(world, state.player.region);
@@ -365,18 +365,18 @@ function campStep(state: GameState, world: World, cal: Calendar, it: Intent, nee
     const why = need === "sleep" ? " for the night" : need === "cold" ? " to warm up" : " for the evening";
     if (check(state, world, cal, "walk", `cell:${st.campCell}`).ok) return walkStep(state, world, st.campCell, why);
     const s: Step = need === "sleep"
-      ? { id: "sleep", step: "sleeping where you stand; no way to camp" }
+      ? { id: "sleep", step: "sleeping where {you} {stand}; no way to camp" }
       : need === "cold"
         ? { id: "rest", step: "resting to warm up; no way to camp" }
         : { id: "rest", step: "resting after the day's work; no way to camp" };
-    if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. You sleep where you are.", "bad");
+    if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
     return s;
   }
   const fs = fireStep(state, world, cal, st.campCell);
   if (fs) return fs;
   if (need === "sleep") {
     const s: Step = { id: "sleep", step: "sleeping" };
-    if (!isRunning(state, s) && st.campCell !== it.campCell) log(state, `You turn in at camp in ${regionAt(world, p.region).name}.`);
+    if (!isRunning(state, s) && st.campCell !== it.campCell) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
     return s;
   }
   if (need === "cold") return { id: "rest", step: st.fire.lit ? "warming up by the fire" : "resting to warm up" };
@@ -436,7 +436,9 @@ export function provisionKit(state: GameState, world: World): number {
   // this is not undone when the start fails; the kit below is. Vessels are
   // left to the fill task's own rule.
   const need = it.task === "fill" ? null : toolFor(it.task, it.arg);
-  if (need && !hasTool(state.player, need) && takeUp(state, world, need)) log(state, `You take up the ${TOOLS[need].name}.`);
+  if (need === "axe") {
+    if (!axeInHand(state.player)) for (const id of AXES) if (takeUp(state, world, id)) { log(state, `{You} {take} up the ${TOOLS[id].name}.`); break; }
+  } else if (need && !hasTool(state.player, need) && takeUp(state, world, need)) log(state, `{You} {take} up the ${TOOLS[need].name}.`);
   const kit = orderKit(state);
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
@@ -475,7 +477,7 @@ export function provision(state: GameState, world: World): void {
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
   let want = PROVISION_KG - PROVISIONS.reduce((a, f) => a + qty(pack, f), 0);
-  let room = PACK_COMFORTABLE_KG - weight(pack);
+  let room = body(state).packComfortableKg - weight(pack);
   for (const f of PROVISIONS) {
     if (want <= 1e-9 || room <= 1e-9) break;
     const kg = Math.min(want, room, qty(camp, f)) / ITEM_KG[f];

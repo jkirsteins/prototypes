@@ -109,7 +109,7 @@ describe("the landing", () => {
     expect(current(state).index).toBe(2);
     expect(current(state).gapDays).toBe(90);
     expect(state.player.health).toBe(100);
-    expect(state.log[0].text).toMatch(/^\d+ July, year 1\. 90 days after .* died\. You land at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
+    expect(state.log[0].text).toMatch(/^\d+ July, year 1\. 90 days after .* died\. \{You\} \{land\} at .* The old camp at .* lies \d+ km [a-z-]+\.$/);
   });
 });
 
@@ -158,7 +158,7 @@ describe("what the heir is told", () => {
     // The tombstone after the heir dies names the ancestor's day.
     advance(state, world, 3 * 1440);
     die(state, "froze");
-    const html = tombstoneHtml(state, world);
+    const html = tombstoneHtml(state, world, newUiState());
     expect(html).toContain(`${fmtName(state.survivors[0].name)} lived ${firstDay} days.`);
   });
 
@@ -167,7 +167,7 @@ describe("what the heir is told", () => {
     placeAtSpot(state, world, state.player.region, "shore");
     advance(state, world, 2 * 1440);
     die(state, "starved");
-    const html = tombstoneHtml(state, world);
+    const html = tombstoneHtml(state, world, newUiState());
     expect(html).not.toContain(" lived ");
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });
