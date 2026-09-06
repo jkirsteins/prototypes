@@ -148,14 +148,14 @@ describe("when an order is met", () => {
     const o = addOrder(state, world, { task: "innerBark", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" }, "keep");
     addItem(camp, "freshBark", 1);
     expect(orderMet(state, world, o, false)).toBe(false);
-    // A 1-for-1 sum would read 1 + 1 = 2, still under the idle threshold of 1.5; scaled by
-    // BARK_DRY_RATIO the dried kilo is worth 3 fresh-strip kilos, well over it.
     addItem(camp, "driedBark", 1);
     expect(orderMet(state, world, o, false)).toBe(true);
     camp.items.freshBark = 0;
     camp.items.driedBark = 1;
-    // One kilo of dried bark alone reaches the 3 kg fresh-strip target, since BARK_DRY_RATIO
-    // is 3: this fails at ratio 1, which is the bug the ratio fixes.
+    // The live threshold is the whole 3 kg, so this is the assertion the ratio decides: one
+    // kilo of the dried kind is three fresh-strip kilos and reads met, where a 1-for-1 sum
+    // would read 1 against 3 and send the runner back to the pines. The idle assertion above
+    // passes either way - 1 + 1 already clears the 1.5 kg half-target.
     expect(BARK_DRY_RATIO).toBe(3);
     expect(orderMet(state, world, o, true)).toBe(true);
   });

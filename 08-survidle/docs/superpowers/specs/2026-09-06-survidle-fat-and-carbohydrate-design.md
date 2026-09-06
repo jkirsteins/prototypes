@@ -104,6 +104,234 @@ and 79, `npm test` green at 907 tests:
   eight times the expert band, so the fat those kills carry is not the
   shortage; what the survivor eats of it is.
 
+### Measured after
+
+On `survidle/fat-and-carbohydrate` with the three runner fixes below, the
+same four seeds, `npm test` green at 948 tests. Every reading is from
+`.superpowers/sdd/2026-09-06-survidle-fat-and-carbohydrate/runs2/`.
+
+The four gates, seed by seed:
+
+| gate | 17 | 19 | 42 | 79 | reading |
+|---|---|---|---|---|---|
+| April, alive and fed on day 20 | pass; the life dies day 24, starved | pass; day 24, starved | pass; day 39, starved | pass; day 31, starved | **4 of 4** |
+| Winter, the stocked December camp alive on 1 March | alive | alive | alive | alive | **4 of 4** |
+| Year at level 20, alive on 1 April | day 107, starved | day 164, starved | day 177, starved | day 111, starved | **0 of 4** |
+| Lineage, a year within six lives | 24, 45, 65, 41, 64, 36 | 24, 93, 56, 52, 171, 132 | 39, 90, 96, 166, 102, 270 | 31, 80, 73, 7, 3, 96 | **0 of 4** |
+
+Before the fixes, on the same HEAD, the year read 98, 133, 129 and 82 days
+and the lineage's lives ran 24/42/44/52/53/53, 25/44/60/48/92/95,
+35/74/74/50/171/158 and 31/62/83/5/16/75. The lineage's longest life goes
+from 171 days to 270. Its trend gate, which asks that each life reach at
+least the one before, falls from 1 of 4 to 0 of 4: the lives are longer
+and less orderly. The level-10 year probe reads 87, 147, 129 and 152 days.
+
+**No gate week anywhere is a lean-wall week.** Lean-wall days are 0 of 7 at
+every April checkpoint, in every winter month and at two of the four year
+deaths; seeds 19 and 42 carry 1 of 7 in the week they died. Lean intake
+over a level-20 year runs 997 to 1,211 kcal a day against the 1,600
+ceiling, so the ceiling is not what the survivor stands at when it falls.
+That is this item's own criterion and it is met: the wall the tables audit
+found is gone.
+
+Every starvation death, April, the first lives. All four die of a plain
+shortfall in the fourth or fifth week, eating 800 to 2,100 kcal a day
+against a 4,100 to 4,500 burn.
+
+| seed | day | lean-wall days | unexploited |
+|---|---|---|---|
+| 17 | 24 | 0 of 7 | bones uncracked 1, roots 140.1 kg, pine ground reachable, oily fish read at the shore, spawning fish read roe at the shore |
+| 19 | 24 | 0 of 7 | roots 239.0 kg, pine ground reachable, oily fish read at the shore, spawning fish read roe at the shore |
+| 42 | 39 | 0 of 7 | roots 121.5 kg, pine ground reachable, oily fish read at the shore, spawning fish read roe at the shore |
+| 79 | 31 | 0 of 7 | nests 11.2 clutches, roots 98.4 kg, pine ground reachable, spawning fish read roe at the shore |
+
+Every starvation death, the year at level 20:
+
+| seed | day | lean-wall days | unexploited |
+|---|---|---|---|
+| 17 | 107 | 0 of 7 | pine ground reachable, oily fish read at the shore |
+| 19 | 164 | 1 of 7 | oily fish read at the shore, spawning fish read roe at the shore |
+| 42 | 177 | 1 of 7 | oily fish read at the shore, spawning fish read roe at the shore |
+| 79 | 111 | 0 of 7 | bones uncracked 1, pine ground reachable |
+
+Each line reads what section 1 asked of it - a stock above zero in its
+season, a species standing in the shore's read - and not what the survivor
+did about it. Every line above names a source the survivor was already
+working: seed 19's April line names 239 kg of roots in a week whose ledger
+credits 656 kcal a day of them, and "oily fish read at the shore" stands
+on a year death whose June and September camp lines both hold cooked oily
+fish. Finding F7 is what that costs the line as an instrument.
+
+kcal a day by source, April, the week before day 20:
+
+| seed | fish | trap | snare | marrow | bark | roots |
+|---|---|---|---|---|---|---|
+| 17 | 0 | 257 | 377 | 206 | 0 | 73 |
+| 19 | 0 | 286 | 0 | 0 | 107 | 656 |
+| 42 | 0 | 0 | 189 | 51 | 149 | 1,464 |
+| 79 | 0 | 143 | 189 | 51 | 160 | 546 |
+
+kcal a day by source over the whole level-20 year, to the death:
+
+| seed | fish | snare | hunt | marrow | eggs | roe | bark | roots | berries | gross | eaten | burn |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 17 | 445 | 382 | 11 | 161 | 125 | 6 | 424 | 1,144 | 0 | 2,909 | 2,720 | 3,602 |
+| 19 | 1,007 | 427 | 1 | 199 | 51 | 7 | 279 | 1,275 | 6 | 3,434 | 3,019 | 3,591 |
+| 42 | 1,318 | 418 | 2,156 | 332 | 37 | 7 | 302 | 778 | 67 | 5,525 | 2,920 | 3,447 |
+| 79 | 565 | 452 | 56 | 178 | 61 | 21 | 538 | 873 | 0 | 2,923 | 2,622 | 3,464 |
+
+Sap and seaweed are zero on all four seeds. No reference seed's home
+region holds a birch cell - `tests/reference.test.ts` has to scan the
+whole terrain grid to find one anywhere in the world - and none of the
+four camps is on the sea, so neither source fires on these gates at all.
+That is a property of the seeds and not of the sources, and it is why both
+read as free in the without table.
+
+The winter camp's fat: the December stock's 20 kg stands at 9.2, 12.2,
+10.3 and 2.1 kg on 1 March, so the ninety days drew 10.8, 7.8, 9.7 and
+17.9 kg of it. The fifth spare the stock was sized with is what carried
+seed 79.
+
+The without table, `npm run year -- --without=<source>` at level 20, days
+survived by seed:
+
+| source shut | 17 | 19 | 42 | 79 | reading |
+|---|---|---|---|---|---|
+| none | 107 | 164 | 177 | 111 | 0 of 4 |
+| marrow | 92 | 146 | 155 | 92 | 0 of 4; 15 to 22 days off every seed |
+| oilyFish | 113 | 150 | 129 | 111 | 0 of 4; 14 and 48 days off 19 and 42 |
+| roe | 121 | 162 | 120 | 119 | 0 of 4; 57 days off 42 |
+| eggs | 89 | 149 | 161 | 113 | 0 of 4; 18 days off 17 |
+| roots | 59 | 58 | 76 | 60 | 0 of 4; halves every life |
+| bark | 145 | 166 | 154 | 163 | 0 of 4; 38 and 52 days longer on 17 and 79 |
+| sap | 107 | 164 | 177 | 111 | 0 of 4; identical, the source never fires here |
+| seaweed | 107 | 164 | 177 | 111 | 0 of 4; identical, the source never fires here |
+
+No source's removal takes the year from its reading to 0 of 4, because the
+reading is already 0 of 4: the criterion is met and says nothing. Read on
+the days instead, roots are close to mandatory and inner bark is worse
+than nothing (F3, F5).
+
+The kills line, level 20:
+
+| seed | kills | large game kcal a day |
+|---|---|---|
+| 17 | ptarmigan 3 | 0 (under) |
+| 19 | squirrel 1 | 0 (under) |
+| 42 | hazel grouse 5, deer 5, mallard 7, elk 1, squirrel 3 | 2,108 (over) |
+| 79 | mallard 4, capercaillie 1 | 0 (under) |
+
+The jackpot criterion fails on the one seed that can test it: seed 42
+takes its elk on day 64, stands on 1 July with 30,370 kcal at camp -
+14,580 of rendered fat and 13,200 of raw meat - and on 1 August holds 890.
+`first hang never`. The fat side of the carcass works; the meat side rots
+where it lies (F1).
+
+The runner changes, and the death that asked for each:
+
+1. `4f7d7e9`, a floating-point residue is not stock. Seed 79 at level 20,
+   day 82: 2e-13 kg of roots at camp, and `consume` stops at 1e-9 and takes
+   nothing, so the cook finished, left the residue where it was and was
+   legal again the same minute - 22,053 cooks of a minute each, six hours
+   a day, with the whole list under the cook keep waiting. The epsilon is
+   named once beside `consume`'s own limit and the four stock guards read
+   it instead of zero. Test: `tests/tasks.test.ts`.
+2. `29deb1f`, the rack and the twenty-snare line outrank the gathering
+   keeps. All four level-20 seeds, dying on days 98 to 133 having set three
+   snares in a hundred days, never built a rack and never dried a kilo,
+   while digging rhizomes three hours a day. A keep measured in food at
+   camp can never read met while the body eats what it brings home - the
+   reason the list already gives for where the log keep and the hang grind
+   sit - and the gathering block went in above two standing producers. The
+   rack's hour is real and a beginner has no kill to dry, so its want opens
+   on raw meat in reach, which is what the list's comment always claimed
+   and the code never did: built on nothing it cost seed 19 the woodpile
+   and a cold death on day 22. Tests: `tests/list.test.ts`, two cases.
+3. `62fad75`, a cook keep for the oily catch. Every reference seed died
+   with an oily species standing in its shore's read and cooked oily fish
+   never once at camp: the split gave the catch two items and the list one
+   cook keep, and raw oily fish is in no auto-eat order and rots in a day
+   and a half. Test: `tests/list.test.ts`.
+
+Their effect on the level-20 year, in days: 98/133/129/82 before,
+98/133/128/105 after the residue fix, 91/160/158/111 after the ranking
+fix, 107/164/177/111 with the oily cook keep. April held 4 of 4 through
+all three and the winter gate never moved.
+
+The findings left for the author:
+
+**F1. A kill's meat cannot be kept, only its fat.** Seed 42's elk leaves
+13,200 kcal of raw meat at camp on 1 July and 890 kcal at camp on 1
+August. The rack stands, and the hang grind never runs: it sits in the
+surplus loop at the foot of the list, and the greedy scheduler never
+reaches it while a food keep above is runnable. Moving it up is not a
+change to make blind - the list's own record says a hang grind above the
+winter-stock keeps froze two year seeds on days 300 and 325, and no seed
+now reaches day 300 for the trade to be measured. This is section 7's
+jackpot criterion and it fails.
+
+**F2. Everything below the first never-met food keep is unreachable from
+May to October.** That is what a greedy top-down scheduler and a keep
+measured in food at camp come to together. This item widened the band:
+seven gathering rows went in above the fish keep, and with them the bow,
+the arrows, the needle, the clothing, the hut group and the whole surplus
+loop - the woodpile and the log keep among them - stopped being reachable
+in the growing season. The fixes above lift the two most valuable
+producers out of that band. The rest is the list's shape rather than this
+item's, and it wants a decision: either a keep on food learns to read met
+against a day's intake, or the list stops being a strict ranking.
+
+**F3. Inner bark is worse than the hour it costs.** Shutting it lengthens
+seed 17's year by 38 days and seed 79's by 52. It yields about 275 kcal an
+hour against fishing's 420 and root digging's 414 at level 20, so an hour
+of stripping is an hour taken off two better sources. The handbook's own
+words are "time-consuming, low nutrition", so the number is likely right
+and the ranking wrong: bark is what a survivor strips when the water is
+iced and the ground frozen, not in July. Neither the list nor `wantOpen`
+has a way to say that today - the strip season is April to July, which is
+exactly the wrong half of the year for it.
+
+**F4. A level-20 survivor gathers more than it can eat and starves
+anyway.** Seed 42 gathers 5,525 kcal a day over its life and eats 2,920
+against a 3,447 burn. `autoEat` tops the reserve to HUNGRY_LINE and stops,
+the reserve caps at KCAL_FULL, and nothing banks a surplus but drying and
+rendering. With F1 unfixed the surplus has nowhere to go. The gap between
+eaten and burned at level 20 is a steady 444 to 842 kcal a day, and that
+gap is the whole death.
+
+**F5. Roots are close to mandatory, and the stock is finite.** Shutting
+them halves every level-20 life. A level-20 camp digs its whole regional
+stock out by early July - the task then refuses with "the ground is dug
+out" - and the survivor is 1,000 to 1,300 kcal a day poorer with no
+replacement. Whether one survivor should be able to empty a region's
+rhizomes in ninety days is the author's call: the ruling of 2026-09-05
+says a shore or a heath cannot be emptied, and the root stock is the one
+food population that can.
+
+**F6. Ruling R5's winter dig is still refused, and no death named it.**
+`wantOpen` opens the winter roots row on an axe in reach, but
+`resolveCell` walks to the nearest root ground rather than to the cut ice
+hole, so the task refuses with "the ground is frozen; an ice hole reaches
+the rhizomes" on almost every winter day. No death this task measured
+falls in winter - the level-20 year now ends between June and September -
+so nothing asked for the fix and it was left. It will matter the first
+time a seed lives to December.
+
+**F7. The unexploited line reads a stock, not an omission.** Section 1
+defines it as what stood accessible, so it cannot tell "there were roots
+and the survivor ignored them" from "there were roots and the survivor dug
+1,464 kcal a day of them and 121 kg were still in the ground". Every April
+death above names roots the survivor was already working, and every camp
+on a shore with a char in it will read "oily fish read at the shore"
+forever. As written the line is a list of what the region offers. If it is
+to go on deciding whether a death is a hole, it wants a second half: what
+was taken from each of those sources in the week before.
+
+**F8. Sap and seaweed are untested by this instrument.** Neither fires on
+any reference seed, so both read as free in the without table for want of
+an opportunity rather than for want of value. Their numbers are unmeasured
+by the gates and should not be read as balanced.
+
 ## 1. The model
 
 Kilocalories stay the one reserve. Each food carries a lean share, the
