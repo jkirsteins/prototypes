@@ -126,3 +126,61 @@ bars also carry the RUM query or funnel that reads them.
 
 The survey is one form, sent after a week, keyed by the id the settings
 panel shows beside the switch.
+
+## The invite
+
+The text a tester receives, with the link filled in:
+
+> Survidle is a survival game that runs in the browser and saves on the
+> device you open it on, so open it on the one you will keep coming back
+> to. Start here: `https://jkirsteins.github.io/prototypes/08/?tester=<cohort>`.
+> Closing the tab is playing: the world runs on without you, and the game
+> tells you what happened when you come back. Your first survivor will
+> die, most likely inside the first hour or two, and that is the game
+> working; choose the next one off the boat and carry on. After a week
+> we will send you a short form. It asks for the id shown beside "share
+> anonymous play data" on the settings strip, so note it or leave the
+> tab where you can find it. Nothing you type in the game is sent
+> anywhere.
+
+The cohort word names the wave, never the person.
+
+## The survey
+
+One form, sent after a week, keyed by the id. Seven questions, in this
+order:
+
+1. The id beside "share anonymous play data" on the settings strip.
+2. On how many real days did you open the tab?
+3. What killed your first survivor?
+4. Did you start again after that death? If not, why not?
+5. What did you do while the tab was closed: set orders and leave, check
+   in between things, or play in one sitting?
+6. Would you pay ten dollars for this game? Yes or no. (The pay bar.)
+7. Tell the story of one of your survivors, in your own words. (The
+   stories bar: an answer here that was not asked for elsewhere is the
+   reading.)
+
+## The pre-round pass
+
+Run before the first invite goes out, in this order:
+
+- The four beacon steps at the top of this page, the switch last.
+- A build deployed from main, opened on a device that has never seen
+  it: it lands on the landing screen with three candidates, a face on
+  each, and "next boat" moves the date a week.
+- The rules in `docs/ux.md` at 1440 by 900 and at 390 wide with touch
+  emulation: the landing screen's cards stack at the phone width, the
+  journal card and its copy button sit inside the journal panel, nothing
+  scrolls sideways, and the copy button gives the card as plain text
+  (where the clipboard is refused, the text opens under the card).
+- The away report after a real closed tab: the lines are by the
+  survivor's name, the face sits beside the since line, and the log panel
+  keeps those lines by name after "Continue".
+- `npm test` green and `npm run reference` reporting the April gate.
+
+The pass that closed the survivor's build ran in a headless Chrome over
+CDP at both widths: at 1440 by 900 every step above held; at 390 wide the
+cards stacked and nothing scrolled sideways, and the thumb sizing under
+`(hover: none)` was read from the CSS test rather than the page, since
+raw CDP does not trip that media query.

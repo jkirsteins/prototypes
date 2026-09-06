@@ -48,6 +48,24 @@ waiting, and everything done while you are away run at the one scale.
   walking, the work, the hauling, and when the body asks for it, the walk
   back to camp, a fire from what is at camp, and the night's sleep. An
   "advanced" toggle shows the raw single actions underneath, one at a time.
+- **A boat lands three people, and you choose one.** A new world opens on
+  the landing screen, and so does every death: three candidates, each a
+  face, a name, four grades shown as words or quantities (what they carry
+  and how long they work, how heavy they are and whether they sleep warm,
+  their hands, their eyes) and a quirk or two that names a capability and
+  a fear. The other two sail on. "Next boat" lands a week later with three
+  new people, and the world runs on without you meanwhile. The survivor's
+  card lives in the journal with what they know, fear and have lost and
+  three stories from their record, and a copy button puts it on the
+  clipboard as text; the tombstone and the cemetery keep it. While you are
+  here the log says "you"; what happened while the tab was closed is told
+  by name.
+- **An axe is honed, not worn out.** The iron axe blunts with use and a
+  whetstone brings the edge back for nothing; only a flaked stone axe
+  shatters, and an iron axe is lost only through the ice. A fire needs no
+  axe: dead wood off the forest floor is firewood by hand, and two wedges
+  from a knife split a log at a third the axe's pace. The stone axe is a
+  ground celt at twenty hours and Crafting 5, or a flaked one in an evening.
 - **Camp is the cell the run lives around.** It starts at the region's
   centre; walk to a better cell and make camp there while nothing stands at
   the old one, and the region panel says what the cell offers first.
@@ -188,6 +206,9 @@ waiting, and everything done while you are away run at the one scale.
   cohort; the parameter is dropped from the address after one open, and the
   mark survives a new world. The settings strip shows the beacon id and the
   cohort. See docs/testing.md.
+- `?faces=1` opens the face self-test page (`faces.html`): forty-eight
+  generated portraits at 8x8 and 12x12, captioned with what the seed and
+  the grades picked, for judging by eye. Not a game feature.
 
 ## Development
 
@@ -242,7 +263,10 @@ lineage can.
 
 ## Where the numbers live
 
-- `src/units.ts`: the time scale and pack limits.
+- `src/units.ts`: the time scale and the median pack limits.
+- `src/sim/person.ts`: the four grades and what each sets (load, working day, burn, fat, comfort, spoil, wear, sight, day odds), the quirk lines, the candidate roll; `src/sim/fears.ts`: the two fears as predicates.
+- `src/ui/face.ts`: the face templates and palette; `src/ui/card.ts`: the card's lines and the story rank; `src/sim/voice.ts`: the log's tokens and the third-person rule.
+- `src/sim/inventory.ts`: the three axes, their wear factors and the blunt line; `src/sim/tasks.ts`: the edge's slowdown, honing, dead wood and the wedge split.
 - `src/sim/items.ts`: weights, foods, recipes, structures.
 - `src/sim/species.ts`: every species: habitat, range, season, hunt odds, yields, calls.
 - `src/world/wildlife.ts`: how a region's habitat and a species' range become a capacity.

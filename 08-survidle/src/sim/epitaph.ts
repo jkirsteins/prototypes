@@ -146,5 +146,5 @@ export function since(rec: LifeRecord, day: number, name?: string): string {
   }
   if (rec.worst && rec.worst.day >= day) parts.push(`the worst night on day ${rec.worst.day}`);
   if (!parts.length) return "Nothing worth telling.";
-  return name ? `${name} ${parts.join("; ")}.` : `${cap(parts.join("; "))}.`;
+  return name ? `${name}: ${cap(parts.join("; "))}.` : `${cap(parts.join("; "))}.`;
 }

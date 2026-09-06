@@ -328,15 +328,18 @@ function onClick(ev: Event) {
       // The card's text sits beside the button; where the clipboard is refused, it is shown for copying by hand.
       const pre = target.closest(".cardbody")?.querySelector<HTMLElement>(".cardtext");
       if (!pre) break;
-      navigator.clipboard?.writeText(pre.textContent ?? "").then(
-        () => {
-          ui.copiedUntil = Date.now() + 1500;
-          render();
-        },
-        () => {
-          pre.hidden = false;
-        },
-      );
+      const copied = navigator.clipboard?.writeText(pre.textContent ?? "");
+      if (!copied) pre.hidden = false;
+      else
+        copied.then(
+          () => {
+            ui.copiedUntil = Date.now() + 1500;
+            render();
+          },
+          () => {
+            pre.hidden = false;
+          },
+        );
       break;
     }
     case "cemetery-open":

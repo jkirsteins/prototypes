@@ -322,10 +322,14 @@ that is honed and lost rather than worn out, a stone axe at its real
 hours, dead wood and wedges for a fire with no axe, and a stone keep in
 the list), because the year probe's level-20 camp now dies of thirst in
 October beside 823 logs with no axe to split them and one stone at camp,
-and a tester will meet that wall inside a season; then the first half of I the
+and a tester will meet that wall inside a season; built, spec
+`2026-09-06-survidle-survivor-design.md` Part J, plan
+`2026-09-06-survidle-survivor.md`, the year gate 2 of 4 from 0, readings
+under J), then the first half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
-quirks, the card and the face), then the first tester round: with B,
+quirks, the card and the face; built, the same spec's Part I and plan,
+readings under I), then the first tester round: with B,
 siting and a survivor the tester chose in, the set the hybrid's bet
 needs exists (a death that persists,
 a producer, a camp that holds and was chosen, orders, a forecast that
@@ -3089,6 +3093,55 @@ quirk, so the gates keep measuring the list and not the boat.
 budget, no trait that is a percentage with a name, and the tree buys
 nothing here: a lineage does not breed better people.
 
+**Built, the first half.** Spec `2026-09-06-survidle-survivor-design.md`
+(Part I), plan `2026-09-06-survidle-survivor.md`. `src/sim/person.ts`
+holds the `Person` on the life record: a sex, four grades from -2 to +2
+rolled as two three-sided dice minus four, a quirk or two, a face seed;
+`derived()` turns the grades into real quantities at the seams that held
+the constants (comfortable and hard load 25 and 35 kg plus 2.5 and 3.5 a
+grade, the working day 10 hours plus one, burn above base 5 percent a
+grade; mass 72 kg plus 6 a grade with the fat reserve and the resting
+burn scaling by mass and comfort a degree a grade; spoil 20 and tool wear
+10 percent a grade of hands; sight reach on entering a region and hunting
+odds by day 10 percent a grade of eyes), and the median person is today's
+survivor exactly, which the reference player, the horizon and the year
+script run. Five quirks with a test each: coast-born reads every shore
+on entering a region and will not cross or work the fell in cloud,
+forest-born knows forest game two levels early and will not work the
+open shore in a storm, sleeps light (no wound from wolves, half a night's
+rest in a storm), big eater (a tenth faster, a tenth more burnt), steady
+by the fire (no fail lighting in rain); a fear refuses a row the way a
+ladder refusal does and the scheduler skips to the next order. Names are
+drawn for the sex from lists that stay Scandinavian and Baltic together,
+with paired Latvian and Lithuanian surname forms. A new world opens on the
+landing screen (`newWorld`) with three candidates on 1 April, as does
+every heir's boat; "next boat" lands a week later with the world run on
+in nobody mode and jumps to May past the coast's close, and the chosen
+card's person lands under the name in the field. The card
+(`src/ui/card.ts`) is one renderer for the screen and the clipboard:
+face, name, grades, quirks, and for the living survivor the day, what
+they know, fear and have lost, and three stories ranked from the record;
+it shows on the three landing cards, the journal, the tombstone, an
+opened grave, the stats header (face and first name) and the away report.
+The face (`src/ui/face.ts`) is an 8x8 mirrored SVG from templates the
+seed and the grades pick; the self-test page at `?faces=1` was judged in
+Chrome and 8x8 reads as a person, so the size stays 8 (the 12 grid on the
+page is the 8 grid scaled; no library was needed). The voice
+(`src/sim/voice.ts`): every sim string with a second-person word is a
+template, the catch-up marks what it writes as away, and the log panel
+and the away report render marked lines by the survivor's first name; a
+scan test fails on any bare "you" in the sim. Old saves load as version
+7 with the median person under each record's name. The browser pass ran
+in a headless Chrome over CDP at 1440 by 900 and at 390 wide: the
+landing screen with three faces, "next boat" to 8 April with three new
+faces, a pick, a typed name, the header with the face, the journal card
+with "18 shores read" for a coast-born, the copy button's fallback text,
+a death to the tombstone's card, the heir's boat and its next boat, the
+ancestor's face in the cemetery, and the away report by name after a
+back-dated save; the cards stack at the phone width and nothing scrolls
+sideways. The second half, found knowledge and earned traits, waits for
+the round.
+
 ### J. The axe and the wood without one
 
 **Curve.** Survivor rows 2 and 3: a camp that keeps its fire through a
@@ -3174,6 +3227,39 @@ The item, in the order it is built:
 What this does not do: a saw, which the north did not have; a bronze or
 iron forge; a tree felled by fire as a task before the fire spread of 8
 exists to burn it wrongly.
+
+**Built.** Spec `2026-09-06-survidle-survivor-design.md` (Part J), plan
+`2026-09-06-survidle-survivor.md`. Three axe ids in `src/sim/inventory.ts`
+(`axe` iron, `stoneAxe` the celt, `flakedAxe`), with `durability` as the
+edge: the iron axe and the celt blunt to 0 and stay, the flaked axe
+shatters, and felling and splitting slow to twice the time only once the
+edge is under 50, since an axe a few strokes off sharp cuts as well as a
+fresh one (a slowdown from 100 moved the reference run by a minute on the
+first ice hole and cascaded into a day-18 death). The iron axe is lost one
+time in two on a survived fall through the ice, a `toolLost` event the
+record keeps. A whetstone (one stone, thirty minutes, no tier) and "Hone
+the axe" (ten minutes, the edge to 100, refused at 70 and above) beside
+the stone sharpen, kept for a camp with no whetstone. "Gather dead wood"
+is an hour of forest floor for 10 kg of firewood with no tool, drawing
+the felling stock an eighth of a tree; "wedges x2" from two sticks and a
+knife, and "Split a log with wedges" at 45 minutes, one split in ten
+breaking a wedge. The celt is one stone, a stick, two cordage and the
+whetstone over 1,200 minutes at Crafting 5; the flaked axe two stone in
+ninety minutes at no tier. The list keeps the opening's stone job (a keep
+reads met at half its target while idle, so a stone keep at the top left
+the fire pit without its six stones) and adds a stone keep, the whetstone
+job, the hone grind and the wedges keep beside the spare-axe keeps below
+the food group (placed after the knife they cost the opening a stone and
+the snares an hour, and seed 17 starved on day 33); `wantOpen` opens the
+axe split with an axe in reach and the wedge split and dead wood without
+one, the celt keep from Crafting 5 and the flaked keep under it. The
+woodcraft pool keeps six keys. Measured with the four seeds at level 20:
+year gate 2 of 4 from 0 of 4, seeds 42 and 79 alive on day 366 (from
+thirst on days 197 and 211), seed 17 frozen on day 337 (from thirst on
+208) and seed 19 starved on day 212 (from 187); the winter gate 4 of 4;
+the April gate 4 of 4 at day 26 with the first lives ending on days 52,
+77, 55 and 57 (from 61, 51, 50 and 114), starved all four. The hearth as
+a build entry stays with the winter loop's own reading.
 
 ## Beyond the gate: the edge of the world
 

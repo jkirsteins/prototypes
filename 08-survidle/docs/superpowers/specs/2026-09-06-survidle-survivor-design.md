@@ -97,9 +97,11 @@ what survives a pile.
 the table and, for the iron axe and the celt, clamps at 0 and keeps the
 tool; the flaked axe is removed as any tool is today, with the
 `toolWorn` record and "The flaked axe shatters on the stroke." Felling
-and splitting take longer as the edge goes: duration x `(2 - edge /
-100)`, so a blunt axe is twice as slow; the flaked axe is x1.5 on top
-at any edge. Once per honing cycle, at an edge of 25 or under, the log
+and splitting take longer once the edge is under 50: duration x `(1 +
+(50 - edge) / 50)`, so a blunt axe is twice as slow and an axe at 50 or
+above cuts as a fresh one does (a slowdown from 100 moved the reference
+run by a minute on its first ice hole and cascaded into a death); the
+flaked axe is x1.5 on top at any edge. Once per honing cycle, at an edge of 25 or under, the log
 says "The axe is blunt; it wants honing." The ice hole and the hunt's
 butchering wear the edge as today.
 
@@ -153,11 +155,17 @@ splits along the grain." The maul is a stick swung, not an item.
 
 `REFERENCE_ORDERS` changes:
 
-- `job("stone", campHas 8)` becomes `keep("stone", 8)`.
-- After the knife: `job("craft", once, "whetstone")`, then a hone grind
-  `{ task: "hone", until: forever }`, which refuses harmlessly at an
-  edge of 70 and above, then `keep("craft", 2, "wedges")` counted as
-  `wedge` at camp.
+- The opening's `job("stone", campHas 8)` stays: a keep reads met at
+  half its target while idle, so a stone keep at the top left the fire
+  pit without its six stones and the run froze on day 5. A
+  `keep("stone", 8)` joins the list beside the spare-axe keeps instead,
+  where the celt and the hone draw on it.
+- Beside that stone keep, below the food group: `job("craft", once,
+  "whetstone")`, then a hone grind `{ task: "hone", until: forever }`,
+  which refuses harmlessly at an edge of 70 and above, then
+  `keep("craft", 2, "wedges")` counted as `wedge` at camp. Placed after
+  the knife they cost the opening a stone and the snares an hour, and
+  seed 17 starved on day 33; the edge matters weeks in, not on day two.
 - After `keep("split", 60)`: `keep("splitWedges", 60)` and
   `keep("deadwood", 60)`. `wantOpen` opens `split` when an axe is in
   reach and the other two when none is; the wedge split sits above
@@ -521,8 +529,9 @@ three, one dark line colour and one background from a small northern
 set (slate, pine, night blue). Rows compose in the order background,
 jaw, hair, eyes, beard, so a later layer paints over an earlier one.
 
-`FACE_SIZE` is 8 or 12; both template sets exist so the self-test can
-show both. `?faces=1` renders a page of 48 faces, 24 women and 24 men
+`FACE_SIZE` is 8 or 12; the 12 grid on the self-test page is the 8 grid
+scaled by one and a half, the same shapes, so a real 12 set is drawn only
+if 8 fails the judgement. `?faces=1` renders a page of 48 faces, 24 women and 24 men
 across the eye and jaw variants, at both sizes, in place of the game.
 The browser pass screenshots it and judges each face for whether it
 reads as a person by shape and colour; if 8x8 does not read, the
@@ -573,8 +582,9 @@ with null otherwise, so while the player is here the log says "you"
 and while they were gone the survivor is someone else, and the away
 lines keep their voice once the player is back. The away report's own
 lines follow: "{You} {are} now in Hareskog." and the since line, which
-`since(rec, day, name)` prefixes with the name ("Veikko set the first
-snare on day 3; the worst night on day 5."). The headline stays "While
+`since(rec, day, name)` prefixes with the name and a colon ("Veikko:
+set the first snare on day 3; the worst night on day 5."), since the
+line mixes what the survivor did with what happened to them. The headline stays "While
 you were away", since it addresses the player.
 
 The ledger, the forecast worker and the scripts never render a line,
