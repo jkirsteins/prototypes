@@ -338,14 +338,16 @@ the evening by the fire and the nap fall out of the numbers instead),
 because each of those rules had been measured to trade one seed for
 another and the December body slept its nine hours from 15:42 and then
 sat out nine more hours of dark with nothing it was allowed to do. It
-does what it was built for: the December camp now sleeps 8.0 hours a
-night on every seed, from 22:41 to 06:41, and works 3.4 to 3.7 of its
-dark hours in the morning before the 10:19 light instead of the evening
-alone. It cost the level-20 year gate a seed, 2 of 4 from 3, and the
-level-10 year 1 of 4 from 2; both losses are J's fuel gap standing where
-the latch used to hide it, seeds 17 and 19 freezing in January with 0 kg
-of firewood and millions of kilocalories at camp. Built, readings under
-F), then J the axe
+does what it was built for: the December camp now sleeps 7.9 to 8.0 hours
+a night on every seed, from a median 22:40 to a median 06:36, and works
+2.8 to 3.1 of its dark hours in the morning before the 10:19 light
+instead of the evening alone, and a night broken to feed the fire is
+resumed rather than lost. It cost the level-20 year gate a seed, 2 of 4
+from 3, on J's fuel gap standing where the latch used to hide it - seeds
+17 and 19 freeze in the winter with food at camp and a woodpile that
+ran out - and the April gate a seed, 3 of 4 from 4, on seed 19's hungry
+opening taking a different course once its broken night is slept. Built,
+readings under F), then J the axe
 and the wood without one (the section of that name below: an iron axe
 that is honed and lost rather than worn out, a stone axe at its real
 hours, dead wood and wedges for a fire with no axe, and a stone keep in
@@ -2761,7 +2763,7 @@ no tanning, wear model or layers behind it, which is the floor E is
 meant to replace.
 
 Measured with the sleep model (`2026-09-06-survidle-sleep-design.md`,
-built 2026-09-06 on `sleep-model`, `npm test` green at 863 tests and
+built 2026-09-06 on `sleep-model`, `npm test` green at 865 tests and
 `npm run build` clean). Its before numbers are its own section 0, read on
 main 3ec48f8: April 4 of 4, the level-20 year 3 of 4 with seed 79 frozen
 on day 278, the level-10 year 2 of 4, the winter 4 of 4, and a December
@@ -2775,49 +2777,55 @@ with a sleep debt on an 18.2 hour rise and a 4.2 hour fall against a
 circadian wave on the clock, with fatigue left as the reserve the work
 drains at (100 - `SPENT_AT`) over the person's own working hours.
 
-What it was built to do, it does. The stocked December camp now sleeps
+What it was built to do, it does. The stocked December camp sleeps 7.9 to
 8.0 hours a night on all four seeds, one sleep a night and not one begun
-by day in thirty days, lying down at a median 22:41 and up at a median
-06:41 with sunset at 15:41 and sunrise at 10:19. That leaves 3.4 to 3.7
-hours of chores by firelight in the dark morning against 0.4 to 0.9 in
+by day in thirty days, lying down at a median 22:40 and up at a median
+06:36 with sunset at 15:41 and sunrise at 10:19. That leaves 2.8 to 3.1
+hours of chores by firelight in the dark morning against 0.5 to 1.1 in
 the dark evening, where the sunset bedtime slept the whole dark morning
-and could only work the evening; the total dark work, 3.8 to 4.6 hours,
-is what it was, moved to the other end of the night. Work reads 7.5 to
-8.8 hours a day against 8.1 to 8.8, and the sleep band is held without a
-cap holding it: nothing in the sim knows what nine hours is any more. The
-evening by the fire survives as the spent need on the fatigue reserve,
-held to `RESTED_AT` rather than to a dawn, and a felling grind in April
-lies down at 22:55 and is up at 06:45 with no rule anywhere naming either
-hour.
+and could work only the evening: 3.3 to 4.2 hours of dark work now against
+4.5 to 4.9 before, all of the old figure necessarily the evening. Work
+reads 7.0 to 8.1 hours a day against 8.1 to 8.8, and the sleep band is
+held without a cap holding it: nothing in the sim knows what nine hours is
+any more. The evening by the fire survives as the spent need on the
+fatigue reserve, held to `RESTED_AT` and through the last hour before bed
+rather than to a dawn, and a felling grind in April lies down near 23:00
+and is up near 06:45 with no rule anywhere naming either hour. A night
+broken to feed the fire is resumed rather than lost: on the unkitted first
+lives the broken-night count is 0 of 4 seeds over thirty days, where the
+first build of this left one each on seeds 19 and 79.
 
-Where it lands. April holds 4 of 4 at day 26, with first lives of 58,
-169, past 251 and 207 days; seed 17's first life is the one snapshot the
-change moved, from 41 to 58, because the latch that held a spent body
-down until dawn no longer spends the dark. The winter gate is 4 of 4, up
-from the 3 of 4 the winter loop left. The horizon's rungs 3 to 6, the
-curve's own rows, are past thirty days alive on every seed and the
-stocked rung is in band, as before; the two rungs below it read 4, 3, 6
-and 4 days and 30+, 11, 30+ and 4, both still over their bands. The trend
-gate is 2 of 4 against its 3 of 4, where the winter loop left it, and is
-still due to be re-derived rather than answered by a rule.
+Where it lands. The winter gate is 4 of 4, as it was. The horizon's rows
+3 to 6, the curve's own rows, are past thirty days alive on every seed and
+the stocked row is in band; the two rungs below read 4, 3, 3 and 4 days
+and 30+, 10, 30+ and 4, both still over their bands. The trend gate is 2
+of 4 against its 3 of 4, where the winter loop left it, and is still due
+to be re-derived rather than answered by a rule.
 
-The year gate fell, and it fell onto item J. Level 20 reads 2 of 4
-against 3: seeds 42 and 79 stand on 1 April, seed 17 freezes on day 282
-and seed 19 on day 284. Neither is hungry. Seed 17 goes into January with
-2.78 million kcal at camp and 0 kg of firewood and 0 logs beside it,
-having read 62 kg of firewood a month earlier; seed 19 goes in with 97 kg
-and 0 logs and burns through it. Level 10 reads 1 of 4 against 2, seeds
-17 and 19 freezing on days 290 and 271 and seed 79 starving on day 311.
-The winter loop's withdrawn rule named this exactly - nothing makes a
-runner stock the night's fire before its working day ends - and the model
-did not create it, it uncovered it: under the latch a spent body sat by
-its fire from the count's tenth hour to dawn, which is a fire kept by a
-body that had nothing else it was allowed to do. With the evening ending
-at `RESTED_AT` instead, the runner goes back out, and the woodpile is
-short by exactly the hours the latch used to spend sitting on it. Fuel
-cut in December rather than carried into it is J's second and third
-steps, and the fuel-stock rule beside them is where these two seeds live
-or die.
+Two gates fell and they fell for different reasons. April reads 3 of 4:
+seed 19 dies of cold on day 16 with 2.4 kg of food in the pack, nothing at
+camp and 429 kcal a day eaten against 4,270 burned, which is a hungry
+opening rather than a tired one - its sleep is 7.9 hours a day, in band,
+and its work 9.4. What moved it is the broken night now being slept: the
+opening's order sequence diverges from there and the runner never gets a
+food source going. The other three lives read 32, past 251 and 91 days,
+and the fresh-survivor year reads the same four lives, 1 of 4.
+
+The level-20 year reads 2 of 4 against 3, and that one is item J's. Seeds
+42 and 79 stand on 1 April; seed 17 freezes on day 306 and seed 19 on day
+300, and neither is hungry. Seed 17 goes into January with 874,875 kcal at
+camp and 27 kg of firewood and one log beside it; seed 19 goes in with
+318,617 kcal and no logs at all and freezes with its cold burn over band.
+Level 10 reads 2 of 4, seed 19 freezing on day 286 and seed 79 starving on
+day 267. The winter loop's withdrawn rule named this exactly - nothing
+makes a runner stock the night's fire before its working day ends - and
+the model did not create it, it uncovered it: under the latch a spent body
+sat by its fire from the count's tenth hour to dawn, which is a fire kept
+by a body that had nothing else it was allowed to do. With the evening
+ending at `RESTED_AT` instead, the runner goes back out, and the woodpile
+is short by the hours the latch used to spend sitting on it. Fuel cut in
+December rather than carried into it is J's second and third steps, and
+the fuel-stock rule beside them is where these two seeds live or die.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in

@@ -99,27 +99,45 @@ What the code does today, in the words of the rules it has:
 ## Measured after
 
 Built on `sleep-model`, 2026-09-06, the same four seeds, `npm test` green
-at 863 tests and `npm run build` clean:
+at 865 tests and `npm run build` clean:
 
 | gate | reading |
 |---|---|
-| April, day 26 | 4 of 4; first lives 58, 169, past 251 and 207 |
-| year, level 20 | 2 of 4; seeds 17 and 19 froze days 282 and 284, each with a full larder and no firewood |
-| year, level 10 | 1 of 4; seeds 17 and 19 froze days 290 and 271, seed 79 starved day 311 |
+| April, day 26 | 3 of 4; seed 19 died of cold on day 16, the others lived 32, past 251 and 91 |
+| year, level 20 | 2 of 4; seeds 17 and 19 froze days 306 and 300, each with food at camp |
+| year, level 10 | 2 of 4; seed 19 froze day 286, seed 79 starved day 267 |
+| year, fresh survivor at level 1 | 1 of 4; the April lives again, 32, 16, past 366 and 91 |
 | winter, stocked December camp | 4 of 4 |
 | heir, the trend gate | 2 of 4, where the winter loop left it |
 | horizon rows 3 to 6 | past 30 days alive on every seed, the stocked row in band |
-| December work, 30 days from 1 December | 7.5 to 8.8 h a day, 3.8 to 4.6 of it in the dark, of which 3.4 to 3.7 is the dark morning; sleep 8.0 h |
-| December night | one sleep a night, none begun by day; median asleep 22:41, median awake 06:41 |
+| December work, 30 days from 1 December | 7.0 to 8.1 h a day: light 3.7 to 4.0, dark morning 2.8 to 3.1, dark evening 0.5 to 1.1; sleep 7.9 to 8.0 h |
+| December night | one sleep a night, none begun by day; median asleep 22:40, median awake 06:36 |
+| broken nights, unkitted first lives, 30 days | 0 of 4 seeds |
 
 The December night is what the spec was written for: the body works the
 dark morning by firelight and sleeps the middle of the night, rather than
-sleeping from 15:42 and sitting out nine more hours of dark. The year
-gate's lost seed is item J's fuel gap, which the rest latch had been
-hiding: a body held down by the fire from the count's tenth hour to dawn
-is a body keeping its fire because it has nothing else it is allowed to
-do. The evening now ends at `RESTED_AT` and the runner goes back out, so
-the woodpile is short by the hours the latch used to sit on it.
+sleeping from 15:42 and sitting out nine more hours of dark. Against the
+sunset bedtime's 4.5 to 4.9 hours of dark work, all of it necessarily the
+evening, the model works 3.3 to 4.2 hours of dark, 2.8 to 3.1 of it the
+morning.
+
+Both level-20 deaths are still a full larder and a thin woodpile. Seed 17
+goes into January with 874,875 kcal at camp and 27 kg of firewood and one
+log, and freezes on day 306; seed 19 goes in with 318,617 kcal and no logs
+at all, and freezes on day 300 with its cold burn over band. That is item
+J's own flagged gap - nothing makes a runner stock the night's fire before
+its working day ends - and not the sleep model's to close: the rest latch
+used to hide it by holding a spent body at its fire from the count's tenth
+hour to dawn, which is a fire kept by a body with nothing else it is
+allowed to do.
+
+The April gate's lost seed is not that. Seed 19 dies of cold on day 16
+with 2.4 kg of food in the pack, nothing at camp, and 429 kcal a day
+eaten against 4,270 burned: it is a hungry opening, and it reads as one.
+Its sleep is 7.9 hours a day, in band, and its work 9.4. What moved it is
+the broken night now being slept: the opening's order sequence diverges
+from there and the runner never gets a food source going. The gate is
+reported as it falls.
 
 ## 1. The two processes
 
@@ -232,11 +250,17 @@ snares, spent, home. What each reads changes:
   the collapse, unchanged), or a sleep under way that has not yet
   reached its end: sleepiness at or under `WAKE_AT` and, for a sleep
   that began as a collapse, fatigue back at `RESTED_AT`. A sleep is
-  sticky by the model, not by the night. The thirst exception stands: a
+  sticky by the model, not by the night. The night under way is the
+  player's, `Player.sleeping`, set when the need first fires and cleared
+  only when the model ends it, so a sleep broken to feed the fire or by
+  an order changing under the sleeper is resumed on the next free minute
+  rather than dropped until the onset line comes round again. The thirst exception stands: a
   thirsty body that can drink drinks first.
 - **spent**: `energy < SPENT_AT`, holding while a spent rest is under
-  way until `energy >= RESTED_AT` (55, the level five hours by the fire
-  restore). A spent body walks home, keeps its fire and rests, as
+  way until `energy >= RESTED_AT` (55, about four hours of rest above the
+  spent line) and while sleepiness is at or above `SLEEPY_AT`, so an
+  evening within an hour of bed is spent by the fire rather than on one
+  more errand and the walk back. A spent body walks home, keeps its fire and rests, as
   `campStep` does today; the evening by the fire is this need doing
   what it did, without the count and without the latch.
 - The night clauses go: no `isNight` in the sleep need, no
@@ -287,6 +311,8 @@ the day is a reading for section 5, not a decision here.
   barely lift your arms." reads today.
 - "Sleep" in the Do panel: "until rested" in its detail, with the hours
   the model expects, "about 8 h".
+- "A day's work done. {You} {rest} by the fire." once per crossing of
+  `SPENT_AT`, the line the working day's count used to say.
 - The away report's sleep line is the ledger's and needs no change.
 
 ## 4. Roadmap and record
@@ -319,8 +345,9 @@ Read against the roadmap before writing:
 
 - 1.1: sixteen hours awake from 10 reads 63; eight asleep from 63 reads
   9; a light sleeper in a storm halves the fall.
-- 1.2: alertness peaks at 16:48 and troughs at 04:48; the dip at 14:30
-  reads 4 under the circadian line.
+- 1.2: the circadian wave peaks at 16:48 and troughs at 04:48; the dip at
+  14:30 reads 4 under the circadian line. The combined wave, with the
+  ultradian on it, peaks at 18:15 and troughs at 03:49.
 - 1.3: ten hours of task work take a median body from 100 to 30; eleven
   hours for strength +1; rest restores 6 an hour and never moves debt.
 - 1.4 and 2.1: the December table's five rows, computed by the model
