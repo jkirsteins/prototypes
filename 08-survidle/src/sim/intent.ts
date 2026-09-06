@@ -23,7 +23,7 @@ import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
-import { candidateWeight, check, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
+import { check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
 } from "./types";
@@ -100,20 +100,26 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   return one ? [one] : [];
 }
 
-/** The spots a hunt could start from, best first only by what is about; the forest is where a hunt with nothing about begins. */
+/** The spots a hunt could start from; the forest is where a hunt with nothing about begins. */
 const HUNT_SPOTS: SpotId[] = ["forest", "heath", "outcrop", "shore"];
 
 /**
  * Where a hunt for anything goes. It names no species and so no ground of
- * its own: the ground under foot is kept whenever anything at all keeps to
- * it, so a hunt started on a heath full of hare does not walk off to a
- * forest whose deer the hunter cannot yet take. Otherwise the spot with the
- * most about, by the weights the draw itself uses.
+ * its own: the ground under foot is kept whenever it is worth as much as
+ * anywhere in reach, so a hunt that starts on a heath full of hare does not
+ * walk off for the sake of walking. Otherwise the spot whose hunting is
+ * worth the most meat an hour to this hunter.
  */
 function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where): { cell: number; note: string } {
   const here = cellOf(state, world);
   const r = regionAt(world, state.player.region);
-  const weigh = (cell: number) => candidateWeight(state, world, cal, "hunt", cell);
+  // Grounds are ranked by the meat a day's hunting on them would bring home,
+  // not by whether anything at all is about: the old rule kept the cell under
+  // foot the moment one duck was on the water, and a camp sited on a shore
+  // hunted mallard every day of the year with seventy-six roe deer standing
+  // in the forest two cells off. The value reads the hunter's own odds, so a
+  // beginner is not sent after game they cannot take.
+  const weigh = (cell: number) => huntGroundValue(state, world, cal, cell);
   let asked: SpotId | null = null;
   if (typeof where === "string" && where !== "nearest") {
     const s = spotOf(r, where);
@@ -121,13 +127,18 @@ function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where
     asked = where;
   }
   const note = (spot: SpotId) => (asked ? `${SPOT_WORDS[asked]} does not suit; going to ${SPOT_WORDS[spot]} instead` : "");
-  if (weigh(here) > 0) return { cell: here, note: asked ? `${SPOT_WORDS[asked]} does not suit; hunting from here instead` : "" };
   let best: { id: SpotId; cell: number; w: number } | null = null;
   for (const id of HUNT_SPOTS) {
     const s = spotOf(r, id);
     if (!s) continue;
     const w = weigh(s.cell);
     if (w > 0 && (!best || w > best.w)) best = { id, cell: s.cell, w };
+  }
+  // The ground under foot wins ties, so a hunt that starts on a heath full of
+  // hare does not walk off for the sake of walking; it loses to better ground.
+  const hereW = weigh(here);
+  if (hereW > 0 && (!best || hereW >= best.w)) {
+    return { cell: here, note: asked ? `${SPOT_WORDS[asked]} does not suit; hunting from here instead` : "" };
   }
   if (best) return { cell: best.cell, note: note(best.id) };
   const forest = spotOf(r, "forest");

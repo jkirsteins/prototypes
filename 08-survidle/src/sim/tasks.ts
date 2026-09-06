@@ -232,7 +232,25 @@ export function candidateWeight(state: GameState, world: World, cal: Calendar, i
   return candidates(state, world, cal, id, at).reduce((a, x) => a + x.w, 0);
 }
 
-/** What "anything" turns out to be: drawn by how likely each species is to be met. Null when nothing is about. */
+/**
+ * What "anything" turns out to be.
+ *
+ * A hunt is chosen, not drawn: a hunter walks out after the biggest thing
+ * they can take, and takes what they meet on the way only when there is
+ * nothing bigger worth the day. Among the species this ground could give,
+ * the ones standing thicker than tracks whose recommended Hunting level
+ * the survivor has reached are ranked by the meat they carry, and the
+ * heaviest is what the hunt goes after. A level-1 survivor qualifies for
+ * nothing but the small game and the birds, so the rule gives a hare; a
+ * level-20 one in a forest with roe deer and mallard goes after the deer.
+ * Without it the draw was a lottery over what walked past, and a level-20
+ * survivor in a region holding seventy-six roe deer took twenty-six
+ * mallard in forty-eight days and starved at the lean ceiling.
+ *
+ * A cast is still drawn: what takes the hook is not the angler's choice.
+ * Nothing about at all gives null either way, and the odds of the hunt
+ * that follows are untouched - this picks the quarry, not the outcome.
+ */
 export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: Rng, id: "hunt" | "fish", at: number): Species | null {
   const c = candidates(state, world, cal, id, at);
   const total = c.reduce((a, x) => a + x.w, 0);
@@ -243,6 +261,35 @@ export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: 
     if (pick <= 0) return x.s;
   }
   return c[c.length - 1].s;
+}
+
+/**
+ * What a hunt from this cell is worth to a hunter of this level: the meat a
+ * day's hunting here would be expected to bring home, per hour. Every
+ * species this ground could give counts, at its real odds - which read the
+ * hunter's own skill, so an elk that a beginner has no chance at adds
+ * almost nothing - times the meat one trip carries home, over the hours the
+ * hunt takes. It is what ranks one ground against another: a camp on a
+ * shore where mallard swim used to read "something is about here" and hunt
+ * ducks every day of the year, with seventy-six roe deer standing in the
+ * forest two cells away. Zero when nothing here can be hunted at all.
+ */
+export function huntGroundValue(state: GameState, world: World, cal: Calendar, at: number): number {
+  const c = candidates(state, world, cal, "hunt", at);
+  // Game the hunter has the level for counts; a ground offering nothing but
+  // game they have no business at is worth what it is worth to them anyway,
+  // so a beginner with only deer about still goes hunting.
+  const own = c.filter(({ s }) => gap(state, `hunt:${s}`) === 0);
+  let value = 0;
+  for (const { s } of own.length ? own : c) {
+    const def = SPECIES_DEFS[s];
+    const d = regionDensity(state, world, state.player.region, s, cal);
+    // The meat that counts is the meat one trip brings home: a ground is
+    // worth what a load is worth, not what the whole animal weighs.
+    const kg = Math.min(def.yields?.meatKg ?? 0, body(state).packHardKg);
+    value += (huntOdds(state, world, cal, d, s) * kg * 60) / def.hunt!.minutes;
+  }
+  return value;
 }
 
 /**
