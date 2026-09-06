@@ -145,40 +145,44 @@ prize (the Swedish text calls the net the most effective method).
 
 ### Measured after
 
-Read on the branch with sections 1 to 9 built, before and after the four
-runner changes below. `npm test` green at 900 tests.
+Read on the branch with sections 1 to 9 built, before and after the five
+runner changes below. `npm test` green at 903 tests.
 
 **The four gates, seed by seed.**
 
 - April, alive and fed on day 20: **3 of 4**. Seed 17 passes and dies day
   25 starved; seed 19 **fails** - alive, but fed reads no on 414 kcal a
   day eaten against the 500 clause - and dies day 24 starved; seed 42
-  passes and dies day 33 starved; seed 79 passes and dies day 28 starved.
+  passes and dies day 35 starved; seed 79 passes and dies day 28 starved.
   Before this task: the same 3 of 4, the same seed short.
 - Winter, the stocked December camp alive on 1 March: **4 of 4**, up from
   0 of 4. All four alive on day 91.
 - Year at level 20, alive on 1 April: **2 of 4**, up from 2 of 4 with a
-  different pair standing. Seed 17 froze day 304; seed 19 starved day 48;
-  seeds 42 and 79 alive at day 366.
+  different pair standing. Seed 17 starved day 310 (it froze on day 300
+  before the woodpile changes; its 1 January pile is now 379 kg and 120
+  logs, and what kills it is the lean ceiling with 3 kg of fat left);
+  seed 19 starved day 148, up from day 48; seeds 42 and 79 alive at day
+  366.
 - Lineage, a life reaching a year within six: **0 of 4**. Days per life -
-  seed 17: 25, 31, 32, 37, 30, 39; seed 19: 24, 34, 37, 38, 35, 40; seed
-  42: 33, 38, 46, 44, 33, 54; seed 79: 28, 40, 36, 8, 22, 33. The trend
+  seed 17: 25, 31, 33, 38, 33, 35; seed 19: 24, 34, 37, 43, 32, 40; seed
+  42: 35, 40, 38, 47, 66, 50; seed 79: 28, 40, 37, 11, 10, 37. The trend
   gate reads 0 of 4 against its 3 of 4.
 
 **The other readings asked for.**
 
-- January snow, the year probe's 1 January lines: 28, 24 and 25 cm on the
+- January snow, the year probe's 1 January lines: 25, 29 and 46 cm on the
   three seeds that reach it; the winter gate's own 1 January reads 32, 28,
   31 and 31 cm. Against the year loop's flagged 79 to 271 cm, and against
   40 to 60 cm real, the snow now lies where it should.
 - Kills per species over the year, large game against the expert band of
-  0 to 1,500 kcal a day: seed 17 reindeer 17, ptarmigan 20, hare 2, fox 2,
-  willow grouse 1 - 4,474 a day, over; seed 19 mallard 26 - 0, under;
-  seed 42 squirrel 116, roe deer 55, mallard 28, hazel grouse 79, elk 12,
-  willow grouse 2, hare 1 - 11,107, over; seed 79 mallard 19, beaver 13,
-  roe deer 26, squirrel 80, capercaillie 22, elk 4 - 4,167, over. The band
-  is a steer, not a gate, and a surviving level-20 camp is seven times
-  over it.
+  0 to 1,500 kcal a day: seed 17 reindeer 16, ptarmigan 17, black grouse
+  24, willow grouse 22, hare 22, fox 6 - 4,129 a day, over; seed 19
+  mallard 14, squirrel 8, roe deer 6, elk 2 - 4,103, over, where before
+  the hunt fix it read 26 mallard and 0; seed 42 squirrel 108, roe deer
+  52, mallard 30, hazel grouse 80, elk 13 - 11,572, over; seed 79 mallard
+  25, beaver 10, roe deer 30, squirrel 54, capercaillie 21, elk 4,
+  ptarmigan 4, reindeer 1 - 4,628, over. The band is a steer, not a gate,
+  and a surviving level-20 camp is seven times over it.
 - The woodpile on 1 March, winter gate: 386, 335, 35 and 24 kg split with
   53, 47, 45 and 53 logs beside it - 1,446, 1,275, 935 and 1,084 kg of
   wood left of the 6,600 stocked, which is the fifth the stock was sized
@@ -237,20 +241,48 @@ runner changes below. `npm test` green at 900 tests.
   reached 1 September with 51 kg of firewood and five logs against 6,600
   kg to cut. The window opened on 1 September, sized against a 3-tonne
   stock; it now opens at midsummer, and the two camps that can stock stand
-  at 385 and 381 kg with 152 and 151 logs on that date. It does not save
-  seed 17, whose reading is below.
+  at 385 and 381 kg with 152 and 151 logs on that date.
+- *A level-20 survivor took twenty-six mallard in forty-eight days beside
+  seventy-six roe deer, and starved.* Seed 19's region holds roe deer at
+  capacity 76 and elk at 8.7, and its year run recorded no large game at
+  all. Two causes, both the runner's. The ground a hunt for anything went
+  to was chosen by whether anything at all was about, so a camp sited on a
+  shore where mallard swim read "something is about here" every day of the
+  year and never walked the two cells to the forest. And the quiver was
+  filled only once a hunt was already the live order, while a bow hunt is
+  legal only with arrows in the pack or standing at camp with arrows in
+  the pile - so every named hunt judged from anywhere but camp read "needs
+  arrows in the pack", and the three at the foot of the list, which get
+  their turn only when everything above them is met or blocked and by then
+  the runner is out at the shore, were never once served on any seed.
+  Grounds are now ranked by the meat a day's hunting on them would bring
+  home - each species at its real odds, which read the hunter's own skill,
+  times the meat one trip carries, over the hours the hunt takes - with
+  game the hunter has no level for not counting toward a ground, and the
+  cell under foot winning ties. Arrows ride in the pack whenever the bow
+  leaves camp. Seed 19 takes six roe deer and two elk where it took none,
+  and lives to day 148 rather than day 48; seed 17's kills gain 24 black
+  grouse, 22 willow grouse and 22 hare.
+  A deliberate quarry choice - always the largest game the level allows,
+  which is what the fault reads like from the outside - was built and
+  measured first and is not what went in: it reads 1 of 4 on the year,
+  because a four-hour hunt at one chance in four cannot feed a body that
+  eats every day, and three seeds starved on it (seed 19 took nothing at
+  all in 42 days, seed 79 died on day 87 with two reindeer to its name).
+  The ground, not the quarry, was the fault.
 
 **Findings left, with the number that makes them.**
 
-- *Seed 17's year, froze day 304: left, the world's number.* Its camp is a
-  thirty-minute round trip from the forest and the pack carries one 20 kg
-  log a trip. The corrected fire table asks 60 kg of firewood a day from a
-  hut at the winter mean and about 72 from an open fire at 0 C, so the
-  camp cannot haul what its own fire eats: from 1 September its pile never
-  passed 83 kg and its logs never passed five, on a walk burn of 2,810
-  kcal a day. What a player could not have done is make the forest nearer.
-  What a player *could* have done is move camp, which the reference list
-  has no want for; siting is the lever, and it is not this task's.
+- *Seed 17's year, starved day 310: left, the world's number.* It froze on
+  day 304 before the woodpile changes, with a pile that never passed 83 kg
+  from 1 September: its camp is a thirty-minute round trip from the forest
+  and the pack carries one 20 kg log a trip, against a fire table that
+  asks 60 kg a day from a hut at the winter mean and about 72 from an open
+  fire at 0 C. With the woodpile keeps reordered and cut from midsummer it
+  stands at 379 kg and 120 logs on 1 January and no longer freezes; it
+  starves instead, on 3 kg of fat and 165,000 kcal of dried meat, which is
+  the lean ceiling with a lean-only larder. Its hunting is reindeer and
+  birds - no fat surplus - and no list change reaches that.
 - *The hut winter is 5.4 tonnes against Kochanski's 4 to 8 tonnes a year.*
   The turf hut's 0.4 of an open fire is the handbook's own ratio (teepee
   0.25 to 0.33, stove 0.1) and is not moved here. But applied to an open
@@ -272,23 +304,20 @@ runner changes below. `npm test` green at 900 tests.
   the year to 1 of 4, a level-20 camp starving in October. The April food
   clause and the winter fire want the same hours and the list can serve
   one or the other.
-- *The three named hunt grinds have never taken an animal.* Elk, reindeer
-  and roe deer sit at the foot of the list as grinds. Closing the hunt-any
-  keep above them, to see what they would do on their own, killed all four
-  year seeds by day 48 with **no kills at all** - every large-game kill in
-  the year probe comes from the hunt-any keep, which picks its species
-  itself. Seed 19 is what that costs: a level-20 survivor in a region
-  holding 76 roe deer and 8.7 elk took 26 mallard in 48 days and starved
-  at the lean ceiling with the elk grind reading "needs arrows in the
-  pack". Carrying arrows out of camp unconditionally was measured and did
-  not change it (seed 17 moved day 304 to 316, seed 19 unchanged), so the
-  quiver is not the blocker and the change was withdrawn. The named hunts
-  and what hunt-any chooses are the next task's, not a number.
+- *The three named hunt grinds still take nothing, and the hunt-any keep
+  above them is what feeds a camp: a flag, not a fault.* With the quiver
+  fixed they are legal wherever the runner stands, but they sit at the
+  foot of the list under a hunt-any keep that is unmet most days, so their
+  turn is rare. Closing that keep, to see what they do on their own,
+  killed all four year seeds by day 46 to 48 with **no kills at all**:
+  every large-game kill in the year probe comes through hunt-any. Whether
+  three named grinds that never run should be on the list at all is a
+  question for the author, not a number to correct.
 - *The lineage cannot reach a year within six lives, and the trend does
-  not climb.* Lives run 8 to 54 days. A first life dies before the skill
+  not climb.* Lives run 10 to 66 days. A first life dies before the skill
   it would need to hunt large game exists, and the quarter carried to an
   heir is a quarter of very little. The ramp is real inside a seed - seed
-  42 runs 33, 38, 46, 44, 33, 54 - but a year is 366.
+  42 runs 35, 40, 38, 47, 66, 50 - but a year is 366.
 
 ## 1. The instrument and the gates
 
