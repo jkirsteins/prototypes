@@ -37,7 +37,7 @@ import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootStockFor } from "./stocks";
-import { APRIL, BURN, coldBand, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, TaskId, WorldDate } from "./types";
@@ -46,6 +46,27 @@ const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
 const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
+
+/**
+ * The plant band: work the list asks for by the day and not until a target
+ * is met. Every other food want is a keep measured in food at camp, and such
+ * a keep can never read met while the body eats what it brings home - it
+ * takes the whole day and the rows below it never get a turn. That is what
+ * the plant block did: a cook-roots keep emptied the roots keep, auto-eat
+ * emptied the flour, and four level-20 seeds spent four and a half to seven
+ * and a half hours a day on plants and killed nothing all summer.
+ *
+ * So each of these rows is a counted job, given afresh each morning and
+ * finished for the day once its count is spent. The count is
+ * PLANT_HOURS_PER_DAY split across the rows the band holds: the handbook's
+ * three hours are a budget for plant work as a whole, and this band holds
+ * three rows. Berries are not here - the gut refuses a third kilo in a day,
+ * which is the same cap by another route, and the handbook sets its own two
+ * litres.
+ */
+const PLANT_ROWS: TaskId[] = ["roots", "eggs", "seaweed"];
+export const PLANT_HOURS_PER_ROW = PLANT_HOURS_PER_DAY / PLANT_ROWS.length;
+const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
 
 /**
  * The runner never gathers a prerequisite on its own, so the list is
@@ -249,13 +270,13 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("build", { kind: "once" }, "dryingRack"),
   keep("build", 20, "snare"),
-  keep("eggs", 2),
-  keep("roots", 2),
+  job("eggs", { kind: "times", n: PLANT_HOURS_PER_ROW }),
+  job("roots", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("cook", 1, "roots"),
   keep("innerBark", 3),
   keep("grindBark", 1),
   job("tapSap", { kind: "once" }),
-  keep("seaweed", 2),
+  job("seaweed", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("fish", 1, "any"),
   keep("berries", 2),
   keep("craft", 1, "bow"),
@@ -582,7 +603,6 @@ export const OPENING_TICK_MINUTES = 60;
  * not, and a knife want that re-opened would be made again every day.
  */
 const REOPENING_TASKS = new Set<TaskId>(["tapSap"]);
-
 /**
  * The player script (idle curve spec, section 2.5): the reference list is
  * what a competent player wants, and this gives each want as the best
@@ -605,6 +625,8 @@ export class ReferencePlayer {
   private finished = new Set<number>();
   /** Units a want's dropped once/times stand-ins have completed so far, per want index. */
   private completed = new Map<number, number>();
+  /** The day a daily want was last started afresh, per want index: its count and its finished mark are cleared once a day and not again. */
+  private dayOpened = new Map<number, number>();
 
   /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
   reachedDay: number | null = null;
@@ -630,6 +652,16 @@ export class ReferencePlayer {
       this.home = null;
     }
     const cal = calendar(state.minute, state.startDoy);
+    // Each morning a daily want starts over: yesterday's spent count is not this
+    // morning's, and the finished mark that stopped it yesterday comes off. Both
+    // the true counted job and the once-job stand-in a low skill gives instead
+    // are stopped by that count, so both are cleared here.
+    for (let i = 0; i < this.wants.length; i++) {
+      if (!DAILY_TASKS.has(this.wants[i].req.task) || this.dayOpened.get(i) === cal.day) continue;
+      this.dayOpened.set(i, cal.day);
+      this.finished.delete(i);
+      this.completed.delete(i);
+    }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
       if (list.some((o) => o.id === g.id)) {

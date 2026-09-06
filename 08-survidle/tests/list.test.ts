@@ -4,8 +4,11 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, pile } from "../src/sim/inventory";
 import { AUTO_EAT_ORDER } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
-import { REFERENCE_ORDERS, wantOpen, WINTER_STOCK } from "../src/sim/reference";
+import { PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_STOCK } from "../src/sim/reference";
+import { SKILL_IDS } from "../src/sim/skills";
+import { PLANT_HOURS_PER_DAY } from "../src/sim/tables";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
@@ -86,7 +89,7 @@ describe("the list after the axe", () => {
     // The rack and the snare line are work that finishes; the gathering keeps below them are
     // measured in food at camp and can never read met, so they must not outrank a standing producer.
     expect(tasks[twenty - 1]).toBe("build:dryingRack:job");
-    expect(twenty).toBeLessThan(tasks.indexOf("eggs::keep"));
+    expect(twenty).toBeLessThan(tasks.indexOf("eggs::job"));
     expect(twenty).toBeLessThan(tasks.indexOf("fish:any:keep"));
     expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
   });
@@ -95,16 +98,46 @@ describe("the list after the axe", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     expect(tasks.indexOf("cook:rawFat:keep")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
     expect(tasks.indexOf("crack::grind")).toBeGreaterThan(tasks.indexOf("cook::keep"));
-    for (const t of ["eggs::keep", "roots::keep", "cook:roots:keep", "innerBark::keep", "grindBark::keep", "tapSap::job", "seaweed::keep"]) expect(tasks).toContain(t);
+    for (const t of ["eggs::job", "roots::job", "cook:roots:keep", "innerBark::keep", "grindBark::keep", "tapSap::job", "seaweed::job"]) expect(tasks).toContain(t);
     const { state, world } = newGame(17);
-    expect(wantOpen(state, world, want("eggs::keep"), calendar(0, 100))).toBe(false);
-    expect(wantOpen(state, world, want("eggs::keep"), calendar(0, 130))).toBe(true);
+    expect(wantOpen(state, world, want("eggs::job"), calendar(0, 100))).toBe(false);
+    expect(wantOpen(state, world, want("eggs::job"), calendar(0, 130))).toBe(true);
     expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 125))).toBe(true);
     expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 200))).toBe(false);
     expect(wantOpen(state, world, want("innerBark::keep"), calendar(0, 250))).toBe(false);
-    expect(wantOpen(state, world, want("roots::keep"), calendar(0, 250))).toBe(true);
+    expect(wantOpen(state, world, want("roots::job"), calendar(0, 250))).toBe(true);
     state.player.tools = [];
-    expect(wantOpen(state, world, want("roots::keep"), calendar(0, 340))).toBe(false);
+    expect(wantOpen(state, world, want("roots::job"), calendar(0, 340))).toBe(false);
+  });
+
+  it("asks for the plant band by the day: a counted job per row, the handbook's three hours split across them", () => {
+    // A keep measured in food at camp can never read met while the body eats what it brings
+    // home, so the plant keeps took four and a half to seven and a half hours a day and the
+    // hunt rows below them never got a turn. These are counted jobs instead, given afresh
+    // each morning and finished for the day once the count is spent.
+    for (const t of ["eggs::job", "roots::job", "seaweed::job"]) {
+      expect(want(t).kind).toBe("job");
+      expect(want(t).req.until).toEqual({ kind: "times", n: PLANT_HOURS_PER_ROW });
+    }
+    expect(PLANT_HOURS_PER_ROW * 3).toBe(PLANT_HOURS_PER_DAY);
+  });
+
+  it("gives a daily want its count once a day: spent, it waits for the morning", () => {
+    const { state, world, player } = setUpReference(17, true);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    const roots = () => ordersHere(state, world).find((o) => o.req.task === "roots");
+    player.tick(state, world);
+    const first = roots();
+    expect(first).toBeDefined();
+    // Spend the day's count by hand: the order drops off the next look and is not given again.
+    first!.done = PLANT_HOURS_PER_ROW;
+    removeOrder(state, world, first!.id);
+    player.tick(state, world);
+    expect(roots()).toBeUndefined();
+    // A day later the morning reset clears the count and the want is given again.
+    state.minute += 24 * 60;
+    player.tick(state, world);
+    expect(roots()).toBeDefined();
   });
 
   it("wants the rack only once there is meat to dry, so the hour is not spent on an empty one", () => {

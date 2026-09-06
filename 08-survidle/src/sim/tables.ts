@@ -21,6 +21,17 @@ export interface YieldTable {
 
 const row = (beginner: Band, experienced: Band): Record<Tier, Band> => ({ beginner, experienced });
 
+/**
+ * The hours a day the Swedish handbook budgets for plant work - "count on
+ * about three hours a day to gather and prepare the plants you need" for its
+ * 500 kcal carbohydrate ration. It is the plants row's own number, quoted
+ * beside the band below, and it is a budget for the whole plant band and not
+ * for any one plant: the reference list spends it an hour to each of its
+ * plant rows. An hour is also about the ration on its own at a skilled
+ * forager's root rate, which is the other way to read the same figure.
+ */
+export const PLANT_HOURS_PER_DAY = 3;
+
 /** April, inland boreal forest. "About 0" for large game is a band of nothing. */
 export const APRIL: YieldTable = {
   name: "April",
