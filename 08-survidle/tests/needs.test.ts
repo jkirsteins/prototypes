@@ -2,17 +2,19 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { canFeed, currentNeed, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
-import { calendar } from "../src/sim/calendar";
+import { calendar, minutesUntilDawn } from "../src/sim/calendar";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { ambientTemperature } from "../src/sim/weather";
 import { placeAt, straightKm } from "../src/sim/position";
+import { WINTER_WOOD_FROM_DOY } from "../src/sim/reference";
 import { regionState } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
-import { check } from "../src/sim/tasks";
+import { check, SLEEP_CAP_MINUTES, startTask } from "../src/sim/tasks";
+import type { Task } from "../src/sim/types";
 import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -301,5 +303,85 @@ describe("thirst and the seep", () => {
     p.water = 0.5;
     expect(until(g, () => state.intent?.step === "waiting at the seep", 600)).toBe(true);
     expect(until(g, () => p.water > 1, 600)).toBe(true);
+  });
+});
+
+describe("one sleep per night", () => {
+  /** 20:00 on 1 September at camp, a felling intent live: minute 0 is 08:00 and sunset is 19:56, so the cap of nine hours ends well before the 06:04 dawn. */
+  function septemberEvening() {
+    const g = newGame(17, WINTER_WOOD_FROM_DOY);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.minute = 720;
+    const night = calendar(state.minute, state.startDoy);
+    expect(night.isNight).toBe(true);
+    startIntent(state, world, night, new Rng(1), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
+    return { g, state, world, night };
+  }
+
+  it("a spent body is laid down at nightfall; with the night's sleep had it rests until dawn instead", () => {
+    const { state, world, night } = septemberEvening();
+    const p = state.player;
+    p.energy = 80;
+    p.restUntil = state.minute + minutesUntilDawn(state.minute, state.startDoy);
+    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    p.sleptTonight = true;
+    expect(currentNeed(state, world, night, state.intent!)).toBe("spent");
+  });
+
+  it("a body worked under 60 in the dark sleeps again, marker or not: that is a collapse, not a second night", () => {
+    const { state, world, night } = septemberEvening();
+    state.player.energy = 50;
+    state.player.sleptTonight = true;
+    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+  });
+
+  it("a sleep that ends in the dark sets the marker, and dawn clears it", () => {
+    const { state, world, night } = septemberEvening();
+    state.intent = null;
+    state.task = null;
+    expect(startTask(state, world, night, "sleep")).toBe(true);
+    expect(state.task!.duration).toBe(SLEEP_CAP_MINUTES);
+    advance(state, world, SLEEP_CAP_MINUTES);
+    expect(state.task).toBeNull();
+    expect(state.player.sleptTonight).toBe(true);
+    expect(calendar(state.minute, state.startDoy).isNight).toBe(true);
+    advance(state, world, minutesUntilDawn(state.minute, state.startDoy) + 1);
+    expect(state.player.sleptTonight).toBe(false);
+  });
+
+  it("a wait intent at camp keeps its fire before it rests or sleeps", () => {
+    // Every camp chore the dark allows works by firelight, so a runner that
+    // waited a fire out would have no way back to work before dawn. The same
+    // step a spent body takes at camp.
+    const { state, world, night } = septemberEvening();
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = false;
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 5);
+    state.intent = null;
+    state.task = null;
+    state.player.sleptTonight = true;
+    startIntent(state, world, night, new Rng(1), { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
+    expect((state.task as Task | null)?.id).toBe("light");
+  });
+
+  it("a wait intent by night sleeps once and then rests", () => {
+    const { state, world, night } = septemberEvening();
+    state.intent = null;
+    state.task = null;
+    const wait = { task: "wait" as const, until: { kind: "forever" as const }, deliver: "leave" as const, where: "nearest" as const };
+    startIntent(state, world, night, new Rng(1), wait);
+    // The cast widens past the "= null" two lines up: tsc otherwise narrows
+    // state.task to null there and reads this access as unreachable, since it
+    // cannot see that startIntent assigns a task of its own.
+    expect((state.task as Task | null)?.id).toBe("sleep");
+    state.intent = null;
+    state.task = null;
+    state.player.sleptTonight = true;
+    startIntent(state, world, night, new Rng(1), wait);
+    expect((state.task as Task | null)?.id).toBe("rest");
   });
 });
