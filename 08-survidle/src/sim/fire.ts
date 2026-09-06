@@ -96,24 +96,35 @@ export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
 }
 
 /**
- * Fuel a fire eats an hour by where it burns. An open fire kept going is 2
- * to 4 kg an hour; a hearth inside a turf hut kept through a winter night
- * is 15 to 30 kg a day, and Nordic households with a stove burned 4 to 8
- * tonnes a year, so 1.2 and 0.8. The hut and cabin rates apply only to a
- * fire lit indoors; a fire at the pit outside a hut is an open fire.
+ * Fuel by the cold and the shelter. Kochanski: an overnight stay at -40 C
+ * in an open lean-to is a 30 cm spruce a night, some 200 kg; a teepee with
+ * an open fire a third to a quarter of that; an enclosed shelter with a
+ * stove a tenth. The open fire here is a tended fire under a lean-to's
+ * roof, not the long fire of an open bivouac, so 3 kg/h at zero rising a
+ * tenth per degree of frost: 6 at -10, 9 at -20, 15 at -40. The hut and
+ * the cabin are ratios on that (a hearth in a turf hut, a walled cabin
+ * with a hearth; Nordic households with a stove burned 4 to 8 tonnes a
+ * year), applied only to a fire lit indoors; a fire at the pit outside a
+ * hut is an open fire.
  */
-export const SHELTER_BURN_KG_PER_HOUR = { open: 3, turfHut: 1.2, cabin: 0.8 } as const;
+export const OPEN_BURN_KG_PER_HOUR = 3;
+export const SHELTER_BURN_RATIO = { turfHut: 0.4, cabin: 0.27 } as const;
 
-/** Fuel the fire eats per hour in this weather and this shelter; a roof over the pit keeps the rain off. */
+export function openBurnPerHour(ambient: number): number {
+  return OPEN_BURN_KG_PER_HOUR * (1 + Math.max(0, -ambient) / 10);
+}
+
+/** Fuel the fire eats per hour in this weather and cold; a roof over the pit keeps the rain off. */
 export function burnPerHour(w: Weather, ambient: number, st: RegionState): number {
+  const open = openBurnPerHour(ambient);
   if (st.fire.indoors) {
-    if (st.structures.cabin && st.structures.hearth) return SHELTER_BURN_KG_PER_HOUR.cabin;
-    if (st.structures.turfHut) return SHELTER_BURN_KG_PER_HOUR.turfHut;
+    if (st.structures.cabin && st.structures.hearth) return open * SHELTER_BURN_RATIO.cabin;
+    if (st.structures.turfHut) return open * SHELTER_BURN_RATIO.turfHut;
   }
-  if (w.precip === "none" || roofed(st)) return SHELTER_BURN_KG_PER_HOUR.open;
+  if (w.precip === "none" || roofed(st)) return open;
   const snowing = ambient <= 0;
-  if (w.precip === "heavy" && !snowing) return 6;
-  return 4.5;
+  if (w.precip === "heavy" && !snowing) return open * 2;
+  return open * 1.5;
 }
 
 /** What rain does to lighting: longer, chancy, or not at all. */

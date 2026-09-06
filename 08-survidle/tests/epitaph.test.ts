@@ -89,11 +89,17 @@ describe("the epitaph", () => {
     // pile smaller, at 36 kg rather than 71: the two new wants push everything after the
     // berries keep down the list, so the reference player spends some of the days before
     // the death setting snares that would otherwise have gone to splitting firewood.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 22. Starved at camp, with nothing in the pack and 36 kg of firewood at camp."`);
-    // Seed 19 no longer reaches day 60: with a broken night resumed rather than
-    // spent awake, its opening runs a different order sequence and it never gets
-    // a food source going before the arrival kit is out.
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 4. Died of cold at camp, with nothing in the pack and 1 kg of firewood at camp."`);
+    // The fire's cold scaling (fire.ts: SHELTER_BURN_KG_PER_HOUR replaced by
+    // openBurnPerHour, 3 kg/h at zero rising a tenth per degree of frost, with
+    // SHELTER_BURN_RATIO applying the hut and cabin as ratios on it) moves seed 17
+    // from day 22 to day 20 and the woodpile from 36 kg to 33: an open fire lit
+    // into the cold now burns faster than the old flat 3, so the same nights spend
+    // the pile quicker and the timeline compresses by two days. Seed 19 moves from
+    // day 4 to day 9, with 1.2 kg of food in the pack rather than none at the end:
+    // the faster cold-weather burn reorders the early feeding and food-gathering
+    // grinds enough to buy five extra days before the cold catches up.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 20. Starved at camp, with nothing in the pack and 33 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 9. Died of cold at camp, with 1.2 kg of food in the pack and no firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

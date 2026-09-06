@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { openBurnPerHour } from "../src/sim/fire";
 import { hourlyHazards, hourlyWorld } from "../src/sim/hazards";
 import { addItem, pile, produce, qty, takeUp } from "../src/sim/inventory";
 import { itemLabel, take } from "../src/sim/actions";
@@ -14,6 +15,7 @@ import {
   campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
+import { ambientTemperature } from "../src/sim/weather";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 
@@ -124,13 +126,15 @@ describe("vessels and snow", () => {
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 1, frozen: true });
     expect(check(state, world, cal, "melt").ok).toBe(true);
     startTask(state, world, cal, "melt");
+    // The open rate rises with the cold: at this start's ~-1.8 C it is a touch over 3 kg/h, not flat 3.
+    const openRate = openBurnPerHour(ambientTemperature(calendar(state.minute, state.startDoy), state.weather));
     advance(state, world, 20);
     // Precision 1, not 6: the fire's warmth pushes felt above the hot threshold
     // for the whole 20 minutes, so the pre-existing thirst drain (waterLossPerHour)
     // also nibbles at the reserve alongside the litre melt adds - the same reason
     // the fuel check below is a loose match rather than an exact one.
     expect(state.player.water).toBeCloseTo(2, 1);
-    expect(st.fire.fuelKg).toBeCloseTo(10 - 1 - (3 / 60) * 20, 1);
+    expect(st.fire.fuelKg).toBeCloseTo(10 - 1 - (openRate / 60) * 20, 1);
     expect(check(state, world, cal, "thaw").ok).toBe(true);
     startTask(state, world, cal, "thaw");
     advance(state, world, 15);
