@@ -373,6 +373,8 @@ export interface LifeRecord {
   worst: { day: number; warmth: number; wolves: boolean } | null;
   forecast: (number | null)[];
   died: Died | null;
+  /** Practice minutes per skill at death, what a heir carries a share of. */
+  skills?: Partial<Record<SkillId, number>>;
 }
 
 /**
@@ -409,6 +411,8 @@ export interface SkillState {
   mastery: Record<string, number>;
   /** Minutes in the mastery pool, capped at the skill's capacity. */
   pool: number;
+  /** Minutes carried from the ancestor at landing; the panel names the ancestor while these are the larger share. */
+  carried?: number;
 }
 
 export interface GameState {

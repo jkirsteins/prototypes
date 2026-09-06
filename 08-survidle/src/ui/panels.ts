@@ -144,7 +144,11 @@ export function skillsHtml(state: GameState): string {
       nextShown = true;
       return `<span class="">${RUNG_WORD[k]} ${at}${toGo}</span>`;
     }).join(" ");
-    return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}</span></div>
+    const carriedNote =
+      s.carried && s.carried > s.xp / 2 && state.survivors.length >= 2
+        ? ` carried from ${esc(fmtName(state.survivors[state.survivors.length - 2].name))}`
+        : "";
+    return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}${carriedNote}</span></div>
 <div class="bar dur"><div class="fill" style="width:${Math.round(share * 100)}%"></div></div>
 <div class="bar pool"><div class="fill" style="width:${Math.round(pool * 100)}%"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
 ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}<div class="rungs"><small>${rungs}</small></div></div>`;

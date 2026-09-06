@@ -8,7 +8,7 @@ import { WORLD_W } from "../world/terrain";
 import { calendar } from "./calendar";
 import { qty } from "./inventory";
 import { FOODS, type FoodId } from "./items";
-import type { DeathCause, Died, GameState, LifeEvent, LifeEventBody, LifeRecord, Person, WorldDate } from "./types";
+import type { DeathCause, Died, GameState, LifeEvent, LifeEventBody, LifeRecord, Person, SkillId, WorldDate } from "./types";
 
 export function newRecord(index: number, name: LifeRecord["name"], landed: WorldDate, gapDays: number, person: Person): LifeRecord {
   return { name, person, index, landed, gapDays, events: [], worst: null, forecast: [], died: null };
@@ -67,4 +67,7 @@ export function fillDied(state: GameState, cause: DeathCause, regionName: string
     after: last && last.kind === "threshold" ? { threshold: last.id, nights: cal.day - last.day } : null,
   };
   rec.died = died;
+  // Object.keys(state.skills) rather than importing SKILL_IDS from ./skills: that
+  // module reaches person.ts, which imports current() from here, a cycle.
+  rec.skills = Object.fromEntries(Object.keys(state.skills).map((s) => [s, state.skills[s as SkillId].xp])) as Partial<Record<SkillId, number>>;
 }
