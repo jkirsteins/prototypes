@@ -1,0 +1,42 @@
+import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
+import { calendar } from "../src/sim/calendar";
+import { dailyCamp, rootStockFor } from "../src/sim/camp";
+import { setSkillLevel } from "../src/sim/horizon";
+import { addItem, qty } from "../src/sim/inventory";
+import { FOODS, ROOT_KG_PER_HOUR, ROOT_STOCK_KG_PER_CELL } from "../src/sim/items";
+import { newGame } from "../src/sim/newgame";
+import { placeAtSpot } from "../src/sim/position";
+import { regionState } from "../src/sim/regionstate";
+import { RECOMMENDED } from "../src/sim/skills";
+import { check, startTask, stepTask } from "../src/sim/tasks";
+
+describe("roots and rhizomes", () => {
+  it("a bog holds a season's roots, dug with a stick at 0.3 kg an hour by a forager who knows them and half that by one who does not", () => {
+    expect(FOODS.cookedRoots).toEqual({ kcalPerKg: 850, portionKg: 0.3, sickChance: 0, leanShare: 0 });
+    expect(RECOMMENDED.roots).toEqual({ skill: "foraging", level: 3 });
+    const { state, world } = newGame(17, 130);
+    const region = state.player.region;
+    const st = regionState(state, world, region);
+    dailyCamp(state, world, calendar(0, 90), new Rng(1), null);
+    expect(st.roots).toBeCloseTo(rootStockFor(world, region), 6);
+    expect(st.roots).toBeGreaterThanOrEqual(ROOT_STOCK_KG_PER_CELL);
+    placeAtSpot(state, world, region, "heath");
+    addItem(state.player.pack, "stick", 1);
+    const cal = calendar(0, 130);
+    expect(check(state, world, cal, "roots").ok).toBe(true);
+    const stock = st.roots;
+    startTask(state, world, cal, "roots");
+    for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
+    expect(qty(state.player.pack, "roots")).toBeCloseTo(ROOT_KG_PER_HOUR / 2, 6);
+    expect(stock - st.roots).toBeCloseTo(ROOT_KG_PER_HOUR, 6);
+    setSkillLevel(state, "foraging", 3);
+    startTask(state, world, cal, "roots");
+    for (let m = 0; m < 60 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
+    expect(qty(state.player.pack, "roots")).toBeCloseTo(ROOT_KG_PER_HOUR * 1.5, 6);
+    st.roots = 0;
+    expect(check(state, world, cal, "roots").why).toBe("the ground is dug out");
+    dailyCamp(state, world, calendar(0, 200), new Rng(2), null);
+    expect(st.roots).toBe(0);
+  });
+});

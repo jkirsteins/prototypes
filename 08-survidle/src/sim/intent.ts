@@ -75,12 +75,13 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "eggs": return "eggs";
     case "innerBark": return "freshBark";
     case "grindBark": return "barkFlour";
+    case "roots": return "roots";
     case "split": return "firewood";
     case "splitWedges": return "firewood";
     case "deadwood": return "firewood";
     case "hunt": return "rawMeat";
     case "fish": return "fish";
-    case "cook": return arg === "fish" ? "cookedFish" : arg === "oilyFish" ? "cookedOilyFish" : arg === "rawFat" ? "fat" : "cookedMeat";
+    case "cook": return arg === "fish" ? "cookedFish" : arg === "oilyFish" ? "cookedOilyFish" : arg === "rawFat" ? "fat" : arg === "roots" ? "cookedRoots" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
     case "melt": return "water";
@@ -201,6 +202,12 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     return { cell: spot ? spot.cell : here, note: "" };
   }
   if (task === "innerBark") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "pine"), note: "" };
+  if (task === "roots") {
+    return {
+      cell: nearestCell(state, world, (c) => watersideCell(world, c) || cellAt(world, c).terrain === "bog" || cellAt(world, c).terrain === "meadow"),
+      note: "",
+    };
+  }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
   const water = (task === "hunt" || task === "fish") && SPECIES_DEFS[arg as Species] ? waterOf(arg as Species) : null;
@@ -528,6 +535,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   eggs: () => "gathering eggs",
   innerBark: () => "stripping inner bark",
   grindBark: () => "grinding bark flour",
+  roots: () => "digging roots",
   split: () => "splitting a log",
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",

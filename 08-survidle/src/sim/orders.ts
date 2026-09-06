@@ -132,6 +132,7 @@ const COUNT_WORDS: Partial<Record<TaskId, [string, string]>> = {
   eggs: ["nest", "nests"],
   innerBark: ["strip", "strips"],
   grindBark: ["kilo", "kilos"],
+  roots: ["dig", "digs"],
   hunt: ["hunt", "hunts"],
   fish: ["cast", "casts"],
   cook: ["meal", "meals"],

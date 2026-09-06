@@ -43,6 +43,7 @@ export function newRegionState(world: World, id: number): RegionState {
     iceHole: null,
     trap: null,
     nests: 0,
+    roots: 0,
   };
 }
 

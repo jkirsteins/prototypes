@@ -27,14 +27,14 @@ export type CountItem =
 export type KgItem =
   | "firewood" | "hide" | "fur" | "fat" | "rawFat" | "rawMeat" | "cookedMeat" | "driedMeat"
   | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "wetFirewood"
-  | "freshBark" | "driedBark" | "barkFlour"
+  | "freshBark" | "driedBark" | "barkFlour" | "roots" | "cookedRoots"
   /** Litres, at a kilo a litre; only ever in a pile. */
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
-export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs";
-export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs"];
+export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs" | "cookedRoots";
+export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs", "cookedRoots"];
 
 export interface Stack { kg: number; age: number }
 
@@ -80,7 +80,7 @@ export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
-  | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark"
+  | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
@@ -88,7 +88,7 @@ export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
   "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
-  "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark",
+  "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp",
 ];
 
@@ -246,6 +246,8 @@ export interface RegionState {
   trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number } | null;
   /** Clutches this region's nesting birds hold, set on 1 May and gathered down to nothing by the "Gather eggs" task; cleared on 1 July. */
   nests: number;
+  /** Kilos of shore, bog and meadow roots, set on 1 April and dug down by the "Dig roots" task; not grown back until next 1 April. */
+  roots: number;
 }
 
 export interface Player {

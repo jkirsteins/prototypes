@@ -23,11 +23,11 @@ export const SKILL_NAMES: Record<SkillId, string> = {
 /** The actions each skill owns; the pool's capacity is 100 hours per key. */
 export const MASTERY_KEYS: Record<SkillId, string[]> = {
   woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split", "deadwood", "splitWedges"],
-  foraging: ["berries", "stone", "eggs", "innerBark"],
+  foraging: ["berries", "stone", "eggs", "innerBark", "roots"],
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
-  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:oilyFish", "cook:rawFat", "crack"],
+  building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:oilyFish", "cook:rawFat", "cook:roots", "crack"],
 };
 
 export const SKILL_CAP = 50;
@@ -132,7 +132,7 @@ export function masteryOf(state: GameState, skill: SkillId, key: string): number
 export function skillOf(id: TaskId, arg?: string): SkillId | null {
   switch (id) {
     case "chop": case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": return "woodcraft";
-    case "berries": case "stone": case "eggs": case "innerBark": case "grindBark": return "foraging";
+    case "berries": case "stone": case "eggs": case "innerBark": case "grindBark": case "roots": return "foraging";
     case "hunt": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
     case "mend": return "building";
@@ -148,7 +148,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
 export function masteryKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
-    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs":
+    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots":
     case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.
@@ -187,6 +187,7 @@ export const RECOMMENDED: Record<string, { skill: SkillId; level: number }> = {
   trap: { skill: "fishing", level: 5 },
   "build:turfHut": { skill: "building", level: 5 },
   "build:waterStore": { skill: "building", level: 3 },
+  roots: { skill: "foraging", level: 3 },
 };
 for (const s of huntedLand()) {
   const l = SPECIES_DEFS[s].hunt?.level;

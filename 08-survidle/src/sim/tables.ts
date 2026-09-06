@@ -80,6 +80,7 @@ export const SOURCE_ROWS: Record<YieldSource, TableRow[]> = {
   roe: ["fishing"],
   eggs: ["birds"],
   bark: ["plants"],
+  roots: ["plants"],
 };
 
 /** The band a source is measured against in a table: its rows' bands summed, or null when the table has none of them. */

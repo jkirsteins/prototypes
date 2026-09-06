@@ -9,7 +9,7 @@ export const ITEM_KG: Record<ItemId, number> = {
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2, wedge: 0.3,
   firewood: 1, hide: 1, fur: 1, fat: 1, rawFat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
   fish: 1, cookedFish: 1, oilyFish: 1, cookedOilyFish: 1, roe: 1, berries: 1, eggs: 1, wetFirewood: 1,
-  freshBark: 1, driedBark: 1, barkFlour: 1,
+  freshBark: 1, driedBark: 1, barkFlour: 1, roots: 1, cookedRoots: 1,
   water: 1, ice: 1,
   axe: 1.5, stoneAxe: 1.4, flakedAxe: 1.2, whetstone: 0.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
   needle: 0.01, barkBucket: 0.3, waterskin: 0.4,
@@ -17,7 +17,7 @@ export const ITEM_KG: Record<ItemId, number> = {
 
 export const KG_ITEMS = new Set<ItemId>([
   "firewood", "hide", "fur", "fat", "rawFat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "eggs", "wetFirewood",
-  "freshBark", "driedBark", "barkFlour",
+  "freshBark", "driedBark", "barkFlour", "roots", "cookedRoots",
   "water", "ice",
 ]);
 
@@ -26,12 +26,12 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   bone: "bone", crackedBone: "cracked bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps", wedge: "wedges",
   firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawFat: "raw fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
   driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", oilyFish: "oily fish", cookedOilyFish: "cooked oily fish", roe: "roe", berries: "berries", eggs: "eggs",
-  wetFirewood: "wet firewood", freshBark: "fresh inner bark", driedBark: "dried inner bark", barkFlour: "bark flour", water: "water", ice: "ice",
+  wetFirewood: "wet firewood", freshBark: "fresh inner bark", driedBark: "dried inner bark", barkFlour: "bark flour", roots: "roots", cookedRoots: "cooked roots", water: "water", ice: "ice",
   axe: "iron axes", stoneAxe: "stone axes", flakedAxe: "flaked axes", whetstone: "whetstones", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
 
-export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "barkFlour" | "fat";
+export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "barkFlour" | "fat" | "cookedRoots";
 /**
  * Every food: its kcal, its portion, its sick chance, and its lean share -
  * the part of its kcal that counts toward LEAN_KCAL_PER_DAY. The share is
@@ -59,6 +59,7 @@ export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickC
   eggs: { kcalPerKg: 1500, portionKg: 0.2, sickChance: 0, leanShare: 0.4 },
   barkFlour: { kcalPerKg: 800, portionKg: 0.2, sickChance: 0, leanShare: 0 },
   fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0, leanShare: 0 },
+  cookedRoots: { kcalPerKg: 850, portionKg: 0.3, sickChance: 0, leanShare: 0 },
 };
 /** A spawning catch's roe: a tenth of the fish's own weight, not a separate haul. */
 export const ROE_SHARE = 0.1;
@@ -87,6 +88,18 @@ export const BARK_TREE_SHARE = 1 / 20;
 export const BARK_FROM_DOY = 90;
 export const BARK_TO_DOY = 212;
 /**
+ * The Swedish handbook: cattail rhizome at 210 g of starch a kilo, reed
+ * root-shoots at 5 percent, dandelion root at 23 percent, fifteen pieces
+ * for the 500 kcal ration; 0.3 kg an hour in season and 0.1 through an ice
+ * hole in winter, 850 kcal/kg cooked, three kilos a shore, bog or meadow
+ * cell set on 1 April and not grown back inside the year.
+ */
+export const ROOT_KG_PER_HOUR = 0.3;
+export const ROOT_WINTER_KG_PER_HOUR = 0.1;
+export const ROOT_STOCK_KG_PER_CELL = 3;
+export const ROOT_FROM_DOY = 90;
+export const ROOT_TO_DOY = 304;
+/**
  * The lean ceiling: Kochanski's rabbit starvation - on hare alone a body
  * shows starvation within a week however much it eats. Meat and fish past
  * this many kcal in a day feed nothing; about 1.5 kg of lean meat, the most
@@ -106,7 +119,7 @@ export const GUT: Partial<Record<FoodId, { fullCreditKg: number; refuseKg: numbe
 /** Below this ambient a stack keeps: the Swedish handbook's freezing storage wants at least -10 to -15 C; between it and zero the rot runs at half speed. */
 export const FREEZE_KEEP_C = -10;
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
-export const AUTO_EAT_ORDER: FoodId[] = ["berries", "barkFlour", "eggs", "roe", "cookedFish", "cookedOilyFish", "cookedMeat", "driedMeat", "fat"];
+export const AUTO_EAT_ORDER: FoodId[] = ["berries", "barkFlour", "cookedRoots", "eggs", "roe", "cookedFish", "cookedOilyFish", "cookedMeat", "driedMeat", "fat"];
 /** Kilos an hour's picking takes at a patch by hand, before the foraging pool's factor: a beginner picker, near the real kilo an hour at the top of the pool. */
 export const BERRY_PICK_KG = 0.7;
 
@@ -115,7 +128,7 @@ export const KCAL_FULL = 6000;
 /** Hours above 0 C before a stack is thrown away. Raw fat keeps like cooked meat and no longer; rendered it keeps for the winter. */
 export const SPOIL_HOURS: Record<PerishableId, number> = {
   rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72, berries: 72, rawFat: 72,
-  oilyFish: 36, cookedOilyFish: 72, roe: 36, eggs: 240,
+  oilyFish: 36, cookedOilyFish: 72, roe: 36, eggs: 240, cookedRoots: 72,
 };
 
 /** Kochanski: marrow from the larger bones. A tenth of a kilo a bone at a full animal; marrowFactor scales it by the season. */
