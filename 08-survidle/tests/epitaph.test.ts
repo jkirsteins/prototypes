@@ -76,11 +76,12 @@ describe("the epitaph", () => {
     // once job for eight at the opening and a keep of eight as the restock below the clothing block.
     // Both seeds starve at camp rather than freezing or dying on the trail: the reference
     // player's opening grinds fill firewood and food ahead of the cold, so the woodpile
-    // outlasts the larder and the run ends on hunger with wood still banked (67 kg for seed
-    // 17, 31 kg for seed 19). A spring catch's roe now stretches the larder a little further,
-    // so both deaths land a day earlier than before roe existed.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 24. Starved at camp, with nothing in the pack and 67 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 23. Starved at camp, with nothing in the pack and 31 kg of firewood at camp."`);
+    // outlasts the larder and the run ends on hunger with wood still banked (43 kg for seed
+    // 17, 45 kg for seed 19). Frozen lingon under the snow open a berries row through the
+    // April start itself, ahead of the wood-first grind order, so the larder empties where
+    // the ledger above finds it.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 23. Starved at camp, with nothing in the pack and 43 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 45 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

@@ -76,6 +76,8 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "innerBark": return "freshBark";
     case "grindBark": return "barkFlour";
     case "roots": return "roots";
+    case "tapSap": return null;
+    case "seaweed": return "seaweed";
     case "split": return "firewood";
     case "splitWedges": return "firewood";
     case "deadwood": return "firewood";
@@ -202,6 +204,8 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     return { cell: spot ? spot.cell : here, note: "" };
   }
   if (task === "innerBark") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "pine"), note: "" };
+  if (task === "tapSap") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "birch"), note: "" };
+  if (task === "seaweed") return { cell: nearestCell(state, world, (c) => watersideCell(world, c, "sea")), note: "" };
   if (task === "roots") {
     return {
       cell: nearestCell(state, world, (c) => watersideCell(world, c) || cellAt(world, c).terrain === "bog" || cellAt(world, c).terrain === "meadow"),
@@ -536,6 +540,8 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   innerBark: () => "stripping inner bark",
   grindBark: () => "grinding bark flour",
   roots: () => "digging roots",
+  tapSap: () => "tapping a birch",
+  seaweed: () => "gathering seaweed",
   split: () => "splitting a log",
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",

@@ -79,6 +79,7 @@ function fillDefaults(state: GameState): void {
     if (st.trap) st.trap.oilyKg ??= 0;
     st.nests ??= 0;
     st.roots ??= 0;
+    st.sapTaps ??= { day: 0, n: 0 };
   }
   for (const d of state.ledger) {
     d.yield.trap ??= 0;
@@ -86,6 +87,8 @@ function fillDefaults(state: GameState): void {
     d.yield.roe ??= 0;
     d.yield.eggs ??= 0;
     d.yield.roots ??= 0;
+    d.yield.sap ??= 0;
+    d.yield.seaweed ??= 0;
   }
   if (state.intent) {
     state.intent.orderId ??= null;

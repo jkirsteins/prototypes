@@ -79,7 +79,7 @@ describe("the ledger", () => {
   });
 
   it("lists the five sources once each", () => {
-    expect(YIELD_SOURCES).toEqual(["fish", "trap", "snare", "hunt", "berries", "kit", "marrow", "roe", "eggs", "bark", "roots"]);
+    expect(YIELD_SOURCES).toEqual(["fish", "trap", "snare", "hunt", "berries", "kit", "marrow", "roe", "eggs", "bark", "roots", "sap", "seaweed"]);
   });
 
   it("a save from before the ledger loads with an empty ledger", () => {

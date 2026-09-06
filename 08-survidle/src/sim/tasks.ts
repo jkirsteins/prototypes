@@ -5,7 +5,7 @@ import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
-import type { Calendar } from "./calendar";
+import { dayNumber, type Calendar } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
@@ -14,10 +14,11 @@ import {
 } from "./inventory";
 import {
   BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
-  BERRY_PICK_KG, CLOTHING, DECAYING, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
-  RECIPES, RECIPE_IDS, ROE_SHARE, ROOT_FROM_DOY, ROOT_KG_PER_HOUR, ROOT_TO_DOY, ROOT_WINTER_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
+  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
+  RECIPES, RECIPE_IDS, ROE_SHARE, ROOT_FROM_DOY, ROOT_KG_PER_HOUR, ROOT_TO_DOY, ROOT_WINTER_KG_PER_HOUR, SAP_FROM_DOY, SAP_KCAL, SAP_LITRES, SAP_TAPS_PER_DAY, SAP_TO_DOY,
+  SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
-import { creditYield } from "./ledger";
+import { creditEaten, creditYield } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { hasEvent, record } from "./record";
@@ -70,7 +71,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -91,7 +92,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
-  "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots",
+  "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -115,6 +116,11 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
 /** Berries ripen mid-July and are gone by mid-October. */
 export function berrySeason(cal: Calendar): boolean {
   return cal.dayOfYear >= BERRY_FROM_DOY && cal.dayOfYear <= BERRY_TO_DOY;
+}
+
+/** November to April, month 0-indexed: the window the frozen lingon under the snow are worth digging for. */
+function winterBerries(cal: Calendar): boolean {
+  return cal.month >= 10 || cal.month <= 3;
 }
 
 /** Inner bark strips full rate off young spring branches; the rest of the year, half. */
@@ -412,6 +418,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "stone":
       return ground(rockCell(world, at), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
     case "berries": {
+      if (winterBerries(cal)) {
+        const kg = BERRY_PICK_KG * BERRY_WINTER_SHARE * yieldFactor(state, "foraging");
+        const o = ground(
+          heathCell(world, at), "heath", "heath",
+          opt({ group: "gather", label: "Pick frozen lingon under the snow", detail: `${kg.toFixed(2)} kg berries, dug from under the snow`, duration: 60, repeatable: true }),
+        );
+        if (!o.ok) return o;
+        if (state.weather.snowCm >= DEEP_SNOW_CM) return { ...o, ok: false, why: "under too much snow" };
+        return o;
+      }
       const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(BERRY_PICK_KG * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
       if (!o.ok) return o;
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
@@ -433,6 +449,20 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (winter && !(watersideCell(world, at) && iceHoleOpen(state, at))) return { ...o, ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" };
       if (totalQty(invs, "stick") < 1) return { ...o, ok: false, why: "needs a stick to dig with" };
       if (st.roots <= 1e-9) return { ...o, ok: false, why: "the ground is dug out" };
+      return o;
+    }
+    case "tapSap": {
+      const o = opt({ group: "gather", label: "Tap a birch", detail: `${SAP_LITRES} litres of sap drunk on the spot, ${SAP_KCAL} kcal; early May until the leaves open`, duration: 30, repeatable: true });
+      if (terrain !== "birch") return { ...o, ok: false, why: "stand among birches" };
+      if (cal.dayOfYear < SAP_FROM_DOY || cal.dayOfYear > SAP_TO_DOY) return { ...o, ok: false, why: cal.dayOfYear < SAP_FROM_DOY ? "the sap has not risen" : "the sap has stopped" };
+      if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
+      if (st.sapTaps.day === dayNumber(state.minute) && st.sapTaps.n >= SAP_TAPS_PER_DAY) return { ...o, ok: false, why: "the birches have given today's sap" };
+      return o;
+    }
+    case "seaweed": {
+      const o = opt({ group: "gather", label: "Gather seaweed", detail: `${SEAWEED_KG_PER_HOUR} kg an hour off the rocks; two kilos a day is all a body takes`, duration: 60, repeatable: true });
+      if (!watersideCell(world, at, "sea")) return { ...o, ok: false, why: "stand on the sea shore" };
+      if (state.weather.iceCm >= ICE_SHORE_CM) return { ...o, ok: false, why: "the shore is iced over" };
       return o;
     }
     case "split": {
@@ -1307,7 +1337,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "berries": {
-      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging");
+      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging") * (winterBerries(cal) ? BERRY_WINTER_SHARE : 1);
       produce(state, world, "berries", kg);
       creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
       return;
@@ -1330,6 +1360,23 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       if (kept < take) log(state, "{You} {dig} up as much that is not food as is.", "bad");
       produce(state, world, "roots", kept);
       creditYield(state, "roots", kept * FOODS.cookedRoots.kcalPerKg);
+      return;
+    }
+    case "tapSap": {
+      const day = dayNumber(state.minute);
+      st.sapTaps = st.sapTaps.day === day ? { day, n: st.sapTaps.n + 1 } : { day, n: 1 };
+      p.water = WATER_FULL;
+      p.kcal = Math.min(KCAL_FULL, p.kcal + SAP_KCAL);
+      creditEaten(state, SAP_KCAL);
+      creditYield(state, "sap", SAP_KCAL);
+      log(state, "{You} {drink} the sap as it runs.", "good");
+      return;
+    }
+    case "seaweed": {
+      const kg = SEAWEED_KG_PER_HOUR * yieldFactor(state, "foraging");
+      produce(state, world, "seaweed", kg);
+      creditYield(state, "seaweed", kg * FOODS.seaweed.kcalPerKg);
+      log(state, `{You} {gather} seaweed off the rocks: ${(kg * 1000).toFixed(0)} g.`, "good");
       return;
     }
     case "split": {

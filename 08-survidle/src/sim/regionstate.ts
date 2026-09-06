@@ -44,6 +44,7 @@ export function newRegionState(world: World, id: number): RegionState {
     trap: null,
     nests: 0,
     roots: 0,
+    sapTaps: { day: 0, n: 0 },
   };
 }
 

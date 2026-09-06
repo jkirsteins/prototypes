@@ -27,14 +27,14 @@ export type CountItem =
 export type KgItem =
   | "firewood" | "hide" | "fur" | "fat" | "rawFat" | "rawMeat" | "cookedMeat" | "driedMeat"
   | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "wetFirewood"
-  | "freshBark" | "driedBark" | "barkFlour" | "roots" | "cookedRoots"
+  | "freshBark" | "driedBark" | "barkFlour" | "roots" | "cookedRoots" | "seaweed"
   /** Litres, at a kilo a litre; only ever in a pile. */
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
-export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs" | "cookedRoots";
-export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs", "cookedRoots"];
+export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs" | "cookedRoots" | "seaweed";
+export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs", "cookedRoots", "seaweed"];
 
 export interface Stack { kg: number; age: number }
 
@@ -80,7 +80,7 @@ export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
-  | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots"
+  | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
@@ -88,7 +88,7 @@ export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
   "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
-  "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots",
+  "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp",
 ];
 
@@ -248,6 +248,8 @@ export interface RegionState {
   nests: number;
   /** Kilos of shore, bog and meadow roots, set on 1 April and dug down by the "Dig roots" task; not grown back until next 1 April. */
   roots: number;
+  /** Taps drawn from this region's birches today, and the day number they were counted on; resets itself once the day moves on. */
+  sapTaps: { day: number; n: number };
 }
 
 export interface Player {

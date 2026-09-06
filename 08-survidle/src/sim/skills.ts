@@ -23,7 +23,7 @@ export const SKILL_NAMES: Record<SkillId, string> = {
 /** The actions each skill owns; the pool's capacity is 100 hours per key. */
 export const MASTERY_KEYS: Record<SkillId, string[]> = {
   woodcraft: ["chop:spruce", "chop:pine", "chop:birch", "sticks", "bark", "split", "deadwood", "splitWedges"],
-  foraging: ["berries", "stone", "eggs", "innerBark", "roots"],
+  foraging: ["berries", "stone", "eggs", "innerBark", "roots", "tapSap", "seaweed"],
   hunting: [...huntedLand().map((s) => `hunt:${s}`), "snare"],
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
@@ -132,7 +132,7 @@ export function masteryOf(state: GameState, skill: SkillId, key: string): number
 export function skillOf(id: TaskId, arg?: string): SkillId | null {
   switch (id) {
     case "chop": case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": return "woodcraft";
-    case "berries": case "stone": case "eggs": case "innerBark": case "grindBark": case "roots": return "foraging";
+    case "berries": case "stone": case "eggs": case "innerBark": case "grindBark": case "roots": case "tapSap": case "seaweed": return "foraging";
     case "hunt": return "hunting";
     case "build": return arg === "snare" ? "hunting" : "building";
     case "mend": return "building";
@@ -148,7 +148,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
 export function masteryKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
-    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots":
+    case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
     case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.

@@ -17,7 +17,7 @@ import { log } from "./log";
 import type { GameState, ItemId } from "./types";
 
 /** The gut's own word for a capped food, for its refusal message; later capped foods add their word here. */
-const GUT_WORD: Partial<Record<FoodId, string>> = { berries: "berry", barkFlour: "bark" };
+const GUT_WORD: Partial<Record<FoodId, string>> = { berries: "berry", barkFlour: "bark", seaweed: "mouthful of seaweed" };
 
 /** Why this food is refused right now, or null if it is not: a capped food past its refusal, or a lean food past the ceiling. The one place either check lives. */
 export function refusalReason(state: GameState, food: FoodId): string | null {
