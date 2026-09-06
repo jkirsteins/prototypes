@@ -316,14 +316,13 @@ survivor with an axe and an open ice hole loses 2.5 litres in a day near
 the death, answered before it is fixed; and, if a hut winter then dies
 of fuel, the hearth as a build entry (Building 5, a dozen stones, four
 hours), since the cabin's 0.8 kg an hour and 10 C inside exist in the
-code and nothing in play builds the hearth they need; then water, part 1
-of `2026-09-05-survidle-water-design.md` (the first camp on the shore
-you land on, and fetch water as one trip with one vessel; the seep is
-its part 2 and waits for the round), because the water walk is the first
-thing a new player watches the runner do and the winter gate's thirst
-deaths walk to an iced shore that the landing camp puts at the door;
-its re-measure adds `npm run year` and `--winter` to reference and
-horizon; then the first half of I the
+code and nothing in play builds the hearth they need; then J the axe
+and the wood without one (the section of that name below: an iron axe
+that is honed and lost rather than worn out, a stone axe at its real
+hours, dead wood and wedges for a fire with no axe, and a stone keep in
+the list), because the year probe's level-20 camp now dies of thirst in
+October beside 823 logs with no axe to split them and one stone at camp,
+and a tester will meet that wall inside a season; then the first half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
 quirks, the card and the face), then the first tester round: with B,
@@ -3089,6 +3088,92 @@ quirk, so the gates keep measuring the list and not the boat.
 **What I does not do.** No stats on screen, no re-roll button, no point
 budget, no trait that is a percentage with a name, and the tree buys
 nothing here: a lineage does not breed better people.
+
+### J. The axe and the wood without one
+
+**Curve.** Survivor rows 2 and 3: a camp that keeps its fire through a
+winter, and the second axe. Tiers: none for dead wood, which is the
+first-day forest; Crafting 5 for the stone axe at its real hours. Year
+probe, level 20: the October thirst deaths on three of four seeds are
+this item's reading, and it is expected to move them to the winter,
+where the next cause of death waits. Expected: no camp with 800 logs
+and a cold pit; an axe lost is a week's work, not a season's end.
+
+What the code does today, surveyed after the water work (20aa36b). The
+arrival axe is a tool with a durability that felling, splitting, ice
+holes and the hunt's butchering wear down, and it is gone when the
+number reaches zero; sharpening spends a stone for thirty points. The
+one recipe is "stone axe": 3 stone, a stick and 2 cordage, 90 minutes
+with a knife, at no tier, and the reference list keeps one. Stone comes
+from the outcrop, and the list gathers 8 once at the start and never
+again. Firewood comes from one source, splitting a log with an axe. The
+year probe's level-20 camp on seed 17 shows what that adds up to: by
+day 190 the axe and the spear have worn out, the axe keep reads
+"missing materials" with one stone at camp, 823 logs stand unsplit, no
+fire burns, the trough's 24 litres are ice, the shore keep reads "camp
+is full", and the first ice days of late October kill by thirst. Seeds
+42 and 79 die the same way on days 197 and 211.
+
+Three things in that are wrong about the world, and one is a choice
+this document has to make on purpose.
+
+- **An iron axe does not wear out.** It blunts, and it is honed on a
+  stone in minutes; the edge lasts years. What ends an iron axe is
+  losing it - through the ice, in a river, left at a kill - or a haft
+  that breaks, and a broken haft is a new stick and an hour, not a new
+  axe. The wear model treats the arrival axe like a flaked stone edge.
+  Realistic wear is honing, from a whetstone kept for a lifetime rather
+  than a stone spent each time, and the haft as the part that fails.
+- **A stone axe is days, not ninety minutes.** The ground stone celt of
+  the north is a hard cobble pecked to shape and ground on sandstone,
+  10 to 30 hours of work, then hafted into a sleeve or a split handle
+  bound with sinew or cordage. A flaked axe is an hour or two and chops
+  badly, blunting fast; it is the recipe's time with the celt's use. The
+  recipe splits into the two, or takes the celt's hours and the celt's
+  edge, and a stone axe that shatters is the one that spends stone.
+- **A fire needs no axe.** Dead wood is the first source of firewood
+  everywhere: deadfall, dry branches broken by hand or across a rock,
+  standing dead spruce that snaps. An hour on the forest floor is an
+  evening's fire. Logs split without an axe by wooden wedges driven with
+  a club, slower and with no iron. Big wood comes down by fire, burning
+  a standing tree at the base and burning a log into lengths, slow and
+  wasteful and how every axeless people did it. Today a survivor with
+  823 logs and no axe freezes beside them.
+- **Losing the axe is a curve the game may want.** The second axe is a
+  real rung, and the arrival axe going away is what makes the stone one
+  worth its hours. That must be a thing that happens, with a cause the
+  log names - through thin ice, a haft that splits on a frozen log, left
+  where the elk fell and taken by the river - and not a number that
+  reaches zero in six months. A loss the player can read, prepare
+  against and recover from is the survival genre; wear is bookkeeping.
+
+The item, in the order it is built:
+
+1. **Dead wood.** A "gather dead wood" task on forest ground, no tool,
+   yielding firewood at a fraction of a split log's rate, with the
+   forest's dead wood a stock that the felling stock already stands for.
+   A "keep camp at N kg firewood" then has a method without an axe, and
+   the reference list gets the dead-wood keep beside the split keep by
+   the one-method rule, opened by `wantOpen` when no axe is in reach.
+2. **Wedges and the maul.** A wooden wedge recipe, a stick and a knife,
+   and "split a log with wedges" as a second split row at a third the
+   rate, so a log camp is never a cold camp.
+3. **The iron axe honed, not worn.** Wear becomes bluntness that honing
+   restores, honing spends nothing once a whetstone is a tool, the haft
+   is what breaks, and the axe is lost by events with names, at a rate
+   the tables audit sets from how often an axe is lost in a year of use.
+4. **The stone axe at its hours.** Two recipes, the flaked axe fast and
+   poor and the ground celt at 10 to 30 hours and a real edge; stone is
+   spent when a stone edge shatters, and the sharpen row hones with a
+   whetstone.
+5. **Stone in the list.** A stone keep, so the axe keep and the hone are
+   never read "missing materials" with one stone at camp. Then the year
+   probe again, on the four seeds, with the level-20 October deaths as
+   the "before".
+
+What this does not do: a saw, which the north did not have; a bronze or
+iron forge; a tree felled by fire as a task before the fire spread of 8
+exists to burn it wrongly.
 
 ## Beyond the gate: the edge of the world
 
