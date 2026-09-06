@@ -286,25 +286,33 @@ fish capacities from biomass, small-game inflow, the trap's rot, a 40 kg
 rack and a second one, decay at one and two years, large game by name at
 level, fuel by shelter and an indoor temperature, the winter woodpile and
 the melt fallback, the wet-cold need, the journal clause and the
-ancestor's day; built, readings under F), then the winter loop, three
-runner and list rules with the year probe as their gate, pulled ahead of
-everything because the year loop's last deaths name them and each is a
-day's work: a winter working day (camp chores by firelight, the night
-rule kept for travel, since seed 19 froze on 1 December with 446,000 kcal
-of fat and 670 logs at camp working two hours a day in five hours of
-light), "keep camp at N logs" in place of the felling grind (seed 17 at
-level 20 starved on day 68 beside 672 logs, burning 2,500 kcal a day
-felling), and the hunt grinds ranked above the woodpile keep in autumn
-(seeds 42 and 79 ate their July stock by November while every hour went
-to wood); and, if a hut winter then dies of fuel, the hearth as a build
-entry (Building 5, a dozen stones, four hours), since the cabin's 0.8 kg
-an hour and 10 C inside exist in the code and nothing in play builds the
-hearth they need; then E hides and clothing, pulled ahead of the rest of
-F because wool outdoors at -17 to -20 C is a measured death on two seeds
-and the tree's carry cannot touch it; then the tables audit, sub-project
-2 of the year loop (its section 8 lists the flags: the winter water path
-that fails with an axe and an open hole, snow depth, snare odds, the
-cook keep clearing raw meat); then the first half of I the
+ancestor's day; built, readings under F), then the winter loop, four
+runner and list rules and one question, with the year probe as their
+gate, pulled ahead of everything because the year loop's last deaths
+name them and none is content: a winter working day (camp chores by
+firelight, the night rule kept for travel, since seed 19 froze on
+1 December with 446,000 kcal of fat and 670 logs at camp working two
+hours a day in five hours of light); "keep camp at N logs" in place of
+the felling grind (seed 17 at level 20 starved on day 68 beside 672
+logs, burning 2,500 kcal a day felling); the hunt grinds ranked above
+the woodpile keep in autumn (seeds 42 and 79 ate their July stock by
+November while every hour went to wood); clothing wants in the reference
+list, the hide coat, trousers and boots the tree already has at
+Crafting 8 after the first large kill, since one elk is 20 kg of hide
+and the full set is 12, and seeds 42 and 79 died in wool on a winter
+walk with an elk's hide at camp; and the winter water question, why a
+survivor with an axe and an open ice hole loses 2.5 litres in a day near
+the death, answered before it is fixed; and, if a hut winter then dies
+of fuel, the hearth as a build entry (Building 5, a dozen stones, four
+hours), since the cabin's 0.8 kg an hour and 10 C inside exist in the
+code and nothing in play builds the hearth they need; then water, part 1
+of `2026-09-05-survidle-water-design.md` (the first camp on the shore
+you land on, and fetch water as one trip with one vessel; the seep is
+its part 2 and waits for the round), because the water walk is the first
+thing a new player watches the runner do and the winter gate's thirst
+deaths walk to an iced shore that the landing camp puts at the door;
+its re-measure adds `npm run year` and `--winter` to reference and
+horizon; then the first half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
 quirks, the card and the face), then the first tester round: with B,
@@ -323,7 +331,12 @@ earned traits as their items land);
 then the rest of F in impact order (latitude by row with the
 landing moving north, the goals list, the Lineage tree with the chosen
 landing month as an Arrival node, and the death site with the corpse
-run and its search order), then E hides and clothing, then the rest of
+run and its search order), then E hides and clothing (tanning, smoking, the fur shell, wear and
+mending: the depth and the ramp on top of the hide set the tree already
+sews, which is why it waits for the round), then the tables audit,
+sub-project 2 of the year loop (its section 8 lists the flags: snow
+depth, snare odds, the cook keep clearing raw meat, and whatever the
+winter water question found), then the rest of
 3 camp (the rest of the shelter ladder, the buildings with the
 cellar first) with the rest of C alongside and F's trails and the
 cellar's keep, then 4 animals, 5 injury
@@ -364,6 +377,19 @@ death into a chapter. B is the larger and riskier build (a worker running the re
 sim several times over) and its calibration wants the reference player,
 which lands with the baseline, already in place. B is still what makes an
 away death fair, which is why it comes before any content.
+
+Why the winter loop, water and the survivor come before the round, and
+E and the tables audit after it: the round is a kill-or-continue check
+on a first run's twenty days, and a first run dies in April or May and
+never sees winter, so E and the audit change nothing a tester meets
+while costing weeks. The survivor is the one named prerequisite of the
+round that is not built, a person to lose. Water's first part is what
+the tester watches first. The winter loop is not content but four rules
+and a question, small enough to run alongside, and it is what the year
+probe's last deaths name; it goes first so the year gate keeps moving
+while the round is prepared. E is not needed to survive a year: the hide
+set exists at Crafting 8 and the list never orders it, which is the
+winter loop's fourth rule.
 
 Why the first producers come before B and before the rest of F: the
 working day's measurement has every April seed starving on days 40 to
