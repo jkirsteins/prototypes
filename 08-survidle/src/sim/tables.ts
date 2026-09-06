@@ -93,16 +93,36 @@ export function sourceBand(table: YieldTable, source: YieldSource, tier: Tier): 
 }
 
 /**
- * A day's burn living outside in the cold, and its shares: the resting burn
- * of a fit 70 kg adult, cold thermogenesis in clothing, and the work that
- * takes the day into the band. work is the ledger's activity and walk together.
+ * A day's burn living outside in the cold, and its shares. The day band is
+ * the Swedish army handbook's energy table (Handbok Overlevnad, 1988):
+ * a settled survival day 3,000 kcal, a camp-building day 4,500, hard
+ * work 4,400; base is the resting burn of a fit 72 kg adult; work is the
+ * ledger's activity and walk together, the day less base and a little
+ * cold; the cold share is small outside winter and a band of its own in
+ * December to February. deepCold is the same table's week at -30 to -40
+ * C, 6,000 a day: printed as a verdict on winter month lines, gating nothing.
  */
 export const BURN = {
-  day: band(2500, 3500),
+  day: band(3000, 4500),
   base: band(1600, 1800),
-  cold: band(100, 300),
-  work: band(700, 1700),
+  coldWarm: band(100, 300),
+  coldWinter: band(1000, 2000),
+  work: band(1200, 2600),
+  deepCold: band(4500, 6000),
 };
+
+/** 1 December and 1 March, day of year 0-based: the winter the cold band reads. */
+export const WINTER_FROM_DOY = 334;
+export const WINTER_TO_DOY = 59;
+
+export function isWinterDoy(dayOfYear: number): boolean {
+  return dayOfYear >= WINTER_FROM_DOY || dayOfYear < WINTER_TO_DOY;
+}
+
+/** The cold share's band for a week ending on this day of year. */
+export function coldBand(dayOfYear: number): Band {
+  return isWinterDoy(dayOfYear) ? BURN.coldWinter : BURN.coldWarm;
+}
 
 /** A night's sleep for a working adult. */
 export const SLEEP_HOURS = band(7, 9);

@@ -223,7 +223,7 @@ describe("the reference player", () => {
     const reserve = FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
-    expect(REFERENCE_TARGET_DAY).toBe(26);
+    expect(REFERENCE_TARGET_DAY).toBe(20);
     expect(KITTED_TARGET_DAY).toBe(30);
   });
 

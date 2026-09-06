@@ -151,8 +151,8 @@ In `src/sim/tables.ts`:
 
 - `BURN.day` becomes `band(3000, 4500)`: 3,000 the settled survival day,
   4,500 the camp-building day and hard work.
-- `BURN.work` becomes `band(1300, 2800)`: the day band less base and a
-  little cold.
+- `BURN.work` becomes `band(1200, 2600)`: the day band less base and the
+  warm cold share, so the shares still add up to the day.
 - `BURN.cold` splits by season: `band(100, 300)` for a week outside
   December to February, `band(1000, 2000)` inside them. The verdict
   reads the checkpoint's month, since the ledger keeps no ambient.
