@@ -88,6 +88,14 @@ Their September hours went to sleep (12.3 to 12.5 a day), walking (5.9
 to 6.4), felling (1.5 to 1.7) and berries; wood was not where the hours
 went. A list issue: a player can give "keep camp at 8 stone" today.
 
+Measured after: stone no longer runs out at level 20. The four camps
+end the year, or the death, holding 12, 6, 5 and 11 stone and 9, 4, 13
+and 3 arrows, and not one of the four order lists reads "missing
+materials" against the arrows, the axe or the knife. Seed 17 froze on
+day 259 with a spare axe in the camp pile and a fresh one at durability
+98 in hand. At level 1 the same want reads the other way, and that is
+the one reading that went backwards: see "Where it lands" below.
+
 **The fishing spear wears out and is never re-made or taken up.** The
 spear want is a once job. Every seed reads "Fish for anything: needs a
 fishing spear" from May while a spear lies in the camp pile: the
@@ -97,6 +105,13 @@ pile under foot at the work cell, never from camp on the way out. The
 fire drill on seed 42 was at durability 2 at the death. Two issues: the
 once job is the list's; the take-up is the runner's, and a player who
 crafted a spare has the same spear lying at home.
+
+Measured after: no order list on any of the four level-20 seeds reads
+"needs a fishing spear" at the year's end or the death. Each survivor
+ends with a spear in hand at durability 47, 56, 70 and 92 and a spare in
+the camp pile, and the fire drills read 90, 62, 96 and 50 where seed
+42's read 2. The keep of one crafts the replacement, and the take-up
+puts it in the hands on the way out.
 
 **Seed 19 froze on day 245, 1 December, because its axe wore out on day
 234.** The felling stopped at 670 logs; from day 235 the 60 kg split
@@ -109,6 +124,11 @@ October month line, and the light was not the cause; see the sleep
 reading below. The arrival axe wearing out is the ramp the design wants;
 the stone is the list's.
 
+Measured after: seed 19 lives the year. It stands on 1 April with 51 kg
+of firewood, 5 logs, an axe at 67 in hand and a spare axe in the camp
+pile, and the axe keep never reads "missing materials" again with 6
+stone at camp.
+
 **Seed 17 starved on day 68 beside 764 logs.** From day 40 its stomach
 read 0 and it lived on its fat, 80,000 kcal to 0 between days 40 and
 66. With spear, arrows and stone gone, the only order able to run was
@@ -116,6 +136,16 @@ the felling grind: 5.0 hours of felling a day in April at 400 kcal an
 hour, 2,000 kcal a day for nothing, with the snares as the only food.
 The list's:
 a player can give "keep camp at N logs" today.
+
+Measured after: seed 17 does not starve at level 20. It reaches 15
+December with 2.7 million kcal of food at camp and freezes there, on the
+sixth night after the cold snap, with 0 logs and 0 kg of firewood. The
+2,000 kcal a day of felling for nothing is gone; what replaced it is a
+150-log keep that sits below the three named-hunt grinds and so is
+reached only while all three are blocked, and camp logs never passed 5
+from 1 September on. Putting the keep above the hunts was measured too:
+seed 17 then dies of thirst on day 249 rather than of cold on 259, and
+the year, winter and April gates read 3, 3 and 2 of 4 either way.
 
 **Sleep is over band from August, and the light hours are lost with
 it.** Sleep a day: 8.2 hours in July, 11.3 in August, 12.1 in September,
@@ -129,10 +159,27 @@ the same clause lays it down again until dawn. The `wait` intent has the
 same shape: waiting at night is a sleep. The runner's: every player's
 away run sleeps its autumn away.
 
+Measured after: sleep is back in band. The last week of the level-20
+year reads 9.2, 8.9, 8.9 and 8.9 hours a day, the 9.2 the December week
+seed 17 froze in; at level 10 it reads 8.5, 8.4, 8.9 and 9.5; the
+winter probe reads 8.9, 8.6, 8.6 and 8.6 and the April gate 8.8, 8.7,
+9.0 and 8.7. Nothing reads a second night's sleep. Work hours came up
+with them: 6.2, 9.1, 9.1 and 11.7 hours a day in the last week at level
+20, against the 6.3 of the October reading.
+
 **The runner sets out in the dark.** Nothing refuses work away from camp
 at night; winter's home-before-dark rule pulls it back before sunset and
 is false once night has fallen. The stocked winter camp on seed 19 walks
 5 to 8 hours in the dark on most nights. The runner's.
+
+Measured after: the two skip reasons are on the live rows. Seed 79's
+list at the year's end reads "dark; at first light" against the reindeer
+hunt and "dark; no fire to work by" against the arrows, the hunt-any
+keep, the ice-hole fill and the elk and deer hunts, all at once, which
+is a December night with the fire out. Walking is not settled by it:
+seed 79's last week still reads 3,753 kcal a day of walking against
+11.7 hours of work, and that number is now the unclaimed one, as the
+burn side's reading left it.
 
 **Clothing is at durability 0 on every seed by the end.** Coat,
 trousers, boots and hat, all four, on all four seeds, while seed 19's
@@ -142,6 +189,19 @@ probe "in wool" were naked. Two issues: the list never orders the needle,
 the hide set or a mend, which is the list's; "Mend clothing" is legal at
 durability 99, so a patch of 0.5 kg hide can buy one point, which is why
 mending cannot be a standing order today and is the game's.
+
+Measured after: half moved. The hide set is sewn wherever large game
+falls - seeds 17, 42 and 79 end the year in a hide coat, hide trousers
+and hide boots with a fur hat and mittens - and is not sewn where it
+does not: seed 19 takes no large game all year, ends with 0 kg of hide
+at camp and 93 kg of fur, and its coat, trousers and boots wants read
+"missing materials" while the repair grind reads "needs 0.5 kg hide".
+The other half did not move: every garment on all four seeds still reads
+durability 0 at the year's end. The needle is the reason. It is a once
+job, so when it wears out nothing makes another, and seeds 42 and 79
+end with the repair grind skipped "needs a bone needle" beside 383 and
+98 kg of hide at camp. A keep of one needle, the pattern the tools now
+use, is what this reading asks for next.
 
 ### 0.2 The winter probe, the stocked December camp
 
@@ -172,6 +232,13 @@ trip are the water spec's landing camp and fetch-by-method, being built
 in parallel. The daily hole, the snow depth and the indoor factor are
 tables-audit flags; section 7 hands them over with these numbers.
 
+Measured after: no seed dies of thirst in the winter probe, and none of
+the three parts was touched by this spec. The water work landed on main
+first and is what moved it: the winter gate reads seeds 17, 19 and 42
+alive on 1 March and seed 79 frozen on winter day 89, 0.6 km from camp
+with an empty stomach and the hut's fire lit. The three flags stand as
+written and go to the tables audit unchanged.
+
 ### 0.3 What this does to the roadmap's four rules
 
 1. **The winter working day**: needed, re-shaped. Not "more work in
@@ -188,6 +255,42 @@ tables-audit flags; section 7 hands them over with these numbers.
 
 Plus two the readings name: stone as a keep, and tools as keeps with a
 take-up of the spare at camp.
+
+### 0.4 Where it lands
+
+Measured at 9b561a4 on 2026-09-06 with `npm test` green at 777 tests.
+The year gate goes from 0 of 4 to 3 of 4 at level 20: seeds 19, 42 and
+79 stand on 1 April a year after they landed, where the best of them
+used to reach day 211, and seed 17 freezes on day 259 with 0 logs at
+camp. At level 10 it goes from 0 of 4 to 2 of 4: seeds 42 and 79 live
+the year, seed 17 freezes on day 258 and seed 19 on 292, against 246,
+85, 186 and 186. The winter gate reads 3 of 4, one below the 4 of 4 the
+water work left: seed 79 freezes on winter day 89 with a lit fire, fuel
+at camp and nothing in its stomach. The trend gate reaches its 3 of 4
+for the first time, from 2: seed 17's three lives read 26, 133 and 209
+days, seed 19's 71, 78 and 80, seed 42's 14 and then a life that reaches
+251, and seed 79's 93, 49 and 251, which is the one that breaks. The
+horizon's lowest rung is nearer its band, at 4, 4, 6 and 4 days against
+0 to 2 where it read 5, 8, 7 and 5; the second rung reads 9, 9, past 30
+and 4 against 1 to 2 where it read 4, 11, 13 and 4; the top three rungs
+are past 30 on every seed as before, the stocked one in band.
+
+The April gate is the one reading that went backwards, from 4 of 4 to 2
+of 4. Seed 17 starves on the gate day itself and seed 42 freezes on day
+14; seeds 19 and 79 stand fed at day 26 and then starve on days 71 and
+93, against first lives of 61, 51, 50 and 114. The cause is the stone
+keep at a level-1 opening. A want is judged met at half its target when
+the reference player decides whether to give it, which is the same
+hysteresis the woodpile keep is praised for in 0.3, and at level 1 the
+want is given as a once stand-in that finishes and must be given again.
+So `keep("stone", 8)` tops camp up only once it is under four, and camp
+sits at 5 or 6 stone all April where the once job it replaced gathered
+to 8 and reached 10 to 12. Four stone is not the eight the want is for:
+three for arrows, three for an axe, two for a knife. `keep("stone", 16)`
+was measured as the correction, and it is a trade rather than a fix:
+April returns to 4 of 4 with first lives of 50, 83, 236 and 251 and the
+winter gate to 4 of 4, while the year gate at level 20 falls to 2 of 4.
+The number is the author's to take; this spec records both readings.
 
 ## 1. The runner: the game's rules
 
@@ -362,6 +465,21 @@ trigger, without another spec:
 If the trigger does not trip, the entry waits for the shelter ladder in
 3 camp, as the roadmap has it.
 
+**Not tripped.** Two of the re-measured seeds froze, and neither death
+is the one the trigger names. At level 20 seed 17 froze on day 259, 15
+December, on the sixth night after the cold snap, half a kilometre from
+camp: the hut stood and the axe in hand read 98, but the camp pile held
+0 logs and 0 kg of firewood, with 2.7 million kcal of food beside them,
+and the fire had been out for three nights. A hearth burns fuel that is
+there; this camp had none, so the entry would have changed nothing.
+Seed 79 of the winter probe froze on winter day 89, 28 February, 0.6 km
+from camp with the hut's fire lit, 37 logs and 35 kg of firewood at
+camp, an axe in hand and an empty stomach: camp food and pack food both
+read 0 kcal, and the week before it ate 771 kcal a day against 5,188
+burned. That is a starving body giving up its warmth on a walk, not a
+shelter failing to hold heat. The entry stays where section 3 leaves it,
+for the shelter ladder in 3 camp.
+
 ## 4. Tests
 
 - **1.1** A spent body at nightfall sleeps the cap once and then rests
@@ -418,6 +536,24 @@ the gates say, section 3's trigger has been read against them, and the
 spec's section 0 numbers have a "measured after" beside them. If the
 year gate stays 0 of 4, the death it names is the opening of the tables
 audit or of the missing tier, and the roadmap says which.
+
+Measured. Every probe was run at 9b561a4 on 2026-09-06 with `npm test`
+green at 777 tests and `npm run build` clean. Section 0.4 carries the
+gates and section 0's own readings carry the before and after per line;
+the roadmap's F section has the same set in its "Measured with the
+winter loop" paragraphs. In short: the year gate 3 of 4 at level 20 and
+2 of 4 at level 10, from 0 of 4 at both; the trend gate 3 of 4, meeting
+its gate for the first time; the winter gate 3 of 4, one below what the
+water work left; the April gate 2 of 4, from 4 of 4, on the stone keep
+at a level-1 opening; the horizon's two lower rungs nearer their bands
+and the top three past 30 as before. Section 3's trigger was read
+against the two frozen seeds and did not trip. The browser pass is
+pending: no Chrome was reachable from the session that ran the probes,
+and the three things it checks - "dark; at first light" on a forest row,
+a split keep running by the fire and "dark; no fire to work by" without
+it, the mend row greyed at 80 and legal at 60, and the log line for a
+spare spear taken up - are each pinned by a test in section 4 but not
+yet seen in the page.
 
 ## 6. Roadmap edits
 
