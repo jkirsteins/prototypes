@@ -2,9 +2,11 @@
 
 Three things about water, taken together because each one is half an
 answer without the others: the first survivor's camp is the shore they
-land on; fetching water is one plain trip with one vessel; and a seep,
-dug on wet ground, is the water source for a camp with no shore. Springs,
-boiling and multi-vessel trips are not in this work.
+land on; fetching water is one plain trip with one vessel by a method
+the order names; and a seep, dug on wet ground, is the water source for a
+camp with no shore. It also states a rule the water rows made visible:
+an order names one method, and the code does not pick another behind it.
+Springs, boiling and multi-vessel trips are not in this work.
 
 What the code does today, surveyed at main ae85e1f, with the year loop landed. `RegionDef.campCell` is the
 passable cell nearest the region centroid (`src/world/gen.ts`), and every
@@ -56,9 +58,13 @@ now), `intentOption`, `startIntent` and the running intent's `workStep`:
 a fill on an iced shore with no axe for a hole walks home and melts snow
 at the fire into the vessels, and the ice hole is judged at the fill's
 own cell, not under foot; `campMeltReady` and `fireStep` are exported
-from `src/sim/body.ts` for it. The fetch trip in section 2 is written on
-top of that clause and keeps it, and the two winter fill tests in
-`tests/fill.test.ts` stand. `thirstyStep` itself is unchanged. The
+from `src/sim/body.ts` for it. Under section 0's rule that fallback
+comes out again: the fill row is split by method in section 2, the
+reference list makes the winter choice in the open, and the two winter
+fill tests in `tests/fill.test.ts` become tests of the list's choice.
+This undoes a day-old piece of the year loop on purpose, and the roadmap
+says so. `thirstyStep` itself is unchanged in kind: it is the body, not
+an order. The
 decay ruling now reads in years: a lean-to's roof fails in a year, a
 rack lasts two, and "a structure that needs mending twice a summer is a
 chore rather than a decision"; the seep's upkeep in section 3 follows
@@ -110,6 +116,18 @@ above 20 C, which the roadmap names as the other half of that death.
   risk today either; the roadmap keeps boiling for item 5. Passed over:
   a sickness chance on seep water now, which would be the only treated
   water in the game.
+- **An order names one method.** The fill row's ice hole clause and the
+  year loop's melt fallback are collapsed choices, and the seep would
+  have been a third. They are split into rows, and the choice between
+  them is the player's, or the reference list's, in the open. "Hunt
+  anything" and "fish anything" stay as the two exceptions, since what
+  walks past is not the player's to choose. Passed over: leaving the
+  fallbacks and adding the seep as another, which removes decisions from
+  play one convenience at a time.
+- **The fire rows are split in the same work.** "Light the fire" going
+  indoors on its own when a hut stands is the same collapse, and it is
+  the only other one on main that is a method rather than a delivery.
+  It is a misc task here rather than a roadmap item.
 - **Springs stay out.** They go into the roadmap's item 2 beside rapids.
   Their one real effect, winter water that does not ice over, is a job the
   ice hole and camp storage already own.
@@ -126,6 +144,35 @@ shore camp is unchanged and stays the better camp. The landing camp is
 expected to move the April gate: "water before rest" and walking are the
 over-band numbers today, and the reference player's water walk shrinks
 from 25 to 55 minutes each way to none.
+
+## 0. The rule: an order names one method
+
+An order in the Do panel names one way of doing one thing. When that
+way is not open, the order waits and its row says why; it does not do
+something else instead. The Do panel is the list of methods, and the
+choice between methods is the player's. For the reference player, which
+stands in for a competent human, the choice lives in the list's wants
+and in `wantOpen`, in the open where a test reads it, not inside the
+intent runner.
+
+What the rule covers: every order (a job, a counted order, a grind, a
+keep), and every raw action started from the Do panel. What it does not
+cover: the body's own needs (auto-eat, auto-drink, the thirsty step, the
+cold step, going home before dark), which are reflexes and not orders,
+and which may choose among sources as a body does; a delivery leg, which
+is how the order gets its goods home rather than a second method; and
+the two exceptions, "hunt anything" and "fish anything", which draw a
+species because what comes past is not chosen.
+
+On main today the collapsed rows are: the fill row (open water, or cut
+a hole first with an axe near, or melt snow at camp with no axe near),
+and the light row (a pit fire, or indoors under the smoke hole or at the
+hearth when one stands). Both are split in this spec. A row may be
+collapsed again later only when play shows the split is a chore, and
+the roadmap records that decision; the default is the split.
+
+The roadmap carries this as a standing ruling so the next spec follows
+it.
 
 ## 1. The first camp
 
@@ -154,34 +201,70 @@ test stays as the cheap first filter.
 the shore. The landing screen's wording does not change. Heirs are
 unchanged: they land near the old camp and walk home to it.
 
-## 2. Fetch water
+## 2. Fetch water, by method
 
-The Camp group's `fill` row is labelled "Fetch water". Its small print is
-the litres the trip adds, the vessel it takes, and the walk: "2 l, the
-bark bucket, 6 min there". A plain click gives a once job with delivery
-to camp; `rowRequest` sets `deliver: "camp"` for `fill` whatever the
-default choice, and the row's "leave where it is" toggle still works from
-the expansion for the player who wants the vessel filled and kept in
-hand. The raw "fill vessels" button in the actions row, shown when
-standing at a source, is unchanged. The year loop's melt fallback holds
-for the trip: on an iced shore with no axe the row reads "melts snow at
-the fire instead", and the trip goes to camp and melts snow into the
-vessel it took up, through `meltInsteadOk` as the keep does today.
+The Camp group's single `fill` row becomes three rows of the same task,
+told apart by an argument the way a hunt is told apart by its species,
+so the order carries its method through the list, the save and the
+ledger:
+
+| row | arg | legal where | greyed with |
+|---|---|---|---|
+| Fetch water from the shore | `shore` | a shore cell with open water | "iced over" |
+| Cut an ice hole and fetch water | `hole` | a shore cell under ice, an axe in reach | "the shore is open, no hole needed"; "needs an axe" |
+| Fetch water from the seep | `seep` | a seep that holds liquid water | "no seep dug"; "the seep is empty"; "the seep is frozen" |
+
+"Melt snow" is the fourth method. It is a task already; it becomes
+orderable as a keep, "melt snow, keep camp at N litres", by giving
+`melt` a yield of water so `normalizeOrder` keeps it a keep, and its
+delivery pours the vessel into the pile at camp as a fill's does. It is
+greyed as today: "needs a lit fire", "the fire is too low", "no snow to
+melt".
+
+The hole row cuts the hole and fills in the same order: at the shore it
+runs `iceHole` when no hole is open there, then `fill`. Its small print
+carries the axe wear. The plain `iceHole` row stays for a hole with no
+fill after it.
+
+Each row's small print is the litres the trip adds, the vessel it takes,
+and the walk: "2 l, the bark bucket, 6 min there". A plain click gives a
+once job with delivery to camp; `rowRequest` sets `deliver: "camp"` for
+`fill` whatever the default choice, and the row's "leave where it is"
+toggle still works from the expansion for the player who wants the
+vessel filled and kept in hand. The raw "fill vessels" button in the
+actions row, shown when standing at a source, is unchanged and draws
+from whatever source is under foot.
 
 The trip's vessel: when the intent starts, it takes up one vessel from
 the pack or the pile, the one with the most room, comparing capacity
 minus litres; a partly full vessel is chosen only when it is the only
 vessel there. A vessel already in hand counts as one of the candidates,
 so a full skin in hand and an empty bucket in the pile takes up the
-bucket. At the source every vessel in hand is topped up, as today. At camp
-the vessels pour into the pile's vessels and the trough as far as they
-have room, as today, and a vessel with nowhere to pour stays in hand,
-full; auto-drink reads it. The litres shown are the sum over the vessels
-that will be in hand of capacity minus litres, so a half full skin shows
-a smaller gain.
+bucket. At the source every vessel in hand is topped up, as today, and
+a seep tops up only as far as its pool goes. At camp the vessels pour
+into the pile's vessels and the trough as far as they have room, as
+today, and a vessel with nowhere to pour stays in hand, full; auto-drink
+reads it. The litres shown are the sum over the vessels that will be in
+hand of capacity minus litres, so a half full skin shows a smaller gain.
 
-The keep order "keep camp at N litres" is unchanged. The counted order
-"N times" is N trips.
+**The fallback comes out.** `meltInsteadOk`, the fill clause of
+`fetchAllowance`, and the fill branches of `workStep` that cut a hole or
+walk home to melt are removed. A fill order whose method is shut waits
+on the reason its row shows, like any other order. `fetchAllowance`
+keeps its build clause, which is a delivery.
+
+**The reference list chooses in the open.** `keep("fill", 2)` becomes
+`keep("fill", "shore", 2)`; beside it a `keep("fill", "hole", 2)` that
+`wantOpen` opens when the home shore is iced and an axe is in reach, and
+a `keep("melt", 2)` that it opens when the home shore is iced and no axe
+is in reach; the trough's `keep("fill", 20)` splits the same way. The
+two winter fill tests become: the shore keep waits with "iced over" on
+an iced shore; the hole keep cuts and fills with an axe; the melt keep
+fills the vessel at the fire and pours it. The list never digs a seep,
+since it camps on the shore.
+
+The keep "keep camp at N litres" is otherwise unchanged. The counted
+order "N times" is N trips.
 
 ## 3. The seep
 
@@ -217,8 +300,10 @@ defaults it to an empty record, beside the year loop's `racks` and
 
 **Refill.** Each tick, every seep adds `rate / 60 * dt` litres up to the
 pool, unless refilling is stopped. It stops when the ambient is under
-`FREEZE_C` and no fed fire is lit within one cell of the seep, in which
-case the pool's litres become ice in place (the seep holds `ice` litres
+`FREEZE_C` and no fed fire is lit on the seep's own cell (a fire 300 m
+off keeps no hole open; a seep dug on the camp cell beside the fire is
+the one that stays open, which makes where to dig a winter decision),
+in which case the pool's litres become ice in place (the seep holds `ice` litres
 beside `litres`, and the two sum to at most the pool); it thaws back at
 `THAW_L_PER_HOUR` when the ambient is above 0 C or such a fire is by. It
 also stops after `SEEP_DRY_DAYS = 14` dry days, the water table's low,
@@ -235,8 +320,10 @@ Auto-drink is unchanged in form and takes what the pool has.
 
 **The runner.** `thirstyStep` ranks sources by what a walk there would
 give: the shore and an open ice hole are endless; each seep counts by its
-liquid litres; camp water by the pile's litres. It walks to the nearest
+liquid litres; camp water by the pile's litres; snow at a lit fire is
+last, as today, since it burns the woodpile. It walks to the nearest
 source that would raise the reserve over the thirsty line, ties by walk.
+This ranking is the body's and is allowed under section 0.
 When no source holds that much, the runner walks to the seep with the
 most water, or the nearest on a tie, and waits, step "waiting at the
 seep", drinking as it fills, until the reserve is over the thirsty line;
@@ -260,14 +347,13 @@ when nothing else takes the glyph, with a legend entry.
 the body's thirst, the runner's thirsty step and the camp tick. It is
 added to `PRODUCERS` and the coverage test picks it up.
 
-**Fill on a seep.** The `fill` intent's ground stays `shore`; a Fetch
-water order goes to the shore or the ice hole as today, and in a region
-with no shore at all the row is greyed with "no shore here" (an iced
-shore is not that case: the melt fallback serves it) while the
-runner's thirsty step still drinks at the seep. Filling at a seep is by
-hand: stand there and the actions row shows "fill vessels" with the
-litres available. Passed over: the runner walking to the seep for a
-trough fill, which is a day of waiting for 20 litres.
+**The seep row.** "Fetch water from the seep" is the `fill` row with
+arg `seep` (section 2). Its place is the nearest seep in the region that
+holds liquid water, by route; it fills the vessel as far as the pool
+goes and brings it home. It is never chosen for the player: a shore
+order at an iced shore waits, it does not walk to the seep. Passed over:
+a keep served by the seep for a trough, which is a day of waiting for
+20 litres, though nothing forbids the player ordering it.
 
 ## 4. The water line
 
@@ -283,9 +369,33 @@ One line in the Here section, always present, for the cell under foot:
 
 The region panel gains a water list: the nearest of each kind from where
 the survivor stands, with its walk: "shore 12 min, endless; seep 4 min, 6
-of 10 l; camp water 6 l, 8 min". Kinds with none are left out; a region
-with none reads "no water in this region". The site report adds "seep
+of 10 l; camp water 6 l, 8 min; snow at the fire, 1 l per 15 min and 1
+kg wood". The melt line shows when the camp fire is lit and snow lies,
+so the wood cost sits beside the seep's free litres. Kinds with none are
+left out; a region with none reads "no water in this region". The site report adds "seep
 possible" for a cell with a seep ground.
+
+## 4b. Misc: the fire rows split
+
+"Light the fire" today lays a pit fire, except that when a turf hut
+stands with no cabin, or a cabin has a hearth, it lights indoors on its
+own and the row's small print says so after the fact. "Light a fire
+indoors" refuses a cabin with a hearth and points at the plain row. Under
+section 0 the two become two methods:
+
+- **Light the fire** is the pit fire, always: `fire.indoors` is false
+  whatever stands. A pit fire beside a hut is legal and burns at the
+  open rate with no indoor temperature, which is the player's choice.
+- **Light a fire indoors** covers the hut's smoke hole and the cabin's
+  hearth; its refusal for a cabin with a hearth is dropped, and its
+  warning for a cabin with no hearth stays.
+- The reference list's `keep("light", 1)` is joined by a
+  `keep("lightIndoors", 1)` that `wantOpen` opens once a hut or a hearth
+  stands, and the plain keep closes then; the runner's own `fireStep`,
+  a body reflex, lights indoors when it can, as it does today.
+- Tests in `tests/fire.test.ts` that reached the indoor rates through
+  the plain light move to the indoors row; the year loop's readings for
+  fuel by shelter are re-read in section 6 on the split list.
 
 ## 5. Tests
 
@@ -296,8 +406,16 @@ possible" for a cell with a seep ground.
 - fill: a plain Fetch water order delivers to camp; the trip takes the
   emptiest vessel, a partly full one only when it is alone; the row's
   litres equal capacity minus litres for the vessels in hand; a vessel
-  with nowhere to pour stays in hand full; the year loop's two winter
-  fill tests (melt snow with no axe, cut a hole with one) pass unchanged.
+  with nowhere to pour stays in hand full; a shore order at an iced
+  shore waits with "iced over" and never melts or cuts; the hole order
+  cuts and fills with an axe and is greyed without one; the melt keep
+  fills the vessel and pours it; the seep order fills as far as the pool
+  goes and is greyed when no seep holds water.
+- reference: `wantOpen` opens the hole keep with an axe on an iced
+  shore, the melt keep without one, and neither on an open shore; the
+  indoors light keep opens once a hut or a hearth stands.
+- fire: the plain light never sets `fire.indoors`; the indoors light
+  lights a cabin's hearth.
 - seep: `seepGround` on the seven cases of the table; dig refuses on
   dry ground, on a shore, and on a cell that has one; two seeps in one
   region refill on their own; the pool refills at its class rate and
@@ -340,8 +458,10 @@ harder is a finding, not a number to bend.
 ## 7. The browser pass
 
 DevTools, seed 17, 1440 wide: the survivor starts on a shore and the
-water line reads "shore, endless"; Fetch water brings a bucket home and
-the camp reading rises; walk to a bog cell, the line says a seep is
+water line reads "shore, endless"; Fetch water from the shore brings a
+bucket home and the camp reading rises; with the shore iced (a December
+save) the shore row is greyed "iced over" and the hole row is offered
+with the axe's wear in its small print; walk to a bog cell, the line says a seep is
 possible with its rate, dig it, the mark shows, the line shows the pool
 filling; drink there and the pool drops; a second dig on the same cell
 is refused, and one on the next bog cell works and shows its own mark.
@@ -355,7 +475,12 @@ is refused, and one on the next bog cell works and shows its own mark.
   gated on the year probe, which this spec moves. Reading them in the
   other order measures the winter loop twice.
 - The F section: a "Measured with the landing camp" paragraph beside
-  the year loop's, with section 6's runs.
+  the year loop's, with section 6's runs, and a line that the year
+  loop's melt fallback was replaced by the list's own winter wants.
+- A standing ruling, beside the decay ruling: an order names one
+  method; the choice is the player's or the list's; "hunt anything" and
+  "fish anything" are the exceptions; a later collapse is a recorded
+  decision.
 - Item 2: springs beside rapids, running water that never freezes, with
   the note that the ice hole owns winter water until they land.
 - Item 3: the seep's record, in the item's own built-then-said style.
@@ -371,4 +496,5 @@ is refused, and one on the next bog cell works and shows its own mark.
 No springs, no rivers, no boiling, no sickness from any water, no
 multi-vessel trips, no vessel count on an order, no removal of the
 default camp, no seep on a shore cell, no more than one seep per cell, no
+splitting of rows other than water and fire, no
 drought model beyond the existing dry-day count.
