@@ -76,10 +76,16 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * then crafts a second, and the second is the point, since the arrival
  * tools wear out and a survivor at the shore with a spear in the camp
  * pile takes it up on the way out. The basket trap is the one craft that
- * is not, since it is set and not held. Stone is a keep of eight for the
- * same reason: arrows take three per five and a stone axe three, and a
- * once job that ran out left every year seed with no arrows, no axe and a
- * felling grind for company. Auto-eat, auto-feed
+ * is not, since it is set and not held. Stone is wanted twice for the
+ * same reason and in two kinds. The opening keeps its once job for eight,
+ * because it has to be met on day one: the fire pit needs six stones and
+ * the knife two, and a keep at level 1 is given as a stand-in that has to
+ * be given again, which happens only once camp is under half the target -
+ * four stone, where the fire pit alone wants six. The restock is the keep,
+ * far down beside the axe it feeds, where topping up under four is what a
+ * restock should do: arrows take three stone per five and a stone axe
+ * three, and the once job alone ran out and left every year seed with no
+ * arrows, no axe and a felling grind for company. Auto-eat, auto-feed
  * and auto-drink stay on, as they are for every player. Two kilos of
  * berries at camp sit with the cook keeps: in season they are the
  * cheapest kcal there is, and out of it the keep blocks harmlessly on
@@ -90,16 +96,20 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * own fill keep a second want for the greater capacity the trough gives
  * rather than a replacement. Right after the small-game hunt keep, which
  * is the want that brings hide to camp, sits the clothing block: the bone
- * needle, a mend grind, and the hide coat, trousers and boots, the fur hat
- * and the fur mittens as once jobs, since a made garment is put on and the
- * old one left behind. The mend grind runs only while a piece is worn
+ * needle as a keep of one like every other tool, since a needle that wears
+ * out takes the mend grind with it, a mend grind, and the hide coat,
+ * trousers and boots, the fur hat and the fur mittens as once jobs, since
+ * a made garment is put on and the
+ * old one left behind. The stone keep sits at the end of that block, right
+ * above the axe keep, since the axe and the arrows are what spend stone.
+ * The mend grind runs only while a piece is worn
  * enough for a patch (MEND_AT) and hide is at camp, so it does not starve
  * the hut group below it; without it every garment on every year seed was
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
  * mittens at once. Below the hut group sits the surplus loop,
- * in this order: the hang grind, the winter woodpile keep, the three
- * named hunts as grinds, and the felling grind. A roof and water outrank
+ * in this order: the hang grind, the two winter-stock keeps, and the three
+ * named hunts as grinds. A roof and water outrank
  * days spent chasing an elk, which is why this loop sits below the hut
  * group rather than above it. The hang grind hangs whatever raw meat sits
  * at camp while the rack has room; it sits above the named hunts because
@@ -109,16 +119,20 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * felling is a grind and not a firewood keep. Each named hunt opens only
  * at its species' recommended level (wantOpen), since a competent player
  * does not walk at an elk with a stone point at level 1: elk, reindeer
- * and roe deer, listed hardest first (8, 6, 4). The 400 kg woodpile keep
- * sits between the hang grind and the named hunts: stocking wood for
- * winter earns its place ahead of chasing large game, but behind the
- * hang grind that clears the rack. It opens only from the season it is
- * stocked against (wantOpen), so a list that reaches it in April waits for
- * autumn rather than splitting 400 kg no winter yet needs. The list ends
- * with a 150-log keep, the winter stock's unsplit half, under the
- * woodpile's season clause: a felling grind at the end of the list burned
- * 400 kcal an hour for nothing when everything above it was blocked, and a
- * runner with nothing left to do rests instead.
+ * and roe deer, listed hardest first (8, 6, 4). The two winter-stock
+ * keeps, 400 kg of firewood and the 150 logs that are the stock's unsplit
+ * half, sit together between the hang grind and the named hunts: stocking
+ * wood for winter earns its place ahead of chasing large game, but behind
+ * the hang grind that clears the rack. Both open only from the season they
+ * are stocked against (wantOpen), so a list that reaches them in April
+ * waits for autumn rather than splitting 400 kg no winter yet needs. The
+ * 150-log keep replaced a felling grind that ran last and forever, which
+ * burned 400 kcal an hour for nothing whenever everything above it was
+ * blocked; a runner with nothing left to do rests instead. It sits above
+ * the named hunts and not below them because a grind is never met, and a
+ * grind above a keep starves the keep: below them, camp logs never passed
+ * five from 1 September and a level-20 camp froze in December beside 2.7
+ * million kcal of food.
  */
 
 /** 1 September: a competent player starts the winter woodpile when the nights first frost. */
@@ -144,7 +158,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 2, "shore"),
   keep("fill", 2, "hole"),
   keep("melt", 2),
-  keep("stone", 8),
+  job("stone", { kind: "campHas", qty: 8 }),
   keep("sticks", 10),
   keep("bark", 12),
   keep("craft", 8, "cordage"),
@@ -171,13 +185,14 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
   keep("hunt", 2, "any"),
-  job("craft", { kind: "once" }, "needle"),
+  keep("craft", 1, "needle"),
   { req: { task: "repair", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("craft", { kind: "once" }, "hideCoat"),
   job("craft", { kind: "once" }, "hideTrousers"),
   job("craft", { kind: "once" }, "hideBoots"),
   job("craft", { kind: "once" }, "furHat"),
   job("craft", { kind: "once" }, "furMittens"),
+  keep("stone", 8),
   keep("craft", 1, "axe"),
   job("sticks", { kind: "campHas", qty: 20 }),
   job("bark", { kind: "campHas", qty: 40 }),
@@ -188,10 +203,10 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("melt", 20),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("split", WINTER_STOCK.firewoodKg),
+  keep("chop", WINTER_STOCK.logs),
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
-  keep("chop", WINTER_STOCK.logs),
 ];
 
 /**
