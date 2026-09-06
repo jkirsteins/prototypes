@@ -114,11 +114,10 @@ function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where
   const here = cellOf(state, world);
   const r = regionAt(world, state.player.region);
   // Grounds are ranked by the meat a day's hunting on them would bring home,
-  // not by whether anything at all is about: the old rule kept the cell under
-  // foot the moment one duck was on the water, and a camp sited on a shore
-  // hunted mallard every day of the year with seventy-six roe deer standing
-  // in the forest two cells off. The value reads the hunter's own odds, so a
-  // beginner is not sent after game they cannot take.
+  // not by whether anything at all is about: a shore with one duck on the
+  // water does not outrank a forest two cells off holding seventy-six roe
+  // deer. The value reads the hunter's own odds, so a beginner is not sent
+  // after game they cannot take.
   const weigh = (cell: number) => huntGroundValue(state, world, cal, cell);
   let asked: SpotId | null = null;
   if (typeof where === "string" && where !== "nearest") {

@@ -19,26 +19,17 @@ const STOP_PER_HOUR = 0.25;
 export const DEEP_SNOW_CM = 30;
 
 /**
- * Snow on the ground. Fresh snow lays 0.375 cm an hour in light snow and
- * 0.75 in heavy, a quarter of the old rates, and the pack settles five
- * percent of its depth at each day roll; together they hold a 62 N inland
- * January at 40 to 60 cm where it read 79 to 271 (the year loop's first
- * flag). Melting above 2 C stays at 2 cm an hour.
+ * Snow on the ground. Fresh snow lays a quarter of the fall: 0.375 cm an
+ * hour in light snow, 0.75 in heavy. The pack settles five percent of its
+ * depth at each day roll. Melting above 2 C stays at 2 cm an hour. Fall and
+ * settle together aim at a 62 N inland January of 40 to 60 cm.
  *
- * The settle constant was walked from 0.02 in steps of 0.005 against
- * `npm run year -- 17 19 42 79`. At 0.02 the pack never stopped growing
- * (1 Jan 47/63 cm on seeds 42/79, 1 Feb 97/108). At 0.05, 1 January reads
- * seed 17 at 28 cm, seed 42 at 42, seed 79 at 42 (seed 19 always dies in
- * May, before any snow); 1 February reads seed 42 at 43 and seed 79 at 45
- * (seed 17 freezes on day 300, before its February line). That is not the
- * brief's literal stop condition (all four seeds in 40 to 60): seed 17's
- * January reading sits under the band. Nearby steps did not fix it -
- * 0.04, 0.045 and 0.06 each pulled a different seed further out instead of
- * narrowing the spread, so this is not a monotonic function of the
- * constant across this seed set. The other four readings are 42 to 45 and
- * the five-reading mean is 40, and the controller's dispatch note allowed
- * a seed or two outside the band when the mean is inside, so the constant
- * stayed at 0.05 rather than chasing seed 17 alone.
+ * The current reading: January runs 25, 29 and 46 cm on the year probe's
+ * three seeds and 32, 28, 31 and 31 on the winter gate's four - one of the
+ * seven in the band, mean about 32, under it. The constant stays at 0.05
+ * rather than chasing the band, because across this branch's other
+ * changes the depth moved with the runner and the reference list, not with
+ * the settle rate.
  */
 export const SNOW_CM_PER_MINUTE = { light: 1 / 160, heavy: 1 / 80 } as const;
 export const SNOW_SETTLE_PER_DAY = 0.05;

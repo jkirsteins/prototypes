@@ -277,10 +277,10 @@ export function drawSpecies(state: GameState, world: World, cal: Calendar, rng: 
  * species this ground could give counts, at its real odds - which read the
  * hunter's own skill, so an elk that a beginner has no chance at adds
  * almost nothing - times the meat one trip carries home, over the hours the
- * hunt takes. It is what ranks one ground against another: a camp on a
- * shore where mallard swim used to read "something is about here" and hunt
- * ducks every day of the year, with seventy-six roe deer standing in the
- * forest two cells away. Zero when nothing here can be hunted at all.
+ * hunt takes. It is what ranks one ground against another: a shore where
+ * mallard swim ranks below a forest two cells away holding seventy-six roe
+ * deer, unless the mallard are truly the better catch. Zero when nothing
+ * here can be hunted at all.
  */
 export function huntGroundValue(state: GameState, world: World, cal: Calendar, at: number): number {
   const c = candidates(state, world, cal, "hunt", at);

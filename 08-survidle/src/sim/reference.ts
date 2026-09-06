@@ -149,11 +149,9 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
 
 /**
  * Midsummer: from the day the light starts going, a competent player is
- * cutting for the winter. It was 1 September, the first frost at night, and
- * that was a window sized against a 3-tonne stock. Against the measured
- * 6.6 tonnes it left a level-20 camp with 51 kg of firewood and five logs
- * on 1 September and a woodpile it never caught up on; from midsummer the
- * same camps stand at 385 and 381 kg with 152 and 151 logs on that date.
+ * cutting for the winter, a window sized against the measured 6.6-tonne
+ * stock. From midsummer, a level-20 camp stands at 385 and 381 kg of
+ * firewood with 152 and 151 logs on 1 September.
  */
 export const WINTER_WOOD_FROM_DOY = MIDSUMMER_DOY;
 /**

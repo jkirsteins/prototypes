@@ -19,7 +19,7 @@ describe("the manual", () => {
     for (const s of MANUAL_SECTIONS) expect(html).toContain(s.title);
     for (const l of MANUAL_LINKS) expect(html).toContain(l.url);
     expect(html).toContain('data-act="manual-close"');
-    expect(html).not.toMatch(/[—–…‘’“”]/);
+    expect(html).not.toMatch(/[\u2014\u2013\u2026\u2018\u2019\u201c\u201d]/);
   });
 
   it("opens once on a world's first landing and never for a heir", () => {

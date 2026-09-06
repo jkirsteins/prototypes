@@ -165,8 +165,8 @@ export const SNOW_MELT_DAYS = 3;
 /**
  * A trap line, not five snares: the Swedish handbook's 3 to 5 km of marked
  * ground with a hundred snares after a few days, checked at dawn. Forty
- * per region, a few percent a night each; five snares at 0.3 was the same
- * catch as fifty at 0.03 with none of the work.
+ * per region, a few percent a night each, so the catch comes from more
+ * snares checked rather than better odds per snare.
  */
 export const MAX_SNARES = 40;
 export const SNARE_ODDS_PER_NIGHT = 0.04;

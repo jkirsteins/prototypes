@@ -292,7 +292,7 @@ describe("the reference player", () => {
     }
   });
 
-  it("the day-26 checkpoint's fed reads the week it prints, a full week by then", () => {
+  it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
     // Seed 79, not 17: the bough bed keep right after the lean-to (reference.ts) moves seed 17's
     // death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this checkpoint.
     const r = runReference(79, 27);

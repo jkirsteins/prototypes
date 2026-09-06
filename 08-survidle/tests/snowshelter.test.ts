@@ -71,4 +71,25 @@ describe("the snow shelter", () => {
     regionState(state, world, state.player.region).structures.turfHut = true;
     expect(wantOpen(state, world, w, calendar(0, 334))).toBe(false);
   });
+
+  it("beside a lean-to, reads the better of the two roofs rather than colder than either", () => {
+    const { state, world } = newGame(17, 334);
+    const st = regionState(state, world, state.player.region);
+    st.structures.snowShelter = true;
+    st.structures.leanTo = true;
+    state.task = null;
+    // Mild cold: the lean-to's open-air bonus beats the snow floor, so both together read
+    // no colder than the lean-to alone.
+    const bothMild = feltTemperature(state, world, -4);
+    st.structures.snowShelter = false;
+    const leanToOnly = feltTemperature(state, world, -4);
+    st.structures.snowShelter = true;
+    expect(bothMild).toBeCloseTo(leanToOnly, 6);
+    // Deep cold: the snow floor beats the lean-to's fixed bonus, so both together read the floor.
+    const bothCold = feltTemperature(state, world, -25);
+    st.structures.leanTo = false;
+    const snowOnly = feltTemperature(state, world, -25);
+    st.structures.leanTo = true;
+    expect(bothCold).toBeCloseTo(snowOnly, 6);
+  });
 });

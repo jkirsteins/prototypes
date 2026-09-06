@@ -133,11 +133,22 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   const inCabin = r.structures.cabin && r.structures.hearth;
   const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (r.structures.turfHut || inCabin);
   const inSnow = camp && campTask && r.structures.snowShelter && !indoors;
-  const floor = indoors ? (inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) : inSnow ? SNOW_FLOOR_C : -Infinity;
-  let felt = Math.max(ambient, floor) + insulation(state);
+  let felt: number;
+  if (indoors) {
+    felt = Math.max(ambient, inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) + insulation(state);
+  } else if (inSnow) {
+    // A snow shelter's ground floor and a lean-to's open-air bonus do not stack; a camp
+    // with both stands under whichever roof is warmer at this ambient, not colder than
+    // either alone.
+    const withSnow = Math.max(ambient, SNOW_FLOOR_C);
+    const withRoof = ambient + (r.structures.leanTo ? 5 : 0);
+    felt = Math.max(withSnow, withRoof) + insulation(state);
+  } else {
+    felt = ambient + insulation(state);
+    // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
+    if (camp && campTask) felt += shelterBonus(r);
+  }
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
-  // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
-  if (camp && campTask && !indoors) felt += shelterBonus(r);
   if (bedded(state.task)) felt += beddingInsulation(state);
   if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
@@ -212,9 +223,9 @@ export const BASE_KCAL_PER_HOUR = KCAL_PER_HOUR.sleep;
 export const LOAD_KCAL_PER_HOUR = { comfortable: 150, hard: 300 } as const;
 /**
  * Burn under a felt temperature below zero, as a multiple of the burn
- * before it: 2 percent a degree, capped at double. 1.3 at -15, where the
- * flat factor used to sit; 1.6 at -30, which with a working day reads the
- * handbook's 6,000 kcal for a week at -30 to -40 C.
+ * before it: 2 percent a degree, capped at double. 1.3 at -15; 1.6 at
+ * -30, which with a working day reads the handbook's 6,000 kcal for a
+ * week at -30 to -40 C.
  */
 export function coldBurnFactor(felt: number): number {
   return Math.min(2, 1 + 0.02 * Math.max(0, -felt));

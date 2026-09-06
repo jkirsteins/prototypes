@@ -74,37 +74,10 @@ describe("the epitaph", () => {
     // the end of the list is a 150-log keep shut until 1 September and placed beside the woodpile keep, so a
     // spring runner with nothing else able to run rests instead of felling; and stone is wanted twice, a
     // once job for eight at the opening and a keep of eight as the restock below the clothing block.
-    // Seed 17's death day rests on the sleep model as well: no rest latch holds
-    // a spent body down until dawn, so the evening ends at the rested line and
-    // the dark is worked rather than sat out, which spends the arrival kit at a
-    // different pace.
-    // The bough bed keep right after the lean-to (reference.ts) moves seed 17's death from
-    // day 36 to day 19: laying and relaying the bed spends sticks and time the opening has
-    // none to spare, and the shared rng stream draws differently from there on.
-    // The tables audit's food pass (items.ts: meat down from 1,500 to 1,100 a kilo, dried
-    // meat from 3,500 to 3,300, berries from 500 to 450) moves it again, from day 19 to
-    // day 22, and the death is now at camp rather than 0.2 km out.
-    // The trap line (items.ts: MAX_SNARES 5 to 40, SNARE_ODDS_PER_NIGHT 0.3 to 0.04; the
-    // twenty- and forty-snare keeps in reference.ts) leaves day 22 as it was but the wood
-    // pile smaller, at 36 kg rather than 71: the two new wants push everything after the
-    // berries keep down the list, so the reference player spends some of the days before
-    // the death setting snares that would otherwise have gone to splitting firewood.
-    // The fire's cold scaling (fire.ts: SHELTER_BURN_KG_PER_HOUR replaced by
-    // openBurnPerHour, 3 kg/h at zero rising a tenth per degree of frost, with
-    // SHELTER_BURN_RATIO applying the hut and cabin as ratios on it) moves seed 17
-    // from day 22 to day 20 and the woodpile from 36 kg to 33: an open fire lit
-    // into the cold now burns faster than the old flat 3, so the same nights spend
-    // the pile quicker and the timeline compresses by two days. Seed 19 moves from
-    // day 4 to day 9, with 1.2 kg of food in the pack rather than none at the end:
-    // the faster cold-weather burn reorders the early feeding and food-gathering
-    // grinds enough to buy five extra days before the cold catches up.
-    // The snow pass (weather.ts: fresh snow a quarter as fast, the pack settling five
-    // percent a day) moves seed 17 from day 20 to 25 and the woodpile from 33 kg to 14:
-    // a shallower pack costs the walk less, so the days that used to go to breaking
-    // trail go to firewood and food instead, and starvation comes later with less
-    // wood banked against it. Seed 19 moves further, from a day 9 cold death to a day
-    // 24 starvation: the thinner snow no longer chills the reference player past the
-    // early frost, so the run survives on warmth long enough to run out of food instead.
+    // Both seeds starve at camp rather than freezing or dying on the trail: the reference
+    // player's opening grinds fill firewood and food ahead of the cold, so the woodpile
+    // outlasts the larder and the run ends on hunger with wood still banked (14 kg for seed
+    // 17, 38 kg for seed 19).
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 25. Starved at camp, with nothing in the pack and 14 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 38 kg of firewood at camp."`);
   });

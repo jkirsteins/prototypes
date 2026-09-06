@@ -30,7 +30,7 @@ export const WINTER_START_DOY = 334;
 export const WINTER_DAYS = 90;
 
 export interface MonthLine {
-  /** The month that just began, 1 to 12, and the day of the run it began on. */
+  /** The month that just began, 0-based (December 11, January 0, February 1), and the day of the run it began on. */
   month: number;
   day: number;
   /** Averages over the days since the last line. */
@@ -95,7 +95,7 @@ function stockAt(state: GameState, world: World): MonthLine["stock"] {
 }
 
 /** Large game's kcal from a kill count: raw meat plus fat, the yields a hunt credits. */
-function largeGameKcal(kills: Partial<Record<Species, number>>): number {
+export function largeGameKcal(kills: Partial<Record<Species, number>>): number {
   let kcal = 0;
   for (const s of [...LARGE_GAME, "bear" as const]) {
     const n = kills[s];

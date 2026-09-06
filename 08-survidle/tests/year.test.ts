@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { newGame } from "../src/sim/newgame";
-import { LARGE_GAME } from "../src/sim/species";
-import { runWinter, runYear } from "../src/sim/year";
+import { FOODS } from "../src/sim/items";
+import { setUpReference } from "../src/sim/reference";
+import { LARGE_GAME, SPECIES_DEFS } from "../src/sim/species";
+import { largeGameKcal, runWinter, runYear } from "../src/sim/year";
 
 describe("the year script", () => {
   it("runs a kitted level-20 survivor from 1 April and reports months, the surplus days and the outcome", () => {
@@ -44,12 +45,13 @@ describe("the year script", () => {
     expect(LARGE_GAME).toEqual(["deer", "reindeer", "elk"]);
   });
 
-  it("counts kills per species on the run and the report", () => {
-    const { state } = newGame(17);
-    expect(state.stats.kills).toEqual({});
-    state.stats.kills.elk = 2;
-    const r = runYear(17, { days: 2 });
-    expect(r.kills).toBeDefined();
-    expect(typeof r.killsKcal).toBe("number");
+  it("reads one elk kill into killsKcal as raw meat plus fat", () => {
+    const ref = setUpReference(17);
+    expect(ref.state.stats.kills).toEqual({});
+    ref.state.stats.kills.elk = 1;
+    const kills = { ...ref.state.stats.kills };
+    expect(kills.elk).toBe(1);
+    const y = SPECIES_DEFS.elk.yields!;
+    expect(largeGameKcal(kills)).toBe(y.meatKg * FOODS.rawMeat.kcalPerKg + (y.fatKg ?? 0) * FOODS.fat.kcalPerKg);
   });
 });
