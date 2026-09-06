@@ -2956,10 +2956,11 @@ where it took none and lives to day 148 rather than day 48, and seed
 
 Measured with fat and carbohydrate
 (`2026-09-06-survidle-fat-and-carbohydrate-design.md`). The year at
-level 20 reads 1 of 4, down from 2: seed 42 lives a whole year on an
-elk's fat, seeds 17 and 79 starve at the lean wall on days 84 and 186,
-and seed 19 freezes on day 281. The lineage stays 0 of 4 within six
-lives, and no gate week of either reading is a lean-wall week.
+level 20 reads 2 of 4: seeds 42 and 79 live a whole year on their elks'
+fat, seed 19 freezes on day 328 five weeks from the thaw, and seed 17,
+which draws no elk, starves on day 89 at the lean ceiling with non-lean
+food beside it. The lineage stays 0 of 4 within six lives, and no gate
+week of either reading is a lean-wall week.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -3666,7 +3667,7 @@ gathers, then a season on it. Survivor rows 2 to 4: the lean wall stops
 being what ends a level-20 year and a first life. Tier: Foraging 3 for
 roots, the rest a beginner's task with no rung above it. Expected: to
 move the level-20 year and the first lives past the berries, measured
-in Task 11's paragraph.
+in the spec's Measured after.
 
 Meat and fish feed nothing past the lean ceiling, so this item adds
 everything the ceiling does not touch. Each food carries a lean share
@@ -3695,19 +3696,20 @@ mandatory without the report saying so.
 **Built.** Spec `2026-09-06-survidle-fat-and-carbohydrate-design.md`,
 plan `2026-09-06-survidle-fat-and-carbohydrate.md`. Measured on the four
 reference seeds: April 4 of 4 (from 3), winter 4 of 4, the year at
-level 20 1 of 4 (from 2) - seed 42 holds a whole year on an elk's fat,
-seeds 17 and 79 starve at the lean wall on days 84 and 186, seed 19
-freezes on day 281 - and the lineage 0 of 4. No gate week is a
-lean-wall week. Findings left for the author: the list's all-day keeps
-still starve the wood keeps in autumn and the food keeps in winter by
-turns; inner bark returns 275 kcal an hour, off the reference list for
-it; the lean shares and the ceiling decide both starvations, not a
-missing source; one survivor empties a region's roots; the unexploited
-line reads a stock, not an omission, once a source is dug out rather
-than ignored; sap and seaweed never fire on the reference seeds, so
-neither is measured by the without probe; four sources each take the
-year to 0 of 4 there; and the lineage got shorter as the year got
-longer.
+level 20 2 of 4 - seeds 42 and 79 hold a whole year, seed 19 freezes on
+day 328, and seed 17, which draws no elk, starves on day 89 at the lean
+ceiling with non-lean food beside it - and the lineage 0 of 4. No gate
+week is a lean-wall week, no carcass's fat goes off, and no single
+source's removal takes the year below 1 of 4. Findings left for the
+author: the list's all-day keeps still starve the wood keeps whenever
+the larder dips under the winter's food; inner bark returns 275 kcal an
+hour, off the reference list for it; the ceiling is what a level-20
+survivor stands at daily, so whether a summer with no elk in it should
+have a third fat source is the open question; one survivor empties a
+region's roots; the unexploited line reads a stock, not an omission, and
+cannot see what rotted before the death; sap and seaweed never fire on
+the reference seeds, so neither is measured by the without probe; and
+the lineage has not moved.
 
 ## Beyond the gate: the edge of the world
 

@@ -106,9 +106,9 @@ and 79, `npm test` green at 907 tests:
 
 ### Measured after
 
-On `survidle/fat-and-carbohydrate` with the ten runner fixes below, the four
-reference seeds, `npm test` green at 955 tests. Every reading is from
-`.superpowers/sdd/2026-09-06-survidle-fat-and-carbohydrate/runs4/`.
+On `survidle/fat-and-carbohydrate` with the eleven runner fixes below, the
+four reference seeds, `npm test` green at 959 tests. Every reading is from
+`.superpowers/sdd/2026-09-06-survidle-fat-and-carbohydrate/runs5/`.
 
 The four gates, seed by seed:
 
@@ -116,23 +116,29 @@ The four gates, seed by seed:
 |---|---|---|---|---|---|
 | April, alive and fed on day 20 | pass; the life dies day 23, starved | pass; day 24, starved | pass; day 36, starved | pass; day 31, starved | **4 of 4** |
 | Winter, the stocked December camp alive on 1 March | alive | alive | alive | alive | **4 of 4** |
-| Year at level 20, alive on 1 April | day 84, starved | day 281, froze | **alive a year** | day 186, starved | **1 of 4** |
-| Lineage, a year within six lives | 23, 37, 50, 37, 80, 30 | 24, 44, 88, 19, 54, 50 | 36, 56, 47, 78, 96, 112 | 31, 55, 97, 3, 11, 106 | **0 of 4** |
+| Year at level 20, alive on 1 April | day 89, starved | day 328, froze | **alive a year** | **alive a year** | **2 of 4** |
+| Lineage, a year within six lives | 23, 37, 50, 37, 112, 225 | 24, 44, 59, 54, 54, 66 | 36, 56, 47, 76, 3, 127 | 31, 55, 206, 10, 6, 81 | **0 of 4** |
 
-Against the tables audit's main (April 3 of 4, winter 4 of 4, year 2 of 4,
-lineage 0 of 4): April and winter are at or above it, the lineage is level,
-the year is one below. Seed 42 is the first seed on this branch to live a
-whole year. The level-10 year probe reads 140, 119, 276 and 246 days.
+Level with the tables audit's main on every gate: April above it (4 against
+3), winter and the year level, the lineage level. Two seeds live the whole
+year and the lineage's longest life is 225 days. The level-10 year probe
+reads 155, 280, a whole year and 313 days, 1 of 4.
 
 **The lean ceiling is what binds, and no starvation week is a lean-wall
-week.** Lean intake over a level-20 year sits at 1,579, 1,593, 1,560 and
-1,587 kcal a day against the 1,600 ceiling on all four seeds - the survivor
-is at the wall daily - while lean-wall days read 0 of 7 at both starvation
-deaths. Both readings are true and say different things: the ceiling is
-reached every day, and the survivor always has something non-lean beside it
-to eat, so no death is the audit's lean-wall death of a body sitting beside
-meat with nothing else. What kills is that the non-lean side runs 899 to
-1,799 kcal a day where the shortfall is 400 to 1,100 (finding F4).
+week.** Lean intake over a level-20 year sits at 1,544, 1,575, 1,555 and
+1,559 kcal a day against the 1,600 ceiling on all four seeds - the survivor
+is at the wall daily - while lean-wall days read 0 of 7 at every level-20
+death and every April checkpoint. Both readings are true and say different
+things: the ceiling is reached every day, and the survivor always has
+something non-lean beside it, so no death is the audit's lean-wall death of
+a body sitting beside meat with nothing else. The non-lean side now runs
+1,036 to 2,183 kcal a day, against 899 to 1,799 before the fat was kept
+(F4).
+
+**Raw fat gone off: 0.0 kg on all four seeds.** Until the eleventh fix three
+quarters of every carcass's fat rotted at the fire - 48.8 kg of 69.2 on seed
+19, 53.7 of 65.7 on seed 42, 31.6 of 42.0 on seed 79 - and the record said
+it was rendered. It is now.
 
 Every starvation death, April, the first lives. All four die in the fourth
 or fifth week of a plain shortfall, eating 800 to 2,100 kcal a day against
@@ -147,90 +153,84 @@ a 4,100 to 4,500 burn, with lean-wall days 0 of 7 at every checkpoint:
 
 Every death, the year at level 20, and what each one names:
 
-- **Seed 17, day 84, starved, lean-wall 0 of 7.** Unexploited: roots 127.3
-  kg, pine ground reachable, oily fish read at the shore. It hunts - five
-  ptarmigan and three reindeer, 1,957 kcal a day of large game, over the
-  expert band - and takes no elk. Over its life it gathers 3,905 kcal a
-  day, eats 2,477 and burns 3,605, with lean at 1,579 and non-lean at 899.
-  The seed with no jackpot: a hunter on small and lean game, at the ceiling
-  every day and 1,100 kcal short on the side the ceiling does not touch.
-- **Seed 19, day 281, froze, lean-wall 5 of 7.** Five elk, 6,656 kcal a day
-  of large game. It cuts wood now that the larder gate shuts its hunting:
-  573 kg of firewood and 103 logs on 1 November against 45 kg and two logs
-  before the gate. It burns that through December and stands on 1 January
-  with 431,860 kcal of food and no wood at all. Its last week burns 4,809 a
-  day of which 1,997 is walking: the larder sits a hair under the gate, so
-  the hunt row is open again and the camp is out hunting in January with
-  nothing to burn. The wood side, not the food side (F2).
-- **Seed 42, alive a year.** Eight elk, 6,016 kcal a day of large game, 616
-  kg of firewood and 158 logs on 1 September, and it never falls below 329
-  kg through the winter. This is the whole chain working.
-- **Seed 79, day 186, starved, lean-wall 0 of 7.** Unexploited: roots 55.3
-  kg, spawning fish read roe at the shore. It dies on 3 October **with
-  184,205 kcal at camp, 183,095 of it dried meat**. Its last week eats 2,984
-  against a 3,491 burn with lean at the ceiling and berries, roots and
-  marrow beside it. The tables audit's finding restated in the item's own
-  terms: the ceiling holds, the survivor eats what non-lean food it has, and
-  the non-lean sources cannot find the last five hundred calories while a
-  fifth of a tonne of dried meat lies at the fire.
+- **Seed 17, day 89, starved, lean-wall 0 of 7.** Unexploited: roots 125.9
+  kg, pine ground reachable, oily fish read at the shore. Five ptarmigan and
+  four reindeer, 2,463 kcal a day of large game, over the expert band, and
+  no elk. It gathers 4,431 kcal a day, eats 2,580 and burns 3,626, with lean
+  at 1,544 and non-lean at 1,036. The seed with no jackpot: a hunter on
+  small and lean game, at the ceiling every day and a thousand kcal short on
+  the side the ceiling does not touch.
+- **Seed 19, day 328, froze, lean-wall 0 of 7.** Five elk, 4,877 kcal a day
+  of large game, eating 3,758 against a 3,828 burn with 2,183 of non-lean -
+  the best-fed of the four. It dies of cold in late February, five weeks
+  from the thaw. The wood side, not the food side (F2).
+- **Seeds 42 and 79, alive a year.** Three elk each, 3,224 and 2,507 kcal a
+  day of large game, 1,589 and 1,912 kcal a day of non-lean food. The whole
+  chain working: the hang keeps the meat, the render keeps the fat, the
+  larder gate turns the hunter into a woodcutter, and the winter is cut.
 
 kcal a day by source over the whole level-20 year, to the death:
 
 | seed | fish | snare | hunt | marrow | eggs | roe | roots | berries | gross | eaten | lean | non-lean | burn |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 17 | 871 | 251 | 1,980 | 159 | 159 | 46 | 169 | 0 | 3,905 | 2,477 | 1,579 | 899 | 3,605 |
-| 19 | 650 | 613 | 6,937 | 730 | 29 | 11 | 167 | 236 | 9,444 | 3,391 | 1,593 | 1,799 | 3,670 |
-| 42 | 309 | 705 | 6,138 | 612 | 18 | 15 | 191 | 321 | 8,362 | 2,968 | 1,560 | 1,408 | 3,216 |
-| 79 | 972 | 291 | 5,156 | 348 | 36 | 25 | 268 | 299 | 7,502 | 2,984 | 1,587 | 1,397 | 3,491 |
+| 17 | 827 | 297 | 2,485 | 202 | 150 | 43 | 172 | 0 | 4,431 | 2,580 | 1,544 | 1,036 | 3,626 |
+| 19 | 303 | 702 | 5,003 | 606 | 25 | 10 | 170 | 319 | 7,200 | 3,758 | 1,575 | 2,183 | 3,828 |
+| 42 | 251 | 792 | 3,306 | 613 | 17 | 15 | 192 | 296 | 5,536 | 3,145 | 1,555 | 1,589 | 3,245 |
+| 79 | 346 | 564 | 3,326 | 420 | 18 | 12 | 191 | 268 | 5,200 | 3,471 | 1,559 | 1,912 | 3,523 |
 
 Inner bark is zero on every seed: the row left the list (R8) and the task
 stays for hand play. Sap and seaweed are zero as before - no reference seed
 holds a birch cell in its home region and none of the four camps is on the
-sea - so neither is measured by these gates at all (F8).
+sea - so neither is measured by these gates at all (F8). The plant band is
+the handbook's three hours split across three rows, and seaweed never opens
+off the sea while eggs open only in May and June, so on most days the band
+the runner actually works is one hour of roots.
 
-The winter camp's fat: the December stock's 20 kg stands at 0.5, 6.2, 11.1
-and 0.0 kg on 1 March, so the ninety days drew 19.5, 13.8, 8.9 and 20.0 kg
-of it. Two of the four emptied it. The stocked camp begins exactly at the
-larder gate, so its hunt and fish rows are shut until the larder falls
-under, and its food on 1 March stands at 346,455 to 511,020 kcal.
+The winter camp's fat: the December stock's 20 kg stands at 11.2, 8.0, 18.4
+and 0.0 kg on 1 March, so the ninety days drew 8.8, 12.0, 1.6 and 20.0 kg of
+it. Seed 42 draws almost none, hunting and rendering its own; seed 79 empties
+it and its last week reads 6 of 7 lean-wall days, alive on 36 kg of wood. The
+stocked camp begins exactly at the larder gate, so its hunt and fish rows are
+shut until the larder falls under.
 
 The without table, `npm run year -- --without=<source>` at level 20, days
-survived by seed, against a baseline of 84, 281 (froze), a whole year, and
-186:
+survived by seed, against a baseline of 89, 328 (froze) and two whole years:
 
 | source shut | 17 | 19 | 42 | 79 | reading |
 |---|---|---|---|---|---|
-| none | 84 | 281 froze | 366 | 186 | 1 of 4 |
-| marrow | 75 | 128 | 104 | 164 | **0 of 4**; the year seed loses 262 days |
-| oilyFish | 54 | 123 | 287 | 186 | **0 of 4** |
-| roe | 51 | 135 | 357 thirst | 303 | **0 of 4** |
-| eggs | 87 | 287 froze | 366 | 258 | 1 of 4 |
-| roots | 54 | 280 | 281 | 116 | **0 of 4** |
-| bark | 84 | 281 froze | 366 | 186 | 1 of 4; identical, the row is off the list |
-| sap | 84 | 281 froze | 366 | 186 | 1 of 4; identical, the source never fires here |
-| seaweed | 84 | 281 froze | 366 | 186 | 1 of 4; identical, the source never fires here |
+| none | 89 | 328 froze | 366 | 366 | 2 of 4 |
+| marrow | 119 | 358 | 109 | 366 | 1 of 4 |
+| oilyFish | 305 froze | 293 froze | 366 | 366 | 2 of 4 |
+| roe | 51 | 366 | 366 | 366 | 3 of 4 |
+| eggs | 196 | 319 froze | 366 | 329 froze | 1 of 4 |
+| roots | 54 | 366 | 366 | 366 | 3 of 4 |
+| bark | 89 | 328 froze | 366 | 366 | 2 of 4; identical, the row is off the list |
+| sap | 89 | 328 froze | 366 | 366 | 2 of 4; identical, the source never fires here |
+| seaweed | 89 | 328 froze | 366 | 366 | 2 of 4; identical, the source never fires here |
 
-**The criterion fails on four sources.** Marrow, oily fish, roe and roots
-each take the level-20 year from 1 of 4 to 0 of 4. The instrument is weak -
-one seed reaches a year, so any source that seed leans on reads as
-mandatory - but the direction is not in doubt: with the survivor at the
-lean ceiling every day there is no slack, and every source that feeds the
-non-lean side is load-bearing. It is F4 from the other end. Finding F10.
+**No single resource is mandatory: the criterion passes.** The lowest
+reading with a source shut is 1 of 4 (marrow, eggs), never 0. Marrow and
+eggs cost a seed a year each; roe and roots cost seed 17 its summer and
+nothing else. Two seeds swing a long way in either direction (seed 17 lives
+to 305 with the oily fish shut and 89 with them open; seed 42 dies on 109
+with the marrow shut), which is the elk draw by midsummer and not the
+source: the instrument's noise is one animal, and it is why the table is
+read for a floor and not for a ranking.
 
 The kills line, level 20:
 
 | seed | kills | large game kcal a day |
 |---|---|---|
-| 17 | ptarmigan 5, reindeer 3 | 1,957 (over) |
-| 19 | squirrel 52, elk 5, mallard 69, deer 32 | 6,656 (over) |
-| 42 | hazel grouse 29, deer 22, squirrel 36, elk 8, mallard 24 | 6,016 (over) |
-| 79 | capercaillie 10, squirrel 24, deer 7, beaver 10, mallard 18, elk 2 | 3,142 (over) |
+| 17 | ptarmigan 5, reindeer 4 | 2,463 (over) |
+| 19 | squirrel 26, elk 5, deer 19, mallard 35 | 4,877 (over) |
+| 42 | hazel grouse 21, deer 21, squirrel 35, mallard 14, elk 3 | 3,224 (over) |
+| 79 | capercaillie 8, squirrel 21, deer 10, beaver 8, mallard 9, elk 3, ptarmigan 3, reindeer 1 | 2,507 (over) |
 
-The jackpot criterion passes. First hang falls on days 44, 12, 8 and 11;
-every seed that takes an elk renders its fat and dries its meat. Seed 17,
-which takes none, is the seed that starves in June - which is the criterion
-as the spec wrote it: one that does not take an autumn elk lives on fish,
-marrow and the plants or does not live.
+The jackpot criterion passes. First hang falls on days 44, 12, 8 and 11, and
+every kilo of every carcass's fat is rendered. Seed 17, which takes no elk,
+is the seed that starves in June - which is the criterion as the spec wrote
+it: one that does not take an autumn elk lives on fish, marrow and the
+plants or does not live.
 
 The runner changes, and the death or reading that asked for each:
 
@@ -259,14 +259,15 @@ The runner changes, and the death or reading that asked for each:
    79, since 275 kcal an hour is an hour taken off fishing at 420 and root
    digging at 414. Test: `tests/list.test.ts`.
 6. `b336750`, the hang grind waits for meat that will rot and waits above
-   the plant band. Seed 42 stood on 13,200 kcal of raw meat on 1 July
-   beside the rack it had built and held 890 on 1 August: first hang never.
-   The threshold is derived from raw meat's spoil hours against the lean
-   ceiling at raw meat's kcal a kilo. Test: `tests/list.test.ts`.
+   the plant band. Seed 42 stood on 13,200 kcal of raw meat on 1 July beside
+   the rack it had built and held 890 on 1 August: first hang never. The
+   threshold is derived from raw meat's spoil hours against the lean ceiling
+   at raw meat's kcal a kilo. Test: `tests/list.test.ts`.
 7. `9c52611`, a winter roots order walks to the open ice hole (ruling R5).
    `wantOpen` had opened the winter row since the roots went in and
    `resolveCell` sent the dig to the frozen bog, so it was refused every
-   winter day and never once ran. Test: `tests/roots.test.ts`.
+   winter day and never once ran. It has no gate reading of its own: no seed
+   lived to a winter dig when it landed. Test: `tests/roots.test.ts`.
 8. `9613bc8`, the hunt keep sits above the plant band and the fish keep.
    With the band capped the freed hours went to the fish keep, the same
    never-met shape, and the hunt keep under it got nine minutes to an hour
@@ -276,91 +277,105 @@ The runner changes, and the death or reading that asked for each:
    woodpile and a cold death on day 22 of the April gate. Test:
    `tests/list.test.ts`.
 9. `98512e1`, an unload that moves nothing is not a step taken. A hunt with
-   a bow keeps its arrows, so `dropEverything` can never empty its pack,
-   and the delivery branch claimed that empty unload as a step and took it
-   again every minute after. A level-20 camp on seed 19 stood at its own
-   fire for fourteen hours a day "unloading at camp": it worked 1.3 hours a
-   day for six weeks, gathered 5,645 kcal a day with an elk down on day 10,
-   ate 483 and starved on day 42. Test: `tests/intent.test.ts`.
+   a bow keeps its arrows, so `dropEverything` can never empty its pack, and
+   the delivery branch claimed that empty unload as a step and took it again
+   every minute after. A level-20 camp on seed 19 stood at its own fire for
+   fourteen hours a day "unloading at camp": it worked 1.3 hours a day for
+   six weeks, gathered 5,645 kcal a day with an elk down on day 10, ate 483
+   and starved on day 42. Test: `tests/intent.test.ts`.
 10. `d0eebce`, the hunt and the fish shut once the larder is a winter's
     worth. Seed 19 froze on day 305 with ten elk behind it, 829,835 kcal at
     camp and three logs: both rows are promises about raw food at camp,
     neither reads met while there is meat to hang, and the woodpile keeps
     beneath them never ran. The line is WINTER_FOOD_KCAL, the kcal of the
-    winter stock's own 80 kg of dried meat and 20 kg of fat, derived. Seed
-    42 goes from 69 kg of firewood and one log on 1 August to 411 kg and
-    153 logs; seed 19 from 45 kg and two logs on 1 November to 573 and 103.
-    No April life or heir comes near the line and no seed reaches it before
-    midsummer, so the pile it turns to is always the winter's. Test:
+    winter stock's own 80 kg of dried meat and 20 kg of fat, derived. No
+    April life or heir comes near it and no seed reaches it before
+    midsummer. Test: `tests/list.test.ts`.
+11. `1fb14fb`, the fat renders as a grind gated on raw fat in reach. A keep
+    of one kilo of rendered fat reads met the moment the first kilo is off
+    the fire, and camp fat is drawn only by auto-eat, last in the order, at
+    a fifth of a kilo a day - so an elk's nine to fifteen kilos of raw fat
+    sat beside the fire and rotted in three days with the row reading met.
+    Three quarters of every seed's fat went that way, 483,000 kcal on seed
+    42 in the year it lived, while this record said it was rendered. The
+    crack and hang shape, gated on TRACE_KG, no new constant. Test:
     `tests/list.test.ts`.
 
-The level-20 year in days through all ten, in order: 98/133/129/82 at the
-start of the audit, then 98/133/128/105, 91/160/158/111, 107/164/177/111,
-71/66/97/69, 71/65/82/65, 83/70/89/84, 84/43/366/186, 84/305/366/186,
-84/281/366/186. April held
-4 of 4 from the second fix on and the winter gate never moved.
+The level-20 year in days as the fixes landed: 98/133/129/82 at the start of
+the audit, then 98/133/128/105, 91/160/158/111, 107/164/177/111, 71/66/97/69,
+71/65/82/65, 83/70/89/84, 84/43/366/186, 84/305/366/186, 84/281/366/186 and
+89/328/366/366. Fix 7 has no reading of its own, for the reason given above.
+April held 4 of 4 from the second fix on and the winter gate never moved.
+The findings run F2, F3, F4, F5, F7, F8 and F11: F1 and F6 closed with fixes
+6 and 7, F10 closed with fix 11 (the without table's floor is 1 of 4, not 0),
+and there was never an F9.
 
 The findings left for the author:
 
 **F2. The food rows still outrank the woodpile whenever the larder dips.**
 The larder gate closes them at a winter's food and reopens them under it,
-and that is what let seed 42 stock 616 kg and 158 logs by 1 September. But
-the gate is a step, not a band: seed 19 burns its autumn pile, its larder
-settles a hair under the line in January, the hunt row opens again and the
-camp walks 1,997 kcal a day after game with nothing to burn. It froze on
-day 281. A hysteresis band would answer it and would be a new constant, so
-it is left. Underneath is the same shape as ever: a keep measured in food
-at camp cannot read met, and everything below it waits.
+which is what lets a seed stock 500 to 600 kg of firewood and 140 to 165
+logs by midwinter. But the gate is a step, not a band: seed 19 burns its
+autumn pile, its larder settles under the line, the hunt row opens again and
+the camp is out after game with nothing to burn. It froze on day 328, five
+weeks from the thaw. A hysteresis band would answer it and would be a new
+constant, so it is left. Underneath is the same shape as ever: a keep
+measured in food at camp cannot read met, and everything below it waits.
 
 **F3. Inner bark is worse than the hour it costs, and its season is the
 wrong half of the year.** At the handbook's own yield the strip returns
-about 275 kcal an hour against fishing's 420 and root digging's 414. The
-row is off the list and the task stays; whether the yield is wrong or the
+about 275 kcal an hour against fishing's 420 and root digging's 414. The row
+is off the list and the task stays; whether the yield is wrong or the
 April-to-July window is (a fallback belongs to the months when the water is
 iced and the ground frozen) is the author's question.
 
-**F4. The lean ceiling is what a level-20 survivor stands at, every day,
-and the non-lean side cannot fill the gap.** Lean intake sits within 40
-kcal of the 1,600 ceiling on all four seeds. Seed 79 dies on 3 October with
-183,095 kcal of dried meat at camp, eating 2,984 against a 3,491 burn; seed
-17 dies in June 1,100 kcal a day short with 899 of non-lean. The item added
-every non-lean source the brief ranked and they come to 899 to 1,799 kcal a
-day at level 20 against a 3,200 to 3,700 burn. Either the ceiling is too
-low for a working body in the north, or a carcass carries too little fat
-against its meat, or a survivor needs a fat source the item left out of
-scope (E's tallow is the named candidate). This is the item's own subject
-and the number to look at first.
+**F4. The lean ceiling is what a level-20 survivor stands at, every day.**
+Lean intake sits within 56 kcal of the 1,600 ceiling on all four seeds, in
+the year they live and the year they do not. With the fat kept the non-lean
+side reaches 1,036 to 2,183 kcal a day, and that is the difference between a
+seed that lives a year and one that does not: seed 17 at 1,036 dies in June,
+seeds 19, 42 and 79 at 1,589 to 2,183 reach February or the whole year. So
+the sources are enough when the animals are there and not otherwise, and the
+question the author is left is narrower than it was: not whether the ceiling
+is too low, but whether a survivor who draws no elk in a summer should have
+a third fat source (E's tallow is the named candidate) or should die. Two of
+the three readings the earlier record put here - that a carcass carries too
+little fat, and that the item's sources come to under 1,800 - were the
+runner throwing the fat away, and are withdrawn.
 
-**F5. Roots are close to mandatory and the stock is finite.** Shutting them
-takes seed 17 to 54 days and seed 42 to 281. A level-20 camp digs its
-regional stock out and the task refuses with "the ground is dug out"; the
-2026-09-05 ruling says a food population cannot be emptied, and the root
-stock is the one that can.
+**F5. Roots are close to mandatory for a seed with no elk, and the stock is
+finite.** Shutting them takes seed 17 from 89 days to 54 and costs the other
+three nothing. A level-20 camp digs its regional stock out and the task
+refuses with "the ground is dug out"; the 2026-09-05 ruling says a food
+population cannot be emptied, and the root stock is the one that can.
 
 **F7. The unexploited line reads a stock, not an omission.** It cannot tell
 "there were roots and the survivor ignored them" from "there were roots and
-the survivor dug 306 kcal a day of them and 127 kg were still in the
+the survivor dug 172 kcal a day of them and 126 kg were still in the
 ground", and every camp on a shore with a char in it reads "oily fish read
-at the shore" forever. If it is to keep deciding whether a death is a hole
-it wants a second half: what was taken from each source in the week before.
+at the shore" forever. It also cannot see what rotted before the death,
+which is why it never named the fat that fix 11 answered. If it is to keep
+deciding whether a death is a hole it wants a second half: what was taken
+from each source in the week before.
 
 **F8. Sap and seaweed are untested by this instrument.** Neither fires on
 any reference seed - no birch in reach, no sea camp - so both read as free
 in the without table for want of an opportunity rather than for want of
 value.
 
-**F10. Four sources are mandatory, and the criterion fails.** Marrow, oily
-fish, roe and roots each take the level-20 year from 1 of 4 to 0 of 4. With
-one seed reaching a year the instrument is weak, but the mechanism is F4: a
-survivor at the ceiling every day has no slack, so every source feeding the
-non-lean side is load-bearing. The criterion cannot pass while F4 stands.
+**F11. The lineage is the gate that has not moved.** Its lives run 3 to 225
+days and the trend gate is 0 of 4. A list that ranks hunting first suits a
+level-20 camp with a bow and a rack; an heir landing in October with an
+arrival kit is a different player, and the reference list is one list. The
+survivor ladder puts a full year at rows 4 to 6, reached by a lineage, so
+this is the gate that most wants a list of its own.
 
-**F11. The lineage got shorter as the year got longer.** Its lives run 3 to
-112 days and the trend gate is 0 of 4. A list that ranks hunting first
-suits a level-20 camp with a bow and a rack; an heir landing in October
-with an arrival kit is a different player, and the reference list is one
-list. The survivor ladder puts a full year at rows 4 to 6, reached by a
-lineage, so this is the gate that most wants a list of its own.
+**For the author's list beside F4: a hare's bone is an elk's.** `crack`
+gives MARROW_KG_PER_BONE (0.1 kg, 900 kcal) a bone whatever the animal, so a
+hare's single bone carries three quarters of its meat's calories. It is what
+section 2 wrote and Kochanski wrote "the larger bones", so it is recorded
+and not changed. Marrow is 202 to 613 kcal a day on these seeds, which is
+where it lands.
 
 ## 1. The model
 
