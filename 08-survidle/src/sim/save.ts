@@ -1,4 +1,3 @@
-import { derive, Rng } from "../rng";
 import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
@@ -8,8 +7,9 @@ import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { FAT_FULL } from "./player";
-import { newRecord } from "./record";
-import { rollName } from "./names";
+import { firstRecord } from "./newgame";
+import { sexOfName } from "./names";
+import { medianPerson } from "./person";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, Inventory, LogEntry, TaskId } from "./types";
@@ -21,17 +21,17 @@ export function awaySeconds(state: GameState): number {
   return state.awayHours * 3600;
 }
 
-export interface SaveFile { version: 6; savedAt: number; state: GameState }
+export interface SaveFile { version: 7; savedAt: number; state: GameState }
 
 export function serialize(state: GameState, now = Date.now()): string {
-  const file: SaveFile = { version: 6, savedAt: now, state };
+  const file: SaveFile = { version: 7, savedAt: now, state };
   return JSON.stringify(file);
 }
 
 export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
-    if ((file?.version !== 3 && file?.version !== 4 && file?.version !== 5 && file?.version !== 6) || !file.state || typeof file.savedAt !== "number") return null;
+    if (!(file?.version >= 3 && file?.version <= 7) || !file.state || typeof file.savedAt !== "number") return null;
     fillDefaults(file.state);
     return file as unknown as SaveFile;
   } catch {
@@ -54,7 +54,9 @@ function fillDefaults(state: GameState): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
-  state.survivors ??= [newRecord(1, rollName(new Rng(derive(state.seed, 7)), []), { year: 1, doy: state.startDoy }, 0)];
+  state.survivors ??= [firstRecord(state.seed, state.startDoy)];
+  // A record from before the person: the median survivor, with the sex its name says and a face of its own.
+  for (const s of state.survivors) s.person ??= { ...medianPerson(sexOfName(s.name.first) ?? (s.index % 2 ? "m" : "f")), face: s.index };
   state.player.known ??= {};
   state.seeps ??= {};
   for (const st of Object.values(state.regions)) {

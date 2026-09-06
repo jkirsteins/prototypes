@@ -302,7 +302,8 @@ export interface Weather {
   iceCm: number;
 }
 
-export interface LogEntry { minute: number; text: string; kind?: "bad" | "good" }
+/** A log line; `away` marks one written while nobody was watching, which the panels render by name. */
+export interface LogEntry { minute: number; text: string; kind?: "bad" | "good"; away?: true }
 
 export type DeathCause = "starved" | "froze" | "wolves" | "sickness" | "thirst" | "smoke" | "drowned" | "gaveUp";
 
@@ -337,9 +338,23 @@ export interface Died {
   after: { threshold: ThresholdId; nights: number } | null;
 }
 
+export type Grade = -2 | -1 | 0 | 1 | 2;
+export type QuirkId = "coastBorn" | "forestBorn" | "sleepsLight" | "bigEater" | "steadyByTheFire";
+/** Who the survivor is: rolled per candidate, kept on the record, read through person.ts. */
+export interface Person {
+  sex: "f" | "m";
+  axes: { strength: Grade; build: Grade; hands: Grade; eyes: Grade };
+  /** One or two, never coastBorn with forestBorn. */
+  quirks: QuirkId[];
+  /** Seeds the face; the ancestor keeps their face in the cemetery. */
+  face: number;
+}
+export interface Candidate { name: { first: string; last: string }; person: Person }
+
 /** One survivor's whole life, kept after death: the journal, the epitaph and the away report read this, not the log. */
 export interface LifeRecord {
   name: { first: string; last: string };
+  person: Person;
   index: number;
   landed: WorldDate;
   gapDays: number;

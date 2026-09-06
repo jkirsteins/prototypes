@@ -10,9 +10,10 @@ import { log } from "./log";
 import { FAT_FULL } from "./player";
 import { newRecord } from "./record";
 import { rollName } from "./names";
+import { medianPerson } from "./person";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
-import type { GameState } from "./types";
+import type { GameState, LifeRecord, Person } from "./types";
 import { seasonalMean } from "./weather";
 
 /** The stomach a survivor arrives with, in kcal. */
@@ -68,8 +69,16 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
 }
 
+/** The first survivor's record for the direct path: a name for the sex the seed rolls, and the median person unless one is given. */
+export function firstRecord(seed: number, startDoy: number, person?: Person): LifeRecord {
+  const rng = new Rng(derive(seed, 7));
+  const sex = rng.int(2) === 0 ? "f" : "m";
+  const p = person ?? medianPerson(sex);
+  return newRecord(1, rollName(rng, p.sex, []), { year: 1, doy: startDoy }, 0, p);
+}
+
 /** A fresh run: spring, an axe, the clothes on your back and a day's food. */
-export function newGame(seed: number, startDoy = START_DOY): { state: GameState; world: World } {
+export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
   // The weather opens for the season: past the thaw there is no ice and no snow.
@@ -87,7 +96,7 @@ export function newGame(seed: number, startDoy = START_DOY): { state: GameState;
     lastDay: 0,
     piles: {},
     seeps: {},
-    survivors: [newRecord(1, rollName(new Rng(derive(seed, 7)), []), { year: 1, doy: startDoy }, 0)],
+    survivors: [firstRecord(seed, startDoy, person)],
     year: 1,
     landing: null,
     spine: { fired: {}, announced: {} },

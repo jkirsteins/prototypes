@@ -14,7 +14,8 @@ import { fmtWorldDate } from "./epitaph";
 import { addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
-import { fmtName, rollName } from "./names";
+import { fmtName, rollName, sexOfName } from "./names";
+import { medianPerson } from "./person";
 import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
 import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
@@ -161,7 +162,8 @@ export function beginAgain(state: GameState, world: World): void {
   state.log = [];
   demoteFog(state);
   const cell = landingCell(world, oldCamp, state.seed, state.survivors.length + 1);
-  const name = rollName(new Rng(derive(state.seed, 500 + state.survivors.length)), state.survivors.map((s) => s.name));
+  const rng = new Rng(derive(state.seed, 500 + state.survivors.length));
+  const name = rollName(rng, rng.int(2) === 0 ? "f" : "m", state.survivors.map((s) => s.name));
   state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, name, oldCamp };
 }
 
@@ -169,7 +171,7 @@ export function beginAgain(state: GameState, world: World): void {
 export function rerollName(state: GameState): void {
   if (!state.landing) return;
   const rng = new Rng(state.rng);
-  state.landing.name = rollName(rng, [...state.survivors.map((s) => s.name), state.landing.name]);
+  state.landing.name = rollName(rng, rng.int(2) === 0 ? "f" : "m", [...state.survivors.map((s) => s.name), state.landing.name]);
   state.rng = rng.s;
 }
 
@@ -194,7 +196,7 @@ export function land(state: GameState, world: World, name = state.landing?.name)
   if (!l || !name) return;
   const last = current(state);
   const oldCamp = l.oldCamp;
-  state.survivors.push(newRecord(state.survivors.length + 1, name, l.date, l.gapDays));
+  state.survivors.push(newRecord(state.survivors.length + 1, name, l.date, l.gapDays, medianPerson(sexOfName(name.first) ?? "m")));
   newPerson(state, world, l.cell, l.region);
   state.landing = null;
   enterRegion(state, world, l.region);
