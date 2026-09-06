@@ -128,11 +128,11 @@ describe("the reference player", () => {
     // that finishes and feeds the camp afterwards - and only then the fat and carbohydrate item's
     // own gathers: eggs, roots and its cook keep, the sap tap and seaweed, all above the fish
     // keep. Inner bark and its grind are off the list; see tests/list.test.ts for why.
-    expect(tasks.slice(cook + 1, cook + 5)).toEqual(["crack:", "build:dryingRack", "build:snare", "hang:"]);
-    expect(tasks.slice(cook + 5, cook + 10)).toEqual(["eggs:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
-    expect(tasks[cook + 10]).toBe("fish:any");
-    expect(tasks[cook + 11]).toBe("berries:");
-    expect(tasks[cook + 12]).toBe("craft:bow");
+    expect(tasks.slice(cook + 1, cook + 6)).toEqual(["crack:", "build:dryingRack", "build:snare", "hang:", "hunt:any"]);
+    expect(tasks.slice(cook + 6, cook + 11)).toEqual(["eggs:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 11]).toBe("fish:any");
+    expect(tasks[cook + 12]).toBe("berries:");
+    expect(tasks[cook + 13]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
     // The rendered-fat keep sits above the two cook keeps, fat first: raw fat rots in three
@@ -140,10 +140,11 @@ describe("the reference player", () => {
     expect(tasks[spear + 4]).toBe("cook:rawFat");
     expect(tasks[spear + 5]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
-    const hunt = tasks.indexOf("hunt:any");
-    // The clothing block, then the stone restock, then the edge's whole life with the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
-    expect(tasks.slice(hunt + 1, hunt + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
-    expect(tasks.slice(hunt + 8, hunt + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
+    // The clothing block follows the arrows, then the stone restock, then the edge's whole life with
+    // the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
+    const arrows = tasks.indexOf("craft:arrows");
+    expect(tasks.slice(arrows + 1, arrows + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
+    expect(tasks.slice(arrows + 8, arrows + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
     const axe = tasks.indexOf("craft:flakedAxe");
     // The forty-snare keep sits right after the water trough, pushing the fill, melt, winter-stock and hang block one further down.
     expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
@@ -650,11 +651,13 @@ describe("wants by level", () => {
     for (const arg of ["hideCoat", "hideTrousers", "hideBoots"]) expect(wantOpen(state, world, want(arg), cal), arg).toBe(true);
   });
 
-  it("the clothing block is a needle kept like a tool, a mend grind and five garments as once jobs, right after the small-game hunt keep", () => {
+  it("the clothing block is a needle kept like a tool, a mend grind and five garments as once jobs, right after the arrows", () => {
     // The needle is a keep of one because a needle that wears out takes the mend grind with it: a once
     // job left two year seeds with the grind skipped "needs a bone needle" beside hundreds of kilos of hide.
+    // The block used to follow the small-game hunt keep; that keep moved above the plant band and the
+    // arrows, the last of the ranged kit, are what the block follows now.
     const block = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
-    const hunt = block.indexOf("hunt:any:keep:campHas");
+    const hunt = block.indexOf("craft:arrows:keep:campHas");
     expect(block.slice(hunt + 1, hunt + 8)).toEqual([
       "craft:needle:keep:campHas", "repair::grind:forever",
       "craft:hideCoat:job:once", "craft:hideTrousers:job:once", "craft:hideBoots:job:once", "craft:furHat:job:once", "craft:furMittens:job:once",

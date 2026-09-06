@@ -207,6 +207,17 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * keeps open by season in wantOpen, and a seaweed keep opens only for a
  * camp on the sea.
  *
+ * The hunt keep sits above the gathering block for its own reason. It is a
+ * promise about raw meat at camp, and a large kill meets it for days, so it
+ * is not the treadmill a fish keep is - the body eats a catch the day it
+ * lands and the keep re-opens by supper. Under the block it got nine
+ * minutes to an hour and twenty a day and three of four level-20 seeds
+ * killed nothing all summer; a hunter who takes one elk in June has its
+ * nine kilos of fat and a rack of dried meat, which no number of hours at
+ * the shore will match. The bow and the arrows stay below the fish keep,
+ * where they cost a beginner nothing: lifted with the hunt keep they took
+ * seed 19 the woodpile and a cold death on day 22 of the April gate.
+ *
  * The rack and the twenty-snare line sit above that gathering block, not
  * below it, because both are work that finishes and then feeds the camp
  * without being asked again: an hour builds the rack, a few minutes sets a
@@ -293,6 +304,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("build", { kind: "once" }, "dryingRack"),
   keep("build", 20, "snare"),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  keep("hunt", 2, "any"),
   job("eggs", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   job("roots", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("cook", 1, "roots"),
@@ -302,7 +314,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("berries", 2),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
-  keep("hunt", 2, "any"),
   keep("craft", 1, "needle"),
   { req: { task: "repair", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("craft", { kind: "once" }, "hideCoat"),

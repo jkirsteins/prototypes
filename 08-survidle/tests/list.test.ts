@@ -145,6 +145,18 @@ describe("the list after the axe", () => {
     expect(roots()).toBeDefined();
   });
 
+  it("hunts above the plant band and above the fish keep, with the bow and the arrows left below them", () => {
+    // The hunt keep is a promise about raw meat at camp and a large kill meets it for days, so
+    // it is not the treadmill a fish keep is. Under the block it got nine minutes to an hour and
+    // twenty a day and three of four level-20 seeds killed nothing all summer. The bow and the
+    // arrows stay below: lifted with it they cost seed 19 the woodpile and a cold death on day 22.
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("roots::job"));
+    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("fish:any:keep"));
+    expect(tasks.indexOf("craft:bow:keep")).toBeGreaterThan(tasks.indexOf("fish:any:keep"));
+    expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
+  });
+
   it("hangs only what the body cannot eat before it rots, and hangs it above the plant band", () => {
     // A grind is never met, so an ungated hang runs on every kilo a snare brings in: the
     // list's own record is two year seeds frozen on days 300 and 325 under one. The threshold
