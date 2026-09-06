@@ -38,7 +38,7 @@ import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootStockFor } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import { startTask } from "./tasks";
+import { seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, WorldDate } from "./types";
 
@@ -435,7 +435,8 @@ export function unexploited(state: GameState, world: World): { name: string; amo
     if (birchGround(nearestCell(state, world, birchGround))) out.push({ name: "birch sap", amount: "in its window" });
   }
 
-  const seaGround = (c: number) => watersideCell(world, c, "sea");
+  // seaweedAvailable is the seaweed task's own check (position and ice together), shared here so the two cannot drift.
+  const seaGround = (c: number) => seaweedAvailable(state, world, c);
   if (seaGround(nearestCell(state, world, seaGround))) out.push({ name: "seaweed", amount: "on the sea shore" });
 
   return out;
