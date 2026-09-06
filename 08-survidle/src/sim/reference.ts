@@ -108,9 +108,9 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * is what the opening cannot spare. Then what the knife unlocks beyond
  * the snares. The scheduler is greedy top-down, so a competent player
  * ranks eating what is already caught above catching more of it: the cook
- * keeps sit above the fish keep, and the rack job sits above the hunt-any
- * keep, right after the cook keeps - it blocks harmlessly with nothing yet
- * caught to dry. The trap follows the spear: the shore is read the day the
+ * keeps sit above the fish keep, and the rack job just under them, with the
+ * crack grind between - it waits on raw meat in reach, so a camp with
+ * nothing yet caught to dry never spends the hour. The trap follows the spear: the shore is read the day the
  * spear exists, the basket made and set, and from then on the fish keep's
  * own trips to the shore bring the trap's catch home, since a trap's fish
  * come out when you arrive at its cell as hares do at the snares - no
@@ -136,15 +136,16 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * three, and the once job alone ran out and left every year seed with no
  * arrows, no axe and a felling grind for company. Auto-eat, auto-feed
  * and auto-drink stay on, as they are for every player. Two kilos of
- * berries at camp sit with the cook keeps: in season they are the
- * cheapest kcal there is, and out of it the keep blocks harmlessly on
- * nothing ripe. Once food, the roof and water are running, the sticks and
+ * berries at camp sit under the fish keep, at the foot of the food block:
+ * in season they are the cheapest kcal there is, and out of it the keep
+ * blocks harmlessly on nothing ripe. Once food, the roof and water are running, the sticks and
  * bark the hut needs, above what the opening keeps already hold, sit
  * right before it, the trough follows the hut it needs room to stand in,
  * and the top fill keep from the opening stays as it was, the trough's
  * own fill keep a second want for the greater capacity the trough gives
- * rather than a replacement. Right after the small-game hunt keep, which
- * is the want that brings hide to camp, sits the clothing block: the bone
+ * rather than a replacement. Right after the arrows, the last of the
+ * ranged kit the hunt that brings hide to camp is worked with, sits the
+ * clothing block: the bone
  * needle as a keep of one like every other tool, since a needle that wears
  * out takes the mend grind with it, a mend grind, and the hide coat,
  * trousers and boots, the fur hat and the fur mittens as once jobs, since
@@ -156,34 +157,26 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * the hut group below it; without it every garment on every year seed was
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
- * mittens at once. Below the hut group sits the surplus loop,
- * in this order: the two winter-stock keeps, the hang grind, and the three
- * named hunts as grinds. A roof and water outrank
- * days spent chasing an elk, which is why this loop sits below the hut
- * group rather than above it. The hang grind hangs whatever raw meat sits
- * at camp while the rack has room; it sits above the named hunts because
- * a keep measured in raw meat at camp can never read met while a grind
- * above it keeps taking that meat to the rack as fast as it comes in - so
- * hunting elk, reindeer or roe deer here is a grind, not a keep, the way
- * felling is a grind and not a firewood keep. Each named hunt opens only
+ * mittens at once. Below the hut group sits the surplus loop, in this
+ * order: the two winter-stock keeps and the three named hunts as grinds. A
+ * roof and water outrank days spent chasing an elk, which is why this loop
+ * sits below the hut group rather than above it. Hunting elk, reindeer or
+ * roe deer here is a grind and not a keep, the way felling is a grind and
+ * not a firewood keep: a keep measured in raw meat at camp can never read
+ * met while the hang grind takes that meat to the rack as fast as it comes
+ * in. Each named hunt opens only
  * at its species' recommended level (wantOpen), since a competent player
  * does not walk at an elk with a stone point at level 1: elk, reindeer
  * and roe deer, listed hardest first (8, 6, 4). The two winter-stock
  * keeps, the split pile and the logs that are the stock's unsplit half,
- * sit together at the head of the loop, above the hang grind and the named
- * hunts alike. A grind is never met, and a grind above a keep starves the
- * keep: with the log keep below the hunts, camp logs never passed five
- * from 1 September and a level-20 camp froze in December beside 2.7
- * million kcal of food; with it below the hang grind, a camp taking elk
- * all autumn hung meat instead of cutting wood, and two year seeds froze
- * on days 300 and 325 with hundreds of thousands of kcal at camp and a
- * woodpile of two kilos. A survivor with a full rack and no woodpile cuts
- * wood. Both keeps open only for the season they are stocked against
- * (wantOpen): midsummer to the thaw, so a list that reaches them in April
- * or May waits rather than splitting a pile no winter yet needs, and the
- * hang grind has its old place at the head of the loop for the quarter of
- * the year - the ninety-odd days from the thaw to midsummer - that they
- * are shut.
+ * head the loop, above the named hunts. A grind is never met, and a grind
+ * above a keep starves the keep: with the log keep below the hunts, camp
+ * logs never passed five from 1 September and a level-20 camp froze in
+ * December beside 2.7 million kcal of food. A survivor with a full rack and
+ * no woodpile cuts wood. Both keeps open only for the season they are
+ * stocked against (wantOpen): midsummer to the thaw, so a list that reaches
+ * them in April or May waits rather than splitting a pile no winter yet
+ * needs.
  *
  * Inner bark is not on the list. At the handbook's own yield it is the
  * worst hour a survivor can spend: about 275 kcal an hour against fishing's
@@ -433,11 +426,9 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   if (w.req.task === "innerBark") return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
   if (w.req.task === "tapSap") return cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY;
   // Roots dig by hand April to October; outside it the ground is frozen and only an ice hole,
-  // cut and kept open with an axe, reaches the rhizomes under it. axeInReach is a proxy for
-  // that hole, not the hole itself - resolveCell walks to the nearest waterside, bog or
-  // meadow cell rather than the cut hole, so the task's own check still refuses most winter
-  // days with "an ice hole reaches the rhizomes"; the want sits skipped, at no cost, until
-  // a hole happens to be open where the walk lands.
+  // cut and kept open with an axe, reaches the rhizomes under it. An axe in reach is what keeps
+  // a hole open, so it is what opens the want, and resolveCell sends the winter dig to the hole
+  // itself rather than to the frozen bog.
   if (w.req.task === "roots") return (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY) || axeInReach(state, world);
   // Seaweed grows only on a sea shore: a camp on an inland lake never has this want to give.
   if (w.req.task === "seaweed") return regionAt(world, state.player.region).sea > 0;

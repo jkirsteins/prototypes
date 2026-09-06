@@ -155,8 +155,7 @@ function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where
 
 /**
  * The nearest cell of this region matching `pred`, by straight line then a
- * route check, `here` when none does. Lifted out of the seep branch's own
- * nearest-wet-cell search so Tasks 7 and 8 can reuse it too.
+ * route check, `here` when none does.
  */
 export function nearestCell(state: GameState, world: World, pred: (cell: number) => boolean): number {
   const here = cellOf(state, world);

@@ -1,9 +1,5 @@
 # Survidle: fat and carbohydrate
 
-**Built.** On `survidle/fat-and-carbohydrate`, commits b3b717c to HEAD,
-the plan's twelve tasks. Section 0's "Measured after" carries the final
-readings.
-
 The tables audit (`2026-09-06-survidle-tables-audit-design.md`) left one
 finding above the others: a lone survivor has no fat or carbohydrate path
 outside big game and the berry season. Meat and fish feed nothing past
@@ -620,3 +616,7 @@ Nuts and acorns (the south); honey; mushrooms, greens and shoots;
 shellfish and crayfish; smoking and the cellar (camp build-out); drying
 fish; a condition model for animals beyond the month curve; sap boiled
 down; hooks and awls from cracked bone; E's tallow.
+
+**Built.** On `survidle/fat-and-carbohydrate`, commits b3b717c to HEAD,
+the plan's twelve tasks. Section 0's "Measured after" carries the final
+readings.

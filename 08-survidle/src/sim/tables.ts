@@ -87,7 +87,7 @@ export const SOURCE_ROWS: Record<YieldSource, TableRow[]> = {
   hunt: ["hunting", "largeGame"],
   berries: ["plants"],
   kit: [],
-  // Marrow is a large-game bone's own row until Task 9 gives it a proper one.
+  // Marrow came off a hunt's bones: the hunting rows.
   marrow: ["hunting", "largeGame"],
   roe: ["fishing"],
   eggs: ["birds"],

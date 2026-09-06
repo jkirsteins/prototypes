@@ -166,9 +166,9 @@ function dryBudget(invs: Inventory[], perHour: number, dt: number, from: ItemId 
   let budget = (perHour / 60) * dt;
   for (const inv of invs) {
     if (budget <= 1e-9) break;
-    const wet = qty(inv, from);
-    if (wet <= 1e-9) continue;
-    const moved = removeItem(inv, from, Math.min(wet, budget));
+    const have = qty(inv, from);
+    if (have <= 1e-9) continue;
+    const moved = removeItem(inv, from, Math.min(have, budget));
     addItem(inv, to, moved / ratio);
     budget -= moved;
   }
