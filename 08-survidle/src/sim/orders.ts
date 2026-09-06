@@ -12,6 +12,7 @@ import { KIT_ITEMS } from "./body";
 import type { Calendar } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
+import { today } from "./ledger";
 import { normalizeOrder } from "./ladder";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
@@ -148,13 +149,22 @@ export const NIGHT_SKIP = {
  * out for the forest, the shore or the hunt in the dark, so work away from
  * camp waits for first light; the body tier's own walks (thirst, home) are
  * reflexes rather than orders and are not judged here, and a task already
- * under way finishes, since this runs only when the task slot is free. By day
- * nothing here applies.
+ * under way finishes, since this runs only when the task slot is free. Camp
+ * work runs by firelight, the camp fire or a torch in hand, and only while
+ * today's work is under the working day less the day's light, so the light
+ * hours stay free for the work that needs them: in December that is about
+ * four and a half hours of splitting, crafting and cooking in the dark and
+ * five and a half of light for the forest; in June the budget is negative
+ * and no chores run at night. By day nothing here applies: if nothing away
+ * is able to run, the chores run in the light as they always did.
  */
 export function nightSkip(state: GameState, world: World, cal: Calendar, cell: number): string | null {
   if (!cal.isNight) return null;
   const st = regionState(state, world, state.player.region);
   if (cell !== st.campCell) return NIGHT_SKIP.away;
+  if (!st.fire.lit && !state.player.torch.lit) return NIGHT_SKIP.noFire;
+  const budgetMin = (state.player.workHours - cal.daylightHours) * 60;
+  if (today(state).workMin >= budgetMin) return NIGHT_SKIP.budget;
   return null;
 }
 

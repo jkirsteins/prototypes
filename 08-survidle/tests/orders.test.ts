@@ -14,6 +14,7 @@ import {
 } from "../src/sim/orders";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { WINTER_START_DOY } from "../src/sim/year";
+import { today } from "../src/sim/ledger";
 
 const cal = calendar(0);
 
@@ -677,5 +678,62 @@ describe("the night", () => {
     expect(day.isNight).toBe(false);
     expect(chooseOrder(state, world, day)?.req.task).toBe("chop");
     expect(ordersHere(state, world)[0].skipped).toBe("");
+  });
+
+  /** 16:20 on 1 December at camp with four logs, a split keep on the list and the fire lit. */
+  function decemberChores() {
+    const { state, world } = newGame(17, WINTER_START_DOY);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "log", 4);
+    addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 60 }, deliver: "camp", where: "nearest" }, "keep");
+    state.minute = 500;
+    const night = calendar(state.minute, state.startDoy);
+    st.fire.lit = true;
+    return { state, world, st, night };
+  }
+
+  it("a split keep runs by firelight, by the camp fire or a torch, and is skipped with both out", () => {
+    const { state, world, st, night } = decemberChores();
+    expect(chooseOrder(state, world, night)?.req.task).toBe("split");
+    st.fire.lit = false;
+    expect(chooseOrder(state, world, night)).toBeNull();
+    expect(ordersHere(state, world)[0].skipped).toBe(NIGHT_SKIP.noFire);
+    state.player.torch.lit = true;
+    expect(chooseOrder(state, world, night)?.req.task).toBe("split");
+  });
+
+  it("night chores stop once today's work reaches the working day less the day's light", () => {
+    const { state, world, night } = decemberChores();
+    // 1 December has 5.4 hours of light: 4.6 hours of the ten may be done in the dark.
+    const budget = (state.player.workHours - night.daylightHours) * 60;
+    expect(budget).toBeGreaterThan(4 * 60);
+    expect(budget).toBeLessThan(5 * 60);
+    today(state).workMin = budget - 1;
+    expect(chooseOrder(state, world, night)?.req.task).toBe("split");
+    today(state).workMin = budget;
+    expect(chooseOrder(state, world, night)).toBeNull();
+    expect(ordersHere(state, world)[0].skipped).toBe(NIGHT_SKIP.budget);
+  });
+
+  it("by day the budget does not apply, and in June no chores run at night at all", () => {
+    const { state, world, night } = decemberChores();
+    today(state).workMin = (state.player.workHours - night.daylightHours) * 60;
+    state.minute = 200;
+    const day = calendar(state.minute, state.startDoy);
+    expect(day.isNight).toBe(false);
+    expect(chooseOrder(state, world, day)?.req.task).toBe("split");
+    // 21 June: 19 hours of light, so the budget is negative and the first minute of dark is already over it.
+    const june = newGame(17, 172);
+    const jst = regionState(june.state, june.world, june.state.player.region);
+    placeAt(june.state, june.world, jst.campCell);
+    addItem(pile(june.state, jst.campCell), "log", 4);
+    addOrder(june.state, june.world, { task: "split", until: { kind: "campHas", qty: 60 }, deliver: "camp", where: "nearest" }, "keep");
+    jst.fire.lit = true;
+    june.state.minute = 15 * 60;
+    const juneNight = calendar(june.state.minute, june.state.startDoy);
+    expect(juneNight.isNight).toBe(true);
+    expect(chooseOrder(june.state, june.world, juneNight)).toBeNull();
+    expect(ordersHere(june.state, june.world)[0].skipped).toBe(NIGHT_SKIP.budget);
   });
 });
