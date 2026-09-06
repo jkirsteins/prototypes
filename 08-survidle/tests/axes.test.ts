@@ -3,7 +3,9 @@ import { calendar } from "../src/sim/calendar";
 import { axeInHand, axeNear, freshTool, pile, wearTool } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
-import { check } from "../src/sim/tasks";
+import { check, fallThrough } from "../src/sim/tasks";
+import { Rng } from "../src/rng";
+import { current } from "../src/sim/record";
 
 describe("three axes", () => {
   it("prefers iron over the celt over the flaked axe in hand", () => {
@@ -62,5 +64,27 @@ describe("three axes", () => {
     placeAtSpot(state, world, state.player.region, "forest");
     const cal = calendar(state.minute, state.startDoy);
     expect(check(state, world, cal, "chop").why).toBe("needs an axe");
+  });
+});
+
+describe("the axe through the ice", () => {
+  it("is lost one time in two on a survived fall, and the record says so", () => {
+    // Rng(1) draws 0.627 then 0.003: the fall is survived (0.6 and over) and the axe goes (under 0.5).
+    const { state, world } = newGame(17);
+    const land = state.regions[state.player.region].campCell;
+    fallThrough(state, world, new Rng(1), land);
+    expect(state.dead).toBeNull();
+    expect(axeInHand(state.player)).toBeUndefined();
+    expect(current(state).events.some((e) => e.kind === "toolLost" && e.tool === "axe")).toBe(true);
+    expect(state.log.some((e) => e.text.includes("bottom"))).toBe(true);
+  });
+
+  it("stays in hand the other time", () => {
+    // Rng(5) draws 0.690 then 0.773: survived, and the axe holds.
+    const { state, world } = newGame(17);
+    const land = state.regions[state.player.region].campCell;
+    fallThrough(state, world, new Rng(5), land);
+    expect(state.dead).toBeNull();
+    expect(axeInHand(state.player)!.id).toBe("axe");
   });
 });

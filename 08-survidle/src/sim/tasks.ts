@@ -1002,6 +1002,13 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
   state.task = null;
   state.intent = null;
   log(state, "Through the ice. You crawl out soaked and shaking.", "bad");
+  // The one way an iron axe ends: one time in two the hand that went under opens.
+  const axe = axeInHand(p);
+  if (axe && rng.chance(0.5)) {
+    p.tools = p.tools.filter((t) => t !== axe);
+    record(state, { kind: "toolLost", tool: axe.id });
+    log(state, `The ${TOOLS[axe.id].name} went to the bottom and stayed there.`, "bad");
+  }
 }
 
 /**

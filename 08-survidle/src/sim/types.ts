@@ -317,6 +317,7 @@ export type LifeEventBody =
   | { kind: "built"; structure: StructureId }
   | { kind: "entered"; region: string }
   | { kind: "toolWorn"; tool: ToolId }
+  | { kind: "toolLost"; tool: ToolId }
   | { kind: "frostbite"; part: "toes" | "fingers" }
   | { kind: "storm" }
   | { kind: "repaired"; structure: StructureId }

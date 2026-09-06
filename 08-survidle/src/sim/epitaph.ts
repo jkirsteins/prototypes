@@ -6,7 +6,7 @@
  */
 import { fmtName } from "./names";
 import { SPECIES_DEFS } from "./species";
-import { STRUCTURES } from "./items";
+import { STRUCTURES, TOOLS } from "./items";
 import type { DeathCause, LifeEvent, LifeRecord, ThresholdId, WorldDate } from "./types";
 
 export const THRESHOLD_NAMES: Record<ThresholdId, string> = {
@@ -79,7 +79,8 @@ function eventLine(e: LifeEvent): string | null {
     case "firstKill": return `Day ${e.day}. First ${SPECIES_DEFS[e.species].name}.`;
     case "built": return e.structure === "snare" ? `Day ${e.day}. Set the first snare.` : `Day ${e.day}. Built the ${STRUCTURES[e.structure].name}.`;
     case "repaired": return `Day ${e.day}. Mended the ${STRUCTURES[e.structure].name}.`;
-    case "toolWorn": return `Day ${e.day}. The ${e.tool} wore out.`;
+    case "toolWorn": return `Day ${e.day}. The ${TOOLS[e.tool].name} wore out.`;
+    case "toolLost": return `Day ${e.day}. The ${TOOLS[e.tool].name} was lost.`;
     case "frostbite": return `Day ${e.day}. Lost ${e.part} to frostbite.`;
     case "storm": return `Day ${e.day}. A storm passed.`;
     case "abandoned": return null;
