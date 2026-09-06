@@ -1,8 +1,8 @@
-import { PACK_COMFORTABLE_KG } from "../units";
 import type { World } from "../world/gen";
 import { CLOTHING, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
 import { cellAt } from "../world/gen";
 import { log } from "./log";
+import { body } from "./person";
 import { cellOf } from "./position";
 import {
   type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
@@ -168,7 +168,7 @@ export function consume(invs: Inventory[], needs: Need[]): void {
 export function produce(state: GameState, world: World, item: ItemId, n: number): "pack" | "pile" {
   const p = state.player;
   const addedKg = n * ITEM_KG[item];
-  if (item !== "log" && item !== "water" && item !== "ice" && weight(p.pack) + addedKg <= PACK_COMFORTABLE_KG + 1e-9) {
+  if (item !== "log" && item !== "water" && item !== "ice" && weight(p.pack) + addedKg <= body(state).packComfortableKg + 1e-9) {
     addItem(p.pack, item, n);
     return "pack";
   }

@@ -5,6 +5,7 @@
  */
 import type { World } from "../world/gen";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
+import { body } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
@@ -272,6 +273,8 @@ export function gapInjury(state: GameState, species: Species): number {
 /** Chance a piece comes out: halved per level short of the recommendation. */
 export function craftSuccess(state: GameState, recipe: RecipeId): number {
   let f = 0.5 ** gap(state, `craft:${recipe}`);
+  // Clumsy hands spoil more of what the level would, steady hands less.
+  f = 1 - Math.min(1, (1 - f) * body(state).spoilFactor);
   // Cold hands double the chance of spoiling the piece, not halve the chance of success.
   if (state.player.frostbite.hands > 0) f = 1 - Math.min(1, 2 * (1 - f));
   // Spent past energy 20, hands fumble the piece: the spoil chance doubles the same way.
@@ -314,7 +317,7 @@ export function wearFactor(state: GameState, world: World, id: TaskId, arg?: str
     else if (share >= 0.25) f *= 0.5;
   }
   if (id === "chop" && masteryOf(state, skill, masteryKey(state, world, id)!) >= 50) f = 0;
-  return f;
+  return f * body(state).wearFactor;
 }
 
 /** Odds multiplier for a hunt or a cast: the skill's level, halved per level short of the recommendation. */
@@ -325,7 +328,7 @@ export function oddsFactor(state: GameState, species: Species): number {
   let f = (1 + skillBonus(state, skill)) * 0.5 ** gap(state, key);
   if (state.player.frostbite.hands > 0) f *= 0.5;
   if (state.player.fingers) f *= 0.9;
-  f *= 1 - 0.5 * starvation(state.player);
+  f *= 1 - 0.5 * starvation(state);
   if (!fishing) f *= huntExtras(state, species).oddsFactor;
   return f;
 }

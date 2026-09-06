@@ -1,5 +1,6 @@
 import { Rng } from "../rng";
-import { CELL_KM, PACK_HARD_KG } from "../units";
+import { CELL_KM } from "../units";
+import { body } from "./person";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
@@ -602,7 +603,7 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       let detail = `${routeKm(route).toFixed(1)} km on foot`;
       if (ice === "thin") detail += `; thin ice, ${Math.round(fallChance(state.weather.iceCm) * 100)}% per crossing cell`;
       const o2 = { ...o, duration: minutes, detail };
-      if (weight(p.pack) > PACK_HARD_KG) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
+      if (weight(p.pack) > body(state).packHardKg) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
       return o2;
     }
     case "haul": {
@@ -616,9 +617,9 @@ export function checkFresh(state: GameState, world: World, cal: Calendar, id: Ta
       const ice = walkIceMode(state, false);
       const route = findRoute(world, here, campCell, ice);
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
-      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, PACK_HARD_KG + 5), ice);
+      const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
-      return { ...o, duration: loaded + empty, detail: `${Math.min(PACK_HARD_KG, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
+      return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
     case "makeCamp": {
       const o = opt({ group: "camp", label: "Make camp here", detail: "", duration: 20 });
@@ -716,6 +717,8 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
+  // Sharp eyes find game by day; the night is the same dark for everyone.
+  if (!cal.isNight) odds *= body(state).dayOdds;
   return Math.min(0.95, odds);
 }
 
@@ -879,7 +882,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
 export function loadPack(state: GameState, world: World): void {
   const from = herePile(state, world);
   const pack = state.player.pack;
-  let room = PACK_HARD_KG - weight(pack);
+  let room = body(state).packHardKg - weight(pack);
   const items = listItems(from).sort((a, b) => ITEM_KG[b.item] - ITEM_KG[a.item]);
   for (const { item, qty: have } of items) {
     if (room <= 1e-9) break;

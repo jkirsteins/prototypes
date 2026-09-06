@@ -5,7 +5,6 @@
  * an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
-import { PACK_COMFORTABLE_KG } from "../units";
 import { findRoute, routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { eat, edible } from "./actions";
@@ -13,6 +12,7 @@ import { type Calendar, minutesUntilDawn } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { axeInHand, hasTool, pile, qty, transfer, weight } from "./inventory";
+import { body } from "./person";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES } from "./items";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -465,7 +465,7 @@ export function provision(state: GameState, world: World): void {
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
   let want = PROVISION_KG - PROVISIONS.reduce((a, f) => a + qty(pack, f), 0);
-  let room = PACK_COMFORTABLE_KG - weight(pack);
+  let room = body(state).packComfortableKg - weight(pack);
   for (const f of PROVISIONS) {
     if (want <= 1e-9 || room <= 1e-9) break;
     const kg = Math.min(want, room, qty(camp, f)) / ITEM_KG[f];

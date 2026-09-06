@@ -5,7 +5,6 @@
  * the tasks do, exactly as when a player clicks them one by one.
  */
 import type { Rng } from "../rng";
-import { PACK_HARD_KG } from "../units";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
@@ -13,6 +12,7 @@ import { bodyStep, currentNeed, orderKit, provision, provisionKit } from "./body
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
+import { body } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
@@ -317,7 +317,7 @@ function packCarries(state: GameState, world: World, it: Intent): boolean {
     return vesselLitres(state.player) > 0 && room > 0;
   }
   const pack = state.player.pack;
-  if (weight(pack) >= PACK_HARD_KG - 1e-9) return true;
+  if (weight(pack) >= body(state).packHardKg - 1e-9) return true;
   const items = yieldItems(it.task, it.arg);
   if (items === "all") return !isEmpty(pack);
   return items.some((i) => qty(pack, i) > 1e-9);
@@ -337,7 +337,7 @@ export function deliveryPending(state: GameState, world: World, it: Intent): boo
 
 function loadFull(state: GameState, it: Intent): boolean {
   if (it.cell === it.campCell) return false;
-  return weight(state.player.pack) + weight(pile(state, it.cell)) >= PACK_HARD_KG - 1e-9;
+  return weight(state.player.pack) + weight(pile(state, it.cell)) >= body(state).packHardKg - 1e-9;
 }
 
 function dropEverything(state: GameState, world: World): void {
@@ -382,7 +382,7 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   const here = cellOf(state, world);
   const pack = state.player.pack;
   // The work cell and the camp pile are the same pile when they are the same cell: nothing to load.
-  if (it.cell !== it.campCell && here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < PACK_HARD_KG - 1e-9) {
+  if (it.cell !== it.campCell && here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < body(state).packHardKg - 1e-9) {
     const before = weight(pack);
     loadPack(state, world);
     if (weight(pack) > before + 1e-9) {
@@ -468,7 +468,7 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   if (here !== src.cell) return walkTo(state, world, cal, it, src.cell, " for materials");
   // The missing things first, then whatever else fits.
   const before = weight(p.pack);
-  let room = PACK_HARD_KG - weight(p.pack);
+  let room = body(state).packHardKg - weight(p.pack);
   for (const n of missing) {
     for (const item of [n.item, n.alt].filter((x): x is ItemId => x !== undefined)) {
       const have = qty(src.inv, item);

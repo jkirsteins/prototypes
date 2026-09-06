@@ -6,6 +6,7 @@
  */
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { log } from "./log";
+import { body } from "./person";
 import { record } from "./record";
 import type { GameState, RegionState, Species } from "./types";
 
@@ -82,8 +83,13 @@ export function enterRegion(state: GameState, world: World, id: number): void {
   state.discovered[id] = VISITED;
   regionState(state, world, id);
   const r = regionAt(world, id);
-  for (const nb of r.neighbours) {
-    if (!state.discovered[nb.id]) state.discovered[nb.id] = SEEN;
+  // Sight: ordinary eyes see the neighbours from here, sharp eyes their neighbours too, poor eyes nothing beyond this ground.
+  const reach = body(state).sightReach;
+  if (reach >= 1) {
+    for (const nb of r.neighbours) {
+      if (!state.discovered[nb.id]) state.discovered[nb.id] = SEEN;
+      if (reach >= 2) for (const nb2 of regionAt(world, nb.id).neighbours) if (!state.discovered[nb2.id]) state.discovered[nb2.id] = SEEN;
+    }
   }
   // A landing happens at minute 0, so this also keeps a heir's arrival out of the record, the same as the log line.
   if (before !== VISITED && state.minute > 0) {

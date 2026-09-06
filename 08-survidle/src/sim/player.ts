@@ -1,4 +1,4 @@
-import { PACK_COMFORTABLE_KG, PACK_HARD_KG, clamp } from "../units";
+import { clamp } from "../units";
 import { cellAt, type World } from "../world/gen";
 import { speedOf } from "../world/route";
 import type { Calendar } from "./calendar";
@@ -8,11 +8,12 @@ import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { log } from "./log";
+import { body } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
-import type { DeathCause, GameState, IceMode, Player, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
@@ -100,9 +101,10 @@ const FAT_THIN = 0.75;
 const FAT_RIBS = 0.5;
 const FAT_WASTING = 0.25;
 
-/** Share of the fat reserve gone, 0 (full) to 1 (empty): what a thin body costs elsewhere. */
-export function starvation(p: Player): number {
-  return 1 - clamp(p.fat, 0, FAT_FULL) / FAT_FULL;
+/** Share of the fat reserve gone, 0 (full) to 1 (empty), against this body's own reserve: what a thin body costs elsewhere. */
+export function starvation(state: GameState): number {
+  const full = body(state).fatFull;
+  return 1 - clamp(state.player.fat, 0, full) / full;
 }
 
 /**
@@ -137,7 +139,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   felt -= 0.15 * p.wetness;
   if (stormNow(state.weather, state.minute)) felt -= 6;
   // A starving body has no insulation and no fuel: up to 4 C gone at the end of the fat.
-  felt -= 4 * starvation(p);
+  felt -= 4 * starvation(state);
   return felt;
 }
 
@@ -148,7 +150,7 @@ export function workSpeed(state: GameState, world: World): number {
   if (p.energy < 20) f *= 0.5;
   if (p.injured > 0) f *= 0.7;
   if (p.water < THIRSTY_L) f *= 0.8;
-  f *= 1 - 0.5 * starvation(p);
+  f *= 1 - 0.5 * starvation(state);
   const t = state.task;
   if (t) f *= speedFactor(state, world, t.id, t.arg);
   if (p.frostbite.feet > 0 && activityOf(state.task) === "heavy") f *= 0.7;
@@ -162,8 +164,9 @@ export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather,
   let v = 3.0;
   if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
   if (cal.isNight && !state.player.torch.lit) v *= 0.75;
-  if (loadKg > PACK_HARD_KG) v *= 0.6;
-  else if (loadKg > PACK_COMFORTABLE_KG) v *= 0.8;
+  const d = body(state);
+  if (loadKg > d.packHardKg) v *= 0.6;
+  else if (loadKg > d.packComfortableKg) v *= 0.8;
   if (state.player.energy < 20) v *= 0.7;
   if (state.player.frostbite.feet > 0) v *= 0.6;
   if (state.player.toes) v *= 0.85;
@@ -204,9 +207,9 @@ export const WARMTH_RATE = 0.012;
 /** Snow on wool never gets you wetter than damp. */
 export const SNOW_DAMP_MAX = 30;
 
-/** The warmth a body settles at for a felt temperature: 50 at comfort, 100 ten degrees above, 0 ten below. */
-export function warmthTarget(felt: number): number {
-  return clamp(50 + (felt - COMFORT_C) * 5, 0, 100);
+/** The warmth a body settles at for a felt temperature: 50 at comfort, 100 ten degrees above, 0 ten below. A heavy body's comfort sits a degree lower per grade. */
+export function warmthTarget(felt: number, comfortC = COMFORT_C): number {
+  return clamp(50 + (felt - comfortC) * 5, 0, 100);
 }
 
 /** Energy an hour: asleep, on a task, at camp work (the rest activity class on a task), and the explicit rest task. */
@@ -218,6 +221,7 @@ export const ENERGY_RATE = { sleep: 12.5, task: -7, camp: -4, rest: 6, restSpent
  */
 export function stepPlayer(state: GameState, world: World, ambient: number, dt: number): Drains {
   const p = state.player;
+  const d = body(state);
   const r = regionState(state, world, p.region);
   const w = state.weather;
   const felt = feltTemperature(state, world, ambient);
@@ -246,15 +250,17 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   if (a === "walk") {
     burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
     if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
-    if (carried(p) > PACK_COMFORTABLE_KG) burn += 50;
+    if (carried(p) > d.packComfortableKg) burn += 50;
   } else {
     burn = KCAL_PER_HOUR[a];
   }
-  const above = burn - BASE_KCAL_PER_HOUR;
+  // The base is this body's resting burn and the work above it is scaled by its strength.
+  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn;
+  burn = d.baseBurn + above;
   const afterCold = felt < 0 ? burn * COLD_BURN_FACTOR : burn;
   const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;
   creditBurn(state, {
-    base: BASE_KCAL_PER_HOUR * h,
+    base: d.baseBurn * h,
     activity: a === "walk" ? 0 : above * h,
     walk: a === "walk" ? above * h : 0,
     cold: (afterCold - burn) * h,
@@ -265,13 +271,13 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
   const kcalBurn = afterSick * h;
   const shortfall = Math.max(0, kcalBurn - p.kcal);
   p.kcal = clamp(p.kcal - kcalBurn, 0, KCAL_FULL);
-  if (shortfall > 0) p.fat = clamp(p.fat - shortfall, 0, FAT_FULL);
+  if (shortfall > 0) p.fat = clamp(p.fat - shortfall, 0, d.fatFull);
 
   const thirst = stepWater(state, felt, dt);
 
   // Warmth settles toward the level the felt temperature can hold, with a
   // time constant of about an hour and a half: a body in balance, not a leak.
-  const target = warmthTarget(felt);
+  const target = warmthTarget(felt, d.comfortC);
   p.warmth = clamp(p.warmth + (target - p.warmth) * WARMTH_RATE * dt, 0, 100);
 
   // Energy.
@@ -345,9 +351,9 @@ export function stepPlayer(state: GameState, world: World, ambient: number, dt: 
 
   // Milestone warnings, once per crossing.
   warn(state, "kcal", p.kcal <= 1200, "You are starving.");
-  warn(state, "thin", p.fat < FAT_THIN * FAT_FULL, "You are getting thin.");
-  warn(state, "ribs", p.fat < FAT_RIBS * FAT_FULL, "Your ribs show.");
-  warn(state, "wasting", p.fat < FAT_WASTING * FAT_FULL, "You are wasting away.");
+  warn(state, "thin", p.fat < FAT_THIN * d.fatFull, "You are getting thin.");
+  warn(state, "ribs", p.fat < FAT_RIBS * d.fatFull, "Your ribs show.");
+  warn(state, "wasting", p.fat < FAT_WASTING * d.fatFull, "You are wasting away.");
   warn(state, "warm", p.warmth < 30, "You are shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "You are soaked through.");
   warn(state, "tired", p.energy < 20, "You can barely lift your arms. Sleep.");

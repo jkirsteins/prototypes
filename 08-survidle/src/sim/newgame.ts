@@ -1,16 +1,14 @@
 import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
-import { WORK_HOURS_DEFAULT } from "./body";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
-import { FAT_FULL } from "./player";
 import { newRecord } from "./record";
 import { rollName } from "./names";
-import { medianPerson } from "./person";
+import { derived, medianPerson, personOf } from "./person";
 import { enterRegion } from "./regionstate";
 import { newSkills } from "./skills";
 import type { GameState, LifeRecord, Person } from "./types";
@@ -23,6 +21,7 @@ export const ARRIVAL_DRIED_MEAT_KG = 1;
 
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
+  const d = derived(personOf(state));
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   state.player = {
@@ -31,7 +30,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     region,
     health: 100,
     kcal: START_KCAL,
-    fat: FAT_FULL,
+    fat: d.fatFull,
     warmth: 80,
     energy: 90,
     wetness: 0,
@@ -54,7 +53,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     toes: false,
     fingers: false,
     berriesToday: { day: 1, kg: 0 },
-    workHours: WORK_HOURS_DEFAULT,
+    workHours: d.workHours,
     known: {},
   };
   state.task = null;

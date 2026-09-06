@@ -6,6 +6,7 @@ import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from ".
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
+import { body } from "../sim/person";
 import { intentSentence } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
@@ -29,7 +30,7 @@ import {
 import type { GameState, Garment, ItemId, LogEntry, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
-import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
+import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
@@ -76,7 +77,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.frostbite.hands > 0) tags.push(`<span class="tag bad">frostbitten hands, ${fmtDuration(p.frostbite.hands)}</span>`);
   if (p.torch.lit) tags.push(`<span class="tag">torch lit, ${fmtDuration(p.torch.minutes)}</span>`);
   if (p.kcal <= 1200) tags.push(`<span class="tag bad">starving</span>`);
-  if (starvation(p) >= 0.75) tags.push(`<span class="tag bad">wasting</span>`);
+  if (starvation(state) >= 0.75) tags.push(`<span class="tag bad">wasting</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
@@ -492,9 +493,10 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
 export function inventoryHtml(state: GameState, world: World): string {
   const p = state.player;
   const kg = weight(p.pack);
-  const over = kg > PACK_HARD_KG ? "bad" : kg > PACK_COMFORTABLE_KG ? "accent" : "";
+  const d = body(state);
+  const over = kg > d.packHardKg ? "bad" : kg > d.packComfortableKg ? "accent" : "";
   const here = herePile(state, world);
-  return `<h2>Pack <span class="r ${over}">${fmtKg(kg)} of ${PACK_COMFORTABLE_KG} kg comfortable, ${PACK_HARD_KG} kg max</span></h2>
+  return `<h2>Pack <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
 ${invRows(listItems(p.pack), "drop")}
 ${listItems(p.pack).length ? `<div style="margin-top:4px"><button class="mini" data-act="drop-all">drop everything here</button></div>` : ""}
 <h2 style="margin-top:10px">On the ground here, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
