@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fishSpecies } from "../src/sim/species";
-import { cellAt, generateWorld, hasSpot, regionAt, regionOf, speciesHere, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
+import { cellAt, generateWorld, hasSpot, neighbours, regionAt, regionOf, speciesHere, terrainOf, WORLD_H, WORLD_W } from "../src/world/gen";
 import { LATTICE_W } from "../src/world/terrain";
 import { findRoute, routeKm } from "../src/world/route";
 
@@ -56,6 +56,21 @@ describe("world generation", () => {
     expect(cellAt(world, start.campCell).region).toBe(world.start);
     expect(start.cells.length).toBeGreaterThan(100);
     expect(start.cells.length).toBeLessThan(900);
+  });
+
+  it("sites the camp on a shore cell and the shore spot beside it, on every reference seed and the three that used to fall back", () => {
+    for (const seed of [17, 19, 42, 79, 24, 35, 36]) {
+      const w = generateWorld(seed);
+      const r = regionAt(w, w.start);
+      expect(w.startRing, `seed ${seed}`).toBeLessThan(40);
+      expect(cellAt(w, r.campCell).terrain, `seed ${seed}`).not.toBe("water");
+      expect(neighbours(w, r.campCell).some((n) => cellAt(w, n).terrain === "water"), `seed ${seed} camp beside water`).toBe(true);
+      const shore = r.spots.find((s) => s.id === "shore")!;
+      expect(shore, `seed ${seed} shore spot`).toBeDefined();
+      expect(shore.cell).not.toBe(r.campCell);
+      expect(shore.km).toBeLessThanOrEqual(0.6);
+      expect(new Set(r.spots.map((s) => s.cell)).size).toBe(r.spots.length);
+    }
   });
 
   it("puts every spot on a real cell of the right ground, reachable from camp", () => {

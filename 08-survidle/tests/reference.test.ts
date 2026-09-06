@@ -34,6 +34,7 @@ import { regionState } from "../src/sim/regionstate";
 import { levelMinutes } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
+import { ICE_SHORE_CM } from "../src/sim/water";
 
 describe("the reference player", () => {
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
@@ -429,5 +430,47 @@ describe("wants by level", () => {
     expect(wantOpen(state, world, wood, calendar(0, 200))).toBe(false);
     expect(wantOpen(state, world, wood, calendar(0, 244))).toBe(true);
     expect(wantOpen(state, world, wood, calendar(0, 20))).toBe(true);
+  });
+});
+
+describe("wants by method", () => {
+  it("names the water method: the shore keep in summer, the hole keep with an axe on ice, the melt keep without one", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const shore = REFERENCE_ORDERS.find((w) => w.req.task === "fill" && w.req.arg === "shore" && w.req.until.kind === "campHas" && w.req.until.qty === 2)!;
+    const hole = REFERENCE_ORDERS.find((w) => w.req.task === "fill" && w.req.arg === "hole" && w.req.until.kind === "campHas" && w.req.until.qty === 2)!;
+    const melt = REFERENCE_ORDERS.find((w) => w.req.task === "melt" && w.req.until.kind === "campHas" && w.req.until.qty === 2)!;
+    expect(shore.kind).toBe("keep");
+    expect(hole.kind).toBe("keep");
+    expect(melt.kind).toBe("keep");
+    const cal = calendar(0, 90);
+    expect(wantOpen(state, world, shore, cal)).toBe(true);
+    expect(wantOpen(state, world, hole, cal)).toBe(false);
+    expect(wantOpen(state, world, melt, cal)).toBe(false);
+    state.weather.iceCm = ICE_SHORE_CM;
+    expect(wantOpen(state, world, shore, cal)).toBe(false);
+    expect(wantOpen(state, world, hole, cal)).toBe(true);
+    expect(wantOpen(state, world, melt, cal)).toBe(false);
+    state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
+    expect(wantOpen(state, world, hole, cal)).toBe(false);
+    expect(wantOpen(state, world, melt, cal)).toBe(true);
+    addItem(pile(state, st.campCell), "axe", 1);
+    expect(wantOpen(state, world, hole, cal)).toBe(true);
+    expect(wantOpen(state, world, melt, cal)).toBe(false);
+  });
+
+  it("keeps the pit fire lit until a hut or a hearth stands, then the fire indoors", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const pit = REFERENCE_ORDERS.find((w) => w.req.task === "light")!;
+    const indoors = REFERENCE_ORDERS.find((w) => w.req.task === "lightIndoors")!;
+    expect(pit.kind).toBe("keep");
+    expect(indoors.kind).toBe("keep");
+    const cal = calendar(0, 90);
+    expect(wantOpen(state, world, pit, cal)).toBe(true);
+    expect(wantOpen(state, world, indoors, cal)).toBe(false);
+    st.structures.turfHut = true;
+    expect(wantOpen(state, world, pit, cal)).toBe(false);
+    expect(wantOpen(state, world, indoors, cal)).toBe(true);
   });
 });

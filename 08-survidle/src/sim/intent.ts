@@ -143,6 +143,14 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   const r = regionAt(world, state.player.region);
   const st = regionState(state, world, state.player.region);
   if (HERE.has(task)) return { cell: here, note: "" };
+  if (task === "build" && arg === "seep") {
+    // The nearest wet cell with no seep on it, by straight line then a route check.
+    const cells = r.cells
+      .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
+      .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c)) return { cell: c, note: "" };
+    return { cell: here, note: "" };
+  }
   if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell, note: "" };
   if (task === "craft") {
     const needs = RECIPES[arg as RecipeId].needs;
@@ -156,14 +164,6 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     const withWater = nearestSeep(state, world, here, (s) => s.litres > 1e-9);
     const any = withWater ?? nearestSeep(state, world, here, () => true);
     return { cell: any ?? here, note: "" };
-  }
-  if (task === "build" && arg === "seep") {
-    // The nearest wet cell with no seep on it, by straight line then a route check.
-    const cells = r.cells
-      .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
-      .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c)) return { cell: c, note: "" };
-    return { cell: here, note: "" };
   }
   if (task === "setTrap") {
     const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);

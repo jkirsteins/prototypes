@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { yieldItem } from "../src/sim/intent";
-import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
+import { addItem, freshTool, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, orderMet } from "../src/sim/orders";
 import { placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { beginTask, check } from "../src/sim/tasks";
-import { vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
+import { ICE_SHORE_CM, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
 import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -173,5 +173,57 @@ describe("the fill task", () => {
     const { state, world } = waterCamp();
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
     expect(check(state, world, cal, "fill", undefined, shore.cell).label).toBe("Fetch water from the shore");
+  });
+});
+
+describe("the trip's vessel", () => {
+  it("takes up the vessel with the most room, and a partly full one only when it is alone", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    // A half full skin in hand, an empty bucket in the pile: the bucket has more room.
+    state.player.tools.push({ ...freshTool("waterskin"), litres: 2.5 });
+    addItem(pile(state, st.campCell), "barkBucket", 1);
+    expect(tripVessel(state, world)).toEqual({ id: "barkBucket", inHand: false, room: 2 });
+    expect(tripLitres(state, world)).toBeCloseTo(2.5, 5);
+    takeUpTripVessel(state, world);
+    expect(state.player.tools.some((t) => t.id === "barkBucket")).toBe(true);
+    expect(state.player.tools.find((t) => t.id === "waterskin")!.litres).toBe(2.5);
+  });
+
+  it("with only a partly full vessel anywhere, the trip takes it", () => {
+    const { state, world } = newGame(17);
+    addItem(state.player.pack, "waterskin", 1);
+    takeUp(state, world, "waterskin");
+    state.player.tools.find((t) => t.id === "waterskin")!.litres = 1;
+    expect(tripVessel(state, world)).toEqual({ id: "waterskin", inHand: true, room: 2 });
+    expect(tripLitres(state, world)).toBe(2);
+  });
+
+  it("the row's small print names the litres the trip adds and the vessel", () => {
+    const { state, world } = waterCamp();
+    const shore = spotOf(regionAt(world, state.player.region), "shore")!;
+    expect(check(state, world, cal, "fill", "shore", shore.cell).detail).toMatch(/^2\.0 l, the bark bucket/);
+  });
+});
+
+describe("the winter methods", () => {
+  it("a melt keep fills the vessel at the fire and pours it at camp, and never cuts a hole", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    state.player.tools.push(freshTool("barkBucket"));
+    addItem(pile(state, st.campCell), "barkBucket", 1);
+    state.weather.iceCm = ICE_SHORE_CM;
+    state.weather.snowCm = 20;
+    expect(yieldItem("melt")).toBe("water");
+    const o = addOrder(state, world, { task: "melt", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(o.kind).toBe("keep");
+    advance(state, world, 180);
+    expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(0);
+    expect(st.iceHole).toBeNull();
   });
 });

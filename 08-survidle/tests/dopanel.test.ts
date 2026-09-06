@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
+import { regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
-import { doHtml, filterRows, FOLD_KEY, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
-import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
+import { doHtml, filterRows, FOLD_KEY, intentGroups, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
+import { defaultChoice, defaultChoiceFor, newUiState, rowRequest } from "../src/ui/render";
 
 function memory(): Storage {
   const m = new Map<string, string>();
@@ -101,5 +102,17 @@ describe("fold and filter", () => {
     expect(open).toContain('data-until="once"');
     expect((open.match(/class="kind"/g) ?? []).length).toBe(5);
     expect(rowRequest({ ...defaultChoice(), deliver: "camp" }, "sticks", undefined).req.deliver).toBe("camp");
+  });
+});
+
+describe("the fetch rows", () => {
+  it("the Camp group lists a fetch row per method and a plain click brings the water to camp", () => {
+    const { world } = newGame(17);
+    const r = regionAt(world, world.start);
+    const camp = intentGroups(r).find((g) => g.label === "Camp")!;
+    expect(camp.items.filter((i) => i.id === "fill").map((i) => i.arg)).toEqual(["shore", "hole", "seep"]);
+    expect(rowRequest(defaultChoiceFor("fill"), "fill", "shore").req.deliver).toBe("camp");
+    expect(rowRequest(defaultChoiceFor("melt"), "melt", undefined).req.deliver).toBe("camp");
+    expect(rowRequest(defaultChoiceFor("chop"), "chop", undefined).req.deliver).toBe("leave");
   });
 });

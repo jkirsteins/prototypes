@@ -8,8 +8,9 @@ import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { ambientTemperature } from "../src/sim/weather";
-import { placeAt } from "../src/sim/position";
+import { placeAt, straightKm } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
 import { check } from "../src/sim/tasks";
 import { regionAt, spotOf } from "../src/world/gen";
@@ -249,5 +250,56 @@ describe("wet and cold", () => {
     expect(currentNeed(state, world, cal, state.intent!)).toBe("cold");
     expect(SOAKED_WETNESS).toBe(60);
     expect(WET_COLD_C).toBe(5);
+  });
+});
+
+describe("thirst and the seep", () => {
+  /** A felling run with a seep dug on the wet cell nearest the camp; null when the region has none. With `iced` the shore is shut and the axe stowed in the pack once the felling is under way, so no hole can be cut. */
+  function withSeep(litres: number, iced: boolean) {
+    const f = felling();
+    const { g, state, world } = f;
+    const p = state.player;
+    const r = regionAt(world, p.region);
+    const camp = f.st.campCell;
+    const wet = r.cells.filter((c) => seepGround(world, c) !== null).sort((a, b) => straightKm(world, camp, a) - straightKm(world, camp, b))[0];
+    if (wet === undefined) return null;
+    expect(until(g, () => state.task?.id === "chop")).toBe(true);
+    // Dug once the felling is under way, so the pool reads what the test says and not that plus hours of refill.
+    state.seeps[wet] = { class: seepGround(world, wet)!, litres, ice: 0, dug: state.minute };
+    if (iced) {
+      state.weather.iceCm = 10;
+      state.weather.snowCm = 0;
+      p.tools = p.tools.filter((t) => t.id !== "axe");
+      addItem(p.pack, "axe", 1);
+    }
+    return { ...f, p, wet };
+  }
+
+  it("thirsty with an empty seep and an open shore walks for the shore, not the seep", () => {
+    const s = withSeep(0, false);
+    if (!s) return;
+    const { state, world, p, wet } = s;
+    p.water = 0.5;
+    advance(state, world, 1);
+    expect(state.intent?.need).toBe("thirsty");
+    expect(state.route?.target).not.toBe(wet);
+  });
+
+  it("thirsty with a full seep and the shore iced with no axe in hand walks to the seep and drinks it down", () => {
+    const s = withSeep(5, true);
+    if (!s) return;
+    const { g, state, p, wet } = s;
+    p.water = 0.5;
+    expect(until(g, () => p.water > 1, 600)).toBe(true);
+    expect(state.seeps[wet].litres).toBeLessThan(5);
+  });
+
+  it("thirsty with only a trickling seep waits beside it, drinking as it fills", () => {
+    const s = withSeep(0.2, true);
+    if (!s) return;
+    const { g, state, p } = s;
+    p.water = 0.5;
+    expect(until(g, () => state.intent?.step === "waiting at the seep", 600)).toBe(true);
+    expect(until(g, () => p.water > 1, 600)).toBe(true);
   });
 });
