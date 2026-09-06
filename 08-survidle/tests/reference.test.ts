@@ -65,12 +65,12 @@ describe("the reference player", () => {
     // so a level-1 survivor's first tick never sees them; the woodpile keep and the
     // log keep gate by season and a 1 April start is closed for both; the two ice-hole
     // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
-    // and the hide coat, trousers and boots wait for Crafting 8; the rack waits for meat to dry and
-    // the hang grind for more of it than a body can eat in time; every other want is open.
+    // and the hide coat, trousers and boots wait for Crafting 8; the rack waits for meat to dry, the hang grind
+    // for more of it than a body can eat in time and the render grind for any raw fat at all; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 25);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 25);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 26);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 26);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -120,8 +120,10 @@ describe("the reference player", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
     // Fat rendered, then the two catches - the lean item and the oily one, which is eaten by
-    // nobody raw - and then the meat.
+    // nobody raw - and then the meat. The render is a grind and the three below it are keeps:
+    // a kilo of rendered fat at camp is no reason to let the rest of a carcass rot.
     expect(tasks[cook - 3]).toBe("cook:rawFat");
+    expect(REFERENCE_ORDERS[cook - 3].kind).toBe("grind");
     expect(tasks[cook - 2]).toBe("cook:fish");
     expect(tasks[cook - 1]).toBe("cook:oilyFish");
     // The bone crack, then the two standing producers - the rack and the twenty-snare line, work

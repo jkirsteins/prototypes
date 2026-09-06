@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
-import { addItem, pile } from "../src/sim/inventory";
+import { addItem, pile, TRACE_KG } from "../src/sim/inventory";
 import { AUTO_EAT_ORDER, FOODS, LEAN_KCAL_PER_DAY, SPOIL_HOURS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere, removeOrder } from "../src/sim/orders";
@@ -177,6 +177,30 @@ describe("the list after the axe", () => {
     expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("fish:any:keep"));
     expect(tasks.indexOf("craft:bow:keep")).toBeGreaterThan(tasks.indexOf("fish:any:keep"));
     expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
+  });
+
+  it("renders raw fat as a grind while any is in reach, above the cook keeps", () => {
+    // A keep of a kilo of rendered fat reads met the moment the first kilo is off the fire, and
+    // camp fat is drawn only by auto-eat, last in the order, at a fifth of a kilo a day. So an
+    // elk's raw fat sat beside the fire and rotted in three days with the row reading met: 53.7
+    // kg of 65.7 on seed 42, 483,000 kcal, in the year it lived. It is the crack and hang shape.
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks).toContain("cook:rawFat:grind");
+    expect(tasks.indexOf("cook:rawFat:grind")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const july = calendar(0, 200);
+    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(false);
+    // A trace is not stock, the way the cook's own guard reads it.
+    addItem(pile(state, st.campCell), "rawFat", TRACE_KG / 2);
+    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(false);
+    addItem(pile(state, st.campCell), "rawFat", 1);
+    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(true);
+    // The pack counts too: fat carried home from a kill is fat to render.
+    const { state: s2, world: w2 } = newGame(19);
+    expect(wantOpen(s2, w2, want("cook:rawFat:grind"), july)).toBe(false);
+    addItem(s2.player.pack, "rawFat", 1);
+    expect(wantOpen(s2, w2, want("cook:rawFat:grind"), july)).toBe(true);
   });
 
   it("hangs only what the body cannot eat before it rots, and hangs it above the plant band", () => {

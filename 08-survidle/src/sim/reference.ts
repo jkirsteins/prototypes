@@ -17,7 +17,7 @@ import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
-import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
+import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
 import { nearestCell } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, RECIPES,
@@ -311,7 +311,7 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("read", { kind: "once" }),
   job("craft", { kind: "once" }, "basketTrap", "leave"),
   job("setTrap", { kind: "once" }),
-  keep("cook", 1, "rawFat"),
+  { req: { task: "cook", arg: "rawFat", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("cook", 1, "fish"),
   keep("cook", 1, "oilyFish"),
   keep("cook", 1),
@@ -456,6 +456,16 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   if (w.req.task === "hang") {
     const st = regionState(state, world, state.player.region);
     return qty(pile(state, st.campCell), "rawMeat") + qty(state.player.pack, "rawMeat") > HANG_ABOVE_KG;
+  }
+  // Raw fat renders while there is any to render, the way the bones are cracked and the meat is
+  // hung. A keep of a kilo of rendered fat reads met the moment the first kilo is off the fire,
+  // and camp fat is drawn only by auto-eat, last in the order, at a fifth of a kilo a day - so an
+  // elk's nine to fifteen kilos of raw fat sat beside the fire and rotted in three days with the
+  // row reading met. Three quarters of every seed's fat went that way: 53.7 kg of 65.7 on seed 42,
+  // 483,000 kcal, in the year it lived.
+  if (w.req.task === "cook" && w.req.arg === "rawFat") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "rawFat") + qty(state.player.pack, "rawFat") > TRACE_KG;
   }
   // A cracked bone wants a bone: the hunts leave them at camp, and the want waits for one to sit there.
   if (w.req.task === "crack") {
