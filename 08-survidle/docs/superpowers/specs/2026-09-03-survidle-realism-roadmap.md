@@ -302,12 +302,14 @@ from its water, then the winter loop
 `2026-09-06-survidle-winter-loop.md`: six rules, five of them from a
 per-day, per-task re-reading of the year probe's last deaths rather than
 from its month lines. One sleep per night, so a spent body that has
-slept its nine-hour cap works or rests until dawn instead of sleeping
-the dark away; away work only by day, an order for another cell skipped
+slept its nine-hour cap rests until dawn instead of sleeping the dark
+away; away work only by day, an order for another cell skipped
 at night with "dark; at first light" while the thirsty and the spent
 still walk; camp chores by firelight, run by the fire or a torch and
 stopped once the day's work reaches the working day less the daylight,
-so the light stays for the forest; the spare tool at camp in reach from
+so the light stays for the forest, with lighting a fire the one camp job
+neither the dark nor the budget stops and a waiting runner keeping its
+fire before it rests; the spare tool at camp in reach from
 camp and taken up on the way out; "Mend clothing" legal only with the
 worst piece at or under 60, so a mend can stand as an order; and a list
 that restocks eight stone below its opening's once job for them, keeps
@@ -2611,8 +2613,7 @@ kit is; and the year loop's list left a met last order's load in the
 pack, which the water fetch made visible.
 
 Measured with the winter loop (`2026-09-06-survidle-winter-loop-design.md`,
-built 2026-09-06 on `winter-loop`, head 3054226, `npm test` green at 777
-tests). Its before numbers are its own section 0, read on main 22976fe
+built 2026-09-06 on `winter-loop`, `npm test` green at 782 tests). Its before numbers are its own section 0, read on main 22976fe
 with a throwaway probe that stepped the year a minute at a time and
 summed the task, the light, the position and the water loss by day,
 because the month lines had hidden the causes. Stone ran out on every
@@ -2637,53 +2638,64 @@ needle, the hide set or a mend and "Mend clothing" was legal at 99.
 
 Then the reading each rule moved. One sleep per night took the last
 week's sleep to 8.9, 8.9, 8.9 and 9.2 hours a day at level 20, 8.9, 8.0,
-8.9 and 9.4 at level 10 and 8.8, 9.1, 8.6 and 8.6 in the winter probe,
+8.9 and 9.0 at level 10 and 8.8, 9.1, 8.9 and 8.6 in the winter probe,
 with work at 5.6 to 10.1 hours against the October reading's 6.3. Away
 work by day and chores by firelight put their reasons on the rows: seed
 79's list at the year's end reads "dark; at first light" against the
-stone restock and the reindeer hunt and "the day's work waits for the
-light" against the ice-hole fill, the felling, the cooking, the fishing,
-the hang grind and the elk and deer hunts at once. The stone want and
-the tool keeps with the take-up are what moved the year: at level 20 the
-four camps end holding 11, 13, 9 and 0 stone and 8, 7, 6 and 5 arrows,
-no list reads "missing materials" against the arrows, the axe or the
-knife, no list reads "needs a fishing spear", and every survivor ends
-with an axe and a spear in hand and a spare of each in the pile. The
+reindeer hunt and "the day's work waits for the light" against the
+ice-hole fill, the splitting, the cooking, the hang grind and the elk
+and deer hunts at once, with the indoor fire want above them exempt from
+both, since a camp that could not light a fire in the dark could never
+work by one again. The stone want and the tool keeps with the take-up
+are what moved the year: no list reads "missing materials" against the
+arrows, the axe or the knife, no list reads "needs a fishing spear", and
+every survivor ends with an axe and a spear in hand and a spare of each
+in the pile, the spears at 16, 70, 19 and 13 and the drills at 94, 72,
+96 and 54 where seed 42's drill used to read 2. The
 150-log keep in place of the felling grind, placed beside the 400 kg
-woodpile keep, is what carries the fuel: seed 17 ends the year with 505
-kg of dried meat, 48 kg of firewood and 3 logs where it used to starve
-on day 68 beside 764 logs. The clothing wants moved wherever hide
-reaches camp: seeds 17 and 42 end the year in a mended hide set, the
-coat at 94 and 53 and the rest between 48 and 81, where every garment on
-every seed used to read 0. The needle keep is what holds that up, and it
+woodpile keep, is what carries the fuel: seed 17 ends the year with 3.8
+million kcal at camp, 69 kg of firewood and 2 logs where it used to
+starve on day 68 beside 764 logs. The clothing wants moved wherever hide
+reaches camp: three of the four seeds end the year in a hide set being
+mended, seed 42's reading 69, 93, 88, 78 and 78 with its repair grind
+saying "nothing worn enough to mend" beside 463 kg of hide, where every
+garment on every seed used to read 0. The needle keep is what holds that up, and it
 is a correction: as a once job the needle wore out and took the mend
 grind with it, leaving two seeds with the grind skipped "needs a bone
 needle" beside 383 and 98 kg of hide.
 
-Where it lands, measured at 3054226 on 2026-09-06. The April gate holds
-4 of 4 at day 26 and the first lives run far longer: days 41, 222, 203
-and 91 against 61, 51, 50 and 114, with two of the four reaching a
-second autumn on the arrival kit alone. The year gate goes from 0 of 4
-to 3 of 4 at level 20, seeds 17, 42 and 79 standing on 1 April a year
-after they landed where the best of them reached day 211, and seed 19
-freezing on day 268. At level 10 it goes from 0 of 4 to 3 of 4, the same
-three living the year and seed 19 starving on day 353, against 246, 85,
-186 and 186. The winter gate reads 3 of 4 against the 4 of 4 the water
-work left: seed 79 freezes on winter day 89, 0.6 km from camp, with the
-hut's fire lit, 37 logs and 35 kg of firewood at camp and 0 kcal in its
-stomach and its pack. The horizon's lowest rung is nearer its band at 4,
-3, 4 and 4 days against 0 to 2, where it read 5, 8, 7 and 5; the second
+Where it lands, measured on 2026-09-06. The April gate holds 4 of 4 at
+day 26, with first lives of 41, 220, 203 and 91 days against 61, 51, 50
+and 114, and two of the four reaching a second autumn on the arrival kit
+alone. In aggregate that is far longer, but not on every seed: seed 17
+shortens from 61 to 41 and seed 79 from 114 to 91, which is the price of
+the stone trade, since the opening's once job is met and done where the
+earlier list kept gathering, and the arrows and the axe it buys are what
+carry seeds 19 and 42 to 220 and 203. The year gate goes from 0 of 4 to
+3 of 4 at level 20, seeds 17, 42 and 79 standing on 1 April a year after
+they landed where the best of them reached day 211, and seed 19 freezing
+on day 268. At level 10 it goes from 0 of 4 to 2 of 4, seeds 17 and 42
+living the year, seed 19 starving on day 353 and seed 79 taken by wolves
+on day 343, against 246, 85, 186 and 186. The winter gate reads 3 of 4
+against the 4 of 4 the water work left: seed 79 freezes on winter day
+89, with the hut's fire lit and fuel at camp, on 771 kcal a day eaten
+against 5,188 burned. The horizon's lowest rung is nearer its band at 4,
+3, 3 and 4 days against 0 to 2, where it read 5, 8, 7 and 5; the second
 reads 9, 9, past 30 and 4 against 1 to 2, where it read 4, 11, 13 and 4;
 the top three rungs are past 30 on every seed as before, the stocked one
-in band. The trend gate is the one that did not come with the rest: 2 of
-4 against its 3 of 4, where the water work left it at 2. Seed 17's three
-lives read 41, 112 and past 251 days and seed 42's 203 and then past
-251, both holding; seed 19's read 222, 214 (wolves) and 162 and seed
-79's 91, 60 and past 251, both breaking on a middle life that landed in
-autumn. The trend now breaks where a first life is long: seed 19's 222
-days set a mark its August heir cannot match, which is the gate reading
-a stronger opening as a regression, and that is a shape to watch rather
-than a rule to change.
+in band. The December working day was measured directly, since no script
+prints work hours per month: the stocked December camp works 8.0 to 8.6
+hours a day, of which 4.3 to 5.0 are in the dark, against the 4.6 hours
+the chore budget allows and 5.4 hours of light. The trend gate is the
+one that did not come with the rest: 2 of 4 against its 3 of 4, where
+the water work left it at 2. Seed 17's three lives read 41, 113 and 162
+days and seed 42's 203 and then past 251, both holding; seed 19's read
+220, 222 and 207 and seed 79's 91, 67 and 203, both breaking on a life
+that landed out of season. The trend gate compares death days across
+lives that land in different seasons, so a long first life sets a mark
+an autumn or a May heir cannot match and a stronger opening reads to it
+as a regression; it is due to be re-derived rather than answered by a
+rule, and should not be re-litigated as a balance failure until it is.
 
 Two first measures are kept here because each is a rule about the
 reference player rather than about its subject, and both will be met
@@ -2709,13 +2721,19 @@ entry stays written in the winter loop spec's section 3, for the shelter
 ladder in 3 camp. What the December deaths do name is fuel cut in
 December rather than carried into it: felling is away work and so
 daylight work, and a five-hour day does not keep a fire. Dead wood and
-the wedges are item J's second and third steps.
+the wedges are item J's second and third steps. A third belongs beside
+them, measured on the winter loop's own withdrawn rule: a runner stops
+for the day with no firewood for the night and freezes beside the pit -
+nothing makes it stock the night's fire before its working day ends, and
+at level 1 in April that is two nights from death.
 
 Two flags for E, both read at level 20 over a full year. Fur is not
-hide: seeds 19 and 79 end with 0 kg of hide at camp against 63 and 85 kg
-of fur, so seed 19 never sews the set at all and seed 79 sews it and
-then cannot patch it, both ending at durability 0 while the repair grind
-reads "needs 0.5 kg hide". A garment or a patch that reads fur is the
+hide: seed 19 ends with 0 kg of hide at camp against 66.6 kg of fur and
+never sews the set at all, dying in wool at durability 0 with the coat,
+trousers and boots reading "missing materials"; seed 79 sews its set but
+ends on 13 kg of hide beside 69.7 kg of fur, with its trousers already
+back at 0 and the repair grind reading "needs 0.5 kg hide" whenever the
+hide runs out. A garment or a patch that reads fur is the
 gap. And the mend that now works is a flat +40 for 0.5 kg of hide with
 no tanning, wear model or layers behind it, which is the floor E is
 meant to replace.
