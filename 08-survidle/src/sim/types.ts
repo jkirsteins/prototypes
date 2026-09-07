@@ -246,8 +246,8 @@ export interface RegionState {
   trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number } | null;
   /** Clutches this region's nesting birds hold, set on 1 May and gathered down to nothing by the "Gather eggs" task; cleared on 1 July. */
   nests: number;
-  /** Kilos of shore, bog and meadow roots, set on 1 April and dug down by the "Dig roots" task; not grown back until next 1 April. */
-  roots: number;
+  /** Kilos of rhizome left in each cell that has been dug, by cell index. A cell with no entry is at the full figure its ground holds. */
+  rootCells: Record<number, number>;
   /** Taps drawn from this region's birches today, and the day number they were counted on; resets itself once the day moves on. */
   sapTaps: { day: number; n: number };
 }

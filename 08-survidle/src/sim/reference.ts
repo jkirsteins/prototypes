@@ -36,7 +36,7 @@ import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
-import { nestsFor, rootStockFor } from "./stocks";
+import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
@@ -544,18 +544,17 @@ export function unexploited(state: GameState, world: World): { name: string; amo
   const bones = qty(camp, "bone");
   if (bones > 1e-9) out.push({ name: "bones uncracked", amount: `${Math.round(bones)}` });
 
-  // Above zero and in season: nestsFor and rootStockFor confirm the region
-  // structurally supports the stock, beside the run's own depleting count.
+  // Above zero and in season: nestsFor confirms the region structurally supports
+  // the stock, beside the run's own depleting count. The roots need no such
+  // second reading - what is left is counted off the ground itself, cell by cell.
   if (cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY && st.nests > 1e-9 && nestsFor(world, st, region) > 1e-9) {
     out.push({ name: "nests", amount: `${st.nests.toFixed(1)} clutches` });
   }
 
   const rootGround = (c: number) => heathCell(world, c) || watersideCell(world, c);
-  if (
-    cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY && st.roots > 1e-9 && rootStockFor(world, region) > 1e-9 &&
-    rootGround(nearestCell(state, world, rootGround))
-  ) {
-    out.push({ name: "roots", amount: `${st.roots.toFixed(1)} kg` });
+  const rootsLeft = rootKgLeft(st, world, region);
+  if (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY && rootsLeft > 1e-9 && rootGround(nearestCell(state, world, rootGround))) {
+    out.push({ name: "roots", amount: `${rootsLeft.toFixed(1)} kg` });
   }
 
   if (cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY) {

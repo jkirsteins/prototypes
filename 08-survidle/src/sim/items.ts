@@ -93,13 +93,40 @@ export const BARK_TO_DOY = 212;
 /**
  * The Swedish handbook: cattail rhizome at 210 g of starch a kilo, reed
  * root-shoots at 5 percent, dandelion root at 23 percent, fifteen pieces
- * for the 500 kcal ration; 0.3 kg an hour in season and 0.1 through an ice
- * hole in winter, 850 kcal/kg cooked, three kilos a shore, bog or meadow
- * cell set on 1 April and not grown back inside the year.
+ * for the 500 kcal ration; 0.3 kg an hour with a digging stick in season,
+ * 0.1 through an ice hole in winter, 850 kcal/kg cooked.
+ *
+ * What a cell holds is a stand, not a ration: stand area x rhizome density
+ * x the share a digging stick lifts. RHIZOME_KG_PER_M2 is the low end of
+ * published below-ground biomass for a Phragmites or Typha stand, 1 to 3 kg
+ * dry the square metre with fresh mass about three times dry. The stand
+ * shares are coarse by design: a 10 m reed fringe along a 300 m water edge
+ * is three hundredths of a cell, the open-water margins and wet hollows of
+ * a wet cell a twentieth, and a meadow's dandelion, bistort and silverweed
+ * are far sparser than a stand - a thirtieth of the density over a tenth of
+ * the ground. ROOT_HARVEST_FRACTION is what comes up: the rest is too deep,
+ * too small, or left standing, so nine hectares never reads as every
+ * rhizome. A shore cell works out at about 810 kg, a wet one 1350, a meadow
+ * 90, against a dig of 0.3 kg an hour.
+ *
+ * ROOT_REGROWTH_SHARE of what a cell is short comes back across each
+ * growing season, 1 May to the end of September: perennial clonal rhizome
+ * rebuilds from what is left in the ground, and a coarse annual recovery is
+ * enough for ground dug by hand.
  */
 export const ROOT_KG_PER_HOUR = 0.3;
 export const ROOT_WINTER_KG_PER_HOUR = 0.1;
-export const ROOT_STOCK_KG_PER_CELL = 3;
+export const RHIZOME_KG_PER_M2 = 3;
+export const STAND_SHARE_SHORE = 0.03;
+export const STAND_SHARE_BOG = 0.05;
+export const STAND_SHARE_MEADOW = 0.1;
+export const MEADOW_ROOT_KG_PER_M2 = RHIZOME_KG_PER_M2 / 30;
+export const ROOT_HARVEST_FRACTION = 0.1;
+/** Under this share of what it holds a patch is dug over: it digs slower and the row says so. A coarse shape for a thinning stand, not a measurement. */
+export const ROOT_POOR_SHARE = 0.5;
+export const ROOT_REGROWTH_SHARE = 0.5;
+export const ROOT_GROWTH_FROM_DOY = 121;
+export const ROOT_GROWTH_TO_DOY = 273;
 export const ROOT_FROM_DOY = 90;
 export const ROOT_TO_DOY = 304;
 /**

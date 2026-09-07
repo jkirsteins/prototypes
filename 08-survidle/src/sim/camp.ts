@@ -8,7 +8,7 @@ import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight 
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, ROOT_FROM_DOY, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { noteLarder } from "./ledger";
 import { log } from "./log";
@@ -17,7 +17,7 @@ import { regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
-import { nestsFor, rootStockFor } from "./stocks";
+import { growRoots, nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean, walkableIce } from "./weather";
@@ -253,7 +253,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     }
     if (cal.dayOfYear === EGG_FROM_DOY) st.nests = nestsFor(world, st, id);
     if (cal.dayOfYear === EGG_TO_DOY + 1) st.nests = 0;
-    if (cal.dayOfYear === ROOT_FROM_DOY) st.roots = rootStockFor(world, id);
+    growRoots(st, world, cal.dayOfYear);
     const forestCells = r.forest * r.cells.length;
     st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);
   }

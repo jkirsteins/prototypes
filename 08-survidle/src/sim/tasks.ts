@@ -37,6 +37,7 @@ import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from 
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
+import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
 import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
@@ -449,12 +450,18 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "roots": {
       const ground = watersideCell(world, at) || terrain === "bog" || terrain === "meadow";
       const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
-      const rate = winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR;
-      const o = opt({ group: "gather", label: "Dig roots", detail: `${rate} kg an hour with a digging stick; cattail and reed at the water, dandelion on the meadow; cook them`, duration: 60, repeatable: true });
+      const full = rootCellFullKg(world, at);
+      const left = rootCellKg(st, world, at);
+      const factor = rootDigFactor(left, full);
+      const rate = Number(((winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR) * factor).toFixed(3));
+      const dug = `${rate} kg an hour with a digging stick; cattail and reed at the water, dandelion on the meadow; cook them`;
+      // A patch thins before it goes: the row says which it is, so the next dig is aimed at ground that still has a stand on it.
+      const detail = factor < 1 ? `dug over here, the next patch is better; ${dug}` : dug;
+      const o = opt({ group: "gather", label: "Dig roots", detail, duration: 60, repeatable: true });
       if (!ground) return { ...o, ok: false, why: "stand by the water, on the bog or on the meadow" };
       if (winter && !(watersideCell(world, at) && iceHoleOpen(state, at))) return { ...o, ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" };
       if (totalQty(invs, "stick") < 1) return { ...o, ok: false, why: "needs a stick to dig with" };
-      if (st.roots <= 1e-9) return { ...o, ok: false, why: "the ground is dug out" };
+      if (left <= TRACE_KG) return { ...o, ok: false, why: "the ground is dug out" };
       if (disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
@@ -1370,10 +1377,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "roots": {
+      const at = cellOf(state, world);
       const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
-      const rate = winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR;
-      const take = Math.min(rate * yieldFactor(state, "foraging"), st.roots);
-      st.roots -= take;
+      const left = rootCellKg(st, world, at);
+      const rate = (winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR) * rootDigFactor(left, rootCellFullKg(world, at));
+      const take = Math.min(rate * yieldFactor(state, "foraging"), left);
+      setRootCellKg(st, world, at, left - take);
       // Under Foraging 3 half of what comes up is not worth keeping.
       const kept = gap(state, "roots") > 0 ? take / 2 : take;
       if (kept < take) log(state, "{You} {dig} up as much that is not food as is.", "bad");

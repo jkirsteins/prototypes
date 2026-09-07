@@ -78,12 +78,16 @@ function fillDefaults(state: GameState): void {
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
     if (st.trap) st.trap.oilyKg ??= 0;
-    // A save older than the seasonal stocks knows neither. Zero is a real reading - a heath
-    // whose nests are gathered out, ground that is dug out - so it cannot stand for "never
-    // knew", and this function has no world to seed a real stock with. -1 says "unset" and
-    // fillPopulations, which walks the same regions with the world in hand, seeds it.
-    st.nests ??= 0;
-    st.roots ??= -1;
+    // A save older than the seasonal stocks knows no nests. Zero is a real reading - a heath
+    // whose clutches are gathered out - so it cannot stand for "never knew", and this function
+    // has no world to seed a real stock with. -1 says "unset" and fillPopulations, which walks
+    // the same regions with the world in hand, seeds it.
+    st.nests ??= -1;
+    // A region's roots were one number for the whole region once, which says nothing about
+    // which cells they came out of. It is dropped and the ground reads full: what one survivor
+    // took out of nine hectares a cell is inside a season's regrowth anyway.
+    delete (st as unknown as Record<string, unknown>).roots;
+    st.rootCells ??= {};
     st.sapTaps ??= { day: 0, n: 0 };
   }
   for (const d of state.ledger) {

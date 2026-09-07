@@ -11,14 +11,15 @@ import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
-import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
+import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
-import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_TO_DOY, STRUCTURES } from "./items";
+import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { nearestSeep, seepGround } from "./seep";
+import { rootCellFullKg, rootCellKg } from "./stocks";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
@@ -212,10 +213,13 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     // ground is frozen" every winter day, and the winter row on the list never once ran.
     const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
     if (winter && st.iceHole && watersideCell(world, st.iceHole.cell)) return { cell: st.iceHole.cell, note: "" };
-    return {
-      cell: nearestCell(state, world, (c) => watersideCell(world, c) || cellAt(world, c).terrain === "bog" || cellAt(world, c).terrain === "meadow"),
-      note: "",
-    };
+    // A patch worth digging first: a cell dug below the poor line gives up its roots slower,
+    // and the ground next to it has not been touched. Failing that, whatever is left anywhere.
+    const worth = (c: number) => rootCellKg(st, world, c) >= rootCellFullKg(world, c) * ROOT_POOR_SHARE;
+    const anyLeft = (c: number) => rootCellKg(st, world, c) > TRACE_KG;
+    const root = (c: number) => rootCellFullKg(world, c) > 0;
+    const good = (c: number) => root(c) && worth(c);
+    return { cell: nearestCell(state, world, r.cells.some(good) ? good : (c) => root(c) && anyLeft(c)), note: "" };
   }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
