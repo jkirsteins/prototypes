@@ -24,6 +24,151 @@ scheduler, the runner) and the idle curve spec (the ladder, section 2).
 The author pre-approved the item and verifies at the end; the decisions
 below are the controller's, recorded for that verification.
 
+## 0. The readings
+
+**Measured before**, at main `ef351b8` on the five reference seeds
+(17, 19, 42, 79, 45): April 5 of 5, the lives dying on days 24, 24, 33, 29
+and 38; winter 5 of 5; the year at level 20 3 of 5, with 17 frozen on day
+284 and 45 starved on day 63 with no large game in its read, and 19, 42 and
+79 a year; the lineage 1 of 5, seed 42's fifth life. There was no attention
+number to read: every morning the runner changed its list, it changed it by
+a rule in code that no order could carry.
+
+**Measured after**, at the end of the item on the same five seeds. Every
+number below is one run of one seed, and a change anywhere in the list
+moves the whole random stream, so a single seed's day is worth tens of days
+either way; the count of seeds is the reading, the day is the shape.
+
+*The four gates, seed by seed.*
+
+- **April** (from scratch, alive and fed on the derived gate day): 5 of 5.
+  The lives die on days 24 (17, starved), 22 (19, froze), 31 (42, starved),
+  36 (79, starved) and 43 (45, starved). Every one of the five reads
+  lean-wall days 0 of 7 in the week before it falls: a beginner starves
+  short of food, not short of fat, which is the April table's own shape.
+- **Winter** (the stocked December camp to 1 March): 5 of 5, every seed
+  alive on day 91.
+- **The year at level 20**: 4 of 5. Seeds 19, 42, 79 and 45 reach day 366.
+  Seed 17 starves on day 353, five lean-wall days of the last seven, with
+  345 kg of dried meat and a kilo of fat at camp and a burn of 6,912 a day
+  of which 3,535 is walking.
+- **The lineage** (a year within six lives): 4 of 5. Seeds 17 (24, 28, 153,
+  185, 241, 367+), 19 (22, 31, 65, 34, 163, 367+), 42 (31, 44, 367+) and 45
+  (43, 46, 201, 204, 367+) reach a year; seed 79 (36, 49, 273, 18, 7, 247)
+  does not. The trend gate reads 3 of 5 and is reported, not required.
+- **The year at level 10**, the rung under the conditions, run as a reading
+  and not a gate: 2 of 5. Seed 17 froze on day 302, seed 19 went to wolves
+  on day 316, seed 45 starved on day 357, and 42 and 79 reached the year.
+
+*Each death's unexploited line, with its taken half.* The April deaths:
+seed 17 "roots 9,179 kg, 109 kcal a day taken, pine ground reachable, none
+taken, oily fish read at the shore, none taken, spawning fish read roe at
+the shore, none taken"; seed 42 "nests 7.9 clutches, none taken, roots
+10,066 kg, 612 kcal a day taken, pine ground reachable, none taken, oily
+fish read at the shore, 171 kcal a day taken, spawning fish read roe at the
+shore, 171 kcal a day taken"; seed 79 "roots 7,819 kg, 350 kcal a day
+taken, pine ground reachable, none taken, spawning fish read roe at the
+shore, 29 kcal a day taken"; seed 45 "roots 19,153 kg, 393 kcal a day
+taken, pine ground reachable, none taken, spawning fish read roe at the
+shore, 43 kcal a day taken, birch sap in its window, 107 kcal a day taken".
+Seed 19 froze and has no line. The year's one death, seed 17 on day 353:
+"oily fish read at the shore, none taken", five lean-wall days of seven.
+The taken half is what the line was built for and it earns its place: the
+April roots now read as worked and not merely reachable, and the one line
+that still reads "none taken" beside a starvation is the winter shore,
+which is under ice on the day it is read.
+
+*The attention.* A level-20 camp over the year, mornings the list changed
+per month: seed 17 May 9, June to September 0, October 1, November 6,
+December 7, January to March 0 - 23 of 353; seed 19 May 9, November 1,
+December 7, the rest 0 - 17 of 366; seed 42 May 12, June 2, November 11,
+December 7, January 1, the rest 0 - 33 of 366; seed 79 May 15, June 4,
+November 7, December 2, the rest 0 - 28 of 366; seed 45 May 13, June 3,
+November 6, December 6, the rest 0 - 28 of 366. By season that is nine to
+fifteen mornings in the spring, none to four across the summer, one to
+eleven in the autumn and none to eight over the winter: 0.4 to 0.6 mornings
+a week over the year, under the target of one. A from-scratch April life
+pays a morning nearly every day - 23 of 24, 21 of 22, 30 of 31, 35 of 36,
+42 of 43 - which is what a level-1 survivor with none of the five rungs is
+worth, and it is the number the item exists to print. The lineage's lives
+walk between the two: seed 17's six lives pay 23 of 24, 27 of 28, 146 of
+153, 176 of 185, 211 of 241 and 249 of 367 mornings, and inherit, in turn,
+nothing; 65 kg of firewood; 182 kg and 80 logs; 157 kg and 58 logs; 225,885
+kcal with 331 kg and 121 logs; and 996,095 kcal with a turf hut, a water
+store and 144 logs. Seed 45's five: 42 of 43, 45 of 46, 190 of 201, 185 of
+204 and 300 of 367, inheriting nothing, then 3 kg of firewood, then 136 kg
+and 134 logs, then 356 kg and 135 logs, then 158,070 kcal with 304 kg and
+135 logs. An heir's attention falls only as its skills climb, which is the
+ladder working: what the heir inherits is a camp, not a plan.
+
+*The named runner rules' flips.* Counted row by row over a level-20 year on
+seed 42: the water method 55 of the 74 flips - the ice-hole pair given 15
+times and withdrawn 14, the shore pair given 13 and withdrawn 13 - and the
+other 19 are once-jobs dropping off as the plan finishes (the lean-to, the
+snare, the bucket, the read, the basket trap, the trap set, the rack, the
+sticks, the bark, the whetstone, the five garments) with the arrows re-given
+once. No other named rule flips at all on a level-20 year: the fire moves
+indoors once, the snow shelter shuts once, the axe stays in reach. So a
+level-20 camp's whole attention is the ice going in and out at the freeze
+and the thaw, which is why the count is nothing from June to October and
+nothing from January to March. The same tally at level 10, where the
+conditions are not earned, is the returning player made visible: the root
+row's daily count re-given 87 times, the hang grind's stock line played by
+hand 24 times, the two paced wood keeps re-given 23 times each on their
+weekly cadence, the crack grind's stock line 16 times, the render 6, the
+eggs 6, the sap 2 - and the water method's 55 unchanged beneath it all.
+
+*The runner fixes.* One, and the death that asked for it:
+
+- **The plant band's three hours are split across the rows a camp has**
+  (`fix(survidle)`, measured on seed 45). The band divided
+  `PLANT_HOURS_PER_DAY` by three rows, but the seaweed row is a sea camp's
+  and is given by a runner rule, so an inland camp never had it standing
+  and an hour of the budget went unspent every day of the year. Seed 45's
+  level-20 camp dug 273 kcal a day, under the band, and starved on the lean
+  wall on day 200 with 19 tonnes of rhizome in reach. Split across the root
+  row and the egg row, seed 45 reaches the year, the year gate goes 3 of 5
+  to 4 of 5 and the lineage 3 of 5 to 4 of 5. The count on the row is an
+  order at the condition rung, so the fix is inside the vocabulary the
+  survivor's skills have earned.
+
+*The findings left*, each one a death whose answer is not an order:
+
+- **Seed 17's level-20 year, day 353.** The camp burns 3,535 kcal a day
+  walking in March with 345 kg of dried meat at camp and the fat gone. Its
+  wood, its water and its bog are far enough from the camp cell that the
+  winter's walking is a third of the burn, so the winter-wood keeps are
+  behind their paced target all autumn and the food rows get what the wood
+  leaves. Every row on its list is the row a competent player would give;
+  what is short is the site. This is the siting lever, not the vocabulary.
+- **The fat, not the meat, is what runs out.** Both level-20 deaths this
+  item read, and the level-10 ones, end the same way: the larder holds
+  hundreds of kilos of lean and the body is capped at 1,600 kcal a day, so
+  the camp starves beside its food. The hunt keep promises meat and the
+  wood keeps promise wood, and nothing on the list promises the winter
+  stock's 20 kg of fat, because a keep's item comes from its task and no
+  task yields fat directly. A stock line can only ever shut a row, so the
+  vocabulary cannot say "hunt until the camp has its fat". That is a want
+  the ladder does not have and an item's worth of work, not a fix.
+- **The winter shore.** Seed 17's fish row is shut all year by the dried
+  meat at camp, and its oily fish - the one non-lean the shore gives - is
+  never taken. Rewriting the row's stock line to read the camp's fat
+  instead was measured and withdrawn: the fat crosses the winter stock's
+  20 kg in midsummer on that seed too, so the row shuts anyway, and the
+  seed died on day 296 rather than 323. The row needs a second catch, not
+  a second line.
+- **The heir's walk home.** Seed 79's fourth and fifth lives froze on the
+  road on days 18 and 7 with the old camp 14.6 and 14.5 km off, and both
+  read attention 0 of their days: the runner gives no order at all until it
+  reaches the region, so a heir walking a fortnight has no fire and no
+  shelter on the way. The walk is a runner construction and not an order,
+  so the fix belongs to whoever owns the walk.
+- **The ice hysteresis.** The water method flips 55 times a year around
+  `ICE_SHORE_CM`, and it is the whole of a level-20 camp's attention.
+  A band around the line rather than a line would roughly halve the number
+  the item now prints. It is a named runner rule and reads correctly as
+  attention, so it is a reading and not a defect.
+
 ## Decisions taken for the author
 
 - **Rung levels 15 and 20.** Conditions at 15, pace at 20, continuing the
