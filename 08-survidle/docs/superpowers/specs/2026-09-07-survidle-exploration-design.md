@@ -37,9 +37,9 @@ which and why that is expected rather than a regression.
   place you can name, and you can name a place you have glimpsed.
 - **Mapping is a skill, and it opens no orders.** Wayfinding is the
   seventh skill, practised by exploring and by searching a way home.
-  What it buys is speed and safety: an unpractised explorer is slower
-  and gets hurt. It never becomes a standing order, so the runner never
-  explores unasked.
+  What it buys is a wider view and safety: an unpractised explorer
+  reads less country from the same walking, and gets hurt. It never
+  becomes a standing order, so the runner never explores unasked.
 - **The journal routes.** An heir inherits the ancestor's cells as
   known-but-dim, and may walk them.
 - **When there is no known way home, walk-to-camp is unavailable and
@@ -186,16 +186,26 @@ order kinds, because it has no standing form to open. It is worth
 saying plainly here rather than leaving the next reader to wonder
 whether a rung was forgotten.
 
-What the levels buy instead is the two things practice actually buys a
-person walking unknown ground - speed and a whole ankle.
+What the levels buy instead is a wider view and a whole ankle.
 
-- **Speed, and no constant says so.** The exploration sweep picks
-  vantage points: high, open cells from which `seeFrom` opens the most
-  unknown ground. Level raises how many candidate vantages the sweep
-  weighs before choosing. A novice walks most of the region; a
-  practised eye climbs the one rock in it and has half the region in a
-  look. The saving is emergent from the sight model rather than a
-  multiplier laid on top of it.
+- **A wider view.** Level multiplies `sightRangeCells`, from 1 at level
+  1 to 1.5 at level 20 - the ladder's last rung, and so what this game
+  calls fully practised. The 1.5 is not invented: it is exactly what
+  being born sharp-eyed is worth in the same function, so practice is
+  worth as much as the quirk and no more. It applies to any walk, not
+  only to exploring: a wayfinder notices the country they pass through.
+- **Not a shorter sweep.** This was specced as speed and measured
+  instead. The sweep ends only when the region is wholly known, so its
+  length is a covering tour, and two models of "faster with level" both
+  failed on the numbers: weighing more candidate vantages made the tour
+  *longer* (a higher level walks across the region for a marginally
+  better view - median 403 to 456 minutes over twelve seeds), and the
+  wider view changes nothing (median 502 at levels 1, 10 and 20 alike),
+  because sight range is set by the canopy and a multiplier cannot beat
+  a spruce stand. So the honest claim is the one above: a wayfinder
+  learns more country from the same walking, and mapping one region
+  end to end costs what the ground costs, at every level. The measured
+  tables are in the build's task-6 report.
 - **Safety.** Unknown ground taken badly hurts you, through the
   machinery that already exists: `p.injured` in minutes, which slows
   every kind of work to 0.7 while it lasts (`player.ts:175`) and heals
