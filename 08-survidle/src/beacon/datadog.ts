@@ -23,7 +23,10 @@ const loadSdk = (): Promise<{ datadogRum: RumLike }> => import("@datadog/browser
 /**
  * `enabled` is read live at send time, not captured at init: the switch can
  * turn off after the SDK is already running, and `beforeSend` is the one
- * hook the SDK offers to stop an event that late. The referrer is blanked
+ * hook the SDK offers to stop an event that late. The switch's own action
+ * is the one event that still leaves once the switch is off, so an opt-out
+ * is the last thing seen from the id; the beacon emits it once per toggle
+ * and nothing else composes an action of that name. The referrer is blanked
  * on every event the SDK sends on its own, since it is the one field that
  * can leak what page the player came from.
  */
@@ -36,8 +39,9 @@ export function createDatadogSink(config: BeaconConfig, userId: string, global: 
       sessionSampleRate: 100, sessionReplaySampleRate: 0, trackUserInteractions: false, trackResources: false, trackLongTasks: false, defaultPrivacyLevel: "mask",
       trackAnonymousUser: false,
       beforeSend: (event: unknown) => {
-        if (!enabled()) return false;
-        const e = event as { view?: { referrer?: string } };
+        const e = event as { type?: string; action?: { target?: { name?: string } }; view?: { referrer?: string } };
+        const isSwitch = e?.type === "action" && e.action?.target?.name === "settings";
+        if (!enabled() && !isSwitch) return false;
         if (e?.view && "referrer" in e.view) e.view.referrer = "";
         return true;
       },

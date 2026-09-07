@@ -12,7 +12,12 @@ Three steps set the application up; a fourth turns the beacon on:
 - **Step 1.** Create the RUM application in the EU org, then paste its
   application id and client token into `src/beacon/config.ts`. Blank ids
   keep the beacon inert: the settings panel shows "not configured" and
-  nothing is sent.
+  nothing is sent. Done: the application is `survidle`, a browser
+  application in the EU org, created with `pup rum apps create
+  --app-type browser --name survidle` and its ids read back from
+  `pup rum apps get`; the ids are in the config file. The Datadog MCP
+  connector cannot create or read applications, `pup` can (`pup auth
+  login` first, its refresh token expires).
 - **Step 2.** Switch client IP collection off in the application's
   settings. The SDK has no switch for this; it is org-side only. Until
   this step is done, the SDK's own view and error events still carry the
@@ -20,7 +25,22 @@ Three steps set the application up; a fourth turns the beacon on:
 - **Step 3.** Confirm event retention covers more than thirty days, or
   the day 30 bar has nothing to read; confirm a funnel can take a time
   window, or fall back to the MCP's export and a short script for the
-  re-run bar.
+  re-run bar. Checked against the docs: Product Analytics keeps data 15
+  months by default, so the day 30 bar is read there and not in the RUM
+  Explorer, whose own retention is shorter; a funnel analysed by user
+  takes a conversion time frame in hours or days from the first event,
+  default one day, which is the re-run bar's window as written, and a
+  step can be a custom action with attribute filters; the retention
+  chart takes a custom action as the return event with daily buckets up
+  to a month, so the day 30 bar is the `opened` action as both the
+  cohort event and the return event, read at the day 30 bucket. One
+  more thing the docs do not say and the API does: a new application's
+  Product Analytics retention state is NONE, which the schema defines as
+  "do not store Product Analytics data", so the 15 months apply only
+  once it is set to MAX on the application's page. `pup rum apps update`
+  is refused for that field (`ProductAnalyticsAppsWrite` is a permission
+  pup's login does not request), so it is a UI step beside step 2. RUM
+  event processing is ALL from creation and needs nothing.
 - **Step 4, last.** Turn the switch on. Only after steps 1 to 3 above,
   and only once the fixes in this pass are live: the switch now stops
   every event through `beforeSend`, not only the ones the beacon composes
@@ -178,6 +198,28 @@ Run before the first invite goes out, in this order:
   survivor's name, the face sits beside the since line, and the log panel
   keeps those lines by name after "Continue".
 - `npm test` green and `npm run reference` reporting the April gate.
+
+The pass with the ids in, run on the dev server in a headless Chrome
+over CDP with `?tester=pass1`: the SDK initialised with the record's id
+as the RUM user and tester and cohort as global context, the panel note
+lost "(not configured)", and the first batch left for the EU intake at
+30 seconds with a 202. The org indexed the session and the view about
+twelve minutes after that batch, and the heartbeat action a few minutes
+later still, so a fresh application's first events are slow to appear
+and an empty explorer inside a quarter of an hour is not a broken beacon.
+On the wire every action carried tester, cohort, seed, survivor and day;
+the view carried tester and cohort. The switch found two defects, both
+fixed in that pass: the sink's `beforeSend` dropped the settings action
+along with everything else once the switch read off, and the panel ended
+the vendor session before the beacon emitted that action, so an opt-out
+left nothing. Now the opt-out flushes one batch at the click, the pending
+heartbeat, the settings action reading `on: false` and the view, and
+nothing follows while the local attention count keeps moving; the opt-in
+sends its settings action reading `on: true` and the events resume. Two
+org-side switches were still to flip after that pass, both on the
+application's page in the UI: client IP collection off (the indexed
+session already carried a city), and the Product Analytics retention
+state to MAX.
 
 The pass that closed the survivor's build ran in a headless Chrome over
 CDP at both widths: at 1440 by 900 every step above held; at 390 wide the

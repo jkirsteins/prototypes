@@ -14,9 +14,15 @@ export function mountBeaconPanel(root: HTMLElement, beacon: Beacon, configured: 
   // The id sits in its own element so a double-click selects just the id, not the whole note.
   note.innerHTML = `id <code data-beacon="id">${rec.id}</code>${rec.tester ? `, tester: ${rec.cohort}` : ""}${configured ? "" : " (not configured)"}`;
   box.addEventListener("change", () => {
-    // Before setOn: turning on must let the caller create the sink first, or
-    // setOn's own settings action has nothing to send through.
-    onToggle(box.checked);
-    beacon.setOn(box.checked, getState());
+    // Turning on: the caller creates the sink first, or setOn's own settings
+    // action has nothing to send through. Turning off: setOn first, so that
+    // action leaves before the caller ends the vendor session under it.
+    if (box.checked) {
+      onToggle(true);
+      beacon.setOn(true, getState());
+    } else {
+      beacon.setOn(false, getState());
+      onToggle(false);
+    }
   });
 }

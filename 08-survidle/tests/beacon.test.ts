@@ -261,6 +261,9 @@ describe("the Datadog sink", () => {
     expect(event.view.referrer).toBe("");
     on = false;
     expect(beforeSend({ view: { referrer: "x" } })).toBe(false);
+    expect(beforeSend({ type: "action", action: { type: "custom", target: { name: "heartbeat" } } })).toBe(false);
+    // The switch's own action is the one event that leaves after the switch is off: the opt-out is the last thing seen from the id.
+    expect(beforeSend({ type: "action", action: { type: "custom", target: { name: "settings" } } })).toBe(true);
   });
 
   it("a failed load drops the queue and the game is unaffected", async () => {
@@ -270,10 +273,11 @@ describe("the Datadog sink", () => {
     sink.emit("heartbeat", {});
   });
 
-  it("the shipped config is blank, so the beacon is inert until the author fills it", () => {
-    expect(BEACON.applicationId).toBe("");
-    expect(BEACON.clientToken).toBe("");
+  it("the shipped config names the survidle application in the EU org: a UUID, a public client token, the EU site", () => {
+    expect(BEACON.applicationId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(BEACON.clientToken).toMatch(/^pub[0-9a-f]{32}$/);
     expect(BEACON.site).toBe("datadoghq.eu");
+    expect(BEACON.service).toBe("survidle");
   });
 });
 
@@ -320,5 +324,23 @@ describe("the beacon panel", () => {
     box.checked = true;
     box.dispatchEvent(new Event("change"));
     expect(sink.sent.map((e) => e.name)).toEqual(["settings"]);
+  });
+
+  it("turning off calls setOn before onToggle, so the settings action leaves before the caller ends the vendor session", () => {
+    const { state } = newGame(17);
+    const s = memory();
+    const b = createBeacon(s, null, { ...loadRecord(s), on: true });
+    const order: string[] = [];
+    const sink = { emit: (name: string) => order.push(name), stop: () => order.push("stop") };
+    b.setSink(sink);
+    const root = document.createElement("div");
+    root.innerHTML = `<label><input type="checkbox" data-beacon="on" checked /> share anonymous play data</label><span class="dim" data-beacon="note"></span>`;
+    mountBeaconPanel(root, b, true, () => state, (on) => {
+      if (!on) sink.stop();
+    });
+    const box = root.querySelector<HTMLInputElement>("[data-beacon=on]")!;
+    box.checked = false;
+    box.dispatchEvent(new Event("change"));
+    expect(order).toEqual(["settings", "stop"]);
   });
 });
