@@ -100,6 +100,20 @@ waiting, and everything done while you are away run at the one scale.
   to the east. It is generated as you touch it, so loading is instant.
   Regions are about 4 km across; country you have never entered is fog, and
   the next valley over is dimly seen. The map is always centred on you;
+  the fog is per cell, not per region: what you have walked is a thread
+  through the black, and what the eye reaches from where you stand is a
+  blot around it. Closed spruce shows you the ground underfoot and no
+  more; open bog and a fell top show you the horizon; the dark shows you
+  nothing at all.
+- **You cannot walk where you do not know the way.** A route may not cross
+  ground you have never seen, so "walk to camp" can say there is no way
+  you know, and a heir landing in fresh country may have no way home at
+  all - only "search for a way home", which looks for one and promises
+  nothing. New country is opened by going to look: "Explore Stensund"
+  walks a sweep of that region until you have all of it. That is hours,
+  and it is always your own click - nothing explores while you are away.
+  Wayfinding is the skill behind it, and what practice buys is a wider
+  view and a whole ankle, not a faster sweep.
   zoom with the two buttons in the map's bottom left corner or the plus and
   minus keys, from the whole north on one screen down to 300 m per glyph,
   where the last two rungs hold the cell and draw it larger rather than
