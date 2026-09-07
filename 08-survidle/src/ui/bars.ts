@@ -5,6 +5,7 @@ import { regionState } from "../sim/regionstate";
 import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
 import { garmentWet } from "../sim/clothing";
 import type { GameState, SkillId } from "../sim/types";
+import { plain } from "../sim/voice";
 import { WATER_FULL } from "../sim/water";
 import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
@@ -43,7 +44,12 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   if (t) {
     const frac = Math.min(1, t.progress / t.duration);
     const left = Math.max(0, t.duration - t.progress);
-    setBar("task", frac, `${fmtDuration(left)} left (${fmtReal(left)})`, root);
+    // The bar names the step it is filling, not just the time left in it.
+    // One order runs several steps - walk there, work, walk back - and a
+    // bar that said only "12 min left" was read as the order's own, so
+    // reaching the end of it looked like the order was done.
+    const step = state.intent ? plain(state.intent.step) : "";
+    setBar("task", frac, `${step ? `${step}, ` : ""}${fmtDuration(left)} left (${fmtReal(left)})`, root);
     const pct = root.querySelector<HTMLElement>("#task-pct");
     if (pct) pct.textContent = `${Math.floor(frac * 100)}%`;
   }

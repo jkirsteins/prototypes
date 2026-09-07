@@ -570,13 +570,16 @@ describe("the Do panel", () => {
   // woodcraft is past the gates they use.
   state.skills.woodcraft.xp = levelMinutes(5);
 
-  it("has the instant buttons and one row per intent, judged at the work's place", () => {
+  it("has one row per intent, judged at the work's place", () => {
     // The roster is spread across the panes now, so the whole of it is the
     // whole of them. Nothing is hidden behind a "more" any more: a pane holds
     // a handful of rows, and what a survivor cannot do yet still shows and
     // says why.
     const html = allPanesHtml(state, world, cal);
-    expect(html).toContain('data-act="eat"');
+    // Eating lives with what is happening now, not in the Do pane: inside a
+    // pane it would vanish the moment somebody opened the Log.
+    expect(html).not.toContain('data-act="eat"');
+    expect(taskHtml(state, world, cal)).toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');

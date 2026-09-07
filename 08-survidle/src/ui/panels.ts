@@ -427,7 +427,11 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
     head = `<div class="dim">Nothing. Pick something below.</div>`;
   }
   const list = orders.length ? ordersHtml(state, world, cal) : "";
-  return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${head}${list}${asideHtml}`;
+  // Eating, drinking and feeding the fire sit with what is happening now
+  // rather than inside the Do pane: left there they would vanish the moment
+  // a player opened the Log, which is a regression on a control that
+  // answers a body's need.
+  return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${instantHtml(state, world)}${head}${list}${asideHtml}`;
 }
 
 const HORIZON_LABEL: Record<HorizonId, (state: GameState) => string> = {

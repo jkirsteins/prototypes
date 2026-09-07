@@ -12,7 +12,7 @@ import { type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionAt, type RegionDef, type World } from "../world/gen";
-import { instantHtml, masteryLine } from "./panels";
+import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
 import { PURPOSES, purposeOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
@@ -426,5 +426,5 @@ export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiStat
     : ((rows) => (rows.length ? rowsBox("main", "", rows.map((o) => intentRowHtml(o, ui, state, world)).join("")) : rowsBox("main", "nothing here yet", "")))(
         paneRows(state, world, cal, ui),
       );
-  return `${instantHtml(state, world)}${body}`;
+  return body;
 }

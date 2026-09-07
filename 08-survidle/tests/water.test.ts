@@ -16,8 +16,7 @@ import {
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
 import { ambientTemperature } from "../src/sim/weather";
-import { doHtml } from "../src/ui/dopanel";
-import { newUiState } from "../src/ui/render";
+import { taskHtml } from "../src/ui/panels";
 
 const cal = calendar(0);
 
@@ -85,7 +84,9 @@ describe("water", () => {
     advance(state, world, 1);
     const lines = state.log.filter((e) => e.text === "The shore is iced over.");
     expect(lines).toHaveLength(1);
-    const html = doHtml(state, world, calendar(state.minute), newUiState());
+    // The drink button sits with what is happening now, so the reason it is
+    // refused sits there too.
+    const html = taskHtml(state, world, calendar(state.minute));
     expect(html).toContain("iced over");
   });
 
