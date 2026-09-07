@@ -68,11 +68,22 @@ function waterThenSpruce(world: World, region: number): { vantage: number; water
 // Seed 1's start region, at solar noon on landing day (1 April): bright enough that light never gates the range.
 const NOON = calendar(300);
 
+/**
+ * Forgets everything the landing revealed. seeFrom runs at every step of the
+ * walk ashore, so on a fresh game the ground around the start is already known
+ * and a test asking what one look from one cell reveals would be reading the
+ * landing's work instead of its own.
+ */
+function forget(state: { mapped: Record<number, number> }): void {
+  state.mapped = {};
+}
+
 describe("sight", () => {
-  it("reads far over open ground and nothing through closed spruce", () => {
+  it("reads far over open ground and no further than the next cell through closed spruce", () => {
     const { state, world } = newGame(1);
     const region = state.player.region;
     const { vantage, end } = openRun(world, region, 10);
+    forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, end)).toBe(true);
 
@@ -81,9 +92,30 @@ describe("sight", () => {
     const sx = spruce % world2.w;
     const sy = Math.floor(spruce / world2.w);
     const neighbour = (sx > 0 ? sy * world2.w + (sx - 1) : sy * world2.w + (sx + 1));
+    forget(state2);
     seeFrom(state2, world2, NOON, spruce);
     expect(isKnown(state2, spruce)).toBe(true);
-    expect(isKnown(state2, neighbour)).toBe(false);
+    // The ring you stand in: a cell is 300 m and a survivor walks across it, so
+    // the ground a few strides away is known even under a canopy that shows
+    // nothing at any distance.
+    expect(isKnown(state2, neighbour)).toBe(true);
+    // And no further. The canopy still takes everything past the neighbour.
+    const beyond = sx > 0 ? sy * world2.w + (sx - 2) : sy * world2.w + (sx + 2);
+    expect(isKnown(state2, beyond)).toBe(false);
+  });
+
+  it("takes the ring away again once the light is under what walking wants", () => {
+    const { state, world } = newGame(1);
+    const spruce = spruceCell(world, state.player.region);
+    const sx = spruce % world.w;
+    const sy = Math.floor(spruce / world.w);
+    const neighbour = sx > 0 ? sy * world.w + (sx - 1) : sy * world.w + (sx + 1);
+    state.weather.clear = false;
+    const night = { ...NOON, hour: 2, dayOfYear: 334, month: 11, isNight: true, moon: 0, moonLight: 0 };
+    forget(state);
+    seeFrom(state, world, night, spruce);
+    expect(isKnown(state, spruce)).toBe(true);
+    expect(isKnown(state, neighbour)).toBe(false);
   });
 
   it("maps nothing at night", () => {
@@ -95,6 +127,7 @@ describe("sight", () => {
     // starlight there is, so illuminance floors at the dark reference and the light
     // factor is exactly 0.
     const night = { ...NOON, hour: 2, dayOfYear: 334, month: 11, isNight: true, moon: 0, moonLight: 0 };
+    forget(state);
     seeFrom(state, world, night, vantage);
     expect(isKnown(state, vantage)).toBe(true);
     expect(isKnown(state, end)).toBe(false);
@@ -104,6 +137,7 @@ describe("sight", () => {
     const { state, world } = newGame(1);
     const region = state.player.region;
     const { vantage, water, spruce, behind } = waterThenSpruce(world, region);
+    forget(state);
     seeFrom(state, world, NOON, vantage);
     expect(isKnown(state, water)).toBe(true);
     expect(isKnown(state, spruce)).toBe(true);
