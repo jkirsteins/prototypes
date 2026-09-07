@@ -336,14 +336,14 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
  * and working are the two that move; resting, sleeping and idle are told by
  * stillness, which is the reading they want anyway.
  */
-@keyframes step { from { transform: translateY(0); } to { transform: translateY(-1px); } }
-@keyframes toil { from { background-color: var(--m0); } to { background-color: var(--m1); } }
-@keyframes breathe { from { transform: scale(1); } to { transform: scale(1.04); } }
+@keyframes mood-step { from { transform: translateY(0); } to { transform: translateY(-1px); } }
+@keyframes mood-toil { from { background-color: var(--m0); } to { background-color: var(--m1); } }
+@keyframes mood-breathe { from { transform: scale(1); } to { transform: scale(1.04); } }
 
-.grid .c.mk-player.mood-walk { animation: step 1.2s ease-in-out infinite alternate; }
+.grid .c.mk-player.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
 .grid .c.mk-player.mood-work {
   --m0: #b8860b; --m1: #d8a327;
-  animation: toil 2.4s ease-in-out infinite alternate;
+  animation: mood-toil 2.4s ease-in-out infinite alternate;
 }
 /* Asleep is a dimmer @ and no motion at all; rest and idle are the plain mark. */
 .grid .c.mk-player.mood-sleep { background: #7d5c08; }
@@ -353,10 +353,10 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
    64 SVG rects redrawn from the person, and moving those every frame would
    spend the churn budget tests/churn.test.ts guards for a 24px breath. */
 .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep { transform-origin: 50% 60%; }
-.stat-face.mood-walk { animation: step 1.2s ease-in-out infinite alternate; }
-.stat-face.mood-work { animation: breathe 3.4s ease-in-out infinite alternate; }
-.stat-face.mood-rest { animation: breathe 4.6s ease-in-out infinite alternate; }
-.stat-face.mood-sleep { opacity: 0.65; animation: breathe 5.6s ease-in-out infinite alternate; }
+.stat-face.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
+.stat-face.mood-work { animation: mood-breathe 3.4s ease-in-out infinite alternate; }
+.stat-face.mood-rest { animation: mood-breathe 4.6s ease-in-out infinite alternate; }
+.stat-face.mood-sleep { opacity: 0.65; animation: mood-breathe 5.6s ease-in-out infinite alternate; }
 .stat-face.mood-idle { animation: none; }
 
 /* Somebody who has asked their system for less motion is asking this screen too. */
