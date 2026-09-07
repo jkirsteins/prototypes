@@ -9,9 +9,10 @@ import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
 import { log } from "./log";
 import { runOrders } from "./orders";
-import { atCamp } from "./position";
+import { atCamp, cellOf } from "./position";
 import { causeFrom, die, type Drains, feltTemperature, stepPlayer } from "./player";
 import { current, record } from "./record";
+import { seeFrom } from "./sight";
 import { stepSpine } from "./spine";
 import { beginTask, stepTask } from "./tasks";
 import type { GameState } from "./types";
@@ -101,6 +102,8 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     state.lastHour = hour;
     hourlyWorld(state, world, cal, ambient, rng, who);
     if (!nobody) hourlyEvents(state, world, cal, ambient, feltTemperature(state, world, ambient), rng);
+    // Standing still still sees: the eye does not need a step to look around.
+    if (!nobody) seeFrom(state, world, cal, cellOf(state, world));
   }
   if (cal.dayIndex > state.lastDay && cal.hour >= DAILY_HOUR) {
     state.lastDay = cal.dayIndex;

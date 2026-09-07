@@ -6,8 +6,10 @@
 import { CELL_KM } from "../units";
 import { type Cell, cellAt, neighbours, regionAt, regionOf, waterKindOf, type World } from "../world/gen";
 import { findRoute, routeKm } from "../world/route";
+import { calendar } from "./calendar";
 import { fearsFell } from "./fears";
 import { enterRegion, VISITED } from "./regionstate";
+import { seeFrom } from "./sight";
 import { walkableIce } from "./weather";
 import type { GameState, IceMode, SpotId, Terrain } from "./types";
 
@@ -41,6 +43,7 @@ export function placeAt(state: GameState, world: World, idx: number): void {
   state.player.x = c.x;
   state.player.y = c.y;
   setRegion(state, world, regionOf(world, idx % world.w, Math.floor(idx / world.w)));
+  seeFrom(state, world, calendar(state.minute, state.startDoy), idx);
 }
 
 /** Records a change of region, discovering it on first entry. */

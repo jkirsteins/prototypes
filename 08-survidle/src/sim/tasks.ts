@@ -38,6 +38,7 @@ import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, split
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
+import { seeFrom } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
 import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
@@ -1312,6 +1313,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
       p.x = next.x;
       p.y = next.y;
       setRegion(state, world, cellAt(world, cell).region);
+      seeFrom(state, world, cal, cell);
       route.walked.push(route.path.shift()!);
       km -= distKm;
       state.stats.km += distKm;
