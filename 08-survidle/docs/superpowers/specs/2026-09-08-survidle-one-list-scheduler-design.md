@@ -88,7 +88,9 @@ judging every row afresh so no row shows a stale reason. Its return type
 changes from `{ chosen, stalling }` to `{ chosen, blockedBy }`, where
 `blockedBy` is only ever a pinned row. `stallingOrder` becomes
 `blockingOrder` and keeps its callers (the player script reads it to know
-the list needs an answer).
+the list needs an answer). `waitingLine` (`src/sim/orders.ts:510`), which
+turns that judgement into the words on a row, keeps its shape and swaps
+"held up by" onto the pinned row.
 
 The `intentMode(...) === "hand"` test inside `judgeOrders`, which is what
 makes a once order stall the list today, is deleted. Nothing about a row's
@@ -96,7 +98,7 @@ makes a once order stall the list today, is deleted. Nothing about a row's
 
 ## 2. Pre-emption, and why it is cheap
 
-`runOrders` (`src/sim/orders.ts:517`) returns on its first line when
+`runOrders` (`src/sim/orders.ts:541`) returns on its first line when
 `state.task` is set, so today a row dragged to the top waits for the
 current chunk to end - which `decideAgain` exists to work around, by
 setting the live task aside whenever the player edits the list.
