@@ -23,14 +23,14 @@ import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { illuminance, lightWord } from "../sim/light";
-import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
+import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
 import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs,
+  availableTasks, check, fallChance, pausedList, type TaskGroup, type TaskOption, whereIs,
 } from "../sim/tasks";
 import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
@@ -281,7 +281,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       if (!here) {
         const km = kmBetween(state, world, campCellOf(state, world, id), s.cell);
         const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
-        return `<div>${SPOT_NAMES[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
+        return `<div>${SPOT_WORDS[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
       // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
       // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
@@ -290,19 +290,19 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       // the same cell (two "you are here" once you stand on it); the camp row above,
       // listed first, already stands for it.
       if (s.id !== "camp" && cell === campCellOf(state, world, id)) return "";
-      if (cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
+      if (cell === myCell) return `<div><b>@</b> ${SPOT_WORDS[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const km = kmBetween(state, world, myCell, cell, walkableIce(state.weather));
       // No known corridor to camp: the search for one is the only move left, and it promises no time.
-      const home = s.id === "camp" && !walk.ok && walk.why === "no way you know" ? check(state, world, cal, "searchHome") : null;
+      const home = s.id === "camp" && !walk.ok && walk.why === "{you} {know} no way there" ? check(state, world, cal, "searchHome") : null;
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : home
           ? ` <small>${esc(plain(walk.why))}</small> <button class="mini" data-act="task" data-id="searchHome">search for a way home <small>(${esc(home.detail)})</small></button>`
           : ` <small>${esc(plain(walk.why))}</small>`;
       const thin = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
-      return `<div>${SPOT_NAMES[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
+      return `<div>${SPOT_WORDS[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
     })
     .join("");
   // Things lying about this region away from the named spots.

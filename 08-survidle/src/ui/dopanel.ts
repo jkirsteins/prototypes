@@ -3,11 +3,11 @@ import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
-import { cellOf, kmBetween } from "../sim/position";
+import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { plain } from "../sim/voice";
-import { SPOT_NAMES, type TaskOption, withProgression } from "../sim/tasks";
+import { type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionAt, type RegionDef, type World } from "../world/gen";
@@ -248,7 +248,7 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
   const here = cellOf(state, world);
   const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
     const km = kmBetween(state, world, here, s.cell);
-    const label = `${SPOT_NAMES[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
+    const label = `${SPOT_WORDS[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
     return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
   }).join("");
   return `<select data-act="row-where" data-id="${o.id}" data-arg="${esc(arg)}"><option value="nearest"${ui.choice.where === "nearest" ? " selected" : ""}>nearest</option>${opts}</select>`;

@@ -74,8 +74,6 @@ export interface TaskOption {
   recommended?: { text: string; under: boolean; short: number };
 }
 
-export const SPOT_NAMES = SPOT_WORDS;
-
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
 const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed"]);
 /** Work you carry in your hands wherever you go. */
@@ -815,7 +813,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
       const ice = walkIceMode(state, target.thin);
       const route = survivorRoute(state, world, from, target.cell, ice, fearsFell(state));
-      if (!route) return { ...o, ok: false, why: "no way you know" };
+      if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
       const v = baseWalkSpeed(state, cal, state.weather);
       const minutes = routeMinutes(world, route, v, ice);
       let detail = `${routeKm(route).toFixed(1)} km on foot`;
@@ -852,7 +850,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
       const route = survivorRoute(state, world, here, campCell, ice, fearsFell(state));
-      if (!route) return { ...o, ok: false, why: "no way you know" };
+      if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
       const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
       return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
