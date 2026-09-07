@@ -256,8 +256,11 @@ The runner changes, and the death or reading that asked for each:
    the change the next two needed. Tests: `tests/list.test.ts`, two cases.
 5. `2bca00e`, inner bark leaves the standing list. The without probe read
    it: shutting it lengthened the year by 38 days on seed 17 and 52 on seed
-   79, since 275 kcal an hour is an hour taken off fishing at 420 and root
-   digging at 414. Test: `tests/list.test.ts`.
+   79, since a level-20 strip hour books about 275 kcal of flour on the
+   ledger (0.7 kg of fresh bark an hour at the skill's 1.5 yield factor,
+   dried three to one, at 800 kcal/kg; 187 at level 1, and less again once
+   the grinding hour is counted) against fishing's 420 and root digging's
+   414 on the same ledger. Test: `tests/list.test.ts`.
 6. `b336750`, the hang grind waits for meat that will rot and waits above
    the plant band. Seed 42 stood on 13,200 kcal of raw meat on 1 July beside
    the rack it had built and held 890 on 1 August: first hang never. The
@@ -322,12 +325,25 @@ weeks from the thaw. A hysteresis band would answer it and would be a new
 constant, so it is left. Underneath is the same shape as ever: a keep
 measured in food at camp cannot read met, and everything below it waits.
 
-**F3. Inner bark is worse than the hour it costs, and its season is the
-wrong half of the year.** At the handbook's own yield the strip returns
-about 275 kcal an hour against fishing's 420 and root digging's 414. The row
-is off the list and the task stays; whether the yield is wrong or the
-April-to-July window is (a fallback belongs to the months when the water is
-iced and the ground frozen) is the author's question.
+**F3. Inner bark is worse than the hour it costs.** At the handbook's
+yield a strip hour is 0.7 kg of fresh bark, 0.23 kg of flour after the
+three-to-one drying, 187 kcal at 800 a kilo, before the grinding hour is
+counted; the ledger's level-20 reading of about 275 carries the skill's
+1.5 yield factor, against fishing's 420 and root digging's 414 on the same
+ledger. The row is off the list and the task stays.
+
+The author's answer, after review: the yield and the April-to-July window
+stay as the handbook gives them, and neither is buffed to compete with
+fish or roots, since bark that made sense as everyday food would lose what
+makes it interesting. Pine bark is an inefficient but storable emergency
+carbohydrate: harvested when the tree allows it, in the peeling window,
+and kept for the winter, so summer labour becomes winter insurance rather
+than the best thing to eat today. It does not belong on a calorie-
+maximising standing list, and if autonomous play ever needs it the shape
+is a winter-stock target ("store 3 kg of bark flour"), harvested to a
+bound in season and then stopped, not a wantOpen row. A player should
+read it as bad food economics that February may make them wish they had
+stored.
 
 **F4. The lean ceiling is what a level-20 survivor stands at, every day.**
 Lean intake sits within 56 kcal of the 1,600 ceiling on all four seeds, in

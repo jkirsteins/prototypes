@@ -3713,8 +3713,11 @@ takes the year below 1 of 4. The fish classes moved to their real fat
 after the author's review (oily 0.4 lean, lean 0.9), which took the year
 from 2 of 4 and closed the ceiling question. Findings left for the
 author: the list's all-day keeps still starve the wood keeps whenever
-the larder dips under the winter's food; inner bark returns 275 kcal an
-hour, off the reference list for it; one survivor empties a
+the larder dips under the winter's food; inner bark returns 187 kcal a
+strip hour at the handbook's yield (275 on a level-20 ledger), off the
+reference list for it and settled as a storable emergency carbohydrate
+harvested in its window for the winter, never a standing row, a
+winter-stock target if autonomous play ever needs it; one survivor empties a
 region's roots; the unexploited line reads a stock, not an omission, and
 cannot see what rotted before the death; sap and seaweed never fire on
 the reference seeds, so neither is measured by the without probe; and
