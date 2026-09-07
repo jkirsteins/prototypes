@@ -14,13 +14,15 @@
  * once jobs until a skill reaches 3, no keeps for weeks and no conditions
  * for longer, and stands in by hand for the rest.
  */
+import { Rng } from "../rng";
 import { CELL_KM } from "../units";
 import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
+import { bodyAsks } from "./body";
 import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
-import { nearestCell } from "./intent";
+import { nearestCell, startIntent } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
@@ -29,6 +31,7 @@ import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOURCES } from "./ledger";
+import { knownShare } from "./mapped";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
@@ -40,7 +43,7 @@ import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import { seaweedAvailable, startTask } from "./tasks";
+import { seaweedAvailable, setAside, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, OrderWhen, RecipeId, WorldDate } from "./types";
 
@@ -788,6 +791,9 @@ export class ReferencePlayer {
   /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
   reachedDay: number | null = null;
 
+  /** Whether the rest live now is `HAND_REST`, serving a hand move's need, rather than a real task the board is showing. */
+  private servingHandRest = false;
+
   /**
    * `home` is the region of the old camp for an heir: the first log line
    * gives the bearing, and a competent player walks there before anything
@@ -879,15 +885,27 @@ export class ReferencePlayer {
   }
 
   tick(state: GameState, world: World): void {
+    const cal = calendar(state.minute, state.startDoy);
     if (this.home !== null) {
       if (state.player.region !== this.home) {
-        if (!state.task) startTask(state, world, calendar(state.minute, state.startDoy), "travel", `region:${this.home}`);
+        if (!this.handMoveBusy(state, world, cal) && handsFree(state)) {
+          // A direct route may already be known; only when it is not does the
+          // walk become a search - the same move a survivor cut off from a
+          // known camp reaches for, pointed at this other region instead of
+          // its own. Its own loop reads for an opened route after every leg,
+          // not once an hour, so a bearing hop is left the moment a corridor
+          // through it appears rather than swept whole for its own sake.
+          if (!startTask(state, world, cal, "travel", `region:${this.home}`)) startTask(state, world, cal, "searchHome", `region:${this.home}`);
+        }
         return;
       }
-      this.reachedDay = calendar(state.minute, state.startDoy).day;
+      this.reachedDay = cal.day;
       this.home = null;
     }
-    const cal = calendar(state.minute, state.startDoy);
+    // A sweep already under way is left running, or paused the moment the
+    // body asks for something - the same order the runner already gives a
+    // chosen order between the two, since exploring is watched the same way.
+    if (this.handMoveBusy(state, world, cal)) return;
     this.openingDay ??= cal.day;
     // Each morning a daily want starts over: yesterday's spent count is not this
     // morning's, and the finished mark that stopped it yesterday comes off. Both
@@ -943,8 +961,72 @@ export class ReferencePlayer {
       if (orderMet(state, world, cal, this.probe(i, this.completed.get(i) ?? 0), false)) continue;
       this.give(state, world, cal, i, best);
     }
+    // A want the scheduler skipped with this exact reading is not short of
+    // materials or a season; it is ground the survivor has not walked or
+    // seen close enough to read (tasks.ts's own words for the same refusal,
+    // read back here the way the panel already reads it off an order's own
+    // skip line). Free hands between orders, with nothing the body wants
+    // first, then go look, the way a person new to a valley walks it before
+    // they know where the wood is - every want lives in this one region
+    // (`where: "nearest"` never reaches past it), so mapping it whole is
+    // what unblocks all of them at once, and knownShare reaching 1 is what
+    // stops the sweep rather than a share picked by hand.
+    if (
+      handsFree(state) && !bodyAsks(state, world, cal) &&
+      knownShare(state, world, state.player.region) < 1 &&
+      ordersHere(state, world).some((o) => o.skipped === NO_KNOWN_WAY)
+    ) {
+      startTask(state, world, cal, "explore", `region:${state.player.region}`);
+    }
+  }
+
+  /**
+   * A sweep or a walk toward ground not yet known, watched the way the
+   * click that started it would be: left running while nothing is owed,
+   * paused the moment the body asks for something, and picked back up once
+   * it has nothing left to ask. A plain "wait" is not what serves that
+   * pause: runOrders claims any bare wait intent (no order behind it) as
+   * its own and tears it down the moment its own order list is empty
+   * (spec 2.3) - exactly the heir's list, every hour, which would undo the
+   * serving before it ever drank. `HAND_REST` carries the same runner body
+   * tier under a task runOrders has no claim on. `servingHandRest` is what
+   * tells that rest apart from a hand move still under way, so an ordinary
+   * "nothing to do" is never read as one. True whenever a hand move, or
+   * the rest serving one, is why nothing else happened this tick.
+   */
+  private handMoveBusy(state: GameState, world: World, cal: Calendar): boolean {
+    if (this.servingHandRest) {
+      if (bodyAsks(state, world, cal)) return true;
+      this.servingHandRest = false;
+      state.intent = null;
+      return false;
+    }
+    if (state.task?.id !== "explore" && state.task?.id !== "travel" && state.task?.id !== "searchHome") return false;
+    if (!bodyAsks(state, world, cal)) return true;
+    setAside(state, world);
+    const r = new Rng(state.rng);
+    startIntent(state, world, cal, r, HAND_REST);
+    state.rng = r.s;
+    this.servingHandRest = true;
+    return true;
   }
 }
+
+/** tasks.ts's own refusal for a walk with no route through known ground. */
+const NO_KNOWN_WAY = "{you} {know} no way there";
+
+/**
+ * Free enough to send off exploring: nothing running at all, or nothing but
+ * a filler rest, the runner's own word (or `handMoveBusy`'s) for "nothing
+ * better to do" and not a want on any list. Real sleep is left alone - the
+ * body's own need, not idle time to spend looking at the ground.
+ */
+function handsFree(state: GameState): boolean {
+  return !state.task || state.task.id === "rest";
+}
+
+/** The runner body tier without an order behind it, read as `handMoveBusy` serving a hand move rather than the list's own wait. */
+const HAND_REST: IntentRequest = { task: "rest", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
 export function setUpReference(seed: number, kitted = false, startDoy = START_DOY): { state: GameState; world: World; player: ReferencePlayer } {
   const g = newGame(seed, startDoy);

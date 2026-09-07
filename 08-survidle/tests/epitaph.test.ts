@@ -91,7 +91,7 @@ describe("the epitaph", () => {
     // a few minutes moved either way swings the day by several - the number to read here
     // is that neither seed dies of the cold with a woodpile beside it any more.
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 26. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 28. Starved at camp, with nothing in the pack and 20 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 25. Starved at camp, with nothing in the pack and no firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

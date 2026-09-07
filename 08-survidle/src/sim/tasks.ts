@@ -833,7 +833,11 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return { ...o, duration: 0, detail: "as long as the ground takes" };
     }
     case "searchHome": {
-      const camp = campCellOf(state, world);
+      // The player's button never carries an arg and reads camp, same as ever;
+      // a target given in the same "region:N" shape walk and explore already
+      // take is what lets the reference player point this same search at some
+      // other named ground, an heir's old camp among it.
+      const camp = (arg ? walkTarget(state, world, arg)?.cell : undefined) ?? campCellOf(state, world);
       const o = opt({ group: "move", label: "Search for a way home", detail: "", repeatable: false });
       const route = survivorRoute(state, world, here, camp, walkableIce(state.weather), fearsFell(state));
       if (route) return { ...o, ok: false, why: "{you} {know} the way home" };
@@ -1130,7 +1134,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     return true;
   }
   if (id === "searchHome") {
-    const home = campCellOf(state, world);
+    const home = (arg ? walkTarget(state, world, arg)?.cell : undefined) ?? campCellOf(state, world);
     const from = cellOf(state, world);
     const leg = nextHomeLeg(state, world, cal, from, home);
     if (!leg) return false;
