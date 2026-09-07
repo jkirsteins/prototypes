@@ -33,12 +33,34 @@ function partlyKnownNeighbour(g: G): number {
   return nb.id;
 }
 
-/** Drives the current explore task to its end, minute by minute; the real elapsed minutes. */
-function driveExplore(g: G, maxMinutes = 40000): number {
+/**
+ * A cell of nbId bordering homeId: a foothold to teleport onto and sweep
+ * from, revealing only what sight from the border itself gives rather than
+ * a whole region from a central camp. Used by the post-review measurement
+ * below to get a comparable starting condition on seeds that left no
+ * neighbour partly known at landing.
+ */
+function borderCell(world: World, homeId: number, nbId: number): number | null {
+  for (const cell of regionAt(world, nbId).cells) {
+    if (neighbours(world, cell).some((n) => cellAt(world, n).region === homeId)) return cell;
+  }
+  return null;
+}
+
+/** Sweeps the home region's first neighbour from its own border, at the given wayfinding level; real elapsed minutes. */
+function sweepMinutes(seed: number, level: number, cap = 2000): number {
+  const g = newGame(seed);
   const { state, world } = g;
+  const home = regionAt(world, state.player.region);
+  const nb = home.neighbours[0]!;
+  const cell = borderCell(world, home.id, nb.id)!;
+  placeAt(state, world, cell);
+  if (level > 1) state.skills.wayfinding.xp = levelMinutes(level);
+  startTask(state, world, calendar(state.minute), "explore", `region:${nb.id}`);
   const rng = new Rng(1);
   let minutes = 0;
-  for (; minutes < maxMinutes && state.task; minutes++) stepTask(state, world, calendar(state.minute), rng, 1);
+  for (; minutes < cap && state.task; minutes++) stepTask(state, world, calendar(state.minute), rng, 1);
+  if (state.task) throw new Error(`seed ${seed} no longer finishes within the cap - the reference seed set needs a second look`);
   return minutes;
 }
 
@@ -108,28 +130,33 @@ describe("wayfinding", () => {
     for (const k of RUNG_ORDER) expect(texts).not.toContain(RUNG_LINE[k]("Wayfinding"));
   });
 
-  it("weighs more vantages with level, so the sweep gets shorter", () => {
-    // Reference seed 47: level 10 finds a materially shorter sweep than level 1
-    // over the same region (144 -> 122 minutes). Scoring each candidate by
-    // opened-per-minute-walked (not view alone) still does not bound the
-    // *whole* sweep: each leg's pick is only the best use of that one walk,
-    // and a good leg now can leave the frontier worse positioned for the
-    // legs after it, so a longer full sweep is possible in general - seed
-    // 4's reference region still runs 378 -> 418 minutes, longer at level
-    // 10, even with the corrected score. This seed demonstrates the order
-    // the brief asks for, not a universal bound.
-    const g1 = newGame(47);
-    const region1 = partlyKnownNeighbour(g1);
-    expect(startTask(g1.state, g1.world, calendar(0), "explore", `region:${region1}`)).toBe(true);
-    const m1 = driveExplore(g1);
-
-    const g2 = newGame(47);
-    const region2 = partlyKnownNeighbour(g2);
-    g2.state.skills.wayfinding.xp = levelMinutes(10);
-    expect(startTask(g2.state, g2.world, calendar(0), "explore", `region:${region2}`)).toBe(true);
-    const m2 = driveExplore(g2);
-
-    expect(m2).toBeLessThan(m1);
+  it("does not reliably shorten the sweep, measured across seeds 1..12, not a single flattering seed", () => {
+    // A seed picked because level 10 happens to sweep it faster is a
+    // flattering test, not evidence. Measured instead over seeds 1..12,
+    // teleporting the survivor to the border of home's first neighbour
+    // (no per-seed filter) and sweeping it at level 1 vs level 10: 8 of
+    // the 12 hit a separate, pre-existing pickVantage stall (an eternal
+    // two-cell ping-pong; confirmed present on the unmodified task-5
+    // baseline too, commit 28b4126, so it is not this fix's doing) and
+    // are excluded on that independent, outcome-blind ground, leaving
+    // seeds 1, 2, 6 and 7. Full table and method in
+    // .superpowers/sdd/2026-09-07-survidle-exploration/task-6-report.md.
+    // The honest finding: level 10 was faster on 1 of the 4 and slower on
+    // 3, median minutes rising from 354 to 394. Weighing more candidates
+    // by opened-per-minute makes each leg's own pick locally better, but
+    // that does not add up to a shorter whole-region sweep - the greedy
+    // sequence of locally-best legs can still leave the frontier worse
+    // off for the legs after it. Per the coordinator's ruling this needs
+    // a frontier-aware pick, a design call, not a further score tweak,
+    // and is not fixed here - this test pins the measured reality rather
+    // than asserting the speed claim the code does not yet deliver.
+    const seeds = [1, 2, 6, 7];
+    const level1 = seeds.map((s) => sweepMinutes(s, 1));
+    const level10 = seeds.map((s) => sweepMinutes(s, 10));
+    const faster = level10.filter((m, i) => m < level1[i]).length;
+    const slower = level10.filter((m, i) => m > level1[i]).length;
+    expect(faster).toBe(1);
+    expect(slower).toBe(3);
   });
 
   it("hurts a novice on bad ground and rarely a master", () => {
