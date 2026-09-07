@@ -1,8 +1,10 @@
 /**
- * The map is a viewport of 72 by 36 glyphs centred on the player. At zoom 0
- * a glyph is one cell; at coarser zooms a glyph is a block of cells drawn as
- * its commonest ground. Regions never visited are fog; regions only seen from
- * next door are dim. The player never pans; the world moves under them.
+ * The map is a viewport of glyphs centred on the player, its size and its
+ * ground per glyph set by the zoom level (LEVELS below). At the three
+ * closest a glyph is one cell, drawn larger each rung; beyond them a glyph
+ * is a block of cells drawn as its commonest ground. Regions never visited
+ * are fog; regions only seen from next door are dim. The player never pans;
+ * the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal } from "../sim/fire";
@@ -11,9 +13,10 @@ import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { DIM, discovery, SEEN, VISITED } from "../sim/regionstate";
 import type { GameState, Terrain } from "../sim/types";
-import { iceMode } from "../sim/weather";
+import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
+import { lighting } from "./sky";
 
 export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
@@ -335,7 +338,16 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const tools = `<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === LEVELS.length - 1 ? "disabled" : ""} title="Farther (minus key)">-</button><span class="dim" title="${esc(`${span} on screen, centred on you`)}">${zoomLabel(ui.zoom)}, ${span}</span></div>`;
 
   const parts: string[] = [];
-  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
+  // The hour's light is written into the grid as it is built, in the figures
+  // updateSky writes each frame. A grid built without them would be born at
+  // the stylesheet's daylight defaults, and the first frame after would
+  // animate it down to the true light through the half-second transitions on
+  // the shade, the tint and the saturation: a fade over the whole map every
+  // time it is rebuilt, which is every zoom, every step into a new view.
+  const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
+  const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
+  const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
+  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
