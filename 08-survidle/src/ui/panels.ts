@@ -452,7 +452,7 @@ const GROUPS: { id: TaskGroup; label: string }[] = [
 
 function optHtml(o: TaskOption): string {
   const arg = o.arg ?? "";
-  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
+  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(plain(o.recommended.text))}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
   if (!o.ok) {
     return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</span></div>`;

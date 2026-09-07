@@ -286,7 +286,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
  */
 function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: World): string {
   const arg = o.arg ?? "";
-  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
+  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(plain(o.recommended.text))}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;

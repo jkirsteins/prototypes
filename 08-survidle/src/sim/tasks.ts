@@ -1,5 +1,5 @@
 import { Rng } from "../rng";
-import { CELL_KM } from "../units";
+import { CELL_KM, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
@@ -1002,10 +1002,25 @@ export function withProgression(state: GameState, world: World, o: TaskOption): 
   const rec = RECOMMENDED[key];
   if (!rec) return out;
   const g = gap(state, key);
-  out.recommended = { text: `${SKILL_NAMES[rec.skill]} ${rec.level}`, under: g > 0, short: g };
+  // Under the level the row names where you stand as well as what it wants: a
+  // bare "Hunting 6" never said whether that was a wall or a suggestion.
+  // Templated like the ladder's own gate line, and rendered through plain() by
+  // the panel: away, an option's text is read out about somebody by name.
+  out.recommended = {
+    text: g > 0 ? `${SKILL_NAMES[rec.skill]} ${rec.level}, {you} {are} ${skillLevel(state, rec.skill)}` : `${SKILL_NAMES[rec.skill]} ${rec.level}`,
+    under: g > 0,
+    short: g,
+  };
   const parts: string[] = [];
   if (g > 0 && o.id === "craft") parts.push(`${Math.round(craftSuccess(state, o.arg as RecipeId) * 100)}% chance it comes out`);
   if (g > 0 && o.id === "build") parts.push(`at ${SKILL_NAMES.building} ${skillLevel(state, "building")} this takes ${(1.3 ** g).toFixed(1)}x as long`);
+  // The gap halves the odds per level and turns big game on you, and nothing on
+  // a hunt or a cast said so: a craft row has named its cost all along.
+  if (g > 0 && (o.id === "hunt" || o.id === "fish") && o.arg && o.arg !== "any") {
+    parts.push(`${shareWord(0.5 ** g)} the odds`);
+    const hurt = o.id === "hunt" ? Math.round(injuryChance(state, o.arg as Species) * 100) : 0;
+    if (hurt > 0) parts.push(`${hurt}% chance it turns on {you}`);
+  }
   if (parts.length) out.detail = out.detail ? `${out.detail}; ${parts.join("; ")}` : parts.join("; ");
   return out;
 }

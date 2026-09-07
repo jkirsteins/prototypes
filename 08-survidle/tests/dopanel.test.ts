@@ -74,7 +74,7 @@ describe("fold and filter", () => {
     const bow = opts.find((o) => o.id === "craft" && o.arg === "bow")!;
     expect(chop.ok).toBe(true);
     expect(bow.ok).toBe(false);
-    expect(bow.recommended).toEqual({ text: "Crafting 5", under: true, short: 4 });
+    expect(bow.recommended).toEqual({ text: "Crafting 5, {you} {are} 1", under: true, short: 4 });
 
     const { near, far } = splitFar([chop, bow], state);
     expect(near).toEqual([chop]);

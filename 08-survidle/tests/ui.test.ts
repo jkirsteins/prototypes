@@ -84,7 +84,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     document.body.innerHTML = html;
     expect(document.querySelector('[data-opt="chop:"] .bar.mastery')).not.toBeNull();
     expect(document.querySelector('[data-opt="walk:spot:forest"] .bar.mastery')).toBeNull();
-    expect(document.querySelector('[data-opt="hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8");
+    expect(document.querySelector('[data-opt="hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8, you are 1");
   });
 });
 
