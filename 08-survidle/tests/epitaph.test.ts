@@ -89,8 +89,8 @@ describe("the epitaph", () => {
     // any ground could be walked sight unseen: a survivor who has to go and look at their
     // own valley first learns where the food is, rather than working the first spot the
     // list names.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 6. Died of cold 0.6 km from camp, with nothing in the pack and no firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 35. Starved at camp, with nothing in the pack and 62 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 6. Died of cold 0.6 km from camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 35. Starved at camp, with nothing in the pack and 62 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {
