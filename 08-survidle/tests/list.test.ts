@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { setSkillLevel } from "../src/sim/horizon";
-import { addItem, pile, TRACE_KG } from "../src/sim/inventory";
+import { addItem, pile, qty, removeItem, TRACE_KG } from "../src/sim/inventory";
 import {
   AUTO_EAT_ORDER, EGG_FROM_DOY, EGG_TO_DOY, FOODS, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, ROOT_FROM_DOY, ROOT_TO_DOY,
   SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS,
@@ -265,6 +265,34 @@ describe("the list after the axe", () => {
     expect(HANG_ABOVE_KG).toBeCloseTo((SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / FOODS.rawMeat.kcalPerKg));
     const tasks = REFERENCE_ORDERS.map(key);
     expect(tasks.indexOf("hang::grind")).toBeLessThan(tasks.indexOf("roots::job"));
+  });
+
+  it("keeps two bark buckets at camp, so a burst one is made again", () => {
+    // A camp-has job drops off when it is met and is never given twice, so the
+    // first camp whose bucket burst went without a vessel for the rest of its
+    // life: seed 17's level-20 year read "needs a vessel" on the water keep
+    // from the burst on. A keep is the shape that re-gives.
+    const bucket = want("craft:barkBucket:keep");
+    expect(bucket.req.until).toEqual({ kind: "campHas", qty: 2 });
+    expect(REFERENCE_ORDERS.map(key)).not.toContain("craft:barkBucket:job");
+  });
+
+  it("makes another bucket within a day of the camp's last one bursting", () => {
+    const { state, world, player } = setUpReference(17, true);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell);
+    // The bucket's materials at camp, so the day measures the re-giving rather
+    // than a walk to the birches for bark.
+    addItem(camp, "bark", 40);
+    addItem(camp, "cordage", 8);
+    // A kitted camp still spends its first days on the rows above this one - the
+    // lean-to, the bed, the woodpile, the snares - so the burst is read against a
+    // settled camp, which is the camp seed 17's bucket burst in.
+    stepReference({ state, world, player }, 1440 * 5);
+    // The burst: hazards.ts takes the camp's bucket when the ice in it splits it.
+    removeItem(camp, "barkBucket", qty(camp, "barkBucket"));
+    stepReference({ state, world, player }, 1440);
+    expect(qty(camp, "barkBucket")).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps a cook for the oily catch as well as the lean one, since raw oily fish is eaten by nobody", () => {

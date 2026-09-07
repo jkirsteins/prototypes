@@ -334,7 +334,13 @@ export const REFERENCE_ORDERS: Want[] = [
   keep("craft", 1, "knife"),
   keep("craft", 1, "snare"),
   job("build", { kind: "times", n: 5 }, "snare"),
-  job("craft", { kind: "campHas", qty: 2 }, "barkBucket"),
+  // A keep and not a camp-has job: a job drops off when it is met and is never
+  // given again, and a bark bucket bursts when the water in it freezes, so the
+  // camp that lost its last one to the ice had no vessel for the rest of its
+  // life and the water keep above read "needs a vessel" from that day on. The
+  // count is the camp pile's, which is the pile campWaterCapacity reads: the
+  // one in hand is a tool and is neither camp's capacity nor this keep's stock.
+  keep("craft", 2, "barkBucket"),
   keep("craft", 1, "fishingSpear"),
   job("read", { kind: "once" }),
   job("craft", { kind: "once" }, "basketTrap", "leave"),

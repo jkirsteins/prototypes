@@ -82,7 +82,7 @@ describe("the epitaph", () => {
     // the ledger above finds it. The larder these seeds empty is meat, berries, roots, eggs
     // and bark flour together, and both still starve at camp with wood banked.
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 24. Starved at camp, with nothing in the pack and 65 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 22. Died of cold at camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 34 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {
