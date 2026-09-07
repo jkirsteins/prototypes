@@ -59,24 +59,43 @@ teachQueue: Concept[];
 ```
 
 `Concept` is the five rungs: `job | grind | keep | condition | pace`.
-`taught` is keyed per world, not per survivor: a player who learned what
-a grind is does not relearn it because their survivor died.
+
+**`taught` is per survivor, and both fields reset on a landing.** A
+moment is about what *this* survivor can newly reach, so each life gets
+its own. The player who has seen it four times is protected not by the
+memory but by the rule in the next section: a rung you land already
+holding is never a moment.
+
+(A world-wide `taught` was considered and set aside. It may come back if
+a tester round says the repeat grates.)
 
 ### Queuing
 
 `train()` in `src/sim/skills.ts` already computes
 `before < RUNG_LEVEL[k] && after >= RUNG_LEVEL[k]` and writes
-`RUNG_LINE`. It gains one call to `teach(state, k)`. `carrySkills` does
-the same for each rung an heir's carried level opens.
+`RUNG_LINE`. It gains one call to `teach(state, k)`.
 
 ```ts
-/** Queues a concept's moment the first time it opens in this world. The log line is written by the caller, on every unlock; only the moment is once. */
+/** Queues a concept's moment the first time this survivor opens it by practice. The log line is written by the caller, on every unlock; only the moment is once. */
 export function teach(state: GameState, c: Concept): void {
   if (state.taught[c]) return;
   state.taught[c] = true;
   state.teachQueue.push(c);
 }
+
+/** A rung the survivor landed already holding: known, so never a moment. The welcome names it instead. */
+export function taughtOnLanding(state: GameState, c: Concept): void {
+  state.taught[c] = true;
+}
 ```
+
+**A carried rung is never a moment.** `carrySkills` calls
+`taughtOnLanding` for each rung an heir's carried level opens, marking
+it known without queuing. The welcome is where the heir reads what they
+landed holding ("Woodcraft 4 already takes jobs from you"), and a moment
+is kept for what this survivor earns by practice. So the better the
+lineage, the quieter the landing, which is the point: a strong heir
+starts playing instead of clicking through what they were born with.
 
 Marking `taught` at push time, not at dismiss time, is what makes two
 skills crossing the same rung inside one offline catch-up queue the
@@ -274,8 +293,13 @@ Unit, in `tests/teach.test.ts`:
   concept once, and the log line is written for both.
 - `taught` and `teachQueue` survive a save and load, and default on a
   save written before this item.
-- An heir's carried levels queue their concepts at landing, and a
-  concept already taught in this world queues nothing.
+- An heir's carried levels queue nothing at landing and leave the queue
+  empty, however many rungs they open; the same rung earned later by
+  practice in that life still queues nothing, because landing marked it
+  known.
+- A rung this survivor earns by practice queues its moment even though a
+  previous survivor in the same world already had it: `taught` and
+  `teachQueue` are cleared on every landing.
 - `exampleFor` returns a sentence when a row is startable and null when
   none is, and never throws for any concept.
 - `welcomeLines` names the carried skills for an heir and the fresh copy
