@@ -80,6 +80,12 @@ small, .dim { color: var(--dim); }
 /* A label on the left, a value on the right; the forecast panel's four horizons. */
 #forecast .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
 
+/* An empty ladder collapses rather than leaving a titled box with nothing in it. */
+#goals:empty { display: none; }
+#goals .goals { list-style: none; margin: 0; padding: 0; }
+#goals .goal { margin: 0.35rem 0; }
+#goals .goal-title { font-weight: 600; }
+
 /* Bars */
 .bar {
   position: relative;

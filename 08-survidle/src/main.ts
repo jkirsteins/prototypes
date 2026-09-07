@@ -36,6 +36,7 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, KW_PREFIX, loadFolds, saveFold } from "./ui/dopanel";
+import { goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -158,6 +159,7 @@ function render() {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
+  setPanel("goals", goalsHtml(state, cal));
   setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
@@ -173,6 +175,7 @@ function render() {
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
   updateFills(state);
+  updateGoalBars(state, cal);
   updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
 
