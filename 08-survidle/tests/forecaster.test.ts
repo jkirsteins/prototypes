@@ -11,16 +11,14 @@ describe("the forecast view", () => {
     const v = emptyView();
     beginRequest(v, 1);
     applyRow(v, 1, row("away"));
-    applyRow(v, 1, row("month", 7));
     expect(v.rows.away).toEqual({ ...row("away"), stale: false });
     beginRequest(v, 2);
     expect(v.rows.away!.stale).toBe(true);
-    expect(v.rows.month!.stale).toBe(true);
     applyRow(v, 2, row("away", 1));
     expect(v.rows.away).toEqual({ ...row("away", 1), stale: false });
     // A late row from request 1 for a horizon request 2 has not produced yet fills the gap, staled.
-    applyRow(v, 1, row("week", 2));
-    expect(v.rows.week).toEqual({ ...row("week", 2), stale: true });
+    applyRow(v, 1, row("month", 2));
+    expect(v.rows.month).toEqual({ ...row("month", 2), stale: true });
     // A late row for a horizon request 2 already produced is ignored.
     applyRow(v, 1, row("away", 9));
     expect(v.rows.away!.died).toBe(1);
@@ -36,7 +34,7 @@ describe("the forecast view", () => {
     f.request(state);
     const v = f.view();
     expect(v.id).toBe(1);
-    expect(Object.keys(v.rows).sort()).toEqual(["away", "month", "tonight", "week"]);
+    expect(Object.keys(v.rows).sort()).toEqual(["away", "month"]);
     expect(Object.values(v.rows).every((r) => r!.stale === false)).toBe(true);
     f.request(state);
     expect(f.view().id).toBe(2);
@@ -50,7 +48,7 @@ describe("the month number", () => {
     const rec = current(state);
     expect(noteMonthRow(state, row("month", 3))).toBe(false);
     rec.forecast.push(null, null);
-    expect(noteMonthRow(state, row("week", 3))).toBe(false);
+    expect(noteMonthRow(state, row("away", 3))).toBe(false);
     expect(rec.forecast).toEqual([null, null]);
     expect(noteMonthRow(state, row("month", 3))).toBe(true);
     expect(rec.forecast).toEqual([null, 7]);

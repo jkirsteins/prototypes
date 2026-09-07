@@ -10,7 +10,7 @@ import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
-import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
+import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
@@ -434,32 +434,38 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${instantHtml(state, world)}${head}${list}${asideHtml}`;
 }
 
-const HORIZON_LABEL: Record<HorizonId, (state: GameState) => string> = {
-  away: (s) => `until you are back (${s.awayHours} h)`,
-  tonight: () => "tonight",
-  week: () => "a week",
-  month: () => "a month",
-};
-
-/** "N of 10 die: cause, day D", the tonight row counting nights; "none of 10 die" when nothing died. */
+/** "N of 10 die: cause, day D", or "none of 10 die" when nothing died. */
 export function forecastRowText(row: ForecastRow): string {
   if (row.died === 0) return `none of ${row.runs} die`;
-  const unit = row.id === "tonight" ? "night" : "day";
-  return `${row.died} of ${row.runs} die: ${CAUSE_WORD[row.cause!]}, ${unit} ${row.day}`;
+  return `${row.died} of ${row.runs} die: ${CAUSE_WORD[row.cause!]}, day ${row.day}`;
 }
 
-/** The Ahead panel: one line per horizon, the ones not yet landed for the latest request dimmed with "...". A dead survivor has nothing ahead: the stale rows from before death would otherwise linger. */
+/** The game days a stretch of real hours away buys, since that is the number the answer is in. */
+export function awayDays(hours: number): number {
+  return Math.round((hours * 3600 * GAME_MINUTES_PER_REAL_SECOND) / 1440);
+}
+
+/**
+ * What happens if you leave, over the stretch the slider names.
+ *
+ * He read "away up to 24 hours" as how long the survivor works, so the
+ * panel says leaving rather than being away, and says what the hours buy:
+ * eight of them are twenty game days, which is the number the death in
+ * the answer is counted in.
+ *
+ * A dead survivor has nothing ahead; the stale row from before the death
+ * would otherwise sit there being wrong.
+ */
 export function forecastHtml(view: ForecastView | null, state: GameState): string {
-  if (state.dead) return `<h2>Ahead</h2><div class="row"><span class="dim">nothing ahead</span></div>`;
-  const ids: HorizonId[] = ["away", "tonight", "week", "month"];
-  const rows = ids.map((id) => {
-    const r = view?.rows[id];
-    const label = HORIZON_LABEL[id](state);
-    if (!r) return `<div class="row"><span class="dim">${label}</span><span class="dim">...</span></div>`;
-    if (r.stale) return `<div class="row"><span class="dim">${label}</span><span class="dim">${esc(forecastRowText(r))} ...</span></div>`;
-    return `<div class="row"><span>${label}</span><span>${esc(forecastRowText(r))}</span></div>`;
-  });
-  return `<h2>Ahead</h2>${rows.join("")}`;
+  const head = `<h2>If you leave</h2>`;
+  if (state.dead) return `${head}<div class="row"><span class="dim">nothing ahead</span></div>`;
+  const days = awayDays(state.awayHours);
+  const label = `for ${state.awayHours} h <small class="dim">(${days} day${days === 1 ? "" : "s"} pass)</small>`;
+  const r = view?.rows.away;
+  if (!r) return `${head}<div class="row"><span class="dim">${label}</span><span class="dim">...</span></div>`;
+  const text = esc(forecastRowText(r));
+  if (r.stale) return `${head}<div class="row"><span class="dim">${label}</span><span class="dim">${text} ...</span></div>`;
+  return `${head}<div class="row"><span>${label}</span><span>${text}</span></div>`;
 }
 
 /** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */

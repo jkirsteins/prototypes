@@ -49,6 +49,13 @@ body { display: flex; flex-direction: column; height: 100vh; }
    something that failed to load. */
 #camp:empty, #orders:empty { display: none; }
 
+/* The forecast and the dial that sets it are one thing: the control sits
+   under what it changes, with no border between them. The slider stays
+   static markup with its own listener - a control redrawn mid-drag is a
+   control that fights the hand on it. */
+#forecast { border-bottom: none; padding-bottom: 4px; }
+#away { border-top: none; padding-top: 4px; }
+
 /* The tab container that stands where the region panel stood. */
 #panes { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 .pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }

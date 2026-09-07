@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { minutesUntilDawn } from "../src/sim/calendar";
 import { CAUSE_WORD, FORECAST_RUNS, forecast, forecastRow, horizons } from "../src/sim/forecast";
 import { HORIZON_STAGES, setUpStage } from "../src/sim/horizon";
 import { newGame } from "../src/sim/newgame";
@@ -21,17 +20,19 @@ function stocked() {
 }
 
 describe("the horizons", () => {
-  it("are the dial, tonight, a week and a month, in that order", () => {
+  it("are the dial, and the month the life record keeps", () => {
     const { state } = newGame(1);
     const h = horizons(state);
-    expect(h.map((x) => x.id)).toEqual(["away", "tonight", "week", "month"]);
+    // The dial spans two and a half to sixty game days, so tonight and a
+    // week both fall inside it and neither was a question anybody asked.
+    // The month stays because a survivor's record keeps its number, and a
+    // number that moved with a slider would be no record at all.
+    expect(h.map((x) => x.id)).toEqual(["away", "month"]);
     expect(h[0].minutes).toBe(8 * 3600 * GAME_MINUTES_PER_REAL_SECOND);
-    expect(h[1].minutes).toBe(minutesUntilDawn(state.minute, state.startDoy));
-    expect(h[2].minutes).toBe(7 * 1440);
-    expect(h[3].minutes).toBe(30 * 1440);
+    expect(h[1].minutes).toBe(30 * 1440);
     state.awayHours = 2;
     expect(horizons(state)[0].minutes).toBe(2 * 3600 * GAME_MINUTES_PER_REAL_SECOND);
-    expect(horizons(state)[1].minutes).toBe(h[1].minutes);
+    expect(horizons(state)[1].minutes).toBe(30 * 1440);
     expect(FORECAST_RUNS).toBe(10);
   });
 });
@@ -52,8 +53,8 @@ describe("a forecast row", () => {
 
   it("counts a clearly alive body as no deaths and a clearly dead one as three, with the cause and the day", () => {
     const { state, world } = stocked();
-    const alive = forecastRow(state, world, { id: "tonight", minutes: 1440 }, 3);
-    expect(alive).toEqual({ id: "tonight", runs: 3, died: 0, cause: null, day: null });
+    const alive = forecastRow(state, world, { id: "away", minutes: 1440 }, 3);
+    expect(alive).toEqual({ id: "away", runs: 3, died: 0, cause: null, day: null });
     regionState(state, world, state.player.region).orders = [];
     const inv = state.player.pack;
     const campPile = pile(state, regionState(state, world, state.player.region).campCell);
@@ -66,7 +67,7 @@ describe("a forecast row", () => {
     state.player.kcal = 0;
     state.player.fat = 0;
     state.player.health = 3;
-    const dead = forecastRow(state, world, { id: "week", minutes: 7 * 1440 }, 3);
+    const dead = forecastRow(state, world, { id: "away", minutes: 7 * 1440 }, 3);
     expect(dead.died).toBe(3);
     expect(dead.cause).toBe("starved");
     expect(dead.day).toBe(1);
@@ -75,8 +76,10 @@ describe("a forecast row", () => {
   it("forecast maps every horizon, and the cause words are the ones the panel prints", () => {
     const { state, world } = stocked();
     state.awayHours = 1;
-    const rows = forecast(state, world, 1).filter((r) => r.id === "away" || r.id === "tonight");
-    expect(rows.map((r) => r.id)).toEqual(["away", "tonight"]);
+    // Two horizons: the one the slider names and shows, and the month the
+    // life record keeps whether anybody is looking at it or not.
+    const rows = forecast(state, world, 1);
+    expect(rows.map((r) => r.id)).toEqual(["away", "month"]);
     expect(CAUSE_WORD.starved).toBe("starved");
     expect(CAUSE_WORD.froze).toBe("cold");
     expect(CAUSE_WORD.gaveUp).toBe("gave up");
@@ -84,11 +87,11 @@ describe("a forecast row", () => {
 
   it("runs the runner: the horizon's stocked stage holds a week only because its orders are worked, as the harness reads it", () => {
     const { state, world } = setUpStage(17, HORIZON_STAGES[4]);
-    const rowWithOrders = forecastRow(state, world, { id: "week", minutes: 7 * 1440 }, 3);
+    const rowWithOrders = forecastRow(state, world, { id: "away", minutes: 7 * 1440 }, 3);
     expect(rowWithOrders.died).toBe(0);
     const { state: stateNoOrders, world: worldNoOrders } = setUpStage(17, HORIZON_STAGES[4]);
     regionState(stateNoOrders, worldNoOrders, stateNoOrders.player.region).orders = [];
-    const rowNoOrders = forecastRow(stateNoOrders, worldNoOrders, { id: "week", minutes: 7 * 1440 }, 3);
+    const rowNoOrders = forecastRow(stateNoOrders, worldNoOrders, { id: "away", minutes: 7 * 1440 }, 3);
     expect(rowNoOrders.died > rowWithOrders.died || rowNoOrders.died > 0).toBe(true);
   });
 });

@@ -914,28 +914,40 @@ describe("the skills panel and the rungs", () => {
 });
 
 describe("the forecast panel", () => {
-  it("prints each row, the dimmed unlanded ones, and the dial's hours", () => {
+  it("asks one question - what happens if you leave for this long - and says what the hours buy", () => {
     const { state } = newGame(17);
-    state.awayHours = 3;
+    state.awayHours = 8;
+    const v = emptyView();
+    beginRequest(v, 1);
+    applyRow(v, 1, { id: "away", runs: 10, died: 1, cause: "wolves", day: 1 });
+    const html = forecastHtml(v, state);
+    // He read "away up to 24 hours" as how long the survivor works, so the
+    // panel says leaving, and says the days those hours buy: a real second
+    // is a game minute, so eight hours is twenty days.
+    expect(html).toContain("If you leave");
+    expect(html).toContain("for 8 h");
+    expect(html).toContain("20 days pass");
+    expect(html).toContain("1 of 10 die: wolves, day 1");
+    expect(html).not.toContain("away up to");
+    // The horizons nobody asked for are gone from the panel.
+    expect(html).not.toContain("tonight");
+    expect(html).not.toContain("a week");
+  });
+
+  it("says a row is stale until the new one lands, rather than showing nothing", () => {
+    const { state } = newGame(17);
+    state.awayHours = 2;
     const v = emptyView();
     beginRequest(v, 1);
     applyRow(v, 1, { id: "away", runs: 10, died: 0, cause: null, day: null });
-    applyRow(v, 1, { id: "tonight", runs: 10, died: 3, cause: "froze", day: 1 });
-    applyRow(v, 1, { id: "month", runs: 10, died: 7, cause: "starved", day: 24 });
+    expect(forecastHtml(v, state)).toContain("none of 10 die");
     beginRequest(v, 2);
-    applyRow(v, 2, { id: "away", runs: 10, died: 1, cause: "wolves", day: 1 });
-    const html = forecastHtml(v, state);
-    expect(html).toContain("until you are back (3 h)");
-    expect(html).toContain("1 of 10 die: wolves, day 1");
-    expect(html).toContain("3 of 10 die: cold, night 1");
-    expect(html).toContain("7 of 10 die: starved, day 24");
-    expect(html).toMatch(/class="dim"[^>]*>a week<\/span>[\s\S]*?\.\.\./);
-    // Request 2 replaced the away row that had "none of 10 die"; check that
-    // text on a view where the away row still shows nothing dying.
-    const v2 = emptyView();
-    beginRequest(v2, 1);
-    applyRow(v2, 1, { id: "away", runs: 10, died: 0, cause: null, day: null });
-    expect(forecastHtml(v2, state)).toContain("none of 10 die");
-    expect(forecastHtml(null, state)).toContain("<h2>Ahead</h2>");
+    expect(forecastHtml(v, state)).toMatch(/none of 10 die[\s\S]*?\.\.\./);
+  });
+
+  it("nothing has landed yet, so it says so rather than showing an empty row", () => {
+    const { state } = newGame(17);
+    expect(forecastHtml(null, state)).toContain("If you leave");
+    expect(forecastHtml(null, state)).toContain("...");
   });
 });

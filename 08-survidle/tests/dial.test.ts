@@ -46,7 +46,7 @@ describe("the away dial", () => {
     expect(state.minute - from2).toBe(2 * 3600 * GAME_MINUTES_PER_REAL_SECOND);
   });
 
-  it("the dial reads the state, writes it on input, and labels the hours", () => {
+  it("the dial reads the state, writes it on input, and labels the hours and the days they buy", () => {
     const root = document.createElement("div");
     root.innerHTML = `<input type="range" data-away="hours"><b data-away="label"></b>`;
     let hours = 8;
@@ -56,14 +56,14 @@ describe("the away dial", () => {
     expect(input.value).toBe("8");
     expect(input.min).toBe("1");
     expect(input.max).toBe("24");
-    expect(label.textContent).toBe("8 hours");
+    expect(label.textContent).toBe("8 hours - 20 days pass");
     input.value = "2";
     input.dispatchEvent(new Event("input"));
     expect(hours).toBe(2);
-    expect(label.textContent).toBe("2 hours");
+    expect(label.textContent).toBe("2 hours - 5 days pass");
     input.value = "1";
     input.dispatchEvent(new Event("input"));
-    expect(label.textContent).toBe("1 hour");
+    expect(label.textContent).toBe("1 hour - 3 days pass");
   });
 
   it("refresh() re-reads get(), for a new world whose dial did not change by input", () => {
@@ -77,6 +77,6 @@ describe("the away dial", () => {
     expect(input.value).toBe("8");
     dial.refresh();
     expect(input.value).toBe("3");
-    expect(label.textContent).toBe("3 hours");
+    expect(label.textContent).toBe("3 hours - 8 days pass");
   });
 });
