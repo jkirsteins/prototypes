@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
+import { autoEat } from "../src/sim/actions";
+import { advance } from "../src/sim/advance";
 import { hourlyEvents } from "../src/sim/events";
+import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { regionAt } from "../src/world/gen";
@@ -45,5 +48,46 @@ describe("wolves", () => {
     regionState(state, world, wolfy).pop.wolf = regionAt(world, wolfy).capacity.wolf! * 0.1;
     const thin = nights(state, world, 2000, 3);
     expect(thin).toBeLessThan(full / 3);
+  });
+});
+
+
+describe("the body says what it ate", () => {
+  it("one line for the sitting, naming what went and how much", () => {
+    const { state, world } = newGame(21);
+    // "auto-eat: on" was legible on screen the whole time he could not tell
+    // whether his survivor was eating: state was shown and the event was not.
+    // Then it ate his whole meat stock while he slept, silently.
+    state.player.autoEat = true;
+    state.player.kcal = 0;
+    addItem(state.player.pack, "driedMeat", 3);
+    autoEat(state, world, new Rng(1));
+    const said = state.log.filter((e) => e.text.includes("{eat}"));
+    // One line for the sitting, not one per mouthful: what a meal cost is
+    // the thing worth knowing, not how many portions it took.
+    expect(said).toHaveLength(1);
+    expect(said[0].text).toContain("kg");
+    expect(said[0].text).toContain("dried meat");
+  });
+
+  it("says nothing when there was nothing to eat", () => {
+    const { state, world } = newGame(21);
+    state.player.autoEat = true;
+    state.player.kcal = 0;
+    state.player.pack.items = {};
+    const before = state.log.length;
+    autoEat(state, world, new Rng(1));
+    expect(state.log.length).toBe(before);
+  });
+
+  it("a fire going out says so, since losing what you built must be louder than silence", () => {
+    const { state, world } = newGame(21);
+    const st = regionState(state, world, state.player.region);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 0.01;
+    state.player.autoFeed = false;
+    advance(state, world, 30);
+    expect(state.log.some((e) => /fire.*gone out/i.test(e.text))).toBe(true);
   });
 });

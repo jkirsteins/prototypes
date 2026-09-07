@@ -12,6 +12,7 @@ import { regionState } from "../src/sim/regionstate";
 import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { ordersHtml } from "../src/ui/panels";
 import {
   addOrder, chooseOrder, conditionOpen, inSeason, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, removeOrder, removeOrderByHand, runOrders, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
@@ -1139,5 +1140,40 @@ describe("a once order is the player's own", () => {
     advance(state, world, 1);
     expect(keep.skipped).toBe("no logs here");
     expect(state.intent?.orderId).toBe(sticks.id);
+  });
+});
+
+
+describe("a waiting order says what it is waiting for", () => {
+  it("names the cause rather than printing the bare word", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    // Splitting needs logs this camp has none of. The row used to say
+    // "waiting", which tells a reader nothing at the moment they most want
+    // to know - and a screenshot of "Pick frozen lingon ... waiting" with no
+    // cause is in the playtest record.
+    addOrder(state, world, { task: "split", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const html = ordersHtml(state, world, cal);
+    expect(html).not.toMatch(/>waiting<\/div>/);
+    expect(html).toContain("waiting: ");
+    expect(html).toContain("no logs here");
+  });
+
+  it("an order that could run says it is waiting its turn, which is a different thing", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const html = ordersHtml(state, world, cal);
+    expect(html).toContain("waiting its turn");
+  });
+
+  it("the scheduler's own refusal wins, since it knows why it passed the order over", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const st = regionState(state, world, state.player.region);
+    st.orders[0].skipped = "waiting until first light";
+    expect(ordersHtml(state, world, cal)).toContain("waiting until first light");
   });
 });

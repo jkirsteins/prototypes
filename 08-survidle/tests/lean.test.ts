@@ -26,15 +26,15 @@ describe("the lean ceiling", () => {
     const rng = new Rng(1);
     let ate = 0;
     while (edible(state, "cookedMeat") && ate < 40) {
-      expect(eat(state, world, "cookedMeat", rng)).toBe(true);
+      expect(eat(state, world, "cookedMeat", rng)).toBeGreaterThan(0);
       ate++;
     }
     expect(leanEatenToday(p, state.minute)).toBeCloseTo(LEAN_KCAL_PER_DAY, 0);
     expect(edible(state, "cookedMeat")).toBe(false);
-    expect(eat(state, world, "cookedMeat", rng)).toBe(false);
+    expect(eat(state, world, "cookedMeat", rng)).toBe(0);
     expect(state.log.some((l) => l.text.includes("Lean meat is not filling"))).toBe(true);
     expect(edible(state, "fat")).toBe(true);
-    expect(eat(state, world, "fat", rng)).toBe(true);
+    expect(eat(state, world, "fat", rng)).toBeGreaterThan(0);
     p.kcal = 100;
     autoEat(state, world, rng);
     expect(p.kcal).toBeGreaterThan(100);

@@ -80,7 +80,7 @@ describe("camp", () => {
     expect(state.player.kcal).toBeCloseTo(1990);
     expect(qty(state.player.pack, "cookedMeat")).toBeCloseTo(0.1);
     addItem(state.player.pack, "driedMeat", 1);
-    expect(eat(state, world, "driedMeat", rng)).toBe(true);
+    expect(eat(state, world, "driedMeat", rng)).toBeGreaterThan(0);
     // driedMeat: 3,300 kcal/kg, three kilos to one rack kilo.
     expect(state.player.kcal).toBeCloseTo(1990 + 0.15 * 3300);
   });

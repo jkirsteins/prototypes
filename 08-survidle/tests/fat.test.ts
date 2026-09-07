@@ -67,7 +67,7 @@ describe("the berry ceiling", () => {
   it("1.2 kilos in a day credit their full 540 kcal", () => {
     const { state, world } = berried(1.2);
     state.player.kcal = 1000;
-    for (let i = 0; i < 6; i++) expect(eat(state, world, "berries", new Rng(1))).toBe(true);
+    for (let i = 0; i < 6; i++) expect(eat(state, world, "berries", new Rng(1))).toBeGreaterThan(0);
     expect(state.player.kcal).toBeCloseTo(1540, 6);
     expect(today(state).eaten).toBeCloseTo(540, 6);
     // Berries' kilos live under the shared gut counter, keyed by food.
@@ -97,7 +97,7 @@ describe("the berry ceiling", () => {
     for (let i = 0; i < 20; i++) eat(state, world, "berries", new Rng(1));
     expect(state.player.gut.kg.berries).toBeCloseTo(2, 6);
     expect(qty(state.player.pack, "berries")).toBeCloseTo(0.5, 6);
-    expect(eat(state, world, "berries", new Rng(1))).toBe(false);
+    expect(eat(state, world, "berries", new Rng(1))).toBe(0);
     expect(gutRefused(state.player, state.minute, "berries")).toBe(true);
     expect(edible(state, "berries")).toBe(false);
     expect(edible(state, "driedMeat")).toBe(true);
@@ -116,7 +116,7 @@ describe("the berry ceiling", () => {
     for (let i = 0; i < 20; i++) eat(state, world, "berries", new Rng(1));
     state.minute = 24 * 60 - START_MINUTE_OF_DAY;
     expect(gutRefused(state.player, state.minute, "berries")).toBe(false);
-    expect(eat(state, world, "berries", new Rng(1))).toBe(true);
+    expect(eat(state, world, "berries", new Rng(1))).toBeGreaterThan(0);
     expect(state.player.gut.day).toBe(2);
     expect(state.player.gut.kg.berries).toBeCloseTo(0.2, 6);
     expect(calendar(state.minute).day).toBe(2);

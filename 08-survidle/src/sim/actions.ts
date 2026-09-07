@@ -33,17 +33,18 @@ export function edible(state: GameState, food: FoodId): boolean {
 }
 
 /** Eats one portion of a food from pack or the pile here. Returns false if none. */
-export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boolean {
+/** Eats one portion. Returns the kilos taken, or nought when nothing was. */
+export function eat(state: GameState, world: World, food: FoodId, rng: Rng): number {
   const p = state.player;
   const def = FOODS[food];
-  if (!edible(state, food)) return false;
+  if (!edible(state, food)) return 0;
   const invs = [p.pack, herePile(state, world)];
   const have = totalQty(invs, food);
-  if (have <= 1e-9) return false;
+  if (have <= 1e-9) return 0;
   const wasFull = gutEatenToday(p, state.minute, food) > (GUT[food]?.fullCreditKg ?? Number.POSITIVE_INFINITY) + 1e-9;
   const taken = creditGut(p, state.minute, food, Math.min(def.portionKg, have));
   const kg = taken.kg;
-  if (kg <= 1e-9) return false;
+  if (kg <= 1e-9) return 0;
   let gain = kg * def.kcalPerKg * taken.credit;
   if (GUT[food]) {
     if (!wasFull && gutEatenToday(p, state.minute, food) > GUT[food]!.fullCreditKg + 1e-9) log(state, "{Your} stomach is turning.", "bad");
@@ -75,7 +76,9 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     p.sick = 48 * 60;
     log(state, "The raw meat turns {your} stomach. A fever follows.", "bad");
   }
-  return true;
+  // The kilos taken, so a caller can say what a meal cost. Nought means
+  // nothing was eaten, which is what every early return says.
+  return kg;
 }
 
 /** The reserve under which the body eats on its own. */
@@ -89,20 +92,37 @@ export const HUNGRY_LINE = 1800;
  * with fat at hand eats the fat rather than starving beside it, and a body
  * with room under the ceiling eats the lean food and keeps the fat.
  */
+/**
+ * The body feeding itself, and saying so.
+ *
+ * `auto-eat: on` was legible on screen the whole time a tester spent four
+ * notes unable to tell whether his survivor was eating - state was shown
+ * and the event was not. Then it ate his entire meat stock while he slept,
+ * silently, and he found out by looking at the pack.
+ *
+ * One line for the whole sitting rather than one per mouthful: this loops
+ * until the body is fed, and a reader wants to know what a meal cost, not
+ * how many portions it took.
+ */
 export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
   const p = state.player;
   if (!force && !p.autoEat) return;
+  const took: Partial<Record<FoodId, number>> = {};
   let guard = 0;
   while (p.kcal < HUNGRY_LINE && guard++ < 200) {
     let ate = false;
     for (const food of AUTO_EAT_ORDER) {
-      if (eat(state, world, food, rng)) {
+      const kg = eat(state, world, food, rng);
+      if (kg > 0) {
+        took[food] = (took[food] ?? 0) + kg;
         ate = true;
         break;
       }
     }
-    if (!ate) return;
+    if (!ate) break;
   }
+  const parts = (Object.keys(took) as FoodId[]).map((f) => `${took[f]!.toFixed(1)} kg ${ITEM_NAMES[f] ?? f}`);
+  if (parts.length) log(state, `{You} {eat} ${parts.join(" and ")}.`);
 }
 
 export function addFirewood(state: GameState, world: World, kg: number): number {

@@ -30,7 +30,7 @@ import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, pausedList, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
+import type { GameState, Garment, ItemId, LogEntry, Order, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -355,8 +355,28 @@ const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><s
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
 const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
+/**
+ * Why a row is not running.
+ *
+ * The scheduler writes its own refusal onto an order it passed over, which
+ * is why cordage says "waiting until first light" - and every order it has
+ * not yet reached said the bare word "waiting", which tells a reader
+ * nothing at the moment they most want to know. A row with no refusal
+ * recorded asks the task the same question the Do row asks, so an order
+ * waiting on a tool, on the weather or on a place says which.
+ *
+ * "met" is not a refusal: a keep whose figure is already reached is
+ * finished with, not stuck.
+ */
+function waitingWhy(state: GameState, world: World, cal: Calendar, o: Order): string {
+  if (o.skipped) return o.skipped;
+  if (orderMet(state, world, cal, o, false)) return "met";
+  const can = check(state, world, cal, o.req.task, o.req.arg);
+  return can.ok ? "waiting its turn" : `waiting: ${can.why}`;
+}
+
 /** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
-function ordersHtml(state: GameState, world: World, cal: Calendar): string {
+export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
   // An idle wait is waiting on the list, not on its own hour of rest: it says so
@@ -376,7 +396,7 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     // what moves a restart band's mark, so drawing a row never advances the list.
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
-      : `<div class="step">${esc(o.skipped || (orderMet(state, world, cal, o, false) ? "met" : "waiting"))}</div>`;
+      : `<div class="step">${esc(plain(waitingWhy(state, world, cal, o)))}</div>`;
     const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
