@@ -75,13 +75,21 @@ export const HANG_ABOVE_KG = (SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / F
  * So each of these rows asks for a count a day and no more: a daily job,
  * whose count the day roll clears and which never drops off the list. The
  * count is PLANT_HOURS_PER_DAY split across the rows the band holds: the
- * handbook's three hours are a budget for plant work as a whole, and this
- * band holds three rows at a time - the winter dig is the root row in the
- * months the summer one is shut, not a fourth row. Berries are not here -
- * the gut refuses a third kilo in a day, which is the same cap by another
- * route, and the handbook sets its own two litres.
+ * handbook's three hours are a budget for plant work as a whole, and the
+ * band holds the rows the camp has. The winter dig is the root row in the
+ * months the summer one is shut, not a further row, and the seaweed row is
+ * a sea camp's, given by a runner rule and never standing at all at an
+ * inland lake - so the rows an inland camp splits the budget across are
+ * the root row and the egg row, and a sea camp's seaweed takes an hour of
+ * the root row's share where it stands. Splitting the three hours across a
+ * row the camp does not have leaves an hour of the budget unspent every
+ * day of the year: a level-20 camp on seed 45 dug 273 kcal a day, under
+ * the band, and starved on the lean wall on day 200 with 19 tonnes of
+ * rhizome in reach. Berries are not here - the gut refuses a third kilo in
+ * a day, which is the same cap by another route, and the handbook sets its
+ * own two litres.
  */
-const PLANT_ROWS: TaskId[] = ["roots", "eggs", "seaweed"];
+const PLANT_ROWS: TaskId[] = ["roots", "eggs"];
 export const PLANT_HOURS_PER_ROW = PLANT_HOURS_PER_DAY / PLANT_ROWS.length;
 
 /**

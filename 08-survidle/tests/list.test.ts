@@ -136,7 +136,7 @@ describe("the list after the axe", () => {
     expect(wantOpen(state, world, digs[1])).toBe(false);
   });
 
-  it("asks for the plant band by the day: a daily count per row, the handbook's three hours split across them", () => {
+  it("asks for the plant band by the day, and splits the handbook's three hours across the rows a camp has", () => {
     // A keep measured in food at camp can never read met while the body eats what it brings
     // home, so the plant keeps took four and a half to seven and a half hours a day and the
     // hunt rows below them never got a turn. These are daily counts instead: spent, the row
@@ -145,8 +145,12 @@ describe("the list after the axe", () => {
       expect(want(t).kind).toBe("job");
       expect(want(t).req.until).toEqual({ kind: "daily", n: PLANT_HOURS_PER_ROW });
     }
-    // Three rows at a time: the winter dig is the root row in the months the summer one is shut.
-    expect(PLANT_HOURS_PER_ROW * 3).toBe(PLANT_HOURS_PER_DAY);
+    // The rows a camp has: the root row and the egg row. The winter dig is the root row in the
+    // months the summer one is shut, and seaweed is a sea camp's row, given by a runner rule
+    // and never standing at an inland lake - so a budget divided by it leaves an hour unspent
+    // every day. A level-20 camp on seed 45 dug 273 kcal a day, under the band, and starved on
+    // the lean wall on day 200 with 19 tonnes of rhizome in reach.
+    expect(PLANT_HOURS_PER_ROW * 2).toBe(PLANT_HOURS_PER_DAY);
   });
 
   it("gives a daily want its count once a day: spent, it waits for the morning", () => {
