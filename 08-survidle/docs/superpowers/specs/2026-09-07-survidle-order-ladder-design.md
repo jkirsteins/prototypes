@@ -399,3 +399,7 @@ Item L's Built paragraph in the roadmap with the readings; the README's
 standing-orders paragraph reads the five rungs and the conditions; the
 manual's line on orders, if any, reads them in a clause; the spec's
 section 0 holds "Measured before" and "Measured after".
+
+**Built.** On `survidle/order-ladder`, commits ef351b8 to HEAD, the
+plan's nine tasks. Section 0 above carries the "Measured before" and
+"Measured after" readings.

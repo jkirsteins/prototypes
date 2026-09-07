@@ -415,7 +415,10 @@ pace at 20 on every skill's ladder, the runner restricted to the shapes
 its skills have earned), because the runner's seasonal sense is rules
 in code no player can write, so the gates measure a player who does not
 exist; a paced woodpile measured as a bare rule took the lineage from 1
-of 4 to 3, then M a landing on the coast (the section of that name
+of 4 to 3; built, spec `2026-09-07-survidle-order-ladder-design.md`,
+plan `2026-09-07-survidle-order-ladder.md`, April 5 of 5, winter 5 of 5,
+the year 4 of 5 from 3, the lineage 4 of 5 from 1, readings under F),
+then M a landing on the coast (the section of that name
 below: stone within reach of a coastal camp, the sea shore's fishing
 seen to work, the landing chosen by the seed), because no landing in 300
 seeds is coastal and a coastal probe froze every beginner for want of
@@ -3799,6 +3802,38 @@ The runner cannot cut the full 6,600 kg by December even from midsummer:
 the pile tops out near 3,700 kg at about two logs a day beside water,
 cooking and fire, so the stock figure, the cutting rate or the window is
 a question this item will meet.
+
+**Built.** Spec `2026-09-07-survidle-order-ladder-design.md`, plan
+`2026-09-07-survidle-order-ladder.md`. Measured on the five reference
+seeds: April 5 of 5, winter 5 of 5, the year at level 20 4 of 5 (from 3)
+- seed 17 starves on day 353, five lean-wall days of the last seven,
+with 345 kg of dried meat and a kilo of fat at camp and a burn of 6,912
+kcal a day of which 3,535 is walking - and the lineage 4 of 5 (from 1),
+seed 79 the one seed whose six lives never reach a year. The year at
+level 10, run as a reading and not a gate, is 2 of 5. A level-20 camp's
+attention runs 17 to 33 mornings a year, and on seed 42 the water method
+alone is 55 of the 74 flips a level-20 year counts. The one runner fix:
+the plant band's three hours are split across the rows a camp has
+rather than divided by three including a sea-only seaweed row (measured
+on seed 45, whose inland camp never had that row standing, dug 273 kcal
+a day under the band and starved on the lean wall on day 200 with 19
+tonnes of rhizome in reach), which took the year gate from 3 of 5 to 4
+of 5 and the lineage from 3 of 5 to 4 of 5. Findings left for the
+author: seed 17's level-20 death is the site and not the vocabulary, its
+wood, water and bog far enough from the camp cell that March's walking
+is a third of its burn and the winter-wood keeps run behind their paced
+target all autumn; no shape at any rung can say "hunt until the camp has
+its fat", since a keep's item comes from its task and no task yields fat
+directly, so the fat and not the meat is what runs a camp out; rewriting
+the winter shore's fish row to read the camp's fat instead of a season
+was measured and withdrawn, since the fat crosses the winter stock's
+20 kg line in midsummer on the same seed too and the row shuts anyway,
+dying on day 296 rather than 323 - the row needs a second catch, not a
+second line; the heir's walk home carries no order at all until the
+runner reaches the region, so a heir walking a fortnight after death has
+no fire and no shelter on the road; and the ice hysteresis around
+`ICE_SHORE_CM`, the water method's 55 of 74 flips a year, is the whole
+of a level-20 camp's attention - a reading and not a defect.
 
 ### M. A landing on the coast
 
