@@ -17,6 +17,7 @@ import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
+import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
 import { actionsHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
@@ -122,6 +123,33 @@ describe("panels", () => {
     expect(grid.getAttribute("style")).toContain(`--cols:${l.w}`);
     expect(grid.getAttribute("style")).toContain(`--px:${l.px}px`);
     expect(document.querySelector("#map svg.walk")!.getAttribute("viewBox")).toBe(`0 0 ${l.w} ${l.h}`);
+  });
+
+  it("a rebuilt grid is born with the hour's light, so a zoom does not fade in from full day", () => {
+    const { state, world } = newGame(21);
+    // Dusk, where the light is well away from the stylesheet's daylight defaults.
+    const cal = calendar(19 * 60);
+    const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
+    expect(light.brightness).toBeLessThan(1);
+    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    const style = document.querySelector("#map .grid")!.getAttribute("style")!;
+    // The same figures updateSky writes, so the first frame after a rebuild
+    // changes nothing and the 0.5 s transitions have nothing to animate.
+    expect(style).toContain(`--bright:${light.brightness.toFixed(3)}`);
+    expect(style).toContain(`--sat:${light.saturation.toFixed(3)}`);
+    expect(style).toContain(`--tint:${light.tint}`);
+    expect(style).toContain(`--tint-a:${light.alpha.toFixed(3)}`);
+  });
+
+  it("the falling weather is on the grid it is built with, not toggled on a frame later", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(12 * 60);
+    state.weather.precip = "heavy";
+    state.weather.clear = false;
+    const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
+    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    const grid = document.querySelector("#map .grid")!;
+    expect(grid.classList.contains(light.precip === "snow" ? "snowing" : "rain")).toBe(true);
   });
 
   it("the zoom buttons sit in the map's bottom left corner, drawn after the grid", () => {

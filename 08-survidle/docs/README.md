@@ -100,8 +100,10 @@ waiting, and everything done while you are away run at the one scale.
   to the east. It is generated as you touch it, so loading is instant.
   Regions are about 4 km across; country you have never entered is fog, and
   the next valley over is dimly seen. The map is always centred on you;
-  zoom with the two buttons or the plus and minus keys, from 300 m per
-  glyph to the whole north on one screen.
+  zoom with the two buttons in the map's bottom left corner or the plus and
+  minus keys, from the whole north on one screen down to 300 m per glyph,
+  where the last two rungs hold the cell and draw it larger rather than
+  finer, since a glyph cannot show less than a cell.
 - **You are a point on the map.** Regions are split by blue borders; your
   region is outlined in yellow and `@` is your actual cell. What you can do depends on the ground under foot: fell trees and hunt
   in forest, gather stone on rock, fish beside water, hares and berries on
