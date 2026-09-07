@@ -919,16 +919,25 @@ export class ReferencePlayer {
       this.finished.delete(i);
       this.completed.delete(i);
     }
-    const list = ordersHere(state, world);
     // A once order that cannot run holds up every order under it. A player
     // reading that row takes it off rather than leaving the list standing all
-    // day; it goes back on when it can run. Only the row that is actually
-    // stalling comes off - a row waiting on the work of the rows above it is
+    // day; it goes back on when it can run. Only rows that are actually
+    // stalling come off - a row waiting on the work of the rows above it is
     // below one that can run, and holds nothing up.
-    const stalling = stallingOrder(state, world, cal);
-    if (stalling) {
-      for (const [i, g] of this.given) if (g.id === stalling.id) { this.stalled.add(i); this.withdraw(state, world, cal, i, g.id); break; }
+    //
+    // The whole stall clears in one reading, not one row an hour. Striking off
+    // the top row and then standing idle until the next look is not what a
+    // player does, and the opening list - where every row waits on a knife, a
+    // fire or a vessel - would cost a working day per row it has to shed.
+    for (let guard = this.given.size; guard > 0; guard--) {
+      const stalling = stallingOrder(state, world, cal);
+      if (!stalling) break;
+      const held = [...this.given].find(([, g]) => g.id === stalling.id);
+      if (!held) break;
+      this.stalled.add(held[0]);
+      this.withdraw(state, world, cal, held[0], held[1].id);
     }
+    const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
       const w = this.wants[i];
       if (list.some((o) => o.id === g.id)) {
