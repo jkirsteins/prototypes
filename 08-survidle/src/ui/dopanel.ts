@@ -266,13 +266,17 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
  */
 function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
   const kinds: RowChoice["until"][] = ["once", "times", "daily", "campHas", "keep", "forever"];
-  const buttons = kinds.map((k) => {
+  const button = (k: RowChoice["until"]) => {
     const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
     const gate = orderGate(state, req, kind);
     const label = esc(kindLabel(o.id, arg, k, ui.choice.n));
     const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
     return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
-  }).join("");
+  };
+  // A once order is the player's own: it goes to the top of the list and starts
+  // on the click. Every other kind is handed to the runner, which serves it in
+  // its own time and around the body's needs.
+  const buttons = `${button(kinds[0])}<small class="handoff">starts now; the rest are the runner's</small>${kinds.slice(1).map(button).join("")}`;
   const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";

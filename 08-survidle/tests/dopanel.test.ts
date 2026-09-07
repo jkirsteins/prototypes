@@ -208,6 +208,21 @@ describe("the condition fields", () => {
     expect(at).not.toContain("conditions at Foraging 15");
   });
 
+  it("marks where the player's own orders end and the runner's begin, on an open row", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const shut = rowHtml(doHtml(state, world, cal, newUiState()), "intent:chop:");
+    // A shut row has no kinds to divide, so it says nothing about the runner.
+    expect(shut).not.toContain("the rest are the runner's");
+    const ui = { ...newUiState(), open: { id: "chop" as const, arg: "" } };
+    const open = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
+    expect(open).toContain("starts now");
+    expect(open).toContain("the rest are the runner's");
+    // The divider falls after "once" and before the kinds handed over.
+    expect(open.indexOf('data-until="once"')).toBeLessThan(open.indexOf("the rest are the runner's"));
+    expect(open.indexOf("the rest are the runner's")).toBeLessThan(open.indexOf('data-until="times"'));
+  });
+
   it("the restart line shows at the condition rung and the due date at the pace rung, and only a keep carries them", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
