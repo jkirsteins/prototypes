@@ -8,12 +8,14 @@
 import { current } from "../sim/record";
 import type { GameState } from "../sim/types";
 import { type BeaconRecord, beganAgainFacts, common, diedFacts, openedFacts } from "./facts";
-import { saveRecord } from "./storage";
+import { cleanName, saveRecord } from "./storage";
 
 export interface Sink {
   emit(name: string, context: Record<string, unknown>): void;
   /** Ends the vendor session outright, for a switch turned off mid-session; optional because the recording test sink has nothing to end. */
   stop?(): void;
+  /** Sets the vendor user's name: the handle when one is stored, the id otherwise. */
+  rename?(name: string): void;
 }
 
 /** One heartbeat a real minute while the tab is visible and the game runs: the unit hours of attention are summed from. */
@@ -35,6 +37,8 @@ export interface Beacon {
   beganAgain(state: GameState, now: number): void;
   tick(state: GameState, visible: boolean, running: boolean, now: number): void;
   setOn(on: boolean, state: GameState): void;
+  /** Stores the handle typed over the id (empty clears it), keeps the vendor user current even while off, and reports only whether one is set. */
+  setName(raw: string, state: GameState): void;
   setSink(sink: Sink | null): void;
   record(): BeaconRecord;
 }
@@ -70,7 +74,13 @@ export function createBeacon(storage: Storage, sink: Sink | null, rec: BeaconRec
     setOn(on, state) {
       rec.on = on;
       save();
-      sink?.emit("settings", { ...common(state, rec), on });
+      sink?.emit("settings", { ...common(state, rec), on, named: rec.name !== null });
+    },
+    setName(raw, state) {
+      rec.name = cleanName(raw);
+      save();
+      sink?.rename?.(rec.name ?? rec.id);
+      send("settings", { ...common(state, rec), on: rec.on, named: rec.name !== null });
     },
     setSink(s) { sink = s; },
     record: () => rec,

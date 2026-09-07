@@ -78,10 +78,19 @@ game day, the tester flag and the cohort:
   death.
 - `settings` when the switch is toggled, so an opt-out is the last thing
   seen from that id; turning it off also ends the RUM session outright
-  rather than waiting for the next event to be dropped.
+  rather than waiting for the next event to be dropped. The same action,
+  with a `named` flag, when the handle below is set or cleared.
 
-What the beacon itself never sends: no name, no email, no IP, no session
-replay, no clicks.
+The RUM user is the id, and its name is the id too until the person
+types a handle over it in the field beside the switch. A typed handle
+is stored beside the id, sent as the user's name from then on, and is
+the one thing typed in the game that leaves the device; clearing the
+field puts the id back. The handle never rides in an action's context,
+only on the user, and the `settings` action says only whether one is
+set.
+
+What the beacon itself never sends: no email, no IP, no session replay,
+no clicks, and no name unless the person typed one beside the switch.
 
 ## What the SDK sends on its own
 
@@ -105,9 +114,10 @@ composes, and it is worth knowing about before a tester is recruited:
 ## The author's own traffic
 
 A dev open should not count as a tester's session. Either open with the
-switch off, or exclude the operator's own beacon id at the query side;
-the settings panel shows the id so it can be pasted into an exclude
-filter. `?speed=` and the console's `advance` both inflate `day` and
+switch off, or type your handle into the field beside the switch and
+exclude that user name at the query side (`-@usr.name:<handle>`); a
+coworker who types theirs is found the same way, by name instead of by
+a quoted id. `?speed=` and the console's `advance` both inflate `day` and
 `daysSurvived` past what real play would produce in the same wall-clock
 time, so a run driven by either should be filtered out of the gate bars
 the same way.
@@ -161,7 +171,8 @@ The text a tester receives, with the link filled in:
 > we will send you a short form. It asks for the id shown beside "share
 > anonymous play data" on the settings strip, so note it or leave the
 > tab where you can find it. Nothing you type in the game is sent
-> anywhere.
+> anywhere, except a name if you choose to type one into that same
+> field.
 
 The cohort word names the wave, never the person.
 
@@ -170,7 +181,8 @@ The cohort word names the wave, never the person.
 One form, sent after a week, keyed by the id. Seven questions, in this
 order:
 
-1. The id beside "share anonymous play data" on the settings strip.
+1. The id, or the name you typed over it, beside "share anonymous play
+   data" on the settings strip.
 2. On how many real days did you open the tab?
 3. What killed your first survivor?
 4. Did you start again after that death? If not, why not?

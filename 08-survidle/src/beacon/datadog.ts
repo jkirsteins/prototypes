@@ -12,7 +12,7 @@ export interface BeaconConfig { applicationId: string; clientToken: string; site
 /** The calls the sink makes, so a test can stand in for the SDK. */
 export interface RumLike {
   init(options: Record<string, unknown>): void;
-  setUser(user: { id: string }): void;
+  setUser(user: { id: string; name: string }): void;
   setGlobalContextProperty(key: string, value: unknown): void;
   addAction(name: string, context?: Record<string, unknown>): void;
   stopSession?(): void;
@@ -30,9 +30,10 @@ const loadSdk = (): Promise<{ datadogRum: RumLike }> => import("@datadog/browser
  * on every event the SDK sends on its own, since it is the one field that
  * can leak what page the player came from.
  */
-export function createDatadogSink(config: BeaconConfig, userId: string, global: Record<string, unknown>, enabled: () => boolean, load: () => Promise<{ datadogRum: RumLike }> = loadSdk): Sink {
+export function createDatadogSink(config: BeaconConfig, user: { id: string; name: string }, global: Record<string, unknown>, enabled: () => boolean, load: () => Promise<{ datadogRum: RumLike }> = loadSdk): Sink {
   let rum: RumLike | null = null;
   let queue: [string, Record<string, unknown>][] | null = [];
+  let current = { ...user };
   load().then(({ datadogRum }) => {
     datadogRum.init({
       applicationId: config.applicationId, clientToken: config.clientToken, site: config.site, service: config.service, env: config.env,
@@ -46,7 +47,7 @@ export function createDatadogSink(config: BeaconConfig, userId: string, global: 
         return true;
       },
     });
-    datadogRum.setUser({ id: userId });
+    datadogRum.setUser(current);
     for (const [k, v] of Object.entries(global)) datadogRum.setGlobalContextProperty(k, v);
     rum = datadogRum;
     for (const [name, ctx] of queue ?? []) rum.addAction(name, ctx);
@@ -61,5 +62,9 @@ export function createDatadogSink(config: BeaconConfig, userId: string, global: 
       else queue?.push([name, ctx]);
     },
     stop() { rum?.stopSession?.(); },
+    rename(name) {
+      current = { ...current, name };
+      rum?.setUser(current);
+    },
   };
 }

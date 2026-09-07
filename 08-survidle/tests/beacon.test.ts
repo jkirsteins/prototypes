@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { beganAgainFacts, common, diedFacts, monthNumber, openedFacts } from "../src/beacon/facts";
-import { applyTesterLink, BEACON_KEY, loadRecord, newId, saveRecord } from "../src/beacon/storage";
+import { applyTesterLink, BEACON_KEY, cleanName, loadRecord, newId, saveRecord } from "../src/beacon/storage";
 import { newGame } from "../src/sim/newgame";
 import { current } from "../src/sim/record";
 
@@ -14,6 +14,13 @@ function memory(): Storage {
 }
 
 describe("the beacon record", () => {
+  it("cleanName trims, cuts to 32 characters, and reads an empty field as no name", () => {
+    expect(cleanName("  Janis K  ")).toBe("Janis K");
+    expect(cleanName("")).toBeNull();
+    expect(cleanName("   ")).toBeNull();
+    expect(cleanName("x".repeat(40))).toBe("x".repeat(32));
+  });
+
   it("newId is sixteen lowercase hex characters and differs between calls", () => {
     const a = newId();
     const b = newId();
@@ -29,6 +36,7 @@ describe("the beacon record", () => {
     expect(rec.cohort).toBeNull();
     expect(rec.diedAt).toBeNull();
     expect(rec.attention).toEqual({ seed: 0, survivor: 0, minutes: 0 });
+    expect(rec.name).toBeNull();
     expect(JSON.parse(s.getItem(BEACON_KEY)!).id).toBe(rec.id);
     s.setItem(BEACON_KEY, JSON.stringify({ id: "0123456789abcdef", on: false }));
     const again = loadRecord(s);
@@ -36,6 +44,7 @@ describe("the beacon record", () => {
     expect(again.on).toBe(false);
     expect(again.tester).toBe(false);
     expect(again.attention).toEqual({ seed: 0, survivor: 0, minutes: 0 });
+    expect(again.name).toBeNull();
     saveRecord(s, { ...again, cohort: "wave1" });
     expect(JSON.parse(s.getItem(BEACON_KEY)!).cohort).toBe("wave1");
     s.setItem(BEACON_KEY, JSON.stringify({ id: "0123456789abcdef", attention: { minutes: 10 } }));
@@ -202,6 +211,32 @@ describe("the beacon", () => {
 });
 
 describe("deathTransition", () => {
+  it("setName stores the handle beside the id, renames the RUM user to it or back to the id, and reports only whether one is set", () => {
+    const { state } = newGame(17);
+    const s = memory();
+    const rec = { ...loadRecord(s), id: "0123456789abcdef" };
+    const sent: { name: string; ctx: Record<string, unknown> }[] = [];
+    const renamed: string[] = [];
+    const sink = { emit: (name: string, ctx: Record<string, unknown>) => sent.push({ name, ctx }), rename: (n: string) => renamed.push(n) };
+    const b = createBeacon(s, sink, rec);
+    b.setName("  Janis  ", state);
+    expect(b.record().name).toBe("Janis");
+    expect(JSON.parse(s.getItem(BEACON_KEY)!).name).toBe("Janis");
+    expect(renamed).toEqual(["Janis"]);
+    expect(sent.map((e) => [e.name, e.ctx.named])).toEqual([["settings", true]]);
+    expect(sent[0].ctx).not.toHaveProperty("name"); // the handle rides on the RUM user, never in an action's context
+    b.setName("", state);
+    expect(b.record().name).toBeNull();
+    expect(renamed).toEqual(["Janis", "0123456789abcdef"]);
+    expect(sent.map((e) => [e.name, e.ctx.named])).toEqual([["settings", true], ["settings", false]]);
+    b.setOn(false, state);
+    expect(sent.at(-1)!.ctx).toMatchObject({ on: false, named: false });
+    b.setName("quiet", state);
+    expect(b.record().name).toBe("quiet");
+    expect(renamed).toEqual(["Janis", "0123456789abcdef", "quiet"]); // the user is kept current even while off
+    expect(sent.length).toBe(3); // but nothing is sent while the switch is off
+  });
+
   it("fires only the frame that first crosses into dead, whether that death was dealt by play or by a reload's catch-up", () => {
     expect(deathTransition(false, true)).toBe(true);
     expect(deathTransition(true, true)).toBe(false);
@@ -223,11 +258,12 @@ describe("the Datadog sink", () => {
     };
     let resolve!: (m: { datadogRum: RumLike }) => void;
     const load = () => new Promise<{ datadogRum: RumLike }>((r) => { resolve = r; });
-    const sink = createDatadogSink({ ...BEACON, applicationId: "app", clientToken: "tok" }, "0123456789abcdef", { tester: true, cohort: "wave1" }, () => true, load);
+    const sink = createDatadogSink({ ...BEACON, applicationId: "app", clientToken: "tok" }, { id: "0123456789abcdef", name: "0123456789abcdef" }, { tester: true, cohort: "wave1" }, () => true, load);
     sink.stop?.();
     expect(calls).toEqual([]); // no-op before the SDK has finished loading
     sink.emit("opened", { seed: 1 });
     sink.emit("heartbeat", { seed: 1 });
+    sink.rename?.("Janis"); // before the SDK is up, the rename lands in the user the init will set
     expect(calls).toEqual([]);
     resolve({ datadogRum: rum });
     await new Promise((r) => setTimeout(r, 0));
@@ -237,11 +273,13 @@ describe("the Datadog sink", () => {
       applicationId: "app", clientToken: "tok", site: "datadoghq.eu", sessionSampleRate: 100, sessionReplaySampleRate: 0,
       trackUserInteractions: false, trackResources: false, trackLongTasks: false, defaultPrivacyLevel: "mask", trackAnonymousUser: false,
     });
-    expect(calls[1]).toEqual(["setUser", { id: "0123456789abcdef" }]);
+    expect(calls[1]).toEqual(["setUser", { id: "0123456789abcdef", name: "Janis" }]);
     expect(calls.slice(2, 4)).toEqual([["ctx", "tester", true], ["ctx", "cohort", "wave1"]]);
     expect(calls.slice(4)).toEqual([["action", "opened", { seed: 1 }], ["action", "heartbeat", { seed: 1 }]]);
     sink.emit("died", { seed: 1 });
     expect(calls.at(-1)).toEqual(["action", "died", { seed: 1 }]);
+    sink.rename?.("0123456789abcdef"); // after: the user is set again on the running SDK
+    expect(calls.at(-1)).toEqual(["setUser", { id: "0123456789abcdef", name: "0123456789abcdef" }]);
     sink.stop?.();
     expect(calls.at(-1)).toEqual(["stop"]);
   });
@@ -253,7 +291,7 @@ describe("the Datadog sink", () => {
       setUser: () => {}, setGlobalContextProperty: () => {}, addAction: () => {},
     };
     let on = true;
-    const sink = createDatadogSink(BEACON, "id", {}, () => on, () => Promise.resolve({ datadogRum: rum }));
+    const sink = createDatadogSink(BEACON, { id: "id", name: "id" }, {}, () => on, () => Promise.resolve({ datadogRum: rum }));
     sink.emit("opened", {});
     await new Promise((r) => setTimeout(r, 0));
     const event = { view: { referrer: "https://example.com/page" } };
@@ -267,7 +305,7 @@ describe("the Datadog sink", () => {
   });
 
   it("a failed load drops the queue and the game is unaffected", async () => {
-    const sink = createDatadogSink(BEACON, "id", {}, () => true, () => Promise.reject(new Error("offline")));
+    const sink = createDatadogSink(BEACON, { id: "id", name: "id" }, {}, () => true, () => Promise.reject(new Error("offline")));
     sink.emit("opened", {});
     await new Promise((r) => setTimeout(r, 0));
     sink.emit("heartbeat", {});
@@ -296,17 +334,28 @@ describe("the beacon panel", () => {
     const box = root.querySelector<HTMLInputElement>("[data-beacon=on]")!;
     const note = root.querySelector<HTMLElement>("[data-beacon=note]")!;
     expect(box.checked).toBe(true);
-    expect(note.textContent).toBe("id 0123456789abcdef, tester: wave1 (not configured)");
-    // The id sits in its own element so a double-click can select just it.
-    expect(note.querySelector("code[data-beacon=id]")!.textContent).toBe("0123456789abcdef");
+    expect(note.textContent).toBe("id , tester: wave1 (not configured)");
+    // The id is the name field's value until someone types over it.
+    const name = note.querySelector<HTMLInputElement>("input[data-beacon=name]")!;
+    expect(name.value).toBe("0123456789abcdef");
+    expect(name.maxLength).toBe(32);
+    name.value = " Janis ";
+    name.dispatchEvent(new Event("change"));
+    expect(b.record().name).toBe("Janis");
+    expect(name.value).toBe("Janis");
+    name.value = "";
+    name.dispatchEvent(new Event("change"));
+    expect(b.record().name).toBeNull();
+    expect(name.value).toBe("0123456789abcdef"); // cleared, the field shows the id again
     box.checked = false;
     box.dispatchEvent(new Event("change"));
     expect(toggled).toEqual([false]);
     expect(b.record().on).toBe(false);
     const root2 = document.createElement("div");
     root2.innerHTML = root.innerHTML;
-    mountBeaconPanel(root2, createBeacon(s, null, { ...rec, tester: false, cohort: null }), true, () => state, () => {});
-    expect(root2.querySelector("[data-beacon=note]")!.textContent).toBe("id 0123456789abcdef");
+    mountBeaconPanel(root2, createBeacon(s, null, { ...rec, tester: false, cohort: null, name: "Janis" }), true, () => state, () => {});
+    expect(root2.querySelector("[data-beacon=note]")!.textContent).toBe("id ");
+    expect(root2.querySelector<HTMLInputElement>("input[data-beacon=name]")!.value).toBe("Janis"); // a stored handle is what the field shows
   });
 
   it("turning on calls onToggle before setOn, so a sink the callback creates still receives the settings action", () => {

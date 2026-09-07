@@ -14,6 +14,8 @@ export interface BeaconRecord {
   on: boolean;
   tester: boolean;
   cohort: string | null;
+  /** A handle the person typed over the id on the settings panel, or null; it rides on the RUM user, never in an action. */
+  name: string | null;
   /** Wall-clock milliseconds of the last death seen, for the time it took to begin again. */
   diedAt: number | null;
   /** Visible minutes in one life, and which world and life that count belongs to. */

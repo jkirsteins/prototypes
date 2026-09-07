@@ -71,7 +71,7 @@ let beaconRec = loadRecord(localStorage);
   }
 }
 const beaconConfigured = Boolean(BEACON.applicationId && BEACON.clientToken);
-const makeSink = () => createDatadogSink(BEACON, beaconRec.id, { tester: beaconRec.tester, cohort: beaconRec.cohort }, () => beacon.record().on);
+const makeSink = () => createDatadogSink(BEACON, { id: beaconRec.id, name: beaconRec.name ?? beaconRec.id }, { tester: beaconRec.tester, cohort: beaconRec.cohort }, () => beacon.record().on);
 let sinkMade = beaconConfigured && beaconRec.on;
 let sink: Sink | null = sinkMade ? makeSink() : null;
 const beacon = createBeacon(localStorage, sink, beaconRec);

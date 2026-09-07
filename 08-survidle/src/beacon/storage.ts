@@ -8,6 +8,7 @@ import type { BeaconRecord } from "./facts";
 
 export const BEACON_KEY = "survidle.beacon";
 const COHORT_MAX = 32;
+const NAME_MAX = 32;
 
 /** Sixteen lowercase hex characters from the platform's random source. */
 export function newId(): string {
@@ -16,7 +17,7 @@ export function newId(): string {
 }
 
 function fresh(id: string): BeaconRecord {
-  return { id, on: true, tester: false, cohort: null, diedAt: null, attention: { seed: 0, survivor: 0, minutes: 0 } };
+  return { id, on: true, tester: false, cohort: null, name: null, diedAt: null, attention: { seed: 0, survivor: 0, minutes: 0 } };
 }
 
 /**
@@ -56,4 +57,10 @@ export function applyTesterLink(rec: BeaconRecord, params: URLSearchParams): { r
     .replace(/[^a-z0-9-]/g, "")
     .slice(0, COHORT_MAX);
   return { rec: { ...rec, tester: true, cohort: word || "default" }, stripped: true };
+}
+
+/** The handle as stored: trimmed and cut to its length, an empty field reading as no handle. It is whatever the person typed, since they chose to type it. */
+export function cleanName(raw: string): string | null {
+  const t = raw.trim().slice(0, NAME_MAX);
+  return t || null;
 }
