@@ -24,7 +24,7 @@ import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
-import { beginTask, check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
+import { beginTask, check, huntGroundValue, isShortAtCamp, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, UntilChoice, Where,
 } from "./types";
@@ -268,7 +268,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
  * be pressed.
  */
 function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
-  if (task !== "build" || arg === "snare" || why !== "missing materials at camp") return { ok: false, detail: "" };
+  if (task !== "build" || arg === "snare" || !isShortAtCamp(why)) return { ok: false, detail: "" };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
   if (!canFetch(state, world, sid, campCell)) return { ok: false, detail: "" };

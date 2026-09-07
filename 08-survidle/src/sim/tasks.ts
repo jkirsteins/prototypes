@@ -3,7 +3,7 @@ import { CELL_KM, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { passable, routeKm, routeMinutes } from "../world/route";
-import { loadRack } from "./actions";
+import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
@@ -11,11 +11,11 @@ import { cue } from "./cues";
 import { exploreRoute, survivorRoute } from "./routing";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
-  removeItem, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
+  removeItem, shortOf, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
 } from "./inventory";
 import {
   BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
-  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
+  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, type Need, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
   RECIPES, RECIPE_IDS, ROE_SHARE, ROOT_FROM_DOY, ROOT_KG_PER_HOUR, ROOT_TO_DOY, ROOT_WINTER_KG_PER_HOUR, SAP_FROM_DOY, SAP_KCAL, SAP_LITRES, SAP_TAPS_PER_DAY, SAP_TO_DOY,
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
@@ -157,6 +157,35 @@ export function seaweedAvailable(state: GameState, world: World, cell: number): 
 export function buildMinutes(state: GameState, world: World, sid: StructureId, at: number): number {
   if (sid !== "firePit") return STRUCTURES[sid].minutes;
   return fireSiteMinutes(cellAt(world, at).terrain, state.weather.snowCm);
+}
+
+/**
+ * What a build still wants, in the words a reader would use: "short 2
+ * stone", not "missing materials" beside a recipe list reading "2 stone,
+ * 4 sticks" - which a tester holding four stone read as "missing 2 stone".
+ * The list is what the thing costs; this is what is wanting.
+ *
+ * The words end in AT_CAMP because the fetch path keys on that rather than
+ * on the whole sentence: it used to compare against the exact prose, so
+ * rewording this silently turned fetching off.
+ */
+const AT_CAMP = " at camp";
+
+function shortList(invs: Inventory[], needs: Need[]): string {
+  const short = shortOf(invs, needs);
+  if (!short.length) return `missing materials${AT_CAMP}`;
+  const said = short.map((s) => itemLabel(s.item, s.qty));
+  const list = said.length > 1 ? `${said.slice(0, -1).join(", ")} and ${said[said.length - 1]}` : said[0];
+  return `short ${list}${AT_CAMP}`;
+}
+
+/**
+ * Whether a refusal is "the camp has not got the materials", which is the
+ * one a build can answer by fetching them. Named, so the wording above is
+ * free to change without turning a feature off from another file.
+ */
+export function isShortAtCamp(why: string): boolean {
+  return why.endsWith(AT_CAMP);
 }
 
 function needsList(needs: { item: string; qty: number; alt?: string }[]): string {
@@ -490,9 +519,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const left = rootCellKg(st, world, at);
       const factor = rootDigFactor(left, full);
       const rate = Number(((winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR) * factor).toFixed(3));
-      const dug = `${rate} kg an hour with a digging stick; cattail and reed at the water, dandelion on the meadow; cook them`;
+      const dug = `food once cooked. ${rate} kg an hour with a digging stick. Cattail and reed at the water, dandelion on the meadow`;
       // A patch thins before it goes: the row says which it is, so the next dig is aimed at ground that still has a stand on it.
-      const detail = factor < 1 ? `dug over here, the next patch is better; ${dug}` : dug;
+      const detail = factor < 1 ? `${dug}. Dug over here, the next patch is better` : dug;
       const o = opt({ group: "gather", label: "Dig roots", detail, duration: 60, repeatable: true });
       if (!ground) return { ...o, ok: false, why: "stand by the water, on the bog or on the meadow" };
       if (winter && !(watersideCell(world, at) && iceHoleOpen(state, at))) return { ...o, ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" };
@@ -697,7 +726,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const rid = arg as RecipeId;
       const rec = RECIPES[rid];
       const needs = effectiveNeeds(state, rid);
-      const o = opt({ group: "craft", label: rec.name, detail: needsList(needs) + (rec.tool ? `; needs a ${TOOLS[rec.tool].name}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
+      // The label is what a queued row says, and a queue holds acts: a row
+      // reading "snare" is a thing, and "Make snare" is the job it stands for.
+      const o = opt({ group: "craft", label: `Make ${rec.name}`, detail: needsList(needs) + (rec.tool ? `; needs a ${TOOLS[rec.tool].name}` : ""), duration: rec.minutes, repeatable: rec.out.item !== undefined });
       if (rec.tool && !toolNear(p, rec.tool, toolInvs)) return { ...o, ok: false, why: `needs a ${TOOLS[rec.tool].name}` };
       if (!canConsume(invs, needs)) return { ...o, ok: false, why: "missing materials" };
       return o;
@@ -765,7 +796,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       } else if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
       if ((sid === "cabin" || sid === "turfHut") && !st.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
-      if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
+      if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
       return o;
     }
     case "mend": {
@@ -786,7 +817,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!o.ok) return o;
       if (!st.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };
       if (!needsMending(st, sid)) return { ...o, ok: false, why: "stands well enough" };
-      if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
+      if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: shortList(invs, def.needs) };
       return o;
     }
     case "light": {

@@ -161,6 +161,24 @@ export function canConsume(invs: Inventory[], needs: Need[]): boolean {
   return needs.every((n) => resolveNeed(invs, n) !== null);
 }
 
+/**
+ * The needs these inventories cannot meet, and how much each is short by.
+ *
+ * A row that said "missing materials" beside a recipe list reading "2
+ * stone, 4 sticks" was read as "missing 2 stone" by a tester holding four
+ * of them: the list is what the thing costs, and nothing said what was
+ * actually wanting. This says it.
+ */
+export function shortOf(invs: Inventory[], needs: Need[]): { item: ItemId; qty: number }[] {
+  const out: { item: ItemId; qty: number }[] = [];
+  for (const n of needs) {
+    if (resolveNeed(invs, n) !== null) continue;
+    const have = totalQty(invs, n.item) + (n.alt ? totalQty(invs, n.alt) : 0);
+    out.push({ item: n.item, qty: Math.max(0, n.qty - have) });
+  }
+  return out;
+}
+
 /** Takes the needs out of the inventories, pack first. Caller checks canConsume. */
 export function consume(invs: Inventory[], needs: Need[]): void {
   for (const need of needs) {

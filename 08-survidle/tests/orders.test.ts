@@ -288,12 +288,12 @@ describe("the scheduler", () => {
     const cabin = addOrder(state, world, req("build", { arg: "cabin", until: { kind: "once" } }), "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
-    expect(cabin.skipped).toBe("missing materials at camp");
-    const line = "log cabin: missing materials at camp.";
+    expect(cabin.skipped).toMatch(/^short .* at camp$/);
+    const line = `log cabin: ${cabin.skipped}.`;
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
     // Judged again every free minute while the grind stays live, but logged only the once.
     advance(state, world, 5);
-    expect(cabin.skipped).toBe("missing materials at camp");
+    expect(cabin.skipped).toMatch(/^short .* at camp$/);
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
   });
 
@@ -684,7 +684,7 @@ describe("the away report", () => {
     // need, so camp's own log count never dips low enough to count as missing: the
     // cabin stays blocked on stone and cordage alone, which never sit at any pile
     // in this fixture, so canFetch's allowance never opens and the report below is
-    // read at a stable "missing materials at camp" whenever the ten-day catch-up ends.
+    // read at a stable "short ... at camp" whenever the ten-day catch-up ends.
     const g = campWith(3, { log: 50, firewood: 10 });
     const { state, world } = g;
     const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
@@ -704,7 +704,7 @@ describe("the away report", () => {
     expect(k.minutes).toBe(keep.minutes);
     expect(j.gone).toBe(true);
     expect(j.done).toBe(1);
-    expect(c.skipped).toBe("missing materials at camp");
+    expect(c.skipped).toMatch(/^short .* at camp$/);
     expect(c.done).toBe(0);
     expect(t.task).toBe("chop");
     expect(t.done).toBe(grind.done);
@@ -1100,7 +1100,7 @@ describe("a once order is the player's own", () => {
     const cabin = addOrder(state, world, req("build", { arg: "cabin" }), "job");
     const grind = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
     advance(state, world, 1);
-    expect(cabin.skipped).toBe("missing materials at camp");
+    expect(cabin.skipped).toMatch(/^short .* at camp$/);
     expect(state.intent?.orderId).toBeNull();
     expect(state.intent?.task).toBe("wait");
     removeOrder(state, world, cabin.id);

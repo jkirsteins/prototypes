@@ -7,7 +7,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -534,7 +534,8 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
     .map(({ item, qty: q }) => {
       const one = KG_ITEMS.has(item) ? Math.min(q, 1) : 1;
       const oneLabel = KG_ITEMS.has(item) ? "1 kg" : "1";
-      return `<span class="n">${itemLabel(item, q)}</span><span class="ctl"><button class="mini" data-act="${act}" data-item="${item}" data-n="${one}">${act} ${oneLabel}</button> <button class="mini" data-act="${act}" data-item="${item}" data-n="all">all</button></span>`;
+      const kg = KG_ITEMS.has(item) ? q : q * ITEM_KG[item];
+      return `<span class="n">${itemLabel(item, q)} <small class="dim">${fmtKg(kg)}</small></span><span class="ctl"><button class="mini" data-act="${act}" data-item="${item}" data-n="${one}">${act} ${oneLabel}</button> <button class="mini" data-act="${act}" data-item="${item}" data-n="all">all</button></span>`;
     })
     .join("")}</div>`;
 }
@@ -574,7 +575,9 @@ export function fmtLogTime(e: LogEntry): string {
 
 /** The log: "you" for what the player watched, the survivor's name for what happened while they were away. */
 export function logHtml(state: GameState): string {
-  const entries = state.log.slice(-60).reverse();
+  // Oldest first, the way a story is told and the way he expected it: he
+  // read the newest-first order as his own misreading rather than the log's.
+  const entries = state.log.slice(-60);
   const name = current(state).name.first;
   return `<h2>Log</h2><div class="entries">${entries
     .map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`)
@@ -620,9 +623,10 @@ export function landingHtml(state: GameState, world: World): string {
 <h1>${esc(fmtWorldDate(l.date))}</h1>
 <p>${gap}A boat puts in at ${esc(regionAt(world, l.region).name)} with three aboard. Choose one; the other two sail on.</p>
 <div class="cards">${cards}</div>
+<p class="dim">Whoever you choose lands with an axe, the wool on their back and a kilo of dried meat.</p>
 <p><label>Name <input data-name maxlength="40" value="${esc(fmtName(l.name))}" /></label></p>
 <button class="act" data-act="land">Land</button>
-<button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">next boat (${esc(fmtWorldDate(next))})</button>
+<button class="mini" data-act="next-boat" title="A week later, and the world runs on without you">wait for the next boat and three new people (${esc(fmtWorldDate(next))})</button>
 <button class="mini" data-act="manual-open">How to survive</button>
 </div>`;
 }

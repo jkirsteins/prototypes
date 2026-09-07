@@ -773,7 +773,7 @@ describe("the Orders panel", () => {
     expect(html).toContain("<h2>Orders</h2>");
     expect(html.indexOf(`data-id="${keep.id}"`)).toBeLessThan(html.indexOf(`data-id="${cabin.id}"`));
     expect(html).toContain("met");
-    expect(html).toContain("missing materials at camp");
+    expect(html).toMatch(/short .* at camp/);
     expect(html).toContain("gathering sticks");
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
@@ -803,7 +803,7 @@ describe("the Orders panel", () => {
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
     const html = taskHtml(state, world, calendar(state.minute));
-    expect(html).toContain('<div class="step">missing materials at camp</div>');
+    expect(html).toMatch(/<div class="step">short .* at camp<\/div>/);
     expect(html).not.toContain('<div class="step">waiting</div>');
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
   });

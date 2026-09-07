@@ -11,7 +11,7 @@ import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
-import { candidateWeight, check, huntGroundValue, stepTask, stopTask } from "../src/sim/tasks";
+import { candidateWeight, check, huntGroundValue, stepTask, stopTask , isShortAtCamp } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
 import { SKILL_IDS } from "../src/sim/skills";
 import { takeStep } from "../src/sim/steps";
@@ -314,7 +314,12 @@ describe("the work tier", () => {
 
   it("a build with materials nowhere in the region does not start; the button already says why", () => {
     const { state, world } = newGame(3);
-    expect(intentOption(state, world, cal, "build", "leanTo", "nearest").why).toBe("missing materials at camp");
+    // The refusal names what is wanting rather than saying "missing
+    // materials" beside a list of what the whole thing costs.
+    const why = intentOption(state, world, cal, "build", "leanTo", "nearest").why;
+    expect(why).toMatch(/^short /);
+    expect(why).toMatch(/ at camp$/);
+    expect(isShortAtCamp(why)).toBe(true);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
     expect(state.intent).toBeNull();
   });
@@ -363,7 +368,7 @@ describe("the work tier", () => {
     addItem(state.player.pack, "stone", 34 / ITEM_KG.stone);
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
     expect(until(g, () => state.intent === null, 500)).toBe(true);
-    expect(state.log.some((e) => e.text === "lean-to: missing materials at camp. {You} {stop}.")).toBe(true);
+    expect(state.log.some((e) => /^lean-to: short .* at camp\. \{You\} \{stop\}\.$/.test(e.text))).toBe(true);
   });
 
   it("a build already finished is never offered a fetch, whatever sits elsewhere in the region", () => {
