@@ -63,8 +63,12 @@ either way; the count of seeds is the reading, the day is the shape.
   319, 19 died of thirst on 331, 79 froze on 341 and 45 starved on 113.
   A level-10 survivor has the keep rung and not the condition rung, so
   every season, stock line, restart and daily count on its list is stripped
-  and played by hand - the deaths there are answerable only by a rung it
-  has not reached, and the reading is what the two upper rungs are worth.
+  and played by hand, and the reading is what the two upper rungs are
+  worth. One of its deaths was traced and it is the fat finding under
+  another name: seed 19 on day 331 reads thirst, with kcal at 710, 26 kg of
+  dried meat and no fat at camp, "you are starving" logged above the thirst
+  line and the ice-hole fetch skipped for the night. Seed 79's freeze on
+  day 341 was not traced.
 
 *Each death's unexploited line, with its taken half.* The April deaths:
 seed 17 "roots 9,179 kg, 109 kcal a day taken, pine ground reachable, none
@@ -198,6 +202,52 @@ unchanged beneath it all.
   code is left as it stands; a stage's opening morning wants a
   `conditionOpen` read and a `keepTargetToday` figure before the stage is
   trusted against the band.
+
+## Decisions taken for the author
+
+- **Rung levels 15 and 20.** Conditions at 15, pace at 20, continuing the
+  3, 5, 10 progression. The one number in the item with no source; the
+  author may move it.
+- **Five condition shapes and one pace shape**, no more: a season window, a
+  stock condition, a restart line on a keep, a daily count, and a target
+  due by a date. Everything the runner does today that a player cannot
+  write maps onto one of these or stays a named runner rule (below).
+- **Keeps read their stored forms.** A keep on a food task counts the food
+  in the forms it takes at camp, in the keep's own unit, so "keep 240 kg of
+  meat" reads dried meat at three kilos a kilo. The bark keep's KEEP_ALSO
+  is the precedent and becomes the general table.
+- **The runner is a returning player for what it has not earned.** A want
+  whose condition the skill has not reached is given as the plain shape
+  aimed at today's reading and withdrawn or re-given as the condition
+  would have done it; every such act is a morning the list changed and is
+  counted. At the rung the order carries the condition and the count
+  falls. That is the honesty the item buys: attention per season by level.
+- **Named runner rules stay where a player reads the same thing off the
+  screen**: a recommended level on a named hunt, a garment or an axe; the
+  water and fire method by what stands and what the ice does; the snow
+  shelter until walls stand. Each flip is counted as an intervention.
+- **The hunt keep's larder band replaces the larder gate.** The hunt keep
+  targets the winter stock's meat in meat-equivalent kilos with a restart
+  line at four fifths of it (the fifth the stock carries as spare); the
+  fish keep carries a stock condition that shuts it while the dried meat
+  at camp is at or above the stock's 80 kg. No new constant.
+- **The paced pile sits above the food rows** with its target due on 1
+  December (the day the winter stock is what a competent player has), the
+  shape the fat item measured; it is a rung-20 order and an heir below the
+  rung gets the returning player's plain keep at today's target instead.
+- **The plant band's daily count is a condition.** "An hour of roots a
+  day" is a daily job at 15; below it the runner re-gives the counted job
+  each morning as a returning player would and the count shows it.
+- **No constant moves.** Every number here is a level, a date already in
+  the calendar, or a stock already in the list.
+- **The lineage gets the short plan by construction**: an heir at level 5
+  runs the same list through the same ladder and gets jobs and grinds, so
+  the lineage gate measures the ramp; its landing line prints what the
+  heir inherited.
+- **Out of scope**: the coast (item M), new tasks, any change to the food
+  model or its numbers, a day-share scheduler (the ladder's conditions
+  answer the all-day-keep problem where it bit, and a scheduler that
+  shares the day is a different item if the readings still ask for it).
 
 ## 1. The vocabulary
 
