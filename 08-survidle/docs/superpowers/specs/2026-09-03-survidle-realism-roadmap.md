@@ -3758,9 +3758,16 @@ in every morning with perfect judgement, so the gates measure a player
 who does not exist at any level. This item turns each such rule into a
 rung or a plain order, restricts the runner to the shapes its skills
 have earned (the mechanism it already uses for job, grind and keep), and
-re-measures all four gates. A cheap honesty reading comes with it: the
-count of mornings the runner's list changed in a season, which is the
-attention the plan cost.
+re-measures all four gates. Two readings come with it. The count of
+mornings the runner's list changed in a season, which is the attention
+the plan cost. And the unexploited line's second half: today the line
+names every source with a stock in season and in reach, worked or not,
+so an April death reads "roots 125 kg" of a survivor who dug roots every
+day and a shore camp reads "oily fish read at the shore" for ever (K's
+finding F7). Beside each stock it prints what the ledger credited from
+that source in the week before the death, so "roots 125 kg, none taken
+this week" is a hole and "roots 125 kg, 306 kcal a day taken" is not.
+Diagnostic only; nothing in play changes.
 
 **Measured case.** A paced woodpile, applied as a runner rule to every
 survivor whatever its level, read on the four seeds against the K
