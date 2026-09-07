@@ -9,12 +9,13 @@
 import type { Calendar } from "../sim/calendar";
 import { fuelTotal } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
+import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
-import { DIM, discovery, SEEN, VISITED } from "../sim/regionstate";
+import { discovery } from "../sim/regionstate";
 import type { GameState, Terrain } from "../sim/types";
 import { ambientTemperature, iceMode } from "../sim/weather";
-import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
+import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 import { lighting } from "./sky";
 
@@ -136,27 +137,45 @@ export function viewOrigin(state: GameState, world: World, zoom: number): { x0: 
   return { x0, y0 };
 }
 
-interface Block { terrain: Terrain; region: number; seen: 0 | 1 | 2 | 3 }
+interface Block { terrain: Terrain; region: number; seen: 0 | 1 | 2 }
+
+/** A cell's own knowledge: 0 unknown, 1 dim (only the journal has it), 2 known this life. */
+function cellKnowledge(state: GameState, world: World, x: number, y: number): 0 | 1 | 2 {
+  const m = state.mapped[cellIdx(world, x, y)];
+  return m === undefined ? 0 : m === 1 ? 2 : 1;
+}
+
+/**
+ * A block reads as known only once more than half its sampled cells are -
+ * ties go to fog. A corridor one cell wide fills at most a couple of a
+ * block's nine samples, so it stays fog at this zoom and only reads as a
+ * thread at the closer rungs, where a glyph is one cell and cannot blur.
+ */
+const BLOCK_MAJORITY = 0.5;
 
 /**
  * What a glyph shows for its block: the commonest ground among a 3 by 3
- * sample, the region at the centre, and the best discovery level of any
- * sampled region, so a block you stand in is never fog.
+ * sample of cells actually known, the region at the centre, and the
+ * block's own knowledge - unknown unless most sampled cells are known,
+ * dim rather than bright unless most of what is known is this life's.
  */
 function blockInfo(state: GameState, world: World, x0: number, y0: number, z: number): Block {
   if (z === 1) {
     const region = regionPeek(world, x0, y0);
-    return { terrain: terrainPeek(world, x0, y0), region, seen: discovery(state, region) };
+    return { terrain: terrainPeek(world, x0, y0), region, seen: cellKnowledge(state, world, x0, y0) };
   }
   const counts = new Map<Terrain, number>();
   const step = Math.max(1, Math.floor(z / 3));
-  let seen: 0 | 1 | 2 | 3 = 0;
+  let n = 0;
+  let knownAny = 0;
+  let knownBright = 0;
   for (let j = step >> 1; j < z; j += step) {
     for (let i = step >> 1; i < z; i += step) {
-      const reg = regionPeek(world, x0 + i, y0 + j);
-      const d = discovery(state, reg);
-      if (d > seen) seen = d;
-      if (d > 0) {
+      n++;
+      const k = cellKnowledge(state, world, x0 + i, y0 + j);
+      if (k > 0) {
+        knownAny++;
+        if (k === 2) knownBright++;
         const t = terrainPeek(world, x0 + i, y0 + j);
         counts.set(t, (counts.get(t) ?? 0) + 1);
       }
@@ -165,12 +184,13 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
   let best: Terrain = "water";
   let bestN = -1;
   for (const t of TIE_ORDER) {
-    const n = counts.get(t) ?? 0;
-    if (n > bestN) {
-      bestN = n;
+    const c = counts.get(t) ?? 0;
+    if (c > bestN) {
+      bestN = c;
       best = t;
     }
   }
+  const seen: 0 | 1 | 2 = knownAny / n <= BLOCK_MAJORITY ? 0 : knownBright / knownAny > BLOCK_MAJORITY ? 2 : 1;
   return { terrain: best, region: regionPeek(world, x0 + (z >> 1), y0 + (z >> 1)), seen };
 }
 
@@ -260,7 +280,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${state.player.torch.lit ? "T" : ""}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
@@ -353,6 +373,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const gy = Math.floor(i / l.w);
     const reg = regions[i];
     const seen = reg >= 0 ? seenAt[i] : 0;
+    const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
     let title = "";
@@ -361,11 +382,12 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       cls.push("void");
     } else if (seen === 0) {
       cls.push("fog");
-      title = "unknown ground";
+      // Only regions already built get named; building one here would fill its chunks for a tooltip.
+      title = named ? (world.regions.get(reg)?.name ?? "ground heard of, not seen") : "unknown ground";
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
-      if (seen === SEEN || seen === DIM) cls.push("dim");
+      if (seen === 1) cls.push("dim");
       if (drawBorders) {
         if (gx > 0 && regions[i - 1] !== reg) cls.push("bl");
         if (gx < l.w - 1 && regions[i + 1] !== reg) cls.push("br");
@@ -380,9 +402,8 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
       }
       if (snow && t === "meadow") glyph = "*";
-      // Only regions already built get named; building one here would fill its chunks for a tooltip.
-      title = seen === VISITED ? (world.regions.get(reg)?.name ?? "known country") : seen === DIM ? (world.regions.get(reg)?.name ?? "known once") : "seen from a distance";
-      if (pileGlyphs.has(i) && seen === VISITED) {
+      title = world.regions.get(reg)?.name ?? (seen === 2 ? "known country" : "known once");
+      if (pileGlyphs.has(i) && seen === 2) {
         cls.push("pl");
         title += ", something lies here";
       }
@@ -399,7 +420,9 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (m.cls === "mk-player") title = `you, ${title}`;
       if (m.cls === "mk-camp") title = `camp, ${title}`;
     }
-    const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
+    // Selecting is what puts the Explore button on the panel, so a named region stays
+    // clickable on the map whether or not its ground itself has been walked.
+    const act = named ? ` data-act="select" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
     const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
     parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);

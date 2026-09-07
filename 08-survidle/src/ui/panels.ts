@@ -9,6 +9,7 @@ import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
+import { knownShare } from "../sim/mapped";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
@@ -339,10 +340,19 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     : "";
   let travel = "";
   if (!here) {
-    const go = check(state, world, cal, "travel", `region:${id}`);
-    travel = go.ok
-      ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
-      : `<div style="margin-top:6px"><span class="dim">${esc(plain(go.why))}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
+    // Ground not yet known cannot be walked to - offer the way it opens instead.
+    // A region already wholly known offers only Go.
+    if (knownShare(state, world, id) >= 1) {
+      const go = check(state, world, cal, "travel", `region:${id}`);
+      travel = go.ok
+        ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
+        : `<div style="margin-top:6px"><span class="dim">${esc(plain(go.why))}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
+    } else {
+      const ex = check(state, world, cal, "explore", `region:${id}`);
+      travel = ex.ok
+        ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="explore" data-arg="region:${id}">Explore ${esc(r.name)} <small>${esc(ex.detail)}</small></button></div>`
+        : `<div style="margin-top:6px"><span class="dim">${esc(plain(ex.why))}</span></div>`;
+    }
   }
   // What this cell offers as a camp, shown only when it is not the camp already; a move
   // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.

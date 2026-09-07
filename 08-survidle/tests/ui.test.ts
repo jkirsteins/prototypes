@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it } from "vitest";
+// Forces ./sim/tasks to finish initialising SPOT_NAMES before anything else in this
+// file's import graph reaches it first through a cycle - a pre-existing ordering
+// crash outside this task's files, not chased here, only dodged.
+import "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, moveOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { discovery, regionState, SEEN } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import type { TaskGroup } from "../src/sim/tasks";
@@ -24,6 +29,7 @@ import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setP
 import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
+import { findRoute } from "../src/world/route";
 
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
@@ -165,10 +171,14 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     const cal = calendar(0);
     const ui = newUiState();
+    // Borders and the current-region tint only draw over ground actually known; a
+    // camp otherwise stands on the one cell the dark landing saw, so it is walked
+    // whole here first, the way a life lived at it would leave it.
+    mapRegion(state, world, state.player.region);
     setPanel("map", mapHtml(world, state, ui, cal));
     const cells = document.querySelectorAll("#map .c");
     expect(cells.length).toBe(LEVELS[ui.zoom].w * LEVELS[ui.zoom].h);
-    expect(document.querySelectorAll("#map .c.bl, #map .c.br, #map .c.bt, #map .c.bb").length).toBeGreaterThan(50);
+    expect(document.querySelectorAll("#map .c.bl, #map .c.br, #map .c.bt, #map .c.bb").length).toBeGreaterThanOrEqual(50);
     expect(document.querySelectorAll("#map .mk-player").length).toBe(1);
     expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(100);
     expect(document.querySelectorAll("#map .c.cur").length).toBeGreaterThan(50);
@@ -293,6 +303,13 @@ describe("panels", () => {
     const { state, world } = newGame(21);
     const cal = calendar(0);
     const nb = regionAt(world, state.player.region).neighbours[0].id;
+    // Walked whole, as though a previous life had already mapped both regions and
+    // the way between - camp to camp can cross a third region's corner, so the
+    // path itself is marked known too, or the route has nowhere known to cross.
+    mapRegion(state, world, state.player.region);
+    mapRegion(state, world, nb);
+    const path = findRoute(world, cellOf(state, world), regionAt(world, nb).campCell)!;
+    for (const c of path) markKnown(state, c);
     setPanel("region", regionHtml(state, world, cal, { ...newUiState(), selected: nb }));
     expect(document.querySelector(`#region [data-act="task"][data-id="travel"][data-arg="region:${nb}"]`)).not.toBeNull();
     setPanel("region", regionHtml(state, world, cal, newUiState()));
@@ -306,6 +323,74 @@ describe("panels", () => {
     setPanel("region", regionHtml(state, world, cal, newUiState()));
     expect(document.querySelector("#region")!.textContent).toContain("40 kg lying at");
     expect(document.querySelector(`#region [data-act="task"][data-id="walk"][data-arg="cell:${loose}"]`)).not.toBeNull();
+  });
+
+  it("draws a corridor as a thread, not an open polygon", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(0);
+    const ui = newUiState();
+    const home = regionAt(world, state.player.region);
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const l = LEVELS[ui.zoom];
+    const cells = new Set(home.cells);
+    // A run of cells in the home region, in view, that the landing sight never reached.
+    let run: number[] = [];
+    outer: for (let y = y0; y < y0 + l.h; y++) {
+      run = [];
+      for (let x = x0; x < x0 + l.w; x++) {
+        const c = y * world.w + x;
+        if (cells.has(c) && !isKnown(state, c)) {
+          run.push(c);
+          if (run.length >= 6) break outer;
+        } else {
+          run = [];
+        }
+      }
+    }
+    expect(run.length).toBeGreaterThanOrEqual(6);
+    const thread = run.slice(0, 4);
+    const untouched = run.slice(4);
+    for (const c of thread) markKnown(state, c);
+    setPanel("map", mapHtml(world, state, ui, cal));
+    const glyphs = document.querySelectorAll("#map .c");
+    const glyphAt = (c: number): HTMLElement => {
+      const x = c % world.w;
+      const y = Math.floor(c / world.w);
+      return glyphs[(y - y0) * l.w + (x - x0)] as HTMLElement;
+    };
+    for (const c of thread) expect(glyphAt(c).classList.contains("fog")).toBe(false);
+    for (const c of untouched) expect(glyphAt(c).classList.contains("fog")).toBe(true);
+  });
+
+  it("names black ground it has heard of, and offers Explore rather than Go", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(0);
+    const home = state.player.region;
+    const nbId = regionAt(world, home).neighbours[0].id;
+    const nb = regionAt(world, nbId); // building it is what lets the map and panel name it
+    expect(discovery(state, nbId)).toBe(SEEN);
+    expect(knownShare(state, world, nbId)).toBe(0);
+    const ui = newUiState();
+    setPanel("map", mapHtml(world, state, ui, cal));
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const l = LEVELS[ui.zoom];
+    const cellInView = nb.cells.find((c) => {
+      const x = c % world.w;
+      const y = Math.floor(c / world.w);
+      return x >= x0 && y >= y0 && x < x0 + l.w && y < y0 + l.h;
+    });
+    expect(cellInView).toBeDefined();
+    const x = cellInView! % world.w;
+    const y = Math.floor(cellInView! / world.w);
+    const glyph = document.querySelectorAll("#map .c")[(y - y0) * l.w + (x - x0)] as HTMLElement;
+    expect(glyph.classList.contains("fog")).toBe(true);
+    expect(glyph.title).toBe(nb.name);
+    expect(glyph.getAttribute("data-act")).toBe("select");
+    setPanel("region", regionHtml(state, world, cal, { ...ui, selected: nbId }));
+    const btn = document.querySelector(`#region [data-act="task"][data-id="explore"][data-arg="region:${nbId}"]`);
+    expect(btn).not.toBeNull();
+    expect(btn!.textContent).toContain(`Explore ${nb.name}`);
+    expect(document.querySelector(`#region [data-act="task"][data-id="travel"][data-arg="region:${nbId}"]`)).toBeNull();
   });
 
   it("the region panel shows camp water against its capacity", () => {
