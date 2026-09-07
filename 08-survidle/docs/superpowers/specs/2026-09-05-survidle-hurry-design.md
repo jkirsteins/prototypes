@@ -18,6 +18,11 @@ Extends `2026-09-02-survidle-design.md` (the one scale, the Doing panel)
 and `2026-09-03-survidle-standing-orders-design.md` (order kinds, the
 runner, the list).
 
+Time is the only currency presence buys here. The roadmap's item N
+(`2026-09-03-survidle-realism-roadmap.md`) adds two more, the forks and
+the odds of a watched hunt, on top of this spec and without changing
+it: a fork is a once task in hand, which is already the `auto` kind.
+
 ## 1. What is hurried
 
 The sim does not know the hurry exists. Every frame, the hurry decides

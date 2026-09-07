@@ -452,7 +452,10 @@ arrival arrows, the ice hole's re-cut rate and the axe's loss rate
 standing; built, readings under F), then the rest of
 3 camp (the rest of the shelter ladder, the buildings with the
 cellar first) with the rest of C alongside and F's trails and the
-cellar's keep, then 4 animals, 5 injury
+cellar's keep, then 4 animals with N presence beside it (the section of
+that name below: the watched hunt's forks and odds over the runner's
+floor, stalking as the tier, with a first cut on the hunt as it stands
+if the tester round reads a session at the keyboard as empty), 5 injury
 and the body model, 7 wind with 1's fog beside it, 8 forest fire, and 6
 territory last. F's ramp is not one slot: its parts land inside C (the
 tool tiers that make the arrival axe the best one), 5 (permanent damage),
@@ -3833,6 +3836,116 @@ limit and the forest read over the land, so a seed-derived share of
 landings is coastal and the five inland reference seeds keep their
 starts. A sixth reference seed follows, and the gates read N of 6.
 
+### N. Presence
+
+**Curve.** Survivor rows 2 and 3: the elk that opens row 2's materials
+and the hunted-out haul that is one of winter's killers are both hunts,
+and this item is what a player at the keyboard does with one. Tier:
+stalking, a Hunting capability at the recommended level of each species
+that has forks, so a hare has none and an elk has them all. Expected:
+the stories bar and the hours-of-attention bar of the tester gate, since
+a hunt with forks is a story and a roll is a number; the day of the
+first large-game kill earlier on a watched run than on the reference
+player's, whose runs never watch; and no gate moved, because every gate
+reads the runner.
+
+Presence pays today in one currency, time: a once order runs at up to
+6x while you watch (`2026-09-05-survidle-hurry-design.md`), and the
+sim does not know the hurry exists. The idle bargain otherwise never
+charges for attention and never rewards it, and that leaves a session at
+the keyboard with nothing to do that the list could not do alone. The
+decision, taken 2026-09-07, is that presence pays in two more
+currencies, and the price of both is being there:
+
+- **Variety.** A watched hunt above hare unfolds in stages in the log,
+  and each stage is a fork. Tracks in the heath, fresh: follow into the
+  next region, or hold the ground you ordered. A doe with a calf at 40 m:
+  take the shot, or wait an hour for a cleaner one. An elk in the rut,
+  hit and running: follow the blood trail into the dusk, or leave it. A
+  den found by tracks in autumn: mark it for January, or try it now at
+  the gap's odds. The runner takes the conservative branch of every fork
+  by default, and that default is written beside the fork where a test
+  reads it, the way an order names one method. The present player gets a
+  wider outcome distribution: more meat and more injury down one branch,
+  the runner's average down the other.
+- **Odds.** A watched hunt's odds are higher than the runner's for the
+  same species at the same level. The runner is the floor and the
+  watched hunt the ceiling; the rule that the runner never makes an
+  action safer holds in its direction, and this is its other face. The
+  size of the difference is the author's to set, and it must be real
+  where it can be: the patient branch of a fork (an hour for a clean
+  shot, the wind read before the approach) raises the odds at a cost in
+  time, and that is how a hunter's presence raises them in the north.
+  Where no fork carries it, a plain watched factor stands, and the
+  button shows both numbers ("watched 45%; left to the list 30%") the
+  way it shows the odds today, so the player is choosing between them
+  in the open and never guessing what attention bought.
+
+What holds it inside the rules above and below:
+
+- The forecast simulates the runner's path, so an away outcome is
+  exactly what the Ahead panel showed. A player who was present chose to
+  deviate, and a death down the chosen branch is one that happened in
+  their care, which is the only kind the re-run bar accepts.
+- The reference player, the horizon, the year, the December and the
+  lineage probes take the runner's forks at the runner's odds and never
+  the watched ones, so every gate keeps measuring the floor. The item
+  adds one reading beside them rather than a gate: the watched hunt's
+  expected kilocalories an hour against the runner's, per species, so the
+  price of absence is a stated number and not a feeling.
+- No reflex, no timing, no attention meter. A fork is a choice with no
+  clock shorter than its own stage at the one scale; it waits for the
+  player while the tab is open and the hunt is in hand, and a closed tab
+  is the runner. One tap on a phone is a fork taken. The Hunting skill
+  sets the odds and the tiers; the player's hands set nothing.
+- Hare and fish stay one roll. A snare line has no decision in it, and a
+  fork that changes no outcome is the event card this item refuses.
+- Stalking sits on the spine: it depends on D's roster and 4's agents
+  outside Hunting, and it feeds H's fear (a fork taken and lost is the
+  night that names the animal) and E's inputs (the branch that follows
+  the trail is the hide and the sinew) outside it. The coverage test
+  adds a row for it, and a test asserts that every fork has a runner
+  default and that the default is the branch the forecast takes.
+
+Its slot is beside 4 animals as agents, because the forks on the animal's
+side (it runs, it turns, it is a bear and not a den) need an animal that
+acts, and because the first stories the marketing wants are the ones
+where the animal did something. A first cut can land before 4 on the
+hunt task as it stands, a staged once-hunt with the patient-shot fork and
+the watched odds, if the tester round reads sessions at the keyboard as
+empty; the round decides, not this document. The same shape then extends,
+in this order and each when its owner lands: the strike on the fishing
+line (C's fishing by method), the trap line (the check that finds it
+robbed or sprung), the ice (7's fog on the crossing, the hole that has
+refrozen), the fell crossing (6's veil). Each is a once task the player
+chose, so each is already the hurry's `auto` kind, and presence is
+already known there.
+
+**What is not built, and why.** Three ideas were weighed on 2026-09-07
+against the rules and refused, recorded here so the answer to each is
+kept and not re-argued:
+
+- **Event cards.** "Something stole your food" drawn from nowhere breaks
+  two rules at once: a threat with no warning in the log before it kills,
+  and an away death the forecast could not show. The loss itself is
+  wanted, and 4 is its owner: bear, wolverine, fox and ravens that take
+  meat from the rack, the pile and the shelter, each a population with a
+  range and a season the region card and tracks warn of, each prevented
+  by a raised cache, a smokehouse or a roof. Punishing is the aim and
+  unfair is the failure mode, and a card is the unfair kind.
+- **Bandits.** H's line stands: the north holds one person, and this is
+  the one source that would break it. Beyond the edge only, if ever, and
+  with the combat model it would need, which has no slot.
+- **Stoking the fire by hand.** A Dark Room's button is a chore the
+  runner exists to remove, and a click-only fire makes every away death
+  a fire death that is the click's fault and not the preparation's. Three
+  things already do its job: the manual rung under level 3, where every
+  first session is played by hand; the hurry, which lets a player at the
+  keyboard lean on a standing order three minutes a click; and the
+  firewood keep at Woodcraft 10, which is the stoke button earned. If a
+  first session reads flat, the fix is the manual rung's pacing or the
+  log's density, never a chore.
+
 ## Beyond the gate: the edge of the world
 
 Not an item. It carries no curve line, has no slot, and waits on the
@@ -3943,6 +4056,13 @@ cross a floor.
   Every producer and every standing order takes away one repeated chore
   and leaves a limiting resource, capacity, season, distance, maintenance
   cost or risk, and the spine's row for it says which.
+- Presence pays, and the runner is the floor. What the list does alone
+  is the outcome the forecast shows and the gates measure; a player at
+  the keyboard may take a fork the runner would not and hunts at odds
+  the runner does not get, and both are shown beside the runner's
+  number before the choice. Nothing presence buys is a reflex, a timer
+  or a meter, and no chore is added to make it worth being there. N is
+  the item, and its refused ideas are recorded under it.
 - The rules hold on every floor of the tower, when there are floors.
 - Every item carries a curve line, the paragraph under its heading: which
   horizon stage and which survivor row of the idle curve spec it serves,
