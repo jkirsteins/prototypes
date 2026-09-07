@@ -272,6 +272,62 @@ export function readHtml(state: GameState, world: World, id: number): string {
   return out.join("");
 }
 
+/**
+ * What the camp is doing while you are looking somewhere else.
+ *
+ * The fire and whether it has anything left to burn, what stands here,
+ * what is lying here, and what each producer is limited by - the reason a
+ * camp that makes its own food still runs out.
+ *
+ * This is the one thing the region panel held that a map tooltip could not
+ * take. Lighting the fire produced an animation; losing it produced
+ * silence, and he found out by noticing. An idle game must be loudest when
+ * a thing the player built stops, so this sits in the info column and is
+ * never behind a pointer or a tab.
+ */
+export function campHtml(state: GameState, world: World): string {
+  const id = state.player.region;
+  const r = regionAt(world, id);
+  const st = regionState(state, world, id);
+
+  const built: string[] = [];
+  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
+  if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
+  if (st.structures.cabin) built.push("log cabin");
+  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
+  if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
+  if (st.structures.boughBed) built.push("bough bed");
+  if (st.structures.waterStore) built.push("water trough");
+  if (st.structures.snowShelter) built.push("snow shelter");
+  if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
+  if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
+  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
+
+  // The fuel figure moves with every minute the fire burns, so the bar names
+  // what it draws and bars.ts writes the width; the markup never says it.
+  const fire = st.structures.firePit
+    ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${bar("fire", "fire", "Fuel")}`
+    : "";
+  const rack = st.structures.dryingRack
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
+    : "";
+  const campPile = pile(state, st.campCell);
+  const cap = campWaterCapacity(campPile, st);
+  const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
+    ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
+    : "";
+  const lying = weight(campPile);
+  const heap = lying > 0 ? `<div class="dim">${fmtKg(lying)} lying here</div>` : "";
+  const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
+    .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
+    .join("");
+
+  const stands = built.length || unfinished.length
+    ? `<div>${[...built, ...unfinished].join(", ")}</div>`
+    : `<div class="dim">nothing built</div>`;
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}`;
+}
+
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const p = state.player;
   const id = ui.selected ?? p.region;

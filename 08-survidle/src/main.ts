@@ -40,7 +40,7 @@ import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml,
 import type { SubtabId } from "./ui/purpose";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import {
-  awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
+  awayHtml, campHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
@@ -157,6 +157,7 @@ function render() {
   const cal = calendar(state.minute, state.startDoy);
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
+  setPanel("camp", campHtml(state, world));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));
