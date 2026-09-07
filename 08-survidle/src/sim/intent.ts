@@ -283,7 +283,7 @@ function fetchAllowance(state: GameState, world: World, task: TaskId, arg: strin
 /** The button: legality judged where the work would be done, so ground is never the reason. */
 export function intentOption(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): TaskOption {
   const { cell } = resolveCell(state, world, cal, task, arg, where);
-  const o = check(state, world, cal, task, arg, cell);
+  const o = { ...check(state, world, cal, task, arg, cell), cell };
   if (o.ok) return o;
   const fa = fetchAllowance(state, world, task, arg, o.why);
   return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail } : o;

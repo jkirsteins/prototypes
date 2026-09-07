@@ -73,6 +73,8 @@ export interface TaskOption {
   never?: boolean;
   /** Share already done and waiting to be resumed, when there is one. */
   resume?: number;
+  /** The cell the work resolved to, when an intent chose one; absent means wherever the player stands. */
+  cell?: number;
   /** Mastery of this action, the share of the way to the next level, and the skill and key it is kept under. */
   mastery?: { level: number; share: number; skill: SkillId; key: string };
   /** The recommended level, whether you are under it, and by how many levels. */
@@ -1004,7 +1006,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
 /** Adds what practice says about an option: its mastery, and the level it is meant for. */
 export function withProgression(state: GameState, world: World, o: TaskOption): TaskOption {
   const skill = skillOf(o.id, o.arg);
-  const key = skill ? masteryKey(state, world, o.id, o.arg) : null;
+  const key = skill ? masteryKey(state, world, o.id, o.arg, o.cell) : null;
   if (!skill || !key) return o;
   const out: TaskOption = { ...o, mastery: { ...masteryProgress(state, skill, key), skill, key } };
   const rec = RECOMMENDED[key];

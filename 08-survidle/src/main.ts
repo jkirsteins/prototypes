@@ -26,7 +26,7 @@ import { cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
-import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
+import { startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
@@ -167,7 +167,7 @@ function render() {
   setPanel("task", taskHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
-  setPanel("inventory", inventoryHtml(state, world));
+  setPanel("inventory", inventoryHtml(state, world, cal));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
@@ -267,9 +267,6 @@ function onClick(ev: Event) {
     }
     case "stop":
       stopTask(state, world);
-      break;
-    case "tab":
-      ui.tab = target.dataset.tab as TaskGroup;
       break;
     case "zoom":
       zoomBy(target.dataset.dir === "in" ? -1 : 1);
@@ -445,9 +442,6 @@ function onClick(ev: Event) {
       else ui.moreOpen.push(group);
       break;
     }
-    case "advanced":
-      ui.advanced = !ui.advanced;
-      break;
     case "hurry":
       hurryClick(ui.hurry, hurryKind(state), state.intent?.orderId ?? null);
       break;
