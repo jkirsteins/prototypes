@@ -21,6 +21,7 @@ import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
+import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
@@ -157,8 +158,11 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
   return `<h2>Skills</h2>${rows.join("")}`;
 }
 
-export function clockHtml(state: GameState, cal: Calendar, ambient: number, rate = 1): string {
-  const sun = cal.isNight ? "night" : "day";
+export function clockHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1): string {
+  // What a person would call the light where they stand, which after dark is
+  // the difference between a night's work and a night's groping about. The
+  // lux behind it is never shown.
+  const sun = lightWord(illuminance(state, world, cal, cellOf(state, world)));
   const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
   const ice = state.weather.iceCm >= 1 ? `<span>ice ${Math.round(state.weather.iceCm)} cm</span>` : "";
   const storm = state.weather.storm && stormNow(state.weather, state.minute)

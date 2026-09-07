@@ -196,13 +196,13 @@ describe("panels", () => {
   });
 
   it("the clock line reads the hurry's rate", () => {
-    const { state } = newGame(3);
+    const { state, world } = newGame(3);
     const cal = calendar(0);
     document.body.insertAdjacentHTML("beforeend", `<div id="clock"></div>`);
-    setPanel("clock", clockHtml(state, cal, 5));
+    setPanel("clock", clockHtml(state, world, cal, 5));
     expect(document.querySelector("#clock .dim")?.textContent).toBe("1 s = 1 game min");
     expect(document.querySelectorAll("#clock .hurrying").length).toBe(0);
-    setPanel("clock", clockHtml(state, cal, 5, 6));
+    setPanel("clock", clockHtml(state, world, cal, 5, 6));
     expect(document.querySelector("#clock .hurrying")?.textContent).toBe("1 s = 6 game min");
   });
 

@@ -8,6 +8,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, NIGHT_SKIP, ordersHere } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { check } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
 
 /**
@@ -120,5 +121,24 @@ describe("the collapse", () => {
     c.state.player.energy = SLEEP_AT + 5;
     advance(c.state, c.world, 1);
     expect(c.state.intent).not.toBeNull();
+  });
+});
+
+describe("the row says what the dark costs", () => {
+  it("names the light and the odds on work that needs light, and says nothing on work that does not", () => {
+    const c = camp(MIDNIGHT);
+    const sticks = check(c.state, c.world, c.cal, "sticks");
+    expect(sticks.ok).toBe(true);
+    expect(sticks.detail).toContain("pitch dark");
+    expect(sticks.detail).toContain("per try");
+    expect(check(c.state, c.world, c.cal, "rest").detail).not.toContain("per try");
+    // A torch in hand is very nearly daylight, and the row says so rather than going quiet.
+    c.state.player.torch = { lit: true, minutes: 30 };
+    expect(check(c.state, c.world, c.cal, "sticks").detail).toContain("firelit, about 95% per try");
+  });
+
+  it("says nothing at all by day", () => {
+    const c = camp(MIDDAY);
+    expect(check(c.state, c.world, c.cal, "sticks").detail).not.toContain("per try");
   });
 });

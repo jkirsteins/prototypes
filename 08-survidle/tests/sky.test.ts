@@ -102,7 +102,7 @@ describe("sky in the page", () => {
   it("moves the sun and lights the map grid every frame", () => {
     const { state, world } = newGame(21);
     const cal = at(13);
-    setPanel("clock", clockHtml(state, cal, 5));
+    setPanel("clock", clockHtml(state, world, cal, 5));
     setPanel("map", mapHtml(world, state, newUiState(), cal));
     updateSky(state, cal, ambientTemperature(cal, state.weather));
     const sun = document.querySelector("#sky-sun")!;

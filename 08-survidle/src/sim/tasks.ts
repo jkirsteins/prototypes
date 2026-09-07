@@ -19,7 +19,7 @@ import {
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditEaten, creditYield } from "./ledger";
-import { attemptOdds, illuminance, lightFactor, SPOT_LUX } from "./light";
+import { attemptOdds, illuminance, lightFactor, lightWord, NIGHT_WORK, SPOT_LUX } from "./light";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
@@ -366,11 +366,24 @@ function feared(state: GameState, world: World, id: TaskId, arg: string | undefi
 }
 
 export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
-  const o = checkFresh(state, world, cal, id, arg, at);
+  const o = darkNote(state, world, cal, id, at, checkFresh(state, world, cal, id, arg, at));
   const fraction = pausedFraction(state, world, id, arg, at);
   if (fraction > 0 && o.ok) return { ...o, resume: fraction, duration: o.duration * (1 - fraction) };
   if (fraction > 0) return { ...o, resume: fraction };
   return o;
+}
+
+/**
+ * What the dark is costing this work, on the row that offers it. The work is
+ * never refused for want of light, so this is a price rather than a reason:
+ * the odds an attempt comes off, and the word for the light they come from.
+ */
+function darkNote(state: GameState, world: World, cal: Calendar, id: TaskId, at: number, o: TaskOption): TaskOption {
+  if (!o.ok || !NIGHT_WORK[id]) return o;
+  const lux = illuminance(state, world, cal, at);
+  const odds = lightFactor(lux, NIGHT_WORK[id].needLux, NIGHT_WORK[id].darkOdds);
+  if (odds > 0.995) return o;
+  return { ...o, detail: `${o.detail}${o.detail ? "; " : ""}${lightWord(lux)}, ${oddsText(odds)}` };
 }
 
 export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
