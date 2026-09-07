@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { FIRST_NAMES, fmtName, LAST_NAMES, MEN, nameTaken, rollName, sexOfName, surnameFor, WOMEN } from "../src/sim/names";
+import { CULTURES, cultureOfFirst, cultureOfLast, FIRST_NAMES, fmtName, LAST_NAMES, MEN, nameTaken, rollName, sexOfName, surnameFor, WOMEN } from "../src/sim/names";
 
 describe("names", () => {
-  it("draws from pools that mix Scandinavian and Baltic names for either sex", () => {
+  it("draws from Nordic and Baltic pools for either sex", () => {
     expect(FIRST_NAMES.length).toBeGreaterThanOrEqual(40);
     expect(LAST_NAMES.length).toBeGreaterThanOrEqual(40);
     expect(MEN).toContain("Eirik");
@@ -39,18 +39,21 @@ describe("names", () => {
     for (let s = 0; s < 300; s++) expect(WOMEN).toContain(rollName(new Rng(s), "f", []).first);
   });
 
-  it("mixes the regions: a Scandinavian first name on a Baltic surname and the reverse both happen", () => {
-    const baltic = new Set(["Kalnins", "Berzins", "Ozols", "Liepa", "Krumins", "Balodis", "Zarins", "Vitols", "Eglitis", "Dzenis", "Kazlauskas", "Petrauskas", "Jankauskas", "Zukauskas", "Butkus", "Urbonas", "Tamm", "Saar", "Sepp", "Magi", "Kask", "Kukk"]);
-    const balticFirst = new Set(["Janis", "Andris", "Maris", "Juris", "Valdis", "Jonas", "Vytas", "Kazys", "Mart", "Toomas", "Priit"]);
-    let scandOnBaltic = false;
-    let balticOnScand = false;
-    for (let s = 0; s < 300; s++) {
-      const n = rollName(new Rng(s), "m", []);
-      if (!balticFirst.has(n.first) && baltic.has(n.last)) scandOnBaltic = true;
-      if (balticFirst.has(n.first) && !baltic.has(n.last)) balticOnScand = true;
+  it("keeps a name inside one culture: the surname never comes from another language", () => {
+    for (let s = 0; s < 400; s++) {
+      for (const sex of ["f", "m"] as const) {
+        const n = rollName(new Rng(s), sex, []);
+        const first = cultureOfFirst(n.first);
+        expect(first, fmtName(n)).not.toBeNull();
+        expect(cultureOfLast(n.last), fmtName(n)).toBe(first);
+      }
     }
-    expect(scandOnBaltic).toBe(true);
-    expect(balticOnScand).toBe(true);
+  });
+
+  it("reaches every culture, so the grouping narrows nothing away", () => {
+    const seen = new Set<string>();
+    for (let s = 0; s < 400; s++) seen.add(cultureOfFirst(rollName(new Rng(s), "m", []).first) ?? "?");
+    for (const c of CULTURES) expect(seen, c.id).toContain(c.id);
   });
 
   it("knows which list a first name is in", () => {
