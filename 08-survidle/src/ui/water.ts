@@ -4,12 +4,13 @@
  * a kilo of wood a litre. Plain text; panels.ts wraps it.
  */
 import { regionAt, type World } from "../world/gen";
-import { findRoute, routeMinutes } from "../world/route";
+import { routeMinutes } from "../world/route";
 import type { Calendar } from "../sim/calendar";
 import { pile, qty } from "../sim/inventory";
 import { baseWalkSpeed } from "../sim/player";
 import { cellOf, watersideCell } from "../sim/position";
 import { regionState } from "../sim/regionstate";
+import { survivorRoute } from "../sim/routing";
 import { SEEP, seepGround, seepStopped } from "../sim/seep";
 import type { GameState } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, iceHoleOpen } from "../sim/water";
@@ -54,7 +55,7 @@ export function waterLine(state: GameState, world: World, cal: Calendar): string
 /** Minutes to walk from here to a cell over the ice a walk button would cross, or null with no way. */
 function walkMinutes(state: GameState, world: World, cal: Calendar, to: number): number | null {
   const ice = walkableIce(state.weather);
-  const route = findRoute(world, cellOf(state, world), to, ice);
+  const route = survivorRoute(state, world, cellOf(state, world), to, ice);
   if (!route) return null;
   return Math.round(routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice));
 }

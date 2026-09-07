@@ -2,12 +2,13 @@ import { Rng } from "../rng";
 import { CELL_KM } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
-import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
+import { passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
+import { survivorRoute } from "./routing";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
@@ -812,8 +813,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (target.cell === from) return { ...o, ok: false, why: "{you} {are} here" };
       if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
       const ice = walkIceMode(state, target.thin);
-      const route = findRoute(world, from, target.cell, ice, fearsFell(state));
-      if (!route) return { ...o, ok: false, why: "no way there on foot" };
+      const route = survivorRoute(state, world, from, target.cell, ice, fearsFell(state));
+      if (!route) return { ...o, ok: false, why: "no way you know" };
       const v = baseWalkSpeed(state, cal, state.weather);
       const minutes = routeMinutes(world, route, v, ice);
       let detail = `${routeKm(route).toFixed(1)} km on foot`;
@@ -831,8 +832,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const kg = weight(pile(state, at));
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
-      const route = findRoute(world, here, campCell, ice, fearsFell(state));
-      if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
+      const route = survivorRoute(state, world, here, campCell, ice, fearsFell(state));
+      if (!route) return { ...o, ok: false, why: "no way you know" };
       const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
       return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
@@ -1095,7 +1096,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const target = walkTarget(state, world, arg ?? "")!;
     const ice = walkIceMode(state, target.thin);
     const from = cellOf(state, world);
-    const path = findRoute(world, from, target.cell, ice, fearsFell(state)) ?? [];
+    const path = survivorRoute(state, world, from, target.cell, ice, fearsFell(state)) ?? [];
     state.route = { target: target.cell, path, walked: [from], label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;

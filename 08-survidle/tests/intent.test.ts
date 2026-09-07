@@ -338,7 +338,7 @@ describe("the work tier", () => {
       }
     }
     expect(stranded).not.toBeNull();
-    expect(kmBetween(world, camp, stranded!)).toBeNull();
+    expect(kmBetween(state, world, camp, stranded!)).toBeNull();
     addItem(pile(state, camp), "stick", 8);
     addItem(pile(state, camp), "cordage", 2);
     addItem(pile(state, stranded!), "log", 4);

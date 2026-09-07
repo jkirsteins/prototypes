@@ -278,7 +278,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
       const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
       if (!here) {
-        const km = kmBetween(world, campCellOf(state, world, id), s.cell);
+        const km = kmBetween(state, world, campCellOf(state, world, id), s.cell);
         const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
         return `<div>${SPOT_NAMES[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
@@ -292,7 +292,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       if (cell === myCell) return `<div><b>@</b> ${SPOT_NAMES[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(world, myCell, cell, walkableIce(state.weather));
+      const km = kmBetween(state, world, myCell, cell, walkableIce(state.weather));
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
         : ` <small>${esc(plain(walk.why))}</small>`;

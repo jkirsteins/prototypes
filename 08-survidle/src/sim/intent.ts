@@ -6,7 +6,6 @@
  */
 import type { Rng } from "../rng";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
-import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
@@ -18,6 +17,7 @@ import { log } from "./log";
 import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
+import { survivorRoute } from "./routing";
 import { nearestSeep, seepGround } from "./seep";
 import { rootCellFullKg, rootCellKg } from "./stocks";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
@@ -183,7 +183,7 @@ export function nearestCell(state: GameState, world: World, pred: (cell: number)
   const here = cellOf(state, world);
   const r = regionAt(world, state.player.region);
   const cells = r.cells.filter(pred).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-  for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return c;
+  for (const c of cells.slice(0, 8)) if (survivorRoute(state, world, here, c, "none", fearsFell(state))) return c;
   return here;
 }
 
@@ -522,7 +522,7 @@ function fetchSources(state: GameState, world: World, sid: StructureId, campCell
   const ice = walkableIce(state.weather);
   const sources = pilesIn(state, world, state.player.region)
     .filter((x) => x.cell !== campCell && wanted(x.inv))
-    .map((x) => ({ ...x, km: kmBetween(world, from, x.cell, ice) }))
+    .map((x) => ({ ...x, km: kmBetween(state, world, from, x.cell, ice) }))
     .filter((x): x is { cell: number; inv: Inventory; km: number } => x.km !== null)
     .sort((a, b) => a.km - b.km);
   return { missing, wanted, sources };

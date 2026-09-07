@@ -127,7 +127,7 @@ describe("the region overview's from-camp distances follow a move", () => {
     placeAt(state, world, regionAt(world, neighbourId).campCell);
     expect(state.player.region).toBe(neighbourId);
     const html = regionHtml(state, world, cal, { ...newUiState(), selected: home });
-    const liveKm = kmBetween(world, next, spot!.cell);
+    const liveKm = kmBetween(state, world, next, spot!.cell);
     expect(liveKm).not.toBeNull();
     expect(html).toContain(`${fmtKm(liveKm!)} from camp`);
   });

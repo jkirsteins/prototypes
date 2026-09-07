@@ -44,7 +44,7 @@ export function readCells(state: GameState, world: World, region: number): numbe
       const fa = state.player.known[a].fish.length > 0 ? 0 : 1;
       const fb = state.player.known[b].fish.length > 0 ? 0 : 1;
       if (fa !== fb) return fa - fb;
-      return (kmBetween(world, a, camp) ?? 0) - (kmBetween(world, b, camp) ?? 0);
+      return (kmBetween(state, world, a, camp) ?? 0) - (kmBetween(state, world, b, camp) ?? 0);
     });
 }
 

@@ -5,7 +5,7 @@
  * an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
-import { findRoute, routeMinutes } from "../world/route";
+import { routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { autoEat, edible, HUNGRY_LINE } from "./actions";
 import type { Calendar } from "./calendar";
@@ -18,6 +18,7 @@ import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
+import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
 import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
@@ -146,7 +147,7 @@ export function minutesToCamp(state: GameState, world: World, cal: Calendar): nu
   const here = cellOf(state, world);
   if (here === st.campCell) return 0;
   const ice = walkableIce(state.weather);
-  const route = findRoute(world, here, st.campCell, ice, fearsFell(state));
+  const route = survivorRoute(state, world, here, st.campCell, ice, fearsFell(state));
   if (!route) return null;
   return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice);
 }

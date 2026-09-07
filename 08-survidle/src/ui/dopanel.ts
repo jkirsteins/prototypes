@@ -247,7 +247,7 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
   const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
-    const km = kmBetween(world, here, s.cell);
+    const km = kmBetween(state, world, here, s.cell);
     const label = `${SPOT_NAMES[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
     return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
   }).join("");
