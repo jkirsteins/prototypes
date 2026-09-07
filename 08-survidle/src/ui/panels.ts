@@ -10,7 +10,7 @@ import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
-import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
+import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
@@ -627,7 +627,10 @@ export function cemeteryHtml(state: GameState, ui: UiState): string {
   const dead = [...state.survivors].filter((s) => s.died !== null).reverse();
   const rows = dead.map((s) => {
     const open = ui.cemeteryOpen === s.index;
-    const lines = open ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s))}</div>${entryLinesHtml(entry(s).slice(1))}` : "";
+    // Closed, a grave tells the three things worth telling; open, the entry says all of them and the stories would be it twice.
+    const lines = open
+      ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s))}</div>${entryLinesHtml(entry(s).slice(1))}`
+      : stories(s).map((t) => `<div class="s">${esc(t)}</div>`).join("");
     return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
   });
   const leave = ui.confirmLeave

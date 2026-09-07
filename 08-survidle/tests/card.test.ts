@@ -96,6 +96,12 @@ describe("the card", () => {
     land(state, world);
     const opened = cemeteryHtml(state, { ...ui, cemetery: true, cemeteryOpen: 1 });
     expect(opened).toContain('class="face"');
-    expect(cemeteryHtml(state, { ...ui, cemetery: true })).not.toContain('class="face"');
+    const closed = cemeteryHtml(state, { ...ui, cemetery: true });
+    expect(closed).not.toContain('class="face"');
+    // A closed grave tells the three stories; opened, the entry says them and the grave must not say them twice.
+    const told = stories(state.survivors[0]);
+    expect(told.length).toBeGreaterThan(0);
+    expect(closed).toContain(told[0]);
+    expect(opened.slice(0, opened.indexOf('class="card"'))).not.toContain(told[0]);
   });
 });

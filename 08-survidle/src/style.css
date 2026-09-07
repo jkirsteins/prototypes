@@ -436,7 +436,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 #overlay h1 { margin: 0 0 8px; font-size: 20px; }
 #overlay .box button.act { width: auto; display: inline-block; margin-top: 12px; }
-.grave { margin: 4px 0; }
+/* A grave is a name, a death and what the life is remembered for, so its lines all start at one edge. */
+.grave { margin: 12px 0; }
+.grave > .mini { display: block; width: 100%; text-align: left; }
 .season { margin-bottom: 6px; }
 #overlay .box input[data-name] { width: 14em; }
 
@@ -466,6 +468,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .card .q { color: var(--dim); }
 .card .q b { display: inline; margin: 0; color: var(--text); font-weight: 600; }
 .card .kv dd { color: var(--text); }
+/* A closed grave: the three things worth telling, under the name and the death. */
+.grave .s { color: var(--dim); padding: 1px 0 1px 1.2em; text-indent: -1.2em; margin-left: 8px; }
 .card .face, .stat-face { display: inline-block; vertical-align: middle; margin-right: 6px; }
 .cardhead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .cardhead b { margin: 0; }
