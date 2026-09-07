@@ -296,6 +296,26 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid.snow .c.t-meadow, .grid.snow .c.t-bog { color: #dfe6f0; }
 .grid.snow .c.t-rock, .grid.snow .c.t-fell { color: #e8ecf2; }
 .grid.snow .c:not(.t-water) { background: #121a26; }
+/*
+ * The outline through the fog. A region's edge is drawn on ground nobody has
+ * walked, for the region stood in and the ones touching it, so the shape of
+ * where you are and what adjoins it can be read before it is explored. Which
+ * of the three it is sets the colour and nothing else: a fog cell never takes
+ * the wash or the ground colour a drawn cell of the same region takes.
+ */
+/* Every one of them is drawn on ground nobody has walked, so every one of them
+   is dimmed: the outline says where the boundary runs, and the brightness says
+   whether the ground under it has been seen. Your own region's edge is at full
+   accent where it crosses ground you know and muted where it does not, which
+   is the same reading the ground itself gives. */
+.grid .c.fog.edge-cur { --edge: rgba(230, 194, 41, 0.38); }
+.grid .c.fog.edge-known { --edge: rgba(59, 111, 209, 0.38); }
+.grid .c.fog.edge-unknown { --edge: #39404e; }
+.grid .c.fog.bl { border-left-color: var(--edge); }
+.grid .c.fog.br { border-right-color: var(--edge); }
+.grid .c.fog.bt { border-top-color: var(--edge); }
+.grid .c.fog.bb { border-bottom-color: var(--edge); }
+
 .grid .c.bl { border-left-color: var(--border); }
 .grid .c.br { border-right-color: var(--border); }
 .grid .c.bt { border-top-color: var(--border); }

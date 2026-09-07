@@ -12,7 +12,7 @@ import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
-import { discovery } from "../sim/regionstate";
+import { discovery, VISITED } from "../sim/regionstate";
 import type { GameState, Terrain } from "../sim/types";
 import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
@@ -366,6 +366,36 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   }
   const drawBorders = z <= 3;
 
+  /**
+   * The regions whose outline is drawn through the fog: the one stood in and
+   * the ones touching it. The shape of the country you are in and what adjoins
+   * it is worth knowing before you have walked it - it is what tells you there
+   * is somewhere to go - while outlining every region on screen would draw a
+   * map of ground nobody has any business knowing the shape of yet.
+   *
+   * Adjacency is read off the view rather than the world: two regions are
+   * neighbours here if their cells touch somewhere on screen, which is the
+   * only adjacency that can be drawn anyway.
+   */
+  /**
+   * Which side of a boundary draws it. Both sides used to, in their own two
+   * colours, and the shared line came out alternating between them - a solid
+   * edge read as a dashed one. The region stood in owns its whole outline and
+   * a neighbour draws every edge except the one they share.
+   */
+  const ownsEdge = (mine: number, theirs: number): boolean => theirs !== mine && (mine === cur || theirs !== cur);
+
+  const near = new Set<number>([cur]);
+  if (drawBorders) {
+    for (let i = 0; i < l.w * l.h; i++) {
+      if (regions[i] !== cur) continue;
+      const gx = i % l.w;
+      for (const j of [gx > 0 ? i - 1 : -1, gx < l.w - 1 ? i + 1 : -1, i - l.w, i + l.w]) {
+        if (j >= 0 && j < l.w * l.h && regions[j] >= 0) near.add(regions[j]);
+      }
+    }
+  }
+
   // The height shading normalises to what is on screen, so every elevation must
   // be read before any one cell's tone can be decided.
   const elev = z === 1 ? new Float32Array(l.w * l.h) : null;
@@ -419,15 +449,26 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       cls.push("fog");
       // Only regions already built get named; building one here would fill its chunks for a tooltip.
       title = named ? (world.regions.get(reg)?.name ?? "ground heard of, not seen") : "unknown ground";
+      // The outline still shows through: where the country you are in ends and
+      // what adjoins it, on ground nobody has walked. The class says which of
+      // the three the edge belongs to and the stylesheet picks its colour, so a
+      // fog cell never takes the wash a drawn cell of the same region takes.
+      if (drawBorders && near.has(reg)) {
+        if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
+        if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
+        if (gy > 0 && ownsEdge(reg, regions[i - l.w])) cls.push("bt");
+        if (gy < l.h - 1 && ownsEdge(reg, regions[i + l.w])) cls.push("bb");
+        cls.push(reg === cur ? "edge-cur" : discovery(state, reg) === VISITED ? "edge-known" : "edge-unknown");
+      }
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
       if (seen === 1) cls.push("dim");
       if (drawBorders) {
-        if (gx > 0 && regions[i - 1] !== reg) cls.push("bl");
-        if (gx < l.w - 1 && regions[i + 1] !== reg) cls.push("br");
-        if (gy > 0 && regions[i - l.w] !== reg) cls.push("bt");
-        if (gy < l.h - 1 && regions[i + l.w] !== reg) cls.push("bb");
+        if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
+        if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
+        if (gy > 0 && ownsEdge(reg, regions[i - l.w])) cls.push("bt");
+        if (gy < l.h - 1 && ownsEdge(reg, regions[i + l.w])) cls.push("bb");
       }
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
