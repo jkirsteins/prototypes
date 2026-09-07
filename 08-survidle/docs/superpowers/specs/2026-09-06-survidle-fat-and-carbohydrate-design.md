@@ -435,6 +435,25 @@ sea fetch, the herring run and the ice-shore rules are content no player
 reaches without moving camp to the map's edge. Whether a landing should
 be able to be coastal is a design question for the author.
 
+The coast measured, as a probe never landed: the landing rewritten to
+take the sea-touching region nearest the anchor that has 120 land cells,
+forest over 0.45 of its land, lake water under 0.15 and a shore. No
+coastal region in any of the five seeds has an outcrop - this generator
+puts rock and fell at elevation and the sea on the lowest ground, so every
+coastal candidate reads rock 0.00 - and with the outcrop rule kept the
+probe found nothing; with it dropped, the five seeds landed on the coast
+at rings 20 to 27. Readings against the inland instrument: April 0 of 5,
+every life frozen on days 4 to 8 with no stone for a fire ring or a knife
+(seaweed fired at 160 kcal a day on seed 45 before it died); winter 5 of
+5 on the stock; the year at level 20 0 of 5, starved on days 104 to 243,
+seaweed and sap both firing, and seed 17's camp landing no fish at all
+in a year (fish and trap read zero, under the band) at a sea shore the
+fishing task allows, which wants a look before the coast is made real;
+the lineage 0 of 5, lives of 2 to 56 days, most frozen. So the coast is
+not a landing this world can offer as it stands: a coastal region needs
+stone within reach or an arrival kit that carries it, and the sea shore's
+fishing needs to be seen to work on the runner.
+
 **F11. The lineage is the gate that has not moved.** Its lives run 3 to 225
 days and the trend gate is 0 of 4. A list that ranks hunting first suits a
 level-20 camp with a bow and a rack; an heir landing in October with an
