@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BERRY_PICK_KG, FOODS } from "../src/sim/items";
+import { BERRY_PICK_KG, FOODS, GUT } from "../src/sim/items";
 import { emptyYield, YIELD_SOURCES } from "../src/sim/ledger";
 import { BASE_KCAL_PER_HOUR, ENERGY_RATE, taskDrain, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { APRIL, BERRY, BURN, coldBand, isWinterDoy, LATE_AUGUST, SLEEP_HOURS, SOURCE_ROWS, sourceBand, tableFor, verdict } from "../src/sim/tables";
@@ -8,6 +8,7 @@ import { minutesToWake } from "../src/sim/sleep";
 
 describe("the tables", () => {
   it("carry the roadmap's April and late-August rows", () => {
+    expect(APRIL.rows.plants!.beginner).toEqual({ lo: 0, hi: 400 });
     expect(APRIL.rows.fishing!.beginner).toEqual({ lo: 0, hi: 400 });
     expect(APRIL.rows.total!.experienced).toEqual({ lo: 1500, hi: 3500 });
     expect(APRIL.rows.largeGame!.beginner).toEqual({ lo: 0, hi: 0 });
@@ -19,7 +20,7 @@ describe("the tables", () => {
   it("a source's band is the sum of its rows; a source with no row has none", () => {
     expect(sourceBand(APRIL, "hunt", "beginner")).toEqual({ lo: 0, hi: 100 });
     expect(sourceBand(APRIL, "fish", "beginner")).toEqual({ lo: 0, hi: 400 });
-    expect(sourceBand(APRIL, "berries", "beginner")).toEqual({ lo: 0, hi: 150 });
+    expect(sourceBand(APRIL, "berries", "beginner")).toEqual({ lo: 0, hi: 400 });
     expect(sourceBand(LATE_AUGUST, "snare", "experienced")).toEqual({ lo: 200, hi: 700 });
     expect(sourceBand(APRIL, "kit", "beginner")).toBeNull();
   });
@@ -55,8 +56,8 @@ describe("the constants sit in their real bands", () => {
 
   it("a berry is about 500 kcal a kilo", () => {
     expect(verdict(FOODS.berries.kcalPerKg, BERRY.kcalPerKg)).toBe("in band");
-    expect(BERRY.fullCreditKg).toBe(1.2);
-    expect(BERRY.refuseKg).toBe(2);
+    // BERRY keeps only its picking numbers; the gut's ceilings are items.ts's GUT table.
+    expect(GUT.berries).toEqual({ fullCreditKg: 1.2, refuseKg: 2 });
   });
 
   it("an hour's picking at level one is what a hand picker takes", () => {

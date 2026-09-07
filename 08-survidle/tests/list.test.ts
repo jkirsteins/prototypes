@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
+import { addItem, pile, TRACE_KG } from "../src/sim/inventory";
+import { AUTO_EAT_ORDER, FOODS, LEAN_KCAL_PER_DAY, SPOIL_HOURS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { REFERENCE_ORDERS, wantOpen, WINTER_STOCK } from "../src/sim/reference";
+import { ordersHere, removeOrder } from "../src/sim/orders";
+import { regionState } from "../src/sim/regionstate";
+import { HANG_ABOVE_KG, PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_FOOD_KCAL, WINTER_STOCK } from "../src/sim/reference";
+import { SKILL_IDS } from "../src/sim/skills";
+import { PLANT_HOURS_PER_DAY } from "../src/sim/tables";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
@@ -76,11 +82,165 @@ describe("the list after the axe", () => {
     expect(wantOpen(state, world, winterPile[2], october)).toBe(true);
   });
 
-  it("keeps twenty snares set with the food and forty below the trough", () => {
+  it("keeps twenty snares set above the gathering block, with the rack, and forty below the trough", () => {
     const tasks = REFERENCE_ORDERS.map(key);
     const twenty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 20);
     const forty = REFERENCE_ORDERS.findIndex((w) => w.req.task === "build" && w.req.arg === "snare" && w.kind === "keep" && w.req.until.kind === "campHas" && w.req.until.qty === 40);
-    expect(twenty).toBe(tasks.indexOf("berries::keep") + 1);
+    // The rack and the snare line are work that finishes; the gathering keeps below them are
+    // measured in food at camp and can never read met, so they must not outrank a standing producer.
+    expect(tasks[twenty - 1]).toBe("build:dryingRack:job");
+    expect(twenty).toBeLessThan(tasks.indexOf("eggs::job"));
+    expect(twenty).toBeLessThan(tasks.indexOf("fish:any:keep"));
     expect(forty).toBe(tasks.indexOf("build:waterStore:job") + 1);
+  });
+
+  it("keeps the fat rendered above the cook keeps, cracks bones, and gathers eggs, roots, sap and seaweed in their seasons", () => {
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("cook:rawFat:keep")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
+    expect(tasks.indexOf("crack::grind")).toBeGreaterThan(tasks.indexOf("cook::keep"));
+    for (const t of ["eggs::job", "roots::job", "cook:roots:keep", "tapSap::job", "seaweed::job"]) expect(tasks).toContain(t);
+    // Inner bark and its grind are off the list: at 275 kcal an hour they cost more than they
+    // return, and the task stays in the game for a player who wants the fallback by hand.
+    for (const t of ["innerBark::keep", "grindBark::keep"]) expect(tasks).not.toContain(t);
+    const { state, world } = newGame(17);
+    expect(wantOpen(state, world, want("eggs::job"), calendar(0, 100))).toBe(false);
+    expect(wantOpen(state, world, want("eggs::job"), calendar(0, 130))).toBe(true);
+    expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 125))).toBe(true);
+    expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 200))).toBe(false);
+    const bark = { req: { task: "innerBark" as const, until: { kind: "campHas" as const, qty: 3 }, deliver: "camp" as const, where: "nearest" as const }, kind: "keep" as const };
+    expect(wantOpen(state, world, bark, calendar(0, 250))).toBe(false);
+    expect(wantOpen(state, world, bark, calendar(0, 120))).toBe(true);
+    expect(wantOpen(state, world, want("roots::job"), calendar(0, 250))).toBe(true);
+    state.player.tools = [];
+    expect(wantOpen(state, world, want("roots::job"), calendar(0, 340))).toBe(false);
+  });
+
+  it("asks for the plant band by the day: a counted job per row, the handbook's three hours split across them", () => {
+    // A keep measured in food at camp can never read met while the body eats what it brings
+    // home, so the plant keeps took four and a half to seven and a half hours a day and the
+    // hunt rows below them never got a turn. These are counted jobs instead, given afresh
+    // each morning and finished for the day once the count is spent.
+    for (const t of ["eggs::job", "roots::job", "seaweed::job"]) {
+      expect(want(t).kind).toBe("job");
+      expect(want(t).req.until).toEqual({ kind: "times", n: PLANT_HOURS_PER_ROW });
+    }
+    expect(PLANT_HOURS_PER_ROW * 3).toBe(PLANT_HOURS_PER_DAY);
+  });
+
+  it("gives a daily want its count once a day: spent, it waits for the morning", () => {
+    const { state, world, player } = setUpReference(17, true);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    const roots = () => ordersHere(state, world).find((o) => o.req.task === "roots");
+    player.tick(state, world);
+    const first = roots();
+    expect(first).toBeDefined();
+    // Spend the day's count by hand: the order drops off the next look and is not given again.
+    first!.done = PLANT_HOURS_PER_ROW;
+    removeOrder(state, world, first!.id);
+    player.tick(state, world);
+    expect(roots()).toBeUndefined();
+    // A day later the morning reset clears the count and the want is given again.
+    state.minute += 24 * 60;
+    player.tick(state, world);
+    expect(roots()).toBeDefined();
+  });
+
+  it("shuts the hunt and the fish once the larder is a winter's worth, and opens them again under it", () => {
+    // Both rows are promises about raw food at camp and the body eats what it brings home, so
+    // neither ever reads met while there is meat to hang: they take the day and the woodpile
+    // keeps beneath them never run. Seed 19 froze on day 305 with ten elk behind it, 829,835
+    // kcal at camp and three logs. The line is the winter stock's own food, derived.
+    expect(WINTER_FOOD_KCAL).toBe(WINTER_STOCK.driedMeatKg * FOODS.driedMeat.kcalPerKg + WINTER_STOCK.fatKg * FOODS.fat.kcalPerKg);
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "hunting", 20);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const july = calendar(0, 200);
+    const rows = ["hunt:any:keep", "fish:any:keep", "hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"];
+    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(true);
+    // A kilo under the line the rows are still open; a kilo over it they shut.
+    addItem(camp, "driedMeat", WINTER_FOOD_KCAL / FOODS.driedMeat.kcalPerKg - 1);
+    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(true);
+    addItem(camp, "driedMeat", 2);
+    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(false);
+    // The trap and the snare line are set once and cost nothing standing: the larder is not their business.
+    for (const t of ["setTrap::job", "build:snare:keep"]) expect(wantOpen(state, world, want(t), july), t).toBe(true);
+  });
+
+  it("hunts above the plant band and above the fish keep, with the bow and the arrows left below them", () => {
+    // The hunt keep is a promise about raw meat at camp and a large kill meets it for days, so
+    // it is not the treadmill a fish keep is. Under the block it got nine minutes to an hour and
+    // twenty a day and three of four level-20 seeds killed nothing all summer. The bow and the
+    // arrows stay below: lifted with it they cost seed 19 the woodpile and a cold death on day 22.
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("roots::job"));
+    expect(tasks.indexOf("hunt:any:keep")).toBeLessThan(tasks.indexOf("fish:any:keep"));
+    expect(tasks.indexOf("craft:bow:keep")).toBeGreaterThan(tasks.indexOf("fish:any:keep"));
+    expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
+  });
+
+  it("renders raw fat as a grind while any is in reach, above the cook keeps", () => {
+    // A keep of a kilo of rendered fat reads met the moment the first kilo is off the fire, and
+    // camp fat is drawn only by auto-eat, last in the order, at a fifth of a kilo a day. So an
+    // elk's raw fat sat beside the fire and rotted in three days with the row reading met: 53.7
+    // kg of 65.7 on seed 42, 483,000 kcal, in the year it lived. It is the crack and hang shape.
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks).toContain("cook:rawFat:grind");
+    expect(tasks.indexOf("cook:rawFat:grind")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const july = calendar(0, 200);
+    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(false);
+    // A trace is not stock, the way the cook's own guard reads it.
+    addItem(pile(state, st.campCell), "rawFat", TRACE_KG / 2);
+    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(false);
+    addItem(pile(state, st.campCell), "rawFat", 1);
+    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(true);
+    // The pack counts too: fat carried home from a kill is fat to render.
+    const { state: s2, world: w2 } = newGame(19);
+    expect(wantOpen(s2, w2, want("cook:rawFat:grind"), july)).toBe(false);
+    addItem(s2.player.pack, "rawFat", 1);
+    expect(wantOpen(s2, w2, want("cook:rawFat:grind"), july)).toBe(true);
+  });
+
+  it("hangs only what the body cannot eat before it rots, and hangs it above the plant band", () => {
+    // A grind is never met, so an ungated hang runs on every kilo a snare brings in: the
+    // list's own record is two year seeds frozen on days 300 and 325 under one. The threshold
+    // is derived and not chosen - raw meat's spoil hours against the lean ceiling at raw
+    // meat's kcal a kilo - so a kill that will rot opens it and a hare does not.
+    expect(HANG_ABOVE_KG).toBeCloseTo((SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / FOODS.rawMeat.kcalPerKg));
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(tasks.indexOf("hang::grind")).toBeLessThan(tasks.indexOf("roots::job"));
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const april = calendar(0, 100);
+    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(false);
+    addItem(camp, "rawMeat", HANG_ABOVE_KG);
+    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(false);
+    addItem(camp, "rawMeat", 1);
+    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(true);
+  });
+
+  it("wants the rack only once there is meat to dry, so the hour is not spent on an empty one", () => {
+    // The rack outranks the gathering keeps, so nothing shuts it but this: a beginner who
+    // builds it on day five with no kill yet loses the hour off the woodpile, and seed 19
+    // froze on day 22 when it did.
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const april = calendar(0, 100);
+    expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(false);
+    addItem(pile(state, st.campCell), "rawMeat", 2);
+    expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(true);
+  });
+
+  it("keeps a cook for the oily catch as well as the lean one, since raw oily fish is eaten by nobody", () => {
+    // cookedOilyFish is in the auto-eat order and the raw item is not, so a char landed
+    // without this keep is carried home and rots in a day and a half. Every reference seed
+    // died with an oily species standing in its shore's read.
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(AUTO_EAT_ORDER).not.toContain("oilyFish");
+    expect(AUTO_EAT_ORDER).toContain("cookedOilyFish");
+    expect(tasks.indexOf("cook:oilyFish:keep")).toBe(tasks.indexOf("cook:fish:keep") + 1);
   });
 });

@@ -5,45 +5,142 @@ import type {
 
 /** Unit weight in kg. Kilogram items weigh 1 per unit by definition. */
 export const ITEM_KG: Record<ItemId, number> = {
-  log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3,
+  log: 20, stick: 0.5, bark: 0.2, cordage: 0.1, stone: 1.5, bone: 0.3, crackedBone: 0.3,
   sinew: 0.05, snare: 0.4, arrow: 0.05, torch: 0.4, basketTrap: 2, wedge: 0.3,
-  firewood: 1, hide: 1, fur: 1, fat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
-  fish: 1, cookedFish: 1, berries: 1, wetFirewood: 1,
+  firewood: 1, hide: 1, fur: 1, fat: 1, rawFat: 1, rawMeat: 1, cookedMeat: 1, driedMeat: 1,
+  fish: 1, cookedFish: 1, oilyFish: 1, cookedOilyFish: 1, roe: 1, berries: 1, eggs: 1, wetFirewood: 1,
+  freshBark: 1, driedBark: 1, barkFlour: 1, roots: 1, cookedRoots: 1, seaweed: 1,
   water: 1, ice: 1,
   axe: 1.5, stoneAxe: 1.4, flakedAxe: 1.2, whetstone: 0.5, knife: 0.2, bow: 0.8, fishingSpear: 1.0, fireDrill: 0.3,
   needle: 0.01, barkBucket: 0.3, waterskin: 0.4,
 };
 
 export const KG_ITEMS = new Set<ItemId>([
-  "firewood", "hide", "fur", "fat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "berries", "wetFirewood",
+  "firewood", "hide", "fur", "fat", "rawFat", "rawMeat", "cookedMeat", "driedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "eggs", "wetFirewood",
+  "freshBark", "driedBark", "barkFlour", "roots", "cookedRoots", "seaweed",
   "water", "ice",
 ]);
 
 export const ITEM_NAMES: Record<ItemId, string> = {
   log: "logs", stick: "sticks", bark: "bark", cordage: "cordage", stone: "stone",
-  bone: "bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps", wedge: "wedges",
-  firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
-  driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", berries: "berries",
-  wetFirewood: "wet firewood", water: "water", ice: "ice",
+  bone: "bone", crackedBone: "cracked bone", sinew: "sinew", snare: "snares", arrow: "arrows", torch: "torches", basketTrap: "basket traps", wedge: "wedges",
+  firewood: "firewood", hide: "hide", fur: "fur", fat: "fat", rawFat: "raw fat", rawMeat: "raw meat", cookedMeat: "cooked meat",
+  driedMeat: "dried meat", fish: "fish", cookedFish: "cooked fish", oilyFish: "oily fish", cookedOilyFish: "cooked oily fish", roe: "roe", berries: "berries", eggs: "eggs",
+  wetFirewood: "wet firewood", freshBark: "fresh inner bark", driedBark: "dried inner bark", barkFlour: "bark flour", roots: "roots", cookedRoots: "cooked roots", seaweed: "seaweed", water: "water", ice: "ice",
   axe: "iron axes", stoneAxe: "stone axes", flakedAxe: "flaked axes", whetstone: "whetstones", knife: "knives", bow: "bows", fishingSpear: "fishing spears",
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
 
-export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "berries" | "fat";
+export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "barkFlour" | "fat" | "cookedRoots" | "seaweed";
+/**
+ * Every food: its kcal, its portion, its sick chance, and its lean share -
+ * the part of its kcal that counts toward LEAN_KCAL_PER_DAY. The share is
+ * the spec's table (fat and carbohydrate design, section 1): an
+ * anti-overconsumption rule, not chemistry. Lean meat and lean fish are
+ * all lean; fat and the plants none of it; the new foods sit between.
+ */
 /**
  * Lean wild meat: a kill's fat is its own item at 9,000, so the meat is
  * hare at about 1,000 kcal/kg (Kochanski) and venison at 1,100 to 1,200;
  * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.
- * Berries are wild bilberry, 400 to 600 a kilo, at 450.
+ * Berries are wild bilberry, 400 to 600 a kilo, at 450. Oily fish is one
+ * class - herring, char, trout, salmon when it lands - about 1,500 kcal/kg
+ * at 0.4 lean, since char, trout and herring in condition are 8 to 12
+ * percent fat by weight and most of their calories come as fat; lean fish
+ * (pike, perch, whitefish) at 0.9, a percent or two of fat by weight; roe
+ * 1,600 at half lean, a tenth of a spawning catch, the spec's shortcut.
  */
-export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number }> = {
-  rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25 },
-  cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0 },
-  driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0 },
-  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0 },
-  berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0 },
-  fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0 },
+export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number; leanShare: number }> = {
+  rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25, leanShare: 1 },
+  cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0, leanShare: 1 },
+  driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0, leanShare: 1 },
+  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0, leanShare: 0.9 },
+  cookedOilyFish: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0, leanShare: 0.4 },
+  roe: { kcalPerKg: 1600, portionKg: 0.2, sickChance: 0, leanShare: 0.5 },
+  berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0, leanShare: 0 },
+  eggs: { kcalPerKg: 1500, portionKg: 0.2, sickChance: 0, leanShare: 0.4 },
+  barkFlour: { kcalPerKg: 800, portionKg: 0.2, sickChance: 0, leanShare: 0 },
+  fat: { kcalPerKg: 9000, portionKg: 0.1, sickChance: 0, leanShare: 0 },
+  cookedRoots: { kcalPerKg: 850, portionKg: 0.3, sickChance: 0, leanShare: 0 },
+  seaweed: { kcalPerKg: 200, portionKg: 0.3, sickChance: 0, leanShare: 0 },
 };
+/** A spawning catch's roe: a tenth of the fish's own weight, not a separate haul. */
+export const ROE_SHARE = 0.1;
+/**
+ * The Swedish handbook: eggs and young birds are easy to get, and only in
+ * a real emergency; May and June at this latitude, a clutch 0.4 kg, half
+ * a kilo an hour while the nests last.
+ */
+export const EGG_CLUTCH_KG = 0.4;
+export const EGG_KG_PER_HOUR = 0.5;
+export const EGG_FROM_DOY = 120;
+export const EGG_TO_DOY = 181;
+/**
+ * The Swedish handbook calls inner bark time-consuming and low in
+ * nutrition, usable all year and easiest on young branches in spring;
+ * Kochanski scrapes the cambium in late spring and early summer and dries
+ * it. 0.7 kg fresh an hour, three to one dried, 800 kcal/kg of flour, half
+ * a kilo a day at full credit and none past one, and a twentieth of a tree
+ * per kilo off the felling stock, so a kilo a day is a tree every three
+ * weeks against a stock of sixty a forest cell.
+ */
+export const BARK_FRESH_KG_PER_HOUR = 0.7;
+export const BARK_DRY_RATIO = 3;
+export const BARK_FLOUR_MINUTES_PER_KG = 20;
+export const BARK_TREE_SHARE = 1 / 20;
+export const BARK_FROM_DOY = 90;
+export const BARK_TO_DOY = 212;
+/**
+ * The Swedish handbook: cattail rhizome at 210 g of starch a kilo, reed
+ * root-shoots at 5 percent, dandelion root at 23 percent, fifteen pieces
+ * for the 500 kcal ration; 0.3 kg an hour with a digging stick in season,
+ * 0.1 through an ice hole in winter, 850 kcal/kg cooked.
+ *
+ * What a cell holds is a stand, not a ration: stand area x rhizome density
+ * x the share a digging stick lifts. RHIZOME_KG_PER_M2 is the low end of
+ * published below-ground biomass for a Phragmites or Typha stand, 1 to 3 kg
+ * dry the square metre with fresh mass about three times dry. The stand
+ * shares are coarse by design: a 10 m reed fringe along a 300 m water edge
+ * is three hundredths of a cell, the open-water margins and wet hollows of
+ * a wet cell a twentieth, and a meadow's dandelion, bistort and silverweed
+ * are far sparser than a stand - a thirtieth of the density over a tenth of
+ * the ground. ROOT_HARVEST_FRACTION is what comes up: the rest is too deep,
+ * too small, or left standing, so nine hectares never reads as every
+ * rhizome. A shore cell works out at about 810 kg, a wet one 1350, a meadow
+ * 90, against a dig of 0.3 kg an hour.
+ *
+ * ROOT_REGROWTH_SHARE of what a cell is short comes back across each
+ * growing season, 1 May to the end of September: perennial clonal rhizome
+ * rebuilds from what is left in the ground, and a coarse annual recovery is
+ * enough for ground dug by hand.
+ */
+export const ROOT_KG_PER_HOUR = 0.3;
+export const ROOT_WINTER_KG_PER_HOUR = 0.1;
+export const RHIZOME_KG_PER_M2 = 3;
+export const STAND_SHARE_SHORE = 0.03;
+export const STAND_SHARE_BOG = 0.05;
+export const STAND_SHARE_MEADOW = 0.1;
+export const MEADOW_ROOT_KG_PER_M2 = RHIZOME_KG_PER_M2 / 30;
+export const ROOT_HARVEST_FRACTION = 0.1;
+/** Under this share of what it holds a patch is dug over: it digs slower and the row says so. A coarse shape for a thinning stand, not a measurement. */
+export const ROOT_POOR_SHARE = 0.5;
+export const ROOT_REGROWTH_SHARE = 0.5;
+export const ROOT_GROWTH_FROM_DOY = 121;
+export const ROOT_GROWTH_TO_DOY = 273;
+export const ROOT_FROM_DOY = 90;
+export const ROOT_TO_DOY = 304;
+/**
+ * The Swedish handbook: birch sap runs about 20 g of sugar a litre, 2 to 3
+ * litres from a birch in a couple of hours, and the rise is early May at
+ * this latitude until the leaves open. Drunk on the spot, no boiling down.
+ */
+export const SAP_FROM_DOY = 121;
+export const SAP_TO_DOY = 141;
+export const SAP_LITRES = 2.5;
+export const SAP_KCAL = 125;
+export const SAP_TAPS_PER_DAY = 3;
+/** The Swedish handbook: seaweed carries some carbohydrate and minerals, but is not calorie-dense. */
+export const SEAWEED_KG_PER_HOUR = 2;
 /**
  * The lean ceiling: Kochanski's rabbit starvation - on hare alone a body
  * shows starvation within a week however much it eats. Meat and fish past
@@ -52,20 +149,35 @@ export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickC
  * berries are never capped.
  */
 export const LEAN_KCAL_PER_DAY = 1600;
-export const LEAN_FOODS: ReadonlySet<FoodId> = new Set<FoodId>(["rawMeat", "cookedMeat", "driedMeat", "cookedFish"]);
+/**
+ * The gut's ceilings by food: full credit to the first line, half to the
+ * second, none past it. Berries are the Swedish handbook's two litres a
+ * day, about 1.2 kg; later foods add their own rows.
+ */
+export const GUT: Partial<Record<FoodId, { fullCreditKg: number; refuseKg: number }>> = {
+  berries: { fullCreditKg: 1.2, refuseKg: 2 },
+  barkFlour: { fullCreditKg: 0.5, refuseKg: 1 },
+  seaweed: { fullCreditKg: 2, refuseKg: 2 },
+};
 /** Below this ambient a stack keeps: the Swedish handbook's freezing storage wants at least -10 to -15 C; between it and zero the rot runs at half speed. */
 export const FREEZE_KEEP_C = -10;
 /** Order autoEat prefers: the least valuable safe food first, so dried meat and fat are kept for winter. */
-export const AUTO_EAT_ORDER: FoodId[] = ["berries", "cookedFish", "cookedMeat", "driedMeat", "fat"];
+export const AUTO_EAT_ORDER: FoodId[] = ["berries", "seaweed", "cookedRoots", "barkFlour", "eggs", "roe", "cookedFish", "cookedOilyFish", "cookedMeat", "driedMeat", "fat"];
 /** Kilos an hour's picking takes at a patch by hand, before the foraging pool's factor: a beginner picker, near the real kilo an hour at the top of the pool. */
 export const BERRY_PICK_KG = 0.7;
+/** The Swedish handbook tells of a prisoner who lived on frozen lingonberries dug from under the snow; a fifth of the summer rate, where the snow is shallow enough to reach them. */
+export const BERRY_WINTER_SHARE = 0.2;
 
 export const KCAL_FULL = 6000;
 
-/** Hours above 0 C before a stack is thrown away. */
+/** Hours above 0 C before a stack is thrown away. Raw fat keeps like cooked meat and no longer; rendered it keeps for the winter. */
 export const SPOIL_HOURS: Record<PerishableId, number> = {
-  rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72, berries: 72,
+  rawMeat: 36, fish: 36, cookedMeat: 72, cookedFish: 72, berries: 72, rawFat: 72,
+  oilyFish: 36, cookedOilyFish: 72, roe: 36, eggs: 240, cookedRoots: 72, seaweed: 72,
 };
+
+/** Kochanski: marrow from the larger bones. A tenth of a kilo a bone at a full animal; marrowFactor scales it by the season. */
+export const MARROW_KG_PER_BONE = 0.1;
 
 export const TOOLS: Record<ToolId, { name: string; kg: number; litres?: number }> = {
   axe: { name: "iron axe", kg: 1.5 },
@@ -118,7 +230,7 @@ export const RECIPES: Record<RecipeId, Recipe> = {
   arrows: { name: "arrows x5", needs: [{ item: "stick", qty: 5 }, { item: "stone", qty: 3 }, { item: "sinew", qty: 1, alt: "cordage" }], tool: "knife", minutes: 60, out: { item: "arrow", qty: 5 } },
   fishingSpear: { name: "fishing spear", needs: [{ item: "stick", qty: 1 }, { item: "stone", qty: 1 }, { item: "cordage", qty: 1 }], tool: "knife", minutes: 30, out: { item: "fishingSpear", qty: 1 } },
   snare: { name: "snare", needs: [{ item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 20, out: { item: "snare", qty: 1 } },
-  needle: { name: "bone needle", needs: [{ item: "bone", qty: 1 }], tool: "knife", minutes: 20, out: { item: "needle", qty: 1 } },
+  needle: { name: "bone needle", needs: [{ item: "bone", qty: 1, alt: "crackedBone" }], tool: "knife", minutes: 20, out: { item: "needle", qty: 1 } },
   // A flaked edge in an evening: it chops badly and shatters; the celt is a cobble pecked and ground on the whetstone over days, a real edge that hones like iron.
   flakedAxe: { name: "flaked axe", needs: [{ item: "stone", qty: 2 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "knife", minutes: 90, out: { item: "flakedAxe", qty: 1 } },
   stoneAxe: { name: "stone axe", needs: [{ item: "stone", qty: 1 }, { item: "stick", qty: 1 }, { item: "cordage", qty: 2 }], tool: "whetstone", minutes: 1200, out: { item: "stoneAxe", qty: 1 } },

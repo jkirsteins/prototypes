@@ -78,6 +78,7 @@ function runBlock(seed: number, kit: boolean): boolean {
   console.log(`seed ${seed}${kit ? " (kitted)" : ""}${from}: start found at ring ${r.startRing}`);
   printCheckpoints(r);
   console.log(`  ${passLine(r)}`);
+  if (r.unexploited) console.log(`  ${r.unexploited}`);
   console.log(`  (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
   return r.passed;
 }
@@ -111,6 +112,7 @@ if (heir) {
       console.log(`  surplus: first hang ${r.surplus.hang === null ? "never" : `day ${r.surplus.hang}`}, first large game ${r.surplus.largeGame === null ? "never" : `day ${r.surplus.largeGame}`}`);
       printCheckpoints(r);
       console.log(`  ${passLine(r)}`);
+  if (r.unexploited) console.log(`  ${r.unexploited}`);
       if (r.outcome.kind === "died") {
         if (lastDeath !== null && r.outcome.day < lastDeath) climbs = false;
         lastDeath = r.outcome.day;

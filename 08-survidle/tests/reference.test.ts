@@ -7,7 +7,7 @@ import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { FAT_FULL } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
   fed,
@@ -32,11 +32,28 @@ import {
   WINTER_WOOD_TO_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
+import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
+import { readShore } from "../src/sim/knowledge";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
+import { cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+
+/**
+ * No reference seed's home region has a birch cell (the brief's own
+ * region-scoped lookup finds none for 17, 19, 42 or 79), so this scans the
+ * terrain grid directly, the way tests/plants.test.ts's own finder does.
+ */
+function findBirchCell(world: World): number {
+  for (let y = 0; y < WORLD_H; y += 3) {
+    for (let x = 0; x < WORLD_W; x += 3) {
+      if (terrainOf(world, x, y) === "birch") return cellIdx(world, x, y);
+    }
+  }
+  throw new Error("no birch cell found anywhere in the world");
+}
 
 describe("the reference player", () => {
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
@@ -48,11 +65,12 @@ describe("the reference player", () => {
     // so a level-1 survivor's first tick never sees them; the woodpile keep and the
     // log keep gate by season and a 1 April start is closed for both; the two ice-hole
     // fetches and the two melts wait for the shore to ice over, and the fire indoors for a hut;
-    // and the hide coat, trousers and boots wait for Crafting 8; every other want is open.
+    // and the hide coat, trousers and boots wait for Crafting 8; the rack waits for meat to dry, the hang grind
+    // for more of it than a body can eat in time and the render grind for any raw fat at all; every other want is open.
     const cal = calendar(state.minute, state.startDoy);
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w, cal));
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 19);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 19);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 26);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 26);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -101,34 +119,49 @@ describe("the reference player", () => {
   it("the trap follows the spear with no empty keep, the hut group sits below the hunt keep, and the fish keep follows the cook keeps", () => {
     const tasks = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}`);
     const cook = tasks.lastIndexOf("cook:");
-    expect(tasks[cook - 1]).toBe("cook:fish");
-    expect(tasks[cook + 1]).toBe("fish:any");
-    expect(tasks[cook + 2]).toBe("berries:");
-    // The twenty-snare keep sits right after the berries, pushing the rack and the bow one further down.
-    expect(tasks[cook + 3]).toBe("build:snare");
-    expect(tasks[cook + 4]).toBe("build:dryingRack");
-    expect(tasks[cook + 5]).toBe("craft:bow");
+    // Fat rendered, then the two catches - the lean item and the oily one, which is eaten by
+    // nobody raw - and then the meat. The render is a grind and the three below it are keeps:
+    // a kilo of rendered fat at camp is no reason to let the rest of a carcass rot.
+    expect(tasks[cook - 3]).toBe("cook:rawFat");
+    expect(REFERENCE_ORDERS[cook - 3].kind).toBe("grind");
+    expect(tasks[cook - 2]).toBe("cook:fish");
+    expect(tasks[cook - 1]).toBe("cook:oilyFish");
+    // The bone crack, then the two standing producers - the rack and the twenty-snare line, work
+    // that finishes and feeds the camp afterwards - and only then the fat and carbohydrate item's
+    // own gathers: eggs, roots and its cook keep, the sap tap and seaweed, all above the fish
+    // keep. Inner bark and its grind are off the list; see tests/list.test.ts for why.
+    expect(tasks.slice(cook + 1, cook + 6)).toEqual(["crack:", "build:dryingRack", "build:snare", "hang:", "hunt:any"]);
+    expect(tasks.slice(cook + 6, cook + 11)).toEqual(["eggs:", "roots:", "cook:roots", "tapSap:", "seaweed:"]);
+    expect(tasks[cook + 11]).toBe("fish:any");
+    expect(tasks[cook + 12]).toBe("berries:");
+    expect(tasks[cook + 13]).toBe("craft:bow");
     const spear = tasks.indexOf("craft:fishingSpear");
     expect(tasks.slice(spear + 1, spear + 4)).toEqual(["read:", "craft:basketTrap", "setTrap:"]);
-    expect(tasks[spear + 4]).toBe("cook:fish");
+    // The rendered-fat keep sits above the two cook keeps, fat first: raw fat rots in three
+    // warm days and is the calories the lean ceiling does not touch.
+    expect(tasks[spear + 4]).toBe("cook:rawFat");
+    expect(tasks[spear + 5]).toBe("cook:fish");
     expect(tasks).not.toContain("emptyTrap:");
-    const hunt = tasks.indexOf("hunt:any");
-    // The clothing block, then the stone restock, then the edge's whole life with the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
-    expect(tasks.slice(hunt + 1, hunt + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
-    expect(tasks.slice(hunt + 8, hunt + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
+    // The clothing block follows the arrows, then the stone restock, then the edge's whole life with
+    // the spare axe: a whetstone in the opening cost the knife its stone and the snares an hour.
+    const arrows = tasks.indexOf("craft:arrows");
+    expect(tasks.slice(arrows + 1, arrows + 8)).toEqual(["craft:needle", "repair:", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"]);
+    expect(tasks.slice(arrows + 8, arrows + 14)).toEqual(["stone:", "craft:whetstone", "hone:", "craft:wedges", "craft:stoneAxe", "craft:flakedAxe"]);
     const axe = tasks.indexOf("craft:flakedAxe");
     // The forty-snare keep sits right after the water trough, pushing the fill, melt, winter-stock and hang block one further down.
     expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
     // The winter-stock keeps head the surplus loop, the three firewood methods then the logs: a grind
     // above a keep starves it, and the hang grind starved the woodpile on a camp taking elk all autumn.
+    // The hang itself is no longer down here: gated on meat that will rot, it sits above the plant band.
     expect(tasks.slice(axe + 9, axe + 13)).toEqual(["split:", "splitWedges:", "deadwood:", "chop:"]);
-    expect(tasks[axe + 13]).toBe("hang:");
-    expect(tasks.slice(axe + 14, axe + 17)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
+    expect(tasks.slice(axe + 13, axe + 16)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
-    // 65: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
-    // twenty-snare keep after the berries, the forty-snare keep after the water trough, the
-    // thaw grind at the head of the water block.
-    expect(REFERENCE_ORDERS.length).toBe(65);
+    // 73: the bough bed keep after the lean-to, the snow shelter job after the bough bed, the
+    // twenty-snare keep and the rack above the gathering block, the forty-snare keep after the
+    // water trough, the thaw grind at the head of the water block, and the fat and carbohydrate
+    // item's eight insertions around the cook keeps - the rendered-fat keep, the oily-fish cook
+    // keep, the bone crack, eggs, roots and its cook keep, the sap tap and seaweed.
+    expect(REFERENCE_ORDERS.length).toBe(73);
   });
 
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
@@ -149,6 +182,104 @@ describe("the reference player", () => {
     const have = qty(pile(state, st.campCell), "bark");
     if (have < 5) expect(tasks).toContain("bark");
     else expect(tasks).not.toContain("bark");
+  });
+
+  it("tapSap, the one REOPENING_TASKS want, is given again the day after it finishes", () => {
+    const { state, world } = newGame(17, SAP_FROM_DOY);
+    const birch = findBirchCell(world);
+    placeAt(state, world, birch);
+    state.player.tools.push({ id: "knife", durability: 100 });
+    state.player.kcal = 3000;
+    state.player.water = 3;
+    state.player.warmth = 100;
+    state.player.health = 100;
+    const player = new ReferencePlayer([
+      { req: { task: "tapSap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    const ref = { state, world, player };
+    const sapTotal = () => state.ledger.reduce((s, d) => s + d.yield.sap, 0);
+    stepReference(ref, 24 * 60);
+    const sap1 = sapTotal();
+    expect(sap1).toBeGreaterThan(0);
+    stepReference(ref, 24 * 60);
+    stepReference(ref, 24 * 60);
+    // A once job given as itself is normally a finished job for good (the knife would
+    // otherwise be made again); a tap drunk on the spot leaves nothing standing to make
+    // that true, so three days in the window book more than one day's three-tap cap.
+    expect(sapTotal()).toBeGreaterThan(SAP_KCAL * SAP_TAPS_PER_DAY);
+  });
+
+  // Every other once job pins the opposite: given as itself, it finishes for good, and a
+  // second look the next day leaves nothing new done and no order standing. REOPENING_TASKS
+  // holds only "tapSap"; these four are the shapes a general no-yield rule wrongly reopened.
+  it("a garment craft is finished for good: one coat's materials, not a fresh one every day camp holds hides", () => {
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "crafting", 8);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    state.player.tools.push({ id: "needle", durability: 100 });
+    const camp = pile(state, st.campCell);
+    addItem(camp, "hide", 60);
+    addItem(camp, "sinew", 20);
+    const player = new ReferencePlayer([
+      { req: { task: "craft", arg: "hideCoat", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" },
+    ]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    expect(qty(camp, "hide")).toBe(54);
+    expect(ordersHere(state, world).some((o) => o.req.task === "craft")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(qty(camp, "hide")).toBe(54);
+    expect(ordersHere(state, world).some((o) => o.req.task === "craft")).toBe(false);
+  });
+
+  it("a build:snare times-5 job is finished for good at five snares, not re-issued to forty", () => {
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "hunting", 20);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "snare", 10);
+    const player = new ReferencePlayer([
+      { req: { task: "build", arg: "snare", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, kind: "job" },
+    ]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    expect(st.structures.snares).toBe(5);
+    expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(st.structures.snares).toBe(5);
+    expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
+  });
+
+  it("read is finished for good after its one hour, not re-given the next day", () => {
+    const { state, world } = newGame(17);
+    placeAtSpot(state, world, state.player.region, "shore");
+    const player = new ReferencePlayer([{ req: { task: "read", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" }]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    const known1 = Object.keys(state.player.known).length;
+    expect(known1).toBeGreaterThan(0);
+    expect(ordersHere(state, world).some((o) => o.req.task === "read")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(Object.keys(state.player.known).length).toBe(known1);
+    expect(ordersHere(state, world).some((o) => o.req.task === "read")).toBe(false);
+  });
+
+  it("setTrap is finished for good once the trap is set, not re-set the next day while it stands", () => {
+    const { state, world } = newGame(4, 200);
+    placeAtSpot(state, world, state.player.region, "shore");
+    const cell = cellOf(state, world);
+    const obs = readShore(state, world, cell);
+    const st = regionState(state, world, state.player.region);
+    for (const s of obs.fish) st.pop[s] = 2500;
+    addItem(state.player.pack, "basketTrap", 1);
+    const player = new ReferencePlayer([{ req: { task: "setTrap", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" }]);
+    const ref = { state, world, player };
+    stepReference(ref, 24 * 60);
+    expect(st.trap).not.toBeNull();
+    expect(ordersHere(state, world).some((o) => o.req.task === "setTrap")).toBe(false);
+    stepReference(ref, 24 * 60);
+    expect(ordersHere(state, world).some((o) => o.req.task === "setTrap")).toBe(false);
   });
 
   it("a times want counts its stand-ins' units: given exactly twice at woodcraft 1, and once as itself at woodcraft 3", () => {
@@ -252,7 +383,7 @@ describe("the reference player", () => {
     const { state, world } = newGame(19);
     state.player.kcal = 0;
     state.minute = 25 * 1440;
-    for (let day = 19; day <= 25; day++) state.ledger.push({ day, yield: emptyYield(), eaten: 2971, burn: emptyBurn(), sleepMin: 0, workMin: 0 });
+    for (let day = 19; day <= 25; day++) state.ledger.push({ day, yield: emptyYield(), eaten: 2971, leanKcal: 0, nonLeanKcal: 2971, leanAtCamp: false, burn: emptyBurn(), sleepMin: 0, workMin: 0 });
     expect(campFoodKcal(state, world)).toBe(0);
     expect(fed(weekBefore(state.ledger, 26))).toBe(true);
     // A body on the fat alone with nothing eaten all week is not, whatever the stomach reads.
@@ -310,7 +441,7 @@ describe("the reference player", () => {
   });
 
   it("weekLines reads a week against the table for its date", () => {
-    const week = { days: 7, yield: { fish: 310, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672 };
+    const week = { days: 7, yield: { fish: 310, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0, marrow: 0, roe: 0, eggs: 0, bark: 0, roots: 0, sap: 0, seaweed: 0 }, eaten: 290, burn: { base: 1680, activity: 620, walk: 640, cold: 200, sick: 0 }, sleepMin: 504, workMin: 672, leanWallDays: 3 };
     const lines = weekLines(week, 115);
     expect(lines[0]).toContain("fish 310 (in band)");
     expect(lines[0]).toContain("kit 0");
@@ -322,6 +453,7 @@ describe("the reference player", () => {
     expect(lines[2]).toContain("cold 200 (in band)");
     expect(lines[3]).toContain("sleep/day 8.4 h (in band)");
     expect(lines[3]).toContain("work/day 11.2 h");
+    expect(lines[3]).toContain("lean-wall days 3 of 7");
     const none = weekLines({ ...week, days: 0 }, 115);
     expect(none[0]).toContain("no full day yet");
   });
@@ -491,7 +623,9 @@ describe("wants by level", () => {
     // The wedge split and dead wood, the woodpile's two methods for a camp with no axe, sit between the two.
     expect(REFERENCE_ORDERS.indexOf(logs)).toBe(REFERENCE_ORDERS.indexOf(woodpile) + 3);
     const tail = REFERENCE_ORDERS.slice(REFERENCE_ORDERS.indexOf(logs) + 1);
-    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hang:undefined:grind", "hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
+    // The three named hunts are all that is left below it: the hang grind moved above the plant
+    // band once its own gate shut it on anything a body can eat in time.
+    expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
     const { state, world } = newGame(17);
     expect(wantOpen(state, world, logs, calendar(0, 90))).toBe(false);
     expect(wantOpen(state, world, logs, calendar(0, 244))).toBe(true);
@@ -519,11 +653,13 @@ describe("wants by level", () => {
     for (const arg of ["hideCoat", "hideTrousers", "hideBoots"]) expect(wantOpen(state, world, want(arg), cal), arg).toBe(true);
   });
 
-  it("the clothing block is a needle kept like a tool, a mend grind and five garments as once jobs, right after the small-game hunt keep", () => {
+  it("the clothing block is a needle kept like a tool, a mend grind and five garments as once jobs, right after the arrows", () => {
     // The needle is a keep of one because a needle that wears out takes the mend grind with it: a once
     // job left two year seeds with the grind skipped "needs a bone needle" beside hundreds of kilos of hide.
+    // The block used to follow the small-game hunt keep; that keep moved above the plant band and the
+    // arrows, the last of the ranged kit, are what the block follows now.
     const block = REFERENCE_ORDERS.map((o) => `${o.req.task}:${o.req.arg ?? ""}:${o.kind}:${o.req.until.kind}`);
-    const hunt = block.indexOf("hunt:any:keep:campHas");
+    const hunt = block.indexOf("craft:arrows:keep:campHas");
     expect(block.slice(hunt + 1, hunt + 8)).toEqual([
       "craft:needle:keep:campHas", "repair::grind:forever",
       "craft:hideCoat:job:once", "craft:hideTrousers:job:once", "craft:hideBoots:job:once", "craft:furHat:job:once", "craft:furMittens:job:once",

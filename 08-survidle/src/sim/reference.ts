@@ -17,8 +17,12 @@ import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY, type Calendar } from "./calendar";
-import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty } from "./inventory";
-import { FOODS, type FoodId, RECIPES, TOOLS } from "./items";
+import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
+import { nearestCell } from "./intent";
+import {
+  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, RECIPES,
+  ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
+} from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
@@ -27,19 +31,54 @@ import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
+import { heathCell, watersideCell } from "./position";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
-import { LARGE_GAME } from "./species";
-import { APRIL, BURN, coldBand, MIDSUMMER_DOY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import { startTask } from "./tasks";
+import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
+import { nestsFor, rootKgLeft } from "./stocks";
+import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
+import { seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
-import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, WorldDate } from "./types";
+import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, TaskId, WorldDate } from "./types";
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
 const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
   ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
+
+/**
+ * The raw meat a camp hangs rather than eats: what the body cannot get
+ * through before the stack rots. Raw meat keeps SPOIL_HOURS.rawMeat and the
+ * ceiling lets LEAN_KCAL_PER_DAY of lean food through in a day, so the kilos
+ * a survivor can eat off a fresh kill are those hours' worth of the ceiling
+ * at raw meat's own kcal a kilo. Everything past that is meat that will be
+ * lost if it is not on the rack, which is when the grind is worth its five
+ * minutes a kilo and not before. Derived, so it moves with the spoil hours
+ * and the ceiling and with nothing else.
+ */
+export const HANG_ABOVE_KG = (SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / FOODS.rawMeat.kcalPerKg);
+
+/**
+ * The plant band: work the list asks for by the day and not until a target
+ * is met. Every other food want is a keep measured in food at camp, and such
+ * a keep can never read met while the body eats what it brings home - it
+ * takes the whole day and the rows below it never get a turn. That is what
+ * the plant block did: a cook-roots keep emptied the roots keep, auto-eat
+ * emptied the flour, and four level-20 seeds spent four and a half to seven
+ * and a half hours a day on plants and killed nothing all summer.
+ *
+ * So each of these rows is a counted job, given afresh each morning and
+ * finished for the day once its count is spent. The count is
+ * PLANT_HOURS_PER_DAY split across the rows the band holds: the handbook's
+ * three hours are a budget for plant work as a whole, and this band holds
+ * three rows. Berries are not here - the gut refuses a third kilo in a day,
+ * which is the same cap by another route, and the handbook sets its own two
+ * litres.
+ */
+const PLANT_ROWS: TaskId[] = ["roots", "eggs", "seaweed"];
+export const PLANT_HOURS_PER_ROW = PLANT_HOURS_PER_DAY / PLANT_ROWS.length;
+const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
 
 /**
  * The runner never gathers a prerequisite on its own, so the list is
@@ -69,9 +108,9 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * is what the opening cannot spare. Then what the knife unlocks beyond
  * the snares. The scheduler is greedy top-down, so a competent player
  * ranks eating what is already caught above catching more of it: the cook
- * keeps sit above the fish keep, and the rack job sits above the hunt-any
- * keep, right after the cook keeps - it blocks harmlessly with nothing yet
- * caught to dry. The trap follows the spear: the shore is read the day the
+ * keeps sit above the fish keep, and the rack job just under them, with the
+ * crack grind between - it waits on raw meat in reach, so a camp with
+ * nothing yet caught to dry never spends the hour. The trap follows the spear: the shore is read the day the
  * spear exists, the basket made and set, and from then on the fish keep's
  * own trips to the shore bring the trap's catch home, since a trap's fish
  * come out when you arrive at its cell as hares do at the snares - no
@@ -97,15 +136,16 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * three, and the once job alone ran out and left every year seed with no
  * arrows, no axe and a felling grind for company. Auto-eat, auto-feed
  * and auto-drink stay on, as they are for every player. Two kilos of
- * berries at camp sit with the cook keeps: in season they are the
- * cheapest kcal there is, and out of it the keep blocks harmlessly on
- * nothing ripe. Once food, the roof and water are running, the sticks and
+ * berries at camp sit under the fish keep, at the foot of the food block:
+ * in season they are the cheapest kcal there is, and out of it the keep
+ * blocks harmlessly on nothing ripe. Once food, the roof and water are running, the sticks and
  * bark the hut needs, above what the opening keeps already hold, sit
  * right before it, the trough follows the hut it needs room to stand in,
  * and the top fill keep from the opening stays as it was, the trough's
  * own fill keep a second want for the greater capacity the trough gives
- * rather than a replacement. Right after the small-game hunt keep, which
- * is the want that brings hide to camp, sits the clothing block: the bone
+ * rather than a replacement. Right after the arrows, the last of the
+ * ranged kit the hunt that brings hide to camp is worked with, sits the
+ * clothing block: the bone
  * needle as a keep of one like every other tool, since a needle that wears
  * out takes the mend grind with it, a mend grind, and the hide coat,
  * trousers and boots, the fur hat and the fur mittens as once jobs, since
@@ -117,34 +157,70 @@ const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: s
  * the hut group below it; without it every garment on every year seed was
  * a ghost at durability 0 by autumn, with 168 kg of hide lying at camp on
  * one of them. The hide set opens at Crafting 8 (wantOpen), the hat and
- * mittens at once. Below the hut group sits the surplus loop,
- * in this order: the two winter-stock keeps, the hang grind, and the three
- * named hunts as grinds. A roof and water outrank
- * days spent chasing an elk, which is why this loop sits below the hut
- * group rather than above it. The hang grind hangs whatever raw meat sits
- * at camp while the rack has room; it sits above the named hunts because
- * a keep measured in raw meat at camp can never read met while a grind
- * above it keeps taking that meat to the rack as fast as it comes in - so
- * hunting elk, reindeer or roe deer here is a grind, not a keep, the way
- * felling is a grind and not a firewood keep. Each named hunt opens only
+ * mittens at once. Below the hut group sits the surplus loop, in this
+ * order: the two winter-stock keeps and the three named hunts as grinds. A
+ * roof and water outrank days spent chasing an elk, which is why this loop
+ * sits below the hut group rather than above it. Hunting elk, reindeer or
+ * roe deer here is a grind and not a keep, the way felling is a grind and
+ * not a firewood keep: a keep measured in raw meat at camp can never read
+ * met while the hang grind takes that meat to the rack as fast as it comes
+ * in. Each named hunt opens only
  * at its species' recommended level (wantOpen), since a competent player
  * does not walk at an elk with a stone point at level 1: elk, reindeer
  * and roe deer, listed hardest first (8, 6, 4). The two winter-stock
  * keeps, the split pile and the logs that are the stock's unsplit half,
- * sit together at the head of the loop, above the hang grind and the named
- * hunts alike. A grind is never met, and a grind above a keep starves the
- * keep: with the log keep below the hunts, camp logs never passed five
- * from 1 September and a level-20 camp froze in December beside 2.7
- * million kcal of food; with it below the hang grind, a camp taking elk
- * all autumn hung meat instead of cutting wood, and two year seeds froze
- * on days 300 and 325 with hundreds of thousands of kcal at camp and a
- * woodpile of two kilos. A survivor with a full rack and no woodpile cuts
- * wood. Both keeps open only for the season they are stocked against
- * (wantOpen): midsummer to the thaw, so a list that reaches them in April
- * or May waits rather than splitting a pile no winter yet needs, and the
- * hang grind has its old place at the head of the loop for the quarter of
- * the year - the ninety-odd days from the thaw to midsummer - that they
- * are shut.
+ * head the loop, above the named hunts. A grind is never met, and a grind
+ * above a keep starves the keep: with the log keep below the hunts, camp
+ * logs never passed five from 1 September and a level-20 camp froze in
+ * December beside 2.7 million kcal of food. A survivor with a full rack and
+ * no woodpile cuts wood. Both keeps open only for the season they are
+ * stocked against (wantOpen): midsummer to the thaw, so a list that reaches
+ * them in April or May waits rather than splitting a pile no winter yet
+ * needs.
+ *
+ * Inner bark is not on the list. At the handbook's own yield it is the
+ * worst hour a survivor can spend: about 275 kcal an hour against fishing's
+ * 420 and root digging's 414 at level 20, so the strip and its grind took
+ * an hour and a half a day off two better sources, and shutting them
+ * lengthened the level-20 year by 38 days on seed 17 and 52 on seed 79.
+ * The task, its season and its wantOpen branch all stay for a player who
+ * wants the fallback by hand; what is missing is only the standing want.
+ * Whether the yield or the strip season is what is wrong is the author's
+ * question and not the list's.
+ *
+ * The catch is two items and wants two cook keeps: raw oily fish is not in
+ * the auto-eat order and rots in a day and a half, so with only the lean
+ * keep on the list a char or a trout was landed, carried home and thrown
+ * away, and every reference seed died with an oily species standing in its
+ * shore's read.
+ *
+ * Fat before meat: the render keep sits above the cook keeps because raw
+ * fat rots in three days and is the calories the ceiling does not touch;
+ * the crack grind takes the bones the hunts leave at camp; the gathering
+ * keeps open by season in wantOpen, and a seaweed keep opens only for a
+ * camp on the sea.
+ *
+ * The hunt keep sits above the gathering block for its own reason. It is a
+ * promise about raw meat at camp, and a large kill meets it for days, so it
+ * is not the treadmill a fish keep is - the body eats a catch the day it
+ * lands and the keep re-opens by supper. Under the block it got nine
+ * minutes to an hour and twenty a day and three of four level-20 seeds
+ * killed nothing all summer; a hunter who takes one elk in June has its
+ * nine kilos of fat and a rack of dried meat, which no number of hours at
+ * the shore will match. The bow and the arrows stay below the fish keep,
+ * where they cost a beginner nothing: lifted with the hunt keep they took
+ * seed 19 the woodpile and a cold death on day 22 of the April gate.
+ *
+ * The rack and the twenty-snare line sit above that gathering block, not
+ * below it, because both are work that finishes and then feeds the camp
+ * without being asked again: an hour builds the rack, a few minutes sets a
+ * snare, and every kilo after that is free. The gathering keeps are the
+ * opposite - a keep measured in food at camp can never read met while the
+ * body eats what it brings home, so it takes the whole day and everything
+ * under it waits. With the block above them, a level-20 camp set three
+ * snares in a hundred days, never built a rack, never dried a kilo and
+ * starved in July on four seeds out of four while digging rhizomes three
+ * hours a day.
  */
 
 /**
@@ -177,6 +253,21 @@ export const WINTER_WOOD_TO_DOY = 90;
  * stock the wood half of it.
  */
 export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
+
+/**
+ * The larder that turns a hunter into a woodcutter: the kcal of the winter
+ * stock's food, the 80 kg of dried meat and 20 kg of rendered fat that are
+ * "what a competent player has at camp on 1 December". The hunt keep and the
+ * fish keep are promises about raw food at camp, and a body eats what it
+ * brings home, so neither ever reads met while there is meat to hang; they
+ * take the day and the woodpile keeps beneath them never run. A level-20
+ * camp on seed 19 froze on day 305 with ten elk behind it, 829,835 kcal at
+ * camp and three logs. A player with a winter's food already at the fire
+ * cuts wood, so the two rows shut at this line and open again under it.
+ * Derived from the stock and the foods, so it moves with them and not
+ * otherwise.
+ */
+export const WINTER_FOOD_KCAL = WINTER_STOCK.driedMeatKg * FOODS.driedMeat.kcalPerKg + WINTER_STOCK.fatKg * FOODS.fat.kcalPerKg;
 
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
@@ -213,15 +304,24 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("read", { kind: "once" }),
   job("craft", { kind: "once" }, "basketTrap", "leave"),
   job("setTrap", { kind: "once" }),
+  { req: { task: "cook", arg: "rawFat", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("cook", 1, "fish"),
+  keep("cook", 1, "oilyFish"),
   keep("cook", 1),
+  { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  job("build", { kind: "once" }, "dryingRack"),
+  keep("build", 20, "snare"),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  keep("hunt", 2, "any"),
+  job("eggs", { kind: "times", n: PLANT_HOURS_PER_ROW }),
+  job("roots", { kind: "times", n: PLANT_HOURS_PER_ROW }),
+  keep("cook", 1, "roots"),
+  job("tapSap", { kind: "once" }),
+  job("seaweed", { kind: "times", n: PLANT_HOURS_PER_ROW }),
   keep("fish", 1, "any"),
   keep("berries", 2),
-  keep("build", 20, "snare"),
-  job("build", { kind: "once" }, "dryingRack"),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
-  keep("hunt", 2, "any"),
   keep("craft", 1, "needle"),
   { req: { task: "repair", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   job("craft", { kind: "once" }, "hideCoat"),
@@ -247,7 +347,6 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("splitWedges", WINTER_STOCK.firewoodKg),
   keep("deadwood", WINTER_STOCK.firewoodKg),
   keep("chop", WINTER_STOCK.logs),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
@@ -291,6 +390,12 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const st = regionState(state, world, state.player.region);
     return !(st.structures.turfHut || st.structures.cabin);
   }
+  // A winter's food already at camp shuts the two rows that chase more of it. The trap and the
+  // snare line are not here: both are set once and cost nothing standing, and a hare in a snare
+  // is not an hour spent.
+  if (w.req.task === "hunt" || (w.req.task === "fish" && w.req.arg === "any")) {
+    if (campFoodKcal(state, world) >= WINTER_FOOD_KCAL) return false;
+  }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
@@ -312,6 +417,52 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
   if (winterStockWant(w)) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
+  // The nests hold eggs only in their window; the sap window is the same three weeks the
+  // task's own check reads.
+  if (w.req.task === "eggs") return cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY;
+  // Inner bark strips only April to July, when the rise the task itself half-rates outside of
+  // is also the whole window a beginner should bother stripping at all. No row on the list
+  // carries this task any more; the branch is here for a player who adds one by hand.
+  if (w.req.task === "innerBark") return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
+  if (w.req.task === "tapSap") return cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY;
+  // Roots dig by hand April to October; outside it the ground is frozen and only an ice hole,
+  // cut and kept open with an axe, reaches the rhizomes under it. An axe in reach is what keeps
+  // a hole open, so it is what opens the want, and resolveCell sends the winter dig to the hole
+  // itself rather than to the frozen bog.
+  if (w.req.task === "roots") return (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY) || axeInReach(state, world);
+  // Seaweed grows only on a sea shore: a camp on an inland lake never has this want to give.
+  if (w.req.task === "seaweed") return regionAt(world, state.player.region).sea > 0;
+  // The rack waits for something to dry. The list ranks it above the gathering keeps because it is
+  // an hour that then preserves every kilo the day cannot eat, but an hour is an hour: a beginner
+  // with no kill yet spends it on wood and food instead, and one seed froze on day 22 when the rack
+  // was built on nothing. Raw meat anywhere in reach opens it, which is the state a kill leaves.
+  if (w.req.task === "build" && w.req.arg === "dryingRack") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "rawMeat") > 0 || qty(state.player.pack, "rawMeat") > 0;
+  }
+  // The hang grind waits for meat the body cannot eat in time. A grind is never met, so
+  // without this it runs on every kilo a snare brings in, and it is the one row that must
+  // not: the list's own record is two year seeds frozen on days 300 and 325 when an ungated
+  // hang sat above the woodpile keeps. Gated, it costs no hour until a kill is going to rot.
+  if (w.req.task === "hang") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "rawMeat") + qty(state.player.pack, "rawMeat") > HANG_ABOVE_KG;
+  }
+  // Raw fat renders while there is any to render, the way the bones are cracked and the meat is
+  // hung. A keep of a kilo of rendered fat reads met the moment the first kilo is off the fire,
+  // and camp fat is drawn only by auto-eat, last in the order, at a fifth of a kilo a day - so an
+  // elk's nine to fifteen kilos of raw fat sat beside the fire and rotted in three days with the
+  // row reading met. Three quarters of every seed's fat went that way: 53.7 kg of 65.7 on seed 42,
+  // 483,000 kcal, in the year it lived.
+  if (w.req.task === "cook" && w.req.arg === "rawFat") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "rawFat") + qty(state.player.pack, "rawFat") > TRACE_KG;
+  }
+  // A cracked bone wants a bone: the hunts leave them at camp, and the want waits for one to sit there.
+  if (w.req.task === "crack") {
+    const st = regionState(state, world, state.player.region);
+    return qty(pile(state, st.campCell), "bone") >= 1;
+  }
   return true;
 }
 
@@ -357,6 +508,90 @@ export function fed(week: WeekAverage): boolean {
   return week.days > 0 && week.eaten >= FOOD_CLAUSE_KCAL;
 }
 
+const kcalFmt = (n: number) => `${Math.round(n).toLocaleString("en-US")} kcal`;
+
+/**
+ * The non-lean calories accessible at a starvation death and not taken
+ * (fat and carbohydrate design, section 1): fat, roe and eggs at camp or
+ * in the pack, raw fat unrendered, bones uncracked at camp, a nest or
+ * root stock above zero in its season, pine ground in the strip season,
+ * an oily or spawning species already read at a shore, sap on birch
+ * ground in its window, seaweed on a sea shore. Read from the state at
+ * the death, not from the without probe's disabled sources - the probe
+ * asks a different question (section 7).
+ */
+export function unexploited(state: GameState, world: World): { name: string; amount: string }[] {
+  const out: { name: string; amount: string }[] = [];
+  const cal = calendar(state.minute, state.startDoy);
+  const region = state.player.region;
+  const st = regionState(state, world, region);
+  const camp = pile(state, st.campCell);
+  const pack = state.player.pack;
+
+  const atCampOrPack = (food: FoodId, campName: string, packName: string) => {
+    const c = qty(camp, food);
+    if (c > 1e-9) out.push({ name: campName, amount: kcalFmt(c * FOODS[food].kcalPerKg) });
+    const k = qty(pack, food);
+    if (k > 1e-9) out.push({ name: packName, amount: kcalFmt(k * FOODS[food].kcalPerKg) });
+  };
+  atCampOrPack("fat", "fat at camp", "fat in the pack");
+  atCampOrPack("roe", "roe at camp", "roe in the pack");
+  atCampOrPack("eggs", "eggs at camp", "eggs in the pack");
+
+  const rawFat = qty(camp, "rawFat") + qty(pack, "rawFat");
+  if (rawFat > 1e-9) out.push({ name: "raw fat unrendered", amount: `${rawFat.toFixed(1)} kg` });
+
+  const bones = qty(camp, "bone");
+  if (bones > 1e-9) out.push({ name: "bones uncracked", amount: `${Math.round(bones)}` });
+
+  // Above zero and in season: nestsFor confirms the region structurally supports
+  // the stock, beside the run's own depleting count. The roots need no such
+  // second reading - what is left is counted off the ground itself, cell by cell.
+  if (cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY && st.nests > 1e-9 && nestsFor(world, st, region) > 1e-9) {
+    out.push({ name: "nests", amount: `${st.nests.toFixed(1)} clutches` });
+  }
+
+  const rootGround = (c: number) => heathCell(world, c) || watersideCell(world, c);
+  const rootsLeft = rootKgLeft(st, world, region);
+  if (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY && rootsLeft > 1e-9 && rootGround(nearestCell(state, world, rootGround))) {
+    out.push({ name: "roots", amount: `${rootsLeft.toFixed(1)} kg` });
+  }
+
+  if (cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY) {
+    const pineGround = (c: number) => cellAt(world, c).terrain === "pine";
+    if (pineGround(nearestCell(state, world, pineGround))) out.push({ name: "pine ground", amount: "reachable" });
+  }
+
+  let oilyRead = false;
+  let spawnRead = false;
+  for (const [cellStr, obs] of Object.entries(state.player.known)) {
+    if (cellAt(world, Number(cellStr)).region !== region) continue;
+    for (const s of obs.fish) {
+      if (SPECIES_DEFS[s].oily) oilyRead = true;
+      if (inSpawn(s, cal.month)) spawnRead = true;
+    }
+  }
+  if (oilyRead) out.push({ name: "oily fish read", amount: "at the shore" });
+  if (spawnRead) out.push({ name: "spawning fish read", amount: "roe at the shore" });
+
+  if (cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY) {
+    const birchGround = (c: number) => cellAt(world, c).terrain === "birch";
+    if (birchGround(nearestCell(state, world, birchGround))) out.push({ name: "birch sap", amount: "in its window" });
+  }
+
+  // seaweedAvailable is the seaweed task's own check (position and ice together), shared here so the two cannot drift.
+  const seaGround = (c: number) => seaweedAvailable(state, world, c);
+  if (seaGround(nearestCell(state, world, seaGround))) out.push({ name: "seaweed", amount: "on the sea shore" });
+
+  return out;
+}
+
+/** The unexploited line a starvation death's report carries: what sat accessible and was not taken, or "none" for luck or strategy (spec section 7). */
+export function starvationCause(state: GameState, world: World): string {
+  const u = unexploited(state, world);
+  return u.length ? `unexploited: ${u.map((x) => `${x.name} ${x.amount}`).join(", ")}` : "unexploited: none";
+}
+
 function checkpointDays(gate: Gate): number[] {
   return gate.kind === "day" ? [gate.day, 90, DECEMBER_DAY] : [90, DECEMBER_DAY];
 }
@@ -386,7 +621,7 @@ export function kitTrap(state: GameState, world: World): void {
   const fish = shoreFish(world, regionAt(world, p.region), shore.cell);
   if (!fish.length) return;
   state.player.known[shore.cell] = { minute: 0, fish };
-  st.trap = { cell: shore.cell, kg: 0, fish, age: 0 };
+  st.trap = { cell: shore.cell, kg: 0, oilyKg: 0, fish, age: 0 };
 }
 
 /**
@@ -424,12 +659,21 @@ export function kitOut(state: GameState, world: World, producers = true): void {
 export const OPENING_TICK_MINUTES = 60;
 
 /**
+ * Work that leaves nothing behind for the next look to read: no stock at camp,
+ * no structure standing, so the want is judged by its window rather than closed
+ * for good the first time it is done. A tap is drunk on the spot; a knife is
+ * not, and a knife want that re-opened would be made again every day.
+ */
+const REOPENING_TASKS = new Set<TaskId>(["tapSap"]);
+/**
  * The player script (idle curve spec, section 2.5): the reference list is
  * what a competent player wants, and this gives each want as the best
  * kind the skill has earned, ranked where the want sits. A stand-in that
  * drops off is given again when the want is unmet; a want given as its
  * own kind that drops off is a finished job and is never given twice, or
- * the knife would be made again. A keep given as a keep stays for good.
+ * the knife would be made again - except a REOPENING_TASKS want, which
+ * leaves nothing behind to read and is reconsidered on the next look
+ * instead. A keep given as a keep stays for good.
  * A `times` want's own probe reads `done`, which a fresh probe never
  * carries, so a once-job stand-in's units are banked in `completed` when
  * it drops off and fed back as the probe's `done` - otherwise a five-times
@@ -443,6 +687,8 @@ export class ReferencePlayer {
   private finished = new Set<number>();
   /** Units a want's dropped once/times stand-ins have completed so far, per want index. */
   private completed = new Map<number, number>();
+  /** The day a daily want was last started afresh, per want index: its count and its finished mark are cleared once a day and not again. */
+  private dayOpened = new Map<number, number>();
 
   /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
   reachedDay: number | null = null;
@@ -468,6 +714,16 @@ export class ReferencePlayer {
       this.home = null;
     }
     const cal = calendar(state.minute, state.startDoy);
+    // Each morning a daily want starts over: yesterday's spent count is not this
+    // morning's, and the finished mark that stopped it yesterday comes off. Both
+    // the true counted job and the once-job stand-in a low skill gives instead
+    // are stopped by that count, so both are cleared here.
+    for (let i = 0; i < this.wants.length; i++) {
+      if (!DAILY_TASKS.has(this.wants[i].req.task) || this.dayOpened.get(i) === cal.day) continue;
+      this.dayOpened.set(i, cal.day);
+      this.finished.delete(i);
+      this.completed.delete(i);
+    }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
       if (list.some((o) => o.id === g.id)) {
@@ -483,7 +739,9 @@ export class ReferencePlayer {
         }
         continue;
       }
-      if (this.trueKind.get(i)) this.finished.add(i);
+      // A completed want given as its own kind is a finished job for good, or the knife
+      // would be made again, unless the task is named in REOPENING_TASKS below.
+      if (this.trueKind.get(i) && !REOPENING_TASKS.has(this.wants[i].req.task)) this.finished.add(i);
       else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);
@@ -557,6 +815,8 @@ export interface ReferenceReport {
   surplus: { hang: number | null; largeGame: number | null };
   /** The life record, for the selector: epitaph, entry and since read this. */
   record: LifeRecord;
+  /** For a starvation death, the unexploited line read at the moment it fell; null for any other outcome (spec 7). */
+  unexploited: string | null;
 }
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
@@ -598,7 +858,7 @@ export function weekLines(week: WeekAverage, dayOfYear: number): string[] {
     `week (${week.days} d): yield/day ${yields}; vs ${table.name}`,
     `eaten/day ${r0(week.eaten)}, net ${net >= 0 ? "+" : ""}${r0(net)}`,
     `burn/day ${r0(total)} (${verdict(total, BURN.day)}) = base ${r0(b.base)} (${verdict(b.base, BURN.base)}) + work ${r0(work)} (${verdict(work, BURN.work)}: activity ${r0(b.activity)}, walk ${r0(b.walk)}) + cold ${r0(b.cold)} (${verdict(b.cold, coldBand(dayOfYear))}) + sick ${r0(b.sick)}`,
-    `sleep/day ${sleepH.toFixed(1)} h (${verdict(sleepH, SLEEP_HOURS)}), work/day ${(week.workMin / 60).toFixed(1)} h`,
+    `sleep/day ${sleepH.toFixed(1)} h (${verdict(sleepH, SLEEP_HOURS)}), work/day ${(week.workMin / 60).toFixed(1)} h, lean-wall days ${week.leanWallDays} of ${week.days}`,
   ];
 }
 
@@ -642,7 +902,8 @@ export function measure(ref: { state: GameState; world: World; player: Reference
   // death after the gate comes later in the list, and a death before it fails passesGate.
   const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
   const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
-  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state) };
+  const unexploitedLine = state.dead?.cause === "starved" ? starvationCause(state, world) : null;
+  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state), unexploited: unexploitedLine };
 }
 
 export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {

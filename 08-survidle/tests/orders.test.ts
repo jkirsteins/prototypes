@@ -15,6 +15,7 @@ import {
   addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
 import { addItem, pile, qty } from "../src/sim/inventory";
+import { BARK_DRY_RATIO } from "../src/sim/items";
 import { WINTER_START_DOY } from "../src/sim/year";
 import { today } from "../src/sim/ledger";
 
@@ -139,6 +140,24 @@ describe("when an order is met", () => {
     const arrows = addOrder(state, world, { task: "craft", arg: "arrows", until: { kind: "campHas", qty: 10 }, deliver: "leave", where: "nearest" }, "keep");
     addItem(state.player.pack, "arrow", 10);
     expect(orderMet(state, world, arrows, true)).toBe(true);
+  });
+
+  it("an inner bark keep reads the fresh strip and the dried one together, scaled by BARK_DRY_RATIO since a kilo of the dried kind is that many kilos of the fresh strip it dried from", () => {
+    const { state, world } = newGame(3);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell);
+    const o = addOrder(state, world, { task: "innerBark", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" }, "keep");
+    addItem(camp, "freshBark", 1);
+    expect(orderMet(state, world, o, false)).toBe(false);
+    addItem(camp, "driedBark", 1);
+    expect(orderMet(state, world, o, false)).toBe(true);
+    camp.items.freshBark = 0;
+    camp.items.driedBark = 1;
+    // The live threshold is the whole 3 kg, so this is the assertion the ratio decides: one
+    // kilo of the dried kind is three fresh-strip kilos and reads met, where a 1-for-1 sum
+    // would read 1 against 3 and send the runner back to the pines. The idle assertion above
+    // passes either way - 1 + 1 already clears the 1.5 kg half-target.
+    expect(BARK_DRY_RATIO).toBe(3);
+    expect(orderMet(state, world, o, true)).toBe(true);
   });
 
   it("a grind is never met; jobs are met by their until, and a build by the structure standing", () => {

@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { autoEat, eat, edible } from "../src/sim/actions";
-import { berriesRefused } from "../src/sim/berries";
 import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { gutRefused } from "../src/sim/gut";
 import { addItem, qty } from "../src/sim/inventory";
-import { KCAL_FULL } from "../src/sim/items";
+import { GUT, KCAL_FULL } from "../src/sim/items";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { FAT_FULL, stepPlayer, workSpeed } from "../src/sim/player";
-import { BERRY } from "../src/sim/tables";
 import { waterLossPerHour } from "../src/sim/water";
 
 describe("the fat reserve", () => {
@@ -71,8 +70,9 @@ describe("the berry ceiling", () => {
     for (let i = 0; i < 6; i++) expect(eat(state, world, "berries", new Rng(1))).toBe(true);
     expect(state.player.kcal).toBeCloseTo(1540, 6);
     expect(today(state).eaten).toBeCloseTo(540, 6);
-    expect(state.player.berriesToday.day).toBe(1);
-    expect(state.player.berriesToday.kg).toBeCloseTo(1.2, 6);
+    // Berries' kilos live under the shared gut counter, keyed by food.
+    expect(state.player.gut.day).toBe(1);
+    expect(state.player.gut.kg.berries).toBeCloseTo(1.2, 6);
     expect(state.log.some((e) => e.text === "{Your} stomach is turning.")).toBe(false);
   });
 
@@ -95,10 +95,10 @@ describe("the berry ceiling", () => {
     const { state, world } = berried(2.5);
     state.player.kcal = 1000;
     for (let i = 0; i < 20; i++) eat(state, world, "berries", new Rng(1));
-    expect(state.player.berriesToday.kg).toBeCloseTo(2, 6);
+    expect(state.player.gut.kg.berries).toBeCloseTo(2, 6);
     expect(qty(state.player.pack, "berries")).toBeCloseTo(0.5, 6);
     expect(eat(state, world, "berries", new Rng(1))).toBe(false);
-    expect(berriesRefused(state.player, state.minute)).toBe(true);
+    expect(gutRefused(state.player, state.minute, "berries")).toBe(true);
     expect(edible(state, "berries")).toBe(false);
     expect(edible(state, "driedMeat")).toBe(true);
     expect(state.log.filter((e) => e.text === "{You} cannot face another berry.").length).toBe(1);
@@ -115,16 +115,15 @@ describe("the berry ceiling", () => {
     state.player.kcal = 1000;
     for (let i = 0; i < 20; i++) eat(state, world, "berries", new Rng(1));
     state.minute = 24 * 60 - START_MINUTE_OF_DAY;
-    expect(berriesRefused(state.player, state.minute)).toBe(false);
+    expect(gutRefused(state.player, state.minute, "berries")).toBe(false);
     expect(eat(state, world, "berries", new Rng(1))).toBe(true);
-    expect(state.player.berriesToday.day).toBe(2);
-    expect(state.player.berriesToday.kg).toBeCloseTo(0.2, 6);
+    expect(state.player.gut.day).toBe(2);
+    expect(state.player.gut.kg.berries).toBeCloseTo(0.2, 6);
     expect(calendar(state.minute).day).toBe(2);
   });
 
   // The Swedish handbook's not over two litres of berries a day, about 1.2 kg, past which the gut turns.
   it("the ceiling's numbers are the table's", () => {
-    expect(BERRY.fullCreditKg).toBe(1.2);
-    expect(BERRY.refuseKg).toBe(2);
+    expect(GUT.berries).toEqual({ fullCreditKg: 1.2, refuseKg: 2 });
   });
 });

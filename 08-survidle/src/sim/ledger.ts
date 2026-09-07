@@ -8,10 +8,11 @@
  * survivor loop's epitaph and away report read the same records later.
  */
 import { dayNumber } from "./calendar";
+import { LEAN_KCAL_PER_DAY } from "./items";
 import type { GameState } from "./types";
 
-export type YieldSource = "fish" | "trap" | "snare" | "hunt" | "berries" | "kit";
-export const YIELD_SOURCES: YieldSource[] = ["fish", "trap", "snare", "hunt", "berries", "kit"];
+export type YieldSource = "fish" | "trap" | "snare" | "hunt" | "berries" | "kit" | "marrow" | "roe" | "eggs" | "bark" | "roots" | "sap" | "seaweed";
+export const YIELD_SOURCES: YieldSource[] = ["fish", "trap", "snare", "hunt", "berries", "kit", "marrow", "roe", "eggs", "bark", "roots", "sap", "seaweed"];
 
 export interface BurnBuckets { base: number; activity: number; walk: number; cold: number; sick: number }
 
@@ -22,6 +23,12 @@ export interface DayLedger {
   yield: Record<YieldSource, number>;
   /** kcal eat() credited. */
   eaten: number;
+  /** The lean share of eaten kcal, capped at LEAN_KCAL_PER_DAY by creditLean. */
+  leanKcal: number;
+  /** The non-lean share of eaten kcal: fat, roe, eggs and the plants, never capped. */
+  nonLeanKcal: number;
+  /** Whether lean food (meat or lean fish) sat at camp or in the pack this day, set once from dailyCamp. */
+  leanAtCamp: boolean;
   burn: BurnBuckets;
   sleepMin: number;
   /** Minutes awake on a task other than rest, wait or camping for the night. */
@@ -36,10 +43,12 @@ export interface WeekAverage {
   burn: BurnBuckets;
   sleepMin: number;
   workMin: number;
+  /** Days at the lean ceiling with lean food at camp and nothing else eaten: fed but with nowhere else to turn. */
+  leanWallDays: number;
 }
 
 export function emptyYield(): Record<YieldSource, number> {
-  return { fish: 0, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0 };
+  return { fish: 0, trap: 0, snare: 0, hunt: 0, berries: 0, kit: 0, marrow: 0, roe: 0, eggs: 0, bark: 0, roots: 0, sap: 0, seaweed: 0 };
 }
 
 export function emptyBurn(): BurnBuckets {
@@ -47,7 +56,7 @@ export function emptyBurn(): BurnBuckets {
 }
 
 function newDay(day: number): DayLedger {
-  return { day, yield: emptyYield(), eaten: 0, burn: emptyBurn(), sleepMin: 0, workMin: 0 };
+  return { day, yield: emptyYield(), eaten: 0, leanKcal: 0, nonLeanKcal: 0, leanAtCamp: false, burn: emptyBurn(), sleepMin: 0, workMin: 0 };
 }
 
 /** Today's record, pushed fresh the first time the day is read. */
@@ -64,8 +73,19 @@ export function creditYield(state: GameState, source: YieldSource, kcal: number)
   today(state).yield[source] += kcal;
 }
 
-export function creditEaten(state: GameState, kcal: number): void {
-  today(state).eaten += kcal;
+/** Books eaten kcal onto the day, split by leanPart (already capped at the lean ceiling) and the rest. */
+export function creditEaten(state: GameState, kcal: number, leanPart: number): void {
+  const d = today(state);
+  d.eaten += kcal;
+  d.leanKcal += leanPart;
+  d.nonLeanKcal += kcal - leanPart;
+}
+
+/** Once a day, from dailyCamp: whether lean food (meat or lean fish) sat at the player's camp or in the pack. */
+export function noteLarder(state: GameState, leanAtCamp: boolean): void {
+  const day = dayNumber(state.minute) - 1;
+  const d = state.ledger.find((r) => r.day === day);
+  if (d) d.leanAtCamp = leanAtCamp;
 }
 
 export function creditBurn(state: GameState, burn: BurnBuckets): void {
@@ -87,7 +107,7 @@ export function creditTime(state: GameState, kind: "sleep" | "work" | "idle", mi
 export function weekBefore(ledger: DayLedger[], day: number): WeekAverage {
   const rows = ledger.filter((d) => d.day >= day - 7 && d.day < day);
   const n = rows.length;
-  const sum: WeekAverage = { days: n, yield: emptyYield(), eaten: 0, burn: emptyBurn(), sleepMin: 0, workMin: 0 };
+  const sum: WeekAverage = { days: n, yield: emptyYield(), eaten: 0, burn: emptyBurn(), sleepMin: 0, workMin: 0, leanWallDays: 0 };
   if (n === 0) return sum;
   // Sum first and divide once at the end: dividing per row and accumulating
   // the fractions drifts off exact values (50/7 seven times over is not 50).
@@ -97,6 +117,7 @@ export function weekBefore(ledger: DayLedger[], day: number): WeekAverage {
     for (const k of Object.keys(sum.burn) as (keyof BurnBuckets)[]) sum.burn[k] += r.burn[k];
     sum.sleepMin += r.sleepMin;
     sum.workMin += r.workMin;
+    if (r.leanKcal >= LEAN_KCAL_PER_DAY - 1 && r.nonLeanKcal < 1 && r.leanAtCamp) sum.leanWallDays++;
   }
   for (const s of YIELD_SOURCES) sum.yield[s] /= n;
   sum.eaten /= n;

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { FOODS } from "../src/sim/items";
+import { Rng } from "../src/rng";
+import { calendar } from "../src/sim/calendar";
+import { addItem } from "../src/sim/inventory";
+import { newGame } from "../src/sim/newgame";
+import { placeAtSpot } from "../src/sim/position";
+import { regionState } from "../src/sim/regionstate";
 import { setUpReference } from "../src/sim/reference";
-import { LARGE_GAME, SPECIES_DEFS } from "../src/sim/species";
-import { largeGameKcal, runWinter, runYear } from "../src/sim/year";
+import { LARGE_GAME } from "../src/sim/species";
+import { startTask, stepTask } from "../src/sim/tasks";
+import { regionAt } from "../src/world/gen";
+import { runWinter, runYear } from "../src/sim/year";
 
 describe("the year script", () => {
   it("runs a kitted level-20 survivor from 1 April and reports months, the surplus days and the outcome", () => {
@@ -45,13 +52,33 @@ describe("the year script", () => {
     expect(LARGE_GAME).toEqual(["deer", "reindeer", "elk"]);
   });
 
-  it("reads one elk kill into killsKcal as raw meat plus fat", () => {
+  it("starts stats.killsKcal at zero", () => {
     const ref = setUpReference(17);
     expect(ref.state.stats.kills).toEqual({});
-    ref.state.stats.kills.elk = 1;
-    const kills = { ...ref.state.stats.kills };
-    expect(kills.elk).toBe(1);
-    const y = SPECIES_DEFS.elk.yields!;
-    expect(largeGameKcal(kills)).toBe(y.meatKg * FOODS.rawMeat.kcalPerKg + (y.fatKg ?? 0) * FOODS.fat.kcalPerKg);
+    expect(ref.state.stats.killsKcal).toBe(0);
+  });
+
+  /** Forces one elk kill by running the hunt task to completion, seed 3's home region having elk. Returns stats.killsKcal after the kill. */
+  function killsKcalFromOneElk(startDoy: number): number {
+    const { state, world } = newGame(3, startDoy);
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.player.tools.push({ id: "bow", durability: 100 });
+    addItem(state.player.pack, "arrow", 200);
+    regionState(state, world, state.player.region).pop.elk = regionAt(world, state.player.region).capacity.elk;
+    startTask(state, world, calendar(state.minute, state.startDoy), "hunt", "elk", true);
+    const rng = new Rng(9);
+    for (let m = 0; m < 240 * 60 && !state.stats.kills.elk; m++) stepTask(state, world, calendar(state.minute, state.startDoy), rng, 1);
+    expect(state.stats.kills.elk).toBe(1);
+    return state.stats.killsKcal;
+  }
+
+  // killsKcal comes from the actual yield of the kill, and an elk's fat is
+  // seasonal (fatSeason), so the same kill credits less in a lean month
+  // than at peak - a carcass in April is not a carcass in October.
+  it("a kill in a lean month credits less into killsKcal than the same kill at peak", () => {
+    const lean = killsKcalFromOneElk(90); // 1 April, month 3: fatSeason 0.2
+    const peak = killsKcalFromOneElk(273); // 1 October, month 9: fatSeason 1
+    expect(lean).toBeGreaterThan(0);
+    expect(peak).toBeGreaterThan(lean);
   });
 });

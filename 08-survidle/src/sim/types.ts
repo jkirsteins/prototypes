@@ -3,6 +3,7 @@
  * kilocalories, degrees Celsius, kilometres. The only unreal thing in the
  * game is how fast the clock runs, and that lives in units.ts.
  */
+import type { FoodId } from "./items";
 import type { DayLedger } from "./ledger";
 import type { Species } from "./species";
 
@@ -19,20 +20,21 @@ export type { Habitat, Species } from "./species";
 
 /** Items counted in pieces. A tool not in hand is one of these. */
 export type CountItem =
-  | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew"
+  | "log" | "stick" | "bark" | "cordage" | "stone" | "bone" | "sinew" | "crackedBone"
   | "snare" | "arrow" | "torch" | "basketTrap" | "wedge"
   | ToolId;
 /** Items measured in kilograms. */
 export type KgItem =
-  | "firewood" | "hide" | "fur" | "fat" | "rawMeat" | "cookedMeat" | "driedMeat"
-  | "fish" | "cookedFish" | "berries" | "wetFirewood"
+  | "firewood" | "hide" | "fur" | "fat" | "rawFat" | "rawMeat" | "cookedMeat" | "driedMeat"
+  | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "wetFirewood"
+  | "freshBark" | "driedBark" | "barkFlour" | "roots" | "cookedRoots" | "seaweed"
   /** Litres, at a kilo a litre; only ever in a pile. */
   | "water" | "ice";
 export type ItemId = CountItem | KgItem;
 
 /** Food that goes off. Each stack remembers how long it has been warm. */
-export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "berries";
-export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "berries"];
+export type PerishableId = "rawMeat" | "cookedMeat" | "fish" | "cookedFish" | "oilyFish" | "cookedOilyFish" | "roe" | "berries" | "rawFat" | "eggs" | "cookedRoots" | "seaweed";
+export const PERISHABLES: PerishableId[] = ["rawMeat", "cookedMeat", "fish", "cookedFish", "oilyFish", "cookedOilyFish", "roe", "berries", "rawFat", "eggs", "cookedRoots", "seaweed"];
 
 export interface Stack { kg: number; age: number }
 
@@ -78,7 +80,7 @@ export type TaskId =
   | "chop" | "sticks" | "bark" | "stone" | "berries" | "split" | "deadwood" | "splitWedges"
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
-  | "read" | "setTrap" | "emptyTrap"
+  | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
   | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
@@ -86,7 +88,7 @@ export const TASK_IDS: TaskId[] = [
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges",
   "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
-  "read", "setTrap", "emptyTrap",
+  "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
   "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp",
 ];
 
@@ -240,8 +242,14 @@ export interface RegionState {
   nextOrderId: number;
   /** An ice hole cut at the shore: where, and when. Cleared at the dawn tick, when it has skinned over. */
   iceHole: { cell: number; minute: number } | null;
-  /** The basket trap set in this region's water: where, the live fish in it, the species that shore holds, and minutes since it was last emptied. */
-  trap: { cell: number; kg: number; fish: Species[]; age: number } | null;
+  /** The basket trap set in this region's water: where, the live fish in it (oilyKg is the oily-species share of kg), the species that shore holds, and minutes since it was last emptied. */
+  trap: { cell: number; kg: number; oilyKg: number; fish: Species[]; age: number } | null;
+  /** Clutches this region's nesting birds hold, set on 1 May and gathered down to nothing by the "Gather eggs" task; cleared on 1 July. */
+  nests: number;
+  /** Kilos of rhizome left in each cell that has been dug, by cell index. A cell with no entry is at the full figure its ground holds. */
+  rootCells: Record<number, number>;
+  /** Taps drawn from this region's birches today, and the day number they were counted on; resets itself once the day moves on. */
+  sapTaps: { day: number; n: number };
 }
 
 export interface Player {
@@ -287,10 +295,8 @@ export interface Player {
   /** Lost to frostbite for good. */
   toes: boolean;
   fingers: boolean;
-  /** Kilos of berries eaten today, for the gut's ceiling: full credit to 1.2, half to two, none past it. */
-  berriesToday: { day: number; kg: number };
-  /** Lean kcal eaten today, for the ceiling meat and fish feed nothing past. */
-  leanToday: { day: number; kcal: number };
+  /** What the gut has taken today: kilos per capped food and the lean kcal, reset with the day. */
+  gut: { day: number; kg: Partial<Record<FoodId, number>>; leanKcal: number };
   /** Shores this survivor has read, by cell. */
   known: Record<number, Observation>;
 }
@@ -399,7 +405,11 @@ export interface Landing {
   oldCamp: number | null;
 }
 
-export interface RunStats { trees: number; animals: number; structures: number; km: number; kills: Partial<Record<Species, number>> }
+export interface RunStats {
+  trees: number; animals: number; structures: number; km: number; kills: Partial<Record<Species, number>>;
+  /** kcal of large game and bear kills, from the actual yield of each kill (raw meat plus raw fat, both at the season it fell). */
+  killsKcal: number;
+}
 
 export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building";
 

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
-import { addItem, herePile, pile, qty, tool } from "../src/sim/inventory";
+import { addItem, herePile, pile, qty, tool, TRACE_KG } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
-import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, stepTask, stopTask } from "../src/sim/tasks";
+import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, stepTask, stopTask, WORK_TASKS } from "../src/sim/tasks";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
@@ -486,5 +486,32 @@ describe("mend clothing", () => {
     state.player.clothing[0].durability = MEND_AT;
     expect(chooseOrder(state, world, cal)?.req.task).toBe("repair");
     expect(ordersHere(state, world)[0].skipped).toBe("");
+  });
+
+  it("offers every task the body works at, so the raw-action panel can start it and the head can name it", () => {
+    // availableTasks feeds the advanced panel's buttons and the running-task head. A task
+    // missing from it cannot be started by hand and reads as its bare id while it runs: a
+    // survivor digging roots read "roots" and one rendering fat read "cook".
+    const { state, world } = newGame(3);
+    const offered = new Set(availableTasks(state, world, cal).map((o) => o.id));
+    for (const id of WORK_TASKS) expect(offered, id).toContain(id);
+  });
+
+  it("a floating-point residue of a food is not stock: the cook reads it as none rather than cooking it a minute at a time", () => {
+    // consume() stops at TRACE_KG and takes nothing, so a task that reads a
+    // residue as stock finishes, leaves the residue where it was and is
+    // offered again at once. A level-20 camp cooked 2e-13 kg of roots for six
+    // hours a day on seed 79 and starved on day 82 under it.
+    const { state, world } = newGame(11);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.fire.lit = true;
+    const camp = pile(state, st.campCell);
+    addItem(camp, "roots", TRACE_KG / 2);
+    expect(check(state, world, cal, "cook", "roots")).toMatchObject({ ok: false, why: "no roots here" });
+    addItem(camp, "roots", 1);
+    const o = check(state, world, cal, "cook", "roots");
+    expect(o.ok).toBe(true);
+    expect(o.duration).toBeCloseTo(10);
   });
 });

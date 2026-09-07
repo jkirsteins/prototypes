@@ -138,7 +138,7 @@ April, inland boreal forest:
 
 | source | beginner | experienced local |
 |---|---|---|
-| plants, roots, overwintered food | 0 to 150 | 100 to 400 |
+| plants, roots, overwintered food | 0 to 400 | 200 to 800 |
 | hook, line, spear fishing | 0 to 400 | 300 to 1,200 |
 | passive fishing: nets, traps | 0 to 500 | 800 to 2,500 |
 | small-game traps | 0 to 150 | 200 to 700 |
@@ -254,6 +254,20 @@ in full, and where they disagreed the game moved to the handbook's:
 | meat stops rotting | at 0 C | freezing storage needs -10 to -15 C (Swedish) |
 | lean-to | 4 h and materials | 3 to 5 h (Swedish) |
 | snares | 5 per region at 0.3 a night | a trap line 3 to 5 km long checked at dawn, up to a hundred snares after a few days (Swedish) |
+| marrow | 0.1 kg a bone, on the animal's own 1 / 0.75 / 0.4 fat-season curve | marrow from the larger bones (Kochanski) |
+| carcass fat | full August to November, half in winter, a fifth March to May, 0.6 at midsummer | the author's brief (2026-09-06): a peak autumn elk about 135,000 kcal of fat |
+| oily fish | 1,500 kcal/kg, 0.4 lean share | herring, char, salmon, trout named oily, 8 to 12 percent fat by weight so most of their calories are fat; the rest stay lean at 0.9 (the author's brief) |
+| roe | 1,600 kcal/kg, a tenth of the catch in the spawning window | a deliberate shortcut in place of sex, maturity or gonad state (the author's brief) |
+| eggs | 1,500 kcal/kg, 0.4 lean share, half a kilo an hour, May and June | eggs and young birds easy to get (Swedish) |
+| roots | 850 kcal/kg cooked, 0.3 kg/h in season and 0.1 through winter ice; a cell holds its stand's rhizome, about 810 kg at a shore, 1,350 on wet ground and 90 on a meadow, dug down where you stand and half the deficit regrown each growing season | cattail rhizome 210 g starch/kg, reed root-shoots 5 percent, dandelion root 23 percent, fifteen pieces for the ration (Swedish); 1 to 3 kg dry of below-ground biomass a square metre in a Phragmites or Typha stand, fresh about three times dry, over a coarse stand share of nine hectares |
+| bark flour | 800 kcal/kg, 0.7 kg fresh an hour, three to one dried | time-consuming, low nutrition, usable all year, easiest on young branches in spring (Swedish); the cambium scraped late spring and early summer and dried (Kochanski) |
+| birch sap | 125 kcal a tap, three taps a region a day, early May to the leaves opening | 20 g of sugar a litre, 2 to 3 litres from a birch in a couple of hours, the rise in early May at this latitude (Swedish); a litre a day from a tap (Kochanski) |
+| seaweed | 200 kcal/kg, gut ceiling 2 kg a day | carries some carbohydrate and minerals, not calorie-dense (Swedish) |
+| berries under snow | a fifth of the summer rate, where the snow is shallow enough | the prisoner-of-war note on frozen lingonberries dug from under the snow (Swedish) |
+
+The plants row above moved with the fat and carbohydrate item, on the
+handbook's three hours a day for the 500 kcal ration; the old band was
+written when the row had no task.
 
 The "game" column is what the tables audit found, not what ships; its
 corrections are the burn band, the cold burn and fuel that grow with the
@@ -387,7 +401,22 @@ October beside 823 logs with no axe to split them and one stone at camp,
 and a tester will meet that wall inside a season; built, spec
 `2026-09-06-survidle-survivor-design.md` Part J, plan
 `2026-09-06-survidle-survivor.md`, the year gate 2 of 4 from 0, readings
-under J), then the first half of I the
+under J), then K fat and carbohydrate (the section of that name below:
+the lean-share model in place of the lean-food set, marrow off the
+kill, oily fish and roe, eggs, and the five plant tasks), because the
+level-20 survivor stood at the lean ceiling every day with meat at the
+fire and nothing beside it to eat; built, spec
+`2026-09-06-survidle-fat-and-carbohydrate-design.md`, plan
+`2026-09-06-survidle-fat-and-carbohydrate.md`, April 4 of 4 from 3,
+winter 4 of 4, the year 3 of 4 from 2 once the fish carried their real
+fat, the lineage 1 of 4, readings under F), then L the upper rungs of
+the order ladder (the section of that name below: conditions at 15 and
+pace at 20 on every skill's ladder, the runner restricted to the shapes
+its skills have earned), because the runner's seasonal sense is rules
+in code no player can write, so the gates measure a player who does not
+exist; a paced woodpile measured as a bare rule took the lineage from 1
+of 4 to 3, then the first
+half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
 quirks, the card and the face; built, the same spec's Part I and plan,
@@ -2263,9 +2292,9 @@ insulation soaked, like wool, where unsmoked tanned hide keeps a third,
 and it does not stiffen after a wetting. Every step is a Crafting task
 with its own mastery key. A tan or a smoke done under the recommended
 level can spoil the way a craft does today, and a spoiled tan is the hide
-gone. Fat scraped off the hide is D's fat item, 0.1 kg per kg of hide,
-and is what feeds the tallow light 3 wants; the roadmap's calorie rule
-holds, fat is 9 kcal a gram.
+gone. Fat scraped off the hide is a third source into K's rendered `fat`
+item, 0.1 kg per kg of hide, and is what feeds the tallow light 3 wants;
+the roadmap's calorie rule holds, fat is 9 kcal a gram.
 
 **Layers.** Torso and legs each get a second slot: base and shell. Head,
 hands and feet keep one. The shell is the layer the weather finds first,
@@ -2931,6 +2960,16 @@ hour per species at the hunter's own odds, and arrows ride in the pack
 whenever the bow leaves camp - seed 19 takes six roe deer and two elk
 where it took none and lives to day 148 rather than day 48, and seed
 17's kills gain 24 black grouse, 22 willow grouse and 22 hare.
+
+Measured with fat and carbohydrate
+(`2026-09-06-survidle-fat-and-carbohydrate-design.md`). The year at
+level 20 reads 3 of 4: seeds 19, 42 and 79 live a whole year on their
+elks' fat, and seed 17, which draws no elk, lives on its fish and its
+reindeer to day 284 and freezes with the woodpile unstocked. Before the
+author moved the fish to their real fat (oily 0.4 lean, lean 0.9) it read
+2 of 4, with seed 17 starving on day 89 at the lean ceiling. The lineage
+reads 1 of 4 within six lives (0 before the fish move), and no gate week
+of either reading is a lean-wall week.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -3629,6 +3668,114 @@ thirst on days 197 and 211), seed 17 frozen on day 337 (from thirst on
 the April gate 4 of 4 at day 26 with the first lives ending on days 52,
 77, 55 and 57 (from 61, 51, 50 and 114), starved all four. The hearth as
 a build entry stays with the winter loop's own reading.
+
+### K. Fat and carbohydrate
+
+**Curve.** Horizon rows 4 and 5: a camp that holds a week on what it
+gathers, then a season on it. Survivor rows 2 to 4: the lean wall stops
+being what ends a level-20 year and a first life. Tier: Foraging 3 for
+roots, the rest a beginner's task with no rung above it. Expected: to
+move the level-20 year and the first lives past the berries, measured
+in the spec's Measured after.
+
+Meat and fish feed nothing past the lean ceiling, so this item adds
+everything the ceiling does not touch. Each food carries a lean share
+(`leanShare` in `FOODS`, replacing the old lean-food set) that decides
+how much of its kcal counts against `LEAN_KCAL_PER_DAY`, and a food that
+can be overeaten carries a gut ceiling instead (`GUT`: full credit to a
+line, half past it, refused past a second). A kill's fat comes off the
+carcass on a seasonal curve, full in autumn and down to a fifth in
+spring, and spoils like meat until it is rendered; marrow follows the
+same curve, cracked from the bone at a camp task and stored as the
+rendered item. Fish split into a lean class and an oily one at 1,500
+kcal/kg and a 0.4 lean share, and a catch inside its species' spawning
+window carries roe besides. A region's nesting birds leave a spring egg
+stock, gathered at the shore or the heath while it lasts. Five plant
+tasks fill the rest: roots dug at the water or through winter ice, pine
+inner bark stripped, dried and ground to flour, birch sap tapped for
+three weeks in May, and shore seaweed on a coastal camp, with berries
+themselves reachable frozen under a shallow snow at a fifth of the
+summer rate. The ledger gains lean-wall days, the days a week sat at the
+ceiling with fat, roe, eggs or a plant food at camp and none of it
+eaten, and every starvation death reads an unexploited line: what
+non-lean food was there and was not taken. `npm run year -- --without=<source>`
+shuts one source for a whole level-20 year, so no single one can be
+mandatory without the report saying so.
+
+**Built.** Spec `2026-09-06-survidle-fat-and-carbohydrate-design.md`,
+plan `2026-09-06-survidle-fat-and-carbohydrate.md`. Measured on the four
+reference seeds: April 4 of 4 (from 3), winter 4 of 4, the year at
+level 20 3 of 4 - seeds 19, 42 and 79 hold a whole year, and seed 17,
+which draws no elk, lives to day 284 on fish and reindeer and freezes
+with the woodpile unstocked - and the lineage 1 of 4. No gate week is a
+lean-wall week, no carcass's fat goes off, and no single source's removal
+takes the year below 1 of 4. The fish classes moved to their real fat
+after the author's review (oily 0.4 lean, lean 0.9), which took the year
+from 2 of 4 and closed the ceiling question. Findings left for the
+author: the list's all-day keeps still starve the wood keeps whenever
+the larder dips under the winter's food; inner bark returns 187 kcal a
+strip hour at the handbook's yield (275 on a level-20 ledger), off the
+reference list for it and settled as a storable emergency carbohydrate
+harvested in its window for the winter, never a standing row, a
+winter-stock target if autonomous play ever needs it; roots became a
+renewable local resource after the author's review - a stand's rhizome a
+cell, about 810 kg at a shore, dug down where you stand and half the deficit
+back each growing season - so a patch goes poor and out locally and no
+survivor empties a region, with the year, April and lineage gates all
+holding where they stood; the unexploited line reads a stock, not an omission, and
+cannot see what rotted before the death; sap and seaweed never fire on
+the reference seeds, so neither is measured by the without probe; and
+the lineage has not moved.
+
+### L. The upper rungs of the order ladder
+
+**Curve.** Horizon rows 5 and 6: a plan that holds a season, then a
+year. Survivor rows 3 to 5: the mature camp runs for weeks between
+visits and the mastery camp for a season. Tiers: two new rungs on every
+skill's ladder above the keep, conditions at 15 and pace at 20, the
+numbers a proposal that continues the 3, 5, 10 rungs and the author's
+to set. Expected: the level-20 year and the lineage measured on a runner
+that gives only the orders its skills have earned.
+
+Each skill's ladder unlocks what a standing order can say: a once job at
+3, a grind at 5, a keep at 10. Each rung buys a longer walk-away - hours,
+days, weeks - and the idle arc wants two more: a plan that holds a
+season, and one that holds the year. The rung at 15 is a condition on a
+keep: a window ("from May to June") and a band ("until a winter's food is
+stored, restart under four fifths of it"), the band being what stops a
+keep flickering at its line and the window what a returning player does
+by hand today. The rung at 20 is pace: a keep with a target due by a
+date ("the winter's wood by 1 December"), read as the share due today,
+so a pile on pace steps aside for the food rows and a pile behind takes
+the day. Each rung belongs to the order's own skill: the wood pace is
+Woodcraft 20, the larder band Hunting 15, the egg window Foraging 15.
+
+The reference runner today reaches past the ladder. Its orders are the
+player's shapes, but the mornings it changes them are rules in code no
+player can write: the larder gate, the render, crack and hang gates, the
+season windows, the water method by the ice. It is a player who checks
+in every morning with perfect judgement, so the gates measure a player
+who does not exist at any level. This item turns each such rule into a
+rung or a plain order, restricts the runner to the shapes its skills
+have earned (the mechanism it already uses for job, grind and keep), and
+re-measures all four gates. A cheap honesty reading comes with it: the
+count of mornings the runner's list changed in a season, which is the
+attention the plan cost.
+
+**Measured case.** A paced woodpile, applied as a runner rule to every
+survivor whatever its level, read on the four seeds against the K
+readings (oily 0.4, lean 0.9): April 4 of 4 on the same days; winter 4
+of 4 with more fat on 1 March, since a camp whose pile is ahead hunts;
+the level-20 year 3 of 4 with seed 17 a month longer (day 315, frozen on
+the trail after game in the deep cold with 2,260 kg of wood at camp,
+which is the band's case, not the pile's); the lineage 3 of 4 from 1 of
+4, because an heir inherits a pile begun in July. Part of that lineage
+reading is an October heir at level 5 using a rung-20 rule, which is why
+the pace is built as a rung and not kept as the rule it was measured as.
+The runner cannot cut the full 6,600 kg by December even from midsummer:
+the pile tops out near 3,700 kg at about two logs a day beside water,
+cooking and fire, so the stock figure, the cutting rate or the window is
+a question this item will meet.
 
 ## Beyond the gate: the edge of the world
 
