@@ -10,7 +10,7 @@ import type { Calendar } from "./calendar";
 import { illuminance, lightFactor, SPOT_LUX } from "./light";
 import { markKnown } from "./mapped";
 import { body } from "./person";
-import { skillLevel, SKILL_CAP } from "./skills";
+import { RUNG_LEVEL, skillLevel } from "./skills";
 import type { GameState, Terrain } from "./types";
 
 /** A standing eye, metres. */
@@ -59,13 +59,18 @@ const SIGHT_REACH_MULT: Record<0 | 1 | 2, number> = { 0: 0.5, 1: 1, 2: 1.5 };
 
 /**
  * What practice at reading the ground is worth: 1 at wayfinding level 1
- * (an untrained eye reads the table as written), rising to 1.5 at the
- * skill's own cap - exactly what SIGHT_REACH_MULT above already gives a
- * survivor born sharp-eyed, and no more. Practice earns what a gift gives
- * for free; it does not out-earn it.
+ * (an untrained eye reads the table as written), rising to 1.5 by
+ * RUNG_LEVEL.pace (20) - the last rung on the ladder, and so the level a
+ * skill counts as fully practised in this game's own terms, not the
+ * skill cap (50) a level rarely reaches. 1.5 is exactly what
+ * SIGHT_REACH_MULT above already gives a survivor born sharp-eyed, and no
+ * more: practice earns what a gift gives for free, it does not out-earn
+ * it. Clamped rather than kept climbing past 20, since nothing on the
+ * ladder promises more once a skill is fully practised.
  */
 function wayfindingSightMult(state: GameState): number {
-  return 1 + (0.5 * (skillLevel(state, "wayfinding") - 1)) / (SKILL_CAP - 1);
+  const fullyPractised = RUNG_LEVEL.pace - 1;
+  return 1 + 0.5 * Math.min(1, (skillLevel(state, "wayfinding") - 1) / fullyPractised);
 }
 
 /**

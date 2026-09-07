@@ -13,6 +13,7 @@ import { current } from "../src/sim/record";
 import {
   levelMinutes, masteryKey, MASTERY_KEYS, opensOrders, RUNG_LINE, RUNG_ORDER, skillLevel, skillOf, train,
 } from "../src/sim/skills";
+import { sightRangeCells } from "../src/sim/sight";
 import { exploreInjuryChance, startTask, stepTask } from "../src/sim/tasks";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
@@ -31,6 +32,16 @@ function partlyKnownNeighbour(g: G): number {
   });
   if (!nb) throw new Error("reference seed no longer leaves a neighbour partly seen at landing");
   return nb.id;
+}
+
+/** A cell with a real (non-spruce) base sight range: spruce's own base is 0, and 0 times any multiplier is still 0. */
+function openFooting(world: World, region: number): number {
+  const cell = regionAt(world, region).cells.find((c) => {
+    const t = cellAt(world, c).terrain;
+    return t === "meadow" || t === "rock" || t === "fell";
+  });
+  if (cell === undefined) throw new Error("reference seed no longer has open ground to read sight range from");
+  return cell;
 }
 
 /** A passable fell/rock/bog cell in the region, with a passable neighbour a step can be aimed at. */
@@ -99,14 +110,36 @@ describe("wayfinding", () => {
     for (const k of RUNG_ORDER) expect(texts).not.toContain(RUNG_LINE[k]("Wayfinding"));
   });
 
-  // Whether a wayfinding level actually shortens the sweep is measured
-  // across seeds 1..12, not asserted here on a single seed's number: see
+  it("reads farther with practice, capped at the sharp-eyed 1.5x by level 20", () => {
+    const g = newGame(4);
+    const { state, world } = g;
+    const cal = calendar(state.minute);
+    const cell = openFooting(world, state.player.region);
+    const at = (level: number) => {
+      state.skills.wayfinding.xp = levelMinutes(level);
+      return sightRangeCells(state, world, cal, cell);
+    };
+    const l1 = at(1);
+    const l10 = at(10);
+    const l20 = at(20);
+    expect(l10).toBeGreaterThan(l1);
+    expect(l20).toBeGreaterThan(l10);
+    // RUNG_LEVEL.pace (20) is the last rung, "fully practised": the
+    // multiplier stops climbing there rather than still growing toward
+    // the skill cap (50).
+    expect(at(25)).toBe(l20);
+    expect(at(50)).toBe(l20);
+  });
+
+  // Whether that wider eye actually shortens the sweep is measured across
+  // seeds 1..12 at levels 1, 10 and 20 (RUNG_LEVEL.pace, "fully
+  // practised", the multiplier's own cap): see
   // tests/slow/wayfinding-vantage.test.ts (npm run test:slow) - real
-  // simulated minutes across 12 seeds at two levels is most of a minute of
-  // wall-clock time, so it sits behind that rather than taxing every
-  // npm test. Current honest finding there: level 10's wider eye does not
-  // shorten the sweep either - every one of the 12 seeds comes back with
-  // the exact same minutes at both levels.
+  // simulated minutes across 12 seeds at three levels is real wall-clock
+  // time, so it sits behind that rather than taxing every npm test.
+  // Honest finding there, even at full practice: the sweep does not
+  // shorten. Wayfinding's speed promise is not delivered by the code as
+  // it stands; see the task-6 report for the full table and reasoning.
 
   it("hurts a novice on bad ground and rarely a master", () => {
     const g = newGame(19);
