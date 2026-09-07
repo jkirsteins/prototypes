@@ -10,6 +10,7 @@ import type { Calendar } from "./calendar";
 import { illuminance, lightFactor, SPOT_LUX } from "./light";
 import { markKnown } from "./mapped";
 import { body } from "./person";
+import { skillLevel, SKILL_CAP } from "./skills";
 import type { GameState, Terrain } from "./types";
 
 /** A standing eye, metres. */
@@ -57,11 +58,24 @@ function vantageBaseCells(world: World, t: Terrain, x: number, y: number): numbe
 const SIGHT_REACH_MULT: Record<0 | 1 | 2, number> = { 0: 0.5, 1: 1, 2: 1.5 };
 
 /**
+ * What practice at reading the ground is worth: 1 at wayfinding level 1
+ * (an untrained eye reads the table as written), rising to 1.5 at the
+ * skill's own cap - exactly what SIGHT_REACH_MULT above already gives a
+ * survivor born sharp-eyed, and no more. Practice earns what a gift gives
+ * for free; it does not out-earn it.
+ */
+function wayfindingSightMult(state: GameState): number {
+  return 1 + (0.5 * (skillLevel(state, "wayfinding") - 1)) / (SKILL_CAP - 1);
+}
+
+/**
  * How far the eye reaches from `cell`, in cells: the vantage's own canopy
  * or height, scaled by how much of the dark-to-daylight span the light
  * here has climbed (SPOT_LUX is what seeing ground at a distance needs,
  * the same figure a hunter's eye wants), scaled again by how good that
- * eye is.
+ * eye is and by how practised it is at reading what it sees. Not
+ * exploring-only: a wayfinder notices more of the country on every walk,
+ * not only while deliberately sweeping a region.
  */
 export function sightRangeCells(state: GameState, world: World, cal: Calendar, cell: number): number {
   const x = cell % world.w;
@@ -69,7 +83,7 @@ export function sightRangeCells(state: GameState, world: World, cal: Calendar, c
   const base = vantageBaseCells(world, terrainOf(world, x, y), x, y);
   const lf = lightFactor(illuminance(state, world, cal, cell), SPOT_LUX, 0);
   const reach = SIGHT_REACH_MULT[body(state).sightReach];
-  return Math.max(0, Math.floor(base * lf * reach));
+  return Math.max(0, Math.floor(base * lf * reach * wayfindingSightMult(state)));
 }
 
 /** Whether the cell at (x, y), this far from the vantage in metres, closes the ray behind it. */

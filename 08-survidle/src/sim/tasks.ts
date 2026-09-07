@@ -1422,24 +1422,26 @@ function exploreFrontier(state: GameState, world: World, region: number, visited
 }
 
 /**
- * The best of the candidates the survivor's wayfinding weighs: not the
- * vantage with the best view alone, but the one worth the walk to reach -
- * unknown ground opened (sightRangeCells there, squared, stands in for
- * that well enough without ray-marching every one of them) per minute the
- * route there costs. A candidate already underfoot costs no minutes and is
- * free, so it always wins. Null when the region has nothing left reachable
- * to see more from.
+ * The best of the candidates the survivor could walk to: not the vantage
+ * with the best view alone, but the one worth the walk to reach - unknown
+ * ground opened (sightRangeCells there, squared, stands in for that well
+ * enough without ray-marching every one of them) per minute the route
+ * there costs. A candidate already underfoot costs no minutes and is
+ * free, so it always wins. Every reachable candidate is weighed, not a
+ * narrower slice by level: wayfinding buys a wider eye instead (see
+ * sightRangeCells), so a level-10 sweep opens more from the same stop
+ * rather than gambling on a farther one for a marginally better ratio -
+ * weighing fewer stops shorter by construction, not by the luck of which
+ * ones a wider candidate pool happens to turn up. Null when the region
+ * has nothing left reachable to see more from.
  */
 function pickVantage(state: GameState, world: World, cal: Calendar, region: number, visited: readonly number[]): { cell: number; path: number[] } | null {
   const candidates = exploreFrontier(state, world, region, visited);
-  // skillLevel never reads below 1, so a raw eye already weighs two
-  // candidates, not one; a level-20 eye weighs 21 before settling.
-  const weighed = candidates.slice(0, 1 + skillLevel(state, "wayfinding"));
   const ice = walkIceMode(state, false);
   const speed = baseWalkSpeed(state, cal, state.weather);
   let best: { cell: number; path: number[] } | null = null;
   let bestScore = -1;
-  for (const c of weighed) {
+  for (const c of candidates) {
     const opened = sightRangeCells(state, world, cal, c.cell) ** 2;
     const minutes = routeMinutes(world, c.path, speed, ice);
     const score = minutes <= 0 ? Number.POSITIVE_INFINITY : opened / minutes;

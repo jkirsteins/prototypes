@@ -104,7 +104,9 @@ describe("wayfinding", () => {
   // tests/slow/wayfinding-vantage.test.ts (npm run test:slow) - real
   // simulated minutes across 12 seeds at two levels is most of a minute of
   // wall-clock time, so it sits behind that rather than taxing every
-  // npm test. Current honest finding there: median rises, not falls.
+  // npm test. Current honest finding there: level 10's wider eye does not
+  // shorten the sweep either - every one of the 12 seeds comes back with
+  // the exact same minutes at both levels.
 
   it("hurts a novice on bad ground and rarely a master", () => {
     const g = newGame(19);
