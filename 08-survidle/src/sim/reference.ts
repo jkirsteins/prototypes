@@ -7,10 +7,12 @@
  * list orders every dependency before what needs it: water at the top,
  * where it waits on its own vessel; then everything a fire and a roof
  * need, in the order they need it, worked with the arrival axe alone;
- * then the knife and what it unlocks. The list is the wants; the player
- * script below gives each as the best kind the skill has earned, since a
- * from-scratch survivor has only once jobs until a skill reaches 3 and no
- * keeps for weeks.
+ * then the knife and what it unlocks. The list is the wants, each with the
+ * windows, stock lines, band and pace a competent player would write on it;
+ * the player script below gives each as the best kind and the most of those
+ * conditions the skill has earned, since a from-scratch survivor has only
+ * once jobs until a skill reaches 3, no keeps for weeks and no conditions
+ * for longer, and stands in by hand for the rest.
  */
 import { CELL_KM } from "../units";
 import { cellAt } from "../world/cells";
@@ -20,7 +22,7 @@ import { calendar, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
 import { nearestCell } from "./intent";
 import {
-  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, RECIPES,
+  BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
 } from "./items";
 import { shoreFish } from "./knowledge";
@@ -28,7 +30,7 @@ import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
-import { orderMet, ordersHere, removeOrder } from "./orders";
+import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
 import { heathCell, watersideCell } from "./position";
@@ -40,12 +42,14 @@ import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
-import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, RecipeId, TaskId, WorldDate } from "./types";
+import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, OrderWhen, RecipeId, TaskId, WorldDate } from "./types";
 
-const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
-  ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest" }, kind: "keep" });
-const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp"): { req: IntentRequest; kind: OrderKind } =>
-  ({ req: { task, arg, until, deliver, where: "nearest" }, kind: "job" });
+type Want = { req: IntentRequest; kind: OrderKind };
+
+const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp", when?: OrderWhen): Want =>
+  ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest", when }, kind: "keep" });
+const job = (task: IntentRequest["task"], until: IntentRequest["until"], arg?: string, deliver: "leave" | "camp" = "camp", when?: OrderWhen): Want =>
+  ({ req: { task, arg, until, deliver, where: "nearest", when }, kind: "job" });
 
 /**
  * The raw meat a camp hangs rather than eats: what the body cannot get
@@ -68,17 +72,17 @@ export const HANG_ABOVE_KG = (SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / F
  * emptied the flour, and four level-20 seeds spent four and a half to seven
  * and a half hours a day on plants and killed nothing all summer.
  *
- * So each of these rows is a counted job, given afresh each morning and
- * finished for the day once its count is spent. The count is
- * PLANT_HOURS_PER_DAY split across the rows the band holds: the handbook's
- * three hours are a budget for plant work as a whole, and this band holds
- * three rows. Berries are not here - the gut refuses a third kilo in a day,
- * which is the same cap by another route, and the handbook sets its own two
- * litres.
+ * So each of these rows asks for a count a day and no more: a daily job,
+ * whose count the day roll clears and which never drops off the list. The
+ * count is PLANT_HOURS_PER_DAY split across the rows the band holds: the
+ * handbook's three hours are a budget for plant work as a whole, and this
+ * band holds three rows at a time - the winter dig is the root row in the
+ * months the summer one is shut, not a fourth row. Berries are not here -
+ * the gut refuses a third kilo in a day, which is the same cap by another
+ * route, and the handbook sets its own two litres.
  */
 const PLANT_ROWS: TaskId[] = ["roots", "eggs", "seaweed"];
 export const PLANT_HOURS_PER_ROW = PLANT_HOURS_PER_DAY / PLANT_ROWS.length;
-const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
 
 /**
  * The runner never gathers a prerequisite on its own, so the list is
@@ -109,7 +113,7 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * the snares. The scheduler is greedy top-down, so a competent player
  * ranks eating what is already caught above catching more of it: the cook
  * keeps sit above the fish keep, and the rack job just under them, with the
- * crack grind between - it waits on raw meat in reach, so a camp with
+ * crack grind between - the rack waits on raw meat at camp, so a camp with
  * nothing yet caught to dry never spends the hour. The trap follows the spear: the shore is read the day the
  * spear exists, the basket made and set, and from then on the fish keep's
  * own trips to the shore bring the trap's catch home, since a trap's fish
@@ -167,16 +171,20 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * in. Each named hunt opens only
  * at its species' recommended level (wantOpen), since a competent player
  * does not walk at an elk with a stone point at level 1: elk, reindeer
- * and roe deer, listed hardest first (8, 6, 4). The two winter-stock
- * keeps, the split pile and the logs that are the stock's unsplit half,
- * head the loop, above the named hunts. A grind is never met, and a grind
- * above a keep starves the keep: with the log keep below the hunts, camp
- * logs never passed five from 1 September and a level-20 camp froze in
+ * and roe deer, listed hardest first (8, 6, 4). A grind is never met, and a
+ * grind above a keep starves the keep: with the log keep below the hunts,
+ * camp logs never passed five from 1 September and a level-20 camp froze in
  * December beside 2.7 million kcal of food. A survivor with a full rack and
- * no woodpile cuts wood. Both keeps open only for the season they are
- * stocked against (wantOpen): midsummer to the thaw, so a list that reaches
- * them in April or May waits rather than splitting a pile no winter yet
- * needs.
+ * no woodpile cuts wood.
+ *
+ * The winter stock's own four keeps - the split pile in its three methods
+ * and the logs that are the stock's unsplit half - sit above the hunt keep
+ * rather than in this loop, since what they promise is due on a date and
+ * the day it is due by is the one thing a hunt cannot be put off past. Each
+ * carries the window it is stocked against and that date: midsummer to the
+ * thaw, the whole figure due on WOOD_DUE_DOY, so the pile is built across
+ * the autumn rather than in the week the order is first read, and a list
+ * that reaches these rows in April or May asks for nothing at all.
  *
  * Inner bark is not on the list. At the handbook's own yield it is the
  * worst hour a survivor can spend: about 275 kcal an hour against fishing's
@@ -196,9 +204,10 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  *
  * Fat before meat: the render keep sits above the cook keeps because raw
  * fat rots in three days and is the calories the ceiling does not touch;
- * the crack grind takes the bones the hunts leave at camp; the gathering
- * keeps open by season in wantOpen, and a seaweed keep opens only for a
- * camp on the sea.
+ * the crack grind takes the bones the hunts leave at camp; each of the
+ * three says on its own row what stock it waits for, and the gathering rows
+ * say their windows the same way. Seaweed is the one gather still decided
+ * off the screen, since a camp on an inland lake never has the want at all.
  *
  * The hunt keep sits above the gathering block for its own reason. It is a
  * promise about raw meat at camp, and a large kill meets it for days, so it
@@ -210,6 +219,17 @@ const DAILY_TASKS = new Set<TaskId>(PLANT_ROWS);
  * the shore will match. The bow and the arrows stay below the fish keep,
  * where they cost a beginner nothing: lifted with the hunt keep they took
  * seed 19 the woodpile and a cold death on day 22 of the April gate.
+ *
+ * What tells the hunter when to stop is the keep's own figure and its
+ * restart line: the winter stock's dried meat in the raw kilos it dried
+ * from, met at that, and open again only under four fifths of it. Without
+ * a line a keep on food at camp is never met at all - the body eats what
+ * it brings home - so the row takes the day and the woodpile beneath it
+ * never runs; seed 19 froze on day 305 with ten elk behind it, 829,835
+ * kcal at camp and three logs. The fish keep says the same thing the other
+ * way round: it shuts while the winter's dried meat is already at camp,
+ * since a shore trip for another kilo of lean is the worst hour a stocked
+ * camp can spend.
  *
  * The rack and the twenty-snare line sit above that gathering block, not
  * below it, because both are work that finishes and then feeds the camp
@@ -237,6 +257,14 @@ export const WINTER_WOOD_FROM_DOY = MIDSUMMER_DOY;
  * 60 kg keep, above this one, is what carries the summer.
  */
 export const WINTER_WOOD_TO_DOY = 90;
+/**
+ * The day the winter stock is due in full: 1 December, the day "what a
+ * competent player has at camp" is measured on and the day the winter gate
+ * starts its own reading from. The woodpile keeps rise to their figures by
+ * it, so the pile is built across the autumn and the rows under it keep
+ * their share of every day until it is.
+ */
+export const WOOD_DUE_DOY = 334;
 
 /**
  * The winter stock: what a competent player has at camp on 1 December.
@@ -254,21 +282,6 @@ export const WINTER_WOOD_TO_DOY = 90;
  */
 export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
 
-/**
- * The larder that turns a hunter into a woodcutter: the kcal of the winter
- * stock's food, the 80 kg of dried meat and 20 kg of rendered fat that are
- * "what a competent player has at camp on 1 December". The hunt keep and the
- * fish keep are promises about raw food at camp, and a body eats what it
- * brings home, so neither ever reads met while there is meat to hang; they
- * take the day and the woodpile keeps beneath them never run. A level-20
- * camp on seed 19 froze on day 305 with ten elk behind it, 829,835 kcal at
- * camp and three logs. A player with a winter's food already at the fire
- * cuts wood, so the two rows shut at this line and open again under it.
- * Derived from the stock and the foods, so it moves with them and not
- * otherwise.
- */
-export const WINTER_FOOD_KCAL = WINTER_STOCK.driedMeatKg * FOODS.driedMeat.kcalPerKg + WINTER_STOCK.fatKg * FOODS.fat.kcalPerKg;
-
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
@@ -276,7 +289,7 @@ export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boo
   return (firewood && w.req.until.qty >= WINTER_STOCK.firewoodKg) || (w.req.task === "chop" && w.req.until.qty >= WINTER_STOCK.logs);
 }
 
-export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
+export const REFERENCE_ORDERS: Want[] = [
   { req: { task: "thaw", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
   keep("fill", 2, "shore"),
   keep("fill", 2, "hole"),
@@ -304,22 +317,30 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   job("read", { kind: "once" }),
   job("craft", { kind: "once" }, "basketTrap", "leave"),
   job("setTrap", { kind: "once" }),
-  { req: { task: "cook", arg: "rawFat", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
+  { req: { task: "cook", arg: "rawFat", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "rawFat", atLeast: TRACE_KG } } }, kind: "grind" },
   keep("cook", 1, "fish"),
   keep("cook", 1, "oilyFish"),
   keep("cook", 1),
-  { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
-  job("build", { kind: "once" }, "dryingRack"),
+  { req: { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "bone", atLeast: 1 } } }, kind: "grind" },
+  job("build", { kind: "once" }, "dryingRack", "camp", { stock: { item: "rawMeat", atLeast: TRACE_KG } }),
   keep("build", 20, "snare"),
-  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, kind: "grind" },
-  keep("hunt", 2, "any"),
-  job("eggs", { kind: "times", n: PLANT_HOURS_PER_ROW }),
-  job("roots", { kind: "times", n: PLANT_HOURS_PER_ROW }),
+  { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } } }, kind: "grind" },
+  keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
+  keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
+  keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
+  keep("chop", WINTER_STOCK.logs, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
+  keep("hunt", WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO, "any", "camp", { restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 }),
+  job("eggs", { kind: "daily", n: PLANT_HOURS_PER_ROW }, undefined, "camp", { season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } }),
+  job("roots", { kind: "daily", n: PLANT_HOURS_PER_ROW }, undefined, "camp", { season: { from: ROOT_FROM_DOY, to: ROOT_TO_DOY } }),
+  job("roots", { kind: "daily", n: PLANT_HOURS_PER_ROW }, undefined, "camp", { season: { from: ROOT_TO_DOY + 1, to: ROOT_FROM_DOY - 1 } }),
   keep("cook", 1, "roots"),
-  job("tapSap", { kind: "once" }),
-  job("seaweed", { kind: "times", n: PLANT_HOURS_PER_ROW }),
-  keep("fish", 1, "any"),
-  keep("berries", 2),
+  job("tapSap", { kind: "once" }, undefined, "camp", { season: { from: SAP_FROM_DOY, to: SAP_TO_DOY } }),
+  job("seaweed", { kind: "daily", n: PLANT_HOURS_PER_ROW }),
+  keep("fish", 1, "any", "camp", { stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } }),
+  // Midsummer to the turn of May: the summer window, and after it the frozen lingon dug
+  // from under the snow at a fifth of the rate. The two months the row is shut are the
+  // ones with neither ripe fruit on the heath nor snow to dig it out of.
+  keep("berries", 2, undefined, "camp", { season: { from: MIDSUMMER_DOY, to: 120 } }),
   keep("craft", 1, "bow"),
   keep("craft", 10, "arrows"),
   keep("craft", 1, "needle"),
@@ -343,23 +364,11 @@ export const REFERENCE_ORDERS: { req: IntentRequest; kind: OrderKind }[] = [
   keep("fill", 20, "shore"),
   keep("fill", 20, "hole"),
   keep("melt", 20),
-  keep("split", WINTER_STOCK.firewoodKg),
-  keep("splitWedges", WINTER_STOCK.firewoodKg),
-  keep("deadwood", WINTER_STOCK.firewoodKg),
-  keep("chop", WINTER_STOCK.logs),
   { req: { task: "hunt", arg: "elk", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "reindeer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
   { req: { task: "hunt", arg: "deer", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, kind: "grind" },
 ];
 
-/**
- * Whether a competent player would give this want today: a named hunt
- * waits for the species' recommended Hunting level, since walking at an
- * elk with a stone point at level 1 is not competence, and the
- * winter-stock keeps, 400 kg of firewood and 150 logs, wait for the
- * season they are stocked against, and a garment waits for its
- * recommended Crafting level.
- */
 /** The home shore is under ice: a shore fetch is shut and the winter methods are the question. */
 function shoreIced(state: GameState): boolean {
   return state.weather.iceCm >= ICE_SHORE_CM;
@@ -372,7 +381,20 @@ function axeInReach(state: GameState, world: World): boolean {
   return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pile(state, st.campCell), id) >= 1);
 }
 
-export function wantOpen(state: GameState, world: World, w: { req: IntentRequest; kind: OrderKind }, cal: Calendar): boolean {
+/**
+ * The decisions the runner keeps for itself, each one a thing a player
+ * reads off the screen on the morning it changes rather than anything an
+ * order can be told to watch: the water and the fire by their method, the
+ * snow shelter until walls stand, the firewood by whether an axe is in
+ * reach, a named hunt, a garment and the spare axe by the level their kit
+ * recommends, the winter dig by the axe that keeps an ice hole open, and
+ * seaweed by whether the camp is on the sea at all. Every other reading
+ * this once did is a condition the want carries, read on the order by the
+ * scheduler or, under the rung that writes it, by the runner's own hand.
+ * Each flip of an answer here costs the player a morning and is counted as
+ * one.
+ */
+export function wantOpen(state: GameState, world: World, w: Want): boolean {
   // Water by method, chosen here in the open rather than by a fallback inside the
   // intent: the shore while it is open, the hole with an axe once it ices, the fire's
   // melt only when no axe is in reach.
@@ -390,18 +412,11 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const st = regionState(state, world, state.player.region);
     return !(st.structures.turfHut || st.structures.cabin);
   }
-  // A winter's food already at camp shuts the two rows that chase more of it. The trap and the
-  // snare line are not here: both are set once and cost nothing standing, and a hare in a snare
-  // is not an hour spent.
-  if (w.req.task === "hunt" || (w.req.task === "fish" && w.req.arg === "any")) {
-    if (campFoodKcal(state, world) >= WINTER_FOOD_KCAL) return false;
-  }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
-  // Firewood by method: the axe while one is in reach, wedges and dead wood when none is; the
-  // winter stock's rows open by the season on top of that.
+  // Firewood by method: the axe while one is in reach, wedges and dead wood when none is.
   if (w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood") {
     const withAxe = axeInReach(state, world);
     if (w.req.task === "split" ? !withAxe : withAxe) return false;
@@ -416,53 +431,13 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
     const rec = RECOMMENDED[`craft:${w.req.arg}`];
     if (rec && skillLevel(state, rec.skill) < rec.level) return false;
   }
-  if (winterStockWant(w)) return cal.dayOfYear >= WINTER_WOOD_FROM_DOY || cal.dayOfYear < WINTER_WOOD_TO_DOY;
-  // The nests hold eggs only in their window; the sap window is the same three weeks the
-  // task's own check reads.
-  if (w.req.task === "eggs") return cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY;
-  // Inner bark strips only April to July, when the rise the task itself half-rates outside of
-  // is also the whole window a beginner should bother stripping at all. No row on the list
-  // carries this task any more; the branch is here for a player who adds one by hand.
-  if (w.req.task === "innerBark") return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
-  if (w.req.task === "tapSap") return cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY;
-  // Roots dig by hand April to October; outside it the ground is frozen and only an ice hole,
-  // cut and kept open with an axe, reaches the rhizomes under it. An axe in reach is what keeps
-  // a hole open, so it is what opens the want, and resolveCell sends the winter dig to the hole
-  // itself rather than to the frozen bog.
-  if (w.req.task === "roots") return (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY) || axeInReach(state, world);
+  // The summer row digs by hand and says so with its own window; the winter row reaches the
+  // rhizomes only through an ice hole, and an axe in reach is what keeps one open, so the axe
+  // is what opens that row. resolveCell sends the winter dig to the hole rather than to the
+  // frozen bog. The two rows are told apart by the window each carries.
+  if (w.req.task === "roots" && w.req.when?.season?.from !== ROOT_FROM_DOY) return axeInReach(state, world);
   // Seaweed grows only on a sea shore: a camp on an inland lake never has this want to give.
   if (w.req.task === "seaweed") return regionAt(world, state.player.region).sea > 0;
-  // The rack waits for something to dry. The list ranks it above the gathering keeps because it is
-  // an hour that then preserves every kilo the day cannot eat, but an hour is an hour: a beginner
-  // with no kill yet spends it on wood and food instead, and one seed froze on day 22 when the rack
-  // was built on nothing. Raw meat anywhere in reach opens it, which is the state a kill leaves.
-  if (w.req.task === "build" && w.req.arg === "dryingRack") {
-    const st = regionState(state, world, state.player.region);
-    return qty(pile(state, st.campCell), "rawMeat") > 0 || qty(state.player.pack, "rawMeat") > 0;
-  }
-  // The hang grind waits for meat the body cannot eat in time. A grind is never met, so
-  // without this it runs on every kilo a snare brings in, and it is the one row that must
-  // not: the list's own record is two year seeds frozen on days 300 and 325 when an ungated
-  // hang sat above the woodpile keeps. Gated, it costs no hour until a kill is going to rot.
-  if (w.req.task === "hang") {
-    const st = regionState(state, world, state.player.region);
-    return qty(pile(state, st.campCell), "rawMeat") + qty(state.player.pack, "rawMeat") > HANG_ABOVE_KG;
-  }
-  // Raw fat renders while there is any to render, the way the bones are cracked and the meat is
-  // hung. A keep of a kilo of rendered fat reads met the moment the first kilo is off the fire,
-  // and camp fat is drawn only by auto-eat, last in the order, at a fifth of a kilo a day - so an
-  // elk's nine to fifteen kilos of raw fat sat beside the fire and rotted in three days with the
-  // row reading met. Three quarters of every seed's fat went that way: 53.7 kg of 65.7 on seed 42,
-  // 483,000 kcal, in the year it lived.
-  if (w.req.task === "cook" && w.req.arg === "rawFat") {
-    const st = regionState(state, world, state.player.region);
-    return qty(pile(state, st.campCell), "rawFat") + qty(state.player.pack, "rawFat") > TRACE_KG;
-  }
-  // A cracked bone wants a bone: the hunts leave them at camp, and the want waits for one to sit there.
-  if (w.req.task === "crack") {
-    const st = regionState(state, world, state.player.region);
-    return qty(pile(state, st.campCell), "bone") >= 1;
-  }
   return true;
 }
 
@@ -667,21 +642,45 @@ export function kitOut(state: GameState, world: World, producers = true): void {
 export const OPENING_TICK_MINUTES = 60;
 
 /**
- * Work that leaves nothing behind for the next look to read: no stock at camp,
- * no structure standing, so the want is judged by its window rather than closed
- * for good the first time it is done. A tap is drunk on the spot; a knife is
- * not, and a knife want that re-opened would be made again every day.
+ * How often a player who is standing in for a due date comes back to move
+ * the target up. A pile due in December is a plan a player looks at about
+ * once a week, and a keep re-given every morning at a target an eighth of
+ * a kilo higher is not a plan at all. It is the runner's habit and no rule
+ * of the world's, so it lives here and nothing else reads it.
  */
-const REOPENING_TASKS = new Set<TaskId>(["tapSap"]);
+const REGIVE_DAYS = 7;
+
+/** Whether the ladder took the due date off this want, leaving the runner to pace it by hand. */
+function pacedByHand(w: Want, best: Want): boolean {
+  return w.req.when?.by !== undefined && best.req.when?.by === undefined;
+}
+
 /**
  * The player script (idle curve spec, section 2.5): the reference list is
- * what a competent player wants, and this gives each want as the best
- * kind the skill has earned, ranked where the want sits. A stand-in that
- * drops off is given again when the want is unmet; a want given as its
- * own kind that drops off is a finished job and is never given twice, or
- * the knife would be made again - except a REOPENING_TASKS want, which
- * leaves nothing behind to read and is reconsidered on the next look
- * instead. A keep given as a keep stays for good.
+ * what a competent player wants, and this gives each want as the best kind
+ * and the most of its conditions the skill has earned, ranked where the
+ * want sits.
+ *
+ * What the ladder strips off a want, the runner does by hand, which is what
+ * a player who comes back each morning does with a plan they cannot yet
+ * write down: a stripped season opens the want at its window's start and
+ * withdraws it at the end; a stripped stock line opens and shuts it on what
+ * the pile holds; a stripped restart line is read as a band, met at the
+ * target and open again under the line; a stripped daily count is given
+ * afresh each morning; and a stripped due date is a plain keep at today's
+ * target, re-given as the target rises and no oftener than REGIVE_DAYS.
+ * Every one of those gives and withdrawals past the opening list is a
+ * morning the player spent on the list, and so is a flip of a named runner
+ * rule; `interventions` counts them and `attention` reads them back. At the
+ * rung the order says it all itself and the count falls to nothing, which
+ * is what the two upper rungs are worth.
+ *
+ * A stand-in that drops off is given again when the want is unmet; a want
+ * given as its own kind that drops off is a finished job and is never given
+ * twice, or the knife would be made again - except a once job with a
+ * season, which leaves nothing behind for a later look to read (a tap is
+ * drunk on the spot) and whose window, not a finished mark, is what says
+ * when it is wanted again. A keep given as a keep stays for good.
  * A `times` want's own probe reads `done`, which a fresh probe never
  * carries, so a once-job stand-in's units are banked in `completed` when
  * it drops off and fed back as the probe's `done` - otherwise a five-times
@@ -697,6 +696,15 @@ export class ReferencePlayer {
   private completed = new Map<number, number>();
   /** The day a daily want was last started afresh, per want index: its count and its finished mark are cleared once a day and not again. */
   private dayOpened = new Map<number, number>();
+  /** A restart line read by hand: whether the want last read met at its target, per want index. */
+  private held = new Map<number, boolean>();
+  /** A due date paced by hand: the day of year the want was first given on, the target it was last given at, and the day of that give. */
+  private paced = new Map<number, { doy: number; qty: number; day: number }>();
+  /** The day the list was first given, once it has been: that morning's gives are the plan rather than attention. */
+  private openingDay: number | null = null;
+
+  /** Every give and every withdrawal past the opening list, by day: what the plan cost the player in mornings. */
+  readonly interventions = new Map<number, number>();
 
   /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
   reachedDay: number | null = null;
@@ -710,7 +718,81 @@ export class ReferencePlayer {
    * burn and nights on the way, and no order is given until the region is
    * reached. The first survivor has no home and starts on the list at once.
    */
-  constructor(readonly wants: { req: IntentRequest; kind: OrderKind }[] = REFERENCE_ORDERS, private home: number | null = null) {}
+  constructor(readonly wants: Want[] = REFERENCE_ORDERS, private home: number | null = null) {}
+
+  /** The mornings between two days, inclusive, on which the list changed, and how many days were asked about. */
+  attention(fromDay: number, toDay: number): { mornings: number; days: number } {
+    let mornings = 0;
+    for (let d = fromDay; d <= toDay; d++) if ((this.interventions.get(d) ?? 0) > 0) mornings++;
+    return { mornings, days: toDay - fromDay + 1 };
+  }
+
+  /** One act of attention, unless it is the opening list itself. */
+  private note(cal: Calendar): void {
+    if (this.openingDay === null || cal.day === this.openingDay) return;
+    this.interventions.set(cal.day, (this.interventions.get(cal.day) ?? 0) + 1);
+  }
+
+  /** The want as an order to read off: the runner's own probe, never on any list. */
+  private probe(i: number, done = 0): Order {
+    const w = this.wants[i];
+    return { id: -1, kind: w.kind, req: w.req, done, minutes: 0, skipped: "", held: this.held.get(i), givenDoy: this.paced.get(i)?.doy };
+  }
+
+  /**
+   * Whether the want is one to have standing this morning, by the conditions
+   * the skill cannot yet write on an order. A season and a stock line read
+   * exactly as the scheduler would read them on the order itself; a restart
+   * line is the same band, its mark kept here instead of on the order.
+   */
+  private byHand(state: GameState, world: World, cal: Calendar, i: number, best: Want): boolean {
+    const want = this.wants[i].req.when;
+    if (!want) return true;
+    const given = best.req.when;
+    const lost: OrderWhen = {};
+    if (want.season && !given?.season) lost.season = want.season;
+    if (want.stock && !given?.stock) lost.stock = want.stock;
+    const p = this.probe(i);
+    if ((lost.season || lost.stock) && conditionOpen(state, world, cal, { ...p, req: { ...p.req, when: lost } })) return false;
+    if (want.restart !== undefined && given?.restart === undefined) {
+      const held = keepBand(keepStock(state, world, p), keepTargetToday(cal, p), want.restart, this.held.get(i));
+      this.held.set(i, held);
+      if (held) return false;
+    }
+    return true;
+  }
+
+  /** Today's figure for a keep whose due date the runner is pacing by hand. */
+  private pacedTarget(cal: Calendar, i: number): number {
+    return keepTargetToday(cal, this.probe(i));
+  }
+
+  private withdraw(state: GameState, world: World, cal: Calendar, i: number, id: number): void {
+    removeOrder(state, world, id);
+    this.given.delete(i);
+    this.trueKind.delete(i);
+    this.note(cal);
+  }
+
+  private give(state: GameState, world: World, cal: Calendar, i: number, best: Want): void {
+    const w = this.wants[i];
+    const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
+    const units = !standIn ? undefined : best.req.until.kind === "once" ? 1 : best.req.until.kind === "times" ? best.req.until.n : undefined;
+    const banked = this.completed.get(i) ?? 0;
+    // A times want reaching its rung mid-count must not restart at n: what
+    // it already banked from once-job stand-ins comes off the top, or the
+    // fresh order over-builds by however much those stand-ins covered.
+    let req = !standIn && best.req.until.kind === "times" && banked > 0 ? { ...best.req, until: { kind: "times" as const, n: best.req.until.n - banked } } : best.req;
+    const pacing = pacedByHand(w, best);
+    if (pacing && req.until.kind === "campHas") req = { ...req, until: { kind: "campHas" as const, qty: this.pacedTarget(cal, i) } };
+    let rank = 0;
+    for (const j of this.given.keys()) if (j < i) rank++;
+    const o = giveOrder(state, world, req, best.kind, rank);
+    this.given.set(i, { id: o.id, units });
+    this.trueKind.set(i, !standIn);
+    if (pacing) this.paced.set(i, { doy: this.paced.get(i)?.doy ?? cal.dayOfYear, qty: req.until.kind === "campHas" ? req.until.qty : 0, day: cal.day });
+    this.note(cal);
+  }
 
   tick(state: GameState, world: World): void {
     if (this.home !== null) {
@@ -722,34 +804,44 @@ export class ReferencePlayer {
       this.home = null;
     }
     const cal = calendar(state.minute, state.startDoy);
+    this.openingDay ??= cal.day;
     // Each morning a daily want starts over: yesterday's spent count is not this
     // morning's, and the finished mark that stopped it yesterday comes off. Both
-    // the true counted job and the once-job stand-in a low skill gives instead
+    // the true counted job and the stand-in a skill under the rung gives instead
     // are stopped by that count, so both are cleared here.
     for (let i = 0; i < this.wants.length; i++) {
-      if (!DAILY_TASKS.has(this.wants[i].req.task) || this.dayOpened.get(i) === cal.day) continue;
+      if (this.wants[i].req.until.kind !== "daily" || this.dayOpened.get(i) === cal.day) continue;
       this.dayOpened.set(i, cal.day);
       this.finished.delete(i);
       this.completed.delete(i);
     }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
+      const w = this.wants[i];
       if (list.some((o) => o.id === g.id)) {
-        // A want whose season has closed takes its standing order off the
-        // list rather than leaving it to be worked out of season: the
-        // woodpile given on 1 September would otherwise still be splitting
-        // 400 kg through the following summer. It is withdrawn, not
-        // finished, so the want is given again when the season reopens.
-        if (!wantOpen(state, world, this.wants[i], cal)) {
-          removeOrder(state, world, g.id);
-          this.given.delete(i);
-          this.trueKind.delete(i);
+        const best = withinLadder(state, w.req, w.kind);
+        // A want the morning has closed takes its standing order off the list
+        // rather than leaving it to be worked out of season or against a pile
+        // that already holds what it asked for: the woodpile given in September
+        // would otherwise still be splitting through the following summer. It is
+        // withdrawn, not finished, so it is given again when it reopens.
+        if (!wantOpen(state, world, w) || !this.byHand(state, world, cal, i, best)) {
+          this.withdraw(state, world, cal, i, g.id);
+          continue;
+        }
+        // A keep standing in for a due date is replaced when the date has moved
+        // the target up, which a player does on their weekly look and not daily.
+        const p = this.paced.get(i);
+        if (p && pacedByHand(w, best) && cal.day - p.day >= REGIVE_DAYS && this.pacedTarget(cal, i) > p.qty + 1e-9) {
+          this.withdraw(state, world, cal, i, g.id);
+          this.give(state, world, cal, i, best);
         }
         continue;
       }
       // A completed want given as its own kind is a finished job for good, or the knife
-      // would be made again, unless the task is named in REOPENING_TASKS below.
-      if (this.trueKind.get(i) && !REOPENING_TASKS.has(this.wants[i].req.task)) this.finished.add(i);
+      // would be made again; a seasonal once job is the exception, since what it leaves
+      // behind is nothing a later look can read and its window is what wants it again.
+      if (this.trueKind.get(i) && !(w.req.until.kind === "once" && w.req.when?.season)) this.finished.add(i);
       else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);
@@ -757,22 +849,11 @@ export class ReferencePlayer {
     for (let i = 0; i < this.wants.length; i++) {
       if (this.finished.has(i) || this.given.has(i)) continue;
       const w = this.wants[i];
-      if (!wantOpen(state, world, w, cal)) continue;
-      const probe: Order = { id: -1, kind: w.kind, req: w.req, done: this.completed.get(i) ?? 0, minutes: 0, skipped: "" };
-      if (orderMet(state, world, cal, probe, false)) continue;
+      if (!wantOpen(state, world, w)) continue;
       const best = withinLadder(state, w.req, w.kind);
-      const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
-      const units = !standIn ? undefined : best.req.until.kind === "once" ? 1 : best.req.until.kind === "times" ? best.req.until.n : undefined;
-      const banked = this.completed.get(i) ?? 0;
-      // A times want reaching its rung mid-count must not restart at n: what
-      // it already banked from once-job stand-ins comes off the top, or the
-      // fresh order over-builds by however much those stand-ins covered.
-      const req = !standIn && best.req.until.kind === "times" && banked > 0 ? { ...best.req, until: { kind: "times" as const, n: best.req.until.n - banked } } : best.req;
-      let rank = 0;
-      for (const j of this.given.keys()) if (j < i) rank++;
-      const o = giveOrder(state, world, req, best.kind, rank);
-      this.given.set(i, { id: o.id, units });
-      this.trueKind.set(i, !standIn);
+      if (!this.byHand(state, world, cal, i, best)) continue;
+      if (orderMet(state, world, cal, this.probe(i, this.completed.get(i) ?? 0), false)) continue;
+      this.give(state, world, cal, i, best);
     }
   }
 }

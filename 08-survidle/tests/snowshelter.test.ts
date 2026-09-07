@@ -67,9 +67,9 @@ describe("the snow shelter", () => {
     expect(tasks.indexOf("build:snowShelter:job")).toBe(tasks.indexOf("build:boughBed:keep") + 1);
     const { state, world } = newGame(17, 334);
     const w = REFERENCE_ORDERS[tasks.indexOf("build:snowShelter:job")];
-    expect(wantOpen(state, world, w, calendar(0, 334))).toBe(true);
+    expect(wantOpen(state, world, w)).toBe(true);
     regionState(state, world, state.player.region).structures.turfHut = true;
-    expect(wantOpen(state, world, w, calendar(0, 334))).toBe(false);
+    expect(wantOpen(state, world, w)).toBe(false);
   });
 
   it("beside a lean-to, reads the better of the two roofs rather than colder than either", () => {

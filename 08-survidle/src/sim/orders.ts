@@ -141,7 +141,10 @@ export function conditionOpen(state: GameState, world: World, cal: Calendar, o: 
   if (w.stock) {
     const st = regionState(state, world, state.player.region);
     const have = qty(pile(state, st.campCell), w.stock.item);
-    if (w.stock.atLeast !== undefined && have < w.stock.atLeast - 1e-9) return `waits for ${ITEM_NAMES[w.stock.item]} at camp`;
+    // The tolerance on the line is a hair either side of the figure itself rather than a
+    // hair above nothing, or a line drawn at a trace - "any raw meat at all", which is what
+    // a drying rack waits for - would be a line the float guard swallows and never shuts.
+    if (w.stock.atLeast !== undefined && have < w.stock.atLeast * (1 - 1e-9)) return `waits for ${ITEM_NAMES[w.stock.item]} at camp`;
     if (w.stock.under !== undefined && have >= w.stock.under - 1e-9) return `camp holds ${itemLabel(w.stock.item, w.stock.under)} already`;
   }
   return null;

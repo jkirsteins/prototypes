@@ -13,7 +13,7 @@ import { FOODS, type FoodId } from "./items";
 import { setSkillLevel } from "./horizon";
 import { type DayLedger, emptyBurn, type WeekAverage, weekBefore } from "./ledger";
 import { current } from "./record";
-import { type ReferenceReport, type ReferencePlayer, setUpReference, starvationCause, stepReference, WINTER_STOCK } from "./reference";
+import { type ReferenceReport, type ReferencePlayer, setUpReference, starvationCause, stepReference, WINTER_STOCK, WOOD_DUE_DOY } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
 import { LARGE_GAME } from "./species";
@@ -21,11 +21,11 @@ import type { GameState, Species } from "./types";
 
 /**
  * 1 December: the winter gate's start, a fortnight before the dark and a
- * month before the cold snap. Day of year is 0-based (1 April is 90, the
- * calendar's own START_DOY), so 1 December - 31 + 28 + 31 + 30 + 31 + 30 +
- * 31 + 31 + 30 + 31 + 30 days into the year - is 334, not 335.
+ * month before the cold snap, and the same day the list's winter stock is
+ * due in full - the day is one thing and is named once, in the list that
+ * stocks against it.
  */
-export const WINTER_START_DOY = 334;
+export const WINTER_START_DOY = WOOD_DUE_DOY;
 /** Days from 1 December to 1 March. */
 export const WINTER_DAYS = 90;
 
