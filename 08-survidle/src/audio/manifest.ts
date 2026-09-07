@@ -19,7 +19,7 @@ const shot = (gain: number, ...files: string[]): SlotDef => ({ files, kind: "one
  */
 type KnownSlot =
   | "forest" | "leaves" | "open" | "lake" | "sea"
-  | "rain_light" | "rain_heavy" | "fire" | "chorus" | "insects"
+  | "rain_light" | "rain_heavy" | "fire" | "chorus" | "insects" | "crickets"
   | "step_leaves" | "step_grass" | "step_bog" | "step_rock" | "step_snow" | "step_ice"
   | "axe" | "knap"
   | "loon" | "cuckoo" | "raven" | "owl" | "crane" | "woodpecker"
@@ -29,7 +29,7 @@ type KnownSlot =
 export const SLOTS: Record<Cue | KnownSlot, SlotDef> = {
   // Beds.
   forest: loop(0.5, "forest.ogg"), leaves: loop(0.4, "leaves.ogg"), open: loop(0.45, "open.ogg"), lake: loop(0.5, "lake.ogg"), sea: loop(0.55, "sea.ogg"),
-  rain_light: loop(0.4, "rain_light.ogg"), rain_heavy: loop(0.55, "rain_heavy.ogg"), fire: loop(0.6, "fire.ogg"), chorus: loop(0.35, "chorus.ogg"), insects: loop(0.25, "insects.ogg"),
+  rain_light: loop(0.4, "rain_light.ogg"), rain_heavy: loop(0.55, "rain_heavy.ogg"), fire: loop(0.6, "fire.ogg"), chorus: loop(0.35, "chorus.ogg"), insects: loop(0.25, "insects.ogg"), crickets: loop(0.65, "crickets.ogg"),
   // The work.
   step_leaves: shot(0.5, "step_leaves_01.ogg", "step_leaves_02.ogg", "step_leaves_03.ogg", "step_leaves_04.ogg"), step_grass: shot(0.45, "step_grass_01.ogg", "step_grass_02.ogg", "step_grass_03.ogg", "step_grass_04.ogg"), step_bog: shot(0.5, "step_bog_01.ogg", "step_bog_02.ogg", "step_bog_03.ogg", "step_bog_04.ogg"), step_rock: shot(0.5, "step_rock_01.ogg", "step_rock_02.ogg", "step_rock_03.ogg", "step_rock_04.ogg"), step_snow: shot(0.5, "step_snow_01.ogg", "step_snow_02.ogg", "step_snow_03.ogg", "step_snow_04.ogg"), step_ice: shot(0.5, "step_ice_01.ogg", "step_ice_02.ogg", "step_ice_03.ogg", "step_ice_04.ogg"),
   axe: shot(0.7, "axe_01.ogg", "axe_02.ogg", "axe_03.ogg"), knap: shot(0.5, "knap.ogg"),

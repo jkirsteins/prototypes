@@ -126,7 +126,39 @@ export function ambienceMix(s: Surroundings, cal: Calendar, ambient: number): Re
   if (s.fire === "fed") set("fire", 1);
   if (cal.month >= 4 && cal.month <= 6 && windowOpen("dawn", cal)) set("chorus", s.forest);
   if (cal.month >= 5 && cal.month <= 7 && cal.hour >= 18 && cal.hour < 23 && ambient > 10) set("insects", s.bog + (s.open - s.bog) * 0.5);
+  set("crickets", cricketSong(cal, ambient) * (s.bog + (s.open - s.bog) * 0.6));
   return mix;
+}
+
+/** Bog bush-crickets are adult from about 15 July; `dayOfYear` counts from 0 on 1 January. */
+const CRICKET_FIRST_DAY = 195;
+/** The last of them are gone by the end of September; the frosts finish what the cold evenings started. */
+const CRICKET_LAST_DAY = 272;
+/** A fortnight from the first adults to the full number singing. */
+const CRICKET_EMERGENCE_DAYS = 14;
+/** Stridulation stops below this; the reported floor for the group is 11 to 13 C. */
+const CRICKET_SILENT_C = 11;
+/** Warm enough that they sing without a pause. A 62 N summer afternoon reaches this and little more. */
+const CRICKET_FULL_C = 20;
+
+/**
+ * How loudly the bog bush-crickets are singing, 0 to 1, before the ground
+ * they are singing on is counted. Metrioptera brachyptera is the
+ * stridulator that reaches 62 N - no cicada does, and the field cricket
+ * stops in the far south - and it lives on wet heath and bog.
+ *
+ * There is no hour in this: the song is driven by warmth, so the diurnal
+ * curve in `ambientTemperature` puts it at its loudest in the afternoon and
+ * lets it die away through the evening as the air cools. It sounds like a
+ * night sound anyway, because the birds that share the band with it are the
+ * dawn chorus and they are silent by then.
+ */
+export function cricketSong(cal: Calendar, ambient: number): number {
+  const d = cal.dayOfYear;
+  if (d < CRICKET_FIRST_DAY || d > CRICKET_LAST_DAY) return 0;
+  const emerged = Math.min(1, (d - CRICKET_FIRST_DAY) / CRICKET_EMERGENCE_DAYS);
+  const warm = (ambient - CRICKET_SILENT_C) / (CRICKET_FULL_C - CRICKET_SILENT_C);
+  return emerged * Math.max(0, Math.min(1, warm));
 }
 
 export interface OpenCall { slot: string; /** calls per real minute */ rate: number }

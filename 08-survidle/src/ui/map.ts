@@ -13,11 +13,12 @@ import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { discovery, VISITED } from "../sim/regionstate";
-import type { GameState, SpotId, Terrain } from "../sim/types";
-import { ambientTemperature, iceMode } from "../sim/weather";
+import type { GameState, Terrain } from "../sim/types";
+import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
-import { elevationAt, groundGlyph, toneCuts, toneOf, TREES, VARIANTS, type ToneCuts } from "./ground";
+import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
+import { moodOf } from "./mood";
 import { lighting } from "./sky";
 
 export const GLYPH: Record<Terrain, string> = {
@@ -35,6 +36,14 @@ const TERRAIN_NAME: Record<Terrain, string> = {
  * and what the legend calls it. mapHtml's marker placement reads this same
  * table, so a mark added here cannot go undocumented in the legend, and a
  * legend entry can never point at a mark the map does not actually place.
+ *
+ * Every one of them is something that is there because the survivor built it
+ * or found it. The named places - forest, outcrop, shore, heath - were marked
+ * here once and are not any more: a mark on them is not clickable, the HERE
+ * panel already lists every place in the region with its distance and a walk
+ * button, and an order resolves its own cell and walks there without the
+ * player ever locating it. Marking ground the world always had put four
+ * tinted tiles around the camp for no act they enabled.
  */
 export const MARKS = {
   you: { glyph: "@", cls: "mk-player", label: "you" },
@@ -43,23 +52,7 @@ export const MARKS = {
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
   seep: { glyph: "s", cls: "mk-seep", label: "seep" },
-  forest: { glyph: "%", cls: "mk-spot", label: "forest" },
-  outcrop: { glyph: "o", cls: "mk-spot", label: "outcrop" },
-  shore: { glyph: "w", cls: "mk-spot", label: "shore" },
-  heath: { glyph: ";", cls: "mk-spot", label: "heath" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
-
-/**
- * The places the HERE panel offers to walk to, as marks. Camp is not among them:
- * it already has its own mark, and a camp is drawn wherever one stands rather
- * than only at the region's own site.
- */
-export const SPOT_MARKS: Partial<Record<SpotId, (typeof MARKS)[keyof typeof MARKS]>> = {
-  forest: MARKS.forest,
-  outcrop: MARKS.outcrop,
-  shore: MARKS.shore,
-  heath: MARKS.heath,
-};
 
 /**
  * The map's key: every terrain letter from the glyph table, then ice, then
@@ -82,7 +75,7 @@ export function legendHtml(): string {
     .join("");
   return (
     `${terrain}<span><b>=</b> ice</span>${marks}` +
-    `<span class="tone-key">brighter trees stand higher</span>` +
+    `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="fog-key">dark: never been there</span>`
@@ -329,13 +322,16 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
   const cur = state.player.region;
   const sel = ui.selected;
   const snow = state.weather.snowCm > SNOW_SHOWN_CM;
+  // Deep enough to bury what it lies on, at the depth this game already uses
+  // for snow that halves a walk and doubles the burn.
+  const deepSnow = state.weather.snowCm > DEEP_SNOW_CM;
   const l = levelAt(ui.zoom);
   const z = l.cells;
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -365,20 +361,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   for (const k of Object.keys(state.seeps)) {
     const g = toGlyph(Number(k));
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.seep);
-  }
-  // The named places, and only closer than the map opens at: the two close rungs
-  // showed the same ground at a larger size and nothing else, so this is what
-  // zooming in buys. A place is known once its region has been walked in.
-  if (z === 1 && ui.zoom < DEFAULT_ZOOM) {
-    for (const [id, r] of world.regions) {
-      if (discovery(state, id) !== VISITED) continue;
-      for (const sp of r.spots) {
-        const mark = SPOT_MARKS[sp.id];
-        if (!mark) continue;
-        const g = toGlyph(sp.cell);
-        if (g >= 0 && !markerAt.has(g)) markerAt.set(g, mark);
-      }
-    }
   }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, MARKS.you);
@@ -412,22 +394,75 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   }
   const drawBorders = z <= 3;
 
-  // The height shading normalises to what is on screen, so every elevation must
-  // be read before any one cell's tone can be decided.
-  const elev = z === 1 ? new Float32Array(l.w * l.h) : null;
-  let cuts: ToneCuts | null = null;
-  if (elev) {
-    const seen: number[] = [];
+  /**
+   * The regions whose outline is drawn through the fog: the one stood in and
+   * the ones touching it. The shape of the country you are in and what adjoins
+   * it is worth knowing before you have walked it - it is what tells you there
+   * is somewhere to go - while outlining every region on screen would draw a
+   * map of ground nobody has any business knowing the shape of yet.
+   *
+   * Adjacency is read off the view rather than the world: two regions are
+   * neighbours here if their cells touch somewhere on screen, which is the
+   * only adjacency that can be drawn anyway.
+   */
+  /**
+   * Which side of a boundary draws it. Both sides used to, in their own two
+   * colours, and the shared line came out alternating between them - a solid
+   * edge read as a dashed one. The region stood in owns its whole outline and
+   * a neighbour draws every edge except the one they share.
+   */
+  const ownsEdge = (mine: number, theirs: number): boolean => theirs !== mine && (mine === cur || theirs !== cur);
+
+  const near = new Set<number>([cur]);
+  if (drawBorders) {
+    for (let i = 0; i < l.w * l.h; i++) {
+      if (regions[i] !== cur) continue;
+      const gx = i % l.w;
+      for (const j of [gx > 0 ? i - 1 : -1, gx < l.w - 1 ? i + 1 : -1, i - l.w, i + l.w]) {
+        if (j >= 0 && j < l.w * l.h && regions[j] >= 0) near.add(regions[j]);
+      }
+    }
+  }
+
+  /*
+   * The shading normalises to what is on screen, so every figure must be read
+   * before any one cell's step can be decided. Three scales, not one: trees
+   * against trees, open land against open land, sea against sea. A single
+   * scale over all of them would have a screen of highland forest and coastal
+   * meadow put every tree in one bucket and every field in another, and each
+   * family would lose the relief within itself, which is the whole point.
+   */
+  const step = z === 1 ? new Float32Array(l.w * l.h) : null;
+  let treeCuts: ToneCuts | null = null;
+  let landCuts: ToneCuts | null = null;
+  let seaCuts: ToneCuts | null = null;
+  if (step) {
+    const trees: number[] = [];
+    const land: number[] = [];
+    const sea: number[] = [];
     for (let gy = 0; gy < l.h; gy++) {
       for (let gx = 0; gx < l.w; gx++) {
         const i = gy * l.w + gx;
-        if (regions[i] < 0 || !seenAt[i] || !TREES.includes(terrains[i])) continue;
-        const e = elevationAt(world.seed, x0 + gx * z, y0 + gy * z);
-        elev[i] = e;
-        seen.push(e);
+        if (regions[i] < 0 || !seenAt[i]) continue;
+        const cx = x0 + gx * z;
+        const cy = y0 + gy * z;
+        const t = terrains[i];
+        if (t === "water") {
+          // Lakes have no offshore; they keep the plain water colour.
+          const off = offshoreAt(world.seed, cx, cy);
+          if (off === null) continue;
+          step[i] = off;
+          sea.push(off);
+        } else {
+          const e = elevationAt(world.seed, cx, cy);
+          step[i] = e;
+          (TREES.includes(t) ? trees : land).push(e);
+        }
       }
     }
-    cuts = toneCuts(seen);
+    treeCuts = toneCuts(trees);
+    landCuts = toneCuts(land);
+    seaCuts = toneCuts(sea);
   }
 
   // The tools sit in the map's bottom left corner (drawn after the grid, placed
@@ -448,7 +483,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
+  parts.push(`<div class="scroll-x"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -465,15 +500,26 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       cls.push("fog");
       // Only regions already built get named; building one here would fill its chunks for a tooltip.
       title = named ? (world.regions.get(reg)?.name ?? "ground heard of, not seen") : "unknown ground";
+      // The outline still shows through: where the country you are in ends and
+      // what adjoins it, on ground nobody has walked. The class says which of
+      // the three the edge belongs to and the stylesheet picks its colour, so a
+      // fog cell never takes the wash a drawn cell of the same region takes.
+      if (drawBorders && near.has(reg)) {
+        if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
+        if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
+        if (gy > 0 && ownsEdge(reg, regions[i - l.w])) cls.push("bt");
+        if (gy < l.h - 1 && ownsEdge(reg, regions[i + l.w])) cls.push("bb");
+        cls.push(reg === cur ? "edge-cur" : discovery(state, reg) === VISITED ? "edge-known" : "edge-unknown");
+      }
     } else {
       const t = terrains[i];
       cls.push(`t-${t}`);
       if (seen === 1) cls.push("dim");
       if (drawBorders) {
-        if (gx > 0 && regions[i - 1] !== reg) cls.push("bl");
-        if (gx < l.w - 1 && regions[i + 1] !== reg) cls.push("br");
-        if (gy > 0 && regions[i - l.w] !== reg) cls.push("bt");
-        if (gy < l.h - 1 && regions[i + l.w] !== reg) cls.push("bb");
+        if (gx > 0 && ownsEdge(reg, regions[i - 1])) cls.push("bl");
+        if (gx < l.w - 1 && ownsEdge(reg, regions[i + 1])) cls.push("br");
+        if (gy > 0 && ownsEdge(reg, regions[i - l.w])) cls.push("bt");
+        if (gy < l.h - 1 && ownsEdge(reg, regions[i + l.w])) cls.push("bb");
       }
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
@@ -481,9 +527,18 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // A coarser glyph is a block of mixed ground with no single field to report.
       if (z === 1) {
         glyph = groundGlyph(world.seed, x0 + gx * z, y0 + gy * z, t, glyph);
-        if (elev && TREES.includes(t)) {
-          const tone = toneOf(elev[i], cuts);
-          if (tone !== 1) cls.push(`tone-${tone}`);
+        // Which ground has gone over. The season decides whether it shows.
+        if (turnedGround(world.seed, x0 + gx * z, y0 + gy * z, t)) cls.push("turned");
+        if (step) {
+          if (t === "water") {
+            // Shallow water first: the shore is the lit end of the scale and the
+            // open sea the dark one, which is the way water reads from a beach.
+            const d = toneOf(step[i], seaCuts);
+            if (d !== 1) cls.push(`deep-${2 - d}`);
+          } else {
+            const tone = toneOf(step[i], TREES.includes(t) ? treeCuts : landCuts);
+            if (tone !== 1) cls.push(`tone-${tone}`);
+          }
         }
       }
       if (t === "water" && iceMode(state.weather) !== "none") {
@@ -505,6 +560,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const m = markerAt.get(i);
     if (m) {
       cls.push("mk", m.cls);
+      // The mood rides as a class and not as a data attribute: the morph keys an
+      // element by its data attributes, so a mood written there would make every
+      // change of task replace the glyph's node instead of retitling it.
+      if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
       glyph = m.glyph;
       title = `${m.label}, ${title}`;
     }

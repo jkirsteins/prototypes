@@ -11,6 +11,7 @@ import { plain } from "../sim/voice";
 import { type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
+import { regionState } from "../sim/regionstate";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
@@ -18,11 +19,18 @@ import { PURPOSES, purposeOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 
 /**
- * The words a row answers to that it never says out loud. Nothing on the
- * torch row says "fire" and nothing on the bough bed says "sleep", so a
- * reader who types the thing they want rather than the thing it is called
- * finds nothing without this. The words are never rendered: they widen what
- * the filter matches and change no part of the panel a player looks at.
+ * The concepts a row serves, and the words it answers to that it never says
+ * out loud. Nothing on the torch row says "fire" and nothing on the bough bed
+ * says "sleep", so a reader who types the thing they want rather than the
+ * thing it is called finds nothing without this.
+ *
+ * The `name` is the concept's own word and is rendered, as a tag on every row
+ * it covers: a table the game consulted in private, put on screen. Without it
+ * the food chain had no visible link anywhere - the ground advertised hare and
+ * elk, the list offered no row that said "food", and a player could not learn
+ * that roots are one except by reading to the end of a three-clause line. The
+ * extra `words` are searched and never shown; they are the near misses a
+ * reader might type instead.
  *
  * A row is named by its task id, or by `craft:<recipe>` and `build:<structure>`
  * where one task covers many rows. A concept lists every row it covers, the
@@ -30,19 +38,19 @@ import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./rende
  * the whole answer to that search rather than as the leftovers. A row that no
  * concept names is not a bug: most rows say what they are for.
  */
-const VOCABULARY: { words: string; rows: string[] }[] = [
-  { words: "fire tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt", "night"] },
-  { words: "fuel firewood", rows: ["chop", "deadwood", "sticks", "split", "splitWedges"] },
-  { words: "food eat hunger", rows: ["hunt", "fish", "cook", "berries", "eggs", "roots", "innerBark", "seaweed", "tapSap", "crack", "grindBark", "hang", "setTrap", "emptyTrap", "build:snare", "build:dryingRack", "craft:snare", "craft:bow", "craft:arrows", "craft:fishingSpear", "craft:basketTrap"] },
-  { words: "water drink thirst", rows: ["fill", "melt", "thaw", "iceHole", "tapSap", "build:seep", "build:waterStore", "craft:barkBucket", "craft:waterskin"] },
-  { words: "warmth heat cold", rows: ["light", "lightIndoors", "lightTorch", "night", "sleep", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
-  { words: "sleep rest bed", rows: ["sleep", "rest", "night", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
-  { words: "shelter roof", rows: ["makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
-  { words: "tool gear", rows: ["craft", "sharpen", "hone"] },
-  { words: "clothing clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
-  { words: "dark darkness", rows: ["lightTorch", "craft:torch"] },
+const VOCABULARY: { name: string; words: string; rows: string[] }[] = [
+  { name: "fire", words: "tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt", "night"] },
+  { name: "fuel", words: "firewood", rows: ["chop", "deadwood", "sticks", "split", "splitWedges"] },
+  { name: "food", words: "eat hunger", rows: ["hunt", "fish", "cook", "berries", "eggs", "roots", "innerBark", "seaweed", "tapSap", "crack", "grindBark", "hang", "setTrap", "emptyTrap", "build:snare", "build:dryingRack", "craft:snare", "craft:bow", "craft:arrows", "craft:fishingSpear", "craft:basketTrap"] },
+  { name: "water", words: "drink thirst", rows: ["fill", "melt", "thaw", "iceHole", "tapSap", "build:seep", "build:waterStore", "craft:barkBucket", "craft:waterskin"] },
+  { name: "warmth", words: "heat cold", rows: ["light", "lightIndoors", "lightTorch", "night", "sleep", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
+  { name: "sleep", words: "rest bed", rows: ["sleep", "rest", "night", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
+  { name: "shelter", words: "roof", rows: ["makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
+  { name: "tool", words: "gear", rows: ["craft", "sharpen", "hone"] },
+  { name: "clothing", words: "clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
+  { name: "dark", words: "darkness", rows: ["lightTorch", "craft:torch"] },
   // The fire site is a fire pit and a hearth to everyone who has not read its label.
-  { words: "firepit hearth", rows: ["build:firePit", "light"] },
+  { name: "firepit", words: "hearth", rows: ["build:firePit", "light"] },
 ];
 
 /** Every row the vocabulary names, for the test that each one is a row that exists. */
@@ -50,9 +58,30 @@ export function keyedRows(): string[] {
   return [...new Set(VOCABULARY.flatMap((v) => v.rows))];
 }
 
+/** Every concept's word, for the filter to check a kw: against and for a test to walk. */
+export function conceptNames(): string[] {
+  return VOCABULARY.map((v) => v.name);
+}
+
 const KEYWORDS = new Map<string, string>();
-for (const { words, rows } of VOCABULARY) {
-  for (const row of rows) KEYWORDS.set(row, `${KEYWORDS.get(row) ?? ""} ${words}`);
+const CONCEPTS = new Map<string, string[]>();
+for (const { name, words, rows } of VOCABULARY) {
+  for (const row of rows) {
+    KEYWORDS.set(row, `${KEYWORDS.get(row) ?? ""} ${name} ${words}`);
+    CONCEPTS.set(row, [...(CONCEPTS.get(row) ?? []), name]);
+  }
+}
+
+/**
+ * The concepts a row serves, in the order VOCABULARY declares them, so a row
+ * reads the same way twice. Both keys are consulted: the concepts named for
+ * the whole task, and the ones named for this recipe or structure. Splitting
+ * a log is fire and fuel; a lean-to is warmth, sleep and shelter.
+ */
+export function conceptsFor(id: string | undefined, arg: string | undefined): string[] {
+  if (!id) return [];
+  const both = [...(CONCEPTS.get(id) ?? []), ...(arg ? (CONCEPTS.get(`${id}:${arg}`) ?? []) : [])];
+  return VOCABULARY.map((v) => v.name).filter((n) => both.includes(n));
 }
 
 /** A row's invisible keywords: the ones for the whole task, plus the ones for this recipe or structure. */
@@ -85,6 +114,24 @@ function filterWords(text: string): string[] {
   return text.trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 
+/** The prefix that turns the filter box from a search into a concept. */
+export const KW_PREFIX = "kw:";
+
+/**
+ * The concept a `kw:` filter asks for, or null for an ordinary search. A
+ * concept tag writes this rather than its bare word because the two are
+ * different questions: "food" is every row that says or answers to the
+ * letters, which is the right answer when a reader types it and guesses;
+ * `kw:food` is the rows the food concept names, exactly, which is the right
+ * answer when they click a tag that promised them that set. A tag that
+ * dragged in a row for spelling "food" in its detail line would be a tag
+ * that lied about what it stood for.
+ */
+export function conceptAsked(text: string): string | null {
+  const t = text.trim().toLowerCase();
+  return t.startsWith(KW_PREFIX) ? t.slice(KW_PREFIX.length) : null;
+}
+
 /**
  * How squarely a row answers the words: 0 when its own name carries them all,
  * 1 when the lines under the name finish the job, 2 when only the invisible
@@ -110,6 +157,8 @@ function matchTier(r: FilterableRow, words: string[]): number {
  * instead of widening. Best answer first, ties in the order they were listed.
  */
 export function filterRows<T extends FilterableRow>(rows: T[], text: string): T[] {
+  const concept = conceptAsked(text);
+  if (concept !== null) return rows.filter((r) => conceptsFor(r.id, r.arg).includes(concept));
   const words = filterWords(text);
   if (!words.length) return rows;
   return rows
@@ -128,6 +177,9 @@ export function filterRows<T extends FilterableRow>(rows: T[], text: string): T[
 export function rankRows<T extends FilterableRow>(rows: T[], text: string): { direct: T[]; related: T[] } {
   const words = filterWords(text);
   const found = filterRows(rows, text);
+  // A concept has no weaker tier to hold apart: every row it returns is a row
+  // it names, so there is no "also answers to" half to put under a heading.
+  if (conceptAsked(text) !== null) return { direct: found, related: [] };
   if (!words.length) return { direct: found, related: [] };
   return { direct: found.filter((r) => matchTier(r, words) < 2), related: found.filter((r) => matchTier(r, words) === 2) };
 }
@@ -305,6 +357,20 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
 }
 
 /**
+ * A row's concepts, as buttons. Clicking one sets the filter to that concept,
+ * which is the one-click category filter asked for at [203]: the objection was
+ * to typing, not to filtering, and the filter is what rescued the tester twice.
+ * The tag is rendered outside the row's own button, because a button inside a
+ * button is not a button anywhere.
+ */
+function conceptsHtml(id: string | undefined, arg: string | undefined): string {
+  const names = conceptsFor(id, arg);
+  if (!names.length) return "";
+  const one = (n: string) => `<button class="kw" data-act="kw" data-kw="${esc(n)}" title="Show every ${esc(n)} row">${esc(n)}</button>`;
+  return `<span class="kws">${names.map(one).join("")}</span>`;
+}
+
+/**
  * A NOT_ORDERS task (rest, sleep, night, wait, a runner step) is a move the
  * Do panel starts directly, not something the ladder gates: rowRequest
  * always collapses its choice to a once job, so a kind button on such a row
@@ -313,6 +379,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
 function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: World): string {
   const arg = o.arg ?? "";
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(plain(o.recommended.text))}</small>` : "";
+  const tags = conceptsHtml(o.id, o.arg);
   const bar = o.mastery ? masteryLine(state, o.mastery) : "";
   // A producer works while you do not, which is the shape of the whole game and
   // which no row said. It shows on a row that cannot start yet too: a producer
@@ -332,14 +399,29 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     // is not coming, at the head of a list it stops.
     const queueable = o.id !== "makeCamp" && !o.never;
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${tags}${more}${expand}</div>`;
+  }
+  // Binding a camp is one click, no undo, and it decides every walk the run
+  // makes afterwards. It was done by accident, immediately after learning that
+  // siting is worth 5 km of walking, and the survivor ended up with a camp in
+  // each of two regions and no way to tell which was which. So the click asks,
+  // and the question says what camp this region already holds.
+  if (o.id === "makeCamp" && ui.confirmCamp) {
+    const st = regionState(state, world, state.player.region);
+    // Where the camp being moved actually is. Not whereIs, which answers "camp"
+    // for the camp cell and turns the whole sentence into a tautology.
+    const km = kmBetween(state, world, cellOf(state, world), st.campCell);
+    const held = km === null
+      ? `${esc(regionAt(world, state.player.region).name)}'s camp is somewhere {you} cannot reach from here`
+      : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(fmtKm(km))} from here`;
+    return `<div class="opt${openCls}" data-opt="intent:makeCamp:"><div class="confirm"><b>Move camp here?</b> <small>${held}. One camp to a region: this moves it rather than adding a second.</small><div><button class="mini danger" data-act="camp-yes" data-id="makeCamp" data-arg="">yes, camp here</button> <button class="mini" data-act="camp-no">no</button></div></div></div>`;
   }
   // A row you can do says its name and how long. Its detail is a sentence a
   // reader has to parse mid-scan, and the scan is what this panel is for, so
   // it moves under `more` rather than going away: still there for whoever
   // wants it, out of the way of whoever is looking for something else.
   const line = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${more}${expand}</div>`;
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${tags}${more}${expand}</div>`;
 }
 
 /** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
@@ -377,7 +459,10 @@ function rowsBox(key: string, heading: string, rows: string): string {
 function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
   const { direct, related } = rankRows(rows, ui.filter);
-  const typed = esc(ui.filter.trim());
+  // A concept heading says the concept, not the "kw:" that addressed it: the
+  // prefix is how a tag asks, and no part of it is for a reader.
+  const concept = conceptAsked(ui.filter);
+  const typed = esc(concept ?? ui.filter.trim());
   if (!direct.length && !related.length) return rowsBox("main", `nothing answers to "${typed}"`, "");
   const body = (list: TaskOption[]) => list.map((o) => intentRowHtml(o, ui, state, world)).join("");
   // "also" only means something under rows that said the word themselves. A

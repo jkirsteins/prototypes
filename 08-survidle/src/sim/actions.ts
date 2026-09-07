@@ -8,7 +8,7 @@ import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
 import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "./gut";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
-import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, KCAL_FULL, KG_ITEMS } from "./items";
+import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, KCAL_FULL } from "./items";
 import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
 import { body } from "./person";
@@ -178,8 +178,4 @@ export function dropAll(state: GameState, world: World): void {
   }
 }
 
-export function itemLabel(item: ItemId, q: number): string {
-  if (item === "water" || item === "ice") return `${q.toFixed(1)} l ${ITEM_NAMES[item]}`;
-  if (KG_ITEMS.has(item)) return `${q >= 10 ? Math.round(q) : q.toFixed(1)} kg ${ITEM_NAMES[item]}`;
-  return `${Math.round(q)} ${ITEM_NAMES[item]}`;
-}
+export { itemLabel } from "./items";

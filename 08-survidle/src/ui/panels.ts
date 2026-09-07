@@ -16,9 +16,10 @@ import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
+import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
-import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
+import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
 import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
@@ -30,7 +31,7 @@ import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, pausedList, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { GameState, Garment, ItemId, LogEntry, Order, Person, SkillId } from "../sim/types";
+import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -110,7 +111,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) tags.push(`<span class="tag bad">sleepy</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
-  return `<h2><span class="stat-face">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
+  return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food")}
 <div class="dim">fat: ${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg</div>
@@ -355,25 +356,6 @@ const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><s
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
 const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
-/**
- * Why a row is not running.
- *
- * The scheduler writes its own refusal onto an order it passed over, which
- * is why cordage says "waiting until first light" - and every order it has
- * not yet reached said the bare word "waiting", which tells a reader
- * nothing at the moment they most want to know. A row with no refusal
- * recorded asks the task the same question the Do row asks, so an order
- * waiting on a tool, on the weather or on a place says which.
- *
- * "met" is not a refusal: a keep whose figure is already reached is
- * finished with, not stuck.
- */
-function waitingWhy(state: GameState, world: World, cal: Calendar, o: Order): string {
-  if (o.skipped) return o.skipped;
-  if (orderMet(state, world, cal, o, false)) return "met";
-  const can = check(state, world, cal, o.req.task, o.req.arg);
-  return can.ok ? "waiting its turn" : `waiting: ${can.why}`;
-}
 
 /** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
 export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
@@ -384,19 +366,29 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   // that is doing something - the fire, the body's own rest - names it and keeps
   // the bar, which is that work's own.
   const idle = it?.task === "wait" && it.step === WAITING_STEP;
+  // Where the wait actually is, rather than a fixed "at camp": the wait's body
+  // tier walks - home, to the water, to the snares - so the fixed string spent
+  // those minutes claiming to be at camp while its own step said it was walking
+  // there. The cell is read, so the two halves of the sentence cannot disagree.
+  const waitWhere = it?.task === "wait" && cellOf(state, world) !== regionState(state, world, state.player.region).campCell
+    ? `Waiting, ${describeWhere(state, world)}`
+    : "Waiting at camp";
   const waiting = it?.task === "wait"
-    ? `<div class="step">Waiting at camp${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
+    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
     : "";
+  // One judgement for the whole list: waitingLine reads it per row, and running
+  // it per row would judge a ten-row list ten times a frame.
+  const judged = judgeOrders(state, world, cal);
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
     // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
     const clicks = live && hurryKind(state) === "click";
     const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
-    // orderMet is the plain reading and writes nothing; the scheduler's own read is
-    // what moves a restart band's mark, so drawing a row never advances the list.
+    // waitingLine is the plain reading and writes nothing; the scheduler's own read
+    // is what moves a restart band's mark, so drawing a row never advances the list.
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
-      : `<div class="step">${esc(plain(waitingWhy(state, world, cal, o)))}</div>`;
+      : `<div class="step">${esc(plain(waitingLine(state, world, cal, o, judged)))}</div>`;
     const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`

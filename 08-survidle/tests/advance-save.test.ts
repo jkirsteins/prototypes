@@ -143,6 +143,18 @@ describe("save", () => {
     expect(back.route!.path).toEqual(state.route!.path);
   });
 
+  it("a save from before a skill existed loads with it at nothing, and walks on", () => {
+    const { state, world } = newGame(3);
+    const raw = JSON.parse(serialize(state));
+    // The record is there and one key is missing, which is what a skill added
+    // after a run started looks like. The whole-record default cannot see it,
+    // and the first sight check of the catch-up reads the missing level.
+    delete raw.state.skills.wayfinding;
+    const back = deserialize(JSON.stringify(raw))!;
+    expect(back.state.skills.wayfinding).toEqual({ xp: 0, mastery: {}, pool: 0 });
+    expect(() => catchUp(back.state, world, 60)).not.toThrow();
+  });
+
   it("stores, loads, and keeps the save on death", () => {
     const storage = new MemStorage();
     const { state } = newGame(9);

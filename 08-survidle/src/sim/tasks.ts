@@ -40,7 +40,7 @@ import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
-import { seeFrom, sightRangeCells } from "./sight";
+import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
 import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
@@ -1526,7 +1526,9 @@ function pickVantage(state: GameState, world: World, cal: Calendar, region: numb
   let best: { cell: number; path: number[] } | null = null;
   let bestScore = -1;
   for (const c of candidates) {
-    const opened = sightRangeCells(state, world, cal, c.cell) ** 2;
+    // What the vantage opens, not what standing there tells you: the ring every
+    // cell gives is not a reason to walk anywhere.
+    const opened = sightReachCells(state, world, cal, c.cell) ** 2;
     const minutes = routeMinutes(world, c.path, speed, ice);
     const score = minutes <= 0 ? Number.POSITIVE_INFINITY : opened / minutes;
     if (score > bestScore) {

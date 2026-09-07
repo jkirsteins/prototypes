@@ -319,6 +319,11 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   line-height: var(--line);
   background: #05070c;
   width: max-content;
+  /* A map is dragged across and clicked on, never read as a passage, and a
+     drag that selects a row of glyphs paints the ground blue mid-gesture.
+     Safari honours only the prefixed property, so the plain one alone left
+     the cells selectable in the browser this was noticed in. */
+  -webkit-user-select: none;
   user-select: none;
   filter: saturate(var(--sat));
   transition: filter 0.5s linear;
@@ -405,21 +410,90 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.t-bog { color: #2f9f8f; background: #0b221f; }
 .grid .c.t-rock { color: #7a7f88; background: #1a1c20; }
 .grid .c.t-fell { color: #b9bec8; background: #22252b; }
-.grid.snow .c.t-spruce, .grid.snow .c.t-pine, .grid.snow .c.t-birch { color: #9fb8c8; }
-.grid.snow .c.t-meadow, .grid.snow .c.t-bog { color: #dfe6f0; }
-.grid.snow .c.t-rock, .grid.snow .c.t-fell { color: #e8ecf2; }
-.grid.snow .c:not(.t-water) { background: #121a26; }
+/* Under snow a spruce is a green tree with white in it, not a white tree: the
+   evergreens keep their colour, lifted and cooled by what is caught in the
+   needles, while the bare birch goes the colour of the snow around it. Past
+   DEEP_SNOW_CM - the depth that already halves a walk and doubles the burn -
+   there is more snow than tree to see, and they go white with everything else. */
+.grid.snow .c:not(.mk).t-spruce { color: #6f9e78; }
+.grid.snow .c:not(.mk).t-pine { color: #86b592; }
+.grid.snow .c:not(.mk).t-birch { color: #9fb8c8; }
+.grid.snow-deep .c:not(.mk).t-spruce { color: #c3d6dd; }
+.grid.snow-deep .c:not(.mk).t-pine { color: #d2e2e8; }
+.grid.snow-deep .c:not(.mk).t-birch { color: #e2ecf2; }
+/*
+ * Snow covers the ground; it does not erase it. One flat white over every
+ * terrain and one flat background under all of them made a winter map that
+ * could not be read - which ground was bog and which was fell, and where the
+ * land rose, were all the same colour. So the terrains keep telling themselves
+ * apart under it, in the cold end of their own colours, and the height keeps
+ * its three steps in the snow's own range: a drift on a rise catches the light
+ * and a hollow holds the shadow.
+ */
+.grid.snow .c:not(.mk).t-meadow { color: #dfe6f0; }
+.grid.snow .c:not(.mk).t-bog { color: #c2d4dc; }
+.grid.snow .c:not(.mk).t-rock { color: #d8dee8; }
+.grid.snow .c:not(.mk).t-fell { color: #f2f6fb; }
+.grid.snow .c:not(.mk):not(.t-water) { background: #121a26; }
+.grid.snow .c:not(.mk).t-meadow { background: #141d2a; }
+.grid.snow .c:not(.mk).t-bog { background: #101a24; }
+.grid.snow .c:not(.mk).t-rock { background: #171f2c; }
+.grid.snow .c:not(.mk).t-fell { background: #1d2634; }
+.grid.snow .c:not(.mk).t-spruce, .grid.snow .c:not(.mk).t-pine, .grid.snow .c:not(.mk).t-birch { background: #0f1823; }
+
+/* The height, in the snow's own range. The hollow is blue-shadowed and the
+   rise is nearly white, which is what relief looks like under snow. */
+.grid.snow .c:not(.mk).tone-0 { filter: brightness(0.82); }
+.grid.snow .c:not(.mk).tone-2 { filter: brightness(1.18); }
+/*
+ * The outline through the fog. A region's edge is drawn on ground nobody has
+ * walked, for the region stood in and the ones touching it, so the shape of
+ * where you are and what adjoins it can be read before it is explored. Which
+ * of the three it is sets the colour and nothing else: a fog cell never takes
+ * the wash or the ground colour a drawn cell of the same region takes.
+ */
+/* Every one of them is drawn on ground nobody has walked, so every one of them
+   is dimmed: the outline says where the boundary runs, and the brightness says
+   whether the ground under it has been seen. Your own region's edge is at full
+   accent where it crosses ground you know and muted where it does not, which
+   is the same reading the ground itself gives. */
+.grid .c.fog.edge-cur { --edge: rgba(230, 194, 41, 0.38); }
+.grid .c.fog.edge-known { --edge: rgba(59, 111, 209, 0.38); }
+.grid .c.fog.edge-unknown { --edge: #39404e; }
+.grid .c.fog.bl { border-left-color: var(--edge); }
+.grid .c.fog.br { border-right-color: var(--edge); }
+.grid .c.fog.bt { border-top-color: var(--edge); }
+.grid .c.fog.bb { border-bottom-color: var(--edge); }
+
 .grid .c.bl { border-left-color: var(--border); }
 .grid .c.br { border-right-color: var(--border); }
 .grid .c.bt { border-top-color: var(--border); }
 .grid .c.bb { border-bottom-color: var(--border); }
-.grid .c.cur { box-shadow: inset 0 0 0 20px rgba(255, 255, 255, 0.07); outline: 1px solid rgba(255, 255, 255, 0.07); outline-offset: -1px; }
+/* The region you stand in and the region you picked are marked by a wash over
+   their whole area, and never by a frame drawn on each of their cells: a frame
+   per cell says at cell scale what the wash and the accent-coloured region
+   border below already say at region scale, and 69 of them read as graph paper
+   laid over the ground rather than as a place. */
+.grid .c.cur { box-shadow: inset 0 0 0 20px rgba(255, 255, 255, 0.07); }
 .grid .c.cur.bl { border-left-color: var(--accent); }
 .grid .c.cur.br { border-right-color: var(--accent); }
 .grid .c.cur.bt { border-top-color: var(--accent); }
 .grid .c.cur.bb { border-bottom-color: var(--accent); }
-.grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); outline: 1px solid rgba(230, 194, 41, 0.18); outline-offset: -1px; }
-.grid .c.mk { font-weight: bold; position: relative; z-index: 1; }
+.grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); }
+/*
+ * What stays legible once the night sheet is down: where you are, where camp
+ * is, and the line of your walk. Those are the three things you would know in
+ * the dark without looking, so they carry a z-index and the sheet passes under
+ * them. A shelter, a trap and a seep are marks on ground you cannot see from
+ * here at midnight, so they take the dark with everything else.
+ *
+ * The fire is the exception, and not an arbitrary one: it is the light. The
+ * close rungs already put its cell above the sheet (.grid.night .c.lit-0
+ * below), and burying its marker at the coarse rungs would have one fire lit
+ * and the same fire dark depending only on how far the map is zoomed out.
+ */
+.grid .c.mk { font-weight: bold; position: relative; }
+.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire { z-index: 1; }
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 .grid .c.mk-shelter { color: #fff; background: #4a5a78; }
@@ -429,11 +503,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-camp { color: #0c0f14; background: #6fcf6f; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
 .grid .c.mk-seep { color: #0c0f14; background: #6fa8dc; }
-/* The named places share one colour: they are ground the player found, not
-   anything built, so they take a tinted cell rather than the solid fill the
-   built marks use. Every spot sits within a few cells of camp, and four solid
-   tiles there drown out the @ they are clustered around. */
-.grid .c.mk-spot { color: #e0c07a; background: #2c2413; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -443,7 +512,46 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
-#map .legend b.mk-spot { color: #c8a35a; }
+
+/*
+ * The survivor moves. What the person is doing is filed under one of five
+ * moods (ui/mood.ts) and written as a class on the @ and on the header
+ * portrait, so both say the same thing at once and the sim is asked nothing
+ * twice. All of it is quiet on purpose: a motion you notice when it stops
+ * rather than one that competes with the firelight or the walk line. Walking
+ * and working are the two that move; resting, sleeping and idle are told by
+ * stillness, which is the reading they want anyway.
+ */
+@keyframes mood-step { from { transform: translateY(0); } to { transform: translateY(-1px); } }
+@keyframes mood-toil { from { background-color: var(--m0); } to { background-color: var(--m1); } }
+@keyframes mood-breathe { from { transform: scale(1); } to { transform: scale(1.04); } }
+
+.grid .c.mk-player.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
+.grid .c.mk-player.mood-work {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: mood-toil 2.4s ease-in-out infinite alternate;
+}
+/* Asleep is a dimmer @ and no motion at all; rest and idle are the plain mark. */
+.grid .c.mk-player.mood-sleep { background: #7d5c08; }
+.grid .c.mk-player.mood-rest, .grid .c.mk-player.mood-idle { animation: none; }
+
+/* The portrait animates by its wrapper and never by its pixels: the face is
+   64 SVG rects redrawn from the person, and moving those every frame would
+   spend the churn budget tests/churn.test.ts guards for a 24px breath. */
+.stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep { transform-origin: 50% 60%; }
+.stat-face.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
+.stat-face.mood-work { animation: mood-breathe 3.4s ease-in-out infinite alternate; }
+.stat-face.mood-rest { animation: mood-breathe 4.6s ease-in-out infinite alternate; }
+.stat-face.mood-sleep { opacity: 0.65; animation: mood-breathe 5.6s ease-in-out infinite alternate; }
+.stat-face.mood-idle { animation: none; }
+
+/* Somebody who has asked their system for less motion is asking this screen too. */
+@media (prefers-reduced-motion: reduce) {
+  .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
+  .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep {
+    animation: none;
+  }
+}
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
 @keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }
@@ -527,6 +635,25 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .opt .when { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; padding: 0 0 4px; color: var(--dim); font-size: 12px; }
 .when input { width: 4em; }
 .when select { max-width: 10em; }
+/*
+ * A row's concept tags. They sit between the row's own button and its "more",
+ * as their own column, so a long row's label wraps above them rather than
+ * pushing them off the line. Quiet by default and lit on hover: they are a
+ * label first and a control second, and a list of eleven bright chips would
+ * be louder than the rows they annotate.
+ */
+.opt .kws { display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start; align-items: flex-start; padding-top: 2px; }
+.opt .kw {
+  background: transparent; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 8px;
+  font: inherit; font-size: 11px; line-height: 1.5; cursor: pointer;
+  padding: 0 6px; white-space: nowrap;
+}
+.opt .kw:hover { color: var(--accent); border-color: var(--accent); }
+/* The camp question stands in the row it replaces, so nothing under it moves. */
+.opt .confirm { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+.opt .confirm small { color: var(--dim); }
+
 .opt .rep {
   background: #181e27; color: var(--dim);
   border: 1px solid var(--line); font: inherit; cursor: pointer;
@@ -694,12 +821,78 @@ button.act small.gives, span.act small.gives,
   #doitems { padding-left: 0; overflow-y: visible; }
 }
 
-/* Height as tone. The step is
+/* Height as tone. Snow flattens all of it - a white field has no relief left
+   to show - so every step here is written to lose to it. The step is
    on the letter alone - a filter on the cell drags its background with it and
    the map fills with bright and dark rectangles instead of trees. */
-.grid .c.t-spruce.tone-0 { color: #16642a; }
-.grid .c.t-spruce.tone-2 { color: #35c455; }
-.grid .c.t-pine.tone-0 { color: #2d8640; }
-.grid .c.t-pine.tone-2 { color: #6ee089; }
-.grid .c.t-birch.tone-0 { color: #6da548; }
-.grid .c.t-birch.tone-2 { color: #c2f593; }
+.grid:not(.snow) .c:not(.mk).t-spruce.tone-0 { color: #16642a; }
+.grid:not(.snow) .c:not(.mk).t-spruce.tone-2 { color: #35c455; }
+.grid:not(.snow) .c:not(.mk).t-pine.tone-0 { color: #2d8640; }
+.grid:not(.snow) .c:not(.mk).t-pine.tone-2 { color: #6ee089; }
+.grid:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #6da548; }
+.grid:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #c2f593; }
+
+/* The open ground takes the same step for the same reason: a screen of one
+   flat colour per terrain reads as a table, and the relief is already in the
+   world. Backgrounds move here as well as letters - a field is mostly its
+   cell, where a tree is mostly its letter - but only by a shade.
+
+   Never on a marked cell. These rules carry a background and a class more than
+   the mark rules do, so without the exclusion an @ standing on toned ground
+   lost its amber and got it back on the next cell: a survivor who flickered as
+   they walked. A mark owns its whole cell. */
+.grid:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #5c8032; background: #131a0c; }
+.grid:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #8ab84a; background: #1c2612; }
+.grid:not(.snow) .c:not(.mk).t-bog.tone-0 { color: #278477; background: #091c1a; }
+.grid:not(.snow) .c:not(.mk).t-bog.tone-2 { color: #3cc2af; background: #0e2b27; }
+.grid:not(.snow) .c:not(.mk).t-rock.tone-0 { color: #666b73; background: #16181c; }
+.grid:not(.snow) .c:not(.mk).t-rock.tone-2 { color: #92979f; background: #202329; }
+.grid:not(.snow) .c:not(.mk).t-fell.tone-0 { color: #9aa0aa; background: #1d2026; }
+.grid:not(.snow) .c:not(.mk).t-fell.tone-2 { color: #d6dbe4; background: #292d35; }
+
+/* Depth. `coast` crosses zero at the shore and runs on out to sea, so the
+   shallows are the lit end and the open water the dark one - the way water
+   reads standing on a beach. A lake has no offshore and keeps the plain
+   colour. */
+.grid:not(.snow) .c:not(.mk).t-water.deep-0 { color: #5b9ae8; background: #102047; }
+.grid:not(.snow) .c:not(.mk).t-water.deep-2 { color: #2b53a4; background: #060d20; }
+
+/*
+ * The year in colour.
+ *
+ * Only the letters move, and only for what actually changes with the season.
+ * Spruce and pine are evergreen and hold their colour through the year; birch
+ * is not, and it is the one tree the calendar shows. The ground follows it:
+ * green through the growing season, fading through autumn, bare in winter.
+ *
+ * None of it touches a marked cell - see "a mark owns its whole cell" below.
+ *
+ * Snow is a separate condition and wins over all of it - it is on the ground
+ * or it is not, whatever the month says. That is written into the selectors
+ * rather than left to the order of the file, which a later edit would move.
+ */
+/* Low ground turns first and deepest, the tops stay yellow longest, so the
+   height step runs red through orange to gold rather than just light to dark. */
+.grid.season-autumn:not(.snow) .c:not(.mk).t-birch { color: #f0b93f; }
+.grid.season-autumn:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #e07a2a; }
+.grid.season-autumn:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #ffdc72; }
+/* The ground turns in patches, not all over: only the cells the world says are
+   dry (ui/ground.ts, turnedGround) go over, and the damp ground beside them
+   stays as green as it was in July. The backgrounds warm with the letters on
+   those cells only, or a gold letter sits on summer ground. */
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow { color: #d09a42; background: #1f1a0c; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow.tone-0 { color: #c06a2e; background: #1a1409; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow.tone-2 { color: #e8c15c; background: #292110; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog { color: #c4713c; background: #1e150e; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog.tone-0 { color: #ad5530; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog.tone-2 { color: #dd9455; }
+
+/* Winter without snow on the ground: the birch is bare wood, the field is dead
+   grass. Everything else is what it is in any month. */
+.grid.season-winter:not(.snow) .c:not(.mk).t-birch { color: #8a7256; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #6d5943; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #a89078; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-meadow { color: #7c7a63; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #63614e; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #9a9880; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-bog { color: #6f7b78; }

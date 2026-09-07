@@ -496,6 +496,34 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): { ch
 }
 
 /**
+ * The second line of a row that is not the live one. The scheduler already
+ * knows why every row is not running, and until now threw all of it away
+ * but the refusals: a row it judged able to run got `skipped = ""` and the
+ * panel printed the bare word "waiting", which says nothing at all. The
+ * commonest reason a row is not running is that another row is, and that
+ * is the one the player most needs, since it is the difference between a
+ * list working through its ranks and a list stuck.
+ *
+ * The judgement is passed in rather than taken here: it is one pass over
+ * the whole list, and a panel drawing ten rows must not make ten of them.
+ */
+export function waitingLine(state: GameState, world: World, cal: Calendar, o: Order, judged: { chosen: Order | null; stalling: Order | null }): string {
+  if (o.skipped) return o.skipped;
+  if (orderMet(state, world, cal, o, false)) return "met";
+  // A once order that cannot run holds everything under it. Naming it is the
+  // whole of finding 8's complaint: a blocked head stops the list, and nothing
+  // on screen ever said so.
+  const { chosen, stalling } = judged;
+  if (stalling && stalling.id !== o.id) return `held up by "${orderSentence(state, world, cal, stalling)}"`;
+  if (chosen && chosen.id !== o.id) return `waiting its turn, behind "${orderSentence(state, world, cal, chosen)}"`;
+  // Nothing else is holding it, so whatever is wrong is its own: the row
+  // asks the task the question the Do row asks. "Waiting its turn" while
+  // nothing is ahead of it would be a row waiting on nobody.
+  const can = check(state, world, cal, o.req.task, o.req.arg);
+  return can.ok ? "waiting its turn" : `waiting: ${can.why}`;
+}
+
+/**
  * The once order stopping the list, if one is: the topmost request that
  * cannot run with nothing above it that can. The rows under it are held by
  * it and will not run until it can or it comes off, so a player - and the

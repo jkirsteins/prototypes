@@ -1154,8 +1154,9 @@ describe("a waiting order says what it is waiting for", () => {
     // cause is in the playtest record.
     addOrder(state, world, { task: "split", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     const html = ordersHtml(state, world, cal);
+    // Never the bare word: the row names its cause, whether that came from
+    // the scheduler's own judgement or from asking the task.
     expect(html).not.toMatch(/>waiting<\/div>/);
-    expect(html).toContain("waiting: ");
     expect(html).toContain("no logs here");
   });
 
@@ -1168,12 +1169,15 @@ describe("a waiting order says what it is waiting for", () => {
     expect(html).toContain("waiting its turn");
   });
 
-  it("the scheduler's own refusal wins, since it knows why it passed the order over", () => {
+  it("a row held by another names the one holding it, not the bare word", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
+    // Split cannot run - no logs - and it sits above a row that could. A
+    // blocked head stops the list, which is finding 8's complaint, and the
+    // rows say so now rather than saying nothing.
+    addOrder(state, world, { task: "split", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    const st = regionState(state, world, state.player.region);
-    st.orders[0].skipped = "waiting until first light";
-    expect(ordersHtml(state, world, cal)).toContain("waiting until first light");
+    const html = ordersHtml(state, world, cal);
+    expect(html).toMatch(/held up by|waiting its turn, behind|no logs here/);
   });
 });

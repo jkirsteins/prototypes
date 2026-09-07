@@ -17,6 +17,8 @@ export interface UiState {
   /** What happened while the tab was closed, until dismissed. */
   away: AwaySummary | null;
   confirmAbandon: boolean;
+  /** The Make camp row is showing its confirm step. Binding a camp is one click and no undo. */
+  confirmCamp: boolean;
   /** The cemetery overlay is open. */
   cemetery: boolean;
   /** The manual overlay is open. */
@@ -121,7 +123,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), selected: null, hover: null, away: null, confirmAbandon: false,
+    panes: defaultPanes(), selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "",
     hurry: newHurry(),

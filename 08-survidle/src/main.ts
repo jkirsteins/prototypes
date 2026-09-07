@@ -35,7 +35,7 @@ import { placeTip, updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
-import { doHtml, doPurposesHtml } from "./ui/dopanel";
+import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromPoint, LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
@@ -112,6 +112,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.hurry = newHurry();
   ui.confirmAbandon = false;
   ui.panes = loadPanes(localStorage);
+  ui.confirmCamp = false;
   resetPanels();
   resetForecastAt();
   saveGame(state);
@@ -276,10 +277,36 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
+/**
+ * Keeps the clicked thing where the hand left it. The order list lives in
+ * #task at the top of the right-hand column and the Do list in #actions
+ * further down the same scrolling .col, so giving an order grows a panel
+ * above the one being clicked and every row under it slides - the list moved
+ * under the pointer on nine separate occasions in the playtest, and the click
+ * that follows lands on whatever took the row's place.
+ *
+ * The real answer is to stop stacking them, which is a layout change and not
+ * this. So: measure where the clicked element sits before the render and
+ * after it, and give the scroll back the difference. Nothing to restore when
+ * the element is gone from the page (a confirm that replaced its own row) or
+ * when it was never inside a scrolling column.
+ */
+function anchorScroll(target: HTMLElement): () => void {
+  const col = target.closest<HTMLElement>(".col");
+  if (!col) return () => {};
+  const before = target.getBoundingClientRect().top;
+  return () => {
+    if (!target.isConnected) return;
+    const after = target.getBoundingClientRect().top;
+    if (after !== before) col.scrollTop += after - before;
+  };
+}
+
 function onClick(ev: Event) {
   const target = (ev.target as HTMLElement).closest<HTMLElement>("[data-act]");
   if (!target) return;
   const act = target.dataset.act;
+  const restoreScroll = anchorScroll(target);
   const cal = calendar(state.minute, state.startDoy);
   const rng = new Rng(state.rng);
   switch (act) {
@@ -438,13 +465,34 @@ function onClick(ev: Event) {
       ui.away = null;
       lastReal = performance.now();
       break;
-    case "intent": {
-      const { req, kind } = rowRequest(defaultChoiceFor(target.dataset.id as TaskId), target.dataset.id as TaskId, target.dataset.arg || undefined);
+    case "intent":
+    case "camp-yes": {
+      const id = target.dataset.id as TaskId;
+      // Binding a camp asks first: the row swaps to its question, and only the
+      // yes acts. Every other row acts on the click, as it always has.
+      if (id === "makeCamp" && act === "intent") {
+        ui.confirmCamp = true;
+        break;
+      }
+      ui.confirmCamp = false;
+      const { req, kind } = rowRequest(defaultChoiceFor(id), id, target.dataset.arg || undefined);
       // The site is where the click happened, not wherever the runner is standing when
       // the order finally starts; RowChoice has no cell of its own to carry that.
       if (req.task === "makeCamp") req.where = { cell: cellOf(state, world) };
       // The row is greyed with no button when the gate is shut; this is the belt to that brace.
       if (orderGate(state, req, kind).ok) orderByHand(state, world, cal, rng, req, kind);
+      break;
+    }
+    case "camp-no":
+      ui.confirmCamp = false;
+      break;
+    case "kw": {
+      // A concept tag asks for its own rows exactly, not for the letters of its
+      // name: see conceptAsked in dopanel.ts. The box is static markup outside
+      // every panel, so its value is written here rather than rendered.
+      ui.filter = `${KW_PREFIX}${target.dataset.kw ?? ""}`;
+      const box = document.querySelector<HTMLInputElement>("[data-do=filter]");
+      if (box) box.value = ui.filter;
       break;
     }
     case "row-more": {
@@ -498,6 +546,7 @@ function onClick(ev: Event) {
   if (FORECAST_ACTS.includes(target.dataset.act!)) requestForecast();
   saveGame(state);
   render();
+  restoreScroll();
 }
 
 function zoomBy(delta: number) {
