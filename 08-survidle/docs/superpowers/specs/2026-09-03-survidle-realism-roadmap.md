@@ -3805,23 +3805,22 @@ a question this item will meet.
 
 **Built.** Spec `2026-09-07-survidle-order-ladder-design.md`, plan
 `2026-09-07-survidle-order-ladder.md`. Measured on the five reference
-seeds: April 5 of 5, winter 5 of 5, the year at level 20 4 of 5 (from 3)
-- seed 17 is the one that falls, freezing on day 342 with 56.6 kg of
-dried meat and 2.4 kg of raw meat at camp and no fat at all, seven
-lean-wall days of the last seven and a burn of 8,234 kcal a day of which
-5,103 is walking, a starving body that froze rather than a cold camp,
-since 593 kg of firewood stood at camp on 1 March - and the lineage 5 of
-5 (from 1), with the trend gate at 3 of 5 and reported rather than
-required. The year at level 10, run as a reading and not a gate, is 1 of
+seeds: April 5 of 5, winter 5 of 5, the year at level 20 3 of 5 (from 3)
+and the lineage 5 of 5 (from 1), with the trend gate at 3 of 5 and
+reported rather than required. The year's two deaths are seed 19 on day
+312 and seed 45 on day 286, both starvations with wood banked - 161 kg and
+78 logs, 283 kg and 114 logs - and both the fat finding under another
+name; seed 17, the death the two follow-up fixes answer, reaches day 366
+where it froze on day 342. The year at level 10, run as a reading and not a gate, is 1 of
 5: a level-10 survivor has the keep rung and not the condition rung, so
 every season, stock line, restart and daily count on its list is
 stripped and played by hand, and the reading is what the two upper rungs
-are worth. A level-20 camp's attention runs 16 to 32 mornings a year,
-0.3 to 0.6 a week, and on seed 42 the water method alone is 65 of the 84
+are worth. A level-20 camp's attention runs 24 to 37 mornings a year,
+0.5 to 0.8 a week, and on seed 42 the water method alone is 65 of the 84
 flips a level-20 year counts, the other 19 being once-jobs dropping off
 as the plan finishes; the same tally at level 10 is the returning player
 made visible, the root row's daily count re-given 85 times and the two
-paced wood keeps 23 each. Two runner fixes. The plant band's three hours
+paced wood keeps 23 each. Four runner fixes. The plant band's three hours
 are split across the rows a camp has, in whole hours - two of roots and,
 for six weeks, one of eggs - rather than divided by three including a
 sea-only seaweed row (measured on seed 45, whose inland camp never had
@@ -3834,10 +3833,28 @@ region held 28 orders when the second heir landed and 126 by the end of
 the sixth life, and a level-9 heir was working seasons and stock lines a
 level-18 ancestor had earned, none of it counted as its own attention -
 and the landing now clears the lists beside the ice holes, which took
-the lineage to 5 of 5. Findings left for the author: seed 17's level-20
-death is the site and not the vocabulary, its wood, water and bog far
-enough from the camp cell that March's walking is more than half its
-burn and the winter-wood keeps run behind their paced target all autumn;
+the lineage to 5 of 5. Then two more, both asked for by seed 17's freeze
+on day 342. A paced keep's target now falls to nothing at its season's
+close, the mirror of the rise it already had, because a winter pile is
+what is burned before the thaw: the four wood keeps had asked for the
+whole 600 kg and 300 logs every day of the deep winter, and seed 17 spent
+107 hours walking for 11.5 hours of felling over its last forty days with
+593 kg of firewood standing. And the bark bucket is a keep rather than a
+camp-has job, since a job drops off when met and is never given again, so
+the camp whose last bucket burst in the ice had no vessel for the rest of
+its life and its water keep read "needs a vessel" from that day on.
+Together they take seed 17's last week from 5,103 kcal a day of walking
+to 438 and from seven lean-wall days of seven to none, and the year to
+day 366; they cost seeds 45 and 19 the year, which is a loss reported and
+not tuned away. Findings left for the author: seed 17's level-20 death
+was half the wood keeps and half the site, and the site is what is left,
+its wood, water and bog far enough from the camp cell that the
+winter-wood keeps run behind their paced target all autumn and the camp
+reaches March on lean with no fat; the fall applies to the 600 kg split
+buffer as well as to the 300-log reserve, and a ten-day buffer is not the
+pile the fall is about, so a March camp asks for fifty kilos against a
+sixty-kilo day - no seed died cold on the reading, so it is a shape to
+watch;
 no shape at any rung can say "hunt until the camp has its fat", since a
 keep's item comes from its task, no task yields fat directly and a stock
 line can only shut a row, so the fat and not the meat is what runs a
