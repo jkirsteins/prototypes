@@ -2,6 +2,7 @@ import { edible, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
+import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
@@ -320,6 +321,11 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
+  // What each producer standing here is limited by: the reason a camp that
+  // makes its own food still runs out.
+  const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
+    .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
+    .join("");
   let travel = "";
   if (!here) {
     const go = check(state, world, cal, "travel", `region:${id}`);
@@ -342,7 +348,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 <dt>places</dt><dd class="spots">${spots}${loose}</dd>
 ${here ? `<dt>water</dt><dd>${esc(waterLine(state, world, cal))}<br><small>${esc(waterList(state, world, cal))}</small></dd>` : ""}
 ${asCamp}
-<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}</dd>
+<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}${limits}</dd>
 </dl>${travel}`;
 }
 

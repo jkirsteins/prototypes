@@ -449,6 +449,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* A moment: narrower than the manual, since it says one thing. */
 #overlay .box.teach { max-width: 460px; }
 #overlay .box.teach p { margin: 6px 0; }
+/* What a producer makes without you: the promise stands on the row whether or not it can be built yet. */
+.opt .gives { display: block; color: var(--good); }
+
 #overlay .box.teach.welcome { max-width: 520px; }
 #overlay .box.teach .statuses { margin: 10px 0; }
 #overlay .box.teach .example {

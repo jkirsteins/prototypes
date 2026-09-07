@@ -1,5 +1,6 @@
 import { itemLabel } from "../sim/actions";
 import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
+import { capabilityFor } from "../sim/capabilities";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
@@ -288,6 +289,11 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   const arg = o.arg ?? "";
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(plain(o.recommended.text))}</small>` : "";
   const bar = o.mastery ? masteryBar(o.mastery) : "";
+  // A producer works while you do not, which is the shape of the whole game and
+  // which no row said. It shows on a row that cannot start yet too: a producer
+  // under its level is the row a player most needs the promise on.
+  const cap = capabilityFor(o.id, o.arg);
+  const gives = cap?.producer ? `<small class="gives">${esc(cap.gives)}</small>` : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
   const more = canOpen ? `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>` : "";
@@ -299,11 +305,11 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     // it gets no "add it anyway" queue path, only the reason it is grey.
     const queueable = o.id !== "makeCamp";
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   const line = [time, o.detail ? plain(o.detail) : ""].filter(Boolean).join("; ");
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${more}${expand}</div>`;
 }
 
 /** A group's rows, built at the open row's own chosen spot (so its duration and ok reflect that spot), then narrowed by the filter. */
