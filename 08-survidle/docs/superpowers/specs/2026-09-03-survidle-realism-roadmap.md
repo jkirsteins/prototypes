@@ -415,7 +415,10 @@ pace at 20 on every skill's ladder, the runner restricted to the shapes
 its skills have earned), because the runner's seasonal sense is rules
 in code no player can write, so the gates measure a player who does not
 exist; a paced woodpile measured as a bare rule took the lineage from 1
-of 4 to 3, then M a landing on the coast (the section of that name
+of 4 to 3; built, spec `2026-09-07-survidle-order-ladder-design.md`,
+plan `2026-09-07-survidle-order-ladder.md`, April 5 of 5, winter 5 of 5,
+the year 4 of 5 from 3, the lineage 4 of 5 from 1, readings under F),
+then M a landing on the coast (the section of that name
 below: stone within reach of a coastal camp, the sea shore's fishing
 seen to work, the landing chosen by the seed), because no landing in 300
 seeds is coastal and a coastal probe froze every beginner for want of
@@ -3802,6 +3805,83 @@ The runner cannot cut the full 6,600 kg by December even from midsummer:
 the pile tops out near 3,700 kg at about two logs a day beside water,
 cooking and fire, so the stock figure, the cutting rate or the window is
 a question this item will meet.
+
+**Built.** Spec `2026-09-07-survidle-order-ladder-design.md`, plan
+`2026-09-07-survidle-order-ladder.md`. Measured on the five reference
+seeds: April 5 of 5, winter 5 of 5, the year at level 20 2 of 5 (from 3)
+and the lineage 5 of 5 (from 1), with the trend gate at 3 of 5 and
+reported rather than required. The year's three deaths - seed 17 on day
+340, 19 on day 305, 45 on day 284 - are all starvations with wood banked
+and all the fat finding under another name. That row is also where five
+seeds stop being enough: the same tree reads 2 of 5 there and 19 of 30
+alive on a thirty-seed sweep, better than any other shape measured, so the
+sweep is the reading and the gate is the shape. The year at level 10, run
+as a reading and not a gate, is 2 of 5: seeds 42 and 79 reach it, 17 froze
+on day 333, 19 starved on 93 and 45 on 116. A level-10 survivor has the
+keep rung and not the condition rung, so every season, stock line, restart
+and daily count on its list is stripped and played by hand, and the reading
+is what the two upper rungs are worth. A level-20 camp's attention runs 22 to 36 mornings a year,
+0.5 to 0.8 a week, and on seed 42 the water method alone is 65 of the 84
+flips a level-20 year counts, the other 19 being once-jobs dropping off
+as the plan finishes; the same tally at level 10 is the returning player
+made visible, the root row's daily count re-given 85 times and the two
+paced wood keeps 23 each - a tally from before the follow-up fixes, which
+changed the bucket row at every rung and the pace at the two upper ones.
+The level-10 year's own attention is 199, 67, 194, 222 and 99 mornings,
+which is the two upper rungs priced in mornings. Five runner fixes. The plant band's three hours
+are split across the rows a camp has, in whole hours - two of roots and,
+for six weeks, one of eggs - rather than divided by three including a
+sea-only seaweed row (measured on seed 45, whose inland camp never had
+that row standing, dug 273 kcal a day under the band and starved on the
+lean wall on day 200 with 19 tonnes of rhizome in reach), which took the
+year gate from 3 of 5 to 4 of 5. And the plan dies with the planner:
+`beginAgain` left every region's order list standing, so an heir
+inherited its ancestors' plan along with their camp - seed 17's old
+region held 28 orders when the second heir landed and 126 by the end of
+the sixth life, and a level-9 heir was working seasons and stock lines a
+level-18 ancestor had earned, none of it counted as its own attention -
+and the landing now clears the lists beside the ice holes, which took
+the lineage to 5 of 5. Then three more, all asked for by seed 17's freeze
+on day 342. The bark bucket is a keep rather than a camp-has job, since a
+job drops off when met and is never given again, so the camp whose last
+bucket burst in the ice had no vessel for the rest of its life and its
+water keep read "needs a vessel" from that day on. And the pace grew a
+second word, which the item had not planned and the measurement insisted
+on: `by` alone means the target rises to its figure and holds, while
+`spend` beside it means the target falls away again to nothing at the
+season's close. The wood rows want one each. The log reserve is a store
+cut for one winter and burned through it, so it is spent - held, it had
+seed 17 walking 107 hours for 11.5 hours of felling over its last forty
+days with 593 kg of firewood standing. The split pile is the buffer the
+fire draws on daily and the reserve refills, so it holds - spent, it froze
+seed 15 on day 280 with 138 uncut logs and 1.7 million kcal at camp, and
+flat with no rise at all it became a splitting treadmill that cost three
+of five lineages their year. Over thirty seeds the two words read 19 alive
+with 4 freezes, against 18 and 5 before the item and 18 and 8 with the
+buffer spent. Findings left for the author: seed 17's level-20 death is
+the site, its wood, water and bog far enough from the camp cell that the
+winter keeps run behind their paced target all autumn and the camp reaches
+March on lean with no fat, walking 3,503 kcal a day after game in the week
+it dies; a gate of five seeds cannot see a shape, since both wrong pace
+shapes read 3 of 5 on the reference seeds while one added three freezes to
+thirty and the other cost three lineages, so a rule that fires once a
+season wants the sweep before it is believed;
+no shape at any rung can say "hunt until the camp has its fat", since a
+keep's item comes from its task, no task yields fat directly and a stock
+line can only shut a row, so the fat and not the meat is what runs a
+camp out; rewriting the winter shore's fish row to read the camp's fat
+instead was measured and withdrawn, since the fat crosses the winter
+stock's 20 kg line in midsummer on the same seed too and the row shuts
+anyway, dying on day 296 rather than 323 - the row needs a second catch,
+not a second line; the heir's walk home carries no order at all until
+the runner reaches the region, so an heir walking a fortnight after
+death has no fire and no shelter on the road, and two of seed 79's lives
+froze there on days 5 and 11; `setUpStage` gives a want without reading
+its own `when`, so a horizon keeps-rung stage stands up on 1 April
+holding a full 600 kg wood keep out of its season, a reading and not a
+gate; and the ice hysteresis around `ICE_SHORE_CM`, the water method's
+65 of 84 flips a year, is the whole of a level-20 camp's attention - a
+reading and not a defect.
 
 ### M. A landing on the coast
 

@@ -1,18 +1,18 @@
 import { itemLabel } from "../sim/actions";
-import type { Calendar } from "../sim/calendar";
+import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
-import { RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
-import { NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
+import { ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
+import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween } from "../sim/position";
-import { levelMinutes, SKILL_NAMES } from "../sim/skills";
+import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { plain } from "../sim/voice";
 import { SPOT_NAMES, type TaskOption, withProgression } from "../sim/tasks";
-import type { GameState, TaskId } from "../sim/types";
+import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { actionsHtml, instantHtml, masteryBar } from "./panels";
-import { esc, rowRequest, type RowChoice, type UiState } from "./render";
+import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 
 /** The Do panel's fold state, under one local storage key: which groups are shut. Absent means open. */
 export const FOLD_KEY = "survidle.ui";
@@ -87,18 +87,87 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
 function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"], n: number): string {
   const item = yieldItem(id, arg);
   if (until === "times") return `${n} times`;
+  if (until === "daily") return `${n} a day`;
   if (until === "campHas") return item ? `until camp has ${itemLabel(item, n)}` : "once";
   if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep it lit" : "once";
   if (until === "forever") return "forever";
   return "once";
 }
 
-/** The small print under a kind the row's skill has not earned: what it needs and about how long. */
+/**
+ * The small print under a kind or a condition the row's skill has not
+ * earned: the rung the gate stopped at, in the gate's own words, and about
+ * how long to it.
+ */
 function kindNeeds(state: GameState, gate: Gate): string {
   if (gate.ok) return "";
   const xp = state.skills[gate.skill].xp;
   const hours = Math.max(1, Math.round((levelMinutes(gate.at) - xp) / 60));
-  return `needs ${SKILL_NAMES[gate.skill]} ${gate.at}, about ${hours} h`;
+  return `${plain(gate.why)}, about ${hours} h`;
+}
+
+/**
+ * The gate on a throwaway order carrying one condition and nothing else,
+ * so the small print names that rung whatever kind the row is set to. The
+ * figures are placeholders: the ladder reads which fields are there, not
+ * what they say.
+ */
+function rungGate(state: GameState, id: TaskId, arg: string, rung: "condition" | "pace"): Gate {
+  const when: OrderWhen = rung === "pace" ? { by: 0 } : { restart: 0 };
+  return orderGate(state, { task: id, arg: arg || undefined, until: { kind: "once" }, deliver: "leave", where: "nearest", when }, "job");
+}
+
+/** A month picker's options: "any", then the twelve by name, the chosen one selected by the day of year it starts on. */
+function monthOptions(chosen: number | undefined): string {
+  const months = Array.from({ length: 12 }, (_, m) => `<option value="${m}"${chosen === monthStartDoy(m) ? " selected" : ""}>${esc(monthName(m))}</option>`).join("");
+  return `<option value=""${chosen === undefined ? " selected" : ""}>any</option>${months}`;
+}
+
+/**
+ * The condition fields under a row's kinds, from the condition rung: a
+ * season by month, a stock line read at camp, and for a row that counts a
+ * stock the restart line a keep's band reads and, at the pace rung, the
+ * date its target is due. Under a rung the fields are absent and the small
+ * print says which level opens them.
+ *
+ * The restart and the date show beside the kinds rather than after a keep
+ * is chosen: a kind button is the click that gives the order, so there is
+ * no moment between choosing "keep" and having given it. Only a keep
+ * carries them out of rowRequest, so setting them and then clicking "once"
+ * gives the once job it says.
+ *
+ * The item picker offers everything with a name rather than only what camp
+ * holds: a stock line is most often a wait for something camp has none of
+ * yet ("while camp has at least 1 bone"), which a picker over the pile
+ * could not say.
+ */
+function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): string {
+  const skill = gateSkill(o.id, arg || undefined);
+  if (!skill) return "";
+  const level = skillLevel(state, skill);
+  const w = ui.choice.when;
+  const keep = yieldItem(o.id, arg || undefined) !== null;
+  const parts: string[] = [];
+  if (level < RUNG_LEVEL.condition) {
+    parts.push(`<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "condition")))}</small>`);
+  } else {
+    parts.push(`<span>from <select data-row-season-from>${monthOptions(w.season?.from)}</select> to <select data-row-season-to>${monthOptions(w.season?.to)}</select></span>`);
+    const items = (Object.keys(ITEM_NAMES) as ItemId[]).map((i) => `<option value="${i}"${w.stock?.item === i ? " selected" : ""}>${esc(ITEM_NAMES[i])}</option>`).join("");
+    const mode = `<select data-row-stock-mode><option value="atLeast"${w.stock?.under === undefined ? " selected" : ""}>at least</option><option value="under"${w.stock?.under === undefined ? "" : " selected"}>under</option></select>`;
+    parts.push(`<span>while camp has <select data-row-stock-item><option value=""${w.stock ? "" : " selected"}>anything</option>${items}</select> ${mode} <input type="number" min="0" data-row-stock-n value="${w.stock ? stockQty(w.stock) : ""}"></span>`);
+    if (keep) parts.push(`<span>restart under <input type="number" min="0" data-row-restart value="${w.restart ?? ""}"></span>`);
+  }
+  if (keep && level >= RUNG_LEVEL.condition) {
+    // The spending box sits beside the date because it says what happens after
+    // it: a store is spent by the window's close, a buffer holds at its figure.
+    // With the date on "any" there is no "after" to qualify, so the box is not
+    // drawn at all rather than offering a tick that would change nothing.
+    const spendBox = w.by === undefined ? "" : ` <label><input type="checkbox" data-row-spend${w.spend ? " checked" : ""}> spent by the season's close</label>`;
+    parts.push(level >= RUNG_LEVEL.pace
+      ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select>${spendBox}</span>`
+      : `<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "pace")))}</small>`);
+  }
+  return `<div class="when">${parts.join("")}</div>`;
 }
 
 /** Only work with a real ground (sim/intent.ts's groundOf) moves for a different spot; everything else is camp-bound or carried, whatever its display group. */
@@ -118,15 +187,16 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
 }
 
 /**
- * The open row's expansion: the five kinds as buttons (greyed with the
- * level and about how many hours to it when the row's skill has not earned
- * them), the count, the deliver toggle and, for a gather or a hunt, the
- * where select. "once" leads them so a plain click's deliver and where can
+ * The open row's expansion: the six kinds as buttons (greyed with the rung
+ * and about how many hours to it when the row's skill has not earned
+ * them), the count, the deliver toggle, for a gather or a hunt the
+ * where select, and under them the conditions the row's rungs have opened.
+ * "once" leads them so a plain click's deliver and where can
  * be chosen deliberately too, through the same row-kind path every other
  * kind takes, rather than always falling back to the default choice.
  */
 function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
-  const kinds: RowChoice["until"][] = ["once", "times", "campHas", "keep", "forever"];
+  const kinds: RowChoice["until"][] = ["once", "times", "daily", "campHas", "keep", "forever"];
   const buttons = kinds.map((k) => {
     const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
     const gate = orderGate(state, req, kind);
@@ -137,7 +207,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
   const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
-  return `<div class="expand">${buttons}${n}${deliver}${where}</div>`;
+  return `<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
 }
 
 /**

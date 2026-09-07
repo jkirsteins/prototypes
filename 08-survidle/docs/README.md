@@ -35,19 +35,29 @@ waiting, and everything done while you are away run at the one scale.
   orders. "Keep camp at 40 kg firewood" triggers when the pile drops under
   20 and splits back up to 40; "Fell trees, forever, bringing it to camp"
   soaks up every spare hour. Jobs ("build a cabin", "make 20 arrows") drop
-  off when done. Each kind is earned per skill: a job (N times or until camp
-  has N) opens at level 3 in the task's skill, a grind (forever) at 5, a
-  keep (keep camp at N) at 10, and a once job is always open. A row below
-  its skill's level greys and names the level that opens it. The list is
-  ranked: each free minute the game serves the highest order that is unmet
-  and can start, finishes any load it owes camp first, and never switches
-  mid-task. A blocked order shows why ("needs an axe", "missing materials at
-  camp") and waits; a job placed above the grind that will haul its logs in
-  is how a cabin gets built while you are away. With orders but nothing to
-  do, you wait at camp, where the nights are by the fire. The game does the
-  walking, the work, the hauling, and when the body asks for it, the walk
-  back to camp, a fire from what is at camp, and the night's sleep. An
-  "advanced" toggle shows the raw single actions underneath, one at a time.
+  off when done. Each kind is earned per skill, five rungs deep: a job (N
+  times or until camp has N) opens at level 3 in the task's skill, a grind
+  (forever) at 5, a keep (keep camp at N) at 10, a condition at 15 - a
+  season window, a stock line, a restart line or a daily count laid on a
+  keep - and pace at 20, a keep due by a date, held after it or spent by
+  the season's close; a once job is always open.
+  A row below its skill's level greys and names the level that opens it. A
+  keep reads its stored forms and not only its own yield: "keep camp at
+  240 kg of meat" counts the dried meat in the rack at its own ratio
+  alongside raw kills. The list is ranked: each free minute the game
+  serves the highest order that is unmet and can start, finishes any load
+  it owes camp first, and never switches mid-task. A blocked order shows
+  why ("needs an axe", "missing materials at camp") and waits; a job
+  placed above the grind that will haul its logs in is how a cabin gets
+  built while you are away. With orders but nothing to do, you wait at
+  camp, where the nights are by the fire. The game does the walking, the
+  work, the hauling, and when the body asks for it, the walk back to camp,
+  a fire from what is at camp, and the night's sleep. An "advanced" toggle
+  shows the raw single actions underneath, one at a time. The reference
+  runner the sim measures itself against plays this way too: below a rung
+  it works the plain shape at today's reading, giving or withdrawing it as
+  the condition would have, and every gate prints the mornings that cost -
+  the attention the plan asked of a player at that level.
 - **A boat lands three people, and you choose one.** A new world opens on
   the landing screen, and so does every death: three candidates, each a
   face, a name, four grades shown as words or quantities (what they carry
@@ -194,8 +204,8 @@ waiting, and everything done while you are away run at the one scale.
   50 and 95 percent it gives skill-wide perks. Gates are soft: a button
   says "Hunting 8" and stays live, but under it the odds halve per level
   short and an elk can hurt you; a craft under level can spoil the piece.
-  The skills panel marks the three order-kind rungs (3, 5, 10) on each
-  skill and reads how far off the next one is, "jobs 3, 8 h to go".
+  The skills panel marks the five order-kind rungs (3, 5, 10, 15, 20) on
+  each skill and reads how far off the next one is, "jobs 3, 8 h to go".
 - **Away.** Close the tab and the world keeps going. While it is closed the
   elapsed time is simulated up to the away dial on the settings strip, 1 to
   24 real hours, default 8 (20 game days at the game scale). On return a

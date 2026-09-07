@@ -141,9 +141,39 @@ export type Until =
 /** Where an intent's work is done: the nearest suitable ground, a named spot, or one cell. */
 export type Where = "nearest" | SpotId | { cell: number };
 
-/** The row's chosen kind, before the yield item is filled in. */
+/** The row's chosen kind, before the yield item is filled in. A daily count is cleared at the day roll and never drops off. */
 export type UntilChoice =
-  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" };
+  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" }
+  | { kind: "daily"; n: number };
+
+/**
+ * Conditions on a standing order, read every morning against the calendar
+ * and the camp. A season is a day-of-year window, inclusive, wrapping the
+ * new year when from is past to. A stock line opens the order only while
+ * the camp pile holds the item in the range. A restart line makes a keep
+ * that has read met at its target stay met until the stock falls under
+ * it, so the keep does not flicker at its line. A "by" day makes a keep's
+ * target rise to its figure across the season (or from the day the order
+ * was given) and hold there after. "spend" says the figure is not held but
+ * spent: past the due date the target falls back to nothing across the rest
+ * of the season, which is what a store built for one season and burned
+ * through it does. The ladder gates each part by rung.
+ */
+export interface OrderWhen {
+  season?: { from: number; to: number };
+  stock?: { item: ItemId; atLeast?: number; under?: number };
+  restart?: number;
+  by?: number;
+  /**
+   * Only on a keep that carries both a season and a `by`, and only at the
+   * pace rung. The difference is a reserve from a buffer: 300 logs cut for
+   * one winter are spent by the thaw and asking for them in March buys a
+   * week of felling for wood the thaw leaves standing, while the 600 kg of
+   * split firewood beside them is drawn on every day and refilled from
+   * those logs, so it is held and not spent.
+   */
+  spend?: true;
+}
 
 /** A click on the Do panel, in the terms startIntent speaks. */
 export interface IntentRequest {
@@ -152,6 +182,7 @@ export interface IntentRequest {
   until: UntilChoice;
   deliver: "leave" | "camp";
   where: Where;
+  when?: OrderWhen;
 }
 
 /**
@@ -171,6 +202,19 @@ export interface Order {
   minutes: number;
   /** Why the scheduler last skipped it, or "" when it could run. */
   skipped: string;
+  /** A keep with a restart line: whether it last read met at its target. */
+  held?: boolean;
+  /** The day of year the order was given, the rise's start for a "by" keep with no season. */
+  givenDoy?: number;
+  /** The day a daily count was last opened afresh. */
+  dayOpened?: number;
+  /**
+   * The completions standing at that day's opening. A daily count is
+   * `done - dayBase`, so `done` itself stays the run's whole tally the way
+   * every other order's is, and the away report's "what it did while you
+   * were gone" is the same subtraction for a daily order as for any other.
+   */
+  dayBase?: number;
 }
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */

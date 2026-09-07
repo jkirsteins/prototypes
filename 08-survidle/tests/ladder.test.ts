@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderGate, withinLadder } from "../src/sim/ladder";
+import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderGate, rungsNeeded, withinLadder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
-import { levelMinutes, RUNG_LINE, SKILL_IDS, train } from "../src/sim/skills";
+import { levelMinutes, RUNG_LEVEL, RUNG_LINE, RUNG_ORDER, SKILL_IDS, train } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
 import { placeAtSpot } from "../src/sim/position";
 import { startTask } from "../src/sim/tasks";
@@ -216,5 +216,86 @@ describe("the rung log lines", () => {
     expect(RUNG_LINE.job("Woodcraft")).toBe("{You} {know} woodcraft well enough to set a task and walk away: jobs with a count or a target from Woodcraft.");
     expect(RUNG_LINE.grind("Fishing")).toBe("Fishing is second nature now: grinds, work that never ends, from Fishing.");
     expect(RUNG_LINE.keep("Building")).toBe("{You} {keep} count of building without thinking: keeps from Building.");
+  });
+});
+
+describe("the two upper rungs", () => {
+  it("conditions open at 15 and pace at 20, after the keep", () => {
+    expect(RUNG_LEVEL).toEqual({ job: 3, grind: 5, keep: 10, condition: 15, pace: 20 });
+    expect(RUNG_ORDER).toEqual(["job", "grind", "keep", "condition", "pace"]);
+    expect(RUNG_LINE.condition("Foraging")).toContain("season");
+    // The rung unlocks both pace words, so the line a player is shown says both.
+    expect(RUNG_LINE.pace("Woodcraft")).toContain("date");
+    expect(RUNG_LINE.pace("Woodcraft")).toContain("spent by the season's close");
+  });
+
+  it("a daily count on a task with no yield to stock stays daily, drunk rather than kept", () => {
+    expect(normalizeOrder(req("tapSap", { kind: "daily", n: 1 }), "job")).toEqual({ req: req("tapSap", { kind: "daily", n: 1 }), kind: "job" });
+  });
+});
+
+describe("the upper rungs' gate", () => {
+  it("a season needs the condition rung and a due date needs pace, named in the why", () => {
+    const { state } = newGame(17);
+    setLevel(state, "foraging", 12);
+    const seasoned: IntentRequest = { ...req("berries", { kind: "campHas", qty: 2 }), when: { season: { from: 182, to: 120 } } };
+    const g = orderGate(state, seasoned, "keep");
+    expect(g.ok).toBe(false);
+    if (!g.ok) expect(g.why).toContain("conditions at Foraging 15");
+    setLevel(state, "foraging", 15);
+    expect(orderGate(state, seasoned, "keep").ok).toBe(true);
+    setLevel(state, "woodcraft", 15);
+    const paced: IntentRequest = { ...req("split", { kind: "campHas", qty: 600 }), when: { by: 334 } };
+    const p = orderGate(state, paced, "keep");
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.why).toContain("pace at Woodcraft 20");
+    setLevel(state, "woodcraft", 20);
+    expect(orderGate(state, paced, "keep").ok).toBe(true);
+  });
+
+  it("a daily count needs the condition rung; under it the ladder gives a counted job", () => {
+    const { state } = newGame(17);
+    setLevel(state, "foraging", 10);
+    const daily = req("roots", { kind: "daily", n: 1 });
+    expect(orderGate(state, daily, "job").ok).toBe(false);
+    const w = withinLadder(state, daily, "job");
+    expect(w.req.until).toEqual({ kind: "times", n: 1 });
+    setLevel(state, "foraging", 15);
+    expect(withinLadder(state, daily, "job").req.until).toEqual({ kind: "daily", n: 1 });
+  });
+
+  it("withinLadder strips what is not earned and keeps what is", () => {
+    const { state } = newGame(17);
+    setLevel(state, "hunting", 15);
+    const hunt: IntentRequest = { ...req("hunt", { kind: "campHas", qty: 240 }, "any"), when: { restart: 192, by: 334 } };
+    const w = withinLadder(state, hunt, "keep");
+    expect(w.kind).toBe("keep");
+    expect(w.req.when).toEqual({ restart: 192 });
+    setLevel(state, "hunting", 20);
+    expect(withinLadder(state, hunt, "keep").req.when).toEqual({ restart: 192, by: 334 });
+    setLevel(state, "hunting", 8);
+    const low = withinLadder(state, hunt, "keep");
+    expect(low.kind).toBe("job");
+    expect(low.req.when).toBeUndefined();
+  });
+
+  it("rungsNeeded lists the kind's rung and each condition's", () => {
+    expect(rungsNeeded(req("chop", { kind: "campHas", qty: 10 }), "keep")).toEqual(["keep"]);
+    expect(rungsNeeded({ ...req("chop", { kind: "campHas", qty: 10 }), when: { season: { from: 1, to: 2 }, by: 334 } }, "keep")).toEqual(["keep", "condition", "pace"]);
+    expect(rungsNeeded(req("roots", { kind: "daily", n: 1 }), "job")).toEqual(["job", "condition"]);
+    // Both pace words ask for the same rung, and the spending asks for it on its own.
+    expect(rungsNeeded({ ...req("chop", { kind: "campHas", qty: 10 }), when: { season: { from: 1, to: 2 }, by: 334, spend: true } }, "keep")).toEqual(["keep", "condition", "pace"]);
+    expect(rungsNeeded({ ...req("chop", { kind: "campHas", qty: 10 }), when: { spend: true } }, "keep")).toEqual(["keep", "pace"]);
+  });
+
+  it("the spending is stripped with the date it qualifies, and kept with it", () => {
+    // "Spent by the season's close" says what happens after a due date, so a
+    // survivor who has not earned the date cannot be left holding the spending.
+    const { state } = newGame(17);
+    const logs: IntentRequest = { ...req("chop", { kind: "campHas", qty: 300 }), when: { season: { from: 182, to: 89 }, by: 334, spend: true } };
+    setLevel(state, "woodcraft", 15);
+    expect(withinLadder(state, logs, "keep").req.when).toEqual({ season: { from: 182, to: 89 } });
+    setLevel(state, "woodcraft", 20);
+    expect(withinLadder(state, logs, "keep").req.when).toEqual({ season: { from: 182, to: 89 }, by: 334, spend: true });
   });
 });

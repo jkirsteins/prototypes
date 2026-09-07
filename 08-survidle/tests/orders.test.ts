@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { calendar } from "../src/sim/calendar";
+import { calendar, START_DOY } from "../src/sim/calendar";
 import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { normalizeOrder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
@@ -12,9 +12,9 @@ import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
-  addOrder, chooseOrder, keepTarget, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, countWord, NIGHT_SKIP,
+  addOrder, chooseOrder, conditionOpen, inSeason, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, runOrders, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
-import { addItem, pile, qty } from "../src/sim/inventory";
+import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { BARK_DRY_RATIO } from "../src/sim/items";
 import { WINTER_START_DOY } from "../src/sim/year";
 import { today } from "../src/sim/ledger";
@@ -115,31 +115,31 @@ describe("when an order is met", () => {
     const camp = pile(state, regionState(state, world, state.player.region).campCell);
     const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     addItem(camp, "firewood", 25);
-    expect(orderMet(state, world, o, false)).toBe(true);
-    expect(orderMet(state, world, o, true)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
     addItem(camp, "firewood", 15);
-    expect(orderMet(state, world, o, true)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
     camp.items.firewood = 19;
-    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
     camp.items.firewood = 20;
-    expect(orderMet(state, world, o, false)).toBe(true);
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
   });
 
   it("a keep counts the camp pile only, never the pack", () => {
     const { state, world } = newGame(3);
     const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     addItem(state.player.pack, "firewood", 30);
-    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
   });
 
   it("a keep on a kit item counts the pack too, since that is where camp's kit sits while an order carries it out", () => {
     const { state, world } = newGame(3);
     const snares = addOrder(state, world, { task: "craft", arg: "snare", until: { kind: "campHas", qty: 1 }, deliver: "leave", where: "nearest" }, "keep");
     addItem(state.player.pack, "snare", 1);
-    expect(orderMet(state, world, snares, true)).toBe(true);
+    expect(orderMet(state, world, cal, snares, true)).toBe(true);
     const arrows = addOrder(state, world, { task: "craft", arg: "arrows", until: { kind: "campHas", qty: 10 }, deliver: "leave", where: "nearest" }, "keep");
     addItem(state.player.pack, "arrow", 10);
-    expect(orderMet(state, world, arrows, true)).toBe(true);
+    expect(orderMet(state, world, cal, arrows, true)).toBe(true);
   });
 
   it("an inner bark keep reads the fresh strip and the dried one together, scaled by BARK_DRY_RATIO since a kilo of the dried kind is that many kilos of the fresh strip it dried from", () => {
@@ -147,9 +147,9 @@ describe("when an order is met", () => {
     const camp = pile(state, regionState(state, world, state.player.region).campCell);
     const o = addOrder(state, world, { task: "innerBark", until: { kind: "campHas", qty: 3 }, deliver: "camp", where: "nearest" }, "keep");
     addItem(camp, "freshBark", 1);
-    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
     addItem(camp, "driedBark", 1);
-    expect(orderMet(state, world, o, false)).toBe(true);
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
     camp.items.freshBark = 0;
     camp.items.driedBark = 1;
     // The live threshold is the whole 3 kg, so this is the assertion the ratio decides: one
@@ -157,44 +157,44 @@ describe("when an order is met", () => {
     // would read 1 against 3 and send the runner back to the pines. The idle assertion above
     // passes either way - 1 + 1 already clears the 1.5 kg half-target.
     expect(BARK_DRY_RATIO).toBe(3);
-    expect(orderMet(state, world, o, true)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
   });
 
   it("a grind is never met; jobs are met by their until, and a build by the structure standing", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     const g = addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, "grind");
-    expect(orderMet(state, world, g, false)).toBe(false);
+    expect(orderMet(state, world, cal, g, false)).toBe(false);
     const once = addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
-    expect(orderMet(state, world, once, false)).toBe(false);
+    expect(orderMet(state, world, cal, once, false)).toBe(false);
     once.done = 1;
-    expect(orderMet(state, world, once, false)).toBe(true);
+    expect(orderMet(state, world, cal, once, false)).toBe(true);
     const times = addOrder(state, world, { task: "sticks", until: { kind: "times", n: 3 }, deliver: "leave", where: "nearest" }, "job");
     times.done = 2;
-    expect(orderMet(state, world, times, false)).toBe(false);
+    expect(orderMet(state, world, cal, times, false)).toBe(false);
     times.done = 3;
-    expect(orderMet(state, world, times, false)).toBe(true);
+    expect(orderMet(state, world, cal, times, false)).toBe(true);
     const has = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 8 }, deliver: "camp", where: "nearest" }, "job");
     addItem(pile(state, st.campCell), "log", 8);
-    expect(orderMet(state, world, has, false)).toBe(true);
+    expect(orderMet(state, world, cal, has, false)).toBe(true);
     const build = addOrder(state, world, { task: "build", arg: "firePit", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
-    expect(orderMet(state, world, build, false)).toBe(false);
+    expect(orderMet(state, world, cal, build, false)).toBe(false);
     st.structures.firePit = true;
-    expect(orderMet(state, world, build, false)).toBe(true);
+    expect(orderMet(state, world, cal, build, false)).toBe(true);
   });
 
   it("a light keep is met while the fire is lit, live or idle alike, unmet the moment it goes out", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     const o = addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(orderMet(state, world, o, false)).toBe(false);
-    expect(orderMet(state, world, o, true)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
     st.fire.lit = true;
-    expect(orderMet(state, world, o, false)).toBe(true);
-    expect(orderMet(state, world, o, true)).toBe(true);
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
     st.fire.lit = false;
-    expect(orderMet(state, world, o, false)).toBe(false);
-    expect(orderMet(state, world, o, true)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
   });
 });
 
@@ -787,11 +787,11 @@ describe("a keep on a structure", () => {
     expect(n.req.until).toEqual({ kind: "campHas", qty: 1 });
     const o = addOrder(state, world, n.req, n.kind);
     expect(keepTarget(o)).toBeNull();
-    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
     st.structures.boughBed = true;
-    expect(orderMet(state, world, o, true)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
     st.structures.boughBed = false;
-    expect(orderMet(state, world, o, true)).toBe(false);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
     expect(orderSentence(state, world, calendar(0), o)).toContain("keep the bough bed laid");
   });
 
@@ -801,10 +801,10 @@ describe("a keep on a structure", () => {
     const o = addOrder(state, world, { task: "build", arg: "snare", until: { kind: "campHas", qty: 20 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
     st.structures.snares = 10;
-    expect(orderMet(state, world, o, false)).toBe(true);
-    expect(orderMet(state, world, o, true)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
     st.structures.snares = 20;
-    expect(orderMet(state, world, o, true)).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
     expect(orderSentence(state, world, calendar(0), o)).toContain("keep 20 snares set");
   });
 
@@ -815,8 +815,185 @@ describe("a keep on a structure", () => {
     expect(n.req.until).toEqual({ kind: "once" });
     const o = addOrder(state, world, n.req, n.kind);
     expect(keepTarget(o)).toBeNull();
-    expect(orderMet(state, world, o, false)).toBe(false);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
     o.done = 1;
-    expect(orderMet(state, world, o, false)).toBe(true);
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+  });
+});
+
+describe("the vocabulary in the scheduler", () => {
+  it("a season wraps the new year, and both windows are inclusive at both ends", () => {
+    expect(inSeason(200, { from: 182, to: 90 })).toBe(true);
+    expect(inSeason(50, { from: 182, to: 90 })).toBe(true);
+    expect(inSeason(120, { from: 182, to: 90 })).toBe(false);
+    expect(inSeason(150, { from: 120, to: 181 })).toBe(true);
+    expect(inSeason(182, { from: 120, to: 181 })).toBe(false);
+    // The wrap's own edges, where an off-by-one would hide.
+    expect(inSeason(182, { from: 182, to: 90 })).toBe(true);
+    expect(inSeason(181, { from: 182, to: 90 })).toBe(false);
+    expect(inSeason(90, { from: 182, to: 90 })).toBe(true);
+    expect(inSeason(91, { from: 182, to: 90 })).toBe(false);
+    expect(inSeason(120, { from: 120, to: 181 })).toBe(true);
+  });
+
+  it("a keep reads its stored forms: dried meat is three kilos of meat", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "driedMeat", 10);
+    addItem(pile(state, st.campCell), "cookedMeat", 2);
+    const o = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(keepStock(state, world, o)).toBeCloseTo(32, 6);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
+    addItem(pile(state, st.campCell), "rawMeat", 8);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
+  });
+
+  it("a restart line holds a met keep until the stock falls under it, and raises again at the target", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const o = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest", when: { restart: 6 } }, "keep");
+    addItem(camp, "rawMeat", 10);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
+    removeItem(camp, "rawMeat", 3);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
+    removeItem(camp, "rawMeat", 2);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(false);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
+    addItem(camp, "rawMeat", 5);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(true);
+  });
+
+  it("reading a keep's band never moves it: the panel and the runner's probe write nothing", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const o = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest", when: { restart: 6 } }, "keep");
+    addItem(camp, "rawMeat", 10);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
+    expect(o.held).toBeUndefined();
+    // In the band a mark that was never set reads unmet, which is what a throwaway
+    // probe gets; the scheduler's own reading is the only thing that sets it.
+    removeItem(camp, "rawMeat", 3);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
+    expect(o.held).toBeUndefined();
+    expect(keepBand(7, 10, 6, true)).toBe(true);
+    expect(keepBand(7, 10, 6, undefined)).toBe(false);
+  });
+
+  it("a due date paces a keep's target up to its date and holds it after", () => {
+    const { state, world } = newGame(17);
+    const season = { from: 182, to: 89 };
+    const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 600 }, deliver: "camp", where: "nearest", when: { season, by: 334 } }, "keep");
+    expect(keepTargetToday(calendar(0, 182), o)).toBeCloseTo(0, 6);
+    expect(keepTargetToday(calendar(0, 258), o)).toBeCloseTo(300, 6);
+    expect(keepTargetToday(calendar(0, 334), o)).toBeCloseTo(600, 6);
+    // A buffer holds: the fire draws on the split pile every day of the winter,
+    // so 1 March wants as much of it as 1 December did.
+    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo(600, 6);
+    expect(keepTargetToday(calendar(0, 89), o)).toBeCloseTo(600, 6);
+    expect(inSeason(90, season)).toBe(false);
+  });
+
+  it("a keep spent by its season's close falls back to nothing after its due date", () => {
+    const { state, world } = newGame(17);
+    const season = { from: 182, to: 89 };
+    const o = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season, by: 334, spend: true } }, "keep");
+    // The rise is the same rise; only what happens after the date differs.
+    expect(keepTargetToday(calendar(0, 182), o)).toBeCloseTo(0, 6);
+    expect(keepTargetToday(calendar(0, 258), o)).toBeCloseTo(150, 6);
+    expect(keepTargetToday(calendar(0, 334), o)).toBeCloseTo(300, 6);
+    // A store cut for one winter is spent by the thaw: what March asks for is
+    // what March will burn, not the whole figure December was due.
+    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo((300 * (89 - 20)) / (89 + 365 - 334), 6);
+    expect(keepTargetToday(calendar(0, 89), o)).toBeLessThan(1);
+    expect(inSeason(90, season)).toBe(false);
+    // Spending needs a close to fall to: with no season the figure holds.
+    const seasonless = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { by: START_DOY + 10, spend: true } }, "keep");
+    expect(keepTargetToday(calendar(0, START_DOY + 200), seasonless)).toBeCloseTo(300, 6);
+  });
+
+  it("a paced keep with no season rises from the day it was given, and one due that same day asks the whole figure", () => {
+    const { state, world } = newGame(17);
+    const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 100 }, deliver: "camp", where: "nearest", when: { by: START_DOY + 10 } }, "keep");
+    expect(o.givenDoy).toBe(START_DOY);
+    expect(keepTargetToday(calendar(0, START_DOY), o)).toBeCloseTo(0, 6);
+    expect(keepTargetToday(calendar(0, START_DOY + 5), o)).toBeCloseTo(50, 6);
+    expect(keepTargetToday(calendar(0, START_DOY + 10), o)).toBeCloseTo(100, 6);
+    // Nothing to rise across, including an old save with neither season nor given day.
+    const today = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 100 }, deliver: "camp", where: "nearest", when: { by: START_DOY } }, "keep");
+    expect(keepTargetToday(calendar(0, START_DOY), today)).toBeCloseTo(100, 6);
+    today.givenDoy = undefined;
+    expect(keepTargetToday(calendar(0, START_DOY + 5), today)).toBeCloseTo(100, 6);
+    // No season is no close to fall to: the figure stands after the date, all the
+    // way round to the day the rise starts again.
+    expect(keepTargetToday(calendar(0, START_DOY + 200), o)).toBeCloseTo(100, 6);
+    expect(keepTargetToday(calendar(0, START_DOY - 1), o)).toBeCloseTo(100, 6);
+  });
+
+  it("a stock line shuts an order with a reason the row shows, and a season the same", () => {
+    const { state, world } = newGame(17);
+    const crack = addOrder(state, world, { task: "crack", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "bone", atLeast: 1 } } }, "grind");
+    expect(conditionOpen(state, world, calendar(0, 100), crack)).toBe("waits for bone at camp");
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "bone", 1);
+    expect(conditionOpen(state, world, calendar(0, 100), crack)).toBeNull();
+    const eggs = addOrder(state, world, { task: "eggs", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest", when: { season: { from: 120, to: 181 } } }, "job");
+    expect(conditionOpen(state, world, calendar(0, 100), eggs)).toBe("out of season until 1 May");
+    expect(conditionOpen(state, world, calendar(0, 150), eggs)).toBeNull();
+  });
+
+  it("a daily count opens afresh at the day roll and never drops off, with done left monotonic", () => {
+    const { state, world } = newGame(17);
+    const o = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
+    o.done = 1;
+    o.dayOpened = 1;
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+    state.minute = 2 * 1440 + 60;
+    runOrders(state, world, calendar(state.minute, state.startDoy), new Rng(1));
+    expect(ordersHere(state, world).some((x) => x.id === o.id)).toBe(true);
+    // The run's tally stands; only the base the day's count reads from moves.
+    expect(o.done).toBe(1);
+    expect(o.dayBase).toBe(1);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
+  });
+
+  it("a daily count already met today stays on the list rather than dropping off as a finished job", () => {
+    const { state, world } = newGame(17);
+    const day = calendar(state.minute, state.startDoy);
+    const o = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
+    o.done = 1;
+    o.dayOpened = day.day;
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+    runOrders(state, world, day, new Rng(1));
+    expect(ordersHere(state, world).some((x) => x.id === o.id)).toBe(true);
+    // The day was already open, so nothing about the count moved.
+    expect(o.done).toBe(1);
+    expect(o.dayBase).toBeUndefined();
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+  });
+
+  it("an order's sentence names its conditions after its target", () => {
+    const { state, world } = newGame(17);
+    const wood = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 600 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 90 }, by: 334 } }, "keep");
+    expect(orderSentence(state, world, cal, wood)).toContain("keep camp at 600 kg firewood, by 1 December, from 2 July to 1 April");
+    // The spending says itself on the row, right after the date it qualifies.
+    const logs = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 89 }, by: 334, spend: true } }, "keep");
+    expect(orderSentence(state, world, cal, logs)).toContain("by 1 December, spent by 31 March, from 2 July to 31 March");
+    // A spending with no date to spend from says nothing, since keepTargetToday
+    // holds the flat figure for it: the row never claims what it will not do.
+    const dateless = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 89 }, spend: true } }, "keep");
+    expect(orderSentence(state, world, cal, dateless)).not.toContain("spent by");
+    expect(keepTargetToday(calendar(0, 20), dateless)).toBeCloseTo(300, 6);
+    const meat = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 240 }, deliver: "camp", where: "nearest", when: { restart: 192 } }, "keep");
+    expect(orderSentence(state, world, cal, meat)).toContain("keep camp at 240 kg raw meat in any form, restart under 192");
+    const roots = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest", when: { stock: { item: "bone", atLeast: 1 } } }, "job");
+    expect(orderSentence(state, world, cal, roots)).toContain("1 a day, while camp has at least 1 bone");
   });
 });

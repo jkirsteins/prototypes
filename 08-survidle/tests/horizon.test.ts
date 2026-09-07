@@ -31,14 +31,15 @@ describe("the horizon stages", () => {
   it("the manual stage is every open want as a once job on a stocked camp", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world);
-    // The three named hunts (elk, reindeer, deer) all gate above level 1, so they are absent here.
-    // The 400 kg woodpile keep and the 150-log keep gate by season too, and a 1 April stage is
-    // closed for both, as are the two ice-hole fetches and the two melts, which wait for the
-    // shore to ice over, and the fire indoors, which waits for a hut, and the hide coat, trousers
-    // and boots wait for Crafting 8, the rack waits for meat to dry, the hang grind for more of it
-    // than a body can eat in time and the render grind for any raw fat at all, the wedge split and dead wood wait for a camp with no axe, and the
-    // celt and the flaked axe for their tier or a lost axe.
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 26);
+    // A stage gives the list once, so what shuts a want here is the runner's own rules and
+    // nothing else: the three named hunts (elk, reindeer, deer) gate above level 1, the two
+    // ice-hole fetches and the two melts wait for the shore to ice over, the fire indoors for
+    // a hut, the hide coat, trousers and boots for Crafting 8, the wedge split and the dead
+    // wood for a camp with no axe, the celt and the flaked axe for their tier or a lost axe,
+    // and seaweed for a camp on the sea. A want's own conditions - the windows, the stock
+    // lines, the band and the pace - are written on the order, and at level 1 the ladder
+    // strips every one of them, so they shut nothing here and are worked as they come.
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 18);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");

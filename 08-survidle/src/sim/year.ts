@@ -13,7 +13,7 @@ import { FOODS, type FoodId } from "./items";
 import { setSkillLevel } from "./horizon";
 import { type DayLedger, emptyBurn, type WeekAverage, weekBefore } from "./ledger";
 import { current } from "./record";
-import { type ReferenceReport, type ReferencePlayer, setUpReference, starvationCause, stepReference, WINTER_STOCK } from "./reference";
+import { type ReferenceReport, type ReferencePlayer, setUpReference, starvationCause, stepReference, WINTER_STOCK, WOOD_DUE_DOY } from "./reference";
 import { regionState } from "./regionstate";
 import { SKILL_IDS } from "./skills";
 import { LARGE_GAME } from "./species";
@@ -21,11 +21,11 @@ import type { GameState, Species } from "./types";
 
 /**
  * 1 December: the winter gate's start, a fortnight before the dark and a
- * month before the cold snap. Day of year is 0-based (1 April is 90, the
- * calendar's own START_DOY), so 1 December - 31 + 28 + 31 + 30 + 31 + 30 +
- * 31 + 31 + 30 + 31 + 30 days into the year - is 334, not 335.
+ * month before the cold snap, and the same day the list's winter stock is
+ * due in full - the day is one thing and is named once, in the list that
+ * stocks against it.
  */
-export const WINTER_START_DOY = 334;
+export const WINTER_START_DOY = WOOD_DUE_DOY;
 /** Days from 1 December to 1 March. */
 export const WINTER_DAYS = 90;
 
@@ -39,6 +39,8 @@ export interface MonthLine {
   stock: { foodKcal: number; foodByKind: Record<string, number>; firewoodKg: number; logs: number };
   /** Snow on the ground, rounded cm. */
   snowCm: number;
+  /** Mornings the list changed since the last month line, of the days since it (order ladder spec section 4-5). */
+  attention: { mornings: number; days: number };
 }
 
 export interface YearReport {
@@ -59,6 +61,8 @@ export interface YearReport {
   killsKcal: number;
   /** For a starvation death, the unexploited line read at the moment it fell; null for any other outcome (spec 7). */
   unexploited: string | null;
+  /** Mornings the list changed over the whole run, of the days it ran (order ladder spec section 4-5). */
+  attention: { mornings: number; days: number };
 }
 
 export interface YearOptions {
@@ -97,8 +101,8 @@ function stockAt(state: GameState, world: World): MonthLine["stock"] {
 }
 
 /** Runs one life a day at a time, writing a month line on the first of each month and the surplus days as they happen. */
-function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal" | "unexploited"> {
-  const { state, world } = ref;
+function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal" | "unexploited" | "attention"> {
+  const { state, world, player } = ref;
   const months: MonthLine[] = [];
   const surplus: YearReport["surplus"] = { hang: null, largeGame: null };
   let lastLineDay = 1;
@@ -110,7 +114,10 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
     if (surplus.largeGame === null && current(state).events.some((e) => e.kind === "firstKill" && LARGE_GAME.includes(e.species))) surplus.largeGame = cal.day;
     if (cal.dayOfMonth === 1 && cal.day > lastLineDay) {
       const avg = between(state.ledger, lastLineDay, cal.day);
-      months.push({ month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm) });
+      months.push({
+        month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm),
+        attention: player.attention(lastLineDay, cal.day - 1),
+      });
       lastLineDay = cal.day;
     }
   }
@@ -120,7 +127,7 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
   const unexploitedLine = state.dead?.cause === "starved" ? starvationCause(state, world) : null;
   return {
     months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear,
-    kills, killsKcal: state.stats.killsKcal, unexploited: unexploitedLine,
+    kills, killsKcal: state.stats.killsKcal, unexploited: unexploitedLine, attention: player.attention(player.startDay, day),
   };
 }
 

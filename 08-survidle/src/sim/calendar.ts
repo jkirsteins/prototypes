@@ -21,6 +21,31 @@ export function monthName(month: number): string {
   return MONTH_FULL[((month % 12) + 12) % 12];
 }
 
+/** The month, 0-based, and the day of it a day of year falls on. The year is the plain 365 the calendar runs on, so a wrapped day of year lands back inside it. */
+function monthDay(dayOfYear: number): { month: number; dayOfMonth: number } {
+  let d = ((dayOfYear % 365) + 365) % 365;
+  let month = 0;
+  while (d >= MONTH_DAYS[month]) {
+    d -= MONTH_DAYS[month];
+    month++;
+  }
+  return { month, dayOfMonth: d + 1 };
+}
+
+/** The day of year a month opens on: what a month picker writes into a season window or a due date. */
+export function monthStartDoy(month: number): number {
+  const m = ((month % 12) + 12) % 12;
+  let doy = 0;
+  for (let i = 0; i < m; i++) doy += MONTH_DAYS[i];
+  return doy;
+}
+
+/** "1 May" from a day of year: the shape a season window and a due date read in. */
+export function fmtDoy(dayOfYear: number): string {
+  const { month, dayOfMonth } = monthDay(dayOfYear);
+  return `${dayOfMonth} ${MONTH_FULL[month]}`;
+}
+
 /** 0 at new, 0.5 at full, in [0, 1). The moon runs on the date, so a later start opens on a later phase. */
 export function moonPhase(minute: number, startDoy = START_DOY): number {
   const days = (minute + START_MINUTE_OF_DAY) / 1440 + (startDoy - START_DOY);
@@ -60,12 +85,7 @@ export function calendar(minute: number, startDoy = START_DOY): Calendar {
   const dayIndex = Math.floor(abs / 1440);
   const hour = (abs - dayIndex * 1440) / 60;
   const dayOfYear = (((startDoy + dayIndex) % 365) + 365) % 365;
-  let month = 0;
-  let d = dayOfYear;
-  while (d >= MONTH_DAYS[month]) {
-    d -= MONTH_DAYS[month];
-    month++;
-  }
+  const { month, dayOfMonth } = monthDay(dayOfYear);
   const daylightHours = daylight(dayOfYear);
   const sunrise = 13 - daylightHours / 2;
   const sunset = 13 + daylightHours / 2;
@@ -75,7 +95,7 @@ export function calendar(minute: number, startDoy = START_DOY): Calendar {
     hour,
     dayOfYear,
     month,
-    dayOfMonth: d + 1,
+    dayOfMonth,
     season: seasonOf(month),
     daylightHours,
     sunrise,

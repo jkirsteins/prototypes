@@ -494,10 +494,11 @@ describe("options carry progression", () => {
 });
 
 describe("the rungs", () => {
-  it("jobs open at 3, grinds at 5, keeps at 10, in that order", () => {
-    expect(RUNG_LEVEL).toEqual({ job: 3, grind: 5, keep: 10 });
-    expect(RUNG_ORDER).toEqual(["job", "grind", "keep"]);
-    expect(RUNG_WORD).toEqual({ job: "jobs", grind: "grinds", keep: "keeps" });
+  // Two rungs sit above the keep: condition at 15 and pace at 20 (the order ladder design, section 2).
+  it("jobs open at 3, grinds at 5, keeps at 10, conditions at 15 and pace at 20, in that order", () => {
+    expect(RUNG_LEVEL).toEqual({ job: 3, grind: 5, keep: 10, condition: 15, pace: 20 });
+    expect(RUNG_ORDER).toEqual(["job", "grind", "keep", "condition", "pace"]);
+    expect(RUNG_WORD).toEqual({ job: "jobs", grind: "grinds", keep: "keeps", condition: "conditions", pace: "pace" });
   });
 
   it("TASK_IDS lists every task once", () => {

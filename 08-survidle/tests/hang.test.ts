@@ -69,7 +69,7 @@ describe("hanging meat is a task", () => {
     expect(o.kind).toBe("keep");
     expect(until(g, () => st.rack.kg === 6, 200)).toBe(true);
     // Two dry days; the weather may rain, so allow four.
-    expect(until(g, () => orderMet(state, world, o, true), 4 * 1440)).toBe(true);
+    expect(until(g, () => orderMet(state, world, cal, o, true), 4 * 1440)).toBe(true);
     // The rack empties the camp pile, so tidyPiles sweeps it; the camp captured
     // above is a stale reference by now, so read the pile fresh.
     expect(qty(pile(state, st.campCell), "driedMeat")).toBeGreaterThanOrEqual(2);

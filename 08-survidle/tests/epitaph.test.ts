@@ -69,11 +69,11 @@ describe("the epitaph", () => {
     // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
     // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
     // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
-    // the early days buy warmth at the fire; and the 400 kg woodpile keep is open only from 1 September to
-    // 1 April, which a 1 April start reaches in neither of the sixty-day lives below. The felling grind at
-    // the end of the list is a 150-log keep shut until 1 September and placed beside the woodpile keep, so a
-    // spring runner with nothing else able to run rests instead of felling; and stone is wanted twice, a
-    // once job for eight at the opening and a keep of eight as the restock below the clothing block.
+    // the early days buy warmth at the fire; and the winter woodpile keep runs from midsummer to the day
+    // before the thaw, which a 1 April start is one day past and neither of the sixty-day lives below
+    // reaches again. The log keep beside it carries the same window, so a spring runner with nothing
+    // else able to run rests instead of felling; and stone is wanted twice, a once job for eight at the
+    // opening and a keep of eight as the restock below the clothing block.
     // Both seeds starve at camp rather than freezing or dying on the trail: the reference
     // player's opening grinds fill firewood and food ahead of the cold, so the woodpile
     // outlasts the larder on both; seed 17's fish carry a lean share under one, so its ceiling
@@ -81,8 +81,8 @@ describe("the epitaph", () => {
     // April start itself, ahead of the wood-first grind order, so the larder empties where
     // the ledger above finds it. The larder these seeds empty is meat, berries, roots, eggs
     // and bark flour together, and both still starve at camp with wood banked.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 24. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 22 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 24. Starved at camp, with nothing in the pack and 65 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 34 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

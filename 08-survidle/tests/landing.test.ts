@@ -2,13 +2,17 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty } from "../src/sim/inventory";
+import { setSkillLevel } from "../src/sim/horizon";
+import { giveOrder } from "../src/sim/ladder";
 import { beginAgain, demoteFog, land, landingCell, landingDate } from "../src/sim/landing";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
+import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import { DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
+import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
 import { tombstoneHtml } from "../src/ui/panels";
@@ -160,6 +164,31 @@ describe("what the heir is told", () => {
     die(state, "froze");
     const html = tombstoneHtml(state, world, newUiState());
     expect(html).toContain(`${fmtName(state.survivors[0].name)} lived ${firstDay} days.`);
+  });
+
+  // A plan is the dead's and the camp is the world's. The ladder gates an order at the
+  // moment it is given, so a list left standing is worked at whatever rung wrote it: an
+  // heir who inherited it would run its ancestor's seasons and stock lines from birth,
+  // and none of that work would be counted as a morning of its own attention.
+  it("leaves the heir the world and not the dead's orders", () => {
+    const { state, world } = newGame(17);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    const region = state.player.region;
+    const camp = regionState(state, world, region).campCell;
+    addItem(pile(state, camp), "firewood", 40);
+    giveOrder(state, world, { task: "roots", until: { kind: "daily", n: 2 }, deliver: "camp", where: "nearest", when: { season: { from: 90, to: 304 } } }, "job");
+    giveOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(ordersHere(state, world).length).toBe(2);
+    advance(state, world, 1440);
+    die(state, "starved");
+    beginAgain(state, world);
+    land(state, world, { first: "Aino", last: "Berzins" });
+    for (const st of Object.values(state.regions)) expect(st.orders).toEqual([]);
+    // The world is still there: the wood the ancestor split is at the old camp for the heir to find.
+    expect(qty(pile(state, camp), "firewood")).toBeGreaterThan(0);
+    // The heir's own orders are the only ones the list ever holds again.
+    giveOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest" }, "keep");
+    expect(regionState(state, world, region).orders.map((o) => o.req.task)).toEqual(state.player.region === region ? ["sticks"] : []);
   });
 
   it("says nothing about the journal when nothing was built, and the first tombstone has no comparison", () => {

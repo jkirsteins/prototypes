@@ -591,7 +591,7 @@ describe("the Do panel and the ladder", () => {
 
 describe("the kind per row", () => {
   it("the default choice is once, leave, nearest, and rowRequest with it is the plain click", () => {
-    expect(defaultChoice()).toEqual({ until: "once", n: 10, deliver: "leave", where: "nearest" });
+    expect(defaultChoice()).toEqual({ until: "once", n: 10, deliver: "leave", where: "nearest", when: {} });
     expect(rowRequest(defaultChoice(), "sticks", undefined)).toEqual({ req: { task: "sticks", arg: undefined, until: { kind: "once" }, deliver: "leave", where: "nearest" }, kind: "job" });
   });
 
@@ -601,7 +601,7 @@ describe("the kind per row", () => {
     expect(r.req.until).toEqual({ kind: "once" });
   });
 
-  it("the open row renders the five kinds, greys the unearned ones with the level text, and other rows render no expansion", () => {
+  it("the open row renders the six kinds, greys the unearned ones with the rung they need, and other rows render no expansion", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
@@ -609,10 +609,10 @@ describe("the kind per row", () => {
     const html = doHtml(state, world, cal, ui);
     const open = html.slice(html.indexOf('data-opt="intent:fish:any"'));
     expect(open).toContain('data-act="row-kind"');
-    for (const k of ["once", "times", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
+    for (const k of ["once", "times", "daily", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
     // Fishing at level 1 has not earned a keep: the keep is greyed and says what it needs.
     expect(open).toMatch(/data-until="keep"[^>]*class="[^"]*off[^"]*"/);
-    expect(open).toMatch(/needs .* \d/);
+    expect(open).toContain("keeps at Fishing 10, you are 1");
     expect(open).toContain('data-row-n');
     expect(open).toContain('data-act="row-deliver"');
     const closed = html.slice(html.indexOf('data-opt="intent:sticks:"'), html.indexOf('data-opt="intent:sticks:"') + 600);

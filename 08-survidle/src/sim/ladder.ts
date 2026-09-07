@@ -8,7 +8,7 @@
 import type { World } from "../world/gen";
 import { yieldItem } from "./intent";
 import { addOrder } from "./orders";
-import { RUNG_LEVEL, RUNG_WORD, SKILL_NAMES, skillLevel, skillOf } from "./skills";
+import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
 import type { GameState, IntentRequest, Order, OrderKind, SkillId, TaskId } from "./types";
 
 /** Tasks that train no skill but can still be ordered take the skill of the work they serve. */
@@ -46,18 +46,53 @@ export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: Inte
   return { req, kind };
 }
 
+/** The rungs an order asks for: its kind, and past the keep, each condition it carries. */
+export function rungsNeeded(req: IntentRequest, kind: OrderKind): Rung[] {
+  const n = normalizeOrder(req, kind);
+  const out: Rung[] = [n.kind];
+  const w = n.req.when;
+  if (w?.season || w?.stock || w?.restart !== undefined || n.req.until.kind === "daily") out.push("condition");
+  // Both pace words ask for the same rung: "spent by the season's close" is what
+  // a due date can say next, not a rung of its own.
+  if (w?.by !== undefined || w?.spend) out.push("pace");
+  return out;
+}
+
 export type Gate = { ok: true } | { ok: false; why: string; skill: SkillId; level: number; at: number };
 
 /** Whether this order may be given now, and if not, which level opens it. */
 export function orderGate(state: GameState, req: IntentRequest, kind: OrderKind): Gate {
   const n = normalizeOrder(req, kind);
-  if (n.kind === "job" && n.req.until.kind === "once") return { ok: true };
+  const rungs = rungsNeeded(n.req, n.kind);
+  if (n.kind === "job" && n.req.until.kind === "once" && rungs.length === 1) return { ok: true };
   const skill = gateSkill(n.req.task, n.req.arg);
   if (!skill) throw new Error(`${n.req.task} has no gate skill and cannot be an order`);
   const level = skillLevel(state, skill);
-  const at = RUNG_LEVEL[n.kind];
-  if (level >= at) return { ok: true };
-  return { ok: false, why: `${RUNG_WORD[n.kind]} at ${SKILL_NAMES[skill]} ${at}, {you} {are} ${level}`, skill, level, at };
+  for (const r of rungs) {
+    if (r === "job" && n.req.until.kind === "once") continue;
+    const at = RUNG_LEVEL[r];
+    if (level < at) return { ok: false, why: `${RUNG_WORD[r]} at ${SKILL_NAMES[skill]} ${at}, {you} {are} ${level}`, skill, level, at };
+  }
+  return { ok: true };
+}
+
+/** The request with every condition the skill has not earned taken off; the kind stand-in follows as before. */
+function stripUnearned(state: GameState, req: IntentRequest): IntentRequest {
+  const skill = gateSkill(req.task, req.arg);
+  if (!skill) return req;
+  const level = skillLevel(state, skill);
+  let out = req;
+  // The two pace words go together: "spent by the season's close" says what
+  // happens after a due date, so it means nothing once the date is off.
+  if (level < RUNG_LEVEL.pace && (out.when?.by !== undefined || out.when?.spend)) {
+    const { by: _by, spend: _spend, ...rest } = out.when;
+    out = { ...out, when: Object.keys(rest).length ? rest : undefined };
+  }
+  if (level < RUNG_LEVEL.condition) {
+    if (out.when) out = { ...out, when: undefined };
+    if (out.until.kind === "daily") out = { ...out, until: { kind: "times", n: out.until.n } };
+  }
+  return out;
 }
 
 /** The door the Do panel and the player script use: the gate, then addOrder. */
@@ -80,12 +115,16 @@ export const GRIND_STAND_IN = 5;
  */
 export function withinLadder(state: GameState, req: IntentRequest, kind: OrderKind): { req: IntentRequest; kind: OrderKind } {
   const n = normalizeOrder(req, kind);
-  if (orderGate(state, n.req, n.kind).ok) return n;
-  const level = skillLevel(state, gateSkill(n.req.task, n.req.arg)!);
-  const once = { req: { ...n.req, until: { kind: "once" as const } }, kind: "job" as const };
+  // Strip what the skill has not earned before the kind stand-in, so a stripped
+  // daily (now a times count) goes through the counted-job path below like any
+  // other counted job, rather than being read as still asking for the condition rung.
+  const s = normalizeOrder(stripUnearned(state, n.req), n.kind);
+  if (orderGate(state, s.req, s.kind).ok) return s;
+  const level = skillLevel(state, gateSkill(s.req.task, s.req.arg)!);
+  const once = { req: { ...s.req, until: { kind: "once" as const } }, kind: "job" as const };
   if (level < RUNG_LEVEL.job) return once;
-  if (n.kind === "grind") return { req: { ...n.req, until: { kind: "times", n: GRIND_STAND_IN } }, kind: "job" };
+  if (s.kind === "grind") return { req: { ...s.req, until: { kind: "times", n: GRIND_STAND_IN } }, kind: "job" };
   // A keep, at 3 or 5: the same target as a job that drops off when met.
   // "Keep it lit" has nothing to count and falls to light once.
-  return normalizeOrder({ ...n.req, until: n.req.until.kind === "campHas" ? n.req.until : { kind: "once" } }, "job");
+  return normalizeOrder({ ...s.req, until: s.req.until.kind === "campHas" ? s.req.until : { kind: "once" } }, "job");
 }

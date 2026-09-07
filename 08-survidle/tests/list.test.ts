@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
-import { addItem, pile, TRACE_KG } from "../src/sim/inventory";
-import { AUTO_EAT_ORDER, FOODS, LEAN_KCAL_PER_DAY, SPOIL_HOURS } from "../src/sim/items";
+import { addItem, pile, qty, removeItem, TRACE_KG } from "../src/sim/inventory";
+import {
+  AUTO_EAT_ORDER, EGG_FROM_DOY, EGG_TO_DOY, FOODS, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, ROOT_FROM_DOY, ROOT_TO_DOY,
+  SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS,
+} from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { ordersHere, removeOrder } from "../src/sim/orders";
+import { inSeason, ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
-import { HANG_ABOVE_KG, PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, wantOpen, WINTER_FOOD_KCAL, WINTER_STOCK } from "../src/sim/reference";
-import { SKILL_IDS } from "../src/sim/skills";
-import { PLANT_HOURS_PER_DAY } from "../src/sim/tables";
+import {
+  HANG_ABOVE_KG, PLANT_HOURS_ROOTS, PLANT_HOURS_WINDOW_ROW, REFERENCE_ORDERS, setUpReference, stepReference, wantOpen, winterStockWant,
+  WINTER_STOCK, WINTER_WOOD_TO_DOY, WOOD_DUE_DOY,
+} from "../src/sim/reference";
+import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
+import { MIDSUMMER_DOY, PLANT_HOURS_PER_DAY } from "../src/sim/tables";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
+const daily = (w: (typeof REFERENCE_ORDERS)[number]) => (w.req.until.kind === "daily" ? w.req.until.n : null);
 
 describe("the list after the axe", () => {
   // A vessel that froze full has no room, so a fill tops off nothing and the
@@ -44,42 +50,48 @@ describe("the list after the axe", () => {
 
   it("opens the axe split with an axe in reach and the wedges and dead wood without one", () => {
     const { state, world } = newGame(17);
-    const cal = calendar(state.minute, state.startDoy);
-    expect(wantOpen(state, world, want("split::keep"), cal)).toBe(true);
-    expect(wantOpen(state, world, want("splitWedges::keep"), cal)).toBe(false);
-    expect(wantOpen(state, world, want("deadwood::keep"), cal)).toBe(false);
+    expect(wantOpen(state, world, want("split::keep"))).toBe(true);
+    expect(wantOpen(state, world, want("splitWedges::keep"))).toBe(false);
+    expect(wantOpen(state, world, want("deadwood::keep"))).toBe(false);
     state.player.tools = [];
-    expect(wantOpen(state, world, want("split::keep"), cal)).toBe(false);
-    expect(wantOpen(state, world, want("splitWedges::keep"), cal)).toBe(true);
-    expect(wantOpen(state, world, want("deadwood::keep"), cal)).toBe(true);
+    expect(wantOpen(state, world, want("split::keep"))).toBe(false);
+    expect(wantOpen(state, world, want("splitWedges::keep"))).toBe(true);
+    expect(wantOpen(state, world, want("deadwood::keep"))).toBe(true);
   });
 
   it("wants the celt from Crafting 5 and the flaked axe under it, only with no axe to hand", () => {
     const { state, world } = newGame(17);
-    const cal = calendar(state.minute, state.startDoy);
-    expect(wantOpen(state, world, want("craft:stoneAxe:keep"), cal)).toBe(false);
-    expect(wantOpen(state, world, want("craft:flakedAxe:keep"), cal)).toBe(false);
+    expect(wantOpen(state, world, want("craft:stoneAxe:keep"))).toBe(false);
+    expect(wantOpen(state, world, want("craft:flakedAxe:keep"))).toBe(false);
     state.player.tools = [];
-    expect(wantOpen(state, world, want("craft:flakedAxe:keep"), cal)).toBe(true);
+    expect(wantOpen(state, world, want("craft:flakedAxe:keep"))).toBe(true);
     setSkillLevel(state, "crafting", 5);
-    expect(wantOpen(state, world, want("craft:stoneAxe:keep"), cal)).toBe(true);
-    expect(wantOpen(state, world, want("craft:flakedAxe:keep"), cal)).toBe(false);
+    expect(wantOpen(state, world, want("craft:stoneAxe:keep"))).toBe(true);
+    expect(wantOpen(state, world, want("craft:flakedAxe:keep"))).toBe(false);
   });
 
-  it("keeps the winter pile's season rule on all three methods", () => {
+  it("says the winter pile's window on all three methods, and leaves the method itself to the axe", () => {
     const { state, world } = newGame(17);
-    const april = calendar(state.minute, state.startDoy);
     // Read off WINTER_STOCK.firewoodKg rather than a literal: the stock was
     // sized from the measured hut winter, and the three methods move with it.
     const winterPile = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg);
     expect(winterPile.map(key)).toEqual(["split::keep", "splitWedges::keep", "deadwood::keep"]);
-    for (const w of winterPile) expect(wantOpen(state, world, w, april)).toBe(false);
-    const october = calendar(0, 280);
-    expect(wantOpen(state, world, winterPile[0], october)).toBe(true);
+    // The window is the order's own: midsummer to the day before the thaw, shut through the
+    // spring and summer a pile stacked then would only sit through, and shut on the thaw's
+    // own first day, which a season inclusive of its last day makes the day before it.
+    for (const w of winterPile) {
+      expect(w.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
+      expect(inSeason(WINTER_WOOD_TO_DOY, w.req.when!.season!)).toBe(false);
+      expect(inSeason(150, w.req.when!.season!)).toBe(false);
+      expect(inSeason(280, w.req.when!.season!)).toBe(true);
+    }
+    // The axe is what the runner still reads: with one in reach the split is the method,
+    // without one the wedges and the dead wood are.
+    expect(wantOpen(state, world, winterPile[0])).toBe(true);
     state.player.tools = [];
-    expect(wantOpen(state, world, winterPile[0], october)).toBe(false);
-    expect(wantOpen(state, world, winterPile[1], october)).toBe(true);
-    expect(wantOpen(state, world, winterPile[2], october)).toBe(true);
+    expect(wantOpen(state, world, winterPile[0])).toBe(false);
+    expect(wantOpen(state, world, winterPile[1])).toBe(true);
+    expect(wantOpen(state, world, winterPile[2])).toBe(true);
   });
 
   it("keeps twenty snares set above the gathering block, with the rack, and forty below the trough", () => {
@@ -96,46 +108,72 @@ describe("the list after the axe", () => {
 
   it("keeps the fat rendered above the cook keeps, cracks bones, and gathers eggs, roots, sap and seaweed in their seasons", () => {
     const tasks = REFERENCE_ORDERS.map(key);
-    expect(tasks.indexOf("cook:rawFat:keep")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
+    expect(tasks.indexOf("cook:rawFat:grind")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
     expect(tasks.indexOf("crack::grind")).toBeGreaterThan(tasks.indexOf("cook::keep"));
     for (const t of ["eggs::job", "roots::job", "cook:roots:keep", "tapSap::job", "seaweed::job"]) expect(tasks).toContain(t);
     // Inner bark and its grind are off the list: at 275 kcal an hour they cost more than they
     // return, and the task stays in the game for a player who wants the fallback by hand.
     for (const t of ["innerBark::keep", "grindBark::keep"]) expect(tasks).not.toContain(t);
+    // Each gather says its own window, so nothing but the ground under the camp is left
+    // for the runner to read: the nests, the sap and the summer dig by their windows.
+    expect(want("eggs::job").req.when?.season).toEqual({ from: EGG_FROM_DOY, to: EGG_TO_DOY });
+    // The tap is a count a day inside its window, not a job done once: what it yields is
+    // drunk on the spot, so nothing at camp says it has been done and nothing but the day
+    // roll can ask for it again. The birches' own cap is what the count reads.
+    expect(want("tapSap::job").req.until).toEqual({ kind: "daily", n: SAP_TAPS_PER_DAY });
+    expect(want("tapSap::job").req.when?.season).toEqual({ from: SAP_FROM_DOY, to: SAP_TO_DOY });
+    const digs = REFERENCE_ORDERS.filter((w) => w.req.task === "roots" && w.kind === "job");
+    expect(digs.map((w) => w.req.when?.season)).toEqual([
+      { from: ROOT_FROM_DOY, to: ROOT_TO_DOY },
+      { from: ROOT_TO_DOY + 1, to: ROOT_FROM_DOY - 1 },
+    ]);
+    // The winter dig is the one gather the runner still holds a rule for: an ice hole is
+    // what reaches the rhizomes under frozen ground, and an axe is what keeps one open.
     const { state, world } = newGame(17);
-    expect(wantOpen(state, world, want("eggs::job"), calendar(0, 100))).toBe(false);
-    expect(wantOpen(state, world, want("eggs::job"), calendar(0, 130))).toBe(true);
-    expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 125))).toBe(true);
-    expect(wantOpen(state, world, want("tapSap::job"), calendar(0, 200))).toBe(false);
-    const bark = { req: { task: "innerBark" as const, until: { kind: "campHas" as const, qty: 3 }, deliver: "camp" as const, where: "nearest" as const }, kind: "keep" as const };
-    expect(wantOpen(state, world, bark, calendar(0, 250))).toBe(false);
-    expect(wantOpen(state, world, bark, calendar(0, 120))).toBe(true);
-    expect(wantOpen(state, world, want("roots::job"), calendar(0, 250))).toBe(true);
+    expect(wantOpen(state, world, digs[0])).toBe(true);
+    expect(wantOpen(state, world, digs[1])).toBe(true);
     state.player.tools = [];
-    expect(wantOpen(state, world, want("roots::job"), calendar(0, 340))).toBe(false);
+    expect(wantOpen(state, world, digs[0])).toBe(true);
+    expect(wantOpen(state, world, digs[1])).toBe(false);
   });
 
-  it("asks for the plant band by the day: a counted job per row, the handbook's three hours split across them", () => {
+  it("asks for the plant band by the day, in whole hours that divide the handbook's three", () => {
     // A keep measured in food at camp can never read met while the body eats what it brings
     // home, so the plant keeps took four and a half to seven and a half hours a day and the
-    // hunt rows below them never got a turn. These are counted jobs instead, given afresh
-    // each morning and finished for the day once the count is spent.
+    // hunt rows below them never got a turn. These are daily counts instead: spent, the row
+    // waits for the morning, and the day roll is what starts it over.
     for (const t of ["eggs::job", "roots::job", "seaweed::job"]) {
       expect(want(t).kind).toBe("job");
-      expect(want(t).req.until).toEqual({ kind: "times", n: PLANT_HOURS_PER_ROW });
+      expect(want(t).req.until.kind).toBe("daily");
     }
-    expect(PLANT_HOURS_PER_ROW * 3).toBe(PLANT_HOURS_PER_DAY);
+    // A count is completions of an hour's task, so every daily count on the list is whole:
+    // half a dig is not a dig, and a fraction only ever rounds up in the running.
+    for (const w of REFERENCE_ORDERS) {
+      if (w.req.until.kind !== "daily") continue;
+      expect(Number.isInteger(w.req.until.n)).toBe(true);
+    }
+    // The rows an inland camp has divide the band in whole hours: two of roots, the row that
+    // stands all year, and one of eggs in its six weeks. Seaweed is a sea camp's row, given by
+    // a runner rule and never standing at an inland lake, and dividing the budget by it left an
+    // hour unspent every day: a level-20 camp on seed 45 dug 273 kcal a day, under the band,
+    // and starved on the lean wall on day 200 with 19 tonnes of rhizome in reach. On a coast
+    // the seaweed row takes its hour on top, one over the band, on a shore no gate reaches.
+    expect(PLANT_HOURS_ROOTS + PLANT_HOURS_WINDOW_ROW).toBe(PLANT_HOURS_PER_DAY);
+    expect(daily(want("roots::job"))).toBe(PLANT_HOURS_ROOTS);
+    expect(daily(want("eggs::job"))).toBe(PLANT_HOURS_WINDOW_ROW);
+    expect(daily(want("seaweed::job"))).toBe(PLANT_HOURS_WINDOW_ROW);
   });
 
   it("gives a daily want its count once a day: spent, it waits for the morning", () => {
     const { state, world, player } = setUpReference(17, true);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
-    const roots = () => ordersHere(state, world).find((o) => o.req.task === "roots");
+    // The summer row, told from the winter dig standing shut beside it by the window it carries.
+    const roots = () => ordersHere(state, world).find((o) => o.req.task === "roots" && o.req.when?.season?.from === ROOT_FROM_DOY);
     player.tick(state, world);
     const first = roots();
     expect(first).toBeDefined();
     // Spend the day's count by hand: the order drops off the next look and is not given again.
-    first!.done = PLANT_HOURS_PER_ROW;
+    first!.done = PLANT_HOURS_ROOTS;
     removeOrder(state, world, first!.id);
     player.tick(state, world);
     expect(roots()).toBeUndefined();
@@ -145,26 +183,65 @@ describe("the list after the axe", () => {
     expect(roots()).toBeDefined();
   });
 
-  it("shuts the hunt and the fish once the larder is a winter's worth, and opens them again under it", () => {
-    // Both rows are promises about raw food at camp and the body eats what it brings home, so
-    // neither ever reads met while there is meat to hang: they take the day and the woodpile
-    // keeps beneath them never run. Seed 19 froze on day 305 with ten elk behind it, 829,835
-    // kcal at camp and three logs. The line is the winter stock's own food, derived.
-    expect(WINTER_FOOD_KCAL).toBe(WINTER_STOCK.driedMeatKg * FOODS.driedMeat.kcalPerKg + WINTER_STOCK.fatKg * FOODS.fat.kcalPerKg);
+  it("the wants carry their conditions, and wantOpen holds only the named runner rules", () => {
+    const eggs = want("eggs::job");
+    expect(eggs.req.until).toEqual({ kind: "daily", n: PLANT_HOURS_WINDOW_ROW });
+    expect(eggs.req.when).toEqual({ season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } });
+    // The hunt keep's figure is the winter stock's dried meat in the raw kilos it dried from,
+    // which is the unit the keep counts its forms in, and it restarts at four fifths of that -
+    // the fifth the stock carries as spare. It is the larder gate, said on the row itself.
+    const hunt = want("hunt:any:keep");
+    expect(hunt.req.until).toEqual({ kind: "campHas", qty: WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO });
+    expect(hunt.req.when).toEqual({ restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 });
+    const fish = want("fish:any:keep");
+    expect(fish.req.when).toEqual({ stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } });
+    // All four rise to their figures by 1 December; what the spending says is what
+    // happens after. The reserve is spent by the thaw, since a store cut for one
+    // winter is burned through it - a held reserve is what froze seed 17 on day 342
+    // with 593 kg of firewood standing. The buffer holds, since the fire draws on it
+    // daily - a spent buffer is what froze seed 15 on day 280 with 138 uncut logs and
+    // 1.7 million kcal at camp. Both readings are the thirty-seed sweep's.
+    const season = { from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 };
+    const reserve = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && winterStockWant(w))!;
+    expect(reserve.req.when).toEqual({ season, by: WOOD_DUE_DOY, spend: true });
+    for (const task of ["split", "splitWedges", "deadwood"]) {
+      const buffer = REFERENCE_ORDERS.find((w) => w.req.task === task && winterStockWant(w))!;
+      expect(buffer.req.when, task).toEqual({ season, by: WOOD_DUE_DOY });
+    }
+    expect(want("hang::grind").req.when).toEqual({ stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } });
+    expect(want("cook:rawFat:grind").req.when).toEqual({ stock: { item: "rawFat", atLeast: TRACE_KG } });
+    expect(want("crack::grind").req.when).toEqual({ stock: { item: "bone", atLeast: 1 } });
+    expect(want("build:dryingRack:job").req.when).toEqual({ stock: { item: "rawMeat", atLeast: TRACE_KG } });
+    const tasks = REFERENCE_ORDERS.map(key);
+    expect(REFERENCE_ORDERS.indexOf(reserve)).toBeLessThan(tasks.indexOf("hunt:any:keep"));
+    // A winter's dried meat at camp is the two food rows' own business, read off their
+    // band and their stock line by whoever holds the order, and no rule in the runner.
     const { state, world } = newGame(17);
-    setSkillLevel(state, "hunting", 20);
-    const st = regionState(state, world, state.player.region);
-    const camp = pile(state, st.campCell);
-    const july = calendar(0, 200);
-    const rows = ["hunt:any:keep", "fish:any:keep", "hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"];
-    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(true);
-    // A kilo under the line the rows are still open; a kilo over it they shut.
-    addItem(camp, "driedMeat", WINTER_FOOD_KCAL / FOODS.driedMeat.kcalPerKg - 1);
-    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(true);
-    addItem(camp, "driedMeat", 2);
-    for (const t of rows) expect(wantOpen(state, world, want(t), july), t).toBe(false);
-    // The trap and the snare line are set once and cost nothing standing: the larder is not their business.
-    for (const t of ["setTrap::job", "build:snare:keep"]) expect(wantOpen(state, world, want(t), july), t).toBe(true);
+    addItem(pile(state, regionState(state, world, state.player.region).campCell), "driedMeat", WINTER_STOCK.driedMeatKg);
+    for (const w of [hunt, fish]) expect(wantOpen(state, world, w)).toBe(true);
+  });
+
+  it("the runner gives the plain shape under the rung and counts the morning as a returning player", () => {
+    // A month into the wood window, so the reserve's target has risen off the nothing it
+    // starts its season at, and high summer, so no shore ices over and none of the named
+    // rules flips in the three days.
+    const { state, world, player } = setUpReference(17, true, MIDSUMMER_DOY + 30);
+    for (const s of SKILL_IDS) state.skills[s].xp = levelMinutes(20);
+    // Kitted, all skills 20: the reserve goes with its pace and its season and no morning is counted for it.
+    stepReference({ state, world, player }, 1440 * 3);
+    // The log reserve, told from the summer keep of the same task by its target.
+    const paced = ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.logs);
+    expect(paced?.req.when?.by).toBe(WOOD_DUE_DOY);
+    expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
+    expect(player.attention(1, 3).mornings).toBe(0);
+  });
+
+  it("a level-5 heir gets jobs and grinds only, and its list changes every morning the plant band re-opens", () => {
+    const { state, world, player } = setUpReference(17, false);
+    for (const s of SKILL_IDS) state.skills[s].xp = levelMinutes(5);
+    stepReference({ state, world, player }, 1440 * 5);
+    for (const o of ordersHere(state, world)) expect(o.kind).not.toBe("keep");
+    expect(player.attention(1, 5).mornings).toBeGreaterThan(0);
   });
 
   it("hunts above the plant band and above the fish keep, with the bow and the arrows left below them", () => {
@@ -179,28 +256,15 @@ describe("the list after the axe", () => {
     expect(tasks.indexOf("craft:arrows:keep")).toBe(tasks.indexOf("craft:bow:keep") + 1);
   });
 
-  it("renders raw fat as a grind while any is in reach, above the cook keeps", () => {
+  it("renders raw fat as a grind while any is at camp, above the cook keeps", () => {
     // A keep of a kilo of rendered fat reads met the moment the first kilo is off the fire, and
     // camp fat is drawn only by auto-eat, last in the order, at a fifth of a kilo a day. So an
     // elk's raw fat sat beside the fire and rotted in three days with the row reading met: 53.7
-    // kg of 65.7 on seed 42, 483,000 kcal, in the year it lived. It is the crack and hang shape.
+    // kg of 65.7 on seed 42, 483,000 kcal, in the year it lived. It is the crack and hang shape:
+    // a grind that is never met, with a stock line on the row to say what it waits for.
     const tasks = REFERENCE_ORDERS.map(key);
     expect(tasks).toContain("cook:rawFat:grind");
     expect(tasks.indexOf("cook:rawFat:grind")).toBeLessThan(tasks.indexOf("cook:fish:keep"));
-    const { state, world } = newGame(17);
-    const st = regionState(state, world, state.player.region);
-    const july = calendar(0, 200);
-    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(false);
-    // A trace is not stock, the way the cook's own guard reads it.
-    addItem(pile(state, st.campCell), "rawFat", TRACE_KG / 2);
-    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(false);
-    addItem(pile(state, st.campCell), "rawFat", 1);
-    expect(wantOpen(state, world, want("cook:rawFat:grind"), july)).toBe(true);
-    // The pack counts too: fat carried home from a kill is fat to render.
-    const { state: s2, world: w2 } = newGame(19);
-    expect(wantOpen(s2, w2, want("cook:rawFat:grind"), july)).toBe(false);
-    addItem(s2.player.pack, "rawFat", 1);
-    expect(wantOpen(s2, w2, want("cook:rawFat:grind"), july)).toBe(true);
   });
 
   it("hangs only what the body cannot eat before it rots, and hangs it above the plant band", () => {
@@ -211,27 +275,34 @@ describe("the list after the axe", () => {
     expect(HANG_ABOVE_KG).toBeCloseTo((SPOIL_HOURS.rawMeat / 24) * (LEAN_KCAL_PER_DAY / FOODS.rawMeat.kcalPerKg));
     const tasks = REFERENCE_ORDERS.map(key);
     expect(tasks.indexOf("hang::grind")).toBeLessThan(tasks.indexOf("roots::job"));
-    const { state, world } = newGame(17);
-    const st = regionState(state, world, state.player.region);
-    const camp = pile(state, st.campCell);
-    const april = calendar(0, 100);
-    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(false);
-    addItem(camp, "rawMeat", HANG_ABOVE_KG);
-    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(false);
-    addItem(camp, "rawMeat", 1);
-    expect(wantOpen(state, world, want("hang::grind"), april)).toBe(true);
   });
 
-  it("wants the rack only once there is meat to dry, so the hour is not spent on an empty one", () => {
-    // The rack outranks the gathering keeps, so nothing shuts it but this: a beginner who
-    // builds it on day five with no kill yet loses the hour off the woodpile, and seed 19
-    // froze on day 22 when it did.
-    const { state, world } = newGame(17);
-    const st = regionState(state, world, state.player.region);
-    const april = calendar(0, 100);
-    expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(false);
-    addItem(pile(state, st.campCell), "rawMeat", 2);
-    expect(wantOpen(state, world, want("build:dryingRack:job"), april)).toBe(true);
+  it("keeps two bark buckets at camp, so a burst one is made again", () => {
+    // A camp-has job drops off when it is met and is never given twice, so the
+    // first camp whose bucket burst went without a vessel for the rest of its
+    // life: seed 17's level-20 year read "needs a vessel" on the water keep
+    // from the burst on. A keep is the shape that re-gives.
+    const bucket = want("craft:barkBucket:keep");
+    expect(bucket.req.until).toEqual({ kind: "campHas", qty: 2 });
+    expect(REFERENCE_ORDERS.map(key)).not.toContain("craft:barkBucket:job");
+  });
+
+  it("makes another bucket within a day of the camp's last one bursting", () => {
+    const { state, world, player } = setUpReference(17, true);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell);
+    // The bucket's materials at camp, so the day measures the re-giving rather
+    // than a walk to the birches for bark.
+    addItem(camp, "bark", 40);
+    addItem(camp, "cordage", 8);
+    // A kitted camp still spends its first days on the rows above this one - the
+    // lean-to, the bed, the woodpile, the snares - so the burst is read against a
+    // settled camp, which is the camp seed 17's bucket burst in.
+    stepReference({ state, world, player }, 1440 * 5);
+    // The burst: hazards.ts takes the camp's bucket when the ice in it splits it.
+    removeItem(camp, "barkBucket", qty(camp, "barkBucket"));
+    stepReference({ state, world, player }, 1440);
+    expect(qty(camp, "barkBucket")).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps a cook for the oily catch as well as the lean one, since raw oily fish is eaten by nobody", () => {

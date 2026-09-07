@@ -8,6 +8,7 @@ import { DISABLED, disabled } from "../src/sim/probe";
 import { fishItem } from "../src/sim/species";
 import { check } from "../src/sim/tasks";
 import { unexploited } from "../src/sim/reference";
+import { emptyBurn, emptyYield } from "../src/sim/ledger";
 import { addItem, pile } from "../src/sim/inventory";
 import { regionState } from "../src/sim/regionstate";
 import { cellIdx, regionAt } from "../src/world/gen";
@@ -57,6 +58,29 @@ describe("the without probe and the unexploited line", () => {
     expect(after.some((u) => u.name === "fat at camp" && u.amount.includes("18,000"))).toBe(true);
     expect(after.some((u) => u.name === "bones uncracked")).toBe(true);
     expect(after.length).toBeGreaterThan(before.length);
+    // Nothing has ever been credited into the ledger, so what sat there reads unclaimed the same way.
+    expect(after.every((u) => u.taken === "none taken")).toBe(true);
+  });
+
+  it("the taken half reads what the ledger credited from the item's own source in the week before, hunt for fat and marrow for bones", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "fat", 2);
+    addItem(pile(state, st.campCell), "bone", 3);
+    // newGame seeds day 1's own row (the arrival kit's kcal); replace it rather than
+    // duplicate it, or weekBefore's average would divide by eight rows, not seven.
+    state.ledger.length = 0;
+    for (let d = 1; d <= 7; d++) {
+      const row = { day: d, yield: emptyYield(), eaten: 0, leanKcal: 0, nonLeanKcal: 0, leanAtCamp: false, burn: emptyBurn(), sleepMin: 0, workMin: 0 };
+      row.yield.hunt = 306;
+      state.ledger.push(row);
+    }
+    // Day 8: weekBefore reads days 1-7.
+    state.minute = 7 * 1440;
+    const after = unexploited(state, world);
+    expect(after.find((u) => u.name === "fat at camp")?.taken).toBe("306 kcal a day taken");
+    // Marrow was never credited, so bones read unclaimed beside a fed larder.
+    expect(after.find((u) => u.name === "bones uncracked")?.taken).toBe("none taken");
   });
 
   // Seed 17's own coastline (the plants test's hand-found cell), not the landing
