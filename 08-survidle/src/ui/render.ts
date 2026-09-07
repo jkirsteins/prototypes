@@ -2,11 +2,14 @@ import { monthStartDoy } from "../sim/calendar";
 import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
 import { DEFAULT_ZOOM } from "./map";
+import { defaultPanes, type Panes } from "./panes";
 import type { AwaySummary } from "../sim/save";
 import type { IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
+  /** Which pane is showing, and where in the Do pane the player was; remembered across a reload. */
+  panes: Panes;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
   /** What happened while the tab was closed, until dismissed. */
@@ -120,7 +123,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 
 export function newUiState(): UiState {
   return {
-    selected: null, away: null, confirmAbandon: false,
+    panes: defaultPanes(), selected: null, away: null, confirmAbandon: false,
     cemetery: false, manual: false, teach: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", moreOpen: [], folds: {},
     hurry: newHurry(),

@@ -36,6 +36,8 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
+import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
+import type { SubtabId } from "./ui/purpose";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -109,6 +111,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.hurry = newHurry();
   ui.confirmAbandon = false;
   ui.folds = loadFolds(localStorage);
+  ui.panes = loadPanes(localStorage);
   resetPanels();
   resetForecastAt();
   saveGame(state);
@@ -117,6 +120,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
 
 function boot() {
   ui.folds = loadFolds(localStorage);
+  ui.panes = loadPanes(localStorage);
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
     state = saved.state;
@@ -165,6 +169,14 @@ function render() {
   }
   setPanel("task", taskHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
+  setPanel("panetabs", paneTabsHtml(ui.panes));
+  setPanel("dosubs", subtabsHtml(ui.panes));
+  // Shown and hidden, never rendered on demand: a pane built when it is
+  // asked for is a pane whose scroll position starts again every time.
+  for (const id of PANE_IDS) {
+    const el = document.getElementById(`pane-${id}`);
+    if (el) el.hidden = id !== ui.panes.pane;
+  }
   setPanel("doitems", doHtml(state, world, cal, ui, ui.folds));
   setPanel("inventory", inventoryHtml(state, world, cal));
   setPanel("log", logHtml(state));
@@ -266,6 +278,18 @@ function onClick(ev: Event) {
     }
     case "stop":
       stopTask(state, world);
+      break;
+    case "pane":
+      ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
+      savePanes(localStorage, ui.panes);
+      break;
+    case "subtab":
+      ui.panes = toSubtab(ui.panes, target.dataset.subtab as SubtabId);
+      savePanes(localStorage, ui.panes);
+      break;
+    case "purpose":
+      ui.panes = { ...ui.panes, purpose: target.dataset.purpose as string };
+      savePanes(localStorage, ui.panes);
       break;
     case "zoom":
       zoomBy(target.dataset.dir === "in" ? -1 : 1);
