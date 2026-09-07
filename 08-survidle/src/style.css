@@ -126,14 +126,17 @@ small, .dim { color: var(--dim); }
 .bar.dur.wet .lbl { font-size: 9px; line-height: 8px; }
 .bar.low .fill { background: var(--bad); }
 /* The meal line: where a falling reserve triggers a meal. Fixed share of the
-   bar, drawn in the markup, so nothing about it moves frame to frame. */
+   bar, drawn in the markup, so nothing about it moves frame to frame. It has
+   to read against two grounds - the fill when the body is fed, the dark bar
+   when it is not - and the fed state is the one a player sees all game, so
+   the line carries its own dark outline rather than leaning on either. */
 .bar .mark {
   position: absolute; top: 0; bottom: 0;
-  width: 2px; margin-left: -1px;
-  background: #cfd6e0;
-  opacity: .55;
+  width: 3px; margin-left: -1.5px;
+  background: #fff;
+  opacity: .9;
+  box-shadow: 0 0 0 1px rgba(10, 13, 18, .85);
 }
-.bar.low .mark { opacity: 1; }
 /* A meal landed: the fill brightens for a moment so the refill is seen and
    not only logged. */
 @keyframes fed { from { filter: brightness(2.4); } to { filter: brightness(1); } }

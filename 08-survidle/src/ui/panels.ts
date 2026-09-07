@@ -48,7 +48,7 @@ function bar(id: string, cls: string, label: string, markAt?: number): string {
   // A mark is a fixed share of the bar, so it belongs in the markup: it is
   // the one part of a bar that does not move, and the thing a falling fill
   // is falling toward.
-  const mark = markAt === undefined ? "" : `<div class="mark" style="left:${(markAt * 100).toFixed(1)}%"></div>`;
+  const mark = markAt === undefined ? "" : `<div class="mark" style="left:${(markAt * 100).toFixed(1)}%" title="eats here"></div>`;
   return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${mark}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
 }
 
