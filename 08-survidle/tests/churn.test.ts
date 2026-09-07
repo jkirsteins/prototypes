@@ -82,7 +82,7 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     task: taskHtml(state, world, cal),
     forecast: forecastHtml(emptyView(), state),
     dorows: doHtml(state, world, cal, ui, {}),
-    inventory: inventoryHtml(state, world),
+    inventory: inventoryHtml(state, world, cal),
     journal: journalHtml(state, cal, ui),
     log: logHtml(state),
     // The map is guarded by its own key rather than by its markup, so the key is what is measured.

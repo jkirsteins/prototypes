@@ -3,13 +3,10 @@ import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
 import { DEFAULT_ZOOM } from "./map";
 import type { AwaySummary } from "../sim/save";
-import type { TaskGroup } from "../sim/tasks";
 import type { IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
-  /** The raw list's tab, under the advanced toggle. */
-  tab: TaskGroup;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
   /** What happened while the tab was closed, until dismissed. */
@@ -38,7 +35,6 @@ export interface UiState {
   open: { id: TaskId; arg: string } | null;
   /** The open row's choice; reset when another row opens. */
   choice: RowChoice;
-  advanced: boolean;
   /** The Do panel's filter box: narrows rows to those whose label contains it, case-insensitive. */
   filter: string;
   /** Do groups whose far rows ("more (N)") have been opened this render lifetime. */
@@ -124,9 +120,9 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 
 export function newUiState(): UiState {
   return {
-    tab: "gather", selected: null, away: null, confirmAbandon: false,
+    selected: null, away: null, confirmAbandon: false,
     cemetery: false, manual: false, teach: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
-    open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [], folds: {},
+    open: null, choice: defaultChoice(), filter: "", moreOpen: [], folds: {},
     hurry: newHurry(),
   };
 }

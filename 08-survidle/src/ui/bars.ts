@@ -2,7 +2,7 @@ import { calendar } from "../sim/calendar";
 import { burnPerHour, fuelTotal } from "../sim/fire";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { regionState } from "../sim/regionstate";
-import { levelShare, masteryProgress, poolShare } from "../sim/skills";
+import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
 import { garmentWet } from "../sim/clothing";
 import type { GameState, SkillId } from "../sim/types";
 import { WATER_FULL } from "../sim/water";
@@ -80,9 +80,9 @@ export function fillShare(state: GameState, spec: string): number | null {
       return levelShare(state, arg as SkillId);
     case "pool":
       return poolShare(state, arg as SkillId);
-    case "mastery": {
+    case "masteryTo": {
       const [skill, key] = arg.split("|");
-      return skill && key ? masteryProgress(state, skill as SkillId, key).share : null;
+      return skill && key ? (masteryMilestone(state, skill as SkillId, key)?.share ?? null) : null;
     }
     default:
       return null;

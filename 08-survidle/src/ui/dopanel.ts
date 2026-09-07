@@ -2,7 +2,7 @@ import { itemLabel } from "../sim/actions";
 import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { capabilityFor } from "../sim/capabilities";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
-import { ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
+import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween } from "../sim/position";
 import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
@@ -12,7 +12,7 @@ import { SPOT_NAMES, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionAt, type RegionDef, type World } from "../world/gen";
-import { actionsHtml, instantHtml, masteryBar } from "./panels";
+import { instantHtml, masteryLine } from "./panels";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 
 /** The Do panel's fold state, under one local storage key: which groups are shut. Absent means open. */
@@ -184,7 +184,15 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
     ] },
     { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
-    { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
+    // Mending sits with building because it is the same act on the same things: a
+    // lean-to whose roof has gone is a lean-to to build again. It had no row of its
+    // own while the raw list existed, which meant a structure could decay with no
+    // way to repair it that a player would ever find.
+    { label: "Build", items: [
+      ...STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })),
+      ...DECAYING.map((id) => ({ id: "mend" as TaskId, arg: id })),
+      { id: "mend" as TaskId, arg: "seep" },
+    ] },
   ];
 }
 
@@ -333,7 +341,7 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
 function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: World): string {
   const arg = o.arg ?? "";
   const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(plain(o.recommended.text))}</small>` : "";
-  const bar = o.mastery ? masteryBar(o.mastery) : "";
+  const bar = o.mastery ? masteryLine(state, o.mastery) : "";
   // A producer works while you do not, which is the shape of the whole game and
   // which no row said. It shows on a row that cannot start yet too: a producer
   // under its level is the row a player most needs the promise on.
@@ -419,6 +427,5 @@ export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiStat
     : intentGroups(regionAt(world, state.player.region))
       .map((g) => groupHtml(g, state, world, cal, ui, folds))
       .join("");
-  const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
-  return `${instantHtml(state, world)}<div class="rows">${groups}</div>${adv}`;
+  return `${instantHtml(state, world)}<div class="rows">${groups}</div>`;
 }
