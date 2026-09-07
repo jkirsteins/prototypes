@@ -118,31 +118,34 @@ function daysFrom(a: number, b: number): number {
  * when it carries no season, so a winter pile is built across the autumn
  * rather than in the week the order is first read. The rise starts at
  * nothing, so a paced keep asks for nothing on the first day of its
- * season and the rows under it have that day to themselves.
+ * season and the rows under it have that day to themselves. Past the due
+ * date the figure is held, all the way round to the rise's own start.
  *
- * Past the due date a keep with a season falls the same way, evenly to
- * nothing on the season's last day, because a store due on a date is one
- * the days after it spend: what is still wanted in March is what March
- * will burn, not the whole figure December was due. A camp holding 593 kg
- * of firewood on 1 March, with the thaw 24 days off at 60 kg a day, has
- * its pile; asking it for the whole 600 buys a week of felling in 65 cm of
- * snow at -20 C for wood the thaw would leave standing. With no season
- * there is no close to fall to, and the whole figure stands from the due
- * date round to the rise's own start.
+ * Unless the keep says it is spent by the season's close, which only a
+ * keep with a season can say: then the target falls back to nothing across
+ * the rest of that season, evenly, the mirror of the rise. A store cut for
+ * one winter is spent by the thaw, so what is still wanted in March is
+ * what March will burn; a camp holding 43 logs on 1 March, with the thaw
+ * 24 days off, is asked for the 257 it is short of and buys a week of
+ * felling in 65 cm of snow at -20 C for wood the thaw would leave
+ * standing. A buffer is the other case and holds: split firewood is drawn
+ * on daily and refilled from the store beside it, so 1 March wants as much
+ * of it as 1 December, and a buffer that fell froze four camps of thirty
+ * that had lived the year with it held.
  */
 export function keepTargetToday(cal: Calendar, o: Order): number {
   const keep = keepTarget(o);
   if (!keep) return 0;
-  const by = o.req.when?.by;
-  if (by === undefined) return keep.qty;
-  const season = o.req.when?.season;
-  const from = season?.from ?? o.givenDoy ?? by;
-  const rise = daysFrom(from, by);
+  const w = o.req.when;
+  if (!w || w.by === undefined) return keep.qty;
+  const from = w.season?.from ?? o.givenDoy ?? w.by;
+  const rise = daysFrom(from, w.by);
+  if (rise === 0) return keep.qty;
   const gone = daysFrom(from, cal.dayOfYear);
-  if (rise === 0 || gone <= rise) return rise === 0 ? keep.qty : (keep.qty * gone) / rise;
-  if (!season) return keep.qty;
-  const fall = daysFrom(by, season.to);
-  const since = daysFrom(by, cal.dayOfYear);
+  if (gone <= rise) return (keep.qty * gone) / rise;
+  if (!w.spend || !w.season) return keep.qty;
+  const fall = daysFrom(w.by, w.season.to);
+  const since = daysFrom(w.by, cal.dayOfYear);
   return since >= fall ? 0 : keep.qty * (1 - since / fall);
 }
 
@@ -242,9 +245,11 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   else if (u.kind === "forever") parts.push("forever");
   else if (u.kind === "daily") parts.push(`${u.n} a day`);
   // The conditions read after the target, in the order they bite: what the target
-  // is due by, the line it restarts at, the window it runs in, the stock it waits on.
+  // is due by and whether it is held or spent after, the line it restarts at, the
+  // window it runs in, the stock it waits on.
   const w = o.req.when;
   if (w?.by !== undefined) parts.push(`by ${fmtDoy(w.by)}`);
+  if (w?.spend && w.season) parts.push(`spent by ${fmtDoy(w.season.to)}`);
   if (w?.restart !== undefined) parts.push(`restart under ${w.restart}`);
   if (w?.season) parts.push(`from ${fmtDoy(w.season.from)} to ${fmtDoy(w.season.to)}`);
   if (w?.stock?.atLeast !== undefined) parts.push(`while camp has at least ${itemLabel(w.stock.item, w.stock.atLeast)}`);

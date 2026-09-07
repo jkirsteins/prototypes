@@ -52,7 +52,9 @@ export function rungsNeeded(req: IntentRequest, kind: OrderKind): Rung[] {
   const out: Rung[] = [n.kind];
   const w = n.req.when;
   if (w?.season || w?.stock || w?.restart !== undefined || n.req.until.kind === "daily") out.push("condition");
-  if (w?.by !== undefined) out.push("pace");
+  // Both pace words ask for the same rung: "spent by the season's close" is what
+  // a due date can say next, not a rung of its own.
+  if (w?.by !== undefined || w?.spend) out.push("pace");
   return out;
 }
 
@@ -80,8 +82,10 @@ function stripUnearned(state: GameState, req: IntentRequest): IntentRequest {
   if (!skill) return req;
   const level = skillLevel(state, skill);
   let out = req;
-  if (level < RUNG_LEVEL.pace && out.when?.by !== undefined) {
-    const { by: _by, ...rest } = out.when;
+  // The two pace words go together: "spent by the season's close" says what
+  // happens after a due date, so it means nothing once the date is off.
+  if (level < RUNG_LEVEL.pace && (out.when?.by !== undefined || out.when?.spend)) {
+    const { by: _by, spend: _spend, ...rest } = out.when;
     out = { ...out, when: Object.keys(rest).length ? rest : undefined };
   }
   if (level < RUNG_LEVEL.condition) {

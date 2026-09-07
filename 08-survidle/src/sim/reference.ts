@@ -190,10 +190,11 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * and the logs that are the stock's unsplit half - sit above the hunt keep
  * rather than in this loop, since what they promise is the winter itself and
  * a hunt is the one thing that can wait for it. All four carry the window
- * they are stocked against, midsummer to the thaw, so a list that reaches
- * these rows in April or May asks for nothing at all. Only the log row
- * carries the due date: the reserve is what the autumn builds and the winter
- * spends, and the buffer above it is flat because a buffer is due every day.
+ * they are stocked against, midsummer to the thaw, and the same date, so a
+ * list that reaches these rows in April or May asks for nothing at all. Only
+ * the log row is spent by the season's close: the reserve is what the autumn
+ * builds and the winter burns through, while the split buffer above it holds
+ * its figure to the thaw because the fire draws on it every day of the winter.
  *
  * Inner bark is not on the list. At the handbook's own yield it is the
  * worst hour a survivor can spend: about 275 kcal an hour against fishing's
@@ -269,11 +270,11 @@ export const WINTER_WOOD_TO_DOY = 90;
 /**
  * The day the winter stock is due in full: 1 December, the day "what a
  * competent player has at camp" is measured on and the day the winter gate
- * starts its own reading from. The log reserve rises to its figure by it, so
- * the felling is spread across the autumn and the rows under it keep their
- * share of every day until it is, and falls away again across the winter the
- * reserve is spent in, so what it asks for in March is what March has left to
- * burn. The split buffer beside it carries no due date; see WINTER_BUFFER_WHEN.
+ * starts its own reading from. All four wood keeps rise to their figures by
+ * it, so the cutting is spread across the autumn and the rows under them keep
+ * their share of every day until it is. Only the log reserve falls away again
+ * across the winter it is spent in, so what it asks for in March is what March
+ * has left to burn; the split buffer holds. See WINTER_BUFFER_WHEN.
  */
 export const WOOD_DUE_DOY = 334;
 
@@ -303,26 +304,28 @@ export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs:
 const WINTER_WOOD_SEASON = { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY - 1 };
 
 /**
- * The three firewood rows: the window and nothing else. What they promise is
- * the split pile a camp burns out of, which is a working buffer and not a
- * store - the fire draws it down every day and the reserve beside it fills it
- * back up - so it is flat across the whole window, wanted as much on 1 March
- * as on 1 December, and refused for the minutes it takes to read "needs a log"
- * whenever the reserve is empty. It carries no due date because there is no
- * day by which a buffer is due: it is due every day.
+ * The three firewood rows: the window and a due date, held after it. What
+ * they promise is the split pile the camp burns out of, a working buffer and
+ * not a store - the fire draws it down every day and the reserve beside it
+ * fills it back up - so 1 March wants as much of it as 1 December. It rises
+ * rather than standing at 600 kg from midsummer because a beginner cannot
+ * split 600 kg and a row that never reads met takes the whole day from the
+ * food rows under it: flat, it was a splitting treadmill that cost three
+ * lineages their year, the heirs dying at 2,600 to 4,000 kcal a day of camp
+ * activity with the logs they were splitting stacked beside them.
  */
-const WINTER_BUFFER_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON };
+const WINTER_BUFFER_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON, by: WOOD_DUE_DOY };
 
 /**
- * The log reserve: the window and the day the whole of it is due. This is the
- * row the pace belongs to, and the only one. Standing timber cut and stacked
- * is the store the winter is spent out of, so it rises to its figure across
- * the autumn and falls away again as the winter burns it, reaching nothing at
- * the thaw - a pile stacked in March is next winter's, and asking for it costs
- * a week of felling in deep snow. Seed 17 froze on day 342 owing 257 logs with
- * 593 kg of firewood already at camp.
+ * The log reserve: the same window and date, and spent by the season's close.
+ * This is the row the spending belongs to, and the only one. Standing timber
+ * cut and stacked is the store the winter is burned out of, so it rises to
+ * its figure across the autumn and falls away again as the winter spends it,
+ * reaching nothing at the thaw - a pile stacked in March is next winter's,
+ * and asking for it costs a week of felling in deep snow. Seed 17 froze on
+ * day 342 owing 257 logs with 593 kg of firewood already at camp.
  */
-const WINTER_RESERVE_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON, by: WOOD_DUE_DOY };
+const WINTER_RESERVE_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON, by: WOOD_DUE_DOY, spend: true };
 
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {

@@ -887,19 +887,36 @@ describe("the vocabulary in the scheduler", () => {
     expect(keepBand(7, 10, 6, undefined)).toBe(false);
   });
 
-  it("a due date paces a keep's target up to its date and back down to its season's close", () => {
+  it("a due date paces a keep's target up to its date and holds it after", () => {
     const { state, world } = newGame(17);
     const season = { from: 182, to: 89 };
     const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 600 }, deliver: "camp", where: "nearest", when: { season, by: 334 } }, "keep");
     expect(keepTargetToday(calendar(0, 182), o)).toBeCloseTo(0, 6);
     expect(keepTargetToday(calendar(0, 258), o)).toBeCloseTo(300, 6);
     expect(keepTargetToday(calendar(0, 334), o)).toBeCloseTo(600, 6);
-    // Past the due date the target is what is left to burn before the season
-    // closes, so a winter pile the thaw is three weeks off asks for a fifth of
-    // itself rather than the whole 600 kg again.
-    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo((600 * (89 - 20)) / (89 + 365 - 334), 6);
+    // A buffer holds: the fire draws on the split pile every day of the winter,
+    // so 1 March wants as much of it as 1 December did.
+    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo(600, 6);
+    expect(keepTargetToday(calendar(0, 89), o)).toBeCloseTo(600, 6);
+    expect(inSeason(90, season)).toBe(false);
+  });
+
+  it("a keep spent by its season's close falls back to nothing after its due date", () => {
+    const { state, world } = newGame(17);
+    const season = { from: 182, to: 89 };
+    const o = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season, by: 334, spend: true } }, "keep");
+    // The rise is the same rise; only what happens after the date differs.
+    expect(keepTargetToday(calendar(0, 182), o)).toBeCloseTo(0, 6);
+    expect(keepTargetToday(calendar(0, 258), o)).toBeCloseTo(150, 6);
+    expect(keepTargetToday(calendar(0, 334), o)).toBeCloseTo(300, 6);
+    // A store cut for one winter is spent by the thaw: what March asks for is
+    // what March will burn, not the whole figure December was due.
+    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo((300 * (89 - 20)) / (89 + 365 - 334), 6);
     expect(keepTargetToday(calendar(0, 89), o)).toBeLessThan(1);
     expect(inSeason(90, season)).toBe(false);
+    // Spending needs a close to fall to: with no season the figure holds.
+    const seasonless = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { by: START_DOY + 10, spend: true } }, "keep");
+    expect(keepTargetToday(calendar(0, START_DOY + 200), seasonless)).toBeCloseTo(300, 6);
   });
 
   it("a paced keep with no season rises from the day it was given, and one due that same day asks the whole figure", () => {
@@ -966,6 +983,9 @@ describe("the vocabulary in the scheduler", () => {
     const { state, world } = newGame(17);
     const wood = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 600 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 90 }, by: 334 } }, "keep");
     expect(orderSentence(state, world, cal, wood)).toContain("keep camp at 600 kg firewood, by 1 December, from 2 July to 1 April");
+    // The spending says itself on the row, right after the date it qualifies.
+    const logs = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 89 }, by: 334, spend: true } }, "keep");
+    expect(orderSentence(state, world, cal, logs)).toContain("by 1 December, spent by 31 March, from 2 July to 31 March");
     const meat = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 240 }, deliver: "camp", where: "nearest", when: { restart: 192 } }, "keep");
     expect(orderSentence(state, world, cal, meat)).toContain("keep camp at 240 kg raw meat in any form, restart under 192");
     const roots = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest", when: { stock: { item: "bone", atLeast: 1 } } }, "job");

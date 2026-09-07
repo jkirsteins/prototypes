@@ -512,6 +512,10 @@ document.addEventListener("keydown", (ev) => {
 function whenFieldOf(el: Element): WhenField | undefined {
   return WHEN_FIELDS.find((f) => el.hasAttribute(`data-row-${f}`));
 }
+/** What a condition field says, as setWhenField reads it: a checkbox's own value is "on" whether it is ticked or not, so its state is the value. */
+function whenFieldValue(el: HTMLInputElement): string {
+  return el.type === "checkbox" ? (el.checked ? "spend" : "") : el.value;
+}
 // Committed on every keystroke so the field is never a stroke behind; no render()
 // here, since setPanel already refuses to redraw the panel while this field has
 // focus (a redraw between keystrokes is what used to eat the field's focus).
@@ -521,7 +525,7 @@ document.addEventListener("input", (ev) => {
   if (el.matches("[data-row-n]")) {
     commitChoiceN(ui, el.value);
   } else if (when) {
-    setWhenField(ui.choice.when, when, el.value);
+    setWhenField(ui.choice.when, when, whenFieldValue(el));
   } else if (el.matches("[data-name]") && state.landing) {
     const t = el.value.trim().slice(0, 40);
     const i = t.indexOf(" ");
@@ -542,7 +546,7 @@ document.addEventListener("change", (ev) => {
   }
   const when = whenFieldOf(el);
   if (when) {
-    setWhenField(ui.choice.when, when, el.value);
+    setWhenField(ui.choice.when, when, whenFieldValue(el));
     render();
     return;
   }

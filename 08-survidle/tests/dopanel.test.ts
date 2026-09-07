@@ -149,12 +149,19 @@ describe("the condition fields", () => {
     const at15 = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
     expect(at15).toContain("data-row-restart");
     expect(at15).not.toContain("data-row-by");
+    // The spending box is the date's other half and comes with it, not before it.
+    expect(at15).not.toContain("data-row-spend");
     expect(at15).toContain("pace at Woodcraft 20");
 
     state.skills.woodcraft.xp = levelMinutes(20);
     const at20 = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
     expect(at20).toContain("data-row-by");
+    expect(at20).toContain("data-row-spend");
+    expect(at20).toContain("spent by the season's close");
     expect(at20).not.toContain("pace at Woodcraft 20");
+    // Ticked, the box draws itself ticked when the row is redrawn.
+    const spending = { ...ui, choice: { ...ui.choice, when: { season: { from: 182, to: 89 }, by: 334, spend: true as const } } };
+    expect(rowHtml(doHtml(state, world, cal, spending), "intent:chop:")).toContain("data-row-spend checked");
     // A row with no stock to count has neither: nothing there reads a restart line or a date.
     const lit = rowHtml(doHtml(state, world, cal, { ...ui, open: { id: "light", arg: "" } }), "intent:light:");
     expect(lit).not.toContain("data-row-restart");
@@ -188,6 +195,12 @@ describe("the condition fields", () => {
     setWhenField(when, "by", "11");
     expect(when.restart).toBe(192);
     expect(when.by).toBe(334);
+    // A checkbox has no figure: its state is the value, and unticked takes it off.
+    setWhenField(when, "spend", "spend");
+    expect(when.spend).toBe(true);
+    setWhenField(when, "spend", "");
+    expect(when.spend).toBeUndefined();
+
     setWhenField(when, "restart", "");
     setWhenField(when, "by", "");
     expect(when.restart).toBeUndefined();

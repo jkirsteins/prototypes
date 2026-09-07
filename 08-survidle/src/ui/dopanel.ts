@@ -158,8 +158,11 @@ function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): st
     if (keep) parts.push(`<span>restart under <input type="number" min="0" data-row-restart value="${w.restart ?? ""}"></span>`);
   }
   if (keep && level >= RUNG_LEVEL.condition) {
+    // The spending box sits beside the date because it says what happens after
+    // it: a store is spent by the window's close, a buffer holds at its figure.
     parts.push(level >= RUNG_LEVEL.pace
-      ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select></span>`
+      ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select>`
+        + ` <label><input type="checkbox" data-row-spend${w.spend ? " checked" : ""}> spent by the season's close</label></span>`
       : `<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "pace")))}</small>`);
   }
   return `<div class="when">${parts.join("")}</div>`;

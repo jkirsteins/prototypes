@@ -57,8 +57,8 @@ export function defaultChoice(): RowChoice {
   return { until: "once", n: 10, deliver: "leave", where: "nearest", when: {} };
 }
 
-/** The condition fields a row draws, by the name each carries in its data attribute (data-row-season-from and its six siblings). */
-export const WHEN_FIELDS = ["season-from", "season-to", "stock-item", "stock-mode", "stock-n", "restart", "by"] as const;
+/** The condition fields a row draws, by the name each carries in its data attribute (data-row-season-from and its seven siblings). */
+export const WHEN_FIELDS = ["season-from", "season-to", "stock-item", "stock-mode", "stock-n", "restart", "by", "spend"] as const;
 export type WhenField = (typeof WHEN_FIELDS)[number];
 
 /** The figure a stock line stands at, whichever side it reads from; one before a number is typed. */
@@ -101,6 +101,12 @@ export function setWhenField(when: OrderWhen, field: WhenField, value: string): 
     case "by":
       if (value === "") delete when.by;
       else when.by = monthStartDoy(num);
+      break;
+    // A checkbox, so the value is its checked state as a string. It is only
+    // ever true or absent: "held" is what a due date means on its own.
+    case "spend":
+      if (value === "") delete when.spend;
+      else when.spend = true;
       break;
   }
 }

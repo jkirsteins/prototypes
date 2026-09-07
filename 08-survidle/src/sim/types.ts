@@ -154,16 +154,25 @@ export type UntilChoice =
  * that has read met at its target stay met until the stock falls under
  * it, so the keep does not flicker at its line. A "by" day makes a keep's
  * target rise to its figure across the season (or from the day the order
- * was given); with a season it falls back to nothing across the rest of
- * that season, since a stock due on a date is one the days after it spend,
- * and without a season it holds at the figure. The ladder gates each part
- * by rung.
+ * was given) and hold there after. "spend" says the figure is not held but
+ * spent: past the due date the target falls back to nothing across the rest
+ * of the season, which is what a store built for one season and burned
+ * through it does. The ladder gates each part by rung.
  */
 export interface OrderWhen {
   season?: { from: number; to: number };
   stock?: { item: ItemId; atLeast?: number; under?: number };
   restart?: number;
   by?: number;
+  /**
+   * Only on a keep that carries both a season and a `by`, and only at the
+   * pace rung. The difference is a reserve from a buffer: 300 logs cut for
+   * one winter are spent by the thaw and asking for them in March buys a
+   * week of felling for wood the thaw leaves standing, while the 600 kg of
+   * split firewood beside them is drawn on every day and refilled from
+   * those logs, so it is held and not spent.
+   */
+  spend?: true;
 }
 
 /** A click on the Do panel, in the terms startIntent speaks. */

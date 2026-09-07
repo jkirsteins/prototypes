@@ -195,17 +195,18 @@ describe("the list after the axe", () => {
     expect(hunt.req.when).toEqual({ restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 });
     const fish = want("fish:any:keep");
     expect(fish.req.when).toEqual({ stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } });
-    // The pace is the log reserve's and no other row's: the reserve is what the autumn
-    // builds and the winter spends, so it carries the due date, while the split buffer
-    // beside it is flat across the window because a buffer is due every day. A falling
-    // buffer is what froze seed 15 on day 280 with 138 uncut logs and 1.7 million kcal
-    // at camp, over the thirty-seed sweep that separated the two.
+    // All four rise to their figures by 1 December; what the spending says is what
+    // happens after. The reserve is spent by the thaw, since a store cut for one
+    // winter is burned through it - a held reserve is what froze seed 17 on day 342
+    // with 593 kg of firewood standing. The buffer holds, since the fire draws on it
+    // daily - a spent buffer is what froze seed 15 on day 280 with 138 uncut logs and
+    // 1.7 million kcal at camp. Both readings are the thirty-seed sweep's.
     const season = { from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 };
     const reserve = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && winterStockWant(w))!;
-    expect(reserve.req.when).toEqual({ season, by: WOOD_DUE_DOY });
+    expect(reserve.req.when).toEqual({ season, by: WOOD_DUE_DOY, spend: true });
     for (const task of ["split", "splitWedges", "deadwood"]) {
       const buffer = REFERENCE_ORDERS.find((w) => w.req.task === task && winterStockWant(w))!;
-      expect(buffer.req.when, task).toEqual({ season });
+      expect(buffer.req.when, task).toEqual({ season, by: WOOD_DUE_DOY });
     }
     expect(want("hang::grind").req.when).toEqual({ stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } });
     expect(want("cook:rawFat:grind").req.when).toEqual({ stock: { item: "rawFat", atLeast: TRACE_KG } });

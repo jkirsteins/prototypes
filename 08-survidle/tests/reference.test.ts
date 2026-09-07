@@ -621,14 +621,18 @@ describe("wants by level", () => {
     expect(inSeason(WINTER_WOOD_FROM_DOY, season)).toBe(true);
     expect(inSeason(244, season)).toBe(true);
     expect(inSeason(20, season)).toBe(true);
-    // The buffer carries the window and no due date: it is the pile the fire draws on
-    // daily, refilled from the reserve, so 1 March wants as much of it as 1 December.
-    expect(wood.req.when!.by).toBeUndefined();
-    // The reserve is the row the date belongs to: the whole figure due on 1 December, so
-    // the felling is spread across the autumn, and away again as the winter spends it.
+    // The buffer rises to its figure by 1 December and holds there: it is the pile the
+    // fire draws on daily, refilled from the reserve, so 1 March wants as much as
+    // 1 December. It rises rather than standing flat because a row a beginner can never
+    // meet takes the whole day from the food rows under it.
+    expect(wood.req.when!.by).toBe(WOOD_DUE_DOY);
+    expect(wood.req.when!.spend).toBeUndefined();
+    // The reserve is the row the spending belongs to: a store cut for one winter is
+    // burned through it, so it falls away again to nothing at the thaw.
     const reserve = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.logs)!;
     expect(reserve.req.when!.season).toEqual(season);
     expect(reserve.req.when!.by).toBe(WOOD_DUE_DOY);
+    expect(reserve.req.when!.spend).toBe(true);
   });
 
   it("follows a paced keep down by hand as readily as up, on the same weekly look", () => {
@@ -684,11 +688,12 @@ describe("wants by level", () => {
     // The three named hunts are all that is left at the foot of the list.
     const tail = REFERENCE_ORDERS.slice(-3);
     expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
-    // The log keep carries the woodpile's window and, alone of the four, its due date;
-    // the summer's 4-log keep carries neither.
+    // The log keep carries the woodpile's window and date and, alone of the four, the
+    // spending; the summer's 4-log keep carries none of it.
     expect(logs.req.when!.season).toEqual(woodpile.req.when!.season);
     expect(logs.req.when!.by).toBe(WOOD_DUE_DOY);
-    expect(woodpile.req.when!.by).toBeUndefined();
+    expect(logs.req.when!.spend).toBe(true);
+    expect(woodpile.req.when!.spend).toBeUndefined();
     const summer = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === 4)!;
     expect(summer.req.when).toBeUndefined();
   });

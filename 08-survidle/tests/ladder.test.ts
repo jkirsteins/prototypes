@@ -281,5 +281,19 @@ describe("the upper rungs' gate", () => {
     expect(rungsNeeded(req("chop", { kind: "campHas", qty: 10 }), "keep")).toEqual(["keep"]);
     expect(rungsNeeded({ ...req("chop", { kind: "campHas", qty: 10 }), when: { season: { from: 1, to: 2 }, by: 334 } }, "keep")).toEqual(["keep", "condition", "pace"]);
     expect(rungsNeeded(req("roots", { kind: "daily", n: 1 }), "job")).toEqual(["job", "condition"]);
+    // Both pace words ask for the same rung, and the spending asks for it on its own.
+    expect(rungsNeeded({ ...req("chop", { kind: "campHas", qty: 10 }), when: { season: { from: 1, to: 2 }, by: 334, spend: true } }, "keep")).toEqual(["keep", "condition", "pace"]);
+    expect(rungsNeeded({ ...req("chop", { kind: "campHas", qty: 10 }), when: { spend: true } }, "keep")).toEqual(["keep", "pace"]);
+  });
+
+  it("the spending is stripped with the date it qualifies, and kept with it", () => {
+    // "Spent by the season's close" says what happens after a due date, so a
+    // survivor who has not earned the date cannot be left holding the spending.
+    const { state } = newGame(17);
+    const logs: IntentRequest = { ...req("chop", { kind: "campHas", qty: 300 }), when: { season: { from: 182, to: 89 }, by: 334, spend: true } };
+    setLevel(state, "woodcraft", 15);
+    expect(withinLadder(state, logs, "keep").req.when).toEqual({ season: { from: 182, to: 89 } });
+    setLevel(state, "woodcraft", 20);
+    expect(withinLadder(state, logs, "keep").req.when).toEqual({ season: { from: 182, to: 89 }, by: 334, spend: true });
   });
 });
