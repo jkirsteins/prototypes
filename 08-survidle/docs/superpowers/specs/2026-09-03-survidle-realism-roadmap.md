@@ -415,7 +415,11 @@ pace at 20 on every skill's ladder, the runner restricted to the shapes
 its skills have earned), because the runner's seasonal sense is rules
 in code no player can write, so the gates measure a player who does not
 exist; a paced woodpile measured as a bare rule took the lineage from 1
-of 4 to 3, then the first
+of 4 to 3, then M a landing on the coast (the section of that name
+below: stone within reach of a coastal camp, the sea shore's fishing
+seen to work, the landing chosen by the seed), because no landing in 300
+seeds is coastal and a coastal probe froze every beginner for want of
+stone, then the first
 half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
@@ -3788,6 +3792,39 @@ The runner cannot cut the full 6,600 kg by December even from midsummer:
 the pile tops out near 3,700 kg at about two logs a day beside water,
 cooking and fire, so the stock figure, the cutting rate or the window is
 a question this item will meet.
+
+### M. A landing on the coast
+
+**Curve.** Horizon rows 1 to 3 on a new ground: the sea shore's fetch,
+the herring run and the ice-shore rules, seaweed, and a beach with no
+stone. Survivor rows 1 and 2: the seed decides where the boat puts you.
+Tier: none new. Expected: a sixth reference seed, coastal, that brings
+the sea content the inland five never touch into the gates.
+
+No landing in 300 seeds is coastal, and not by decision: the start is
+the first region on a spiral out from the map's centre that has forest
+over 0.45, 120 land cells, water under 0.15, a shore and an outcrop, and
+the coast sits at the map's edge behind inland lakes that pass first.
+Measured as a probe (K's record, F8): every coastal region in the five
+reference seeds reads rock 0.00, because the terrain rule puts rock and
+fell at elevation and the sea on the lowest ground, so with the outcrop
+rule kept a coastal landing does not exist, and with it dropped the five
+seeds landed at rings 20 to 27 and read April 0 of 5 (frozen on days 4
+to 8 with no stone for a ring or a knife), winter 5 of 5, the year 0 of 5
+(starved on days 104 to 243, seaweed and sap firing for the first time,
+and seed 17's camp landing no fish in a year at a sea shore the fishing
+task allows) and the lineage 0 of 5.
+
+So the item is three things, in order. Stone within reach of a coastal
+camp: a rocky shore in the terrain rule (skerries and a stony beach are
+the north's coast as much as the reed fringe), or an outcrop counted from
+a neighbouring region with the walk it costs. The sea shore's fishing
+seen to work on the runner, since the shore read and the fish keep
+landed nothing on one seed. Then the landing chosen by the seed among
+every region that passes, with lake water alone counted against the
+limit and the forest read over the land, so a seed-derived share of
+landings is coastal and the five inland reference seeds keep their
+starts. A sixth reference seed follows, and the gates read N of 6.
 
 ## Beyond the gate: the edge of the world
 
