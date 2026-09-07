@@ -173,7 +173,19 @@ unchanged beneath it all.
   half the burn, so the winter-wood keeps are behind their paced target all
   autumn and the food rows get what the wood leaves. Every row on its list
   is the row a competent player would give; what is short is the site. This
-  is the siting lever, not the vocabulary.
+  is the siting lever, not the vocabulary. The death's last week is a
+  starving body walking after game: the fat runs out in early March, the
+  ceiling holds the body at 1,600, the larder dips under the hunt keep's
+  restart line (172 kg in meat-equivalent against 192) and the hunt
+  reopens, so a level-20 survivor walks twelve hours a day after reindeer
+  that carry a fifth of their fat in March. The order a competent player
+  could give against that was measured and withdrawn: the hunt split into
+  a pot keep of 2 kg all year and the larder keep with its restart line
+  only while the animals carry half their fat or more (June to February on
+  the fat curve) read April 5 of 5 on the same days, the year 3 of 5 (seed
+  19 starved on day 166 with the larder row shut in spring; seed 17 still
+  walked 3,557 kcal a day and froze on day 329) and the lineage 4 of 5
+  from 5. The hunt is not the lever; the site is.
 - **The fat, not the meat, is what runs out.** Every starvation this item
   read at level 20 and level 10 ends the same way: the larder holds tens of
   kilos of lean, the body is capped at 1,600 kcal a day, and the camp
