@@ -181,7 +181,7 @@ describe("the list after the axe", () => {
     expect(want("build:dryingRack:job").req.when).toEqual({ stock: { item: "rawMeat", atLeast: TRACE_KG } });
     const tasks = REFERENCE_ORDERS.map(key);
     expect(REFERENCE_ORDERS.indexOf(split)).toBeLessThan(tasks.indexOf("hunt:any:keep"));
-    // A winter's dried meat at camp is the two food rows' own business now, read off their
+    // A winter's dried meat at camp is the two food rows' own business, read off their
     // band and their stock line by whoever holds the order, and no rule in the runner.
     const { state, world } = newGame(17);
     addItem(pile(state, regionState(state, world, state.player.region).campCell), "driedMeat", WINTER_STOCK.driedMeatKg);

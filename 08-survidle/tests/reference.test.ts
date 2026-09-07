@@ -158,7 +158,7 @@ describe("the reference player", () => {
     // The forty-snare keep sits right after the water trough, pushing the fill, melt, winter-stock and hang block one further down.
     expect(tasks.slice(axe + 1, axe + 9)).toEqual(["sticks:", "bark:", "build:turfHut", "build:waterStore", "build:snare", "fill:shore", "fill:hole", "melt:"]);
     // The three named hunts are what is left of the surplus loop: the winter stock's own keeps
-    // moved above the hunt keep, where a promise due on a date belongs, and the hang grind above
+    // sit above the hunt keep, where a promise due on a date belongs, and the hang grind above
     // the plant band once its own stock line shut it on anything a body can eat in time.
     expect(tasks.slice(axe + 9, axe + 12)).toEqual(["hunt:elk", "hunt:reindeer", "hunt:deer"]);
     expect(REFERENCE_ORDERS[REFERENCE_ORDERS.length - 1].kind).toBe("grind");
@@ -631,7 +631,7 @@ describe("wants by level", () => {
   it("the winter log keep sits beside the woodpile keep, the four of them above the hunt keep", () => {
     // A grind is never met and a grind above a keep starves it: with the log keep last, below the three
     // named hunts, camp logs never passed five through the autumn and a level-20 camp froze in December.
-    // The four now sit above the hunt keep, since what they promise is due on a date and a hunt is not.
+    // The four sit above the hunt keep, since what they promise is due on a date and a hunt is not.
     const logs = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.logs)!;
     expect(logs.kind).toBe("keep");
     expect(REFERENCE_ORDERS.some((w) => w.req.task === "chop" && w.kind === "grind")).toBe(false);
