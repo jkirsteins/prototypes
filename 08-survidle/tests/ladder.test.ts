@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderGate, withinLadder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
-import { levelMinutes, RUNG_LINE, SKILL_IDS, train } from "../src/sim/skills";
+import { levelMinutes, RUNG_LEVEL, RUNG_LINE, RUNG_ORDER, SKILL_IDS, train } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
 import { placeAtSpot } from "../src/sim/position";
 import { startTask } from "../src/sim/tasks";
@@ -216,5 +216,14 @@ describe("the rung log lines", () => {
     expect(RUNG_LINE.job("Woodcraft")).toBe("{You} {know} woodcraft well enough to set a task and walk away: jobs with a count or a target from Woodcraft.");
     expect(RUNG_LINE.grind("Fishing")).toBe("Fishing is second nature now: grinds, work that never ends, from Fishing.");
     expect(RUNG_LINE.keep("Building")).toBe("{You} {keep} count of building without thinking: keeps from Building.");
+  });
+});
+
+describe("the two upper rungs", () => {
+  it("conditions open at 15 and pace at 20, after the keep", () => {
+    expect(RUNG_LEVEL).toEqual({ job: 3, grind: 5, keep: 10, condition: 15, pace: 20 });
+    expect(RUNG_ORDER).toEqual(["job", "grind", "keep", "condition", "pace"]);
+    expect(RUNG_LINE.condition("Foraging")).toContain("season");
+    expect(RUNG_LINE.pace("Woodcraft")).toContain("date");
   });
 });

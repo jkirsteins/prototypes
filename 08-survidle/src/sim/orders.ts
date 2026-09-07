@@ -116,6 +116,7 @@ export function orderMet(state: GameState, world: World, o: Order, live: boolean
     case "times": return o.done >= u.n;
     case "campHas": return qty(camp, yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
     case "forever": return false;
+    case "daily": return o.done >= u.n;
   }
 }
 

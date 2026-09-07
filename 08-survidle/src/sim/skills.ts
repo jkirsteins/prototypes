@@ -32,21 +32,28 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
 
 export const SKILL_CAP = 50;
 
+/** A rung is what an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
+export type Rung = OrderKind | "condition" | "pace";
+
 /**
- * The delegation ladder (idle curve spec, section 2): the level a skill
- * must reach before its orders may be given as each kind. A once job is
- * the manual rung and is never gated.
+ * The delegation ladder (idle curve spec, section 2; the order ladder
+ * design, section 2): the level a skill must reach before its orders may
+ * be given as each kind, and past the keep, before an order may carry a
+ * condition or a due date. A once job is the manual rung and is never
+ * gated.
  */
-export const RUNG_LEVEL: Record<OrderKind, number> = { job: 3, grind: 5, keep: 10 };
-export const RUNG_WORD: Record<OrderKind, string> = { job: "jobs", grind: "grinds", keep: "keeps" };
+export const RUNG_LEVEL: Record<Rung, number> = { job: 3, grind: 5, keep: 10, condition: 15, pace: 20 };
+export const RUNG_WORD: Record<Rung, string> = { job: "jobs", grind: "grinds", keep: "keeps", condition: "conditions", pace: "pace" };
 /** Crude before smart: the order the rungs open in. */
-export const RUNG_ORDER: OrderKind[] = ["job", "grind", "keep"];
+export const RUNG_ORDER: Rung[] = ["job", "grind", "keep", "condition", "pace"];
 
 /** What the log says as each rung opens, once per skill per survivor. */
-export const RUNG_LINE: Record<OrderKind, (skill: string) => string> = {
+export const RUNG_LINE: Record<Rung, (skill: string) => string> = {
   job: (s) => `{You} {know} ${s.toLowerCase()} well enough to set a task and walk away: jobs with a count or a target from ${s}.`,
   grind: (s) => `${s} is second nature now: grinds, work that never ends, from ${s}.`,
   keep: (s) => `{You} {keep} count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
+  condition: (s) => `{You} {read} the season and the pile as one: orders from ${s} can carry a season, a stock line, a restart line or a daily count.`,
+  pace: (s) => `{You} {plan} ${s.toLowerCase()} by the calendar: a keep from ${s} can be due by a date.`,
 };
 
 export const MASTERY_CAP = 99;

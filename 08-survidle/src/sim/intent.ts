@@ -275,7 +275,10 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
     ? item ? { kind: "campHas", item, qty: req.until.qty } : { kind: "once" }
-    : req.until;
+    // A daily count is the scheduler's own bookkeeping; the live intent just runs it as a target for today.
+    : req.until.kind === "daily"
+      ? { kind: "times", n: req.until.n }
+      : req.until;
   // A leave-it intent can never meet "camp has N"; the promise is about the camp pile.
   let deliver = req.until.kind === "campHas" ? "camp" : req.deliver;
   if (req.task === "haul") {

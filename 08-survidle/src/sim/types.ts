@@ -141,9 +141,27 @@ export type Until =
 /** Where an intent's work is done: the nearest suitable ground, a named spot, or one cell. */
 export type Where = "nearest" | SpotId | { cell: number };
 
-/** The row's chosen kind, before the yield item is filled in. */
+/** The row's chosen kind, before the yield item is filled in. A daily count is cleared at the day roll and never drops off. */
 export type UntilChoice =
-  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" };
+  | { kind: "once" } | { kind: "times"; n: number } | { kind: "campHas"; qty: number } | { kind: "forever" }
+  | { kind: "daily"; n: number };
+
+/**
+ * Conditions on a standing order, read every morning against the calendar
+ * and the camp. A season is a day-of-year window, inclusive, wrapping the
+ * new year when from is past to. A stock line opens the order only while
+ * the camp pile holds the item in the range. A restart line makes a keep
+ * that has read met at its target stay met until the stock falls under
+ * it, so the keep does not flicker at its line. A "by" day makes a keep's
+ * target rise to its figure across the season (or from the day the order
+ * was given) and hold there after. The ladder gates each part by rung.
+ */
+export interface OrderWhen {
+  season?: { from: number; to: number };
+  stock?: { item: ItemId; atLeast?: number; under?: number };
+  restart?: number;
+  by?: number;
+}
 
 /** A click on the Do panel, in the terms startIntent speaks. */
 export interface IntentRequest {
@@ -152,6 +170,7 @@ export interface IntentRequest {
   until: UntilChoice;
   deliver: "leave" | "camp";
   where: Where;
+  when?: OrderWhen;
 }
 
 /**
@@ -171,6 +190,12 @@ export interface Order {
   minutes: number;
   /** Why the scheduler last skipped it, or "" when it could run. */
   skipped: string;
+  /** A keep with a restart line: whether it last read met at its target. */
+  held?: boolean;
+  /** The day of year the order was given, the rise's start for a "by" keep with no season. */
+  givenDoy?: number;
+  /** The day a daily count was last cleared. */
+  dayOpened?: number;
 }
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */

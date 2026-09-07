@@ -7,9 +7,10 @@
  * what it gives, and what it leaves limiting. Species and mastery extras
  * are content beneath rows and are not here.
  */
-import type { OrderKind, RecipeId, SkillId, StructureId } from "./types";
+import type { Rung } from "./skills";
+import type { RecipeId, SkillId, StructureId } from "./types";
 
-export type CapabilityKey = `rec:${string}` | `build:${StructureId}` | `craft:${RecipeId}` | `rung:${OrderKind}`;
+export type CapabilityKey = `rec:${string}` | `build:${StructureId}` | `craft:${RecipeId}` | `rung:${Rung}`;
 
 export interface CapabilityRow {
   /** The name a player remembers. */
@@ -32,7 +33,7 @@ export const PRODUCERS: string[] = ["snares", "drying rack", "basket trap", "wat
 export const CAPABILITIES: CapabilityRow[] = [
   {
     id: "jobs, grinds and keeps",
-    keys: ["rung:job", "rung:grind", "rung:keep"],
+    keys: ["rung:job", "rung:grind", "rung:keep", "rung:condition", "rung:pace"],
     tier: "rung",
     receives: [],
     gives: "the horizon",
