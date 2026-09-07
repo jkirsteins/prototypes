@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { calendar } from "../src/sim/calendar";
+import { calendar, START_DOY } from "../src/sim/calendar";
 import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { normalizeOrder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
@@ -12,7 +12,7 @@ import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
-  addOrder, chooseOrder, conditionOpen, inSeason, keepStock, keepTarget, keepTargetToday, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, runOrders, countWord, NIGHT_SKIP,
+  addOrder, chooseOrder, conditionOpen, inSeason, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, runOrders, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { BARK_DRY_RATIO } from "../src/sim/items";
@@ -822,12 +822,18 @@ describe("a keep on a structure", () => {
 });
 
 describe("the vocabulary in the scheduler", () => {
-  it("a season wraps the new year", () => {
+  it("a season wraps the new year, and both windows are inclusive at both ends", () => {
     expect(inSeason(200, { from: 182, to: 90 })).toBe(true);
     expect(inSeason(50, { from: 182, to: 90 })).toBe(true);
     expect(inSeason(120, { from: 182, to: 90 })).toBe(false);
     expect(inSeason(150, { from: 120, to: 181 })).toBe(true);
     expect(inSeason(182, { from: 120, to: 181 })).toBe(false);
+    // The wrap's own edges, where an off-by-one would hide.
+    expect(inSeason(182, { from: 182, to: 90 })).toBe(true);
+    expect(inSeason(181, { from: 182, to: 90 })).toBe(false);
+    expect(inSeason(90, { from: 182, to: 90 })).toBe(true);
+    expect(inSeason(91, { from: 182, to: 90 })).toBe(false);
+    expect(inSeason(120, { from: 120, to: 181 })).toBe(true);
   });
 
   it("a keep reads its stored forms: dried meat is three kilos of meat", () => {
@@ -842,19 +848,43 @@ describe("the vocabulary in the scheduler", () => {
     expect(orderMet(state, world, cal, o, true)).toBe(true);
   });
 
-  it("a restart line holds a met keep until the stock falls under it", () => {
+  it("a restart line holds a met keep until the stock falls under it, and raises again at the target", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const camp = pile(state, st.campCell);
+    const o = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest", when: { restart: 6 } }, "keep");
+    addItem(camp, "rawMeat", 10);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
+    removeItem(camp, "rawMeat", 3);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(true);
+    expect(orderMet(state, world, cal, o, true)).toBe(true);
+    removeItem(camp, "rawMeat", 2);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(false);
+    expect(orderMet(state, world, cal, o, true)).toBe(false);
+    addItem(camp, "rawMeat", 5);
+    chooseOrder(state, world, cal);
+    expect(o.held).toBe(true);
+  });
+
+  it("reading a keep's band never moves it: the panel and the runner's probe write nothing", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     const camp = pile(state, st.campCell);
     const o = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest", when: { restart: 6 } }, "keep");
     addItem(camp, "rawMeat", 10);
     expect(orderMet(state, world, cal, o, true)).toBe(true);
-    expect(o.held).toBe(true);
+    expect(o.held).toBeUndefined();
+    // In the band a mark that was never set reads unmet, which is what a throwaway
+    // probe gets; the scheduler's own reading is the only thing that sets it.
     removeItem(camp, "rawMeat", 3);
-    expect(orderMet(state, world, cal, o, true)).toBe(true);
-    removeItem(camp, "rawMeat", 2);
     expect(orderMet(state, world, cal, o, true)).toBe(false);
-    expect(o.held).toBe(false);
+    expect(o.held).toBeUndefined();
+    expect(keepBand(7, 10, 6, true)).toBe(true);
+    expect(keepBand(7, 10, 6, undefined)).toBe(false);
   });
 
   it("a due date paces a keep's target across its season and holds after", () => {
@@ -864,6 +894,20 @@ describe("the vocabulary in the scheduler", () => {
     expect(keepTargetToday(calendar(0, 258), o)).toBeCloseTo(300, 6);
     expect(keepTargetToday(calendar(0, 334), o)).toBeCloseTo(600, 6);
     expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo(600, 6);
+  });
+
+  it("a paced keep with no season rises from the day it was given, and one due that same day asks the whole figure", () => {
+    const { state, world } = newGame(17);
+    const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 100 }, deliver: "camp", where: "nearest", when: { by: START_DOY + 10 } }, "keep");
+    expect(o.givenDoy).toBe(START_DOY);
+    expect(keepTargetToday(calendar(0, START_DOY), o)).toBeCloseTo(0, 6);
+    expect(keepTargetToday(calendar(0, START_DOY + 5), o)).toBeCloseTo(50, 6);
+    expect(keepTargetToday(calendar(0, START_DOY + 10), o)).toBeCloseTo(100, 6);
+    // Nothing to rise across, including an old save with neither season nor given day.
+    const today = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 100 }, deliver: "camp", where: "nearest", when: { by: START_DOY } }, "keep");
+    expect(keepTargetToday(calendar(0, START_DOY), today)).toBeCloseTo(100, 6);
+    today.givenDoy = undefined;
+    expect(keepTargetToday(calendar(0, START_DOY + 5), today)).toBeCloseTo(100, 6);
   });
 
   it("a stock line shuts an order with a reason the row shows, and a season the same", () => {
@@ -878,7 +922,7 @@ describe("the vocabulary in the scheduler", () => {
     expect(conditionOpen(state, world, calendar(0, 150), eggs)).toBeNull();
   });
 
-  it("a daily count clears at the day roll and never drops off", () => {
+  it("a daily count opens afresh at the day roll and never drops off, with done left monotonic", () => {
     const { state, world } = newGame(17);
     const o = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
     o.done = 1;
@@ -887,7 +931,25 @@ describe("the vocabulary in the scheduler", () => {
     state.minute = 2 * 1440 + 60;
     runOrders(state, world, calendar(state.minute, state.startDoy), new Rng(1));
     expect(ordersHere(state, world).some((x) => x.id === o.id)).toBe(true);
-    expect(o.done).toBe(0);
+    // The run's tally stands; only the base the day's count reads from moves.
+    expect(o.done).toBe(1);
+    expect(o.dayBase).toBe(1);
+    expect(orderMet(state, world, cal, o, false)).toBe(false);
+  });
+
+  it("a daily count already met today stays on the list rather than dropping off as a finished job", () => {
+    const { state, world } = newGame(17);
+    const day = calendar(state.minute, state.startDoy);
+    const o = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
+    o.done = 1;
+    o.dayOpened = day.day;
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
+    runOrders(state, world, day, new Rng(1));
+    expect(ordersHere(state, world).some((x) => x.id === o.id)).toBe(true);
+    // The day was already open, so nothing about the count moved.
+    expect(o.done).toBe(1);
+    expect(o.dayBase).toBeUndefined();
+    expect(orderMet(state, world, cal, o, false)).toBe(true);
   });
 
   it("an order's sentence names its conditions after its target", () => {

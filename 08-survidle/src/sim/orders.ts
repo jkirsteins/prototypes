@@ -13,7 +13,7 @@ import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { BARK_DRY_RATIO, ITEM_NAMES, STRUCTURES } from "./items";
+import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -76,7 +76,7 @@ export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
  * cooked fish is one of the raw.
  */
 export const KEEP_FORMS: Partial<Record<TaskId, { item: ItemId; ratio: number }[]>> = {
-  hunt: [{ item: "cookedMeat", ratio: 1 }, { item: "driedMeat", ratio: 3 }],
+  hunt: [{ item: "cookedMeat", ratio: 1 }, { item: "driedMeat", ratio: MEAT_DRY_RATIO }],
   fish: [{ item: "cookedFish", ratio: 1 }, { item: "oilyFish", ratio: 1 }, { item: "cookedOilyFish", ratio: 1 }],
   roots: [{ item: "cookedRoots", ratio: 1 }],
   innerBark: [{ item: "driedBark", ratio: BARK_DRY_RATIO }, { item: "barkFlour", ratio: BARK_DRY_RATIO }],
@@ -100,7 +100,9 @@ export function keepStock(state: GameState, world: World, o: Order): number {
   const keep = keepTarget(o);
   if (!keep) return 0;
   let have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
-  for (const f of KEEP_FORMS[o.req.task] ?? []) have += qty(camp, f.item) * f.ratio;
+  // A form that is the keep's own yield item is already in the sum. No row names
+  // one today, and skipping it is what keeps that true whatever a row grows into.
+  for (const f of KEEP_FORMS[o.req.task] ?? []) if (f.item !== keep.item) have += qty(camp, f.item) * f.ratio;
   return have;
 }
 
@@ -111,7 +113,9 @@ export function keepStock(state: GameState, world: World, o: Order): number {
  * when it carries no season, so a winter pile is built across the autumn
  * rather than in the week the order is first read. On and after the due
  * date, and for the rest of the wrap back round to the start, the target
- * is the whole figure.
+ * is the whole figure. The rise starts at nothing, so a paced keep asks
+ * for nothing on the first day of its season and the rows under it have
+ * that day to themselves.
  */
 export function keepTargetToday(cal: Calendar, o: Order): number {
   const keep = keepTarget(o);
@@ -144,27 +148,38 @@ export function conditionOpen(state: GameState, world: World, cal: Calendar, o: 
 }
 
 /**
- * Whether the order asks for nothing right now. A keep is unmet under half
- * today's target when idle and until the target once it is the live order,
- * so one low fire does not send the runner home to split a single log. The
- * camp pile counts: a keep is a promise about camp. A restart line replaces
- * both readings with a band: the keep reads met from the day the stock
- * reaches the target until the day it falls under the line, so a keep at
- * its target does not flicker back on for the first kilo eaten off it.
+ * A restart line reads as a band rather than a line: the keep is met from
+ * the stock reaching the target until it falls under the restart figure,
+ * so a keep standing at its target does not turn back on for the first
+ * kilo eaten off it. Between the two the last reading stands, which is the
+ * one piece of an order's reading that is memory rather than arithmetic:
+ * this returns what the mark becomes and writes nothing, so only the
+ * scheduler, which owns the list, moves it.
+ */
+export function keepBand(have: number, target: number, restart: number, held: boolean | undefined): boolean {
+  if (have >= target - 1e-9) return true;
+  if (have < restart - 1e-9) return false;
+  return held === true;
+}
+
+/**
+ * Whether the order asks for nothing right now, and nothing else: the Do
+ * panel draws with it and the reference runner asks it of a throwaway
+ * probe, so it reads the world and the order and writes neither. A keep is
+ * unmet under half today's target when idle and until the target once it
+ * is the live order, so one low fire does not send the runner home to
+ * split a single log. The camp pile counts: a keep is a promise about
+ * camp. A keep with a restart line reads its band instead, off the mark
+ * the scheduler last left on the order.
  */
 export function orderMet(state: GameState, world: World, cal: Calendar, o: Order, live: boolean): boolean {
   const st = regionState(state, world, state.player.region);
-  const camp = pile(state, st.campCell);
   const keep = keepTarget(o);
   if (keep) {
     const have = keepStock(state, world, o);
     const target = keepTargetToday(cal, o);
     const restart = o.req.when?.restart;
-    if (restart !== undefined) {
-      if (have >= target - 1e-9) o.held = true;
-      else if (have < restart - 1e-9) o.held = false;
-      return o.held === true;
-    }
+    if (restart !== undefined) return keepBand(have, target, restart, o.held);
     return live ? have >= target - 1e-9 : have >= target / 2 - 1e-9;
   }
   if (structureKeep(o.req, o.kind)) {
@@ -185,9 +200,9 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   switch (u.kind) {
     case "once": return o.done >= 1;
     case "times": return o.done >= u.n;
-    case "campHas": return qty(camp, yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
+    case "campHas": return qty(pile(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
     case "forever": return false;
-    case "daily": return o.done >= u.n;
+    case "daily": return o.done - (o.dayBase ?? 0) >= u.n;
   }
 }
 
@@ -247,6 +262,19 @@ export function countWord(task: TaskId, n: number): string {
   const w = COUNT_WORDS[task];
   if (!w) return "times";
   return n === 1 ? w[0] : w[1];
+}
+
+/**
+ * The scheduler's own reading: the met test, and the one thing in it that
+ * is memory rather than arithmetic - a restart band's mark, moved here
+ * because chooseOrder runs once a minute over the list it owns. Every
+ * other caller of orderMet is a reader (the panel drawing a row, the
+ * reference runner asking of a probe) and leaves the mark where it is.
+ */
+function readOrder(state: GameState, world: World, cal: Calendar, o: Order, live: boolean): boolean {
+  const restart = o.req.when?.restart;
+  if (restart !== undefined && keepTarget(o)) o.held = keepBand(keepStock(state, world, o), keepTargetToday(cal, o), restart, o.held);
+  return orderMet(state, world, cal, o, live);
 }
 
 /** Sets the skip reason. Logs only the "" to reason transition; one reason replacing another stays quiet. */
@@ -330,7 +358,7 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       markSkipped(state, world, cal, o, shut);
       continue;
     }
-    if (orderMet(state, world, cal, o, o.id === liveId)) {
+    if (readOrder(state, world, cal, o, o.id === liveId)) {
       markSkipped(state, world, cal, o, "");
       continue;
     }
@@ -386,16 +414,18 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   const st = regionState(state, world, state.player.region);
   const live = state.intent;
   for (const o of [...st.orders]) {
-    // A daily count is today's alone: the day roll clears it and the order stays
-    // on the list, since the promise is the count every day rather than once.
+    // A daily count is today's alone, and the order stays on the list, since
+    // the promise is the count every day rather than once. The day roll moves
+    // the base the count is read from rather than zeroing `done`, which stays
+    // the run's whole tally for the away report and the row to subtract from.
     if (o.req.until.kind === "daily") {
       if (o.dayOpened !== cal.day) {
-        o.done = 0;
         o.dayOpened = cal.day;
+        o.dayBase = o.done;
       }
       continue;
     }
-    if (o.kind === "job" && orderMet(state, world, cal, o, live?.orderId === o.id)) {
+    if (o.kind === "job" && readOrder(state, world, cal, o, live?.orderId === o.id)) {
       log(state, `${orderSentence(state, world, cal, o)}: done.`, "good");
       removeOrder(state, world, o.id);
     }

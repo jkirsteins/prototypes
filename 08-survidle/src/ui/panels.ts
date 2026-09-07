@@ -347,6 +347,8 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
     const clicks = live && hurryKind(state) === "click";
     const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
+    // orderMet is the plain reading and writes nothing; the scheduler's own read is
+    // what moves a restart band's mark, so drawing a row never advances the list.
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(o.skipped || (orderMet(state, world, cal, o, false) ? "met" : "waiting"))}</div>`;

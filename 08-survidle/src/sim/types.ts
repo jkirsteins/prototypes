@@ -194,8 +194,15 @@ export interface Order {
   held?: boolean;
   /** The day of year the order was given, the rise's start for a "by" keep with no season. */
   givenDoy?: number;
-  /** The day a daily count was last cleared. */
+  /** The day a daily count was last opened afresh. */
   dayOpened?: number;
+  /**
+   * The completions standing at that day's opening. A daily count is
+   * `done - dayBase`, so `done` itself stays the run's whole tally the way
+   * every other order's is, and the away report's "what it did while you
+   * were gone" is the same subtraction for a daily order as for any other.
+   */
+  dayBase?: number;
 }
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */

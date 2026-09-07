@@ -7,6 +7,7 @@ import { fillPopulations } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
+import { addOrder } from "../src/sim/orders";
 import { AWAY_HOURS_MAX } from "../src/units";
 import type { GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
@@ -236,6 +237,20 @@ describe("save", () => {
     catchUp(long.state, long.world, awaySeconds(long.state) * 3);
     // A real second is a game minute, so the cap in game minutes equals the cap in seconds.
     expect(long.state.minute).toBeLessThanOrEqual(awaySeconds(long.state));
+  });
+
+  it("reports what a daily order did across the days away, not only today's count", () => {
+    const { state, world } = newGame(9);
+    state.awayHours = AWAY_HOURS_MAX;
+    const o = addOrder(state, world, { task: "sticks", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
+    // Three days: the day roll opens the count twice over, so an order whose done
+    // were zeroed each morning would report at most the last morning's work.
+    const away = catchUp(state, world, 3 * 1440);
+    const line = away.orders.find((x) => x.task === "sticks")!;
+    expect(o.done).toBeGreaterThanOrEqual(2);
+    expect(line.done).toBe(o.done);
+    expect(line.minutes).toBeGreaterThan(0);
+    expect(line.gone).toBe(false);
   });
 });
 
