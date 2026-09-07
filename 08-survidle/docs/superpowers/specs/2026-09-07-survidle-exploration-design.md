@@ -204,8 +204,10 @@ What the levels buy instead is a wider view and a whole ankle.
   because sight range is set by the canopy and a multiplier cannot beat
   a spruce stand. So the honest claim is the one above: a wayfinder
   learns more country from the same walking, and mapping one region
-  end to end costs what the ground costs, at every level. The measured
-  tables are in the build's task-6 report.
+  end to end costs what the ground costs, at every level. Both readings
+  are over seeds 1 to 12, sweeping the same neighbouring region; the
+  measuring script is `tests/slow/wayfinding-vantage.test.ts`, which
+  asserts the finding rather than the hope.
 - **Safety.** Unknown ground taken badly hurts you, through the
   machinery that already exists: `p.injured` in minutes, which slows
   every kind of work to 0.7 while it lasts (`player.ts:175`) and heals
