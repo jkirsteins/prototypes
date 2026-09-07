@@ -408,7 +408,14 @@ level-20 survivor stood at the lean ceiling every day with meat at the
 fire and nothing beside it to eat; built, spec
 `2026-09-06-survidle-fat-and-carbohydrate-design.md`, plan
 `2026-09-06-survidle-fat-and-carbohydrate.md`, April 4 of 4 from 3,
-winter 4 of 4, the year 1 of 4 from 2, readings under F), then the first
+winter 4 of 4, the year 3 of 4 from 2 once the fish carried their real
+fat, the lineage 1 of 4, readings under F), then L the upper rungs of
+the order ladder (the section of that name below: conditions at 15 and
+pace at 20 on every skill's ladder, the runner restricted to the shapes
+its skills have earned), because the runner's seasonal sense is rules
+in code no player can write, so the gates measure a player who does not
+exist; a paced woodpile measured as a bare rule took the lineage from 1
+of 4 to 3, then the first
 half of I the
 survivor (the section of that name below: the away report in third person by
 name, three candidates per boat, the four body axes and the first
@@ -2961,8 +2968,8 @@ elks' fat, and seed 17, which draws no elk, lives on its fish and its
 reindeer to day 284 and freezes with the woodpile unstocked. Before the
 author moved the fish to their real fat (oily 0.4 lean, lean 0.9) it read
 2 of 4, with seed 17 starving on day 89 at the lean ceiling. The lineage
-stays 0 of 4 within six lives, and no gate week of either reading is a
-lean-wall week.
+reads 1 of 4 within six lives (0 before the fish move), and no gate week
+of either reading is a lean-wall week.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -3700,7 +3707,7 @@ plan `2026-09-06-survidle-fat-and-carbohydrate.md`. Measured on the four
 reference seeds: April 4 of 4 (from 3), winter 4 of 4, the year at
 level 20 3 of 4 - seeds 19, 42 and 79 hold a whole year, and seed 17,
 which draws no elk, lives to day 284 on fish and reindeer and freezes
-with the woodpile unstocked - and the lineage 0 of 4. No gate week is a
+with the woodpile unstocked - and the lineage 1 of 4. No gate week is a
 lean-wall week, no carcass's fat goes off, and no single source's removal
 takes the year below 1 of 4. The fish classes moved to their real fat
 after the author's review (oily 0.4 lean, lean 0.9), which took the year
@@ -3712,6 +3719,56 @@ region's roots; the unexploited line reads a stock, not an omission, and
 cannot see what rotted before the death; sap and seaweed never fire on
 the reference seeds, so neither is measured by the without probe; and
 the lineage has not moved.
+
+### L. The upper rungs of the order ladder
+
+**Curve.** Horizon rows 5 and 6: a plan that holds a season, then a
+year. Survivor rows 3 to 5: the mature camp runs for weeks between
+visits and the mastery camp for a season. Tiers: two new rungs on every
+skill's ladder above the keep, conditions at 15 and pace at 20, the
+numbers a proposal that continues the 3, 5, 10 rungs and the author's
+to set. Expected: the level-20 year and the lineage measured on a runner
+that gives only the orders its skills have earned.
+
+Each skill's ladder unlocks what a standing order can say: a once job at
+3, a grind at 5, a keep at 10. Each rung buys a longer walk-away - hours,
+days, weeks - and the idle arc wants two more: a plan that holds a
+season, and one that holds the year. The rung at 15 is a condition on a
+keep: a window ("from May to June") and a band ("until a winter's food is
+stored, restart under four fifths of it"), the band being what stops a
+keep flickering at its line and the window what a returning player does
+by hand today. The rung at 20 is pace: a keep with a target due by a
+date ("the winter's wood by 1 December"), read as the share due today,
+so a pile on pace steps aside for the food rows and a pile behind takes
+the day. Each rung belongs to the order's own skill: the wood pace is
+Woodcraft 20, the larder band Hunting 15, the egg window Foraging 15.
+
+The reference runner today reaches past the ladder. Its orders are the
+player's shapes, but the mornings it changes them are rules in code no
+player can write: the larder gate, the render, crack and hang gates, the
+season windows, the water method by the ice. It is a player who checks
+in every morning with perfect judgement, so the gates measure a player
+who does not exist at any level. This item turns each such rule into a
+rung or a plain order, restricts the runner to the shapes its skills
+have earned (the mechanism it already uses for job, grind and keep), and
+re-measures all four gates. A cheap honesty reading comes with it: the
+count of mornings the runner's list changed in a season, which is the
+attention the plan cost.
+
+**Measured case.** A paced woodpile, applied as a runner rule to every
+survivor whatever its level, read on the four seeds against the K
+readings (oily 0.4, lean 0.9): April 4 of 4 on the same days; winter 4
+of 4 with more fat on 1 March, since a camp whose pile is ahead hunts;
+the level-20 year 3 of 4 with seed 17 a month longer (day 315, frozen on
+the trail after game in the deep cold with 2,260 kg of wood at camp,
+which is the band's case, not the pile's); the lineage 3 of 4 from 1 of
+4, because an heir inherits a pile begun in July. Part of that lineage
+reading is an October heir at level 5 using a rung-20 rule, which is why
+the pace is built as a rung and not kept as the rule it was measured as.
+The runner cannot cut the full 6,600 kg by December even from midsummer:
+the pile tops out near 3,700 kg at about two logs a day beside water,
+cooking and fire, so the stock figure, the cutting rate or the window is
+a question this item will meet.
 
 ## Beyond the gate: the edge of the world
 

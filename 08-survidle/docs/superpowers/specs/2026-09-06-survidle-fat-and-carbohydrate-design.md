@@ -352,8 +352,10 @@ level-20 year with only those two numbers moved: seed 17 lives through the
 summer and the autumn on its fish and fourteen reindeer and freezes on day
 284, the F2 shape and not the ceiling; seeds 19, 42 and 79 live the year;
 the gate reads 3 of 4, from 2. April holds 4 of 4 on days 24, 24, 33 and
-29. The tables above were measured at 0.6 and 1.0 and are left as they
-were; F4 closes, and what remains of a summer with no elk is F2's freeze.
+29, and the lineage reads 1 of 4 within six lives, from 0: seed 42's
+fifth life reaches the year. The tables above were measured at 0.6 and
+1.0 and are left as they were; F4 closes, and what remains of a summer
+with no elk is F2's freeze.
 
 **F5. Roots are close to mandatory for a seed with no elk, and the stock is
 finite.** Shutting them takes seed 17 from 89 days to 54 and costs the other
