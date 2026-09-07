@@ -11,7 +11,7 @@ import type { World } from "../world/gen";
 import { type Calendar, calendar, LATITUDE_DEG } from "./calendar";
 import { discovery, VISITED } from "./regionstate";
 import { cellOf } from "./position";
-import type { GameState, RegionState } from "./types";
+import type { GameState, RegionState, TaskId } from "./types";
 
 /** An overcast, starless night: the darkest the outdoors gets, and the reference dark for the odds. */
 export const DARK_LUX = 0.0001;
@@ -158,4 +158,44 @@ export function lightWord(lux: number): string {
   if (lux >= 0.05) return "moonlit";
   if (lux >= 0.0005) return "starlit";
   return "pitch dark";
+}
+
+/**
+ * The light an activity needs to be done at full odds, and its chance per
+ * attempt in the pitch dark. An activity absent from this table is never
+ * penalised for the dark at all: work nobody has thought about is better
+ * left whole than silently crippled.
+ *
+ * The needs come off the occupational scale (EN 12464-1): about 20 lux to
+ * handle and stack things you already have hold of, 200 for ordinary
+ * handwork, 500 for work an edge or a fit is judged by eye. Swinging an
+ * axe at a log you have already found is not here, and neither is cooking,
+ * which happens at the fire by definition.
+ */
+export const NIGHT_WORK: Partial<Record<TaskId, { needLux: number; darkOdds: number }>> = {
+  // Finding and choosing wood you cannot see.
+  sticks: { needLux: 20, darkOdds: 0.05 },
+  deadwood: { needLux: 20, darkOdds: 0.05 },
+  bark: { needLux: 20, darkOdds: 0.05 },
+  innerBark: { needLux: 20, darkOdds: 0.05 },
+  // Small things on the ground, and worse.
+  berries: { needLux: 50, darkOdds: 0.02 },
+  roots: { needLux: 50, darkOdds: 0.02 },
+  eggs: { needLux: 50, darkOdds: 0.02 },
+  seaweed: { needLux: 50, darkOdds: 0.02 },
+  stone: { needLux: 50, darkOdds: 0.02 },
+  // Handwork, which firelight is nearly enough for.
+  craft: { needLux: 200, darkOdds: 0.05 },
+  repair: { needLux: 200, darkOdds: 0.05 },
+  mend: { needLux: 200, darkOdds: 0.05 },
+  // An edge judged by eye.
+  sharpen: { needLux: 500, darkOdds: 0.02 },
+  hone: { needLux: 500, darkOdds: 0.02 },
+};
+
+/** The chance this attempt at this work comes off under the light where the survivor stands; 1 for work the dark does not touch. */
+export function attemptOdds(state: GameState, world: World, cal: Calendar, task: TaskId): number {
+  const need = NIGHT_WORK[task];
+  if (!need) return 1;
+  return workOdds(illuminance(state, world, cal, cellOf(state, world)), need.needLux, need.darkOdds);
 }

@@ -19,6 +19,7 @@ import {
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditEaten, creditYield } from "./ledger";
+import { attemptOdds } from "./light";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
@@ -1173,6 +1174,23 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
+  // The dark refuses nothing; it wastes the attempt. Work that needs light
+  // to be sure of itself rolls when it would finish, and a failure puts the
+  // attempt back to the start rather than ending the work: the yield when it
+  // does come off is the daylight yield, and the whole cost is the hours.
+  // The minutes are already in the skill, because groping about in the dark
+  // is still practice.
+  // Full odds draw nothing: work in the light, and work the dark does not
+  // touch, must leave the seeded stream exactly where it found it.
+  const odds = attemptOdds(state, world, cal, t.id);
+  if (odds < 1 && !rng.chance(odds)) {
+    t.progress = 0;
+    if (!t.darkSaid) {
+      t.darkSaid = true;
+      log(state, `${check(state, world, cal, t.id, t.arg).label}: too dark to be sure of anything. {You} {go} by feel.`);
+    }
+    return;
+  }
 
   const id = t.id;
   const arg = t.arg;

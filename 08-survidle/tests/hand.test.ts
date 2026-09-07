@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { currentNeed, SLEEP_AT } from "../src/sim/body";
+import { currentNeed } from "../src/sim/body";
 import { calendar } from "../src/sim/calendar";
 import { startIntent } from "../src/sim/intent";
 import { addItem } from "../src/sim/inventory";
@@ -22,19 +22,19 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   return pred();
 }
 
-/** Seed 39: meadow camp, forest 0.6 km away. The body is at camp, past the spent line but well above the collapse. */
+/** Seed 39: meadow camp, forest 0.6 km away. The body is at camp, a hair past the spent line and with a round trip's worth of energy over the collapse, which is the one thing that would end a once. */
 function spentAtCamp() {
   const g = newGame(39);
   const { state, world } = g;
   const camp = regionState(state, world, state.player.region).campCell;
   placeAt(state, world, camp);
   addItem(state.player.pack, "driedMeat", 2);
-  state.player.energy = (SPENT_AT + SLEEP_AT) / 2;
+  state.player.energy = SPENT_AT - 1;
   return { g, state, world, camp };
 }
 
 describe("work chosen by hand is the player's", () => {
-  it("a once order past the spent line walks to the wood and gathers; it never turns for camp", () => {
+  it("a once order past the spent line walks to the wood and gathers; it turns for camp for nothing short of the collapse", () => {
     const { g, state, world, camp } = spentAtCamp();
     orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     // Started on the click, spent or not, and at the top of the list.
@@ -50,10 +50,14 @@ describe("work chosen by hand is the player's", () => {
     expect(state.intent?.need).toBeNull();
     expect(state.player.energy).toBeLessThan(SPENT_AT);
     expect(until(g, () => state.intent?.task !== "deadwood")).toBe(true);
-    // The wood came home with it; the once is over, and only now does the spent body get its rest.
-    expect(cellOf(state, world)).toBe(camp);
-    expect(state.intent?.mode).not.toBe("hand");
-    expect(state.player.energy).toBeLessThan(SPENT_AT);
+    // A deadwood round trip costs more energy than the ten points between the
+    // spent line and the collapse, so a body that starts one past the spent
+    // line gives out on the way. Nothing turned it for camp: it worked until
+    // it dropped, and it sleeps in the forest with the wood still on its back.
+    expect(state.intent).toBeNull();
+    expect(cellOf(state, world)).not.toBe(camp);
+    expect(state.task?.id).toBe("sleep");
+    expect(state.player.sleeping?.collapsed).toBe(true);
   });
 
   it("a list of once orders served while away: the body speaks before each one starts", () => {

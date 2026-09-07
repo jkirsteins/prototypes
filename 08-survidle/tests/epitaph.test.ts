@@ -80,9 +80,12 @@ describe("the epitaph", () => {
     // holds a little more of the catch and it dies at camp a day later than it would on the ground. Frozen lingon under the snow open a berries row through the
     // April start itself, ahead of the wood-first grind order, so the larder empties where
     // the ledger above finds it. The larder these seeds empty is meat, berries, roots, eggs
-    // and bark flour together, and both still starve at camp with wood banked.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 25. Starved at camp, with nothing in the pack and 69 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 24. Starved at camp, with nothing in the pack and 27 kg of firewood at camp."`);
+    // and bark flour together, and neither freezes or dies on the trail: the wood outlasts the
+    // larder on both. Seed 17 starves a few hundred metres out rather than at its own fire,
+    // which is what a body that works a once order until it drops looks like when the larder
+    // is already empty - the wood it never has to fetch again is still stacked at camp.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 24. Starved 0.4 km from camp, with nothing in the pack and 90 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 27. Starved at camp, with nothing in the pack and 14 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

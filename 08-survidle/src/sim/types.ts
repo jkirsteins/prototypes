@@ -103,6 +103,8 @@ export interface Task {
   repeat: boolean;
   /** Started as "hunt anything" or "fish for anything": the arg is the species drawn, and a repeat draws again. */
   any?: boolean;
+  /** The dark has already cost this task an attempt and been remarked on; the rest of them are silent. */
+  darkSaid?: boolean;
 }
 
 /**
