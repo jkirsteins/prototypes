@@ -16,6 +16,7 @@ import type { GameState, Terrain } from "../sim/types";
 import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
+import { elevationAt, groundGlyph, toneCuts, toneOf, TREES, VARIANTS, type ToneCuts } from "./ground";
 import { lighting } from "./sky";
 
 export const GLYPH: Record<Terrain, string> = {
@@ -50,14 +51,21 @@ export const MARKS = {
  * than rebuilt with the map.
  */
 export function legendHtml(): string {
+  // A terrain with forms names them all here instead of its plain letter, so the
+  // key never says "water" twice with a different glyph each time.
   const terrain = (Object.keys(GLYPH) as Terrain[])
-    .map((t) => `<span><b>${GLYPH[t] === "\"" ? "&quot;" : GLYPH[t]}</b> ${TERRAIN_NAME[t]}</span>`)
+    .map((t) => {
+      const v = VARIANTS[t];
+      const forms = (v ? v.forms : [GLYPH[t]]).map((g) => `<b>${g === '"' ? "&quot;" : g}</b>`).join(" ");
+      return `<span>${forms} ${TERRAIN_NAME[t]}${v ? `: ${v.reads}` : ""}</span>`;
+    })
     .join("");
   const marks = Object.values(MARKS)
     .map((m) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`)
     .join("");
   return (
     `${terrain}<span><b>=</b> ice</span>${marks}` +
+    `<span class="tone-key">brighter trees stand higher</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="fog-key">dark: never been there</span>`
@@ -329,6 +337,24 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   }
   const drawBorders = z <= 3;
 
+  // The height shading normalises to what is on screen, so every elevation must
+  // be read before any one cell's tone can be decided.
+  const elev = z === 1 ? new Float32Array(l.w * l.h) : null;
+  let cuts: ToneCuts | null = null;
+  if (elev) {
+    const seen: number[] = [];
+    for (let gy = 0; gy < l.h; gy++) {
+      for (let gx = 0; gx < l.w; gx++) {
+        const i = gy * l.w + gx;
+        if (regions[i] < 0 || !seenAt[i] || !TREES.includes(terrains[i])) continue;
+        const e = elevationAt(world.seed, x0 + gx * z, y0 + gy * z);
+        elev[i] = e;
+        seen.push(e);
+      }
+    }
+    cuts = toneCuts(seen);
+  }
+
   // The tools sit in the map's bottom left corner (drawn after the grid, placed
   // by the stylesheet), so they cost the panel no height of their own; the span
   // the two buttons stand over is the label's title rather than a line of text.
@@ -375,6 +401,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
       glyph = GLYPH[t];
+      // A coarser glyph is a block of mixed ground with no single field to report.
+      if (z === 1) {
+        glyph = groundGlyph(world.seed, x0 + gx * z, y0 + gy * z, t, glyph);
+        if (elev && TREES.includes(t)) {
+          const tone = toneOf(elev[i], cuts);
+          if (tone !== 1) cls.push(`tone-${tone}`);
+        }
+      }
       if (t === "water" && iceMode(state.weather) !== "none") {
         glyph = "=";
         cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
