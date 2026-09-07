@@ -140,6 +140,20 @@
     "note": "the summer bog: flies close enough to be a nuisance, which is the point"
   },
   {
+    "slot": "crickets",
+    "file": "crickets.ogg",
+    "url": "https://upload.wikimedia.org/wikipedia/commons/2/28/Metrioptera_brachyptera_-_sound.oga",
+    "source": "\"Metrioptera brachyptera - sound.oga\" on Wikimedia Commons, from the CD-ROM accompanying Roy Kleukers and Rene Krekels, Veldgids Sprinkhanen en Krekels, KNNV Uitgeverij, 2014",
+    "author": "Baudewijn Ode (Wikimedia Commons)",
+    "licence": "CC BY-SA 4.0",
+    "kind": "loop",
+    "trim": [
+      0.6,
+      31.2
+    ],
+    "note": "bog bush-cricket, the stridulator that reaches 62 N: the warm late-summer evening on heath and bog"
+  },
+  {
     "slot": "step_grass",
     "file": "step_grass_01.ogg",
     "url": "repo:04-3dtest/assets/audio/footstep_grass_01.ogg",
