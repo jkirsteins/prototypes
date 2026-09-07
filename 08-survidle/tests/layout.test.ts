@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { buildHtml } from "../src/ui/build";
 import { GLYPH, legendHtml, MARKS } from "../src/ui/map";
 
 describe("the layout", () => {
@@ -29,6 +30,22 @@ describe("the layout", () => {
     const columns = html.slice(html.indexOf('id="app"'), settings);
     expect(columns).not.toContain('id="sound"');
     expect(columns).not.toContain('id="beacon"');
+  });
+
+  it("the page ends in a footer naming the build, filled from the version the bundle was built with", () => {
+    const html = readFileSync("index.html", "utf8");
+    const footer = html.indexOf('id="build"');
+    expect(footer).toBeGreaterThan(html.indexOf("</div>", html.indexOf('id="app"')));
+    expect(html.slice(footer - 20, footer)).toContain("footer");
+  });
+
+  it("the footer says what git describe said, and reads dev where git could not be asked", () => {
+    expect(buildHtml("336a797", "2026-09-07 14:12 UTC")).toContain("336a797");
+    // When it was built is the title rather than more text in the corner.
+    expect(buildHtml("336a797", "2026-09-07 14:12 UTC")).toContain('title="built 2026-09-07 14:12 UTC"');
+    expect(buildHtml("v0.3-2-gabc1234-dirty", "")).toContain("v0.3-2-gabc1234-dirty");
+    expect(buildHtml("dev", "")).toContain("dev");
+    expect(buildHtml("dev", "")).not.toContain("title=");
   });
 
   it("the legend names every terrain letter the map draws", () => {

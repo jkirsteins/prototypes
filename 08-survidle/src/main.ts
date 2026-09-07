@@ -33,6 +33,7 @@ import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
+import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
@@ -479,6 +480,8 @@ setCueSink((c) => sounds.cue(c));
 // the note reads stale for one extra interaction.
 document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
+// The build's own name, written once: it cannot change while the page is open.
+setPanel("build", buildHtml());
 mountControl(document.getElementById("sound")!, audio);
 awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, () => state, (on) => {
