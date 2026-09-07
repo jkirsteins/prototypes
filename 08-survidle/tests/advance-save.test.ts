@@ -7,7 +7,7 @@ import { fillPopulations } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
-import { addOrder } from "../src/sim/orders";
+import { addOrder, conditionOpen, orderMet, orderSentence } from "../src/sim/orders";
 import { AWAY_HOURS_MAX } from "../src/units";
 import type { GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
@@ -221,6 +221,26 @@ describe("save", () => {
     expect(() => advance(file!.state, world, 1440)).not.toThrow();
   });
 
+  it("an order from before the order ladder carries no when, held, givenDoy, dayOpened or dayBase, and reads exactly as it did", () => {
+    const { state, world } = newGame(9);
+    const o = addOrder(state, world, { task: "roots", until: { kind: "campHas", qty: 5 }, deliver: "camp", where: "nearest" }, "keep");
+    const id = state.player.region;
+    const cal = calendar(state.minute, state.startDoy);
+    const sentenceBefore = orderSentence(state, world, cal, o);
+    const raw = JSON.parse(serialize(state)) as { state: { regions: Record<string, { orders: Record<string, unknown>[] }> } };
+    const rawOrder = raw.state.regions[id].orders[0];
+    delete (rawOrder.req as Record<string, unknown>).when;
+    delete rawOrder.held;
+    delete rawOrder.givenDoy;
+    delete rawOrder.dayOpened;
+    delete rawOrder.dayBase;
+    const file = deserialize(JSON.stringify(raw))!;
+    const back = file.state.regions[id].orders[0];
+    expect(() => orderMet(file.state, world, cal, back, false)).not.toThrow();
+    expect(() => conditionOpen(file.state, world, cal, back)).not.toThrow();
+    expect(orderSentence(file.state, world, cal, back)).toBe(sentenceBefore);
+  });
+
   it("rejects garbage", () => {
     expect(deserialize("not json")).toBeNull();
     expect(deserialize("{}")).toBeNull();
@@ -251,6 +271,8 @@ describe("save", () => {
     expect(line.done).toBe(o.done);
     expect(line.minutes).toBeGreaterThan(0);
     expect(line.gone).toBe(false);
+    // The daily count in the sentence, not the run's whole tally.
+    expect(line.label).toContain("1 a day");
   });
 });
 
