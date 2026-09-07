@@ -33,7 +33,7 @@ import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOURCES } from "./ledger";
 import { knownShare, mapRegion } from "./mapped";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
-import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder, stallingOrder } from "./orders";
+import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
 import { cellOf, heathCell, watersideCell } from "./position";
@@ -941,24 +941,6 @@ export class ReferencePlayer {
       this.dayOpened.set(i, cal.day);
       this.finished.delete(i);
       this.completed.delete(i);
-    }
-    // A once order that cannot run holds up every order under it. A player
-    // reading that row takes it off rather than leaving the list standing all
-    // day; it goes back on when it can run. Only rows that are actually
-    // stalling come off - a row waiting on the work of the rows above it is
-    // below one that can run, and holds nothing up.
-    //
-    // The whole stall clears in one reading, not one row an hour. Striking off
-    // the top row and then standing idle until the next look is not what a
-    // player does, and the opening list - where every row waits on a knife, a
-    // fire or a vessel - would cost a working day per row it has to shed.
-    for (let guard = this.given.size; guard > 0; guard--) {
-      const stalling = stallingOrder(state, world, cal);
-      if (!stalling) break;
-      const held = [...this.given].find(([, g]) => g.id === stalling.id);
-      if (!held) break;
-      this.stalled.add(held[0]);
-      this.withdraw(state, world, cal, held[0], held[1].id);
     }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {

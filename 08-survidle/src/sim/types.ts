@@ -224,7 +224,29 @@ export interface Order {
    * were gone" is the same subtraction for a daily order as for any other.
    */
   dayBase?: number;
+  /** The player has said this row holds the list until it is met. */
+  pinned?: boolean;
 }
+
+/**
+ * What the scheduler makes of one row this minute. `met` and `shut` are
+ * silent pass-overs the row was always allowed: nothing is wrong, or the
+ * row's own conditions are not open yet. `blocked` is a row that wants to
+ * run and cannot - no tool, no route, no legal cell - and passes over too,
+ * unless the row is pinned, since a request that cannot be met is not
+ * grounds for holding up everything under it. `later` is a row whose
+ * readiness the scheduler has not read this minute at all: it is not a
+ * verdict any row earns today, but the judgement still has to carry it
+ * without ever letting such a row become chosen or the blocking one, since
+ * "not yet read" and "read and found wanting" must never be confused with
+ * each other.
+ */
+export type Verdict =
+  | { v: "met" }
+  | { v: "shut"; why: string }
+  | { v: "blocked"; why: string }
+  | { v: "ready" }
+  | { v: "later" };
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
 export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "snares" | "spent" | "home";

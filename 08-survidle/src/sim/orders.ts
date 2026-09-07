@@ -12,7 +12,7 @@ import { bodyAsks, KIT_ITEMS } from "./body";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
-import { deliveryPending, intentMode, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
+import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
@@ -20,7 +20,7 @@ import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
 import { check, setAside } from "./tasks";
-import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId } from "./types";
+import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId, Verdict } from "./types";
 import { campWaterCapacity } from "./water";
 
 /** The list of the region under foot. */
@@ -336,10 +336,28 @@ function readOrder(state: GameState, world: World, cal: Calendar, o: Order, live
   return orderMet(state, world, cal, o, live);
 }
 
-/** Sets the skip reason. Logs only the "" to reason transition; one reason replacing another stays quiet. */
-function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string): void {
-  if (why && !o.skipped) log(state, `${orderSentence(state, world, cal, o)}: ${why}.`, "bad");
+/**
+ * Sets the skip reason, and says what is happening instead. Only the ""
+ * to reason transition speaks, so a row settled at one reason is quiet.
+ *
+ * A once row is the player's own request: passing it over is a thing they
+ * asked for that is not happening, and the log owes them both halves of
+ * it. A standing row is a policy, and a policy being passed over is what
+ * the policy means - "keep camp at 40 kg firewood" is silent on the day
+ * camp has 40 kg, and a line every time would bury the log.
+ */
+function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string, instead: Order | null): void {
+  if (why && !o.skipped) {
+    const asked = o.req.until.kind === "once";
+    const tail = asked && instead ? ` ${cap(orderSentence(state, world, cal, instead))} instead.` : "";
+    log(state, `${orderSentence(state, world, cal, o)}: ${why}.${tail}`, "bad");
+  }
   o.skipped = why;
+}
+
+/** First letter up, for a sentence that starts mid-line. */
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** The tasks that make the light the other camp chores work by. */
@@ -393,106 +411,85 @@ export function nightSkip(state: GameState, world: World, cal: Calendar, task: T
 }
 
 /**
- * Every order, top down, is judged afresh: met, blocked, or able to run.
- * The first able to run is returned, but the rows below it are judged too,
- * so a blocked order never shows a reason left over from before something
- * above it started running. The walk there is judged too, so a route a
- * storm or an overloaded pack has closed is skipped with that reason
- * instead of restarting every minute only to fail at the first step.
+ * Every order, top down, is judged afresh: met, shut, blocked or ready.
+ * The first ready row runs, and the rows below it are judged too, so a row
+ * never shows a reason left over from before something above it started.
  *
- * A once order is the player's request rather than the runner's policy, and
- * it is answered in its own right: a request that cannot be met is no
- * grounds for doing something else instead, so nothing under it runs until
- * it can or the player strikes it off. A standing order keeps its leeway
- * and is passed over as it always was - a keep out of logs must not stop
- * the whole list.
- *
- * Only "cannot run" stalls. A row that is met, out of season, waiting on a
- * stock or held by the dark is a not-yet rather than a refusal: those pass
- * over, or an order for the forest would stop the evening's camp work every
- * night of the year.
+ * A row that cannot run is passed over. The list is what the survivor does
+ * next, not a contract to be completed in order: one order needing a tool
+ * that is not made yet must not cost the day the tool would have been made
+ * in. A pinned row is the player saying otherwise, and it is the only thing
+ * that stops the list.
  */
 export function chooseOrder(state: GameState, world: World, cal: Calendar): Order | null {
   return judgeOrders(state, world, cal).chosen;
 }
 
+export type Judgement = { chosen: Order | null; blockedBy: Order | null };
+
 /**
- * The judgement itself: the order to run, and the once order stopping the
+ * The judgement itself: the order to run, and the pinned order stopping the
  * list when one is. They are read together because "nothing to run" and
- * "held up by a request" are different answers - the second names a row the
- * player has to answer, and only a row that could not run is ever that row.
- * A row put off by the dark or a shut season is not: it holds nothing up.
+ * "held up by a pin" are different answers - the second names a row the
+ * player has to answer, and only a pinned row that could not run is ever
+ * that row.
  */
-export function judgeOrders(state: GameState, world: World, cal: Calendar): { chosen: Order | null; stalling: Order | null } {
-  const live = state.intent;
-  const liveId = live?.orderId ?? null;
-  const here = cellOf(state, world);
+export function judgeOrders(state: GameState, world: World, cal: Calendar): Judgement {
+  const liveId = state.intent?.orderId ?? null;
+  const rows = ordersHere(state, world);
+  const verdicts = rows.map((o) => judgeRow(state, world, cal, o, liveId));
+  // The chosen and blocking rows are found first, over every row's verdict,
+  // before any row is marked: a row passed over above the chosen one has to
+  // say what is running in its place, and that is only known once the whole
+  // list has been read. A pin reaches past "blocked" to "shut" too, since a
+  // pinned row waiting on a season is still the row holding the list, not a
+  // row quietly out of season.
   let chosen: Order | null = null;
-  let stalling: Order | null = null;
-  for (const o of ordersHere(state, world)) {
-    // The live order carrying a load home is still able to run: judging it
-    // afresh re-checks legality at the work cell (the shore), where the load
-    // just filled there reads as "the vessels are full" every trip, even
-    // though nothing is wrong - it is on its way to be poured.
-    if (o.id === liveId && live && deliveryPending(state, world, live)) {
-      o.skipped = "";
-      if (!chosen) chosen = o;
-      continue;
-    }
-    // Shut before met: an order out of season or waiting on a stock says so on
-    // its row, rather than showing "met" or whatever reason it was skipped for
-    // the last time its conditions let it run.
-    const shut = conditionOpen(state, world, cal, o);
-    if (shut) {
-      markSkipped(state, world, cal, o, shut);
-      continue;
-    }
-    if (readOrder(state, world, cal, o, o.id === liveId)) {
-      markSkipped(state, world, cal, o, "");
-      continue;
-    }
-    const keep = keepTarget(o);
-    if (keep?.item === "water") {
-      const homeSt = regionState(state, world, state.player.region);
-      const camp = pile(state, homeSt.campCell);
-      const cap = campWaterCapacity(camp, homeSt);
-      // cap === 0 means no vessel has ever reached camp yet, not that camp is
-      // full: qty + ice (both 0) trivially clears ">= cap - eps" either way, so
-      // without this guard a camp with no bucket at all reads as "at capacity"
-      // and the keep never gets the chance to run at all, let alone report the
-      // truer "needs a vessel".
-      if (cap > 0 && cap < keep.qty && qty(camp, "water") + qty(camp, "ice") >= cap - 1e-9) {
-        markSkipped(state, world, cal, o, `camp holds ${cap % 1 === 0 ? cap : cap.toFixed(1)} litres; more vessels at camp would hold more`);
-        continue;
-      }
-    }
-    // A once order is a hand intent (intentMode): the player's request, and the
-    // list stops under it while it cannot be met.
-    const hand = intentMode(o.req.task, o.req.until) === "hand";
-    const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
-    if (!opt.ok) {
-      markSkipped(state, world, cal, o, opt.why);
-      if (hand && !chosen && !stalling) stalling = o;
-      continue;
-    }
-    const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
-    const night = nightSkip(state, world, cal, o.req.task, cell);
-    if (night) {
-      markSkipped(state, world, cal, o, night);
-      continue;
-    }
-    if (cell !== here) {
-      const w = check(state, world, cal, "walk", `cell:${cell}`);
-      if (!w.ok) {
-        markSkipped(state, world, cal, o, w.why);
-        if (hand && !chosen && !stalling) stalling = o;
-        continue;
-      }
-    }
-    o.skipped = "";
-    if (!chosen && !stalling) chosen = o;
+  let blockedBy: Order | null = null;
+  for (let i = 0; i < rows.length; i++) {
+    const v = verdicts[i];
+    if (v.v === "ready" && !chosen && !blockedBy) chosen = rows[i];
+    if ((v.v === "shut" || v.v === "blocked") && rows[i].pinned && !chosen && !blockedBy) blockedBy = rows[i];
   }
-  return { chosen: stalling ? null : chosen, stalling };
+  if (blockedBy) chosen = null;
+  for (let i = 0; i < rows.length; i++) {
+    const v = verdicts[i];
+    if (v.v === "shut" || v.v === "blocked") markSkipped(state, world, cal, rows[i], v.why, chosen);
+    else markSkipped(state, world, cal, rows[i], "", null);
+  }
+  return { chosen, blockedBy };
+}
+
+/** One row's reading. The delivery, condition, met, capacity, legality, night and walk checks, in the order they bite. */
+function judgeRow(state: GameState, world: World, cal: Calendar, o: Order, liveId: number | null): Verdict {
+  const live = state.intent;
+  // A live order carrying a load home is still able to run: judged afresh at
+  // the work cell it would read "the vessels are full" every trip, though
+  // nothing is wrong - it is on its way to be poured.
+  if (o.id === liveId && live && deliveryPending(state, world, live)) return { v: "ready" };
+  const shut = conditionOpen(state, world, cal, o);
+  if (shut) return { v: "shut", why: shut };
+  if (readOrder(state, world, cal, o, o.id === liveId)) return { v: "met" };
+  const keep = keepTarget(o);
+  if (keep?.item === "water") {
+    const homeSt = regionState(state, world, state.player.region);
+    const camp = pile(state, homeSt.campCell);
+    const cap = campWaterCapacity(camp, homeSt);
+    // cap === 0 means no vessel has ever reached camp, not that camp is full.
+    if (cap > 0 && cap < keep.qty && qty(camp, "water") + qty(camp, "ice") >= cap - 1e-9) {
+      return { v: "shut", why: `camp holds ${cap % 1 === 0 ? cap : cap.toFixed(1)} litres; more vessels at camp would hold more` };
+    }
+  }
+  const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
+  if (!opt.ok) return { v: "blocked", why: opt.why };
+  const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
+  const night = nightSkip(state, world, cal, o.req.task, cell);
+  if (night) return { v: "shut", why: night };
+  if (cell !== cellOf(state, world)) {
+    const w = check(state, world, cal, "walk", `cell:${cell}`);
+    if (!w.ok) return { v: "blocked", why: w.why };
+  }
+  return { v: "ready" };
 }
 
 /**
@@ -507,27 +504,22 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): { ch
  * The judgement is passed in rather than taken here: it is one pass over
  * the whole list, and a panel drawing ten rows must not make ten of them.
  */
-export function waitingLine(state: GameState, world: World, cal: Calendar, o: Order, judged: { chosen: Order | null; stalling: Order | null }): string {
+export function waitingLine(state: GameState, world: World, cal: Calendar, o: Order, judged: Judgement): string {
   if (o.skipped) return o.skipped;
   if (orderMet(state, world, cal, o, false)) return "met";
-  // A once order that cannot run holds everything under it. Naming it is the
-  // whole of finding 8's complaint: a blocked head stops the list, and nothing
-  // on screen ever said so.
-  const { chosen, stalling } = judged;
-  if (stalling && stalling.id !== o.id) return `held up by "${orderSentence(state, world, cal, stalling)}"`;
+  const { chosen, blockedBy } = judged;
+  if (blockedBy && blockedBy.id !== o.id) return `held up by the pinned "${orderSentence(state, world, cal, blockedBy)}"`;
   if (chosen && chosen.id !== o.id) return `waiting its turn, behind "${orderSentence(state, world, cal, chosen)}"`;
   return "waiting its turn";
 }
 
 /**
- * The once order stopping the list, if one is: the topmost request that
- * cannot run with nothing above it that can. The rows under it are held by
- * it and will not run until it can or it comes off, so a player - and the
- * player script, which reads this - answers it rather than leaving the list
- * standing.
+ * The pinned row holding the list, if one is: the topmost pinned row that
+ * cannot run, with nothing above it that can. Nothing else stops the list,
+ * so this is always a row the player pinned on purpose and can unpin.
  */
-export function stallingOrder(state: GameState, world: World, cal: Calendar): Order | null {
-  return judgeOrders(state, world, cal).stalling;
+export function blockingOrder(state: GameState, world: World, cal: Calendar): Order | null {
+  return judgeOrders(state, world, cal).blockedBy;
 }
 
 const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };

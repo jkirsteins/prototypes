@@ -13,7 +13,7 @@ import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
-  addOrder, chooseOrder, conditionOpen, inSeason, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, removeOrder, removeOrderByHand, runOrders, countWord, NIGHT_SKIP,
+  addOrder, blockingOrder, chooseOrder, conditionOpen, inSeason, judgeOrders, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, removeOrder, removeOrderByHand, runOrders, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { BARK_DRY_RATIO } from "../src/sim/items";
@@ -288,7 +288,9 @@ describe("the scheduler", () => {
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
     expect(cabin.skipped).toBe("missing materials at camp");
-    const line = "log cabin: missing materials at camp.";
+    // It is passed over rather than stopping the list, and the line the
+    // player's own once request earns says what ran in its place.
+    const line = "log cabin: missing materials at camp. Split a log, forever instead.";
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
     // Judged again every free minute while the grind stays live, but logged only the once.
     advance(state, world, 5);
@@ -1091,19 +1093,23 @@ describe("the vocabulary in the scheduler", () => {
 });
 
 describe("a once order is the player's own", () => {
-  it("blocks every order under it while it cannot run, and lets them go once it is struck off", () => {
-    // Clicking a row asks for that work first. If it cannot be done, the answer
-    // is not to quietly do something else instead.
+  it("falls through when it cannot run, and only pinning it holds the list until it comes off", () => {
+    // Clicking a row asks for that work first, but a want that cannot be met
+    // is no reason to leave every order under it standing too: it is passed
+    // over, and only a pin says the player wants it to hold the list instead.
     const g = campWith(3, { log: 6 });
     const { state, world } = g;
     const cabin = addOrder(state, world, req("build", { arg: "cabin" }), "job");
     const grind = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
     advance(state, world, 1);
     expect(cabin.skipped).toBe("missing materials at camp");
-    expect(state.intent?.orderId).toBeNull();
-    expect(state.intent?.task).toBe("wait");
+    expect(state.intent?.orderId).toBe(grind.id);
+    cabin.pinned = true;
+    const held = calendar(state.minute, state.startDoy);
+    expect(chooseOrder(state, world, held)).toBeNull();
+    expect(blockingOrder(state, world, held)?.id).toBe(cabin.id);
     removeOrder(state, world, cabin.id);
-    expect(chooseOrder(state, world, calendar(state.minute, state.startDoy))?.id).toBe(grind.id);
+    expect(chooseOrder(state, world, held)?.id).toBe(grind.id);
   });
 
   it("still judges the orders under it, so none shows a reason left over from before", () => {
@@ -1139,5 +1145,60 @@ describe("a once order is the player's own", () => {
     advance(state, world, 1);
     expect(keep.skipped).toBe("no logs here");
     expect(state.intent?.orderId).toBe(sticks.id);
+  });
+});
+
+describe("fall-through", () => {
+  it("a once row that cannot run is passed over and the row below it runs", () => {
+    const { state, world } = newGame(3);
+    // A cook with nothing to cook cannot run; sticks always can.
+    const blocked = addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const runnable = addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const { chosen, blockedBy } = judgeOrders(state, world, cal);
+    expect(blocked.skipped).not.toBe("");
+    expect(chosen?.id).toBe(runnable.id);
+    expect(blockedBy).toBe(null);
+  });
+
+  it("the same row, pinned, stops the list and blockingOrder names it", () => {
+    const { state, world } = newGame(3);
+    const blocked = addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    blocked.pinned = true;
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const { chosen, blockedBy } = judgeOrders(state, world, cal);
+    expect(chosen).toBe(null);
+    expect(blockedBy?.id).toBe(blocked.id);
+    expect(blockingOrder(state, world, cal)?.id).toBe(blocked.id);
+  });
+
+  it("a pinned row that is met does not hold the list", () => {
+    const { state, world } = newGame(3);
+    const met = addOrder(state, world, { task: "sticks", until: { kind: "times", n: 1 }, deliver: "camp", where: "nearest" }, "job");
+    met.pinned = true;
+    met.done = 1;
+    const below = addOrder(state, world, { task: "bark", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    expect(judgeOrders(state, world, cal).chosen?.id).toBe(below.id);
+  });
+
+  it("a passed-over once row says what ran instead, once, on the transition", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "cook", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const before = state.log.length;
+    judgeOrders(state, world, cal);
+    const lines = state.log.slice(before).map((e) => e.text);
+    expect(lines.filter((t) => t.includes("instead")).length).toBe(1);
+    // Judged again with nothing changed, it does not say it twice.
+    judgeOrders(state, world, cal);
+    expect(state.log.slice(before).filter((e) => e.text.includes("instead")).length).toBe(1);
+  });
+
+  it("a passed-over standing row is silent", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "cook", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
+    const before = state.log.length;
+    judgeOrders(state, world, cal);
+    expect(state.log.slice(before).some((e) => e.text.includes("instead"))).toBe(false);
   });
 });
