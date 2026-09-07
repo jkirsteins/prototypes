@@ -18,7 +18,7 @@
 - **No em dashes and no non-typable characters** in code, comments, commit messages or UI copy. Use `-`, `->`, `"`, `...`.
 - **Comments explain, they do not chronicle.** No dates, no "changed from", no before/after.
 - **Both gates pass before every commit**: `npm test` and `npm run build`.
-- **Panel markup carries no unrounded float.** `tests/churn.test.ts` is the gate; a moving value goes on an element written each frame by `src/ui/bars.ts`, never into the markup string.
+- **Panel markup carries no unrounded float.** `tests/churn.test.ts` is the gate; a moving value goes on a named element written each frame - the pattern `src/ui/bars.ts` uses - never into the markup string. The goal panel writes its own, in `goalpanel.ts`, so the panel owns both halves of its drawing.
 - **Goals are world-scoped.** `newPerson()` and `resetTeaching()` must not touch `state.goals`.
 
 ---
@@ -129,6 +129,7 @@ describe("goal guards", () => {
         ...TASK_IDS.map((id) => ({ kind: "task", id }) as const),
         ...STRUCTURE_IDS.map((s) => ({ kind: "built", structure: s }) as const),
         ...SEASON_ORDER.map((s) => ({ kind: "season", season: s }) as const),
+        { kind: "lit" } as const,
         { kind: "delivered", item: "firewood", kg: 99 } as const,
         { kind: "delivered", item: "wetFirewood", kg: 99 } as const,
       ];
@@ -160,7 +161,9 @@ describe("goals are the world's, not a life's", () => {
     const { state } = newGame(3);
     // Standing in a camp whose fire is already burning is not lighting one.
     expect(state.goals.done.fire).toBeUndefined();
-    expect(goalDeed(state, { kind: "task", id: "light" })).toEqual(["fire"]);
+    // A light whose tinder failed emits the task and no "lit": no credit.
+    expect(goalDeed(state, { kind: "task", id: "light" })).toEqual([]);
+    expect(goalDeed(state, { kind: "lit" })).toEqual(["fire"]);
     expect(state.goals.done.fire).toBe(true);
   });
 
@@ -175,7 +178,7 @@ describe("goals are the world's, not a life's", () => {
   it("never hands the same goal out twice", () => {
     const { state } = newGame(3);
     state.goals.done.fire = true;
-    expect(goalDeed(state, { kind: "task", id: "light" })).toEqual([]);
+    expect(goalDeed(state, { kind: "lit" })).toEqual([]);
   });
 
   it("queues each completion for its congratulation", () => {
@@ -275,6 +278,8 @@ export type Deed =
   | { kind: "task"; id: TaskId; arg?: string }
   | { kind: "delivered"; item: ItemId; kg: number }
   | { kind: "built"; structure: StructureId }
+  /** The tinder caught. A light that failed is not a fire lit. */
+  | { kind: "lit" }
   | { kind: "season"; season: Season };
 
 export interface GoalDef {
@@ -298,7 +303,7 @@ const firewoodKg = (d: Deed) => (d.kind === "delivered" && (d.item === "firewood
 
 export const GOALS: GoalDef[] = [
   { id: "firewood", title: "Bring 10 kg of firewood back to camp", target: 10, unit: "kg", credit: firewoodKg },
-  { id: "fire", title: "Light a fire", target: 1, credit: task("light", "lightIndoors") },
+  { id: "fire", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
   { id: "cook", title: "Cook something over it", target: 1, credit: task("cook") },
   { id: "bed", title: "Get off the cold ground", target: 1, credit: built("boughBed") },
   { id: "roof", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter") },
@@ -476,14 +481,14 @@ describe("deeds reach the ladder", () => {
     // Everything a light needs, so the deed is the only thing under test.
     st.structures.firePit = true;
     addItem(state.player.pack, "firewood", 5);
-    addItem(state.player.tools.length ? state.player.pack : state.player.pack, "stone", 0);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     const o = check(state, world, cal, "light");
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "light")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(st.fire.lit || state.goals.done.fire).toBeTruthy();
-    if (st.fire.lit) expect(state.goals.done.fire).toBe(true);
+    // Lighting can fail on the weather, and a failed light credits nothing:
+    // the two must agree either way.
+    expect(state.goals.done.fire ?? false).toBe(st.fire.lit);
   });
 
   it("does not credit the fire to a survivor who only found one burning", () => {
@@ -544,6 +549,17 @@ Do NOT change any `case` in the switch. The `build` case already records `{ kind
 ```
 
 Place it immediately after the existing `if (!hasEvent(...)) record(state, { kind: "built", structure: sid });` line, outside the `if`, so a second hut still credits a goal the first one did not reach.
+
+The `light` and `lightIndoors` case needs the same treatment for the opposite
+reason: it can fail, and the wrapper cannot see that it did. In that case, on
+the line immediately after `st.fire.lit = true;`, add:
+
+```ts
+      goalDeed(state, { kind: "lit" });
+```
+
+The early `return` on "The tinder will not catch." is then the whole guard: a
+failed lighting emits the task deed and no `lit`, and credits nothing.
 
 - [ ] **Step 4: Emit the delivery deed**
 
@@ -621,7 +637,6 @@ git commit -m "feat(survidle): the ladder hears what the survivor did, not what 
 - Create: `src/ui/goalpanel.ts`
 - Modify: `index.html` (a `#goals` section at the top of `#center`)
 - Modify: `src/main.ts` (one `setPanel` call)
-- Modify: `src/ui/bars.ts` (write the progress fills each frame)
 - Modify: `src/style.css` (the panel's own rules)
 - Test: `tests/goalpanel.test.ts`
 
@@ -804,7 +819,7 @@ Expected: both pass, `tests/churn.test.ts` included. If churn goes red on `goals
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/ui/goalpanel.ts src/ui/bars.ts src/main.ts index.html src/style.css tests/goalpanel.test.ts
+git add src/ui/goalpanel.ts src/main.ts index.html src/style.css tests/goalpanel.test.ts
 git commit -m "feat(survidle): the goal stands above the clock and does not scroll away"
 ```
 
@@ -856,7 +871,7 @@ describe("the congratulation", () => {
     ui.welcome = true;
     expect(goalMomentToOpen(state, ui)).toBe(null);
     ui.welcome = false;
-    state.dead = { cause: "cold", minute: 0 };
+    state.dead = { cause: "froze", minute: 0 };
     expect(goalMomentToOpen(state, ui)).toBe(null);
   });
 

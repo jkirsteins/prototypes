@@ -68,6 +68,7 @@ type Deed =
   | { kind: "task"; id: TaskId; arg?: string }
   | { kind: "delivered"; item: ItemId; kg: number }   // dropped at the camp cell
   | { kind: "built"; structure: StructureId }
+  | { kind: "lit" }                       // the tinder caught
   | { kind: "season"; season: Season };   // the calendar turned over into it
 ```
 
@@ -89,7 +90,7 @@ the player sees.
 | # | Title | What credits it | Target |
 |---|---|---|---|
 | 1 | Bring 10 kg of firewood back to camp | firewood or wet firewood delivered to the camp cell | 10 kg |
-| 2 | Light a fire | `light`, `lightIndoors` | 1 |
+| 2 | Light a fire | the tinder catching | 1 |
 | 3 | Cook something over it | `cook` | 1 |
 | 4 | Get off the cold ground | built `boughBed` | 1 |
 | 5 | Put a roof over your head | built `leanTo`, `turfHut` or `snowShelter` | 1 |
@@ -105,6 +106,9 @@ Notes on the choices:
   opening goal never asks for a tool the survivor has not got. Wet firewood
   counts: the goal is the carrying, and a wet January is not a reason to withhold
   the first success in the game.
+- **Goal 2 credits the tinder catching, not the attempt.** Lighting can fail on
+  the weather, and a failed light is not a fire lit - so the deed is emitted
+  where the flame is, not where the task ends.
 - **Goals 2 and 3 are the chain that killed the first survivor**, named and not
   explained. The fire site is a prerequisite of goal 2 and is deliberately not a
   goal of its own: making it one would tell the player the fire has parts, which
