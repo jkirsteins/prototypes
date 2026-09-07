@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { KCAL_FULL } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
@@ -45,7 +46,7 @@ function burnForTerrain(state: GameState, world: World, terrains: Terrain[], sno
   state.weather.snowCm = snowCm;
   const cell = findCell(world, cellOf(state, world), terrains);
   placeAt(state, world, cell);
-  state.player.kcal = 5000;
+  state.player.kcal = KCAL_FULL;
   const k0 = state.player.kcal;
   for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
   return k0 - state.player.kcal;

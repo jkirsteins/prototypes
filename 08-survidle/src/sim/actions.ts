@@ -13,7 +13,7 @@ import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
 import { body } from "./person";
 import { regionState } from "./regionstate";
-import { log } from "./log";
+import { log, warn } from "./log";
 import type { GameState, ItemId } from "./types";
 
 /** The gut's own word for a capped food, for its refusal message; later capped foods add their word here. */
@@ -78,7 +78,13 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
   return true;
 }
 
-/** The reserve under which the body eats on its own. */
+/**
+ * The reserve under which the body eats on its own. The walk below stops as
+ * soon as the line is passed rather than filling the stomach, so this is not
+ * a floor the body bounces off occasionally - it is where a fed body lives,
+ * and where the bar draws its mark. tests/hunger.test.ts holds that resting
+ * band inside the upper half of KCAL_FULL.
+ */
 export const HUNGRY_LINE = 1800;
 
 /**
@@ -88,21 +94,46 @@ export const HUNGRY_LINE = 1800;
  * food past the ceiling) is skipped, not a stop, so a body at the lean wall
  * with fat at hand eats the fat rather than starving beside it, and a body
  * with room under the ceiling eats the lean food and keeps the fat.
+ *
+ * The meal speaks once, not once a portion: crossing the line takes several
+ * portions and a line each would bury the log. Crossing it with nothing to
+ * take speaks once too, and does not speak again until a meal has cleared
+ * the latch - the news a player can still act on is that the food ran out,
+ * and repeating it every minute is not more news.
  */
 export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
   const p = state.player;
   if (!force && !p.autoEat) return;
+  const eaten = new Map<FoodId, number>();
   let guard = 0;
   while (p.kcal < HUNGRY_LINE && guard++ < 200) {
     let ate = false;
     for (const food of AUTO_EAT_ORDER) {
+      const had = totalQty([p.pack, herePile(state, world)], food);
       if (eat(state, world, food, rng)) {
+        const took = had - totalQty([p.pack, herePile(state, world)], food);
+        eaten.set(food, (eaten.get(food) ?? 0) + took);
         ate = true;
         break;
       }
     }
-    if (!ate) return;
+    if (!ate) break;
   }
+  if (eaten.size > 0) {
+    const parts = [...eaten].map(([food, kg]) => itemLabel(food, kg));
+    log(state, `{You} {eat} ${listWords(parts)}.`);
+  }
+  // Still under the line after the walk means the meal did not happen: the
+  // fat behind the stomach is what the next hours come out of, and this is
+  // the last moment the player can still do something about it. The latch
+  // clears itself the next time a meal carries the body back over.
+  warn(state, "hungry", p.kcal < HUNGRY_LINE, "Nothing left {you} can eat. {Your} body starts on its fat.");
+}
+
+/** "a, b and c" - the meal's foods in one line. */
+function listWords(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
 export function addFirewood(state: GameState, world: World, kg: number): number {

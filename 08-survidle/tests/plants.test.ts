@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { qty } from "../src/sim/inventory";
 import { today } from "../src/sim/ledger";
-import { AUTO_EAT_ORDER, BERRY_PICK_KG, BERRY_WINTER_SHARE, FOODS, GUT, SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY, SEAWEED_KG_PER_HOUR } from "../src/sim/items";
+import { AUTO_EAT_ORDER, BERRY_PICK_KG, BERRY_WINTER_SHARE, FOODS, GUT, KCAL_FULL, SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY, SEAWEED_KG_PER_HOUR } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -37,7 +37,10 @@ describe("sap, seaweed and winter berries", () => {
     placeAt(state, world, birch);
     state.player.tools.push({ id: "knife", durability: 100 });
     state.player.water = 1;
-    state.player.kcal = 3000;
+    // Half the pool, so the sap's kilocalories have room to land: at the cap
+    // they would be clamped away and the reading below would be of nothing.
+    const kcal0 = KCAL_FULL / 2;
+    state.player.kcal = kcal0;
     const cal = calendar(0, SAP_FROM_DOY);
     expect(check(state, world, cal, "tapSap").duration).toBe(30);
     for (let t = 0; t < SAP_TAPS_PER_DAY; t++) {
@@ -45,7 +48,7 @@ describe("sap, seaweed and winter berries", () => {
       for (let m = 0; m < 30 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
     }
     expect(state.player.water).toBeCloseTo(WATER_FULL, 6);
-    expect(state.player.kcal).toBeGreaterThanOrEqual(3000 + SAP_KCAL * SAP_TAPS_PER_DAY - 200);
+    expect(state.player.kcal).toBeGreaterThanOrEqual(kcal0 + SAP_KCAL * SAP_TAPS_PER_DAY - 200);
     expect(check(state, world, cal, "tapSap").why).toBe("the birches have given today's sap");
     expect(check(state, world, calendar(0, 200), "tapSap").why).toBe("the sap has stopped");
   });

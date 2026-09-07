@@ -76,21 +76,17 @@ describe("the epitaph", () => {
     // opening and a keep of eight as the restock below the clothing block.
     // The larder these seeds empty is meat, berries, roots, eggs and bark flour together;
     // frozen lingon under the snow open a berries row through the April start itself, ahead
-    // of the wood-first grind order, so it empties where the ledger above finds it. Seed 19
-    // is the shape a level-1 opening holds: the larder gives out weeks before the woodpile
-    // does, and it starves at its own fire with wood to spare. Seed 17 is the other end of
-    // it - a far ring where the food never comes in at all, so the woodpile is being spent
-    // faster than the felling fills it, and a storm that puts the trees out of reach for a
-    // day catches it with the pile at nothing. A body that works a once order until it drops
-    // stops where it drops, which is why it lies short of camp rather than beside the fire.
+    // of the wood-first grind order, so it empties where the ledger above finds it. Both
+    // seeds now die the same way, which is the shape a level-1 opening holds: the larder
+    // gives out weeks before the woodpile does, and the body starves at its own fire with
+    // wood still stacked beside it. Neither freezes, because the short-term reserve is
+    // small enough that what a meal cannot hold goes to fat, and fat is insulation as well
+    // as fuel - a body that eats well early is warm later on the same food.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
-    // body lies, what it carried and what it left. Seed 19 lasts longer than it did when
-    // any ground could be walked sight unseen: a survivor who has to go and look at their
-    // own valley first learns where the food is, rather than working the first spot the
-    // list names.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 6. Died of cold 0.6 km from camp, with nothing in the pack and no firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 35. Starved at camp, with nothing in the pack and 62 kg of firewood at camp."`);
+    // body lies, what it carried and what it left.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 24. Starved at camp, with nothing in the pack and 32 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 26. Starved at camp, with nothing in the pack and 13 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

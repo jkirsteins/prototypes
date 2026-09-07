@@ -3,7 +3,7 @@ import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
-import { FOODS } from "./items";
+import { FOODS, KCAL_FULL } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
 import { newRecord } from "./record";
@@ -16,8 +16,12 @@ import { resetTeaching } from "./teach";
 import type { GameState, LifeRecord, Person } from "./types";
 import { seasonalMean } from "./weather";
 
-/** The stomach a survivor arrives with, in kcal. */
-export const START_KCAL = 5000;
+/**
+ * The stomach a survivor arrives with: fed, not gorged. A share of the pool
+ * rather than a number of its own, so it cannot end up above the cap and be
+ * clamped away in the first hour ashore.
+ */
+export const START_KCAL = KCAL_FULL * (5 / 6);
 /** Dried meat in the arrival pack, in kilos. */
 export const ARRIVAL_DRIED_MEAT_KG = 1;
 

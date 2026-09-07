@@ -168,7 +168,15 @@ export const BERRY_PICK_KG = 0.7;
 /** The Swedish handbook tells of a prisoner who lived on frozen lingonberries dug from under the snow; a fifth of the summer rate, where the snow is shallow enough to reach them. */
 export const BERRY_WINTER_SHARE = 0.2;
 
-export const KCAL_FULL = 6000;
+/**
+ * The short-term reserve, in kilocalories: gut contents and glycogen, the
+ * pool between the last meal and the fat behind it. Liver glycogen is about
+ * 400 kcal, muscle glycogen 1,600, and a very large meal still in the
+ * stomach around 1,500, so a body that has just gorged holds roughly three
+ * thousand. What a kill offers past that is not held here; it goes to fat,
+ * which is where gorging after a kill actually ends up.
+ */
+export const KCAL_FULL = 3000;
 
 /** Hours above 0 C before a stack is thrown away. Raw fat keeps like cooked meat and no longer; rendered it keeps for the winter. */
 export const SPOIL_HOURS: Record<PerishableId, number> = {
