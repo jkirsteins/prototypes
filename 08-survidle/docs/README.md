@@ -39,7 +39,8 @@ waiting, and everything done while you are away run at the one scale.
   times or until camp has N) opens at level 3 in the task's skill, a grind
   (forever) at 5, a keep (keep camp at N) at 10, a condition at 15 - a
   season window, a stock line, a restart line or a daily count laid on a
-  keep - and pace at 20, a keep due by a date; a once job is always open.
+  keep - and pace at 20, a keep due by a date, held after it or spent by
+  the season's close; a once job is always open.
   A row below its skill's level greys and names the level that opens it. A
   keep reads its stored forms and not only its own yield: "keep camp at
   240 kg of meat" counts the dried meat in the rack at its own ratio
