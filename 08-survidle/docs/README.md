@@ -191,10 +191,26 @@ waiting, and everything done while you are away run at the one scale.
 - **Light.** Every tile carries its ground's colour as a dark background.
   At night a lit fire glows on the map, two rings when it is fed and one
   when it burns low, and you can see your own camp from the next valley.
-  Without a torch you walk at a third of day speed in the dark. A torch
-  (1 stick, 2 bark, 20 minutes; lit at a fire in a minute or with the
-  fire drill in ten) burns for an hour, lights one ring around you, takes
-  that night penalty off your walking, and keeps the wolves off.
+  The dark never refuses work; it charges for it. How much light there is
+  where you stand is a real illuminance, summed from the sun's altitude,
+  the moon at its phase, the cloud, the snow underfoot and any flame in
+  reach, and the clock line names it: daylight, overcast, twilight,
+  firelit, moonlit, starlit, pitch dark. Work that needs light to be sure
+  of itself - finding sticks, picking berries, handwork, an edge judged by
+  eye - rolls against that light and says its odds on its own row, and a
+  failed try costs the attempt rather than the work: a bundle of sticks
+  gathered at 5% a try is the same bundle, twenty times the hours. Walking
+  and a hunter's odds read the same number, so the pitch dark is the
+  handbook's third of day speed and a moonlit snowfield is most of the way
+  back to it. A torch (1 stick, 2 bark, 20 minutes; lit at a fire in a
+  minute or with the fire drill in ten) burns for an hour, lights one ring
+  around you, takes very nearly all of the night off your walking and your
+  work, and keeps the wolves off.
+
+  Standing orders still wait for first light, and camp chores still want a
+  fire: the runner keeps its own hours. What runs at any hour is work you
+  start yourself, and nothing stops it but the body giving out, which
+  leaves you asleep where you were standing.
 - **Bedding.** Most of a night's heat goes into the ground. A bough bed (12
   sticks, half an hour) gives +4 C asleep at that camp and goes flat after
   four days; a keep lays it again before then, for the same sticks and
@@ -340,7 +356,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
 - `src/sim/stocks.ts`: the spring egg stock, seeded on 1 May, and the root ground - what a cell's stand holds, what is left in each cell that has been dug, and the growing season's regrowth.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
-- `src/ui/map.ts`: light sources and the rings they light.
+- `src/sim/light.ts`: the illuminance at a cell in lux - the sun, the moon, cloud, snow and flame - the light each activity needs, and the odds a light buys; `src/ui/map.ts`: the rings a light source lights.
 - `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
 - `src/sim/clothing.ts`: per-garment wetness, drying and frostbite chance.
 - `src/sim/fire.ts`: wet wood, burn rate and lighting odds in weather, indoor smoke.
