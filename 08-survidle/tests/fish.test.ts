@@ -12,7 +12,7 @@ import { regionAt } from "../src/world/gen";
 
 describe("lean and oily fish", () => {
   it("the class is defined once and a species carries only the flag and its window", () => {
-    expect(FOODS.cookedOilyFish).toEqual({ kcalPerKg: 1500, portionKg: 0.3, sickChance: 0, leanShare: 0.6 });
+    expect(FOODS.cookedOilyFish).toEqual({ kcalPerKg: 1500, portionKg: 0.3, sickChance: 0, leanShare: 0.4 });
     expect(FOODS.roe).toEqual({ kcalPerKg: 1600, portionKg: 0.2, sickChance: 0, leanShare: 0.5 });
     expect(ROE_SHARE).toBe(0.1);
     expect(fishItem("herring")).toBe("oilyFish");

@@ -56,7 +56,7 @@ export interface SpeciesDef {
   calls?: Call[];
   /** Where this fish lies off a shore, as the read names it. */
   lie?: string;
-  /** The oily class: 1,500 kcal/kg, a 0.6 lean share, defined once in FOODS. */
+  /** The oily class: 1,500 kcal/kg, a 0.4 lean share, defined once in FOODS. */
   oily?: true;
   /** Spawning months, 0-based inclusive; a catch inside yields roe. */
   spawn?: [number, number];

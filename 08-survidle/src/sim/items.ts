@@ -45,15 +45,17 @@ export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "co
  * dried meat is three kilos to one, so 3,300 conserves the rack's kcal.
  * Berries are wild bilberry, 400 to 600 a kilo, at 450. Oily fish is one
  * class - herring, char, trout, salmon when it lands - about 1,500 kcal/kg
- * with 0.6 lean; roe 1,600 at half lean, a tenth of a spawning catch, the
- * spec's shortcut.
+ * at 0.4 lean, since char, trout and herring in condition are 8 to 12
+ * percent fat by weight and most of their calories come as fat; lean fish
+ * (pike, perch, whitefish) at 0.9, a percent or two of fat by weight; roe
+ * 1,600 at half lean, a tenth of a spawning catch, the spec's shortcut.
  */
 export const FOODS: Record<FoodId, { kcalPerKg: number; portionKg: number; sickChance: number; leanShare: number }> = {
   rawMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0.25, leanShare: 1 },
   cookedMeat: { kcalPerKg: 1100, portionKg: 0.3, sickChance: 0, leanShare: 1 },
   driedMeat: { kcalPerKg: 3300, portionKg: 0.15, sickChance: 0, leanShare: 1 },
-  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0, leanShare: 1 },
-  cookedOilyFish: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0, leanShare: 0.6 },
+  cookedFish: { kcalPerKg: 1000, portionKg: 0.3, sickChance: 0, leanShare: 0.9 },
+  cookedOilyFish: { kcalPerKg: 1500, portionKg: 0.3, sickChance: 0, leanShare: 0.4 },
   roe: { kcalPerKg: 1600, portionKg: 0.2, sickChance: 0, leanShare: 0.5 },
   berries: { kcalPerKg: 450, portionKg: 0.2, sickChance: 0, leanShare: 0 },
   eggs: { kcalPerKg: 1500, portionKg: 0.2, sickChance: 0, leanShare: 0.4 },

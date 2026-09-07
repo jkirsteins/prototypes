@@ -10,7 +10,7 @@ describe("the gut table and the lean share", () => {
   it("every food carries a lean share from the spec's table and berries keep their ceiling", () => {
     expect(FOODS.rawMeat.leanShare).toBe(1);
     expect(FOODS.driedMeat.leanShare).toBe(1);
-    expect(FOODS.cookedFish.leanShare).toBe(1);
+    expect(FOODS.cookedFish.leanShare).toBe(0.9);
     expect(FOODS.fat.leanShare).toBe(0);
     expect(FOODS.berries.leanShare).toBe(0);
     expect(GUT.berries).toEqual({ fullCreditKg: 1.2, refuseKg: 2 });

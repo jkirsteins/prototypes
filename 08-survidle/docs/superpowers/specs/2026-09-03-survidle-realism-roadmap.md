@@ -256,7 +256,7 @@ in full, and where they disagreed the game moved to the handbook's:
 | snares | 5 per region at 0.3 a night | a trap line 3 to 5 km long checked at dawn, up to a hundred snares after a few days (Swedish) |
 | marrow | 0.1 kg a bone, on the animal's own 1 / 0.75 / 0.4 fat-season curve | marrow from the larger bones (Kochanski) |
 | carcass fat | full August to November, half in winter, a fifth March to May, 0.6 at midsummer | the author's brief (2026-09-06): a peak autumn elk about 135,000 kcal of fat |
-| oily fish | 1,500 kcal/kg, 0.6 lean share | herring, char, salmon, trout named oily; the rest stay lean (the author's brief) |
+| oily fish | 1,500 kcal/kg, 0.4 lean share | herring, char, salmon, trout named oily, 8 to 12 percent fat by weight so most of their calories are fat; the rest stay lean at 0.9 (the author's brief) |
 | roe | 1,600 kcal/kg, a tenth of the catch in the spawning window | a deliberate shortcut in place of sex, maturity or gonad state (the author's brief) |
 | eggs | 1,500 kcal/kg, 0.4 lean share, half a kilo an hour, May and June | eggs and young birds easy to get (Swedish) |
 | roots | 850 kcal/kg cooked, 0.3 kg/h in season and 0.1 through winter ice | cattail rhizome 210 g starch/kg, reed root-shoots 5 percent, dandelion root 23 percent, fifteen pieces for the ration (Swedish) |
@@ -2956,11 +2956,13 @@ where it took none and lives to day 148 rather than day 48, and seed
 
 Measured with fat and carbohydrate
 (`2026-09-06-survidle-fat-and-carbohydrate-design.md`). The year at
-level 20 reads 2 of 4: seeds 42 and 79 live a whole year on their elks'
-fat, seed 19 freezes on day 328 five weeks from the thaw, and seed 17,
-which draws no elk, starves on day 89 at the lean ceiling with non-lean
-food beside it. The lineage stays 0 of 4 within six lives, and no gate
-week of either reading is a lean-wall week.
+level 20 reads 3 of 4: seeds 19, 42 and 79 live a whole year on their
+elks' fat, and seed 17, which draws no elk, lives on its fish and its
+reindeer to day 284 and freezes with the woodpile unstocked. Before the
+author moved the fish to their real fat (oily 0.4 lean, lean 0.9) it read
+2 of 4, with seed 17 starving on day 89 at the lean ceiling. The lineage
+stays 0 of 4 within six lives, and no gate week of either reading is a
+lean-wall week.
 
 **The world persists; the person does not.** Death stays permanent and
 still deletes the survivor: skills, pack, body, everything that was in
@@ -3679,7 +3681,7 @@ carcass on a seasonal curve, full in autumn and down to a fifth in
 spring, and spoils like meat until it is rendered; marrow follows the
 same curve, cracked from the bone at a camp task and stored as the
 rendered item. Fish split into a lean class and an oily one at 1,500
-kcal/kg and a 0.6 lean share, and a catch inside its species' spawning
+kcal/kg and a 0.4 lean share, and a catch inside its species' spawning
 window carries roe besides. A region's nesting birds leave a spring egg
 stock, gathered at the shore or the heath while it lasts. Five plant
 tasks fill the rest: roots dug at the water or through winter ice, pine
@@ -3696,16 +3698,16 @@ mandatory without the report saying so.
 **Built.** Spec `2026-09-06-survidle-fat-and-carbohydrate-design.md`,
 plan `2026-09-06-survidle-fat-and-carbohydrate.md`. Measured on the four
 reference seeds: April 4 of 4 (from 3), winter 4 of 4, the year at
-level 20 2 of 4 - seeds 42 and 79 hold a whole year, seed 19 freezes on
-day 328, and seed 17, which draws no elk, starves on day 89 at the lean
-ceiling with non-lean food beside it - and the lineage 0 of 4. No gate
-week is a lean-wall week, no carcass's fat goes off, and no single
-source's removal takes the year below 1 of 4. Findings left for the
+level 20 3 of 4 - seeds 19, 42 and 79 hold a whole year, and seed 17,
+which draws no elk, lives to day 284 on fish and reindeer and freezes
+with the woodpile unstocked - and the lineage 0 of 4. No gate week is a
+lean-wall week, no carcass's fat goes off, and no single source's removal
+takes the year below 1 of 4. The fish classes moved to their real fat
+after the author's review (oily 0.4 lean, lean 0.9), which took the year
+from 2 of 4 and closed the ceiling question. Findings left for the
 author: the list's all-day keeps still starve the wood keeps whenever
 the larder dips under the winter's food; inner bark returns 275 kcal an
-hour, off the reference list for it; the ceiling is what a level-20
-survivor stands at daily, so whether a summer with no elk in it should
-have a third fat source is the open question; one survivor empties a
+hour, off the reference list for it; one survivor empties a
 region's roots; the unexploited line reads a stock, not an omission, and
 cannot see what rotted before the death; sap and seaweed never fire on
 the reference seeds, so neither is measured by the without probe; and

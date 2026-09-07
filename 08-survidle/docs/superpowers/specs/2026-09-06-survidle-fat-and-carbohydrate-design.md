@@ -43,8 +43,8 @@ tallow as a later, third fat source and does not move.
   with the animal's condition on a 1 / 0.75 / 0.4 curve, not a floor of
   a half.
 - **Fish are two classes, and the oily one is not a lump of fat**: about
-  1,500 kcal/kg with a 0.6 lean share; herring, char, salmon when it
-  lands, and trout; whitefish stays lean. Roe at a tenth of the catch in
+  1,500 kcal/kg with a 0.4 lean share; herring, char, salmon when it
+  lands, and trout; whitefish stays lean, at 0.9. Roe at a tenth of the catch in
   the spawning window, a deliberate shortcut.
 - **Eggs as written**: a finite annual nest stock per region, May and
   June, half a kilo an hour.
@@ -343,6 +343,18 @@ the three readings the earlier record put here - that a carcass carries too
 little fat, and that the item's sources come to under 1,800 - were the
 runner throwing the fat away, and are withdrawn.
 
+The author's answer, after review: both fish classes were leaner than the
+fish. Char, trout and herring in condition are 8 to 12 percent fat by
+weight, so most of their calories come as fat, and the oily class's lean
+share is 0.4 rather than 0.6; pike, perch and whitefish carry a percent or
+two of fat, so the lean class is 0.9 rather than 1.0. Measured on the
+level-20 year with only those two numbers moved: seed 17 lives through the
+summer and the autumn on its fish and fourteen reindeer and freezes on day
+284, the F2 shape and not the ceiling; seeds 19, 42 and 79 live the year;
+the gate reads 3 of 4, from 2. April holds 4 of 4 on days 24, 24, 33 and
+29. The tables above were measured at 0.6 and 1.0 and are left as they
+were; F4 closes, and what remains of a summer with no elk is F2's freeze.
+
 **F5. Roots are close to mandatory for a seed with no elk, and the stock is
 finite.** Shutting them takes seed 17 from 89 days to 54 and costs the other
 three nothing. A level-20 camp digs its regional stock out and the task
@@ -389,8 +401,8 @@ the whole gain:
 |---|---|---|
 | raw meat, cooked meat | 1,100 | 1.0 |
 | dried meat | 3,300 | 1.0 |
-| lean fish, cooked | 1,000 | 1.0 |
-| oily fish, cooked | 1,500 | 0.6 |
+| lean fish, cooked | 1,000 | 0.9 |
+| oily fish, cooked | 1,500 | 0.4 |
 | roe | 1,600 | 0.5 |
 | eggs | 1,500 | 0.4 |
 | fat (rendered), marrow | 9,000 | 0 |
@@ -464,8 +476,8 @@ marrow over, and it still makes a needle.
 
 Fish split into two items by species, at the catch: `fish` (lean) and
 `oilyFish`, with `cookedFish` and `cookedOilyFish`. The class is defined
-once, in `FOODS`: 1,500 kcal/kg and a 0.6 lean share for the oily item,
-1,000 and 1.0 for the lean one. A species carries nothing nutritional of
+once, in `FOODS`: 1,500 kcal/kg and a 0.4 lean share for the oily item,
+1,000 and 0.9 for the lean one. A species carries nothing nutritional of
 its own: only `oily: true` (herring, arctic char, brown trout, and salmon
 when the rivers item lands; perch, pike, burbot, cod and whitefish stay
 lean) and a spawning window `spawn: [from, to]` in months (0-based):
