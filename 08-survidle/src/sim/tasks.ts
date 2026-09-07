@@ -63,6 +63,14 @@ export interface TaskOption {
   /** Why it cannot start, when it cannot. */
   why: string;
   repeatable: boolean;
+  /**
+   * Work this ground will never offer, however long you wait: there is no
+   * outcrop in this region, no shore, no forest. Told apart from the reasons
+   * that pass - a storm, a missing tool, a season - because a row that can
+   * never run here is not one to queue: it would sit at the head of the list
+   * stopping every order under it until it was struck off by hand.
+   */
+  never?: boolean;
   /** Share already done and waiting to be resumed, when there is one. */
   resume?: number;
   /** Mastery of this action, the share of the way to the next level, and the skill and key it is kept under. */
@@ -424,7 +432,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
   /** Ground the task needs under foot, with the spot to walk to when it is not. */
   const ground = (ok: boolean, spot: SpotId, what: string, o: TaskOption): TaskOption => {
     if (ok) return o;
-    if (!hasSpot(r, spot)) return { ...o, ok: false, why: `no ${what} in ${r.name}` };
+    if (!hasSpot(r, spot)) return { ...o, ok: false, never: true, why: `no ${what} in ${r.name}` };
     return { ...o, ok: false, why: `stand ${what === "water" ? "by" : "in"} the ${what}; walk to ${SPOT_WORDS[spot]}` };
   };
   const needCamp = (o: TaskOption): TaskOption => (camp ? o : { ...o, ok: false, why: "walk to camp" });

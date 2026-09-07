@@ -1086,3 +1086,55 @@ describe("the vocabulary in the scheduler", () => {
     expect(orderSentence(state, world, cal, roots)).toContain("1 a day, while camp has at least 1 bone");
   });
 });
+
+describe("a once order is the player's own", () => {
+  it("blocks every order under it while it cannot run, and lets them go once it is struck off", () => {
+    // Clicking a row asks for that work first. If it cannot be done, the answer
+    // is not to quietly do something else instead.
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const cabin = addOrder(state, world, req("build", { arg: "cabin" }), "job");
+    const grind = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 1);
+    expect(cabin.skipped).toBe("missing materials at camp");
+    expect(state.intent?.orderId).toBeNull();
+    expect(state.intent?.task).toBe("wait");
+    removeOrder(state, world, cabin.id);
+    expect(chooseOrder(state, world, calendar(state.minute, state.startDoy))?.id).toBe(grind.id);
+  });
+
+  it("still judges the orders under it, so none shows a reason left over from before", () => {
+    const g = campWith(3, {});
+    const { state, world } = g;
+    addOrder(state, world, req("build", { arg: "cabin" }), "job");
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    advance(state, world, 1);
+    expect(keep.skipped).toBe("no logs here");
+  });
+
+  it("is not stalled by the dark: a job for the forest lets the camp work under it run all evening", () => {
+    // The night is a clock, not a refusal. A day's work at the top would
+    // otherwise stop the fireside hours every night of the year.
+    const { state, world } = newGame(17, WINTER_START_DOY);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    addItem(pile(state, st.campCell), "log", 4);
+    st.fire.lit = true;
+    state.minute = 500;
+    const night = calendar(state.minute, state.startDoy);
+    const away = addOrder(state, world, req("chop", { deliver: "camp" }), "job");
+    const chore = addOrder(state, world, req("split", { deliver: "camp" }), "job");
+    expect(chooseOrder(state, world, night)?.id).toBe(chore.id);
+    expect(away.skipped).toBe(NIGHT_SKIP.away);
+  });
+
+  it("a standing order that cannot run is passed over, as it always was", () => {
+    const g = campWith(3, { firewood: 5 });
+    const { state, world } = g;
+    const keep = addOrder(state, world, req("split", { until: { kind: "campHas", qty: 40 }, deliver: "camp" }), "keep");
+    const sticks = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    advance(state, world, 1);
+    expect(keep.skipped).toBe("no logs here");
+    expect(state.intent?.orderId).toBe(sticks.id);
+  });
+});

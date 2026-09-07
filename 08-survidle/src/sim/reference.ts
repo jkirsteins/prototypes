@@ -20,7 +20,7 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
-import { nearestCell } from "./intent";
+import { intentOption, nearestCell, resolveCell } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
@@ -30,17 +30,17 @@ import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOURCES } from "./ledger";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
-import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
+import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder, stallingOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
-import { heathCell, watersideCell } from "./position";
+import { cellOf, heathCell, watersideCell } from "./position";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import { seaweedAvailable, startTask } from "./tasks";
+import { check, seaweedAvailable, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, OrderWhen, RecipeId, WorldDate } from "./types";
 
@@ -797,6 +797,9 @@ export class ReferencePlayer {
    * burn and nights on the way, and no order is given until the region is
    * reached. The first survivor has no home and starts on the list at once.
    */
+  /** Wants taken off the list for stalling it: given again only once they can run. */
+  private readonly stalled = new Set<number>();
+
   constructor(readonly wants: Want[] = REFERENCE_ORDERS, private home: number | null = null) {}
 
   /** The mornings between two days, inclusive, on which the list changed, and how many days were asked about. */
@@ -858,6 +861,23 @@ export class ReferencePlayer {
     this.note(cal);
   }
 
+  /**
+   * Whether this is work the player could set going now. A once order stops
+   * every order under it while it cannot run, and under the ladder's rungs
+   * every want is a once job, so a player who queued the list regardless
+   * would stop the whole list on the first row that has to wait for a
+   * season, a material or a tool. They queue what can be done and come back
+   * to the rest, which is what the give loop and the withdrawal below do.
+   *
+   * The dark is not asked about: night holds an order without stalling the
+   * list, so a row put off until first light is still the row to hold.
+   */
+  private canStart(state: GameState, world: World, cal: Calendar, req: IntentRequest): boolean {
+    if (!intentOption(state, world, cal, req.task, req.arg, req.where).ok) return false;
+    const { cell } = resolveCell(state, world, cal, req.task, req.arg, req.where);
+    return cell === cellOf(state, world) || check(state, world, cal, "walk", `cell:${cell}`).ok;
+  }
+
   private give(state: GameState, world: World, cal: Calendar, i: number, best: Want): void {
     const w = this.wants[i];
     const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
@@ -900,6 +920,15 @@ export class ReferencePlayer {
       this.completed.delete(i);
     }
     const list = ordersHere(state, world);
+    // A once order that cannot run holds up every order under it. A player
+    // reading that row takes it off rather than leaving the list standing all
+    // day; it goes back on when it can run. Only the row that is actually
+    // stalling comes off - a row waiting on the work of the rows above it is
+    // below one that can run, and holds nothing up.
+    const stalling = stallingOrder(state, world, cal);
+    if (stalling) {
+      for (const [i, g] of this.given) if (g.id === stalling.id) { this.stalled.add(i); this.withdraw(state, world, cal, i, g.id); break; }
+    }
     for (const [i, g] of [...this.given]) {
       const w = this.wants[i];
       if (list.some((o) => o.id === g.id)) {
@@ -941,6 +970,11 @@ export class ReferencePlayer {
       const best = withinLadder(state, w.req, w.kind);
       if (!this.byHand(state, world, cal, i, best)) continue;
       if (orderMet(state, world, cal, this.probe(i, this.completed.get(i) ?? 0), false)) continue;
+      // A want taken off for stalling the list goes back on only when it can
+      // run; every other want is given whether or not it can start, since the
+      // list is a plan and a row's materials are cut by the rows above it.
+      if (this.stalled.has(i) && !this.canStart(state, world, cal, best.req)) continue;
+      this.stalled.delete(i);
       this.give(state, world, cal, i, best);
     }
   }

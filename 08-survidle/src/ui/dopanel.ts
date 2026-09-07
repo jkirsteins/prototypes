@@ -296,8 +296,10 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   if (!o.ok) {
     // Queuing a blocked makeCamp anyway would let the runner site the camp wherever the
     // body happens to be standing when the order starts, not the cell the click meant:
-    // it gets no "add it anyway" queue path, only the reason it is grey.
-    const queueable = o.id !== "makeCamp";
+    // it gets no "add it anyway" queue path, only the reason it is grey. Work this
+    // ground will never offer gets none either: the row would wait for a thing that
+    // is not coming, at the head of a list it stops.
+    const queueable = o.id !== "makeCamp" && !o.never;
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
     return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${more}${expand}</div>`;
   }

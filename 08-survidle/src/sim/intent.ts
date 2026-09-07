@@ -26,7 +26,7 @@ import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { beginTask, check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, Where,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, UntilChoice, Where,
 } from "./types";
 
 /**
@@ -36,7 +36,7 @@ import type {
  * counted order, the wait - is the runner's, and so is the night out, a
  * once whose only content is the sleep the body serves.
  */
-export function intentMode(task: TaskId, until: Until): Intent["mode"] {
+export function intentMode(task: TaskId, until: Until | UntilChoice): Intent["mode"] {
   if (task === "night" || task === "wait") return "runner";
   return until.kind === "once" ? "hand" : "runner";
 }
