@@ -32,6 +32,14 @@ function monthDay(dayOfYear: number): { month: number; dayOfMonth: number } {
   return { month, dayOfMonth: d + 1 };
 }
 
+/** The day of year a month opens on: what a month picker writes into a season window or a due date. */
+export function monthStartDoy(month: number): number {
+  const m = ((month % 12) + 12) % 12;
+  let doy = 0;
+  for (let i = 0; i < m; i++) doy += MONTH_DAYS[i];
+  return doy;
+}
+
 /** "1 May" from a day of year: the shape a season window and a due date read in. */
 export function fmtDoy(dayOfYear: number): string {
   const { month, dayOfMonth } = monthDay(dayOfYear);

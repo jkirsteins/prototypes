@@ -32,7 +32,7 @@ export const PRODUCERS: string[] = ["snares", "drying rack", "basket trap", "wat
 
 export const CAPABILITIES: CapabilityRow[] = [
   {
-    id: "jobs, grinds and keeps",
+    id: "jobs, grinds, keeps, conditions and pace",
     keys: ["rung:job", "rung:grind", "rung:keep", "rung:condition", "rung:pace"],
     tier: "rung",
     receives: [],

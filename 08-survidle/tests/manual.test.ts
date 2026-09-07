@@ -22,6 +22,9 @@ describe("the manual", () => {
     expect(html).not.toMatch(/[\u2014\u2013\u2026\u2018\u2019\u201c\u201d]/);
     const food = MANUAL_SECTIONS.find((s) => s.title === "Food and the seasons")!;
     expect(food.lines).toContain("Hare alone starves you; you need fat: marrow, oily fish, eggs and roe in their season.");
+    // The orders line names the whole ladder, so the five rungs are read once before any of them opens.
+    const orders = MANUAL_SECTIONS.find((s) => s.title === "Orders and being away")!;
+    expect(orders.lines.join(" ")).toContain("jobs, grinds, keeps, then conditions and a due date");
   });
 
   it("opens once on a world's first landing and never for a heir", () => {

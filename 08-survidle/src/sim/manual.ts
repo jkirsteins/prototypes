@@ -37,7 +37,7 @@ export const MANUAL_SECTIONS: { title: string; lines: string[] }[] = [
   {
     title: "Orders and being away",
     lines: [
-      "You give orders; the game keeps them, and earns you longer ones as your skills grow.",
+      "You give orders; the game keeps them, and a skill's levels earn longer ones: jobs, grinds, keeps, then conditions and a due date.",
       "Away is riskier than playing: the runner does what you asked and nothing more.",
       "Death keeps the world. The next survivor lands months later, near the old camp, carrying a quarter of what you knew.",
     ],

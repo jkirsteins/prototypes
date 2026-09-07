@@ -36,6 +36,13 @@ describe("the capability spine's coverage", () => {
     for (const kind of Object.keys(RUNG_LEVEL)) expect(keys.has(`rung:${kind}` as CapabilityKey), kind).toBe(true);
   });
 
+  it("the rungs are one row, and it names all five", () => {
+    const rungs = CAPABILITIES.filter((r) => r.tier === "rung");
+    expect(rungs.length).toBe(1);
+    expect(rungs[0].keys).toEqual(["rung:job", "rung:grind", "rung:keep", "rung:condition", "rung:pace"]);
+    expect(rungs[0].id).toBe("jobs, grinds, keeps, conditions and pace");
+  });
+
   it("the producers are exactly the rows marked producer", () => {
     const marked = CAPABILITIES.filter((r) => r.producer).map((r) => r.id).sort();
     expect(marked).toEqual([...PRODUCERS].sort());

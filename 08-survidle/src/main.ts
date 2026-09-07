@@ -40,7 +40,7 @@ import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
-import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, type RowChoice } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
@@ -508,13 +508,20 @@ document.addEventListener("keydown", (ev) => {
   else return;
   render();
 });
+/** The order condition an element writes, or undefined: the open row's when block is written through it from both listeners below. */
+function whenFieldOf(el: Element): WhenField | undefined {
+  return WHEN_FIELDS.find((f) => el.hasAttribute(`data-row-${f}`));
+}
 // Committed on every keystroke so the field is never a stroke behind; no render()
 // here, since setPanel already refuses to redraw the panel while this field has
 // focus (a redraw between keystrokes is what used to eat the field's focus).
 document.addEventListener("input", (ev) => {
   const el = ev.target as HTMLInputElement;
+  const when = whenFieldOf(el);
   if (el.matches("[data-row-n]")) {
     commitChoiceN(ui, el.value);
+  } else if (when) {
+    setWhenField(ui.choice.when, when, el.value);
   } else if (el.matches("[data-name]") && state.landing) {
     const t = el.value.trim().slice(0, 40);
     const i = t.indexOf(" ");
@@ -530,6 +537,12 @@ document.addEventListener("change", (ev) => {
   const el = ev.target as HTMLInputElement;
   if (el.matches("[data-act=row-where]")) {
     ui.choice.where = el.value as RowChoice["where"];
+    render();
+    return;
+  }
+  const when = whenFieldOf(el);
+  if (when) {
+    setWhenField(ui.choice.when, when, el.value);
     render();
     return;
   }
