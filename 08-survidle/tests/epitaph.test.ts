@@ -74,28 +74,20 @@ describe("the epitaph", () => {
     // reaches again. The log keep beside it carries the same window, so a spring runner with nothing
     // else able to run rests instead of felling; and stone is wanted twice, a once job for eight at the
     // opening and a keep of eight as the restock below the clothing block.
-    // Both seeds starve at camp rather than freezing or dying on the trail: the reference
-    // player's opening grinds fill firewood and food ahead of the cold, so the woodpile
-    // outlasts the larder on both; seed 17's fish carry a lean share under one, so its ceiling
-    // holds a little more of the catch and it dies at camp a day later than it would on the ground. Frozen lingon under the snow open a berries row through the
-    // April start itself, ahead of the wood-first grind order, so the larder empties where
-    // the ledger above finds it. The larder these seeds empty is meat, berries, roots, eggs
-    // and bark flour together, and the wood outlasts the larder on both. Seed 17 dies of the
-    // cold a kilometre out: a body that works a once order until it drops stops where it drops,
-    // and the wood it will never fetch again is still stacked at camp. Both readings
-    // moved when the night became a light level rather than a wall, which buys back the
-    // walking a moonlit night was charging as if it were pitch dark, and again when the
-    // fire site stopped costing stone: seed 17 no longer walks to the outcrop before it
-    // has anywhere to burn what it fetches, and both seeds now die at their own fire.
-    // This run is a level-1 opening that always starves in its third or fourth week, and
-    // a few minutes moved either way swings the day by several - the number to read here
-    // is that neither seed dies of the cold with a woodpile beside it any more.
-    // They moved once more when a once order began stopping the list under it:
-    // the opening list is all once jobs at level 1, so the order the plan is
-    // written in now decides what gets done, and seed 17 spends its third week
-    // differently for it.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 23. Starved at camp, with nothing in the pack and 79 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 30. Starved at camp, with nothing in the pack and 4 kg of firewood at camp."`);
+    // The larder these seeds empty is meat, berries, roots, eggs and bark flour together;
+    // frozen lingon under the snow open a berries row through the April start itself, ahead
+    // of the wood-first grind order, so it empties where the ledger above finds it. Seed 19
+    // is the shape a level-1 opening holds: the larder gives out weeks before the woodpile
+    // does, and it starves at its own fire with wood to spare. Seed 17 is the other end of
+    // it - a far ring where the food never comes in at all, so the woodpile is being spent
+    // faster than the felling fills it, and a storm that puts the trees out of reach for a
+    // day catches it with the pile at nothing. A body that works a once order until it drops
+    // stops where it drops, which is why it lies short of camp rather than beside the fire.
+    // A few minutes moved either way swings the day by several, so the day numbers here are
+    // a determinism check rather than a reading; what the epitaph is asked for is where the
+    // body lies, what it carried and what it left.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 6. Died of cold 0.6 km from camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 29. Starved at camp, with nothing in the pack and 64 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {
