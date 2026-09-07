@@ -5,9 +5,11 @@ import { placeAtSpot } from "../src/sim/position";
 import { regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
-import { doHtml, filterRows, FOLD_KEY, intentGroups, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
+import { doHtml, filterRows, FOLD_KEY, intentGroups, keyedRows, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
-import type { OrderWhen } from "../src/sim/types";
+import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
+import { TASK_IDS } from "../src/sim/types";
+import type { OrderWhen, TaskId } from "../src/sim/types";
 
 function memory(): Storage {
   const m = new Map<string, string>();
@@ -79,6 +81,45 @@ describe("fold and filter", () => {
     expect(far).toEqual([bow]);
 
     expect(makeFirst([bow, chop])).toEqual([chop, bow]);
+  });
+
+  it("the invisible keywords find a row whose own words never say what it is for", () => {
+    // Nothing on the torch row says "fire", and nothing on the bough bed says
+    // "sleep": the keywords are the only route to them.
+    const rows = [
+      { id: "lightTorch" as TaskId, label: "Light a torch", detail: "burns 1 h; no night penalty on foot", why: "", group: "camp" },
+      { id: "build" as TaskId, arg: "boughBed", label: "bough bed", detail: "12 sticks; Spruce boughs off the cold ground", why: "", group: "build" },
+      { id: "stone" as TaskId, label: "Gather stone", detail: "3 stone", why: "", group: "gather" },
+    ];
+    expect(filterRows(rows, "fire").map((r) => r.label)).toEqual(["Light a torch"]);
+    expect(filterRows(rows, "sleep").map((r) => r.label)).toEqual(["bough bed"]);
+    expect(filterRows(rows, "kindling").map((r) => r.label)).toEqual(["Light a torch"]);
+    expect(filterRows(rows, "nonsense").length).toBe(0);
+  });
+
+  it("keywords ride with the row's own text, so one word from each still narrows", () => {
+    const rows = [
+      { id: "lightTorch" as TaskId, label: "Light a torch", detail: "burns 1 h; no night penalty on foot", why: "", group: "camp" },
+      { id: "light" as TaskId, label: "Light the fire at the pit", detail: "fire drill and 1 kg firewood", why: "", group: "camp" },
+    ];
+    expect(filterRows(rows, "fire").length).toBe(2);
+    expect(filterRows(rows, "fire torch").map((r) => r.label)).toEqual(["Light a torch"]);
+  });
+
+  it("every row a keyword names is a row this panel actually lists", () => {
+    // A keyword on a row the Do panel never renders is a word that finds
+    // nothing, and nothing else would tell you.
+    const { state, world } = newGame(17);
+    const listed = new Set(intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items.map((i) => i.id)));
+    for (const key of keyedRows()) {
+      const [id, arg] = key.split(":");
+      expect(TASK_IDS).toContain(id);
+      expect([...listed]).toContain(id);
+      // A bare "craft" or "build" covers every recipe or structure; an arg names one.
+      if (arg !== undefined && id === "craft") expect(RECIPE_IDS).toContain(arg);
+      if (arg !== undefined && id === "build") expect(STRUCTURE_IDS).toContain(arg);
+      if (arg !== undefined) expect(["craft", "build"]).toContain(id);
+    }
   });
 
   it("the filter narrows doHtml's rows and drops emptied groups", () => {
