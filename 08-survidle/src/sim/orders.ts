@@ -313,6 +313,9 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
 /** The tasks that make the light the other camp chores work by. */
 const LIGHTING = new Set<TaskId>(["light", "lightIndoors", "lightTorch"]);
 
+/** Lying down is not work: it needs no light and spends none of the working day. */
+const RESTING = new Set<TaskId>(["sleep", "rest", "night", "wait"]);
+
 /** The reasons the clock gives for skipping an order; the Do panel shows them on the row like any other. */
 export const NIGHT_SKIP = {
   away: "dark; at first light",
@@ -334,11 +337,14 @@ export const NIGHT_SKIP = {
  * and no chores run at night. By day nothing here applies: if nothing away
  * is able to run, the chores run in the light as they always did.
  *
- * Lighting a fire is the one camp job the dark never stops, by neither of
- * the two camp branches: the fire is what the chores work by, so a rule
- * that made lighting it wait for firelight would leave a camp whose fire
- * has gone out unable to light another until dawn, and it is minutes of
- * work rather than a working day, so the budget has no claim on it either.
+ * Lighting a fire and lying down are the camp jobs the dark never stops, by
+ * neither of the two camp branches. Sleep, rest and the two waits are not
+ * work: a body with no fire lies down in the dark rather than standing over
+ * a cold hearth until dawn, and no part of the working day is spent on it.
+ * For the fire: it is what the chores work by, so a rule that made lighting
+ * it wait for firelight would leave a camp whose fire has gone out unable to
+ * light another until dawn, and it is minutes of work rather than a working
+ * day, so the budget has no claim on it either.
  * The away branch still applies and never bites for the fire or the fire
  * indoors, which resolve to camp; a torch order given away from camp is
  * caught by it as any away order is.
@@ -347,7 +353,7 @@ export function nightSkip(state: GameState, world: World, cal: Calendar, task: T
   if (!cal.isNight) return null;
   const st = regionState(state, world, state.player.region);
   if (cell !== st.campCell) return NIGHT_SKIP.away;
-  if (LIGHTING.has(task)) return null;
+  if (LIGHTING.has(task) || RESTING.has(task)) return null;
   if (!st.fire.lit && !state.player.torch.lit) return NIGHT_SKIP.noFire;
   const budgetMin = (body(state).workHours - cal.daylightHours) * 60;
   if (today(state).workMin >= budgetMin) return NIGHT_SKIP.budget;

@@ -756,6 +756,18 @@ describe("the night", () => {
     expect(chooseOrder(state, world, night)?.req.task).toBe("split");
   });
 
+  it("sleep is not work: the dark neither wants a fire for it nor bills it against the working day", () => {
+    // A body with no fire lies down in the dark rather than standing over a
+    // cold hearth until dawn.
+    const { state, world, st, night } = decemberChores();
+    st.fire.lit = false;
+    addOrder(state, world, { task: "sleep", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job", 0);
+    today(state).workMin = (body(state).workHours - night.daylightHours) * 60;
+    expect(chooseOrder(state, world, night)?.req.task).toBe("sleep");
+    expect(ordersHere(state, world)[0].skipped).toBe("");
+    expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.noFire);
+  });
+
   it("by day the budget does not apply, and in June no chores run at night at all", () => {
     const { state, world, night } = decemberChores();
     today(state).workMin = (body(state).workHours - night.daylightHours) * 60;
