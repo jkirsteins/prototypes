@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildHtml } from "../src/ui/build";
-import { GLYPH, legendHtml, MARKS } from "../src/ui/map";
+import { GLYPH, legendHtml, MARKS, mapHtml, mapKey } from "../src/ui/map";
+import { calendar } from "../src/sim/calendar";
+import { newGame } from "../src/sim/newgame";
+import { newUiState } from "../src/ui/render";
 import { css, rule } from "./css";
 
 describe("the map's own surface", () => {
@@ -113,5 +116,64 @@ describe("what survives the night sheet", () => {
     for (const gone of ["forest", "outcrop", "shore", "heath"]) {
       expect(legendHtml()).not.toContain(`> ${gone}<`);
     }
+  });
+});
+
+describe("the year on the map", () => {
+  it("names the season on the grid and in the map's key, so a redraw follows the calendar", () => {
+    const { state, world } = newGame(17);
+    const ui = newUiState();
+    const seen = new Set<string>();
+    // One date in each season of the run's first year.
+    for (const doy of [100, 190, 280, 20]) {
+      const cal = calendar(12 * 60, doy);
+      const html = mapHtml(world, state, ui, cal);
+      expect(html).toContain(`grid season-${cal.season}`);
+      seen.add(cal.season);
+    }
+    expect([...seen].sort()).toEqual(["autumn", "spring", "summer", "winter"]);
+    const spring = calendar(12 * 60, 100);
+    const autumn = calendar(12 * 60, 280);
+    expect(mapKey(state, world, ui, spring)).not.toBe(mapKey(state, world, ui, autumn));
+  });
+
+  it("lets snow beat the season by selector, not by where the rules sit in the file", () => {
+    // Snow is on the ground or it is not, whatever the month says. A later edit
+    // that moves a block must not silently flip which one wins.
+    expect(css).toContain(".grid.season-winter:not(.snow)");
+    expect(css).toContain(".grid.season-autumn:not(.snow)");
+  });
+
+  it("keeps the evergreens green under snow, and buries them only once it is deep", () => {
+    // Snow in the needles lifts and cools the green; it does not replace it.
+    expect(rule(".grid.snow .c:not(.mk).t-spruce")).toContain("#6f9e78");
+    // The bare birch takes the colour of the snow around it straight away.
+    expect(rule(".grid.snow .c:not(.mk).t-birch")).toContain("#9fb8c8");
+    // Past DEEP_SNOW_CM there is more snow than tree to see.
+    expect(rule(".grid.snow-deep .c:not(.mk).t-spruce")).toContain("#c3d6dd");
+  });
+
+  it("lets snow flatten the relief, by selector rather than by file order", () => {
+    // A tone rule sits later in the file than the snow rules at equal
+    // specificity, so without the guard a toned tree would keep its green
+    // under snow while its untoned neighbour went white.
+    expect(css).toContain(".grid:not(.snow) .c:not(.mk).t-spruce.tone-0");
+    expect(css).toContain(".grid:not(.snow) .c:not(.mk).t-water.deep-0");
+  });
+});
+
+describe("a mark owns its whole cell", () => {
+  it("lets no conditional ground rule touch one", () => {
+    // Every rule that paints ground under a condition - a tone, a depth, a
+    // season, snow - carries more classes than the mark rules do and so wins on
+    // specificity. Miss one and the @ takes the ground's colour on the cells it
+    // matches and its own back on the cells it does not: a survivor who
+    // flickers as they walk, and a camp that comes and goes.
+    const conditional = css
+      .split("\n")
+      .filter((line) => /^\.grid[.:]/.test(line) && / \.c[.:]/.test(line) && line.includes("{"))
+      .filter((line) => /\.t-\w+|\.tone-|\.deep-/.test(line));
+    expect(conditional.length).toBeGreaterThan(20);
+    for (const line of conditional) expect(line).toContain(".c:not(.mk)");
   });
 });

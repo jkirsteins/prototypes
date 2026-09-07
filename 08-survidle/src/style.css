@@ -292,10 +292,41 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.t-bog { color: #2f9f8f; background: #0b221f; }
 .grid .c.t-rock { color: #7a7f88; background: #1a1c20; }
 .grid .c.t-fell { color: #b9bec8; background: #22252b; }
-.grid.snow .c.t-spruce, .grid.snow .c.t-pine, .grid.snow .c.t-birch { color: #9fb8c8; }
-.grid.snow .c.t-meadow, .grid.snow .c.t-bog { color: #dfe6f0; }
-.grid.snow .c.t-rock, .grid.snow .c.t-fell { color: #e8ecf2; }
-.grid.snow .c:not(.t-water) { background: #121a26; }
+/* Under snow a spruce is a green tree with white in it, not a white tree: the
+   evergreens keep their colour, lifted and cooled by what is caught in the
+   needles, while the bare birch goes the colour of the snow around it. Past
+   DEEP_SNOW_CM - the depth that already halves a walk and doubles the burn -
+   there is more snow than tree to see, and they go white with everything else. */
+.grid.snow .c:not(.mk).t-spruce { color: #6f9e78; }
+.grid.snow .c:not(.mk).t-pine { color: #86b592; }
+.grid.snow .c:not(.mk).t-birch { color: #9fb8c8; }
+.grid.snow-deep .c:not(.mk).t-spruce { color: #c3d6dd; }
+.grid.snow-deep .c:not(.mk).t-pine { color: #d2e2e8; }
+.grid.snow-deep .c:not(.mk).t-birch { color: #e2ecf2; }
+/*
+ * Snow covers the ground; it does not erase it. One flat white over every
+ * terrain and one flat background under all of them made a winter map that
+ * could not be read - which ground was bog and which was fell, and where the
+ * land rose, were all the same colour. So the terrains keep telling themselves
+ * apart under it, in the cold end of their own colours, and the height keeps
+ * its three steps in the snow's own range: a drift on a rise catches the light
+ * and a hollow holds the shadow.
+ */
+.grid.snow .c:not(.mk).t-meadow { color: #dfe6f0; }
+.grid.snow .c:not(.mk).t-bog { color: #c2d4dc; }
+.grid.snow .c:not(.mk).t-rock { color: #d8dee8; }
+.grid.snow .c:not(.mk).t-fell { color: #f2f6fb; }
+.grid.snow .c:not(.mk):not(.t-water) { background: #121a26; }
+.grid.snow .c:not(.mk).t-meadow { background: #141d2a; }
+.grid.snow .c:not(.mk).t-bog { background: #101a24; }
+.grid.snow .c:not(.mk).t-rock { background: #171f2c; }
+.grid.snow .c:not(.mk).t-fell { background: #1d2634; }
+.grid.snow .c:not(.mk).t-spruce, .grid.snow .c:not(.mk).t-pine, .grid.snow .c:not(.mk).t-birch { background: #0f1823; }
+
+/* The height, in the snow's own range. The hollow is blue-shadowed and the
+   rise is nearly white, which is what relief looks like under snow. */
+.grid.snow .c:not(.mk).tone-0 { filter: brightness(0.82); }
+.grid.snow .c:not(.mk).tone-2 { filter: brightness(1.18); }
 /*
  * The outline through the fog. A region's edge is drawn on ground nobody has
  * walked, for the region stood in and the ones touching it, so the shape of
@@ -648,12 +679,78 @@ button.act small.gives, span.act small.gives,
   #clock { order: 13; }
 }
 
-/* Height as tone. The step is
+/* Height as tone. Snow flattens all of it - a white field has no relief left
+   to show - so every step here is written to lose to it. The step is
    on the letter alone - a filter on the cell drags its background with it and
    the map fills with bright and dark rectangles instead of trees. */
-.grid .c.t-spruce.tone-0 { color: #16642a; }
-.grid .c.t-spruce.tone-2 { color: #35c455; }
-.grid .c.t-pine.tone-0 { color: #2d8640; }
-.grid .c.t-pine.tone-2 { color: #6ee089; }
-.grid .c.t-birch.tone-0 { color: #6da548; }
-.grid .c.t-birch.tone-2 { color: #c2f593; }
+.grid:not(.snow) .c:not(.mk).t-spruce.tone-0 { color: #16642a; }
+.grid:not(.snow) .c:not(.mk).t-spruce.tone-2 { color: #35c455; }
+.grid:not(.snow) .c:not(.mk).t-pine.tone-0 { color: #2d8640; }
+.grid:not(.snow) .c:not(.mk).t-pine.tone-2 { color: #6ee089; }
+.grid:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #6da548; }
+.grid:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #c2f593; }
+
+/* The open ground takes the same step for the same reason: a screen of one
+   flat colour per terrain reads as a table, and the relief is already in the
+   world. Backgrounds move here as well as letters - a field is mostly its
+   cell, where a tree is mostly its letter - but only by a shade.
+
+   Never on a marked cell. These rules carry a background and a class more than
+   the mark rules do, so without the exclusion an @ standing on toned ground
+   lost its amber and got it back on the next cell: a survivor who flickered as
+   they walked. A mark owns its whole cell. */
+.grid:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #5c8032; background: #131a0c; }
+.grid:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #8ab84a; background: #1c2612; }
+.grid:not(.snow) .c:not(.mk).t-bog.tone-0 { color: #278477; background: #091c1a; }
+.grid:not(.snow) .c:not(.mk).t-bog.tone-2 { color: #3cc2af; background: #0e2b27; }
+.grid:not(.snow) .c:not(.mk).t-rock.tone-0 { color: #666b73; background: #16181c; }
+.grid:not(.snow) .c:not(.mk).t-rock.tone-2 { color: #92979f; background: #202329; }
+.grid:not(.snow) .c:not(.mk).t-fell.tone-0 { color: #9aa0aa; background: #1d2026; }
+.grid:not(.snow) .c:not(.mk).t-fell.tone-2 { color: #d6dbe4; background: #292d35; }
+
+/* Depth. `coast` crosses zero at the shore and runs on out to sea, so the
+   shallows are the lit end and the open water the dark one - the way water
+   reads standing on a beach. A lake has no offshore and keeps the plain
+   colour. */
+.grid:not(.snow) .c:not(.mk).t-water.deep-0 { color: #5b9ae8; background: #102047; }
+.grid:not(.snow) .c:not(.mk).t-water.deep-2 { color: #2b53a4; background: #060d20; }
+
+/*
+ * The year in colour.
+ *
+ * Only the letters move, and only for what actually changes with the season.
+ * Spruce and pine are evergreen and hold their colour through the year; birch
+ * is not, and it is the one tree the calendar shows. The ground follows it:
+ * green through the growing season, fading through autumn, bare in winter.
+ *
+ * None of it touches a marked cell - see "a mark owns its whole cell" below.
+ *
+ * Snow is a separate condition and wins over all of it - it is on the ground
+ * or it is not, whatever the month says. That is written into the selectors
+ * rather than left to the order of the file, which a later edit would move.
+ */
+/* Low ground turns first and deepest, the tops stay yellow longest, so the
+   height step runs red through orange to gold rather than just light to dark. */
+.grid.season-autumn:not(.snow) .c:not(.mk).t-birch { color: #f0b93f; }
+.grid.season-autumn:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #e07a2a; }
+.grid.season-autumn:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #ffdc72; }
+/* The ground turns in patches, not all over: only the cells the world says are
+   dry (ui/ground.ts, turnedGround) go over, and the damp ground beside them
+   stays as green as it was in July. The backgrounds warm with the letters on
+   those cells only, or a gold letter sits on summer ground. */
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow { color: #d09a42; background: #1f1a0c; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow.tone-0 { color: #c06a2e; background: #1a1409; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-meadow.tone-2 { color: #e8c15c; background: #292110; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog { color: #c4713c; background: #1e150e; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog.tone-0 { color: #ad5530; }
+.grid.season-autumn:not(.snow) .c:not(.mk).turned.t-bog.tone-2 { color: #dd9455; }
+
+/* Winter without snow on the ground: the birch is bare wood, the field is dead
+   grass. Everything else is what it is in any month. */
+.grid.season-winter:not(.snow) .c:not(.mk).t-birch { color: #8a7256; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-birch.tone-0 { color: #6d5943; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-birch.tone-2 { color: #a89078; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-meadow { color: #7c7a63; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #63614e; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #9a9880; }
+.grid.season-winter:not(.snow) .c:not(.mk).t-bog { color: #6f7b78; }

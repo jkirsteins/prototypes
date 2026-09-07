@@ -14,10 +14,10 @@ import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { discovery, VISITED } from "../sim/regionstate";
 import type { GameState, Terrain } from "../sim/types";
-import { ambientTemperature, iceMode } from "../sim/weather";
+import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
-import { elevationAt, groundGlyph, toneCuts, toneOf, TREES, VARIANTS, type ToneCuts } from "./ground";
+import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
 
@@ -75,7 +75,7 @@ export function legendHtml(): string {
     .join("");
   return (
     `${terrain}<span><b>=</b> ice</span>${marks}` +
-    `<span class="tone-key">brighter trees stand higher</span>` +
+    `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="fog-key">dark: never been there</span>`
@@ -297,13 +297,16 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
   const cur = state.player.region;
   const sel = ui.selected;
   const snow = state.weather.snowCm > SNOW_SHOWN_CM;
+  // Deep enough to bury what it lies on, at the depth this game already uses
+  // for snow that halves a walk and doubles the burn.
+  const deepSnow = state.weather.snowCm > DEEP_SNOW_CM;
   const l = levelAt(ui.zoom);
   const z = l.cells;
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -396,22 +399,45 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     }
   }
 
-  // The height shading normalises to what is on screen, so every elevation must
-  // be read before any one cell's tone can be decided.
-  const elev = z === 1 ? new Float32Array(l.w * l.h) : null;
-  let cuts: ToneCuts | null = null;
-  if (elev) {
-    const seen: number[] = [];
+  /*
+   * The shading normalises to what is on screen, so every figure must be read
+   * before any one cell's step can be decided. Three scales, not one: trees
+   * against trees, open land against open land, sea against sea. A single
+   * scale over all of them would have a screen of highland forest and coastal
+   * meadow put every tree in one bucket and every field in another, and each
+   * family would lose the relief within itself, which is the whole point.
+   */
+  const step = z === 1 ? new Float32Array(l.w * l.h) : null;
+  let treeCuts: ToneCuts | null = null;
+  let landCuts: ToneCuts | null = null;
+  let seaCuts: ToneCuts | null = null;
+  if (step) {
+    const trees: number[] = [];
+    const land: number[] = [];
+    const sea: number[] = [];
     for (let gy = 0; gy < l.h; gy++) {
       for (let gx = 0; gx < l.w; gx++) {
         const i = gy * l.w + gx;
-        if (regions[i] < 0 || !seenAt[i] || !TREES.includes(terrains[i])) continue;
-        const e = elevationAt(world.seed, x0 + gx * z, y0 + gy * z);
-        elev[i] = e;
-        seen.push(e);
+        if (regions[i] < 0 || !seenAt[i]) continue;
+        const cx = x0 + gx * z;
+        const cy = y0 + gy * z;
+        const t = terrains[i];
+        if (t === "water") {
+          // Lakes have no offshore; they keep the plain water colour.
+          const off = offshoreAt(world.seed, cx, cy);
+          if (off === null) continue;
+          step[i] = off;
+          sea.push(off);
+        } else {
+          const e = elevationAt(world.seed, cx, cy);
+          step[i] = e;
+          (TREES.includes(t) ? trees : land).push(e);
+        }
       }
     }
-    cuts = toneCuts(seen);
+    treeCuts = toneCuts(trees);
+    landCuts = toneCuts(land);
+    seaCuts = toneCuts(sea);
   }
 
   // The tools sit in the map's bottom left corner (drawn after the grid, placed
@@ -432,7 +458,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
+  parts.push(`<div class="scroll-x"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -476,9 +502,18 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // A coarser glyph is a block of mixed ground with no single field to report.
       if (z === 1) {
         glyph = groundGlyph(world.seed, x0 + gx * z, y0 + gy * z, t, glyph);
-        if (elev && TREES.includes(t)) {
-          const tone = toneOf(elev[i], cuts);
-          if (tone !== 1) cls.push(`tone-${tone}`);
+        // Which ground has gone over. The season decides whether it shows.
+        if (turnedGround(world.seed, x0 + gx * z, y0 + gy * z, t)) cls.push("turned");
+        if (step) {
+          if (t === "water") {
+            // Shallow water first: the shore is the lit end of the scale and the
+            // open sea the dark one, which is the way water reads from a beach.
+            const d = toneOf(step[i], seaCuts);
+            if (d !== 1) cls.push(`deep-${2 - d}`);
+          } else {
+            const tone = toneOf(step[i], TREES.includes(t) ? treeCuts : landCuts);
+            if (tone !== 1) cls.push(`tone-${tone}`);
+          }
         }
       }
       if (t === "water" && iceMode(state.weather) !== "none") {
