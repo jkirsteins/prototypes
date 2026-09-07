@@ -451,11 +451,16 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* A moment: narrower than the manual, since it says one thing. */
 #overlay .box.teach { max-width: 460px; }
 #overlay .box.teach p { margin: 6px 0; }
-/* The line between the one order the player keeps and the five they hand over. */
-.expand .handoff { display: block; color: var(--dim); margin: 2px 0 4px; }
+/* The divider between the one order the player keeps and the five they hand
+   over. It is a flex item in the run of kind buttons, so it separates them
+   where it stands rather than taking a line of its own. */
+.expand .handoff { color: var(--dim); }
 
-/* What a producer makes without you: the promise stands on the row whether or not it can be built yet. */
-.opt .gives { display: block; color: var(--good); }
+/* What a producer makes without you. The promise has to carry on a row that
+   cannot be built yet too - that is the row it matters most on - so it is
+   written against the greying .opt.off rules the way small.warn is. */
+button.act small.gives, span.act small.gives,
+.opt.off button.act small.gives, .opt.off span.act small.gives { color: var(--good); }
 
 #overlay .box.teach.welcome { max-width: 520px; }
 #overlay .box.teach .statuses { margin: 10px 0; }

@@ -327,6 +327,70 @@ level reading its new cost line.
 - A moment for anything that is not a rung. Mastery 20 and 50 already
   announce themselves in the log and adding modals there would be the
   annoyance this item exists to avoid.
-- A settings toggle to turn moments off. Five per world, once ever, is
-  under the budget where a toggle earns its place; if a tester round says
-  otherwise it is one field.
+- A settings toggle to turn moments off. Five per survivor, and none for
+  a rung carried in, is under the budget where a toggle earns its place;
+  if a tester round says otherwise it is one field.
+
+## Built
+
+`state.taught` and `state.teachQueue` are per survivor, cleared by
+`resetTeaching` in `src/sim/teach.ts` from both `land()` and `newGame`.
+`teachOnce` and `markTaught` sit in `src/sim/skills.ts` beside the unlock
+they are pushed from, which is what lets `teach.ts` read `skills.ts`
+without a cycle; `train` queues a rung crossed by practice and
+`carrySkills` marks a carried one known without queuing. `CONCEPTS`,
+`TIPS`, `tipFor` and `welcomeLines` are the copy and the reading of it;
+`src/ui/teachpanel.ts` renders both overlays and builds the example from
+the Do panel's own rows through the real `orderGate` and `orderSentence`.
+`main.ts` gained `ui.welcome` and `ui.teach` at the end of the overlay
+chain, a frame gate that stops the clock behind them and bumps `lastReal`
+the way the away report's dismiss does, and a drain that opens one moment
+at a time and never over a landing, a tombstone, the manual or an away
+report.
+
+Four rules started saying what they do: `withProgression` names the odds
+and the injury a hunt's or a cast's gap costs and reads "Hunting 6, you
+are 1" rather than a bare number (templated with `{you}` and rendered
+through `plain()`, like the ladder's own gate line, so the away report
+can tell it by name); `capabilityFor` and `standingHere` put a producer's
+`gives` on its Do row and its `limits` on the region panel; the expanded
+row divides the once the player keeps from the five the runner takes; and
+the hurry and the quarter carry are words rather than a tooltip and a
+surprise.
+
+Three things the browser pass changed. The job example was built as an
+"N times" order and `orderSentence` worded it by progress - "Fell a tree,
+0 of 10 done", which is not something a player could say - so a job's
+example is a camp-has, with a test that no example contains " done". The
+producer's `gives` line came out grey on a blocked row, because
+`.opt.off button.act small` outranked it; it is written against those
+rules now the way `small.warn` is, and reads `rgb(111, 207, 111)`. The
+divider's `display: block` was inert inside the flex `.expand` and is
+gone rather than left lying.
+
+Read on seed 17, **at 1440 by 900 and again at 390 by 844 with touch
+emulation**, both widths run. Desktop: a first landing shows the manual,
+then the welcome naming six skills at 1; the clock sits at 0 game minutes
+across 3 real seconds behind the welcome and runs at the one scale after
+Begin; felling through Woodcraft 3 opens the Jobs moment reading "Fell a
+tree, until camp has 10 logs", with "Woodcraft 3." and the rung line in
+the log beside it; a moment held open 34 seconds advances nothing and
+dismisses to the game rather than to an away report; the reindeer row
+reads "Hunting 6, you are 1" and "a thirty-second the odds; 55% chance it
+turns on you"; the basket trap row reads "passive fish: the first food a
+camp makes without you"; an open row reads "once | starts now; the rest
+are the runner's | 10 times ...". The heir: killed at Woodcraft 12 and
+Building 8, the tombstone reads "The next survivor carries a quarter of
+what Toomas knew", and the heir lands to "You land carrying what came
+down to you: Woodcraft 6, Building 4. That already takes grinds from
+you", with `taught` at `{job, grind}`, `teachQueue` empty and a different
+tip from the first landing's. At 390 with touch: `(hover: none)` and
+`(pointer: coarse)` both true, the Grinds moment and the welcome each
+390 wide with no overflow and no body scroll sideways, "Got it", "Begin"
+and the kind buttons all 40 pixels, and the map legend shown.
+
+A note for whoever runs the next pass with raw CDP rather than the
+DevTools browser: `Emulation` overrides are **session-scoped**. Setting
+the metrics in one process and measuring in another leaves
+`(hover: none)` false, and the touch rules go unchecked while the pass
+reports green. Set and measure on one WebSocket.

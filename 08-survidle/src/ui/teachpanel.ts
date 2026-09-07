@@ -24,9 +24,14 @@ import { defaultChoiceFor, esc, rowRequest, type RowChoice } from "./render";
  * condition fields to fill, so both show the keep they would decorate and
  * leave what they add to the prose. A keep the player can really give
  * beats a sentence they cannot.
+ *
+ * The job's example is a camp-has and not an "N times", though the rung
+ * opens both: orderSentence words a counted order by its progress ("0 of
+ * 10 done"), which is what a live row wants and nonsense for an order
+ * nobody has given yet.
  */
 const EXAMPLE_UNTIL: Record<Rung, RowChoice["until"]> = {
-  job: "times", grind: "forever", keep: "keep", condition: "keep", pace: "keep",
+  job: "campHas", grind: "forever", keep: "keep", condition: "keep", pace: "keep",
 };
 
 /**

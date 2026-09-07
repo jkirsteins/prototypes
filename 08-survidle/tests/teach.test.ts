@@ -141,6 +141,18 @@ describe("a concept moment", () => {
     expect(ex).toContain("forever");
   });
 
+  it("words an example as an order to give, never as a live row's progress", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    for (const r of RUNG_ORDER) {
+      for (const s of SKILL_IDS) setSkillLevel(state, s, RUNG_LEVEL[r]);
+      const ex = exampleFor(state, world, cal, r);
+      expect(ex, r).not.toBeNull();
+      // "0 of 10 done" is what a row that is already running says.
+      expect(ex, r).not.toContain(" done");
+    }
+  });
+
   it("shows its prose alone rather than inventing work when no row can carry the rung", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
