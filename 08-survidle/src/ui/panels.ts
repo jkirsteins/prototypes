@@ -6,7 +6,7 @@ import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
-import { intentSentence } from "../sim/intent";
+import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
@@ -238,12 +238,25 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
   return lines + readHtml(state, world, id);
 }
 
-/** The shores of this region the survivor has read, each with what lies where. Empty when none is. */
+/**
+ * The shores of this region the survivor has read, with what lies where.
+ * A reading is about the water rather than the cell, so shores that read
+ * the same are one line: a coast-born survivor takes in every shore of a
+ * ground at a glance, and a region has dozens of them. Empty when none is
+ * read; nearest first, as readCells orders them.
+ */
 export function readHtml(state: GameState, world: World, id: number): string {
-  return readCells(state, world, id)
-    .filter((c) => state.player.known[c].fish.length > 0)
-    .map((c) => `<div>Shore read: ${state.player.known[c].fish.map(fishLie).join(", ")}</div>`)
-    .join("");
+  const said = new Set<string>();
+  const out: string[] = [];
+  for (const c of readCells(state, world, id)) {
+    const fish = state.player.known[c].fish;
+    if (fish.length === 0) continue;
+    const line = fish.map(fishLie).join(", ");
+    if (said.has(line)) continue;
+    said.add(line);
+    out.push(`<div>Shore read: ${line}</div>`);
+  }
+  return out.join("");
 }
 
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
@@ -354,8 +367,13 @@ const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div
 function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
+  // An idle wait is waiting on the list, not on its own hour of rest: it says so
+  // plainly and shows no bar, since the hour running out changes nothing. A wait
+  // that is doing something - the fire, the body's own rest - names it and keeps
+  // the bar, which is that work's own.
+  const idle = it?.task === "wait" && it.step === WAITING_STEP;
   const waiting = it?.task === "wait"
-    ? `<div class="step">Waiting at camp: ${esc(plain(it.step))}</div>${state.task ? TASK_BAR : ""}`
+    ? `<div class="step">Waiting at camp${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
     : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
