@@ -173,6 +173,10 @@ function render() {
   updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
 
+  // The settings panel is static markup with its own listeners (the slider must
+  // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
+  document.getElementById("settings")!.hidden = !ui.settings;
+
   const overlay = document.getElementById("overlay")!;
   if (ui.manual) {
     setPanel("overlay", manualHtml());
@@ -356,6 +360,12 @@ function onClick(ev: Event) {
       ui.cemetery = false;
       ui.cemeteryOpen = null;
       ui.confirmLeave = false;
+      break;
+    case "settings-open":
+      ui.settings = true;
+      break;
+    case "settings-close":
+      ui.settings = false;
       break;
     case "manual-open":
       ui.manual = true;
