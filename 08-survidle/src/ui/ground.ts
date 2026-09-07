@@ -46,6 +46,25 @@ export function groundGlyph(seed: number, x: number, y: number, t: Terrain, base
   return f.m < MEADOW_DRY ? "'" : f.m < MEADOW_DAMP ? "." : ",";
 }
 
+/**
+ * Whether this cell has turned, in a month where turning happens.
+ *
+ * The ground does not go over all at once and it does not go over evenly: the
+ * dry ground turns first, and it turns while the damp ground beside it is
+ * still green. So the patch is the driest band of each terrain - the same
+ * bands the glyph forms already come from, measured as each terrain's own
+ * quantiles, which is why a turned patch is about a third of a meadow and half
+ * a bog rather than a share picked to look right.
+ *
+ * The birch is not here. A deciduous tree turns as a tree, not as a patch of
+ * ground, and every birch on the map goes with the season.
+ */
+export function turnedGround(seed: number, x: number, y: number, t: Terrain): boolean {
+  if (t === "meadow") return fieldsAt(seed, x, y).m < MEADOW_DRY;
+  if (t === "bog") return fieldsAt(seed, x, y).m < BOG_WET;
+  return false;
+}
+
 export interface ToneCuts {
   lo: number;
   hi: number;
@@ -76,4 +95,18 @@ export function toneOf(elevation: number, cuts: ToneCuts | null): 0 | 1 | 2 {
 
 export function elevationAt(seed: number, x: number, y: number): number {
   return fieldsAt(seed, x, y).e;
+}
+
+/**
+ * How far out to sea a cell lies, or null for anything that is not sea.
+ *
+ * `coast` is the field the coastline itself is cut from: it crosses zero at
+ * the shore and runs more negative the further out the water goes, so its
+ * magnitude is distance offshore without anything new being computed. Lakes
+ * sit on the land side of it and have no offshore to speak of, which is why
+ * they are excluded rather than shaded as very shallow sea.
+ */
+export function offshoreAt(seed: number, x: number, y: number): number | null {
+  const f = fieldsAt(seed, x, y);
+  return f.sea ? -f.coast : null;
 }

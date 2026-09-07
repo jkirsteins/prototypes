@@ -3,7 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { activityLoop, ambienceMix, openCalls, surroundings, type Surroundings, windowOpen } from "../src/sim/soundscape";
+import { activityLoop, ambienceMix, cricketSong, openCalls, surroundings, type Surroundings, windowOpen } from "../src/sim/soundscape";
 import { cellAt, regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { FIRE_LOW_KG } from "../src/sim/items";
@@ -13,6 +13,8 @@ const base: Surroundings = { forest: 0, birch: 0, open: 0, bog: 0, lake: 0, sea:
 /** Minutes for a clock hour on run day d. */
 const at = (d: number, hour: number) => 1440 * (d - 1) + (hour - 8) * 60;
 const JUNE = 62;   // run day of 1 June
+const AUGUST = 123;   // run day of 1 August
+const OCTOBER = 184;  // run day of 1 October
 const JAN = 276;
 
 describe("surroundings", () => {
@@ -96,6 +98,27 @@ describe("ambience mix", () => {
     expect(ambienceMix({ ...base, rain: "heavy" }, june, 5).rain_heavy).toBeGreaterThan(0);
     expect(ambienceMix({ ...base, bog: 0.5 }, calendar(at(JUNE + 20, 20)), 14).insects).toBeGreaterThan(0);
     expect(ambienceMix({ ...base, bog: 0.5 }, calendar(at(JUNE + 20, 12)), 14).insects ?? 0).toBe(0);
+  });
+
+  it("the bush-crickets sing on warm late-summer heath and nowhere else", () => {
+    const august = calendar(at(AUGUST + 10, 20));
+    expect(ambienceMix({ ...base, open: 1 }, august, 20).crickets).toBeGreaterThan(0);
+    // Cold air stops the song where warm air on the same evening does not.
+    expect(ambienceMix({ ...base, open: 1 }, august, 9).crickets ?? 0).toBe(0);
+    // They live on the open ground, not under the trees.
+    expect(ambienceMix({ ...base, forest: 1 }, august, 20).crickets ?? 0).toBe(0);
+    // Warmth in June is before the adults, warmth in October after the last of them.
+    expect(ambienceMix({ ...base, open: 1 }, calendar(at(JUNE, 20)), 20).crickets ?? 0).toBe(0);
+    expect(ambienceMix({ ...base, open: 1 }, calendar(at(OCTOBER + 10, 20)), 20).crickets ?? 0).toBe(0);
+  });
+
+  it("the cricket song follows the emergence and the warmth", () => {
+    const day = (d: number) => calendar(at(d - 89, 20));
+    expect(cricketSong(day(195), 25)).toBeCloseTo(0, 5);
+    expect(cricketSong(day(202), 25)).toBeCloseTo(0.5, 2);
+    expect(cricketSong(day(219), 25)).toBe(1);
+    expect(cricketSong(day(219), 15.5)).toBeCloseTo(0.5, 2);
+    expect(cricketSong(day(219), 11)).toBe(0);
   });
 });
 

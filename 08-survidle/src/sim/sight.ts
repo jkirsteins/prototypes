@@ -7,7 +7,7 @@ import { CELL_KM } from "../units";
 import { terrainOf, type World } from "../world/gen";
 import { fieldsAt } from "../world/terrain";
 import type { Calendar } from "./calendar";
-import { illuminance, lightFactor, SPOT_LUX } from "./light";
+import { illuminance, lightFactor, SPOT_LUX, WALK_LUX } from "./light";
 import { markKnown } from "./mapped";
 import { body } from "./person";
 import { RUNG_LEVEL, skillLevel } from "./skills";
@@ -83,12 +83,46 @@ function wayfindingSightMult(state: GameState): number {
  * not only while deliberately sweeping a region.
  */
 export function sightRangeCells(state: GameState, world: World, cal: Calendar, cell: number): number {
+  return Math.max(ringCells(illuminance(state, world, cal, cell)), sightReachCells(state, world, cal, cell));
+}
+
+/**
+ * How far the eye actually reaches from `cell`, with the ring left out.
+ *
+ * This is the figure for deciding whether a place is worth walking to. The
+ * ring is knowledge from standing somewhere, not from sighting: a spruce
+ * thicket shows its neighbours because you are among them and nothing else at
+ * any distance, and a chooser that could not tell the two apart would rate a
+ * thicket one step away over a hilltop, since its worthless single cell came
+ * cheap. What a vantage opens is this, and what a walk reveals is the other.
+ */
+export function sightReachCells(state: GameState, world: World, cal: Calendar, cell: number): number {
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   const base = vantageBaseCells(world, terrainOf(world, x, y), x, y);
   const lf = lightFactor(illuminance(state, world, cal, cell), SPOT_LUX, 0);
   const reach = SIGHT_REACH_MULT[body(state).sightReach];
   return Math.max(0, Math.floor(base * lf * reach * wayfindingSightMult(state)));
+}
+
+/**
+ * The ring you are standing in, which no canopy takes away.
+ *
+ * A cell is 300 m across and a survivor is not a point at its centre: they
+ * walk across it, and closed spruce still shows the ground within a few
+ * strides. So the cells touching the one under your feet are known whenever
+ * there is light enough to walk by - WALK_LUX, the light a person wants
+ * underfoot to keep a pace over rough ground, which is already the figure
+ * this game uses for that question. Light enough to keep your footing is
+ * light enough to see the ground you are about to step onto.
+ *
+ * Below that it is 0 again, and a night forest closes to your own cell. The
+ * ring is not a floor under the whole model: it never lifts what the eye
+ * reaches past the neighbours, so the fell is still the only place to see
+ * far from and a torch still buys nothing at a distance.
+ */
+function ringCells(lux: number): number {
+  return lightFactor(lux, WALK_LUX, 0) >= 1 ? 1 : 0;
 }
 
 /** Whether the cell at (x, y), this far from the vantage in metres, closes the ray behind it. */

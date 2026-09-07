@@ -13,7 +13,7 @@ this is an unpublished prototype and the sounds are worth hearing while it is
 being built. Two different conditions hide under that one heading, and they
 are not equally serious. The BBC RemArc licence covers personal, educational
 and research use only, so every BBC file must go before this is shipped, sold
-or advertised. The two Wikimedia files are CC BY-SA and may stay, provided
+or advertised. The three Wikimedia files are CC BY-SA and may stay, provided
 the credit below travels with them and the work that carries them is licensed
 alike. The CC0 files carry no condition at all; their credits are a courtesy.
 
@@ -232,6 +232,17 @@ and the two generated sections of this file from scratch.
 - Processing: cut 60-94 s, mono, 48 kHz, peak normalized to -12 dBFS, 2 s loop seam, Opus 64 kbps.
 - Duration: 32.00 s. Decoded peak: -11.4 dBFS.
 - Note: the summer bog: flies close enough to be a nuisance, which is the point
+
+### crickets.ogg
+
+- Slot: `crickets` (loop).
+- Source: "Metrioptera brachyptera - sound.oga" on Wikimedia Commons, from the CD-ROM accompanying Roy Kleukers and Rene Krekels, Veldgids Sprinkhanen en Krekels, KNNV Uitgeverij, 2014.
+- Author: Baudewijn Ode (Wikimedia Commons).
+- Licence: CC BY-SA 4.0.
+- URL: https://upload.wikimedia.org/wikipedia/commons/2/28/Metrioptera_brachyptera_-_sound.oga
+- Processing: cut 0.6-31.2 s, mono, 48 kHz, peak normalized to -12 dBFS, 2 s loop seam, Opus 64 kbps.
+- Duration: 28.60 s. Decoded peak: -12.1 dBFS.
+- Note: bog bush-cricket, the stridulator that reaches 62 N: the warm late-summer evening on heath and bog
 
 ### step_snow_01.ogg
 

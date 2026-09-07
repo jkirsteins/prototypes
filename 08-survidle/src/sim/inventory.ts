@@ -1,9 +1,9 @@
 import type { World } from "../world/gen";
-import { CLOTHING, FREEZE_KEEP_C, ITEM_KG, type Need, SPOIL_HOURS, TOOLS } from "./items";
+import { CLOTHING, FREEZE_KEEP_C, ITEM_KG, itemLabel, type Need, SPOIL_HOURS, TOOLS } from "./items";
 import { cellAt } from "../world/gen";
 import { log } from "./log";
 import { body } from "./person";
-import { cellOf } from "./position";
+import { campCellOf, cellOf } from "./position";
 import {
   type GameState, type Inventory, type ItemId, PERISHABLES, type PerishableId,
   type Player, type Tool, type ToolId,
@@ -176,15 +176,29 @@ export function consume(invs: Inventory[], needs: Need[]): void {
 /**
  * Where something just made goes: the pack while it is under the comfortable
  * limit, otherwise the ground. Logs, water and ice are never pocketed.
+ *
+ * A yield that lands on the ground away from camp says so. Silence there is
+ * how a gather order came home with nothing and the player was left to infer
+ * a full pack from the absence of a result: the work happened, the yield
+ * exists, and the only thing missing was the sentence. At camp it stays
+ * quiet - the pile on the camp cell is the camp store, so landing in it is
+ * where the goods were going anyway. A log is never pocketed by design and
+ * makes its own pile at the tree; that is not a pack too full and gets no
+ * line, or every felling would report a loss that never happened.
  */
 export function produce(state: GameState, world: World, item: ItemId, n: number): "pack" | "pile" {
   const p = state.player;
   const addedKg = n * ITEM_KG[item];
-  if (item !== "log" && item !== "water" && item !== "ice" && weight(p.pack) + addedKg <= body(state).packComfortableKg + 1e-9) {
+  const pocketable = item !== "log" && item !== "water" && item !== "ice";
+  if (pocketable && weight(p.pack) + addedKg <= body(state).packComfortableKg + 1e-9) {
     addItem(p.pack, item, n);
     return "pack";
   }
+  const here = cellOf(state, world);
   addItem(herePile(state, world), item, n);
+  if (pocketable && here !== campCellOf(state, world)) {
+    log(state, `The pack is full: ${itemLabel(item, n)} {lies} where {you} {stand}.`, "bad");
+  }
   return "pile";
 }
 

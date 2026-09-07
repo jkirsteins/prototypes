@@ -19,9 +19,10 @@ import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
+import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
-import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
+import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { feltTemperature, insulation, starvation } from "../sim/player";
 import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
@@ -122,7 +123,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) tags.push(`<span class="tag bad">sleepy</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
-  return `<h2><span class="stat-face">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
+  return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food", HUNGRY_LINE / KCAL_FULL)}
 ${bar("fat", "fat", "Fat")}
@@ -411,19 +412,29 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   // that is doing something - the fire, the body's own rest - names it and keeps
   // the bar, which is that work's own.
   const idle = it?.task === "wait" && it.step === WAITING_STEP;
+  // Where the wait actually is, rather than a fixed "at camp": the wait's body
+  // tier walks - home, to the water, to the snares - so the fixed string spent
+  // those minutes claiming to be at camp while its own step said it was walking
+  // there. The cell is read, so the two halves of the sentence cannot disagree.
+  const waitWhere = it?.task === "wait" && cellOf(state, world) !== regionState(state, world, state.player.region).campCell
+    ? `Waiting, ${describeWhere(state, world)}`
+    : "Waiting at camp";
   const waiting = it?.task === "wait"
-    ? `<div class="step">Waiting at camp${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
+    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
     : "";
+  // One judgement for the whole list: waitingLine reads it per row, and running
+  // it per row would judge a ten-row list ten times a frame.
+  const judged = judgeOrders(state, world, cal);
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
     // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
     const clicks = live && hurryKind(state) === "click";
     const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
-    // orderMet is the plain reading and writes nothing; the scheduler's own read is
-    // what moves a restart band's mark, so drawing a row never advances the list.
+    // waitingLine is the plain reading and writes nothing; the scheduler's own read
+    // is what moves a restart band's mark, so drawing a row never advances the list.
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
-      : `<div class="step">${esc(o.skipped || (orderMet(state, world, cal, o, false) ? "met" : "waiting"))}</div>`;
+      : `<div class="step">${esc(waitingLine(state, world, cal, o, judged))}</div>`;
     const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`

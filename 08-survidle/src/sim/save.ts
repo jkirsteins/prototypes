@@ -10,7 +10,7 @@ import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
 import { medianPerson, rollCandidates } from "./person";
 import { regionState } from "./regionstate";
-import { newSkills } from "./skills";
+import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
 import type { GameState, Intent, Inventory, LogEntry, TaskId, Until } from "./types";
 
@@ -48,6 +48,10 @@ function fillDefaults(state: GameState): void {
   state.startDoy ??= START_DOY;
   state.awayHours ??= AWAY_HOURS_DEFAULT;
   state.skills ??= newSkills();
+  // A skill added since the save was written is the harder half of the same
+  // problem: the record is there, so the line above sees nothing missing, and
+  // the hole is one key down. Every id gets its own default, not just the whole.
+  for (const id of SKILL_IDS) state.skills[id] ??= { xp: 0, mastery: {}, pool: 0 };
   state.intent ??= null;
   state.ledger ??= [];
   state.year ??= 1;

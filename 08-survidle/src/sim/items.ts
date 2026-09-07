@@ -329,3 +329,16 @@ export const MEAT_DRY_RATIO = 3;
 export const SNARE_CATCH_MAX_AGE = 2 * 1440;
 /** Minutes a torch burns once lit; there is no putting it out. */
 export const TORCH_BURN_MINUTES = 60;
+
+/**
+ * How much of a thing, in the unit that thing is counted in: litres for
+ * water and ice, kilos for the bulk goods, whole things for the rest. It
+ * lives here rather than with the actions because it reads only the tables
+ * above, and inventory.ts needs it - and inventory.ts is what actions.ts
+ * imports, so it could not have come from there.
+ */
+export function itemLabel(item: ItemId, q: number): string {
+  if (item === "water" || item === "ice") return `${q.toFixed(1)} l ${ITEM_NAMES[item]}`;
+  if (KG_ITEMS.has(item)) return `${q >= 10 ? Math.round(q) : q.toFixed(1)} kg ${ITEM_NAMES[item]}`;
+  return `${Math.round(q)} ${ITEM_NAMES[item]}`;
+}
