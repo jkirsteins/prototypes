@@ -926,7 +926,9 @@ describe("the forecast panel", () => {
     // is a game minute, so eight hours is twenty days.
     expect(html).toContain("If you leave");
     expect(html).toContain("for 8 h");
-    expect(html).toContain("20 days pass");
+    // What the hours buy is on the dial right under this, and saying it in
+    // both put the same figure twice in one box.
+    expect(html).not.toContain("20 days pass");
     expect(html).toContain("1 of 10 die: wolves, day 1");
     expect(html).not.toContain("away up to");
     // The horizons nobody asked for are gone from the panel.

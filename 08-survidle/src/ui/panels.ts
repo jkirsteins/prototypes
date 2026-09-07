@@ -479,8 +479,9 @@ export function awayDays(hours: number): number {
 export function forecastHtml(view: ForecastView | null, state: GameState): string {
   const head = `<h2>If you leave</h2>`;
   if (state.dead) return `${head}<div class="row"><span class="dim">nothing ahead</span></div>`;
-  const days = awayDays(state.awayHours);
-  const label = `for ${state.awayHours} h <small class="dim">(${days} day${days === 1 ? "" : "s"} pass)</small>`;
+  // The dial under this says what the hours buy in days; saying it here too
+  // put the same figure twice in one box.
+  const label = `for ${state.awayHours} h`;
   const r = view?.rows.away;
   if (!r) return `${head}<div class="row"><span class="dim">${label}</span><span class="dim">...</span></div>`;
   const text = esc(forecastRowText(r));

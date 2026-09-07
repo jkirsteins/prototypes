@@ -56,9 +56,16 @@ body { display: flex; flex-direction: column; height: 100vh; }
 #forecast { border-bottom: none; padding-bottom: 4px; }
 #away { border-top: none; padding-top: 4px; }
 
-/* The tab container that stands where the region panel stood. */
-#panes { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+/* The tab container that stands where the region panel stood.
+   It claims a floor of the middle column's height, and the map gives way:
+   a Do pane showing its tabs and no rows is a promise of a check-in rather
+   than one, and the rows are what a player came to the panel for. */
+#panes { display: flex; flex-direction: column; min-height: 300px; flex: 1 1 auto; }
 .pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+/* A display rule beats the user agent's [hidden] { display: none }, so the
+   three panes that are hidden would paint on top of the one that is not.
+   The DOM says hidden and the screen said otherwise. */
+.pane[hidden] { display: none; }
 
 .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .tabs .tab {
@@ -281,14 +288,24 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    without it the fixed 792px grid would widen #app itself once `.col`
    stops supplying that on the phone layout, and the body would scroll
    sideways instead of just the map. */
-#map { padding: 8px; min-width: 0; }
+/* Positioned, so the tooltip and the ways-out corner hang off the map and
+   not off the page: absolute children look for the nearest positioned
+   ancestor, and without this they found the viewport and sat over the
+   queue column. */
+#map { padding: 8px; min-width: 0; position: relative; min-height: 0; display: flex; flex-direction: column; }
 /* The map's own corner: the zoom controls float over the bottom left of the
    grid rather than taking a row above it. */
-#mapdyn { position: relative; }
+/* The chain of min-height: 0 that lets the board give way to the panels
+   under it: a flex child will not shrink below its content without it, so
+   the grid would push the Do pane off the screen instead of scrolling. */
+#mapdyn { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 /* The grid is a fixed 72 glyphs wide and can outrun a narrow column; it
    scrolls sideways inside this box rather than the page ever scrolling
    horizontally. */
-.scroll-x { overflow-x: auto; }
+/* The grid is a fixed 72 glyphs wide and 36 tall and can outrun its column
+   either way; it scrolls inside this box rather than pushing the panels
+   under it off the screen. scrollMapToSurvivor keeps the player in view. */
+.scroll-x { overflow: auto; flex: 1; min-height: 0; }
 .grid {
   --bright: 1; --sat: 1; --tint: rgb(0, 0, 0); --tint-a: 0;
   /* The glyph grid's shape is the zoom level's, written onto the element by
