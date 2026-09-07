@@ -311,6 +311,11 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-camp { color: #0c0f14; background: #6fcf6f; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
 .grid .c.mk-seep { color: #0c0f14; background: #6fa8dc; }
+/* The named places share one colour: they are ground the player found, not
+   anything built, so they take a tinted cell rather than the solid fill the
+   built marks use. Every spot sits within a few cells of camp, and four solid
+   tiles there drown out the @ they are clustered around. */
+.grid .c.mk-spot { color: #e0c07a; background: #2c2413; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -320,6 +325,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
+#map .legend b.mk-spot { color: #c8a35a; }
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
 @keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }

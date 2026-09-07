@@ -12,7 +12,7 @@ import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { DIM, discovery, SEEN, VISITED } from "../sim/regionstate";
-import type { GameState, Terrain } from "../sim/types";
+import type { GameState, SpotId, Terrain } from "../sim/types";
 import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -42,7 +42,23 @@ export const MARKS = {
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
   seep: { glyph: "s", cls: "mk-seep", label: "seep" },
+  forest: { glyph: "%", cls: "mk-spot", label: "forest" },
+  outcrop: { glyph: "o", cls: "mk-spot", label: "outcrop" },
+  shore: { glyph: "w", cls: "mk-spot", label: "shore" },
+  heath: { glyph: ";", cls: "mk-spot", label: "heath" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
+
+/**
+ * The places the HERE panel offers to walk to, as marks. Camp is not among them:
+ * it already has its own mark, and a camp is drawn wherever one stands rather
+ * than only at the region's own site.
+ */
+export const SPOT_MARKS: Partial<Record<SpotId, (typeof MARKS)[keyof typeof MARKS]>> = {
+  forest: MARKS.forest,
+  outcrop: MARKS.outcrop,
+  shore: MARKS.shore,
+  heath: MARKS.heath,
+};
 
 /**
  * The map's key: every terrain letter from the glyph table, then ice, then
@@ -305,6 +321,20 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const g = toGlyph(Number(k));
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.seep);
   }
+  // The named places, and only closer than the map opens at: the two close rungs
+  // showed the same ground at a larger size and nothing else, so this is what
+  // zooming in buys. A place is known once its region has been walked in.
+  if (z === 1 && ui.zoom < DEFAULT_ZOOM) {
+    for (const [id, r] of world.regions) {
+      if (discovery(state, id) !== VISITED) continue;
+      for (const sp of r.spots) {
+        const mark = SPOT_MARKS[sp.id];
+        if (!mark) continue;
+        const g = toGlyph(sp.cell);
+        if (g >= 0 && !markerAt.has(g)) markerAt.set(g, mark);
+      }
+    }
+  }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, MARKS.you);
   const pileGlyphs = new Set<number>();
@@ -430,8 +460,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (m) {
       cls.push("mk", m.cls);
       glyph = m.glyph;
-      if (m.cls === "mk-player") title = `you, ${title}`;
-      if (m.cls === "mk-camp") title = `camp, ${title}`;
+      title = `${m.label}, ${title}`;
     }
     const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
