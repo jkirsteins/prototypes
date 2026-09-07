@@ -134,9 +134,13 @@ seasonal tail collapsed to one.
 |---|---|
 | goal 1 | 1 |
 | goal 4 | 2 |
-| goal 8 | 3 |
+| goal 6 | 3 |
 
 N is read from the lowest-numbered incomplete goal, so it never narrows.
+
+The last widening lands at goal 6 rather than later because the seasonal tail
+occupies a single slot: from goal 8 onwards there are only two things left to
+show, and a width of three would never be reached.
 
 **At most one seasonal goal is ever active**, and it is the next season due.
 Holding out "live to see the spring" and "live to see the summer" at the same
