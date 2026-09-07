@@ -81,7 +81,7 @@ export type TaskId =
   | "hunt" | "fish" | "cook" | "craft" | "repair" | "sharpen" | "hone" | "build" | "mend"
   | "light" | "lightTorch" | "melt" | "thaw" | "lightIndoors" | "fill" | "iceHole" | "hang"
   | "read" | "setTrap" | "emptyTrap" | "crack" | "eggs" | "innerBark" | "grindBark" | "roots" | "tapSap" | "seaweed"
-  | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp" | "explore";
+  | "travel" | "walk" | "haul" | "night" | "wait" | "rest" | "sleep" | "makeCamp" | "explore" | "searchHome";
 
 /** Every task, for tables that must cover them all. Keep in step with TaskId. */
 export const TASK_IDS: TaskId[] = [
@@ -89,7 +89,7 @@ export const TASK_IDS: TaskId[] = [
   "hunt", "fish", "cook", "craft", "repair", "sharpen", "hone", "build", "mend",
   "light", "lightTorch", "melt", "thaw", "lightIndoors", "fill", "iceHole", "hang",
   "read", "setTrap", "emptyTrap", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
-  "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp", "explore",
+  "travel", "walk", "haul", "night", "wait", "rest", "sleep", "makeCamp", "explore", "searchHome",
 ];
 
 export interface Task {
@@ -107,6 +107,8 @@ export interface Task {
   darkSaid?: boolean;
   /** Cells an exploring sweep has already stood at, the starting cell included; pickVantage never picks one twice. */
   visited?: number[];
+  /** The cell a searchHome sweep is trying to reach: fixed at the start, since the sweep's own region drifts as it crosses one to sight another. */
+  home?: number;
 }
 
 /**

@@ -834,6 +834,14 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       // No duration is promised: how long it takes is how long the ground takes.
       return { ...o, duration: 0, detail: "as long as the ground takes" };
     }
+    case "searchHome": {
+      const camp = campCellOf(state, world);
+      const o = opt({ group: "move", label: "Search for a way home", detail: "", repeatable: false });
+      const route = survivorRoute(state, world, here, camp, walkableIce(state.weather), fearsFell(state));
+      if (route) return { ...o, ok: false, why: "{you} {know} the way home" };
+      // Nobody can say how far the unmapped ground between here and camp actually runs, so no duration is offered.
+      return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
+    }
     case "haul": {
       const here = at;
       const campCell = st.campCell;
@@ -1123,6 +1131,20 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     state.task = { id, arg, progress: 0, duration: routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice), repeat: false, visited: [from, vantage.cell] };
     return true;
   }
+  if (id === "searchHome") {
+    const home = campCellOf(state, world);
+    const from = cellOf(state, world);
+    const leg = nextHomeLeg(state, world, cal, from, home);
+    if (!leg) return false;
+    const ice = walkIceMode(state, false);
+    state.route = { target: leg.vantage.cell, path: leg.vantage.path, walked: [from], label: "the way home", ice, lastLand: from };
+    state.task = {
+      id, arg: `region:${leg.region}`, progress: 0,
+      duration: routeMinutes(world, leg.vantage.path, baseWalkSpeed(state, cal, state.weather), ice),
+      repeat: false, visited: [from, leg.vantage.cell], home,
+    };
+    return true;
+  }
   // Pick up where this task was left, if it was.
   const key = pauseKey(state, world, id, arg);
   const fresh = checkFresh(state, world, cal, id, arg);
@@ -1165,7 +1187,7 @@ export function setAside(state: GameState, world: World): void {
     const st = regionState(state, world, state.player.region);
     const sid = t.arg as StructureId;
     st.build[sid] = (st.build[sid] ?? 0) + t.progress;
-  } else if (t.id === "walk" || t.id === "travel" || t.id === "explore") {
+  } else if (t.id === "walk" || t.id === "travel" || t.id === "explore" || t.id === "searchHome") {
     state.route = null;
   } else {
     const key = pauseKey(state, world, t.id, t.arg);
@@ -1217,6 +1239,10 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   }
   if (t.id === "explore") {
     stepExplore(state, world, cal, rng, dt);
+    return;
+  }
+  if (t.id === "searchHome") {
+    stepSearchHome(state, world, cal, rng, dt);
     return;
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
@@ -1528,6 +1554,104 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
   state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
   t.visited = [...(t.visited ?? []), next.cell];
   t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+}
+
+/**
+ * Every unmapped, named region, nearest bearing first: the true centre
+ * (RegionDef's own cx, cy - the centroid a campCell only stands near) lies
+ * most nearly in the direction of `home` as seen from `from`. A region
+ * already fully known, or never even glimpsed, is not a candidate. Ties
+ * keep the lower id, so the order never wavers between two scored the same.
+ */
+function homeRegionsByBearing(state: GameState, world: World, from: number, home: number): number[] {
+  const here = cellCenter(world, from);
+  const there = cellCenter(world, home);
+  const toHome = Math.atan2(there.y - here.y, there.x - here.x);
+  const scored: { id: number; diff: number }[] = [];
+  for (const key of Object.keys(state.discovered)) {
+    const id = Number(key);
+    if (discovery(state, id) === 0 || knownShare(state, world, id) >= 1) continue;
+    const r = regionAt(world, id);
+    const toCentre = Math.atan2(r.cy - here.y, r.cx - here.x);
+    let diff = Math.abs(toCentre - toHome) % (Math.PI * 2);
+    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+    scored.push({ id, diff });
+  }
+  scored.sort((a, b) => a.diff - b.diff || a.id - b.id);
+  return scored.map((s) => s.id);
+}
+
+/**
+ * The next leg of a search toward `home`: a vantage in the nearest-bearing
+ * unmapped region a route can actually reach right now - most of the
+ * bearing order is ground nothing known yet touches, unwalkable until a
+ * closer sweep opens a way in, so this tries each in turn rather than
+ * betting everything on the single best bearing. Null once nothing named
+ * is left that a route can reach.
+ */
+function nextHomeLeg(state: GameState, world: World, cal: Calendar, from: number, home: number): { region: number; vantage: { cell: number; path: number[] } } | null {
+  for (const region of homeRegionsByBearing(state, world, from, home)) {
+    const vantage = pickVantage(state, world, cal, region, [from]);
+    if (vantage) return { region, vantage };
+  }
+  return null;
+}
+
+/**
+ * Walks the current leg of a search for the way home; when it lands, checks
+ * whether camp now routes from here before sweeping on. Ends the moment it
+ * does, in whichever region that turns out to be - the sweep may cross
+ * several regions before the corridor opens. Stopping it by hand, like an
+ * explore, just ends it where the survivor stands. No safety net: a survivor
+ * who starves out here starves, the same as any other task the model runs.
+ */
+function stepSearchHome(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
+  const t = state.task!;
+  if (!state.route) {
+    state.task = null;
+    return;
+  }
+  train(state, world, dt);
+  const before = t.progress;
+  const finished = walkAlong(state, world, cal, rng, dt);
+  if (!state.route) return; // fell through the ice: the search is already over
+  const route = state.route;
+  t.progress += dt;
+  exploreInjury(state, world, rng, before, t.progress);
+  if (!finished) {
+    t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+    return;
+  }
+  placeAt(state, world, cellOf(state, world));
+  if (spotHere(state, world) === "heath") collectSnares(state, world);
+  collectTrap(state, world);
+  const home = t.home!;
+  const from = cellOf(state, world);
+  if (survivorRoute(state, world, from, home) !== null) {
+    state.route = null;
+    state.task = null;
+    log(state, "{You} {know} the way home now.", "good");
+    return;
+  }
+  const region = Number((t.arg ?? "").split(":")[1]);
+  const next = pickVantage(state, world, cal, region, t.visited ?? []);
+  if (next) {
+    state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
+    t.visited = [...(t.visited ?? []), next.cell];
+    t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+    return;
+  }
+  const leg = nextHomeLeg(state, world, cal, from, home);
+  if (!leg) {
+    // Every named region this side of whatever cuts the survivor off is mapped whole, and still no way home.
+    state.route = null;
+    state.task = null;
+    return;
+  }
+  state.route = { target: leg.vantage.cell, path: leg.vantage.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
+  t.arg = `region:${leg.region}`;
+  t.visited = [from, leg.vantage.cell];
+  t.duration = t.progress + routeMinutes(world, leg.vantage.path, baseWalkSpeed(state, cal, state.weather), route.ice);
 }
 
 /** Cuts an ice hole here: takes up an axe from the pack or the pile underfoot if none is in hand, wears it, and opens the hole. Both complete("fill") on an iced shore and complete("iceHole") share this so the two never drift. */
@@ -1956,6 +2080,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "travel":
     case "walk":
     case "explore":
+    case "searchHome":
     case "rest":
       return;
   }

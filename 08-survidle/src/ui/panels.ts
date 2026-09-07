@@ -293,9 +293,13 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const km = kmBetween(state, world, myCell, cell, walkableIce(state.weather));
+      // No known corridor to camp: the search for one is the only move left, and it promises no time.
+      const home = s.id === "camp" && !walk.ok && walk.why === "no way you know" ? check(state, world, cal, "searchHome") : null;
       const btn = walk.ok
         ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
-        : ` <small>${esc(plain(walk.why))}</small>`;
+        : home
+          ? ` <small>${esc(plain(walk.why))}</small> <button class="mini" data-act="task" data-id="searchHome">search for a way home <small>(${esc(home.detail)})</small></button>`
+          : ` <small>${esc(plain(walk.why))}</small>`;
       const thin = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
       return `<div>${SPOT_NAMES[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
     })

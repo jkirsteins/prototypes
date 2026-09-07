@@ -36,7 +36,7 @@ export function activityOf(task: Task | null): Activity {
     case "sleep": return "sleep";
     case "rest": case "night": case "wait": case "craft": case "cook": case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": case "crack": case "grindBark": return "rest";
     case "sticks": case "bark": case "stone": case "berries": case "eggs": case "innerBark": case "roots": case "tapSap": case "seaweed": case "deadwood": case "hunt": case "fish": case "fill": case "hang": case "read": case "setTrap": case "emptyTrap": case "makeCamp": return "light";
-    case "travel": case "walk": case "haul": case "explore": return "walk";
+    case "travel": case "walk": case "haul": case "explore": case "searchHome": return "walk";
     case "chop": case "split": case "splitWedges": case "build": case "mend": case "iceHole": return "heavy";
   }
 }

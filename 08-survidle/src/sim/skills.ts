@@ -28,8 +28,7 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
   building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:oilyFish", "cook:rawFat", "cook:roots", "crack"],
-  // A later task adds searchHome's key once that task id exists.
-  wayfinding: ["explore"],
+  wayfinding: ["explore", "searchHome"],
 };
 
 export const SKILL_CAP = 50;
@@ -180,7 +179,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "craft": case "repair": case "sharpen": case "hone": return "crafting";
     case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": case "crack": return "building";
     case "fill": case "iceHole": return "foraging";
-    case "explore": return "wayfinding";
+    case "explore": case "searchHome": return "wayfinding";
     default: return null;
   }
 }
@@ -190,7 +189,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
     case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
-    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore":
+    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore": case "searchHome":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.
     case "innerBark": case "grindBark": return "innerBark";
