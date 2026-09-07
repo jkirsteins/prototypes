@@ -224,6 +224,35 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .sky { flex: 0 0 auto; border: 1px solid var(--line); display: block; }
 .sky circle, .sky stop { transition: cx 0.3s linear, cy 0.3s linear, opacity 0.5s, stop-color 0.5s; }
 
+
+/* The map's tooltip: translucent so the ground it describes stays visible
+   under it, and never a hit target - a box that ate the pointer would move
+   itself out from under the cell it is describing. Its buttons are the
+   exception, because on a touch device they are the whole point.
+
+   Its position is written onto the element by bars.ts and is never in the
+   markup: a pointer moves many times a second, and a coordinate in a panel
+   string would send the map through a parse and a diff on every move. */
+#maptip {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  top: 0;
+  max-width: 320px;
+  padding: 6px 9px;
+  background: rgba(12, 15, 20, 0.88);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(2px);
+  pointer-events: none;
+  font-size: 12px;
+}
+#maptip[hidden] { display: none; }
+#maptip button { pointer-events: auto; }
+#maptip .tiphead { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
+#maptip .tiphead b { color: var(--accent); }
+#maptip .tiphead button { margin-left: auto; }
+#maptip > div { padding: 1px 0; }
+
 /* Map */
 /* min-width: 0 lets the grid track shrink below the map's natural width;
    without it the fixed 792px grid would widen #app itself once `.col`

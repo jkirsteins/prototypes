@@ -31,14 +31,15 @@ import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
-import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
+import { placeTip, updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, doPurposesHtml } from "./ui/dopanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
+import { cellFromPoint, LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
+import { tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
@@ -150,6 +151,7 @@ function scrollMapToSurvivor() {
   wrap.scrollLeft = you.offsetLeft + you.offsetWidth / 2 - wrap.clientWidth / 2;
 }
 
+let lastTipKey = "";
 let lastMapKey = "";
 function render() {
   // Arriving where you were looking ends the looking.
@@ -175,6 +177,19 @@ function render() {
   for (const id of PANE_IDS) {
     const el = document.getElementById(`pane-${id}`);
     if (el) el.hidden = id !== ui.panes.pane;
+  }
+  // The tooltip is shown and hidden, never created and destroyed: a box
+  // rebuilt under the pointer flickers, and one detached under it never
+  // gets the leave that would have closed it. Its text is guarded by its
+  // own key so a pointer crossing one cell redraws it once.
+  const tip = document.getElementById("maptip")!;
+  tip.hidden = ui.hover === null;
+  if (ui.hover !== null) {
+    const tk = tipKey(state, world, ui.hover);
+    if (tk !== lastTipKey) {
+      lastTipKey = tk;
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover));
+    }
   }
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
   setPanel("doitems", doHtml(state, world, cal, ui));
@@ -278,6 +293,9 @@ function onClick(ev: Event) {
     }
     case "stop":
       stopTask(state, world);
+      break;
+    case "tip-close":
+      ui.hover = null;
       break;
     case "pane":
       ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
@@ -593,6 +611,28 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => saveGame(state));
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
+
+// The map's tooltip. pointermove covers mouse, pen and a touch drag with one
+// listener; a tap fires it too, which is what gives a touch device the
+// tooltip at all. The cell is read from the pointer's position rather than
+// from any glyph, so nothing on the board has to carry state that could go
+// stale under it.
+{
+  const board = document.getElementById("mapdyn")!;
+  const tip = document.getElementById("maptip")!;
+  board.addEventListener("pointermove", (ev) => {
+    const r = board.getBoundingClientRect();
+    const x = ev.clientX - r.left;
+    const y = ev.clientY - r.top;
+    ui.hover = cellFromPoint(world, state, ui, x, y);
+    if (ui.hover !== null) placeTip(tip, board, x, y);
+  });
+  // A pointer that left the board is looking at nothing; a touch has no
+  // leave to give, which is why the tooltip carries its own close.
+  board.addEventListener("pointerleave", (ev) => {
+    if (ev.pointerType !== "touch") ui.hover = null;
+  });
+}
 render();
 requestAnimationFrame(frame);
 

@@ -105,3 +105,23 @@ export function updateFills(state: GameState, root: ParentNode = document): void
     fill.style.width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
   }
 }
+
+/**
+ * Puts the tooltip beside the pointer, clamped inside the board.
+ *
+ * Written straight onto the element for the same reason a bar's width is:
+ * a pointer moves many times a second, and a coordinate in the panel's
+ * markup would make that markup differ on every move, sending the whole
+ * map through a parse and a diff to shift a box a few pixels. morphAttrs
+ * leaves `style` alone precisely so this survives a redraw.
+ */
+export function placeTip(tip: HTMLElement, board: HTMLElement, x: number, y: number): void {
+  const pad = 14;
+  const w = tip.offsetWidth || 260;
+  const h = tip.offsetHeight || 100;
+  // Flip to the other side of the pointer rather than hanging off the edge.
+  const left = x + pad + w > board.clientWidth ? Math.max(0, x - pad - w) : x + pad;
+  const top = y + pad + h > board.clientHeight ? Math.max(0, y - pad - h) : y + pad;
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}

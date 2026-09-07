@@ -134,6 +134,31 @@ export function levelAt(zoom: number): ZoomLevel {
   return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, zoom))];
 }
 
+/**
+ * The cell under a point inside the map board, or null when the point is
+ * off it. `x` and `y` are offsets within #mapdyn.
+ *
+ * Read from where the pointer is rather than from a glyph's own enter and
+ * leave: a glyph replaced under the pointer fires an enter, and a glyph
+ * detached under it never fires a leave, so hover state kept per element
+ * gets stuck holding a cell that is no longer there. Nothing is stored on
+ * a glyph here, so nothing can go stale - and the board draws thousands of
+ * them, which is a lot of attributes to write for a fact the pointer
+ * already knows.
+ */
+export function cellFromPoint(world: World, state: GameState, ui: UiState, x: number, y: number): number | null {
+  const l = levelAt(ui.zoom);
+  const col = Math.floor(x / l.px);
+  const row = Math.floor(y / l.line);
+  if (col < 0 || row < 0 || col >= l.w || row >= l.h) return null;
+  const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const cx = x0 + col * l.cells;
+  const cy = y0 + row * l.cells;
+  // The view can hang over the world's edge, and void is not a cell.
+  if (cx < 0 || cy < 0 || cx >= world.w || cy >= world.h) return null;
+  return cellIdx(world, cx, cy);
+}
+
 /** Cells per glyph at each zoom level. */
 export const ZOOMS = LEVELS.map((l) => l.cells);
 /** Priority when a block's ground is tied: what the eye should see first. */

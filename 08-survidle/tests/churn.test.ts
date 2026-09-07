@@ -24,7 +24,8 @@ import { newGame } from "../src/sim/newgame";
 import { startTask } from "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
-import { mapHtml, mapKey } from "../src/ui/map";
+import { cellFromPoint, levelAt, mapHtml, mapKey } from "../src/ui/map";
+import { tipHtml, tipKey } from "../src/ui/tip";
 import { campHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { fillShare } from "../src/ui/bars";
@@ -154,5 +155,59 @@ describe("no panel redraws faster than what it is showing", () => {
     expect(names.size).toBeGreaterThan(0);
     const unanswered = [...names].filter((n) => fillShare(state, n) === null);
     expect(unanswered).toEqual([]);
+  });
+});
+
+/**
+ * A pointer moving across the map is not the map's business.
+ *
+ * The tooltip's position is written onto its element, and its text is
+ * guarded by a key that names the cell rather than the pointer. If either
+ * ever leaks into the map's markup, the map redraws on every mousemove -
+ * dozens of times a second, for a board of thousands of glyphs - and this
+ * is the test that says so. Raising a budget is not the fix; taking the
+ * coordinate back out is.
+ */
+describe("sweeping the pointer does not redraw the map", () => {
+  it("the map's markup and key are the same still as swept", () => {
+    const { state, world } = newGame(21);
+    const ui = newUiState();
+    const cal = calendar(state.minute, state.startDoy);
+    const still = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
+    const l = levelAt(ui.zoom);
+    let changed = 0;
+    for (let f = 0; f < FRAMES; f++) {
+      ui.hover = cellFromPoint(world, state, ui, (f * 7) % (l.w * l.px), (f * 11) % (l.h * l.line));
+      const now = `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`;
+      if (now !== still) changed++;
+    }
+    expect(changed).toBe(0);
+  });
+
+  it("the tooltip redraws once per cell crossed, not once per pixel", () => {
+    const { state, world } = newGame(21);
+    const ui = newUiState();
+    const cal = calendar(state.minute, state.startDoy);
+    const l = levelAt(ui.zoom);
+    // Two hundred moves along one row of glyphs, a pixel at a time.
+    let redraws = 0;
+    let last = "";
+    let cells = 0;
+    let lastCell: number | null = null;
+    for (let x = 0; x < 200; x++) {
+      const cell = cellFromPoint(world, state, ui, x, l.line / 2);
+      if (cell === null) continue;
+      if (cell !== lastCell) cells++;
+      lastCell = cell;
+      const key = tipKey(state, world, cell);
+      if (key !== last) {
+        last = key;
+        redraws++;
+        // The drawing itself must not depend on the pointer either.
+        expect(tipHtml(state, world, cal, cell)).not.toMatch(/left:|top:/);
+      }
+    }
+    expect(cells).toBeGreaterThan(1);
+    expect(redraws).toBe(cells);
   });
 });

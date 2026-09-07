@@ -12,6 +12,8 @@ export interface UiState {
   panes: Panes;
   /** Region clicked on the map, or null for the one you stand in. */
   selected: number | null;
+  /** The map cell under the pointer, or null when the pointer is off the board. Derived from where the pointer is, never from a glyph's own enter and leave. */
+  hover: number | null;
   /** What happened while the tab was closed, until dismissed. */
   away: AwaySummary | null;
   confirmAbandon: boolean;
@@ -119,7 +121,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), selected: null, away: null, confirmAbandon: false,
+    panes: defaultPanes(), selected: null, hover: null, away: null, confirmAbandon: false,
     cemetery: false, manual: false, teach: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "",
     hurry: newHurry(),
