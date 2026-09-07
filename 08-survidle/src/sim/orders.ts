@@ -12,7 +12,7 @@ import { bodyAsks, KIT_ITEMS } from "./body";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
-import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
+import { deliveryPending, intentMode, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
@@ -399,12 +399,36 @@ export function nightSkip(state: GameState, world: World, cal: Calendar, task: T
  * above it started running. The walk there is judged too, so a route a
  * storm or an overloaded pack has closed is skipped with that reason
  * instead of restarting every minute only to fail at the first step.
+ *
+ * A once order is the player's request rather than the runner's policy, and
+ * it is answered in its own right: a request that cannot be met is no
+ * grounds for doing something else instead, so nothing under it runs until
+ * it can or the player strikes it off. A standing order keeps its leeway
+ * and is passed over as it always was - a keep out of logs must not stop
+ * the whole list.
+ *
+ * Only "cannot run" stalls. A row that is met, out of season, waiting on a
+ * stock or held by the dark is a not-yet rather than a refusal: those pass
+ * over, or an order for the forest would stop the evening's camp work every
+ * night of the year.
  */
 export function chooseOrder(state: GameState, world: World, cal: Calendar): Order | null {
+  return judgeOrders(state, world, cal).chosen;
+}
+
+/**
+ * The judgement itself: the order to run, and the once order stopping the
+ * list when one is. They are read together because "nothing to run" and
+ * "held up by a request" are different answers - the second names a row the
+ * player has to answer, and only a row that could not run is ever that row.
+ * A row put off by the dark or a shut season is not: it holds nothing up.
+ */
+export function judgeOrders(state: GameState, world: World, cal: Calendar): { chosen: Order | null; stalling: Order | null } {
   const live = state.intent;
   const liveId = live?.orderId ?? null;
   const here = cellOf(state, world);
   let chosen: Order | null = null;
+  let stalling: Order | null = null;
   for (const o of ordersHere(state, world)) {
     // The live order carrying a load home is still able to run: judging it
     // afresh re-checks legality at the work cell (the shore), where the load
@@ -442,9 +466,13 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
         continue;
       }
     }
+    // A once order is a hand intent (intentMode): the player's request, and the
+    // list stops under it while it cannot be met.
+    const hand = intentMode(o.req.task, o.req.until) === "hand";
     const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
     if (!opt.ok) {
       markSkipped(state, world, cal, o, opt.why);
+      if (hand && !chosen && !stalling) stalling = o;
       continue;
     }
     const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
@@ -457,13 +485,25 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       const w = check(state, world, cal, "walk", `cell:${cell}`);
       if (!w.ok) {
         markSkipped(state, world, cal, o, w.why);
+        if (hand && !chosen && !stalling) stalling = o;
         continue;
       }
     }
     o.skipped = "";
-    if (!chosen) chosen = o;
+    if (!chosen && !stalling) chosen = o;
   }
-  return chosen;
+  return { chosen: stalling ? null : chosen, stalling };
+}
+
+/**
+ * The once order stopping the list, if one is: the topmost request that
+ * cannot run with nothing above it that can. The rows under it are held by
+ * it and will not run until it can or it comes off, so a player - and the
+ * player script, which reads this - answers it rather than leaving the list
+ * standing.
+ */
+export function stallingOrder(state: GameState, world: World, cal: Calendar): Order | null {
+  return judgeOrders(state, world, cal).stalling;
 }
 
 const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };

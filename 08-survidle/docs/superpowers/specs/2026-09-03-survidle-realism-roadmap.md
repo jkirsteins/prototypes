@@ -2063,6 +2063,18 @@ player is the field, at ten with no control on it; the winter loop
 takes the daylight share off it by rule rather than by a choice, and
 the length of the day's work is the lever a player might actually want.
 
+**Legibility, built on top of this pass.** The UI pass made the game
+navigable; it did not make its mechanics legible. A rung opened into a
+scrolling log, the gap under a recommended level halved a hunt's odds
+and added injury with nothing on the row saying so, and the capability
+rows' hand-written `gives` and `limits` were copy no panel read. That is
+`docs/superpowers/specs/2026-09-07-survidle-legibility-design.md`: a
+moment the first time a survivor opens a rung by practice, a welcome on
+every landing that adapts to what came down to them, and four rules that
+started saying what they do. The one-per-line kind layout above is still
+open; the divider between the player's once and the runner's five landed
+inside the existing run of buttons instead.
+
 ### The save sync
 
 The save is local storage, so a phone is a different world from the

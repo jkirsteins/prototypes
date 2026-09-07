@@ -3,14 +3,14 @@
  * that action's mastery and in the skill's pool; a level is a count of
  * hours. What a level buys is what practice buys: speed, odds, less waste.
  */
-import type { World } from "../world/gen";
+import { cellAt, type World } from "../world/gen";
 import { calendar } from "./calendar";
 import { ITEM_NAMES, KG_ITEMS, RECIPE_IDS, RECIPES, STRUCTURES, STRUCTURE_IDS, type Need } from "./items";
 import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
-import type { GameState, ItemId, LifeRecord, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
+import type { GameState, ItemId, LifeRecord, RecipeId, Rung, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building", "wayfinding"];
@@ -44,7 +44,7 @@ export function opensOrders(skill: SkillId): boolean {
 }
 
 /** A rung is what an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
-export type Rung = OrderKind | "condition" | "pace";
+export type { Rung } from "./types";
 
 /**
  * The delegation ladder (idle curve spec, section 2; the order ladder
@@ -66,6 +66,24 @@ export const RUNG_LINE: Record<Rung, (skill: string) => string> = {
   condition: (s) => `{You} {read} the season and the pile as one: orders from ${s} can carry a season, a stock line, a restart line or a daily count.`,
   pace: (s) => `{You} {plan} ${s.toLowerCase()} by the calendar: a keep from ${s} can be due by a date, held after it or spent by the season's close.`,
 };
+
+/**
+ * Queues a rung's moment the first time this survivor opens it by
+ * practice. The log line beside the call is written on every unlock, in
+ * every skill; only the moment is once. Marking it here rather than when
+ * the moment closes is what makes two skills crossing the same rung
+ * inside one offline catch-up queue it a single time.
+ */
+export function teachOnce(state: GameState, r: Rung): void {
+  if (state.taught[r]) return;
+  state.taught[r] = true;
+  state.teachQueue.push(r);
+}
+
+/** A rung the survivor landed already holding: known, so never a moment. The welcome names it instead. */
+export function markTaught(state: GameState, r: Rung): void {
+  state.taught[r] = true;
+}
 
 export const MASTERY_CAP = 99;
 /** Level L needs 2 (L-1)^2 hours: 120 (L-1)^2 minutes. */
@@ -99,7 +117,15 @@ export function carrySkills(state: GameState, from: LifeRecord): { skill: SkillI
     s.carried = minutes;
     const l = level(minutes);
     if (l >= 2) out.push({ skill: id, level: l });
-    if (opensOrders(id)) for (const k of RUNG_ORDER) if (l >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
+    // A rung carried in is one the survivor lands knowing: the log says so and
+    // the welcome names it, but nobody is stopped for what they were born with.
+    if (opensOrders(id)) {
+      for (const k of RUNG_ORDER) {
+        if (l < RUNG_LEVEL[k]) continue;
+        log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
+        markTaught(state, k);
+      }
+    }
   }
   return out;
 }
@@ -184,10 +210,15 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
   }
 }
 
-/** The mastery key a task trains here and now; felling keys on the ground under foot. */
-export function masteryKey(state: GameState, world: World, id: TaskId, arg?: string): string | null {
+/**
+ * The mastery key a task trains, at the cell it will be done on. Felling keys
+ * on the trees it fells, so the cell matters: a chop row clicked from a meadow
+ * walks to the forest and trains the forest's tree, and keying it on the ground
+ * under foot would name a stand of trees the meadow does not have.
+ */
+export function masteryKey(state: GameState, world: World, id: TaskId, arg?: string, cell?: number): string | null {
   switch (id) {
-    case "chop": return `chop:${hereTerrain(state, world)}`;
+    case "chop": return `chop:${cell === undefined ? hereTerrain(state, world) : cellAt(world, cell).terrain}`;
     case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
     case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore": case "searchHome":
       return id;
@@ -272,16 +303,24 @@ const CLASS_EXTRAS = {
 for (const s of huntedLand()) EXTRAS[`hunt:${s}`] = CLASS_EXTRAS[extrasClass(s)!];
 for (const s of fishSpecies()) EXTRAS[`fish:${s}`] = CLASS_EXTRAS.fish;
 
-/** A readable name for a mastery key, for log lines: "Spruce felling", "Elk hunting", "Hide coat". */
+/**
+ * A readable name for a mastery key: "Spruce felling", "Elk hunting", "Hide
+ * coat". Written for log lines and now on every Do row, so a key with no case
+ * of its own must still come out as words: the ids are camelCase, and
+ * "InnerBark" or "IceHole" on a row is the vocabulary miss this naming exists
+ * to prevent.
+ */
 export function keyName(key: string): string {
   const [kind, arg] = key.split(":");
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const words = (s: string) => cap(s.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase());
   if (kind === "chop") return `${cap(arg)} felling`;
   if (kind === "hunt" || kind === "fish") return `${cap(SPECIES_DEFS[arg as Species].name)} ${kind === "hunt" ? "hunting" : "fishing"}`;
   if (kind === "craft") return cap(RECIPES[arg as RecipeId].name);
   if (kind === "build") return cap(STRUCTURES[arg as StructureId].name);
+  if (kind === "mend") return arg === "seep" ? "Seep re-digging" : `${cap(STRUCTURES[arg as StructureId].name)} mending`;
   if (kind === "cook") return `Cooking ${ITEM_NAMES[arg as ItemId]}`;
-  return cap(kind);
+  return words(kind);
 }
 
 export function chopSticks(state: GameState, world: World): number {
@@ -421,7 +460,13 @@ export function train(state: GameState, world: World, dt: number): void {
   if (after > before) {
     log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
     // Once per survivor by construction: a level is crossed once, and the heir is a new state.
-    if (opensOrders(skill)) for (const k of RUNG_ORDER) if (before < RUNG_LEVEL[k] && after >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
+    if (opensOrders(skill)) {
+      for (const k of RUNG_ORDER) {
+        if (before >= RUNG_LEVEL[k] || after < RUNG_LEVEL[k]) continue;
+        log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
+        teachOnce(state, k);
+      }
+    }
   }
   const mBefore = masteryLevel(s.mastery[key] ?? 0);
   s.mastery[key] = (s.mastery[key] ?? 0) + dt;
@@ -432,4 +477,25 @@ export function train(state: GameState, world: World, dt: number): void {
     if (extra.at50 && mBefore < 50 && mAfter >= 50) log(state, `${keyName(key)} mastery 50: ${extra.at50}.`, "good");
   }
   s.pool = Math.min(poolCapacity(skill), s.pool + dt);
+}
+
+/**
+ * The next concrete thing a key's practice is working toward, and how far
+ * along it is. Mastery's levels are 0.25 hours apart and buy 0.25% speed
+ * each, which is nothing a player can feel; what they can feel arrives at
+ * 20 and at 50. So the row's bar fills toward the promise rather than
+ * toward the next digit, and a key with no promise left gets no bar.
+ */
+export function masteryMilestone(
+  state: GameState, skill: SkillId, key: string,
+): { at: number; text: string; share: number } | null {
+  const extra = EXTRAS[key];
+  if (!extra) return null;
+  const minutes = state.skills[skill].mastery[key] ?? 0;
+  const band = (from: number, to: number, text: string) => ({
+    at: to, text, share: Math.min(1, (minutes - masteryMinutes(from)) / (masteryMinutes(to) - masteryMinutes(from))),
+  });
+  if (masteryLevel(minutes) < 20) return band(1, 20, extra.at20);
+  if (extra.at50 && masteryLevel(minutes) < 50) return band(20, 50, extra.at50);
+  return null;
 }

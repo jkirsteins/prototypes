@@ -13,61 +13,81 @@ import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { discovery, regionState, SEEN } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
-import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
-import { doHtml } from "../src/ui/dopanel";
-import { actionsHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { doHtml, intentGroups } from "../src/ui/dopanel";
+import { clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
 
+/**
+ * Everything the player can reach, from the panels they actually have: the Do
+ * list with every group's far rows opened, the HERE panel that holds the walks,
+ * and the Pack panel that holds the haul. There is no second list behind a
+ * toggle any more, so reachability is measured against these three or it is not
+ * measured at all.
+ */
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
-  const groups: TaskGroup[] = ["gather", "hunt", "camp", "craft", "build", "move"];
-  return groups.map((tab) => actionsHtml(state, world, cal, { ...newUiState(), tab })).join("\n");
+  const ui = { ...newUiState(), moreOpen: intentGroups(regionAt(world, state.player.region)).map((g) => g.label) };
+  return [doHtml(state, world, cal, ui), regionHtml(state, world, cal, ui), inventoryHtml(state, world, cal)].join("\n");
 }
 
 describe("reachability: everything in the catalogue has a button", () => {
   const { state, world } = newGame(21);
+  // A walk is only offered over ground the survivor knows, so this asks its
+  // question of a survivor who has been round their own valley and the next.
+  mapRegion(state, world, state.player.region);
+  for (const nb of regionAt(world, state.player.region).neighbours) mapRegion(state, world, nb.id);
   const html = allActions(state, world);
 
   it("every recipe", () => {
-    for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="craft:${id}"`);
+    for (const id of RECIPE_IDS) expect(html).toContain(`data-opt="intent:craft:${id}"`);
   });
   it("every structure", () => {
-    for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="build:${id}"`);
+    for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="intent:build:${id}"`);
   });
   it("every mend, even a lean-to and a rack not yet built", () => {
-    for (const id of ["leanTo", "dryingRack"]) expect(html).toContain(`data-opt="mend:${id}"`);
+    for (const id of ["leanTo", "dryingRack"]) expect(html).toContain(`data-opt="intent:mend:${id}"`);
   });
   it("every animal the region holds, and nothing it does not", () => {
     const r = regionAt(world, state.player.region);
     const here = huntedLand().filter((s) => r.capacity[s]);
     expect(here.length).toBeGreaterThan(0);
-    for (const s of here) expect(html).toContain(`data-opt="hunt:${s}"`);
-    for (const s of huntedLand()) if (!r.capacity[s]) expect(html).not.toContain(`data-opt="hunt:${s}"`);
-    for (const s of fishSpecies()) expect(html.includes(`data-opt="fish:${s}"`)).toBe(Boolean(r.capacity[s]));
+    for (const s of here) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
+    for (const s of huntedLand()) if (!r.capacity[s]) expect(html).not.toContain(`data-opt="intent:hunt:${s}"`);
+    for (const s of fishSpecies()) expect(html.includes(`data-opt="intent:fish:${s}"`)).toBe(Boolean(r.capacity[s]));
   });
-  it("every gather, camp and move task", () => {
-    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep", "haul"]) {
-      expect(html).toContain(`data-opt="${id}:`);
+  it("every gather and camp task, in the Do list", () => {
+    for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep"]) {
+      expect(html).toContain(`data-opt="intent:${id}:`);
     }
-    for (const nb of regionAt(world, state.player.region).neighbours) expect(html).toContain(`data-opt="travel:region:${nb.id}"`);
+  });
+  it("every walk out of camp, in the HERE panel", () => {
     for (const s of regionAt(world, state.player.region).spots) {
-      if (s.id !== "camp") expect(html).toContain(`data-opt="walk:spot:${s.id}"`);
+      if (s.id !== "camp") expect(html).toContain(`data-id="walk" data-arg="spot:${s.id}"`);
+    }
+  });
+  it("every road out, in the HERE panel of the region picked on the map", () => {
+    // A road out is offered by the region you selected, not by the one you stand in:
+    // the map is how you choose where to go, and the panel is where you set off.
+    const cal = calendar(state.minute);
+    for (const nb of regionAt(world, state.player.region).neighbours) {
+      const picked = regionHtml(state, world, cal, { ...newUiState(), selected: nb.id });
+      expect(picked).toContain(`data-id="travel" data-arg="region:${nb.id}"`);
     }
   });
   it("shows a legal button, not a greyed one, when the inputs are there", () => {
     const rich = newGame(21);
     addItem(rich.state.player.pack, "bark", 3);
     const h = allActions(rich.state, rich.world);
-    expect(h).toContain(`data-act="task" data-id="craft" data-arg="cordage"`);
+    expect(h).toContain(`data-act="intent" data-id="craft" data-arg="cordage"`);
   });
   it("offers a real mend button once a lean-to stands worn and the sticks are in reach", () => {
     const worn = newGame(21);
@@ -76,17 +96,34 @@ describe("reachability: everything in the catalogue has a button", () => {
     st.structureAge.leanTo = 244 * 1440;
     addItem(worn.state.player.pack, "stick", 2);
     const h = allActions(worn.state, worn.world);
-    expect(h).toContain(`data-act="task" data-id="mend" data-arg="leanTo"`);
+    expect(h).toContain(`data-act="intent" data-id="mend" data-arg="leanTo"`);
   });
   it("names the ground to stand on when work is greyed", () => {
     expect(html).toMatch(/Fell a tree.*forest/s);
     expect(html).toMatch(/Gather stone.*(rock|outcrop)/s);
   });
-  it("every option that trains carries a mastery bar; a hunt under level carries the warning", () => {
+  it("every option that trains says which skill it is under and what its practice is called", () => {
     document.body.innerHTML = html;
-    expect(document.querySelector('[data-opt="chop:"] .bar.mastery')).not.toBeNull();
-    expect(document.querySelector('[data-opt="walk:spot:forest"] .bar.mastery')).toBeNull();
-    expect(document.querySelector('[data-opt="hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8");
+    // The breadcrumb is the whole point: a row's number is a child of the skill
+    // named beside it, so "Woodcraft > Spruce felling 1" under "Woodcraft 2" in
+    // the Skills panel reads as one tree rather than two numbers that disagree.
+    expect(document.querySelector('[data-opt="intent:chop:"] small.crumb')?.textContent)
+      .toBe("Woodcraft > Spruce felling 1");
+    // Walking trains nothing, so it carries neither breadcrumb nor bar.
+    expect(document.querySelector('[data-opt="intent:rest:"] small.crumb')).toBeNull();
+    expect(document.querySelector('[data-opt="intent:hunt:elk"] small.rec.warn')?.textContent).toBe("Hunting 8, you are 1");
+  });
+
+  it("the bar under a row aims at the next thing practice buys, and a key that buys nothing more has none", () => {
+    document.body.innerHTML = html;
+    // Felling promises an extra stick per tree at mastery 20; the bar fills toward
+    // that rather than toward the next digit, which is 0.25% speed and unfelt.
+    const bar = document.querySelector('[data-opt="intent:chop:"] .bar.mastery');
+    expect(bar?.getAttribute("title")).toBe("an extra stick per tree at 20");
+    expect(bar?.querySelector(".fill")?.getAttribute("data-fill")).toBe("masteryTo:woodcraft|chop:spruce");
+    // Gathering dead wood is speed only: it has a breadcrumb and no bar to fill.
+    expect(document.querySelector('[data-opt="intent:deadwood:"] small.crumb')).not.toBeNull();
+    expect(document.querySelector('[data-opt="intent:deadwood:"] .bar.mastery')).toBeNull();
   });
 });
 
@@ -420,7 +457,7 @@ describe("panels", () => {
   it("inventory lists pack and ground with take and drop", () => {
     const { state, world } = newGame(21);
     addItem(state.player.pack, "stick", 3);
-    setPanel("inventory", inventoryHtml(state, world));
+    setPanel("inventory", inventoryHtml(state, world, calendar(state.minute)));
     expect(document.querySelector(`#inventory [data-act="drop"][data-item="stick"]`)).not.toBeNull();
     expect(document.querySelector(`#inventory [data-act="drop"][data-item="driedMeat"]`)).not.toBeNull();
   });
@@ -430,7 +467,7 @@ describe("panels", () => {
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
     addItem(herePile(state, world), "water", 2);
-    setPanel("inventory", inventoryHtml(state, world));
+    setPanel("inventory", inventoryHtml(state, world, calendar(state.minute)));
     expect(document.querySelector(`#inventory [data-act="take"][data-item="water"]`)).toBeNull();
   });
 
@@ -563,7 +600,6 @@ describe("the Do panel", () => {
     }
     expect(html).toContain('data-opt="intent:lightTorch:"');
     expect(html).not.toContain('class="tabs"');
-    expect(html).toContain('data-act="advanced"');
   });
 
   it("a lean food past the day's ceiling shows a disabled eat button with its own reason; fat's stays open", () => {
@@ -592,14 +628,24 @@ describe("the Do panel", () => {
     expect(huntGroup).toContain("Empty the trap");
   });
 
-  it("the raw list appears under the advanced toggle unchanged", () => {
-    // The Move tab is where the raw list keeps Haul and the spot walks.
-    const ui = { ...newUiState(), advanced: true, tab: "move" as const };
-    const html = doHtml(state, world, cal, ui);
-    expect(html).toContain('class="tabs"');
-    expect(html).toContain('data-opt="haul:"');
-    expect(html).toContain('data-opt="walk:spot:');
-    expect(html).toContain(actionsHtml(state, world, cal, ui, false));
+  it("there is one Do list and no second one behind a toggle", () => {
+    const html = doHtml(state, world, cal, newUiState());
+    expect(html).not.toContain('data-act="advanced"');
+    expect(html).not.toContain('class="tabs"');
+    // The raw list's rows were data-opt="<id>:<arg>"; every row is an intent row now.
+    expect(html).not.toMatch(/data-opt="(?!intent:)/);
+  });
+
+  it("haul is offered beside the ground pile it would carry, not in the Do list", () => {
+    const g = newGame(21);
+    // Away from camp, with something on the ground worth carrying home. The
+    // haul is a walk back, so the way home has to be ground they know.
+    mapRegion(g.state, g.world, g.state.player.region);
+    placeAtSpot(g.state, g.world, g.state.player.region, "forest");
+    addItem(herePile(g.state, g.world), "log", 3);
+    const c = calendar(g.state.minute);
+    expect(doHtml(g.state, g.world, c, newUiState())).not.toContain('data-id="haul"');
+    expect(inventoryHtml(g.state, g.world, c)).toContain('data-act="task" data-id="haul"');
   });
 
   it("a build blocked only by materials elsewhere in the region is not greyed out, and names what it would fetch", () => {
@@ -723,8 +769,10 @@ describe("the Orders panel", () => {
     addItem(pile(state, st.campCell), "log", 6);
     addItem(pile(state, st.campCell), "firewood", 60);
     const keep = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
-    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    // Ranked under the grind: a once order that cannot run stops every order
+    // beneath it, so a cabin above the grind would leave nothing to draw.
+    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
     const cal = calendar(state.minute);
     let html = taskHtml(state, world, cal);
@@ -736,7 +784,7 @@ describe("the Orders panel", () => {
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
     expect(html).toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
-    expect(html).toContain(`data-act="order-down" data-id="${grind.id}" disabled`);
+    expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
     expect(html).not.toContain('data-act="stop"');
     // Counters appear once the work has completed.
@@ -746,7 +794,7 @@ describe("the Orders panel", () => {
     // Moving the cabin up shows in the next render.
     moveOrder(state, world, cabin.id, -1);
     html = taskHtml(state, world, calendar(state.minute));
-    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${keep.id}"`));
+    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${grind.id}"`));
   });
 
   it("a blocked order below the live one shows its own reason, not \"waiting\"", () => {

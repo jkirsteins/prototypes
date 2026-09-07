@@ -40,7 +40,12 @@ waiting, and everything done while you are away run at the one scale.
   (forever) at 5, a keep (keep camp at N) at 10, a condition at 15 - a
   season window, a stock line, a restart line or a daily count laid on a
   keep - and pace at 20, a keep due by a date, held after it or spent by
-  the season's close; a once job is always open.
+  the season's close; a once job is always open. The first time a survivor
+  opens a rung by practice the game stops once to say what it now lets them
+  ask for, with an order they could give this minute; every unlock after
+  that, in every skill, is a line in the log. A rung an heir lands already
+  holding is never a moment: the welcome names it instead, so the better
+  the lineage the quieter the landing.
   A row below its skill's level greys and names the level that opens it. A
   keep reads its stored forms and not only its own yield: "keep camp at
   240 kg of meat" counts the dried meat in the rack at its own ratio
@@ -66,6 +71,11 @@ waiting, and everything done while you are away run at the one scale.
   it works the plain shape at today's reading, giving or withdrawing it as
   the condition would have, and every gate prints the mornings that cost -
   the attention the plan asked of a player at that level.
+- **Every landing opens with a welcome.** It names the survivor, what they
+  land knowing and what those levels already let them ask for - nothing at
+  all for a first life, a rung or two for a well-practised heir - and one
+  rule of the north, a different one each landing, so a sixth survivor
+  still meets something they had not noticed.
 - **A boat lands three people, and you choose one.** A new world opens on
   the landing screen, and so does every death: three candidates, each a
   face, a name, four grades shown as words or quantities (what they carry

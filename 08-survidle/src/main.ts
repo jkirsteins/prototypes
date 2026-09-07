@@ -26,13 +26,14 @@ import { cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
-import { startTask, stopTask, type TaskGroup } from "./sim/tasks";
+import { startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
 import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
+import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
@@ -40,6 +41,7 @@ import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
+import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
@@ -165,7 +167,7 @@ function render() {
   setPanel("task", taskHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
-  setPanel("inventory", inventoryHtml(state, world));
+  setPanel("inventory", inventoryHtml(state, world, cal));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
@@ -193,6 +195,12 @@ function render() {
   } else if (state.dead) {
     setPanel("overlay", tombstoneHtml(state, world, ui));
     overlay.hidden = false;
+  } else if (ui.welcome) {
+    setPanel("overlay", welcomeHtml(state, cal));
+    overlay.hidden = false;
+  } else if (ui.teach) {
+    setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
+    overlay.hidden = false;
   } else {
     overlay.hidden = true;
   }
@@ -203,7 +211,7 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !state.landing && !ui.away) {
+  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -218,9 +226,16 @@ function frame(now: number) {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away) {
+  } else if (ui.away || ui.teach || ui.welcome) {
+    // An open moment holds the game still. Without the bump, a modal left open
+    // past thirty seconds trips the catch-up branch above, and the player
+    // dismisses it into an away report they never earned.
     lastReal = now;
   }
+  // One moment at a time, and never over an overlay that outranks it. A rung
+  // crossed inside an offline catch-up waits behind that catch-up's own away
+  // report; momentToOpen owns the whole rule.
+  if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
@@ -252,9 +267,6 @@ function onClick(ev: Event) {
     }
     case "stop":
       stopTask(state, world);
-      break;
-    case "tab":
-      ui.tab = target.dataset.tab as TaskGroup;
       break;
     case "zoom":
       zoomBy(target.dataset.dir === "in" ? -1 : 1);
@@ -326,6 +338,9 @@ function onClick(ev: Event) {
       // land() no-ops without a landing or a name; only a real heir's landing is a begin-again.
       if (wasLanding && heir && state.landing === null) beacon.beganAgain(state, Date.now());
       if (wasLanding && state.landing === null && openManualOnFirstLanding(state, heir)) ui.manual = true;
+      // Every landing gets its welcome, fresh survivor or heir. On a world's
+      // first the manual leads and this waits behind it in the chain.
+      if (wasLanding && state.landing === null) ui.welcome = true;
       ui.confirmAbandon = false;
       resetForecastAt();
       break;
@@ -354,6 +369,16 @@ function onClick(ev: Event) {
       break;
     case "manual-close":
       ui.manual = false;
+      break;
+    case "welcome-close":
+      ui.welcome = false;
+      lastReal = performance.now();
+      break;
+    case "teach-close":
+      ui.teach = null;
+      // The same bump the away report's dismiss does: the minutes the moment
+      // was open were paused, not spent away.
+      lastReal = performance.now();
       break;
     case "leave-world":
       ui.confirmLeave = true;
@@ -417,9 +442,6 @@ function onClick(ev: Event) {
       else ui.moreOpen.push(group);
       break;
     }
-    case "advanced":
-      ui.advanced = !ui.advanced;
-      break;
     case "hurry":
       hurryClick(ui.hurry, hurryKind(state), state.intent?.orderId ?? null);
       break;
@@ -479,6 +501,8 @@ setCueSink((c) => sounds.cue(c));
 // the note reads stale for one extra interaction.
 document.addEventListener("click", () => audio.unlock(), { capture: true });
 document.addEventListener("keydown", () => audio.unlock(), { capture: true });
+// The build's own name, written once: it cannot change while the page is open.
+setPanel("build", buildHtml());
 mountControl(document.getElementById("sound")!, audio);
 awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, () => state, (on) => {
@@ -526,8 +550,11 @@ document.addEventListener("input", (ev) => {
       ? { first: t || state.landing.name.first, last: state.landing.name.last }
       : { first: t.slice(0, i), last: t.slice(i + 1).trim() };
   } else if (el.matches("[data-do=filter]")) {
+    // No render here on purpose. The frame loop redraws everything anyway, so
+    // the list follows the keystroke within one frame; rendering from the
+    // keystroke as well doubles a frame's work on the one input a player
+    // holds down a key in.
     ui.filter = el.value;
-    render();
   }
 });
 document.addEventListener("change", (ev) => {

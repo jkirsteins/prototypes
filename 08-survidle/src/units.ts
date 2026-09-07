@@ -50,6 +50,21 @@ export function fmtKm(km: number): string {
   return `${km.toFixed(1)} km`;
 }
 
+/**
+ * A share under one, said the way a person says it: "half", "a quarter",
+ * "an eighth". The halvings a level short of a recommendation lands on are
+ * named; anything else falls back to a percentage, which reads worse but
+ * is never wrong.
+ */
+const SHARE_WORDS: Record<string, string> = {
+  "1": "all", "0.5": "half", "0.25": "a quarter", "0.125": "an eighth",
+  "0.0625": "a sixteenth", "0.03125": "a thirty-second",
+};
+
+export function shareWord(f: number): string {
+  return SHARE_WORDS[String(f)] ?? `${(f * 100).toFixed(f < 0.01 ? 2 : 0)}% of`;
+}
+
 export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }

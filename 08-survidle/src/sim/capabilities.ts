@@ -7,8 +7,8 @@
  * what it gives, and what it leaves limiting. Species and mastery extras
  * are content beneath rows and are not here.
  */
-import type { Rung } from "./skills";
-import type { RecipeId, SkillId, StructureId } from "./types";
+import { cellAt, type World } from "../world/gen";
+import type { GameState, RecipeId, RegionState, Rung, SkillId, StructureId, TaskId } from "./types";
 
 export type CapabilityKey = `rec:${string}` | `build:${StructureId}` | `craft:${RecipeId}` | `rung:${Rung}`;
 
@@ -184,3 +184,41 @@ export const CAPABILITIES: CapabilityRow[] = [
     limits: "a stick, the cooking, and a stock that is dug out by autumn and not back until spring",
   },
 ];
+
+/**
+ * The capability a Do row stands for, by the key that row would carry.
+ * Only a build or a craft has one: a capability is a thing that comes to
+ * stand at camp, not an hour of work.
+ */
+export function capabilityFor(id: TaskId, arg: string | undefined): CapabilityRow | null {
+  if (!arg || (id !== "build" && id !== "craft")) return null;
+  const key = `${id}:${arg}`;
+  return CAPABILITIES.find((c) => c.keys.some((k) => k === key)) ?? null;
+}
+
+/**
+ * Whether this capability's thing stands at this camp. Three of the
+ * producers are not flags on `structures`: the snares are a count, the
+ * basket trap is the region's one `trap`, and a seep is dug on a cell of
+ * its own rather than at camp, so it is read from the world's seeps in
+ * this region.
+ */
+export function standingHere(state: GameState, st: RegionState, world: World, c: CapabilityRow): boolean {
+  for (const k of c.keys) {
+    const [kind, arg] = k.split(":");
+    // A row names its thing under build or craft: the basket trap is crafted
+    // and then set, the snare is both. "rec:" keys are levels, not things.
+    if (kind !== "build" && kind !== "craft") continue;
+    if (arg === "snare") {
+      if (st.structures.snares > 0) return true;
+    } else if (arg === "basketTrap") {
+      if (st.trap !== null) return true;
+    } else if (arg === "seep") {
+      const region = cellAt(world, st.campCell).region;
+      if (Object.keys(state.seeps).some((cell) => cellAt(world, Number(cell)).region === region)) return true;
+    } else if (st.structures[arg as keyof RegionState["structures"]]) {
+      return true;
+    }
+  }
+  return false;
+}

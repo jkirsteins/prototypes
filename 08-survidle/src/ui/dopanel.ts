@@ -1,7 +1,8 @@
 import { itemLabel } from "../sim/actions";
 import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
+import { capabilityFor } from "../sim/capabilities";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
-import { ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
+import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
@@ -11,7 +12,7 @@ import { type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionAt, type RegionDef, type World } from "../world/gen";
-import { actionsHtml, instantHtml, masteryBar } from "./panels";
+import { instantHtml, masteryLine } from "./panels";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 
 /** The Do panel's fold state, under one local storage key: which groups are shut. Absent means open. */
@@ -54,6 +55,8 @@ const VOCABULARY: { words: string; rows: string[] }[] = [
   { words: "tool gear", rows: ["craft", "sharpen", "hone"] },
   { words: "clothing clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
   { words: "dark darkness", rows: ["lightTorch", "craft:torch"] },
+  // The fire site is a fire pit and a hearth to everyone who has not read its label.
+  { words: "firepit hearth", rows: ["build:firePit", "light"] },
 ];
 
 /** Every row the vocabulary names, for the test that each one is a row that exists. */
@@ -72,6 +75,11 @@ function keywordsFor(id: string | undefined, arg: string | undefined): string {
   return `${KEYWORDS.get(id) ?? ""} ${arg ? (KEYWORDS.get(`${id}:${arg}`) ?? "") : ""}`;
 }
 
+/** What a row says out loud, in the order a reader's eye takes it: its own name first, then the lines under it. */
+function spokenText(r: FilterableRow): [string, string] {
+  return [r.label.toLowerCase(), [r.detail, r.why, r.group].filter(Boolean).join(" ").toLowerCase()];
+}
+
 /** Everything a row says plus everything it answers to, as one lowercase haystack. */
 function rowText(r: FilterableRow): string {
   return [r.label, r.detail, r.why, r.group, keywordsFor(r.id, r.arg)].filter(Boolean).join(" ").toLowerCase();
@@ -86,6 +94,26 @@ interface FilterableRow {
   group?: string;
 }
 
+/** The words a filter is made of: lowercase, blanks dropped. */
+function filterWords(text: string): string[] {
+  return text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * How squarely a row answers the words: 0 when its own name carries them all,
+ * 1 when the lines under the name finish the job, 2 when only the invisible
+ * keywords do, -1 when it does not answer at all. "fire" is answered by the
+ * fire site at 0 and by Gather dead wood at 2, and that gap is what lets the
+ * panel widen a search without burying the thing that was asked for.
+ */
+function matchTier(r: FilterableRow, words: string[]): number {
+  const [name, lines] = spokenText(r);
+  if (words.every((w) => name.includes(w))) return 0;
+  if (words.every((w) => `${name} ${lines}`.includes(w))) return 1;
+  const hay = rowText(r);
+  return words.every((w) => hay.includes(w)) ? 2 : -1;
+}
+
 /**
  * Rows the filter finds, case-insensitive; an empty (or blank) filter keeps
  * everything. The match reads the whole row rather than the label alone, so a
@@ -93,15 +121,29 @@ interface FilterableRow {
  * under Open an ice hole - still finds the row it belongs to, and the
  * VOCABULARY above adds the words a row answers to but never says. Every word
  * in the filter has to land somewhere in that row, so a second word narrows
- * instead of widening.
+ * instead of widening. Best answer first, ties in the order they were listed.
  */
 export function filterRows<T extends FilterableRow>(rows: T[], text: string): T[] {
-  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const words = filterWords(text);
   if (!words.length) return rows;
-  return rows.filter((r) => {
-    const hay = rowText(r);
-    return words.every((w) => hay.includes(w));
-  });
+  return rows
+    .map((r, i) => ({ r, i, tier: matchTier(r, words) }))
+    .filter((x) => x.tier >= 0)
+    .sort((a, b) => a.tier - b.tier || a.i - b.i)
+    .map((x) => x.r);
+}
+
+/**
+ * The same rows, split where the answer stops being direct: `direct` is what
+ * the row itself says, `related` is what only the keywords claim. A reader
+ * who types "fire" gets the fire rows as a list short enough to read, and the
+ * wood and cooking rows the word also reaches under a heading that says so.
+ */
+export function rankRows<T extends FilterableRow>(rows: T[], text: string): { direct: T[]; related: T[] } {
+  const words = filterWords(text);
+  const found = filterRows(rows, text);
+  if (!words.length) return { direct: found, related: [] };
+  return { direct: found.filter((r) => matchTier(r, words) < 2), related: found.filter((r) => matchTier(r, words) === 2) };
 }
 
 /**
@@ -142,7 +184,15 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
     ] },
     { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
-    { label: "Build", items: STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })) },
+    // Mending sits with building because it is the same act on the same things: a
+    // lean-to whose roof has gone is a lean-to to build again. It had no row of its
+    // own while the raw list existed, which meant a structure could decay with no
+    // way to repair it that a player would ever find.
+    { label: "Build", items: [
+      ...STRUCTURE_IDS.map((id) => ({ id: "build" as TaskId, arg: id })),
+      ...DECAYING.map((id) => ({ id: "mend" as TaskId, arg: id })),
+      { id: "mend" as TaskId, arg: "seep" },
+    ] },
   ];
 }
 
@@ -265,13 +315,17 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
  */
 function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState, world: World): string {
   const kinds: RowChoice["until"][] = ["once", "times", "daily", "campHas", "keep", "forever"];
-  const buttons = kinds.map((k) => {
+  const button = (k: RowChoice["until"]) => {
     const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
     const gate = orderGate(state, req, kind);
     const label = esc(kindLabel(o.id, arg, k, ui.choice.n));
     const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
     return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
-  }).join("");
+  };
+  // A once order is the player's own: it goes to the top of the list and starts
+  // on the click. Every other kind is handed to the runner, which serves it in
+  // its own time and around the body's needs.
+  const buttons = `${button(kinds[0])}<small class="handoff">starts now; the rest are the runner's</small>${kinds.slice(1).map(button).join("")}`;
   const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
@@ -286,8 +340,13 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
  */
 function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: World): string {
   const arg = o.arg ?? "";
-  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
-  const bar = o.mastery ? masteryBar(o.mastery) : "";
+  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(plain(o.recommended.text))}</small>` : "";
+  const bar = o.mastery ? masteryLine(state, o.mastery) : "";
+  // A producer works while you do not, which is the shape of the whole game and
+  // which no row said. It shows on a row that cannot start yet too: a producer
+  // under its level is the row a player most needs the promise on.
+  const cap = capabilityFor(o.id, o.arg);
+  const gives = cap?.producer ? `<small class="gives">${esc(cap.gives)}</small>` : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
   const more = canOpen ? `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>` : "";
@@ -296,43 +355,43 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   if (!o.ok) {
     // Queuing a blocked makeCamp anyway would let the runner site the camp wherever the
     // body happens to be standing when the order starts, not the cell the click meant:
-    // it gets no "add it anyway" queue path, only the reason it is grey.
-    const queueable = o.id !== "makeCamp";
+    // it gets no "add it anyway" queue path, only the reason it is grey. Work this
+    // ground will never offer gets none either: the row would wait for a thing that
+    // is not coming, at the head of a list it stops.
+    const queueable = o.id !== "makeCamp" && !o.never;
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
-    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${more}${expand}</div>`;
+    return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${more}${expand}</div>`;
   }
   const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   const line = [time, o.detail ? plain(o.detail) : ""].filter(Boolean).join("; ");
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}</button>${more}${expand}</div>`;
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${more}${expand}</div>`;
 }
 
-/** A group's rows, built at the open row's own chosen spot (so its duration and ok reflect that spot), then narrowed by the filter. */
-function groupOptions(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
-  const rows = g.items.map(({ id, arg }) => {
+/** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
+function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  return g.items.map(({ id, arg }) => {
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
     return withProgression(state, world, intentOption(state, world, cal, id, arg, where));
   });
-  return filterRows(rows, ui.filter);
 }
 
 /**
  * One Do group: a folding heading, then its rows - Make's startable rows
  * first - with the far ones (cannot start, skill more than a level under
  * the rung) tucked behind a "more (N)" line until ui.moreOpen names the
- * group. Left out entirely once the filter empties it. A non-empty filter
- * skips the far fold outright: a match the reader typed for is never the
- * one row left hidden behind "more".
+ * group. Groups are what the panel shows when the filter box is empty;
+ * `searchHtml` takes over the moment it is not.
  */
 function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean>): string {
-  const options = groupOptions(g, state, world, cal, ui);
+  const options = groupRows(g, state, world, cal, ui);
   if (!options.length) return "";
   const open = folds[g.label] !== false;
   const heading = `<button class="fold" data-act="fold" data-group="${esc(g.label)}">${open ? "-" : "+"} ${esc(g.label)}</button>`;
   if (!open) return `<div class="grp">${heading}</div>`;
   const ordered = g.label === "Make" ? makeFirst(options) : options;
-  const { near, far } = ui.filter.trim() ? { near: ordered, far: [] as TaskOption[] } : splitFar(ordered, state);
+  const { near, far } = splitFar(ordered, state);
   const nearHtml = near.map((o) => intentRowHtml(o, ui, state, world)).join("");
   const moreOpen = ui.moreOpen.includes(g.label);
   const farHtml = !far.length ? "" : moreOpen
@@ -341,10 +400,32 @@ function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, 
   return `<div class="grp">${heading}${nearHtml}${farHtml}</div>`;
 }
 
+/**
+ * What a filter shows instead of the groups: one ranked list, the rows that
+ * say the words above the rows that merely answer to them. The groups and
+ * their folds are gone for as long as the box has text in it - a search that
+ * left its answer shut inside a folded group, or three headings down from the
+ * word that was typed, is the search that sent the reader looking by hand.
+ */
+function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
+  const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
+  const { direct, related } = rankRows(rows, ui.filter);
+  const typed = esc(ui.filter.trim());
+  if (!direct.length && !related.length) return `<div class="grp"><div class="fold">nothing answers to "${typed}"</div></div>`;
+  const section = (heading: string, list: TaskOption[]) =>
+    !list.length ? "" : `<div class="grp"><div class="fold">${heading}</div>${list.map((o) => intentRowHtml(o, ui, state, world)).join("")}</div>`;
+  // "also" only means something under rows that said the word themselves. A
+  // search every row answers only through its keywords - "firepit", which no
+  // label spells that way - is a list of answers, not a list of afterthoughts.
+  if (!direct.length) return section(typed, related);
+  return `${section(typed, direct)}${section(`also answers to "${typed}"`, related)}`;
+}
+
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean> = {}): string {
-  const groups = intentGroups(regionAt(world, state.player.region))
-    .map((g) => groupHtml(g, state, world, cal, ui, folds))
-    .join("");
-  const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
-  return `${instantHtml(state, world)}<div class="rows">${groups}</div>${adv}`;
+  const groups = ui.filter.trim()
+    ? searchHtml(state, world, cal, ui)
+    : intentGroups(regionAt(world, state.player.region))
+      .map((g) => groupHtml(g, state, world, cal, ui, folds))
+      .join("");
+  return `${instantHtml(state, world)}<div class="rows">${groups}</div>`;
 }

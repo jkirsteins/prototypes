@@ -21,6 +21,7 @@ import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
 import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
+import { resetTeaching } from "./teach";
 import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
 
 export const GAP_MIN_DAYS = 90;
@@ -258,6 +259,10 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   if (!l || !name) return;
   const chosen = l.candidates[l.chosen];
   const p = person ?? chosen.person;
+  // Both branches land a new survivor, and a moment is theirs alone. Ahead of
+  // the carrySkills below, so the rungs a carried level opens are marked known
+  // against an empty slate rather than against a dead person's.
+  resetTeaching(state);
   if (l.oldCamp === null) {
     state.survivors = [newRecord(1, name, l.date, 0, p)];
     newPerson(state, world, l.cell, l.region);

@@ -54,6 +54,8 @@ function fillDefaults(state: GameState): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   state.manualSeen ??= false;
+  state.taught ??= {};
+  state.teachQueue ??= [];
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
   state.survivors ??= [firstRecord(state.seed, state.startDoy)];
   // A record from before the person: the median survivor, with the sex its name says and a face of its own.

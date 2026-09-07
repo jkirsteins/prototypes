@@ -12,6 +12,7 @@ import { derived, medianPerson, personOf, rollCandidates } from "./person";
 import { enterRegion } from "./regionstate";
 import { seeFrom } from "./sight";
 import { newSkills } from "./skills";
+import { resetTeaching } from "./teach";
 import type { GameState, LifeRecord, Person } from "./types";
 import { seasonalMean } from "./weather";
 
@@ -125,6 +126,8 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     spine: { fired: {}, announced: {} },
     manualSeen: false,
   } as GameState;
+  // The same fresh slate a landing gives, from the one door that gives it.
+  resetTeaching(state);
   newPerson(state, world, start.campCell, world.start);
   enterRegion(state, world, world.start);
   if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);

@@ -21,8 +21,10 @@ function walk(dir: string): string[] {
  */
 function bareYou(): string[] {
   const bad: string[] = [];
-  // voice.ts holds the tokens themselves; the capability rows, the season's asks and the manual are panel copy that never reaches the log.
-  for (const f of walk("src/sim").filter((f) => !/voice\.ts$|capabilities\.ts$|spine\.ts$|manual\.ts$/.test(f))) {
+  // voice.ts holds the tokens themselves; the capability rows, the season's asks,
+  // the manual and the teaching layer's overlays are panel copy addressed to
+  // whoever is looking at the screen, and never reach the log to be told by name.
+  for (const f of walk("src/sim").filter((f) => !/voice\.ts$|capabilities\.ts$|spine\.ts$|manual\.ts$|teach\.ts$/.test(f))) {
     const src = readFileSync(f, "utf8").split("\n");
     src.forEach((line, i) => {
       const code = line.replace(/\/\/.*$/, "");

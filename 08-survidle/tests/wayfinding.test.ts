@@ -94,8 +94,6 @@ describe("wayfinding", () => {
     // No order button appears for exploring either: the runner's own move, never a standing order.
     expect(NOT_ORDERS).toContain("explore");
     const ui = newUiState();
-    ui.tab = "move";
-    ui.advanced = true;
     expect(doHtml(state, world, calendar(state.minute), ui)).not.toContain('data-id="explore"');
   });
 

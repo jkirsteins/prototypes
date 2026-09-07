@@ -124,8 +124,6 @@ describe("searching for the way home", () => {
 
     const { state, world } = newGame(4);
     const ui = newUiState();
-    ui.tab = "move";
-    ui.advanced = true;
     expect(doHtml(state, world, calendar(state.minute), ui)).not.toContain('data-id="searchHome"');
   });
 

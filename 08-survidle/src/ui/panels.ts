@@ -2,6 +2,7 @@ import { edible, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
+import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
@@ -11,7 +12,7 @@ import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../si
 import { fishLie, readCells } from "../sim/knowledge";
 import { knownShare } from "../sim/mapped";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
-import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
+import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
@@ -27,15 +28,15 @@ import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, wat
 import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
-import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
+import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, pausedList, type TaskGroup, type TaskOption, whereIs,
+  availableTasks, check, fallChance, pausedList, type TaskOption, whereIs,
 } from "../sim/tasks";
 import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
-import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND } from "../units";
+import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
@@ -66,12 +67,23 @@ function wetBar(g: Garment): string {
 }
 
 /**
- * A row's mastery. Only the level is in the markup, and that moves about once
- * a session; the share climbs with every minute of work, so the fill names
- * the mastery it draws and leaves the width to updateFills.
+ * What a row's practice is called and where it sits: the skill it trains,
+ * then this one action within it, then the level of that action. A bare
+ * "mastery 1" beside a Skills panel reading "Woodcraft 2" was two numbers
+ * with no stated relation, and read as a contradiction; the breadcrumb says
+ * the smaller number is a child of the larger. It also gives the filter box
+ * a category to match, so typing a skill's name finds every row under it.
+ *
+ * Only the level is in the markup, and that moves about once a session; the
+ * share climbs with every minute of work, so the fill names what it draws
+ * and leaves the width to updateFills.
  */
-export function masteryBar(m: { level: number; share: number; skill: SkillId; key: string }): string {
-  return `<div class="bar mastery" title="mastery ${m.level}"><div class="fill" data-fill="${esc(`mastery:${m.skill}|${m.key}`)}"></div><span class="lbl"><span>mastery ${m.level}</span></span></div>`;
+export function masteryLine(state: GameState, m: { level: number; skill: SkillId; key: string }): string {
+  const crumb = `<small class="crumb">${esc(SKILL_NAMES[m.skill])} &gt; ${esc(keyName(m.key))} ${m.level}</small>`;
+  const next = masteryMilestone(state, m.skill, m.key);
+  if (!next) return crumb;
+  const label = `${plain(next.text)} at ${next.at}`;
+  return `${crumb}<div class="bar mastery" title="${esc(label)}"><div class="fill" data-fill="${esc(`masteryTo:${m.skill}|${m.key}`)}"></div><span class="lbl"><span>${esc(label)}</span></span></div>`;
 }
 
 /** What the pool is giving right now, in words. */
@@ -338,6 +350,11 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
+  // What each producer standing here is limited by: the reason a camp that
+  // makes its own food still runs out.
+  const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
+    .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
+    .join("");
   let travel = "";
   if (!here) {
     // Ground not yet known cannot be walked to - offer the way it opens instead.
@@ -369,7 +386,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
 <dt>places</dt><dd class="spots">${spots}${loose}</dd>
 ${here ? `<dt>water</dt><dd>${esc(waterLine(state, world, cal))}<br><small>${esc(waterList(state, world, cal))}</small></dd>` : ""}
 ${asCamp}
-<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}</dd>
+<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}${limits}</dd>
 </dl>${travel}`;
 }
 
@@ -403,7 +420,10 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
       : `<div class="head">`;
-    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${btns}</div>${second}</div>`;
+    // Words and not only the title: a touch device has no hover to show one, and
+    // a mouse never rests on a row long enough to find it.
+    const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
+    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
   }).join("");
   return `${waiting}${rows}`;
 }
@@ -477,25 +497,6 @@ export function forecastHtml(view: ForecastView | null, state: GameState): strin
   return `<h2>Ahead</h2>${rows.join("")}`;
 }
 
-const GROUPS: { id: TaskGroup; label: string }[] = [
-  { id: "gather", label: "Gather" }, { id: "hunt", label: "Hunt" }, { id: "camp", label: "Camp" },
-  { id: "craft", label: "Craft" }, { id: "build", label: "Build" }, { id: "move", label: "Move" },
-];
-
-function optHtml(o: TaskOption): string {
-  const arg = o.arg ?? "";
-  const rec = o.recommended ? `<small class="rec${o.recommended.under ? " warn" : ""}">${esc(o.recommended.text)}</small>` : "";
-  const bar = o.mastery ? masteryBar(o.mastery) : "";
-  if (!o.ok) {
-    return `<div class="opt off" data-opt="${o.id}:${esc(arg)}"><span class="act">${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}</span></div>`;
-  }
-  const time = `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}`;
-  const rep = o.repeatable
-    ? `<button class="rep" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}" data-repeat="1" title="Keep doing it until it cannot continue">loop</button>`
-    : "";
-  return `<div class="opt" data-opt="${o.id}:${esc(arg)}"><button class="act" data-act="task" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${time}${o.detail ? `; ${esc(plain(o.detail))}` : ""}</small>${bar}</button>${rep}</div>`;
-}
-
 /** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
 export function instantHtml(state: GameState, world: World): string {
   const p = state.player;
@@ -530,13 +531,6 @@ export function instantHtml(state: GameState, world: World): string {
   return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
 }
 
-export function actionsHtml(state: GameState, world: World, cal: Calendar, ui: UiState, instant = true): string {
-  const tabs = GROUPS.map((g) => `<button class="${g.id === ui.tab ? "on" : ""}" data-act="tab" data-tab="${g.id}">${g.label}</button>`).join("");
-  const opts = availableTasks(state, world, cal).filter((o) => o.group === ui.tab);
-  const instantBtns = instant && ui.tab === "camp" ? instantHtml(state, world) : "";
-  return `<h2>Do</h2><div class="tabs">${tabs}</div>${instantBtns}${opts.map(optHtml).join("")}`;
-}
-
 /** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */
 function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): string {
   const rows = act === "take" ? items.filter(({ item }) => item !== "water" && item !== "ice") : items;
@@ -550,7 +544,20 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
     .join("")}</div>`;
 }
 
-export function inventoryHtml(state: GameState, world: World): string {
+/**
+ * Carrying a ground pile home, beside the pile it carries. Haul is the one
+ * task with nothing to say in the Do list - it names no goods and trains no
+ * skill, it is the pack and this ground and the walk between them - so it
+ * belongs with the take buttons that act on the same heap, not in a list
+ * organised by what work produces.
+ */
+function haulHtml(state: GameState, world: World, cal: Calendar): string {
+  const o = check(state, world, cal, "haul");
+  if (!o.ok) return o.why ? `<div style="margin-top:4px"><span class="dim">${esc(plain(o.why))}</span></div>` : "";
+  return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}, ${fmtDuration(o.duration)}</small></button></div>`;
+}
+
+export function inventoryHtml(state: GameState, world: World, cal: Calendar): string {
   const p = state.player;
   const kg = weight(p.pack);
   const d = body(state);
@@ -560,7 +567,7 @@ export function inventoryHtml(state: GameState, world: World): string {
 ${invRows(listItems(p.pack), "drop")}
 ${listItems(p.pack).length ? `<div style="margin-top:4px"><button class="mini" data-act="drop-all">drop everything here</button></div>` : ""}
 <h2 style="margin-top:10px">On the ground here, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
-${invRows(listItems(here), "take")}`;
+${invRows(listItems(here), "take")}${haulHtml(state, world, cal)}`;
 }
 
 export function fmtLogTime(e: LogEntry): string {
@@ -601,6 +608,7 @@ export function tombstoneHtml(state: GameState, _world: World, _ui: UiState): st
 ${ancestorLine(state)}
 <div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec))}</div>
 ${entryLinesHtml(lines.slice(1))}
+<p class="dim">The next survivor carries ${esc(shareWord(CARRY_SHARE))} of what ${esc(rec.name.first)} knew, and none of the practice at any one thing.</p>
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>
 <button class="mini" data-act="cemetery">cemetery</button>
@@ -641,7 +649,10 @@ export function cemeteryHtml(state: GameState, ui: UiState): string {
   const dead = [...state.survivors].filter((s) => s.died !== null).reverse();
   const rows = dead.map((s) => {
     const open = ui.cemeteryOpen === s.index;
-    const lines = open ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s))}</div>${entryLinesHtml(entry(s).slice(1))}` : "";
+    // Closed, a grave tells the three things worth telling; open, the entry says all of them and the stories would be it twice.
+    const lines = open
+      ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s))}</div>${entryLinesHtml(entry(s).slice(1))}`
+      : stories(s).map((t) => `<div class="s">${esc(t)}</div>`).join("");
     return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
   });
   const leave = ui.confirmLeave

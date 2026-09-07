@@ -28,12 +28,26 @@ html, body {
   line-height: 1.4;
 }
 
+/* The page is a column: the board takes what is left of the viewport and its
+   own columns scroll inside it, the footer holds one line at the foot. */
+body { display: flex; flex-direction: column; height: 100vh; }
+
 #app {
   display: grid;
   grid-template-columns: 300px minmax(560px, 1fr) 420px;
   gap: 10px;
   padding: 10px;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
+}
+
+/* What was built, for telling one deploy from the next. */
+.build {
+  flex: none;
+  padding: 0 12px 6px;
+  color: var(--dim);
+  font-size: 11px;
+  text-align: right;
 }
 
 /* Each column is the viewport's height and scrolls inside itself, so a
@@ -103,6 +117,8 @@ small, .dim { color: var(--dim); }
 .bar.hurry .fill { background: var(--accent); transition: none; }
 #task .order .head.hurry { cursor: pointer; }
 #task .order .head.hurry:hover b { color: var(--accent); }
+#task .order .head .hint { color: var(--dim); white-space: nowrap; }
+#task .order .head.hurry:hover .hint { color: var(--accent); }
 .clockrow .hurrying { color: var(--accent); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
@@ -250,7 +266,12 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 @keyframes snowfall { to { background-position: 10px 28px, 22px 64px; } }
 .grid .c {
   display: block;
-  width: 11px; height: 14px;
+  /* The zoom level's box, not the default rung's: mapHtml writes --px and
+     --line onto the grid, and a cell that keeps its own constants paints an
+     11 by 14 square inside a 22 by 28 track at the closest rungs - black
+     gutters between the ground, glyphs spilling out of their boxes, and
+     region borders drawn away from the letters they enclose. */
+  width: var(--px); height: var(--line);
   text-align: center;
   border: 1px solid transparent;
   cursor: pointer;
@@ -290,6 +311,11 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-camp { color: #0c0f14; background: #6fcf6f; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
 .grid .c.mk-seep { color: #0c0f14; background: #6fa8dc; }
+/* The named places share one colour: they are ground the player found, not
+   anything built, so they take a tinted cell rather than the solid fill the
+   built marks use. Every spot sits within a few cells of camp, and four solid
+   tiles there drown out the @ they are clustered around. */
+.grid .c.mk-spot { color: #e0c07a; background: #2c2413; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -299,6 +325,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
+#map .legend b.mk-spot { color: #c8a35a; }
 
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
 @keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }
@@ -348,6 +375,8 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   font: inherit; font-size: 13px;
   margin: 0 0 2px; padding: 0; cursor: pointer;
 }
+/* A search heading is a label, not a fold: same look, nothing to click. */
+div.fold { cursor: default; }
 input[data-do="filter"] {
   width: 100%; background: #181e27; color: var(--text);
   border: 1px solid var(--line); padding: 4px 6px;
@@ -436,7 +465,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 #overlay h1 { margin: 0 0 8px; font-size: 20px; }
 #overlay .box button.act { width: auto; display: inline-block; margin-top: 12px; }
-.grave { margin: 4px 0; }
+/* A grave is a name, a death and what the life is remembered for, so its lines all start at one edge. */
+.grave { margin: 12px 0; }
+.grave > .mini { display: block; width: 100%; text-align: left; }
 .season { margin-bottom: 6px; }
 #overlay .box input[data-name] { width: 14em; }
 
@@ -445,6 +476,29 @@ button.act small, span.act small { display: block; color: var(--dim); }
 #overlay .box.manual { max-width: 640px; }
 #overlay .box.manual h2 { font-size: 1em; margin: 12px 0 4px; }
 #overlay .box.manual p { margin: 2px 0; }
+
+/* A moment: narrower than the manual, since it says one thing. */
+#overlay .box.teach { max-width: 460px; }
+#overlay .box.teach p { margin: 6px 0; }
+/* The divider between the one order the player keeps and the five they hand
+   over. It is a flex item in the run of kind buttons, so it separates them
+   where it stands rather than taking a line of its own. */
+.expand .handoff { color: var(--dim); }
+
+/* What a producer makes without you. The promise has to carry on a row that
+   cannot be built yet too - that is the row it matters most on - so it is
+   written against the greying .opt.off rules the way small.warn is. */
+button.act small.gives, span.act small.gives,
+.opt.off button.act small.gives, .opt.off span.act small.gives { color: var(--good); }
+
+#overlay .box.teach.welcome { max-width: 520px; }
+#overlay .box.teach .statuses { margin: 10px 0; }
+#overlay .box.teach .example {
+  font-weight: 600;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  margin: 4px 0 0;
+}
 .cards { display: flex; gap: 12px; margin: 10px 0; align-items: stretch; }
 .card {
   flex: 1 1 0; min-width: 0; text-align: left;
@@ -466,6 +520,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .card .q { color: var(--dim); }
 .card .q b { display: inline; margin: 0; color: var(--text); font-weight: 600; }
 .card .kv dd { color: var(--text); }
+/* A closed grave: the three things worth telling, under the name and the death. */
+.grave .s { color: var(--dim); padding: 1px 0 1px 1.2em; text-indent: -1.2em; margin-left: 8px; }
 .card .face, .stat-face { display: inline-block; vertical-align: middle; margin-right: 6px; }
 .cardhead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .cardhead b { margin: 0; }
@@ -494,7 +550,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
    and the map come first, then the rest in reading order. The settings panel
    is fixed and outside #app, so it has no place in this order. */
 @media (max-width: 700px) {
-  #app { grid-template-columns: 1fr; height: auto; }
+  /* One column, and the page scrolls as a whole: the board grows past the
+     viewport instead of each column scrolling inside it, and the footer
+     follows the last panel. */
+  body { height: auto; min-height: 100vh; }
+  #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
   #task { order: 1; }
   #forecast { order: 2; }
@@ -510,3 +570,13 @@ button.act small, span.act small { display: block; color: var(--dim); }
   #journal { order: 12; }
   #clock { order: 13; }
 }
+
+/* Height as tone. The step is
+   on the letter alone - a filter on the cell drags its background with it and
+   the map fills with bright and dark rectangles instead of trees. */
+.grid .c.t-spruce.tone-0 { color: #16642a; }
+.grid .c.t-spruce.tone-2 { color: #35c455; }
+.grid .c.t-pine.tone-0 { color: #2d8640; }
+.grid .c.t-pine.tone-2 { color: #6ee089; }
+.grid .c.t-birch.tone-0 { color: #6da548; }
+.grid .c.t-birch.tone-2 { color: #c2f593; }

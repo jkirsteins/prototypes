@@ -104,8 +104,6 @@ describe("explore", () => {
     expect(NOT_ORDERS).toContain("explore");
     const { state, world } = newGame(4);
     const ui = newUiState();
-    ui.tab = "move";
-    ui.advanced = true;
     const html = doHtml(state, world, calendar(state.minute), ui);
     expect(html).not.toContain('data-id="explore"');
   });

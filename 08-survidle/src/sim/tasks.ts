@@ -1,5 +1,5 @@
 import { Rng } from "../rng";
-import { CELL_KM } from "../units";
+import { CELL_KM, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { passable, routeKm, routeMinutes } from "../world/route";
@@ -66,8 +66,18 @@ export interface TaskOption {
   /** Why it cannot start, when it cannot. */
   why: string;
   repeatable: boolean;
+  /**
+   * Work this ground will never offer, however long you wait: there is no
+   * outcrop in this region, no shore, no forest. Told apart from the reasons
+   * that pass - a storm, a missing tool, a season - because a row that can
+   * never run here is not one to queue: it would sit at the head of the list
+   * stopping every order under it until it was struck off by hand.
+   */
+  never?: boolean;
   /** Share already done and waiting to be resumed, when there is one. */
   resume?: number;
+  /** The cell the work resolved to, when an intent chose one; absent means wherever the player stands. */
+  cell?: number;
   /** Mastery of this action, the share of the way to the next level, and the skill and key it is kept under. */
   mastery?: { level: number; share: number; skill: SkillId; key: string };
   /** The recommended level, whether you are under it, and by how many levels. */
@@ -425,7 +435,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
   /** Ground the task needs under foot, with the spot to walk to when it is not. */
   const ground = (ok: boolean, spot: SpotId, what: string, o: TaskOption): TaskOption => {
     if (ok) return o;
-    if (!hasSpot(r, spot)) return { ...o, ok: false, why: `no ${what} in ${r.name}` };
+    if (!hasSpot(r, spot)) return { ...o, ok: false, never: true, why: `no ${what} in ${r.name}` };
     return { ...o, ok: false, why: `stand ${what === "water" ? "by" : "in"} the ${what}; walk to ${SPOT_WORDS[spot]}` };
   };
   const needCamp = (o: TaskOption): TaskOption => (camp ? o : { ...o, ok: false, why: "walk to camp" });
@@ -1019,16 +1029,31 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
 /** Adds what practice says about an option: its mastery, and the level it is meant for. */
 export function withProgression(state: GameState, world: World, o: TaskOption): TaskOption {
   const skill = skillOf(o.id, o.arg);
-  const key = skill ? masteryKey(state, world, o.id, o.arg) : null;
+  const key = skill ? masteryKey(state, world, o.id, o.arg, o.cell) : null;
   if (!skill || !key) return o;
   const out: TaskOption = { ...o, mastery: { ...masteryProgress(state, skill, key), skill, key } };
   const rec = RECOMMENDED[key];
   if (!rec) return out;
   const g = gap(state, key);
-  out.recommended = { text: `${SKILL_NAMES[rec.skill]} ${rec.level}`, under: g > 0, short: g };
+  // Under the level the row names where you stand as well as what it wants: a
+  // bare "Hunting 6" never said whether that was a wall or a suggestion.
+  // Templated like the ladder's own gate line, and rendered through plain() by
+  // the panel: away, an option's text is read out about somebody by name.
+  out.recommended = {
+    text: g > 0 ? `${SKILL_NAMES[rec.skill]} ${rec.level}, {you} {are} ${skillLevel(state, rec.skill)}` : `${SKILL_NAMES[rec.skill]} ${rec.level}`,
+    under: g > 0,
+    short: g,
+  };
   const parts: string[] = [];
   if (g > 0 && o.id === "craft") parts.push(`${Math.round(craftSuccess(state, o.arg as RecipeId) * 100)}% chance it comes out`);
   if (g > 0 && o.id === "build") parts.push(`at ${SKILL_NAMES.building} ${skillLevel(state, "building")} this takes ${(1.3 ** g).toFixed(1)}x as long`);
+  // The gap halves the odds per level and turns big game on you, and nothing on
+  // a hunt or a cast said so: a craft row has named its cost all along.
+  if (g > 0 && (o.id === "hunt" || o.id === "fish") && o.arg && o.arg !== "any") {
+    parts.push(`${shareWord(0.5 ** g)} the odds`);
+    const hurt = o.id === "hunt" ? Math.round(injuryChance(state, o.arg as Species) * 100) : 0;
+    if (hurt > 0) parts.push(`${hurt}% chance it turns on {you}`);
+  }
   if (parts.length) out.detail = out.detail ? `${out.detail}; ${parts.join("; ")}` : parts.join("; ");
   return out;
 }
