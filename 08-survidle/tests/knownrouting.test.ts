@@ -46,9 +46,9 @@ describe("the survivor routes on knowledge", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
     const r = regionAt(world, home);
-    // A fresh game has mapped nothing yet, so every other spot is unseen.
-    const unseen = r.spots.filter((s) => s.id !== "camp");
-    expect(unseen.every((s) => !isKnown(state, s.cell))).toBe(true);
+    // The first look from camp does not reach the whole region, so some
+    // spot is ground the survivor has never seen.
+    expect(r.spots.some((s) => !isKnown(state, s.cell))).toBe(true);
     // Siting scores a cell the survivor has never seen, unchanged: it
     // reads the true grid, so every spot still gets a real minutes figure.
     const report = siteReport(state, world, r.campCell);

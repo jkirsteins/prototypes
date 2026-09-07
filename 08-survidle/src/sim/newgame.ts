@@ -10,6 +10,7 @@ import { newRecord } from "./record";
 import { rollName } from "./names";
 import { derived, medianPerson, personOf, rollCandidates } from "./person";
 import { enterRegion } from "./regionstate";
+import { seeFrom } from "./sight";
 import { newSkills } from "./skills";
 import type { GameState, LifeRecord, Person } from "./types";
 import { seasonalMean } from "./weather";
@@ -70,6 +71,9 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
   state.intent = null;
   state.ledger = [];
   creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
+  // A person coming into being looks around: the ground underfoot and
+  // whatever the eye reaches from it is the whole of what they know.
+  seeFrom(state, world, calendar(state.minute, state.startDoy), cell);
 }
 
 /** The first survivor's record for the direct path: a name for the sex the seed rolls, and the median person unless one is given. */
