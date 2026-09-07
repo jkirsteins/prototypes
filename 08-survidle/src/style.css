@@ -311,7 +311,20 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.cur.bt { border-top-color: var(--accent); }
 .grid .c.cur.bb { border-bottom-color: var(--accent); }
 .grid .c.sel { box-shadow: inset 0 0 0 20px rgba(230, 194, 41, 0.18); }
-.grid .c.mk { font-weight: bold; position: relative; z-index: 1; }
+/*
+ * What stays legible once the night sheet is down: where you are, where camp
+ * is, and the line of your walk. Those are the three things you would know in
+ * the dark without looking, so they carry a z-index and the sheet passes under
+ * them. A shelter, a trap and a seep are marks on ground you cannot see from
+ * here at midnight, so they take the dark with everything else.
+ *
+ * The fire is the exception, and not an arbitrary one: it is the light. The
+ * close rungs already put its cell above the sheet (.grid.night .c.lit-0
+ * below), and burying its marker at the coarse rungs would have one fire lit
+ * and the same fire dark depending only on how far the map is zoomed out.
+ */
+.grid .c.mk { font-weight: bold; position: relative; }
+.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire { z-index: 1; }
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
 .grid .c.mk-shelter { color: #fff; background: #4a5a78; }
@@ -321,11 +334,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid .c.mk-camp { color: #0c0f14; background: #6fcf6f; }
 .grid .c.mk-trap { color: #fff; background: #4a5a78; }
 .grid .c.mk-seep { color: #0c0f14; background: #6fa8dc; }
-/* The named places share one colour: they are ground the player found, not
-   anything built, so they take a tinted cell rather than the solid fill the
-   built marks use. Every spot sits within a few cells of camp, and four solid
-   tiles there drown out the @ they are clustered around. */
-.grid .c.mk-spot { color: #e0c07a; background: #2c2413; }
 
 /* The legend has no cell background to draw a marker against, so its letters take the
    background colour each mark uses on the map instead. */
@@ -335,7 +343,6 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
 #map .legend b.mk-seep { color: #6fa8dc; }
-#map .legend b.mk-spot { color: #c8a35a; }
 
 /*
  * The survivor moves. What the person is doing is filed under one of five

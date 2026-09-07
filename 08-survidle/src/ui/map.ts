@@ -12,8 +12,8 @@ import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
-import { discovery, VISITED } from "../sim/regionstate";
-import type { GameState, SpotId, Terrain } from "../sim/types";
+import { discovery } from "../sim/regionstate";
+import type { GameState, Terrain } from "../sim/types";
 import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -36,6 +36,14 @@ const TERRAIN_NAME: Record<Terrain, string> = {
  * and what the legend calls it. mapHtml's marker placement reads this same
  * table, so a mark added here cannot go undocumented in the legend, and a
  * legend entry can never point at a mark the map does not actually place.
+ *
+ * Every one of them is something that is there because the survivor built it
+ * or found it. The named places - forest, outcrop, shore, heath - were marked
+ * here once and are not any more: a mark on them is not clickable, the HERE
+ * panel already lists every place in the region with its distance and a walk
+ * button, and an order resolves its own cell and walks there without the
+ * player ever locating it. Marking ground the world always had put four
+ * tinted tiles around the camp for no act they enabled.
  */
 export const MARKS = {
   you: { glyph: "@", cls: "mk-player", label: "you" },
@@ -44,23 +52,7 @@ export const MARKS = {
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
   seep: { glyph: "s", cls: "mk-seep", label: "seep" },
-  forest: { glyph: "%", cls: "mk-spot", label: "forest" },
-  outcrop: { glyph: "o", cls: "mk-spot", label: "outcrop" },
-  shore: { glyph: "w", cls: "mk-spot", label: "shore" },
-  heath: { glyph: ";", cls: "mk-spot", label: "heath" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
-
-/**
- * The places the HERE panel offers to walk to, as marks. Camp is not among them:
- * it already has its own mark, and a camp is drawn wherever one stands rather
- * than only at the region's own site.
- */
-export const SPOT_MARKS: Partial<Record<SpotId, (typeof MARKS)[keyof typeof MARKS]>> = {
-  forest: MARKS.forest,
-  outcrop: MARKS.outcrop,
-  shore: MARKS.shore,
-  heath: MARKS.heath,
-};
 
 /**
  * The map's key: every terrain letter from the glyph table, then ice, then
@@ -341,20 +333,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   for (const k of Object.keys(state.seeps)) {
     const g = toGlyph(Number(k));
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.seep);
-  }
-  // The named places, and only closer than the map opens at: the two close rungs
-  // showed the same ground at a larger size and nothing else, so this is what
-  // zooming in buys. A place is known once its region has been walked in.
-  if (z === 1 && ui.zoom < DEFAULT_ZOOM) {
-    for (const [id, r] of world.regions) {
-      if (discovery(state, id) !== VISITED) continue;
-      for (const sp of r.spots) {
-        const mark = SPOT_MARKS[sp.id];
-        if (!mark) continue;
-        const g = toGlyph(sp.cell);
-        if (g >= 0 && !markerAt.has(g)) markerAt.set(g, mark);
-      }
-    }
   }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, MARKS.you);
