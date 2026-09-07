@@ -161,7 +161,9 @@ describe("roots and rhizomes", () => {
     placeAtSpot(state, world, region, "shore");
     const shoreCell = cellOf(state, world);
     addItem(state.player.pack, "stick", 1);
-    const winter = calendar(0, 350);
+    // Midday: a December dig at 08:00 is done in the dark, which is now a
+    // question of hours rather than of legality and is not what this asserts.
+    const winter = calendar(300, 350);
     expect(check(state, world, winter, "roots")).toMatchObject({ ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" });
     st.iceHole = { cell: shoreCell, minute: state.minute };
     const o = check(state, world, winter, "roots");

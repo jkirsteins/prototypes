@@ -19,6 +19,7 @@ import {
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditEaten, creditYield } from "./ledger";
+import { attemptOdds, illuminance, lightFactor, lightWord, NIGHT_WORK, SPOT_LUX } from "./light";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
@@ -365,11 +366,24 @@ function feared(state: GameState, world: World, id: TaskId, arg: string | undefi
 }
 
 export function check(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
-  const o = checkFresh(state, world, cal, id, arg, at);
+  const o = darkNote(state, world, cal, id, at, checkFresh(state, world, cal, id, arg, at));
   const fraction = pausedFraction(state, world, id, arg, at);
   if (fraction > 0 && o.ok) return { ...o, resume: fraction, duration: o.duration * (1 - fraction) };
   if (fraction > 0) return { ...o, resume: fraction };
   return o;
+}
+
+/**
+ * What the dark is costing this work, on the row that offers it. The work is
+ * never refused for want of light, so this is a price rather than a reason:
+ * the odds an attempt comes off, and the word for the light they come from.
+ */
+function darkNote(state: GameState, world: World, cal: Calendar, id: TaskId, at: number, o: TaskOption): TaskOption {
+  if (!o.ok || !NIGHT_WORK[id]) return o;
+  const lux = illuminance(state, world, cal, at);
+  const odds = lightFactor(lux, NIGHT_WORK[id].needLux, NIGHT_WORK[id].darkOdds);
+  if (odds > 0.995) return o;
+  return { ...o, detail: `${o.detail}${o.detail ? "; " : ""}${lightWord(lux)}, ${oddsText(odds)}` };
 }
 
 export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
@@ -899,7 +913,11 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   const def = SPECIES_DEFS[species].hunt!;
   let odds = density * def.odds * oddsFactor(state, species);
   if (state.weather.snowCm > DEEP_SNOW_CM) odds *= 0.75;
-  if (cal.isNight) odds *= def.night ?? 0.7;
+  // What a hunter can see, by the light there is rather than by the clock:
+  // the species' own night figure is what the pitch dark leaves them, and
+  // dusk and a full moon fall where they fall between that and daylight.
+  const lux = illuminance(state, world, cal, cellOf(state, world));
+  odds *= lightFactor(lux, SPOT_LUX, def.night ?? 0.7);
   if (state.weather.precip !== "none") odds *= 0.85;
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
@@ -907,8 +925,9 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
-  // Sharp eyes find game by day; the night is the same dark for everyone.
-  if (!cal.isNight) odds *= body(state).dayOdds;
+  // Sharp eyes are worth what there is to see by; the pitch dark is the same
+  // dark for everyone, and a bright day is where the whole of the quirk lands.
+  odds *= 1 + (body(state).dayOdds - 1) * lightFactor(lux, SPOT_LUX, 0);
   return Math.min(0.95, odds);
 }
 
@@ -1170,6 +1189,23 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.progress < t.duration) return;
+  // The dark refuses nothing; it wastes the attempt. Work that needs light
+  // to be sure of itself rolls when it would finish, and a failure puts the
+  // attempt back to the start rather than ending the work: the yield when it
+  // does come off is the daylight yield, and the whole cost is the hours.
+  // The minutes are already in the skill, because groping about in the dark
+  // is still practice.
+  // Full odds draw nothing: work in the light, and work the dark does not
+  // touch, must leave the seeded stream exactly where it found it.
+  const odds = attemptOdds(state, world, cal, t.id);
+  if (odds < 1 && !rng.chance(odds)) {
+    t.progress = 0;
+    if (!t.darkSaid) {
+      t.darkSaid = true;
+      log(state, `${check(state, world, cal, t.id, t.arg).label}: too dark to be sure of anything. {You} {go} by feel.`);
+    }
+    return;
+  }
 
   const id = t.id;
   const arg = t.arg;

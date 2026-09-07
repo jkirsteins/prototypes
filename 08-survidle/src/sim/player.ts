@@ -7,6 +7,7 @@ import { fireWarmth, fireWarms, SMOKE_COUGH, SMOKE_DEADLY, SMOKE_DRAIN_PER_HOUR 
 import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
+import { lightFactor, skyLux, TORCH_LUX, WALK_LUX } from "./light";
 import { log } from "./log";
 import { BIG_EATER_BURN, body, hasQuirk } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
@@ -186,7 +187,10 @@ export function workSpeed(state: GameState, world: World): number {
 export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather, loadKg = carried(state.player)): number {
   let v = 3.0;
   if (weather.snowCm > DEEP_SNOW_CM) v *= 0.5;
-  if (cal.isNight && !state.player.torch.lit) v *= NIGHT_WALK_FACTOR;
+  // The dark slows the feet by the light there is, not by the clock: the
+  // handbook's reading is what a pitch-dark night costs, and a moonlit
+  // snowfield or a torch in hand buys most of the pace back.
+  v *= lightFactor(skyLux(cal, weather.clear, weather.snowCm) + (state.player.torch.lit ? TORCH_LUX : 0), WALK_LUX, NIGHT_WALK_FACTOR);
   const d = body(state);
   if (loadKg > d.packHardKg) v *= 0.6;
   else if (loadKg > d.packComfortableKg) v *= 0.8;
@@ -236,7 +240,7 @@ export const LOAD_KCAL_PER_HOUR = { comfortable: 150, hard: 300 } as const;
 export function coldBurnFactor(felt: number): number {
   return Math.min(2, 1 + 0.02 * Math.max(0, -felt));
 }
-/** Walking in the dark with no torch: the Swedish handbook's 1 km/h in terrain against 3 by day. */
+/** Walking in the pitch dark with no torch: the Swedish handbook's 1 km/h in terrain against 3 by day. */
 export const NIGHT_WALK_FACTOR = 1 / 3;
 /** Burn while sick, as a multiple of the burn before it. */
 export const SICK_BURN_FACTOR = 1.2;

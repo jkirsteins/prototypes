@@ -155,7 +155,7 @@ function render() {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
-  setPanel("clock", clockHtml(state, cal, ambient, ui.hurry.rate));
+  setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;

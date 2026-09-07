@@ -8,8 +8,9 @@ import type { Calendar } from "../sim/calendar";
 import { fuelTotal } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
+import { visitedCamps } from "../sim/light";
 import { DIM, discovery, SEEN, VISITED } from "../sim/regionstate";
-import type { GameState, RegionState, Terrain } from "../sim/types";
+import type { GameState, Terrain } from "../sim/types";
 import { iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -125,17 +126,6 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
     }
   }
   return { terrain: best, region: regionPeek(world, x0 + (z >> 1), y0 + (z >> 1)), seen };
-}
-
-/** Every visited region's camp, so a fire cannot glow on the map without its marker or the reverse. */
-function visitedCamps(state: GameState): { id: number; st: RegionState; cell: number }[] {
-  const out: { id: number; st: RegionState; cell: number }[] = [];
-  for (const [idText, st] of Object.entries(state.regions)) {
-    const id = Number(idText);
-    if (discovery(state, id) !== VISITED) continue;
-    out.push({ id, st, cell: st.campCell });
-  }
-  return out;
 }
 
 export interface LightSource { cell: number; reach: number }

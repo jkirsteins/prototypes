@@ -8,7 +8,7 @@ import type { Rng } from "../rng";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
-import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit } from "./body";
+import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
@@ -24,7 +24,7 @@ import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
-import { check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
+import { beginTask, check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, Where,
 } from "./types";
@@ -691,6 +691,17 @@ function serveBody(state: GameState, world: World, cal: Calendar, rng: Rng, it: 
 export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (!state.intent || state.dead) return;
   const it = state.intent;
+  // Work chosen by hand has no body tier, so nothing thirsty, cold or dark
+  // interrupts it. The body giving out is the one exception and the only
+  // one: at the collapse line the order ends where it stands and the
+  // survivor sleeps there, the same sleep a runner too far from camp gets.
+  if (it.mode === "hand" && state.player.energy <= SLEEP_AT) {
+    state.player.sleeping = { collapsed: true };
+    setAside(state, world);
+    endIntent(state, `${labelOf(state, world, cal, it)}: {you} {are} done in. {You} {sleep} where {you} {stand}.`, "bad");
+    beginTask(state, world, cal, "sleep");
+    return;
+  }
   if (it.mode === "runner" && serveBody(state, world, cal, rng, it)) return;
   for (let guard = 0; guard < 8 && state.intent && !state.task; guard++) {
     if (workStep(state, world, cal, rng) !== "again") return;

@@ -76,12 +76,16 @@ describe("player physiology", () => {
   it("walks slower in deep snow, at night and under a heavy pack", () => {
     const { state } = newGame(1);
     const day = calendar(4 * 60);
-    const night = calendar(16 * 60);
+    // A December midnight, overcast and moonless: the pitch dark the handbook's night reading is of.
+    const night = { ...calendar(16 * 60, 334), moon: 0, moonLight: 0 };
     const clear = { ...state.weather, snowCm: 0 };
+    const dark = { ...clear, clear: false };
     expect(walkSpeed(state, day, clear, "pine", 5)).toBeCloseTo(3.0);
     expect(walkSpeed(state, day, { ...clear, snowCm: 40 }, "pine", 5)).toBeCloseTo(1.5);
     // The Swedish handbook's 1 km/h in terrain against 3 by day, NIGHT_WALK_FACTOR.
-    expect(walkSpeed(state, night, clear, "pine", 5)).toBeCloseTo(1.0);
+    expect(walkSpeed(state, night, dark, "pine", 5)).toBeCloseTo(1.0);
+    // A clear night with a full moon up is not that night, and is not walked at that pace.
+    expect(walkSpeed(state, { ...night, moon: 0.5, moonLight: 1 }, clear, "pine", 5)).toBeGreaterThan(1.5);
     expect(walkSpeed(state, day, clear, "pine", 30)).toBeCloseTo(2.4);
     expect(walkSpeed(state, day, clear, "bog", 5)).toBeCloseTo(2.1);
     expect(walkSpeed(state, day, clear, "fell", 5)).toBeCloseTo(1.5);
@@ -105,13 +109,19 @@ describe("the body's rates read the handbooks", () => {
 
   it("the dark without a torch is a third of day speed", () => {
     const { state } = newGame(17);
-    const night = calendar(14 * 60);
+    // A December midnight, overcast and moonless: an April night at 62 N is
+    // twilight for most of its length, and the handbook's figure is what a
+    // night with no light at all in it costs.
+    const december = 334;
+    const night = { ...calendar(16 * 60, december), moon: 0, moonLight: 0 };
     expect(night.isNight).toBe(true);
-    const day = calendar(4 * 60);
+    const day = calendar(5 * 60, december);
     expect(day.isNight).toBe(false);
+    const dark = { ...state.weather, clear: false, snowCm: 0 };
     expect(NIGHT_WALK_FACTOR).toBeCloseTo(1 / 3, 6);
-    expect(baseWalkSpeed(state, night, state.weather) / baseWalkSpeed(state, day, state.weather)).toBeCloseTo(1 / 3, 6);
+    expect(baseWalkSpeed(state, night, dark) / baseWalkSpeed(state, day, dark)).toBeCloseTo(1 / 3, 6);
     state.player.torch = { lit: true, minutes: 30 };
-    expect(baseWalkSpeed(state, night, state.weather)).toBeCloseTo(baseWalkSpeed(state, day, state.weather), 6);
+    // Ten lux at arm's length against the twenty a pace wants: nearly all of the day's speed back.
+    expect(baseWalkSpeed(state, night, dark) / baseWalkSpeed(state, day, dark)).toBeGreaterThan(0.95);
   });
 });

@@ -77,7 +77,7 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     stats: statsHtml(state, world, cal, ambient, ui),
     gear: gearHtml(state, feltTemperature(state, world, ambient)),
     skills: skillsHtml(state),
-    clock: clockHtml(state, cal, ambient, 1),
+    clock: clockHtml(state, world, cal, ambient, 1),
     region: regionHtml(state, world, cal, ui),
     task: taskHtml(state, world, cal),
     forecast: forecastHtml(emptyView(), state),

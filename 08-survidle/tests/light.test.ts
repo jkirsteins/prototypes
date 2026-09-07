@@ -1,149 +1,127 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import { css, rule } from "./css";
-import { calendar } from "../src/sim/calendar";
+import { describe, expect, it } from "vitest";
+import { calendar, LATITUDE_DEG } from "../src/sim/calendar";
+import { CAMP_FIRE_LUX, DARK_LUX, illuminance, lightWord, moonAltitude, skyLux, sunAltitude, TORCH_LUX, lightFactor } from "../src/sim/light";
 import { newGame } from "../src/sim/newgame";
-import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import { GLYPH, mapHtml, mapKey } from "../src/ui/map";
-import { newUiState, setPanel, resetPanels } from "../src/ui/render";
-import { updateSky } from "../src/ui/sky";
+import { placeAt } from "../src/sim/position";
 
-describe("terrain colour", () => {
-  const backgrounds: Record<string, string> = {
-    water: "#0a1633", spruce: "#0b1f11", pine: "#0e2415", birch: "#1a2a12",
-    meadow: "#171f0f", bog: "#0b221f", rock: "#1a1c20", fell: "#22252b",
-  };
+/** Day of year for a date in a 365-day year, 0-based, the way the calendar counts. */
+const DOY = { equinox: 79, june: 171, december: 354 };
+/** The minute of a run started on `doy` at which the clock reads `hour`; the run opens at 08:00. */
+function at(hour: number): number {
+  return Math.round((hour - 8) * 60);
+}
 
-  it("every terrain glyph sits on a dark background of its own hue", () => {
-    for (const t of Object.keys(GLYPH)) {
-      const bg = backgrounds[t];
-      if (bg === undefined) throw new Error(`no expected background for terrain ${t}`);
-      expect(rule(`.grid .c.t-${t}`)).toContain(`background: ${bg}`);
-    }
+describe("the sun", () => {
+  it("stands where the latitude says at noon: 51 degrees in June, under 5 in December", () => {
+    // 90 - 62 +/- 23.44, the solstice altitudes at 62 N.
+    expect(sunAltitude(at(13), DOY.june)).toBeCloseTo(90 - LATITUDE_DEG + 23.44, 1);
+    expect(sunAltitude(at(13), DOY.december)).toBeCloseTo(90 - LATITUDE_DEG - 23.44, 1);
   });
 
-  it("the region highlights are overlays, not backgrounds", () => {
-    for (const sel of [".grid .c.cur", ".grid .c.sel"]) {
-      const body = rule(sel);
-      expect(body).toContain("box-shadow: inset 0 0 0 20px");
-      expect(body).toContain("outline-offset: -1px");
-      expect(body).not.toContain("background");
-    }
+  it("is level with the horizon at the equinox's seven o'clock and highest at one", () => {
+    expect(sunAltitude(at(7), DOY.equinox)).toBeCloseTo(0, 0);
+    expect(sunAltitude(at(13), DOY.equinox)).toBeGreaterThan(sunAltitude(at(10), DOY.equinox));
   });
 });
 
-describe("night shade", () => {
-  beforeEach(() => {
-    document.body.innerHTML = `<div id="map"></div>`;
-    resetPanels();
+describe("the sky's light", () => {
+  it("is a hundred times brighter at a June noon than a December one, both clear", () => {
+    const june = skyLux(calendar(at(13), DOY.june), true, 0);
+    const december = skyLux(calendar(at(13), DOY.december), true, 0);
+    expect(june).toBeGreaterThan(50_000);
+    expect(december).toBeLessThan(10_000);
+    expect(december).toBeGreaterThan(1_000);
   });
 
-  it("the grid darkens through a shade layer, not a brightness filter", () => {
-    expect(rule(".grid")).not.toContain("brightness(");
-    expect(rule(".grid")).toContain("saturate(var(--sat))");
-    expect(rule(".grid .shade")).toContain("opacity: calc(1 - var(--bright))");
+  it("falls through the twilights to the starlight floor", () => {
+    // Moonless, so the reading is the sun's alone.
+    const lux = (h: number) => skyLux({ ...calendar(at(h), DOY.equinox), moon: 0, moonLight: 0 }, true, 0);
+    // Sunset is at 19:00 at the equinox; the sun is 6 degrees under by about 19:35 and 12 by 20:10.
+    expect(lux(19)).toBeGreaterThan(100);
+    expect(lux(19)).toBeLessThan(1_000);
+    expect(lux(20)).toBeLessThan(lux(19.5));
+    expect(lux(23)).toBeLessThan(0.01);
+    expect(lux(23)).toBeGreaterThan(0);
   });
 
-  it("the map carries one shade element and the sky still sets its brightness", () => {
-    const { state, world } = newGame(21);
-    const night = calendar(16 * 60);
-    setPanel("map", mapHtml(world, state, newUiState(), night));
-    expect(document.querySelectorAll("#map .grid .shade").length).toBe(1);
-    updateSky(state, night, -5);
-    expect(document.querySelector<HTMLElement>("#map .grid")!.style.getPropertyValue("--bright")).toBe("0.550");
+  it("carries a full moon high through a December night and leaves a new moon down", () => {
+    // The moon opposite a low winter sun rides high; the new moon keeps the sun's own hours.
+    const midnight = at(24 + 1);
+    expect(moonAltitude(calendar(midnight, DOY.december), 0.5)).toBeGreaterThan(30);
+    expect(moonAltitude(calendar(midnight, DOY.december), 0)).toBeLessThan(0);
+  });
+
+  it("is brighter under a full moon than under none, and overcast kills the difference", () => {
+    const night = calendar(at(24 + 1), DOY.december);
+    const full = { ...night, moon: 0.5, moonLight: 1 };
+    const none = { ...night, moon: 0, moonLight: 0 };
+    expect(skyLux(full, true, 0)).toBeGreaterThan(10 * skyLux(none, true, 0));
+    expect(skyLux(full, false, 0)).toBeLessThan(skyLux(full, true, 0) / 10);
+  });
+
+  it("is raised by snow on the ground, by half again", () => {
+    const night = { ...calendar(at(24 + 1), DOY.december), moon: 0.5, moonLight: 1 };
+    // Fresh snow's 0.8 albedo against the forest floor's 0.15: (1 + 0.8) / (1 + 0.15).
+    expect(skyLux(night, true, 20)).toBeCloseTo(skyLux(night, true, 0) * (1.8 / 1.15), 5);
+    expect(skyLux(night, true, 20) / skyLux(night, true, 0)).toBeCloseTo(1.57, 2);
+  });
+
+  it("never falls under the overcast starless floor", () => {
+    const night = { ...calendar(at(24 + 1), DOY.december), moon: 0, moonLight: 0 };
+    expect(skyLux(night, false, 0)).toBeGreaterThanOrEqual(DARK_LUX);
   });
 });
 
-describe("firelight", () => {
-  beforeEach(() => {
-    document.body.innerHTML = `<div id="map"></div>`;
-    resetPanels();
-  });
-  const night = calendar(16 * 60);
-  const day = calendar(4 * 60);
-  const lit = (cls: string) => document.querySelectorAll(`#map .c.${cls}`).length;
-  const draw = (state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"], cal = night, zoom = 0) =>
-    setPanel("map", mapHtml(world, state, { ...newUiState(), zoom }, cal));
-
-  it("a full fire lights the camp glyph and two rings around it, corners cut", () => {
-    const { state, world } = newGame(21);
+describe("flame", () => {
+  it("lights the camp cell and not the next one over", () => {
+    const { state, world } = newGame(3, DOY.december);
     const st = regionState(state, world, state.player.region);
+    state.minute = at(24 + 1);
+    const cal = calendar(state.minute, state.startDoy);
     st.fire.lit = true;
-    st.fire.fuelKg = 10;
-    draw(state, world);
-    expect(lit("lit-0")).toBe(1);
-    expect(lit("lit-1")).toBe(8);
-    expect(lit("lit-2")).toBe(12);
-    expect(document.querySelector("#map .c.lit-0.mk-player")).not.toBeNull();
-    expect(document.querySelectorAll("#map .c[style*='--fd:-']").length).toBe(21);
+    expect(illuminance(state, world, cal, st.campCell)).toBeGreaterThan(CAMP_FIRE_LUX * 0.9);
+    expect(illuminance(state, world, cal, st.campCell + 1)).toBeLessThan(1);
   });
 
-  it("a low fire lights one ring; a cold fire none; daylight none", () => {
-    const { state, world } = newGame(21);
+  it("goes where the torch goes", () => {
+    const { state, world } = newGame(3, DOY.december);
     const st = regionState(state, world, state.player.region);
-    st.fire.lit = true;
-    st.fire.fuelKg = 2;
-    draw(state, world);
-    expect(lit("lit-0") + lit("lit-1") + lit("lit-2")).toBe(9);
-    draw(state, world, day);
-    expect(lit("lit-0") + lit("lit-1") + lit("lit-2")).toBe(0);
-    expect(document.querySelector("#map .grid.night")).toBeNull();
-    st.fire.lit = false;
-    draw(state, world);
-    expect(lit("lit-0") + lit("lit-1") + lit("lit-2")).toBe(0);
-  });
-
-  it("at three cells per glyph only the source glyph glows", () => {
-    const { state, world } = newGame(21);
-    const st = regionState(state, world, state.player.region);
-    st.fire.lit = true;
-    st.fire.fuelKg = 10;
-    draw(state, world, night, 1);
-    expect(lit("lit-0")).toBe(1);
-    expect(lit("lit-1") + lit("lit-2")).toBe(0);
-  });
-
-  it("your fire glows from the forest too, and the key changes when it burns low", () => {
-    const { state, world } = newGame(21);
-    const st = regionState(state, world, state.player.region);
-    st.fire.lit = true;
-    st.fire.fuelKg = 10;
-    placeAtSpot(state, world, state.player.region, "forest");
-    const k1 = mapKey(state, world, newUiState(), night);
-    draw(state, world);
-    expect(document.querySelector("#map .c.lit-0.mk-fire")).not.toBeNull();
-    st.fire.fuelKg = 2;
-    expect(mapKey(state, world, newUiState(), night)).not.toBe(k1);
-  });
-
-  it("the flicker rules and the delay are what the stylesheet expects", () => {
-    expect(rule(".grid.night .c.lit-0")).toContain("animation: flicker");
-    expect(rule(".grid.night .c.lit-1::after, .grid.night .c.lit-2::after")).toContain("z-index: 2");
-    expect(css).toContain("@keyframes flicker");
-    expect(rule(".grid.night .c.mk-fire")).toContain("animation: flicker");
-  });
-
-  it("a torch in hand lights one ring wherever you stand, and the key knows it", () => {
-    const { state, world } = newGame(21);
-    placeAtSpot(state, world, state.player.region, "forest");
-    const k1 = mapKey(state, world, newUiState(), night);
+    state.minute = at(24 + 1);
+    const cal = calendar(state.minute, state.startDoy);
+    const away = st.campCell + world.w * 3;
+    placeAt(state, world, away);
+    expect(illuminance(state, world, cal, away)).toBeLessThan(1);
     state.player.torch = { lit: true, minutes: 30 };
-    expect(mapKey(state, world, newUiState(), night)).not.toBe(k1);
-    draw(state, world);
-    expect(lit("lit-0")).toBe(1);
-    expect(lit("lit-1")).toBe(8);
-    expect(lit("lit-2")).toBe(0);
-    expect(document.querySelector("#map .c.lit-0.mk-player")).not.toBeNull();
+    expect(illuminance(state, world, cal, away)).toBeGreaterThan(TORCH_LUX * 0.9);
+  });
+});
+
+describe("the odds a light buys", () => {
+  it("are full at the light the work needs and the floor in the dark", () => {
+    expect(lightFactor(DARK_LUX, 20, 0.05)).toBeCloseTo(0.05, 5);
+    expect(lightFactor(20, 20, 0.05)).toBeCloseTo(1, 5);
+    expect(lightFactor(100_000, 20, 0.05)).toBe(1);
   });
 
-  it("standing on your fire with a torch lit, no cell is lit twice", () => {
-    const { state, world } = newGame(21);
-    const st = regionState(state, world, state.player.region);
-    st.fire.lit = true;
-    st.fire.fuelKg = 10;
-    state.player.torch = { lit: true, minutes: 30 };
-    draw(state, world);
-    expect(lit("lit-0") + lit("lit-1") + lit("lit-2")).toBe(21);
-    expect(document.querySelectorAll("#map .c.lit-0.lit-1, #map .c.lit-1.lit-2, #map .c.lit-0.lit-2").length).toBe(0);
+  it("put a torch within a hair of daylight and a moonlit snowfield halfway", () => {
+    expect(lightFactor(TORCH_LUX, 20, 0.05)).toBeGreaterThan(0.9);
+    expect(lightFactor(0.2, 20, 0.05)).toBeGreaterThan(0.5);
+    expect(lightFactor(0.2, 20, 0.05)).toBeLessThan(0.7);
+  });
+
+  it("are far meaner for fine work than for gathering, at the same light", () => {
+    expect(lightFactor(0.2, 500, 0.02)).toBeLessThan(lightFactor(0.2, 20, 0.02));
+  });
+});
+
+describe("the word for the light", () => {
+  it("names what a person would call it", () => {
+    expect(lightWord(50_000)).toBe("daylight");
+    expect(lightWord(2_000)).toBe("overcast");
+    expect(lightWord(20)).toBe("firelit");
+    expect(lightWord(0.2)).toBe("moonlit");
+    expect(lightWord(0.002)).toBe("starlit");
+    expect(lightWord(DARK_LUX)).toBe("pitch dark");
   });
 });

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { ARROWS_TO_CARRY, minutesToCamp } from "../src/sim/body";
-import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET } from "../src/sim/sleep";
+import { ARROWS_TO_CARRY, minutesToCamp, SLEEP_AT } from "../src/sim/body";
+import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
@@ -343,10 +343,22 @@ describe("the body tier", () => {
     state.player.energy = 40;
     startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(state.task?.id).toBe("build");
-    // Past the spent line and the collapse, and the build goes on: work chosen by hand has no body tier.
-    advance(state, world, 600);
-    expect(state.task?.id).toBe("build");
-    expect(state.player.energy).toBeLessThan(20);
+    // Past the spent line the build goes on: work chosen by hand has no body
+    // tier, and nothing thirsty, cold or dark takes the slot back from it. The
+    // body giving out is the one thing that does, and then it sleeps on the spot.
+    let pastSpent = false;
+    for (let m = 0; m < 3000 && state.intent?.mode === "hand"; m++) {
+      advance(state, world, 1);
+      if (state.player.energy < SPENT_AT && state.task?.id === "build") pastSpent = true;
+    }
+    expect(pastSpent).toBe(true);
+    // Energy reads a shade over the line by the end of the minute the collapse
+    // fires in, because the sleep it starts has already begun giving it back.
+    expect(state.player.energy).toBeLessThan(SLEEP_AT + 1);
+    expect(state.task?.id).toBe("sleep");
+    expect(state.player.sleeping?.collapsed).toBe(true);
+    // Awake again, the player picks the build back up where the collapse left it.
+    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     const banked = st.build.cabin ?? 0;
