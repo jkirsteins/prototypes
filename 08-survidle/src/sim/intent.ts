@@ -252,7 +252,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
  * A build blocked at its own cell for want of materials gets one allowance:
  * something it needs sits elsewhere in the region and can be walked to. Only
  * when that is the actual reason it is blocked - "already built here" or
- * "build the fire pit first" get no allowance, fetching would not help
+ * "clear the fire site first" get no allowance, fetching would not help
  * either. A delivery, not a second method: an order names one method and
  * waits when that method is shut. The one place this is decided, so
  * intentOption and startIntent never disagree about whether the button may

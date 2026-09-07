@@ -157,15 +157,15 @@ describe("tasks", () => {
     expect(tool(state.player, "knife")).toBeDefined();
   });
 
-  it("builds a fire pit at camp, lights it and cooks", () => {
+  it("clears a fire site at camp, lights it and cooks", () => {
     const g = newGame(3);
     const { state, world } = g;
-    addItem(herePile(state, world), "stone", 6);
     addItem(state.player.pack, "firewood", 3);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(state.player.pack, "rawMeat", 2);
-    expect(check(state, world, cal, "light").why).toContain("fire pit");
+    expect(check(state, world, cal, "light").why).toContain("fire site");
     startTask(state, world, cal, "build", "firePit");
+    // The site is the ground and nothing else: no stone was ever wanted for it.
     expect(qty(herePile(state, world), "stone")).toBe(0);
     done(g);
     const st = regionState(state, world, state.player.region);

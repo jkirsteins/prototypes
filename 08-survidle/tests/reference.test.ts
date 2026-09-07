@@ -657,10 +657,11 @@ describe("wants by level", () => {
   });
 
   it("stone is wanted twice: a once job for eight at the opening, and a keep of eight below the clothing block as the restock", () => {
-    // The opening must be met on day one - six stones for the fire pit, two for the knife - and a keep at
-    // level 1 is a stand-in that has to be given again, which happens only once camp is under half the
-    // target. Four stone does not build a fire pit, so the opening stays a once job and the keep is the
-    // restock that feeds the arrows and the axe, where topping up under four is what a restock should do.
+    // The opening must be met on day one - the knife, and the whetstone the edge wants soon after - and a
+    // keep at level 1 is a stand-in that has to be given again, which happens only once camp is under half
+    // the target. So the opening stays a once job and the keep is the restock that feeds the arrows and the
+    // axe, where topping up under four is what a restock should do. The fire site is not in that reckoning:
+    // it is cleared ground and asks for no stone, which is why it sits above the opening job and not below.
     const stones = REFERENCE_ORDERS.filter((w) => w.req.task === "stone");
     expect(stones.length).toBe(2);
     expect(stones[0].kind).toBe("job");
@@ -668,7 +669,7 @@ describe("wants by level", () => {
     expect(stones[1].kind).toBe("keep");
     expect(stones[1].req.until).toEqual({ kind: "campHas", qty: 8 });
     const at = (w: (typeof REFERENCE_ORDERS)[number]) => REFERENCE_ORDERS.indexOf(w);
-    expect(at(stones[0])).toBeLessThan(at(REFERENCE_ORDERS.find((w) => w.req.arg === "firePit")!));
+    expect(at(stones[0])).toBeGreaterThan(at(REFERENCE_ORDERS.find((w) => w.req.arg === "firePit")!));
     // The restock sits right above the whetstone, the first of the edge's wants, which spend stone.
     expect(at(stones[1])).toBe(at(REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === "whetstone")!) - 1);
   });

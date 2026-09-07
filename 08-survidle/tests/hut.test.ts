@@ -22,10 +22,10 @@ function campWithPit(seed = 8, startDoy?: number) {
 }
 
 describe("the turf hut", () => {
-  it("builds at camp after the fire pit, twenty hours, and stands as a roof", () => {
+  it("builds at camp after the fire site, twenty hours, and stands as a roof", () => {
     const { state, world, st } = campWithPit();
     st.structures.firePit = false;
-    expect(check(state, world, cal, "build", "turfHut")).toMatchObject({ ok: false, why: "build the fire pit first" });
+    expect(check(state, world, cal, "build", "turfHut")).toMatchObject({ ok: false, why: "clear the fire site first" });
     st.structures.firePit = true;
     expect(check(state, world, cal, "build", "turfHut")).toMatchObject({ ok: true, duration: 1200 });
     expect(startTask(state, world, cal, "build", "turfHut")).toBe(true);

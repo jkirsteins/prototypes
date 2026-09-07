@@ -105,7 +105,7 @@ function campScore(st: RegionState): number {
 }
 
 /**
- * The region the heir's old camp is read from: a fire pit beats no fire pit,
+ * The region the heir's old camp is read from: a fire site beats none,
  * then the most built, ties to the lowest id since regions are visited in no
  * particular order. A survivor who died with nothing ever raised anywhere
  * leaves the heir the region they happened to be standing in.
@@ -233,7 +233,7 @@ export function daysInWords(n: number): string {
   return String(n);
 }
 
-/** What the last survivor's record says was built at the old camp, as a list: "a fire pit, snares and a drying rack". Empty when nothing was. */
+/** What the last survivor's record says was built at the old camp, as a list: "a fire site, snares and a drying rack". Empty when nothing was. */
 function builtList(rec: LifeRecord): string {
   const names = rec.events
     .filter((e): e is LifeEvent & { kind: "built" } => e.kind === "built")

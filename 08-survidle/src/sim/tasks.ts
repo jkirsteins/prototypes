@@ -34,7 +34,7 @@ import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
@@ -135,6 +135,17 @@ export function barkSeason(cal: Calendar): boolean {
 /** Whether a cell yields seaweed right now: a sea shore, with the water open. Shared by the seaweed task's check and the unexploited line so the two cannot drift apart. */
 export function seaweedAvailable(state: GameState, world: World, cell: number): boolean {
   return watersideCell(world, cell, "sea") && state.weather.iceCm < ICE_SHORE_CM;
+}
+
+/**
+ * The whole job in minutes. Every structure but the fire site is its table
+ * value; the fire site is the ground it is cleared on, so the same camp costs
+ * one thing in summer and another under snow, and the progress already done
+ * is measured against whichever it is now.
+ */
+export function buildMinutes(state: GameState, world: World, sid: StructureId, at: number): number {
+  if (sid !== "firePit") return STRUCTURES[sid].minutes;
+  return fireSiteMinutes(cellAt(world, at).terrain, state.weather.snowCm);
 }
 
 function needsList(needs: { item: string; qty: number; alt?: string }[]): string {
@@ -707,7 +718,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const sid = arg as StructureId;
       const def = STRUCTURES[sid];
       const done = st.build[sid] ?? 0;
-      const o = opt({ group: "build", label: def.name, detail: `${needsList(def.needs)}; ${def.desc}`, duration: Math.max(1, def.minutes - done) });
+      const total = buildMinutes(state, world, sid, at);
+      const o = opt({ group: "build", label: def.name, detail: def.needs.length ? `${needsList(def.needs)}; ${def.desc}` : def.desc, duration: Math.max(1, total - done) });
       if (sid === "snare") {
         const o2 = ground(heathCell(world, at), "heath", "heath", o);
         if (!o2.ok) return o2;
@@ -723,7 +735,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (!cls) return { ...o2, ok: false, why: watersideCell(world, at) ? "the shore is here" : "dry ground" };
         if (state.seeps[at]) return { ...o2, ok: false, why: "a seep is here already" };
         if (vesselLitresCapacity(p) <= 0 && !kitInReach(state, world, "barkBucket", invs) && !kitInReach(state, world, "waterskin", invs)) return { ...o2, ok: false, why: "needs a vessel to bail with" };
-        if (done > 0) return { ...o2, detail: `${Math.round((done / def.minutes) * 100)}% dug` };
+        if (done > 0) return { ...o2, detail: `${Math.round((done / total) * 100)}% dug` };
         // The sticks are pocketed at camp when the order sets out (provisionKit), so the camp pile counts from camp, as a snare's kit does.
         const sticks = totalQty(invs, "stick") + (cellOf(state, world) === st.campCell && at !== st.campCell ? qty(pile(state, st.campCell), "stick") : 0);
         if (sticks < def.needs[0].qty) return { ...o2, ok: false, why: "needs 4 sticks" };
@@ -734,14 +746,14 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (st.structures.turfHut || st.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
         if (st.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
         if (state.weather.snowCm < SNOW_SHELTER_CM) return { ...o, ok: false, why: `needs ${SNOW_SHELTER_CM} cm of snow` };
-        if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% heaped` };
+        if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% heaped` };
         return o;
       }
       if (sid === "dryingRack") {
         if (st.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
       } else if (st.structures[sid]) return { ...o, ok: false, why: "already built here" };
-      if ((sid === "cabin" || sid === "turfHut") && !st.structures.firePit) return { ...o, ok: false, why: "build the fire pit first" };
-      if (done > 0) return { ...o, detail: `${Math.round((done / def.minutes) * 100)}% built; materials already laid out` };
+      if ((sid === "cabin" || sid === "turfHut") && !st.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
+      if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
       return o;
     }
@@ -769,12 +781,12 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "light": {
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       const o = needCamp(opt({
-        group: "camp", label: "Light the fire at the pit",
+        group: "camp", label: "Light the fire at the site",
         detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: lr.minutes,
       }));
       if (!o.ok) return o;
-      if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire pit" };
+      if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };

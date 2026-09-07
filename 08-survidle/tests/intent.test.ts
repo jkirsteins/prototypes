@@ -279,14 +279,14 @@ describe("the work tier", () => {
   it("a live light keep never claims to bring the fire to camp", () => {
     const { state, world } = newGame(3);
     const camp = regionState(state, world, state.player.region).campCell;
-    // Built by hand rather than through startIntent: lighting needs a fire pit in
+    // Built by hand rather than through startIntent: lighting needs a fire site in
     // place, and this test is only about the sentence a light intent reads as.
     const light: Intent = {
       mode: "hand", task: "light", cell: camp, campCell: camp,
       until: { kind: "once" }, deliver: "camp", done: 0,
       step: "lighting the fire", need: null, orderId: null, windDown: false,
     };
-    expect(intentSentence(state, world, cal, light)).toBe("Light the fire at the pit");
+    expect(intentSentence(state, world, cal, light)).toBe("Light the fire at the site");
   });
 
   it("a build fetches what is missing from this region's piles, one load at a time, then builds", () => {
@@ -377,7 +377,7 @@ describe("the work tier", () => {
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(false);
   });
 
-  it("a cabin with no fire pit is never offered a fetch either, even with plenty of logs nearby", () => {
+  it("a cabin with no fire site is never offered a fetch either, even with plenty of logs nearby", () => {
     const { state, world } = newGame(3);
     const region = state.player.region;
     const r = regionAt(world, region);
@@ -385,7 +385,7 @@ describe("the work tier", () => {
     addItem(pile(state, forest), "log", 40);
     const o = intentOption(state, world, cal, "build", "cabin", "nearest");
     expect(o.ok).toBe(false);
-    expect(o.why).toBe("build the fire pit first");
+    expect(o.why).toBe("clear the fire site first");
   });
 
   it("the fetch detail names what the nearest pile actually holds, not just the first thing missing", () => {

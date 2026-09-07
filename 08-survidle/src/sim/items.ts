@@ -254,7 +254,11 @@ export const RECIPE_IDS = Object.keys(RECIPES) as RecipeId[];
 export interface StructureDef { name: string; needs: Need[]; minutes: number; desc: string }
 
 export const STRUCTURES: Record<StructureId, StructureDef> = {
-  firePit: { name: "fire pit", needs: [{ item: "stone", qty: 6 }], minutes: 30, desc: "A ring of stones. Holds a fire once you can light one." },
+  // The id stays firePit: it is what saves, the capability keys and the AI's
+  // fire step all name. Ground cleared to mineral soil is the thing itself, so
+  // it costs time and no materials, and these minutes are the base a good dry
+  // ground asks; fireSiteMinutes in fire.ts adds what a worse one does.
+  firePit: { name: "fire site", needs: [], minutes: 20, desc: "Ground cleared to bare earth. Holds a fire once you can light one." },
   leanTo: { name: "lean-to", needs: [{ item: "stick", qty: 8 }, { item: "log", qty: 4 }, { item: "cordage", qty: 2 }], minutes: 240, desc: "Poles and boughs. A little warmer, half as wet." },
   cabin: { name: "log cabin", needs: [{ item: "log", qty: 40 }, { item: "stone", qty: 12 }, { item: "cordage", qty: 8 }], minutes: 3600, desc: "Walls and a roof. Warm, dry, and a long job." },
   dryingRack: { name: "drying rack", needs: [{ item: "stick", qty: 6 }, { item: "cordage", qty: 2 }], minutes: 60, desc: "Holds 40 kg of raw meat. Two dry days turn 3 kg into 1 kg that keeps; four in rain. A second rack doubles it." },

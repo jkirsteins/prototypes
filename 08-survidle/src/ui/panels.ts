@@ -7,7 +7,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KG_ITEMS, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
@@ -298,7 +298,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     })
     .join("");
   const built: string[] = [];
-  if (st.structures.firePit) built.push("fire pit");
+  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
   if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
   if (st.structures.cabin) built.push("log cabin");
   if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");

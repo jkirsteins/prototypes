@@ -82,11 +82,16 @@ describe("the epitaph", () => {
     // the ledger above finds it. The larder these seeds empty is meat, berries, roots, eggs
     // and bark flour together, and the wood outlasts the larder on both. Seed 17 dies of the
     // cold a kilometre out: a body that works a once order until it drops stops where it drops,
-    // and the wood it will never fetch again is still stacked at camp. Seed 19 keeps its deaths
-    // at its own fire. Both readings moved when the night became a light level rather than a
-    // wall, which buys back the walking a moonlit night was charging as if it were pitch dark.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 28. Died of cold 1.2 km from camp, with nothing in the pack and 84 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 26. Starved at camp, with nothing in the pack and 35 kg of firewood at camp."`);
+    // and the wood it will never fetch again is still stacked at camp. Both readings
+    // moved when the night became a light level rather than a wall, which buys back the
+    // walking a moonlit night was charging as if it were pitch dark, and again when the
+    // fire site stopped costing stone: seed 17 no longer walks to the outcrop before it
+    // has anywhere to burn what it fetches, and both seeds now die at their own fire.
+    // This run is a level-1 opening that always starves in its third or fourth week, and
+    // a few minutes moved either way swings the day by several - the number to read here
+    // is that neither seed dies of the cold with a woodpile beside it any more.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 26. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 28. Starved at camp, with nothing in the pack and 20 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

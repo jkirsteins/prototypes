@@ -158,7 +158,7 @@ describe("what the heir is told", () => {
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });
     const last = state.log[state.log.length - 1].text;
-    expect(last).toMatch(new RegExp(`The journal of ${fmtName(state.survivors[0].name)} lists a fire pit, snares and a drying rack at `));
+    expect(last).toMatch(new RegExp(`The journal of ${fmtName(state.survivors[0].name)} lists a fire site, snares and a drying rack at `));
     // The tombstone after the heir dies names the ancestor's day.
     advance(state, world, 3 * 1440);
     die(state, "froze");
