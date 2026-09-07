@@ -12,7 +12,6 @@ import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "..
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
 import { regionState } from "../src/sim/regionstate";
-import { rosterHtml } from "../src/ui/panels";
 import { cellAt, regionAt } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
@@ -437,8 +436,8 @@ describe("away for the season", () => {
     const world = newGame(5).world;
     const g = armedAt(5, lakeShore(world));
     const october = calendar(1440 * 200);
-    const html = rosterHtml(g.state, g.world, REGION, october);
-    expect(html).toContain("mallard gone until April");
+    // The roster that used to print this is gone; a bird that is away says so
+    // on its own row, which is where somebody looking to hunt it is standing.
     expect(check(g.state, g.world, october, "hunt", "mallard").why).toBe("gone until April");
   });
 

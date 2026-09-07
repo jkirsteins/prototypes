@@ -1,17 +1,14 @@
 import { edible, itemLabel, refusalReason } from "../sim/actions";
-import { absence, densityLabel, regionDensity } from "../sim/animals";
-import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
+import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
+import { needsMending, rackCapacity } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
-import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pile, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
-import { fishLie, readCells } from "../sim/knowledge";
 import { knownShare } from "../sim/mapped";
-import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
@@ -36,12 +33,11 @@ import {
 import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
-import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
-import { regionAt, speciesHere, type World } from "../world/gen";
+import { fmtDuration, fmtKg, fmtKm, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
+import { regionAt, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
-import { waterLine, waterList } from "./water";
 import { skyHtml } from "./sky";
 
 function bar(id: string, cls: string, label: string): string {
@@ -220,57 +216,8 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
   return ` <button class="mini" data-act="task" data-id="${id}" data-arg="${arg}:thin" title="${pct}% chance of falling through, per cell crossed">across the ice (${Math.round(state.weather.iceCm)} cm, thin)</button>`;
 }
 
-/** "mallard gone until April" for a species that cannot be met at all now, otherwise the density in words. */
-function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
-  const def = SPECIES_DEFS[s];
-  // The same predicate the hunt and fish rows use, so the card and the row cannot disagree.
-  const gone = absence(def, cal, state.weather.iceCm);
-  if (gone) {
-    if (!isVoiceOnly(s)) return `${def.name} ${gone}`;
-    return def.season.kind === "migrant" ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} (${gone})`;
-  }
-  if (isVoiceOnly(s)) return def.name;
-  return `${def.name} <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`;
-}
 
-/** Four lines, each only the species that live here: Game, Birds, Fish, Heard. Empty lines are left out. */
-export function rosterHtml(state: GameState, world: World, id: number, cal: Calendar): string {
-  const here = speciesHere(regionAt(world, id));
-  const groups: [string, (s: Species) => boolean][] = [
-    ["Game", (s) => SPECIES_DEFS[s].kind === "mammal"],
-    ["Birds", (s) => SPECIES_DEFS[s].kind === "bird" && !isVoiceOnly(s)],
-    ["Fish", (s) => isFish(s)],
-    ["Heard", (s) => isVoiceOnly(s)],
-  ];
-  const lines = groups
-    .map(([label, pick]) => {
-      const list = here.filter(pick).map((s) => rosterEntry(state, world, id, s, cal));
-      return list.length ? `<div>${label}: ${list.join(", ")}</div>` : "";
-    })
-    .join("");
-  return lines + readHtml(state, world, id);
-}
 
-/**
- * The shores of this region the survivor has read, with what lies where.
- * A reading is about the water rather than the cell, so shores that read
- * the same are one line: a coast-born survivor takes in every shore of a
- * ground at a glance, and a region has dozens of them. Empty when none is
- * read; nearest first, as readCells orders them.
- */
-export function readHtml(state: GameState, world: World, id: number): string {
-  const said = new Set<string>();
-  const out: string[] = [];
-  for (const c of readCells(state, world, id)) {
-    const fish = state.player.known[c].fish;
-    if (fish.length === 0) continue;
-    const line = fish.map(fishLie).join(", ");
-    if (said.has(line)) continue;
-    said.add(line);
-    out.push(`<div>Shore read: ${line}</div>`);
-  }
-  return out.join("");
-}
 
 /**
  * What the camp is doing while you are looking somewhere else.
@@ -286,13 +233,51 @@ export function readHtml(state: GameState, world: World, id: number): string {
  * never behind a pointer or a tab.
  */
 /**
- * The ways out of this region, in a corner of the map.
+ * Everywhere you can go, in a corner of the map: the named places in this
+ * region, then the ways out of it.
  *
- * It used to sit at the foot of the region panel and only after picking a
- * neighbour on the map, so a player who never worked out that regions were
- * clickable never learned there was anywhere else to go. Neighbours only:
- * a short list of real choices beats a long one of distant places, and it
- * is the same rule travel itself follows.
+ * Both used to live at the foot of the region panel, and the ways out only
+ * after picking a neighbour on the map first - so a player who never
+ * worked out that regions were clickable never learned there was anywhere
+ * else to go. They sit on the ground they lead off now.
+ *
+ * The places are here rather than left to the map's own marks because
+ * those draw at the rungs below the default: a player who never zooms in
+ * would otherwise have no way to learn the forest is three hundred metres
+ * off. The tooltip answers "what is that cell"; this answers "where are
+ * the places", which is a different question and the one he was asking.
+ */
+export function placesHtml(state: GameState, world: World, cal: Calendar): string {
+  const r = regionAt(world, state.player.region);
+  const here = cellOf(state, world);
+  const camp = campCellOf(state, world);
+  const rows = r.spots
+    .map((s) => {
+      const cell = s.id === "camp" ? camp : s.cell;
+      // A generated spot sitting on the live camp's own cell would draw a
+      // second row for the same ground - two "you are here" once somebody
+      // stands on it. The camp row, listed first, already stands for it.
+      if (s.id !== "camp" && cell === camp) return "";
+      const name = esc(SPOT_WORDS[s.id]);
+      if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
+      const walk = check(state, world, cal, "walk", `spot:${s.id}`);
+      const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
+      const dist = km === null ? "" : ` <small class="dim">${esc(fmtKm(km))}</small>`;
+      // How long it takes, not only how far: the distance is the fact and
+      // the minutes are the decision.
+      const go = walk.ok
+        ? `<button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name}</button>${dist} <small class="dim">${esc(fmtDuration(walk.duration))} from here</small>`
+        : `<span class="dim">${name}: ${esc(plain(walk.why))}</span>`;
+      return `<div class="way" data-place="${s.id}">${go}${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
+    })
+    .join("");
+  return `<div class="waylabel">places</div>${rows}`;
+}
+
+/**
+ * The ways out of this region. Neighbours only: a short list of real
+ * choices beats a long one of distant places, and it is the same rule
+ * travel itself follows.
  *
  * Ground that is not known yet cannot be walked to, so it offers the way
  * it opens instead - an exploration rather than a promise of arrival.
@@ -365,123 +350,6 @@ export function campHtml(state: GameState, world: World): string {
   return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}`;
 }
 
-export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
-  const p = state.player;
-  const id = ui.selected ?? p.region;
-  const r = regionAt(world, id);
-  const st = regionState(state, world, id);
-  const here = id === p.region;
-  const nb = regionAt(world, p.region).neighbours.find((n) => n.id === id);
-  const f = r.frac;
-  const pct = (v: number) => `${Math.round(v * 100)}%`;
-  const terrain = [
-    `forest ${pct(r.forest)} <small>(spruce ${pct(f.spruce)}, pine ${pct(f.pine)}, birch ${pct(f.birch)})</small>`,
-    `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
-  ].join(", ");
-  const myCell = cellOf(state, world);
-  const spots = r.spots
-    .map((s) => {
-      const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
-      const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
-      if (!here) {
-        const km = kmBetween(state, world, campCellOf(state, world, id), s.cell);
-        const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
-        return `<div>${SPOT_WORDS[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
-      }
-      // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
-      // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
-      const cell = s.id === "camp" ? campCellOf(state, world, id) : s.cell;
-      // A generated spot sited on the live camp's own cell would draw a second row for
-      // the same cell (two "you are here" once you stand on it); the camp row above,
-      // listed first, already stands for it.
-      if (s.id !== "camp" && cell === campCellOf(state, world, id)) return "";
-      if (cell === myCell) return `<div><b>@</b> ${SPOT_WORDS[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
-      // Distance and time from where the player stands, along the route.
-      const walk = check(state, world, cal, "walk", `spot:${s.id}`);
-      const km = kmBetween(state, world, myCell, cell, walkableIce(state.weather));
-      // No known corridor to camp: the search for one is the only move left, and it promises no time.
-      const home = s.id === "camp" && !walk.ok && walk.why === "{you} {know} no way there" ? check(state, world, cal, "searchHome") : null;
-      const btn = walk.ok
-        ? ` <button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
-        : home
-          ? ` <small>${esc(plain(walk.why))}</small> <button class="mini" data-act="task" data-id="searchHome">search for a way home <small>(${esc(home.detail)})</small></button>`
-          : ` <small>${esc(plain(walk.why))}</small>`;
-      const thin = thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk);
-      return `<div>${SPOT_WORDS[s.id]} <small>${[km === null ? "no way there" : `${fmtKm(km)} from here`, lying].filter(Boolean).join(", ")}</small>${btn}${thin}</div>`;
-    })
-    .join("");
-  // Things lying about this region away from the named spots.
-  const spotCells = new Set(r.spots.map((s) => s.cell));
-  const loose = pilesIn(state, world, id)
-    .filter((x) => !spotCells.has(x.cell) && x.cell !== myCell)
-    .map((x) => {
-      const walk = here ? check(state, world, cal, "walk", `cell:${x.cell}`) : null;
-      const btn = walk?.ok ? ` <button class="mini" data-act="task" data-id="walk" data-arg="cell:${x.cell}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>` : "";
-      return `<div>${fmtKg(weight(x.inv))} lying at ${esc(whereIs(state, world, x.cell))}${btn}</div>`;
-    })
-    .join("");
-  const built: string[] = [];
-  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
-  if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
-  if (st.structures.cabin) built.push("log cabin");
-  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
-  if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
-  if (st.structures.boughBed) built.push("bough bed");
-  if (st.structures.waterStore) built.push("water trough");
-  if (st.structures.snowShelter) built.push("snow shelter");
-  if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
-  if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
-  const fire = st.structures.firePit
-    ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
-    : "";
-  const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
-    : "";
-  const campPile = pile(state, st.campCell);
-  const cap = campWaterCapacity(campPile, st);
-  const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
-    ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
-    : "";
-  // What each producer standing here is limited by: the reason a camp that
-  // makes its own food still runs out.
-  const limits = CAPABILITIES.filter((c) => c.producer && standingHere(state, st, world, c))
-    .map((c) => `<div><small>${esc(c.id)}: ${esc(c.limits)}</small></div>`)
-    .join("");
-  let travel = "";
-  if (!here) {
-    // Ground not yet known cannot be walked to - offer the way it opens instead.
-    // A region already wholly known offers only Go.
-    if (knownShare(state, world, id) >= 1) {
-      const go = check(state, world, cal, "travel", `region:${id}`);
-      travel = go.ok
-        ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="travel" data-arg="region:${id}">Go to ${esc(r.name)} <small>${esc(go.detail)}, ${fmtDuration(go.duration)} (${fmtReal(go.duration)})${nb ? "" : "; not a neighbour, a long way round"}</small></button>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`
-        : `<div style="margin-top:6px"><span class="dim">${esc(plain(go.why))}</span>${thinIceButton(state, world, cal, "travel", `region:${id}`, go)}</div>`;
-    } else {
-      const ex = check(state, world, cal, "explore", `region:${id}`);
-      travel = ex.ok
-        ? `<div style="margin-top:6px"><button class="act" data-act="task" data-id="explore" data-arg="region:${id}">Explore ${esc(r.name)} <small>${esc(ex.detail)}</small></button></div>`
-        : `<div style="margin-top:6px"><span class="dim">${esc(plain(ex.why))}</span></div>`;
-    }
-  }
-  // What this cell offers as a camp, shown only when it is not the camp already; a move
-  // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.
-  const move = here && myCell !== campCellOf(state, world, id) ? canMoveCamp(state, world) : null;
-  const asCamp = move
-    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(plain(move.why))})`}</dd>`
-    : "";
-  return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
-<div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>
-<dl class="kv">
-<dt>land</dt><dd>${terrain}</dd>
-<dt>trees</dt><dd>${Math.floor(st.wood)} worth felling</dd>
-<dt>animals</dt><dd>${rosterHtml(state, world, id, cal)}</dd>
-<dt>places</dt><dd class="spots">${spots}${loose}</dd>
-${here ? `<dt>water</dt><dd>${esc(waterLine(state, world, cal))}<br><small>${esc(waterList(state, world, cal))}</small></dd>` : ""}
-${asCamp}
-<dt>built</dt><dd>${built.length || unfinished.length ? [...built, ...unfinished].join(", ") : "<span class=\"dim\">nothing</span>"}${fire}${rack}${water}${limits}</dd>
-</dl>${travel}`;
-}
 
 const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */

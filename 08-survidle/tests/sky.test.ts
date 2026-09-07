@@ -5,7 +5,7 @@ import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import type { Weather } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
-import { clockHtml, regionHtml } from "../src/ui/panels";
+import { clockHtml, placesHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, skyHtml, updateSky } from "../src/ui/sky";
@@ -96,7 +96,7 @@ describe("lighting", () => {
 
 describe("sky in the page", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<div id="clock"></div><div id="map"></div><div id="region"></div>`;
+    document.body.innerHTML = `<div id="clock"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div>`;
     resetPanels();
   });
 
@@ -127,12 +127,16 @@ describe("sky in the page", () => {
     placeAtSpot(state, world, state.player.region, "forest");
     mapRegion(state, world, state.player.region);
     const cal = at(13);
-    setPanel("region", regionHtml(state, world, cal, newUiState()));
-    const text = document.querySelector("#region")!.textContent!;
-    expect(text).toContain("you are here");
-    expect(text).toContain("from here");
-    expect(text).toContain("you are at the forest");
-    const walk = document.querySelector('#region [data-id="walk"][data-arg="spot:camp"]')!;
-    expect(walk.textContent).toMatch(/walk \(\d+ min, \d+ s\)/);
+    setPanel("maptravel", placesHtml(state, world, cal));
+    const text = document.querySelector("#maptravel")!.textContent!;
+    // Standing at the forest: the forest is where you are, and everywhere
+    // else is measured from there rather than from camp.
+    expect(text).toContain("the forest you are here");
+    expect(text).toMatch(/from here/);
+    // The button names the place, since that is what a reader is looking
+    // for; the distance and the minutes sit beside it.
+    const walk = document.querySelector('#maptravel [data-id="walk"][data-arg="spot:camp"]')!;
+    expect(walk.textContent).toBe("camp");
+    expect(text).toMatch(/camp [\d.]+ km \d+ min from here/);
   });
 });

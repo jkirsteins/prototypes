@@ -26,7 +26,7 @@ import { Rng } from "../src/rng";
 import { doHtml } from "../src/ui/dopanel";
 import { cellFromPoint, levelAt, mapHtml, mapKey } from "../src/ui/map";
 import { tipHtml, tipKey } from "../src/ui/tip";
-import { campHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, regionHtml, skillsHtml, statsHtml, taskHtml, travelHtml } from "../src/ui/panels";
+import { campHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, skillsHtml, statsHtml, taskHtml, travelHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { fillShare } from "../src/ui/bars";
 import { emptyView } from "../src/sim/forecaster";
@@ -60,7 +60,6 @@ const BUDGET: Record<string, number> = {
   gear: 2,
   skills: MINUTE,
   clock: MINUTE,
-  region: 5,
   camp: 5,
   maptravel: 5,
   task: MINUTE,
@@ -81,7 +80,6 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     gear: gearHtml(state, feltTemperature(state, world, ambient)),
     skills: skillsHtml(state),
     clock: clockHtml(state, world, cal, ambient, 1),
-    region: regionHtml(state, world, cal, ui),
     camp: campHtml(state, world),
     maptravel: travelHtml(state, world, cal),
     task: taskHtml(state, world, cal),

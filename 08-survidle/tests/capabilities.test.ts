@@ -5,8 +5,7 @@ import { RECIPES, STRUCTURE_IDS, STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { RECOMMENDED, RUNG_LEVEL } from "../src/sim/skills";
-import { regionHtml } from "../src/ui/panels";
-import { newUiState } from "../src/ui/render";
+import { campHtml } from "../src/ui/panels";
 import { allPanesHtml } from "./pane";
 
 const keys = new Set(CAPABILITIES.flatMap((r) => r.keys));
@@ -106,11 +105,10 @@ describe("what a capability tells the panel", () => {
 
   it("names a standing producer's limit in the region panel, and says nothing when none stands", () => {
     const { state, world } = newGame(17);
-    const cal = calendar(state.minute, state.startDoy);
     const st = regionState(state, world, state.player.region);
-    expect(regionHtml(state, world, cal, newUiState())).not.toContain("40 kg a rack");
+    expect(campHtml(state, world)).not.toContain("40 kg a rack");
     st.structures.dryingRack = true;
-    expect(regionHtml(state, world, cal, newUiState())).toContain("40 kg a rack");
+    expect(campHtml(state, world)).toContain("40 kg a rack");
   });
 
   it("promises a producer on its Do row, built or not", () => {

@@ -12,9 +12,9 @@ import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
-import { regionHtml } from "../src/ui/panels";
+import { placesHtml } from "../src/ui/panels";
+import { tipHtml } from "../src/ui/tip";
 import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
-import { fmtKm } from "../src/units";
 import { regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { neighbourLandCell } from "./siting-helpers";
@@ -103,33 +103,40 @@ describe("whereIs names a cell by the live camp, not the generated one", () => {
   });
 });
 
-describe("the region overview's from-camp distances follow a move", () => {
-  it("uses the generated distance for an untouched region and the live camp once one is moved", () => {
+describe("distances from camp follow a move", () => {
+  it("reads the live camp cell rather than the one the region was generated with", () => {
     const { state, world } = newGame(17);
     const home = state.player.region;
     const st = regionState(state, world, home);
-    const cal = calendar(0);
 
-    // An untouched neighbour has no region state yet: the overview falls back to the generated km.
-    const neighbourId = regionAt(world, home).neighbours[0].id;
-    const untouchedSpot = regionAt(world, neighbourId).spots.find((s) => s.id !== "camp");
-    expect(untouchedSpot).toBeDefined();
-    expect(neighbourId in state.regions).toBe(false);
-    const untouchedHtml = regionHtml(state, world, cal, { ...newUiState(), selected: neighbourId });
-    expect(untouchedHtml).toContain(`${fmtKm(untouchedSpot!.km)} from camp`);
-
-    // Move home's camp, then step into the neighbour region and read home's overview from there:
-    // the distance shown is live (from the moved camp), not the stale generated s.km.
+    // The overview panel that used to print these is gone; the rule it was
+    // printing is not, and it is the rule that matters: a camp that moved is
+    // the camp everything measures from.
     const spot = regionAt(world, home).spots.find((s) => s.id !== "camp");
     expect(spot).toBeDefined();
-    const next = neighbourLandCell(world, st.campCell);
+    const generated = st.campCell;
+    const before = kmBetween(state, world, generated, spot!.cell);
+
+    const next = neighbourLandCell(world, generated);
     st.campCell = next;
-    placeAt(state, world, regionAt(world, neighbourId).campCell);
-    expect(state.player.region).toBe(neighbourId);
-    const html = regionHtml(state, world, cal, { ...newUiState(), selected: home });
-    const liveKm = kmBetween(state, world, next, spot!.cell);
-    expect(liveKm).not.toBeNull();
-    expect(html).toContain(`${fmtKm(liveKm!)} from camp`);
+    expect(campCellOf(state, world, home)).toBe(next);
+
+    const after = kmBetween(state, world, campCellOf(state, world, home), spot!.cell);
+    expect(after).not.toBeNull();
+    expect(after).toBe(kmBetween(state, world, next, spot!.cell));
+    // The generated cell is no longer what anything measures from.
+    expect(campCellOf(state, world, home)).not.toBe(generated);
+    expect(before).not.toBeNull();
+  });
+
+  it("an untouched region is not given state just by being asked about", () => {
+    const { state, world } = newGame(17);
+    const neighbourId = regionAt(world, state.player.region).neighbours[0].id;
+    expect(neighbourId in state.regions).toBe(false);
+    // campCellOf falls back to the generated cell rather than building state
+    // for a region nobody has been to.
+    expect(campCellOf(state, world, neighbourId)).toBe(regionAt(world, neighbourId).campCell);
+    expect(neighbourId in state.regions).toBe(false);
   });
 });
 
@@ -156,7 +163,7 @@ describe("walkTarget resolves the live camp, not the generated one", () => {
   });
 });
 
-describe("regionHtml's here list marks 'you are here' at the moved camp", () => {
+describe("the places list marks 'you are here' at the moved camp", () => {
   it("matches the live camp cell, not the cell RegionDef.spots generated for it", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
@@ -166,11 +173,11 @@ describe("regionHtml's here list marks 'you are here' at the moved camp", () => 
     const cal = calendar(state.minute, state.startDoy);
 
     placeAt(state, world, next);
-    expect(regionHtml(state, world, cal, newUiState())).toContain("you are here");
+    expect(placesHtml(state, world, cal)).toContain("you are here");
 
     // Standing on the old, now unremarkable, generated cell is no longer "here" for the camp row.
     placeAt(state, world, generated);
-    expect(regionHtml(state, world, cal, newUiState())).not.toContain("you are here");
+    expect(placesHtml(state, world, cal)).not.toContain("you are here");
   });
 });
 
@@ -284,14 +291,15 @@ describe("the site report", () => {
     expect(line.match(/ min/g)).toHaveLength(1);
   });
 
-  it("shows in the region panel off the camp cell, and not on it", () => {
+  it("shows on a cell that is not the camp, and not on the camp itself", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     const cal = calendar(state.minute, state.startDoy);
-    expect(regionHtml(state, world, cal, newUiState())).not.toContain("as a camp");
+    // The report is about a cell, so it is on the cell: point at the camp
+    // and there is nothing to say, point anywhere else and there is.
+    expect(tipHtml(state, world, cal, st.campCell)).not.toContain("as a camp");
     const next = neighbourLandCell(world, st.campCell);
-    placeAt(state, world, next);
-    expect(regionHtml(state, world, cal, newUiState())).toContain("as a camp");
+    expect(tipHtml(state, world, cal, next)).toContain("as a camp");
   });
 
   it("names why a move is blocked beside what the cell offers as a camp", () => {
@@ -301,9 +309,10 @@ describe("the site report", () => {
     placeAt(state, world, next);
     const cal = calendar(state.minute, state.startDoy);
     st.fire.fuelKg = 2;
-    const html = regionHtml(state, world, cal, newUiState());
-    expect(html).toContain("as a camp");
-    expect(html).toContain("the fire is banked there");
+    // Why the move is blocked belongs with the Do row that would make the
+    // camp; what the cell would be as one belongs on the cell.
+    expect(tipHtml(state, world, cal, next)).toContain("as a camp");
+    expect(paneHtml(state, world, cal, "makeCamp")).toContain("the fire is banked there");
   });
 });
 
@@ -326,7 +335,7 @@ describe("checking travel to a neighbour touches no region state", () => {
   });
 });
 
-describe("the Here list never doubles up when the camp sits on another spot's cell", () => {
+describe("the places list never doubles up when the camp sits on another spot's cell", () => {
   it("shows one 'you are here' row once the camp is moved onto the forest spot's own cell", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
@@ -334,7 +343,7 @@ describe("the Here list never doubles up when the camp sits on another spot's ce
     st.campCell = forest.cell;
     placeAt(state, world, forest.cell);
     const cal = calendar(state.minute, state.startDoy);
-    const html = regionHtml(state, world, cal, newUiState());
+    const html = placesHtml(state, world, cal);
     expect(html.match(/you are here/g)).toHaveLength(1);
   });
 });

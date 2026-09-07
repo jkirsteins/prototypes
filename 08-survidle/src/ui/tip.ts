@@ -17,7 +17,7 @@
 import type { Calendar } from "../sim/calendar";
 import { siteLine, siteReport } from "../sim/camp";
 import { weight } from "../sim/inventory";
-import { readLine } from "../sim/knowledge";
+import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { regionState } from "../sim/regionstate";
@@ -111,7 +111,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
 
   // What the water has been read to hold, which is the read skill's payoff
   // and belongs on the water it is about.
-  if (terrain === "water") {
+  if (terrain === "water" && isRead(state, cell)) {
     const read = readLine(state, world, cal, cell);
     if (read) lines.push(`<div class="dim">${esc(plain(read))}</div>`);
   }

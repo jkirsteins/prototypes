@@ -10,8 +10,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { levelMinutes } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
-import { gearHtml, regionHtml } from "../src/ui/panels";
-import { newUiState } from "../src/ui/render";
+import { campHtml, gearHtml } from "../src/ui/panels";
 
 type G = ReturnType<typeof newGame>;
 /** Steps until the task ends. */
@@ -162,6 +161,6 @@ describe("bough bed and blanket in play", () => {
     state.player.clothing.push({ id: "hideBlanket", durability: 100 });
     expect(gearHtml(state, 10)).toContain("hide blanket <small>+8 C asleep, 100%</small>");
     regionState(state, world, state.player.region).structures.boughBed = true;
-    expect(regionHtml(state, world, cal, newUiState())).toContain("bough bed");
+    expect(campHtml(state, world)).toContain("bough bed");
   });
 });

@@ -9,8 +9,7 @@ import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import { campWaterCapacity, campWaterRoom, pourVessels } from "../src/sim/water";
-import { regionHtml } from "../src/ui/panels";
-import { newUiState } from "../src/ui/render";
+import { campHtml } from "../src/ui/panels";
 
 const cal = calendar(0);
 
@@ -59,7 +58,7 @@ describe("the water trough", () => {
   it("shows on the camp panel as capacity", () => {
     const { state, world, st } = camp();
     st.structures.waterStore = true;
-    const html = regionHtml(state, world, cal, newUiState());
+    const html = campHtml(state, world);
     expect(html).toContain("water trough");
     expect(html).toContain(`of ${WATER_STORE_L.toFixed(1)} l`);
   });

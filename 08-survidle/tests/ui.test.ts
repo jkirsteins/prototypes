@@ -19,19 +19,21 @@ import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
-import { clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
+import { campHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, placesHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
+import { tipHtml } from "../src/ui/tip";
 import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
-import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
-import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
+import { fishSpecies, huntedLand } from "../src/sim/species";
+import { cellAt, neighbours, regionAt, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
 
 /**
  * Everything the player can reach, from the panels they actually have: the Do
- * list, the HERE panel that holds the walks, and the Pack panel that holds the
- * haul. There is no second list behind a toggle, so reachability is measured
- * against these three or it is not measured at all.
+ * list, the map's own corner, which holds the walks and the ways out, and the
+ * Pack panel that holds the haul. There is no second list behind a toggle and
+ * no region panel any more, so reachability is measured against these or it is
+ * not measured at all.
  *
  * The Do list shows one subtab and one purpose at a time, so all of it means
  * all of them. Nothing is hidden behind a "more" any more: a pane holds a
@@ -39,8 +41,7 @@ import { findRoute } from "../src/world/route";
  */
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
-  const ui = newUiState();
-  return [allPanesHtml(state, world, cal), regionHtml(state, world, cal, ui), inventoryHtml(state, world, cal)].join("\n");
+  return [allPanesHtml(state, world, cal), placesHtml(state, world, cal), travelHtml(state, world, cal), inventoryHtml(state, world, cal)].join("\n");
 }
 
 describe("reachability: everything in the catalogue has a button", () => {
@@ -73,18 +74,19 @@ describe("reachability: everything in the catalogue has a button", () => {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
   });
-  it("every walk out of camp, in the HERE panel", () => {
+  it("every walk out of camp, in the map's places list", () => {
     for (const s of regionAt(world, state.player.region).spots) {
       if (s.id !== "camp") expect(html).toContain(`data-id="walk" data-arg="spot:${s.id}"`);
     }
   });
-  it("every road out, in the HERE panel of the region picked on the map", () => {
-    // A road out is offered by the region you selected, not by the one you stand in:
-    // the map is how you choose where to go, and the panel is where you set off.
+  it("every road out, in the map's corner, without picking anything first", () => {
+    // A road out used to be offered only by a region you had selected on the
+    // map, so a player who never worked out that regions were clickable never
+    // learned there was anywhere to go. Every neighbour is listed, always.
     const cal = calendar(state.minute);
+    const ways = travelHtml(state, world, cal);
     for (const nb of regionAt(world, state.player.region).neighbours) {
-      const picked = regionHtml(state, world, cal, { ...newUiState(), selected: nb.id });
-      expect(picked).toContain(`data-id="travel" data-arg="region:${nb.id}"`);
+      expect(ways).toContain(`data-arg="region:${nb.id}"`);
     }
   });
   it("shows a legal button, not a greyed one, when the inputs are there", () => {
@@ -133,7 +135,7 @@ describe("reachability: everything in the catalogue has a button", () => {
 
 describe("panels", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<div id="stats"></div><div id="map"></div><div id="region"></div><div id="task"></div><div id="inventory"></div><div id="overlay"></div>`;
+    document.body.innerHTML = `<div id="stats"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div><div id="task"></div><div id="inventory"></div><div id="overlay"></div>`;
     resetPanels();
   });
 
@@ -348,25 +350,26 @@ describe("panels", () => {
     mapRegion(state, world, nb);
     const path = findRoute(world, cellOf(state, world), regionAt(world, nb).campCell)!;
     for (const c of path) markKnown(state, c);
-    setPanel("region", regionHtml(state, world, cal, { ...newUiState(), selected: nb }));
-    expect(document.querySelector(`#region [data-act="task"][data-id="travel"][data-arg="region:${nb}"]`)).not.toBeNull();
-    setPanel("region", regionHtml(state, world, cal, newUiState()));
-    expect(document.querySelector(`#region [data-act="task"][data-id="walk"][data-arg="spot:forest"]`)).not.toBeNull();
-    expect(document.querySelector("#region")!.textContent).toContain("you are at camp");
-    // Drop something on a bare cell nearby and it is listed with a walk button.
+    setPanel("maptravel", `${placesHtml(state, world, cal)}${travelHtml(state, world, cal)}`);
+    expect(document.querySelector(`#maptravel [data-act="task"][data-id="travel"][data-arg="region:${nb}"]`)).not.toBeNull();
+    expect(document.querySelector(`#maptravel [data-act="task"][data-id="walk"][data-arg="spot:forest"]`)).not.toBeNull();
+    expect(document.querySelector("#maptravel")!.textContent).toContain("you are here");
+    // A heap on a bare cell is the tooltip's to report: it is a fact about
+    // that cell, and the map is the panel that has cells.
     const loose = neighbours(world, cellOf(state, world)).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, loose);
     addItem(herePile(state, world), "log", 2);
     placeAtSpot(state, world, state.player.region, "camp");
-    setPanel("region", regionHtml(state, world, cal, newUiState()));
-    expect(document.querySelector("#region")!.textContent).toContain("40 kg lying at");
-    expect(document.querySelector(`#region [data-act="task"][data-id="walk"][data-arg="cell:${loose}"]`)).not.toBeNull();
+    markKnown(state, loose);
+    const tip = tipHtml(state, world, cal, loose);
+    expect(tip).toContain("40 kg lying here");
+    expect(tip).toContain(`data-act="task" data-id="walk" data-arg="cell:${loose}"`);
   });
 
   it("draws a corridor as a thread, not an open polygon", () => {
     const { state, world } = newGame(21);
-    const cal = calendar(0);
     const ui = newUiState();
+    const cal = calendar(state.minute, state.startDoy);
     const home = regionAt(world, state.player.region);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const l = LEVELS[ui.zoom];
@@ -424,39 +427,22 @@ describe("panels", () => {
     expect(glyph.classList.contains("fog")).toBe(true);
     expect(glyph.title).toBe(nb.name);
     expect(glyph.getAttribute("data-act")).toBe("select");
-    setPanel("region", regionHtml(state, world, cal, { ...ui, selected: nbId }));
-    const btn = document.querySelector(`#region [data-act="task"][data-id="explore"][data-arg="region:${nbId}"]`);
+    setPanel("maptravel", travelHtml(state, world, cal));
+    const btn = document.querySelector(`#maptravel [data-act="task"][data-id="explore"][data-arg="region:${nbId}"]`);
     expect(btn).not.toBeNull();
     expect(btn!.textContent).toContain(`Explore ${nb.name}`);
-    expect(document.querySelector(`#region [data-act="task"][data-id="travel"][data-arg="region:${nbId}"]`)).toBeNull();
+    expect(document.querySelector(`#maptravel [data-act="task"][data-id="travel"][data-arg="region:${nbId}"]`)).toBeNull();
   });
 
-  it("the region panel shows camp water against its capacity", () => {
+  it("the camp box shows camp water against its capacity", () => {
     const { state, world } = newGame(17);
-    const cal = calendar(0);
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell), "barkBucket", 2);
     addItem(pile(state, st.campCell), "water", 3);
-    const html = regionHtml(state, world, cal, newUiState());
+    const html = campHtml(state, world);
     expect(html).toContain("water: 3.0 of 4.0 l");
   });
 
-  it("lists the roster in Game, Birds, Fish and Heard lines, only species that live here", () => {
-    const { state, world } = newGame(5);
-    const id = state.player.region;
-    const html = rosterHtml(state, world, id, calendar(1440 * 275)); // January
-    const r = regionAt(world, id);
-    for (const s of speciesHere(r)) expect(html).toContain(SPECIES_DEFS[s].name);
-    for (const s of Object.keys(SPECIES_DEFS) as Species[]) if (!r.capacity[s]) expect(html).not.toContain(`${SPECIES_DEFS[s].name}`);
-    if (r.capacity.mallard) expect(html).toContain("mallard gone until April");
-    if (r.capacity.bear) expect(html).toContain("brown bear denned until April");
-    if (r.capacity.loon) expect(html).toContain("loon (from May)");
-    if (r.capacity.hare) {
-      regionState(state, world, id).pop.hare = 0;
-      expect(rosterHtml(state, world, id, calendar(0))).toContain("hare <b>none</b>");
-    }
-    expect(html.startsWith("<div>Game:") || html.startsWith("<div>Birds:") || html.startsWith("<div>Fish:") || html.startsWith("<div>Heard:")).toBe(true);
-  });
 
   it("inventory lists pack and ground with take and drop", () => {
     const { state, world } = newGame(21);
