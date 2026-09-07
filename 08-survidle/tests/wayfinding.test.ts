@@ -110,10 +110,14 @@ describe("wayfinding", () => {
 
   it("weighs more vantages with level, so the sweep gets shorter", () => {
     // Reference seed 47: level 10 finds a materially shorter sweep than level 1
-    // over the same region. The candidate pool grows with level but the pick
-    // is not guaranteed shorter in general (a farther, better-seeing vantage
-    // can cost more to reach than it saves) - this seed demonstrates the
-    // order the brief asks for, not a universal bound.
+    // over the same region (144 -> 122 minutes). Scoring each candidate by
+    // opened-per-minute-walked (not view alone) still does not bound the
+    // *whole* sweep: each leg's pick is only the best use of that one walk,
+    // and a good leg now can leave the frontier worse positioned for the
+    // legs after it, so a longer full sweep is possible in general - seed
+    // 4's reference region still runs 378 -> 418 minutes, longer at level
+    // 10, even with the corrected score. This seed demonstrates the order
+    // the brief asks for, not a universal bound.
     const g1 = newGame(47);
     const region1 = partlyKnownNeighbour(g1);
     expect(startTask(g1.state, g1.world, calendar(0), "explore", `region:${region1}`)).toBe(true);

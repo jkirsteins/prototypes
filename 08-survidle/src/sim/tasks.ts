@@ -1418,23 +1418,27 @@ function exploreFrontier(state: GameState, world: World, region: number): { cell
 }
 
 /**
- * The best of the candidates the survivor's wayfinding weighs: whichever
- * vantage would open the most unknown ground - sightRangeCells there,
- * squared, stands in for that well enough without ray-marching every one
- * of them. Null when the region has nothing left reachable to see more
- * from.
+ * The best of the candidates the survivor's wayfinding weighs: not the
+ * vantage with the best view alone, but the one worth the walk to reach -
+ * unknown ground opened (sightRangeCells there, squared, stands in for
+ * that well enough without ray-marching every one of them) per minute the
+ * route there costs. A candidate already underfoot costs no minutes and is
+ * free, so it always wins. Null when the region has nothing left reachable
+ * to see more from.
  */
 function pickVantage(state: GameState, world: World, cal: Calendar, region: number): { cell: number; path: number[] } | null {
   const candidates = exploreFrontier(state, world, region);
-  // A raw eye only ever checks the nearest candidate; a practised one weighs
-  // further down the nearest-first list before settling, so the vantage it
-  // settles on opens more ground per leg walked. No minutes are subtracted
-  // anywhere - the whole saving is this better pick.
+  // skillLevel never reads below 1, so a raw eye already weighs two
+  // candidates, not one; a level-20 eye weighs 21 before settling.
   const weighed = candidates.slice(0, 1 + skillLevel(state, "wayfinding"));
+  const ice = walkIceMode(state, false);
+  const speed = baseWalkSpeed(state, cal, state.weather);
   let best: { cell: number; path: number[] } | null = null;
   let bestScore = -1;
   for (const c of weighed) {
-    const score = sightRangeCells(state, world, cal, c.cell) ** 2;
+    const opened = sightRangeCells(state, world, cal, c.cell) ** 2;
+    const minutes = routeMinutes(world, c.path, speed, ice);
+    const score = minutes <= 0 ? Number.POSITIVE_INFINITY : opened / minutes;
     if (score > bestScore) {
       bestScore = score;
       best = c;
