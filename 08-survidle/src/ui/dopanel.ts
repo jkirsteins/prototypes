@@ -30,10 +30,33 @@ export function saveFold(storage: Storage, group: string, open: boolean): void {
   storage.setItem(FOLD_KEY, JSON.stringify({ ...loadFolds(storage), [group]: open }));
 }
 
-/** Rows whose label contains the filter, case-insensitive; an empty (or blank) filter keeps everything. */
-export function filterRows<T extends { label: string }>(rows: T[], text: string): T[] {
-  const q = text.trim().toLowerCase();
-  return q ? rows.filter((r) => r.label.toLowerCase().includes(q)) : rows;
+/** Everything a row says, as one lowercase haystack: its label, its second line, the reason it is grey, and its group. */
+function rowText(r: FilterableRow): string {
+  return [r.label, r.detail, r.why, r.group].filter(Boolean).join(" ").toLowerCase();
+}
+
+interface FilterableRow {
+  label: string;
+  detail?: string;
+  why?: string;
+  group?: string;
+}
+
+/**
+ * Rows the filter finds, case-insensitive; an empty (or blank) filter keeps
+ * everything. The match reads the whole row rather than the label alone, so a
+ * word only the second line says - "firewood" under Gather dead wood, "axe"
+ * under Open an ice hole - still finds the row it belongs to. Every word in
+ * the filter has to land somewhere in that row, so a second word narrows
+ * instead of widening.
+ */
+export function filterRows<T extends FilterableRow>(rows: T[], text: string): T[] {
+  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return rows;
+  return rows.filter((r) => {
+    const hay = rowText(r);
+    return words.every((w) => hay.includes(w));
+  });
 }
 
 /**
