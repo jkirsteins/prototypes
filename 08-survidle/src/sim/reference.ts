@@ -466,8 +466,16 @@ export function wantOpen(state: GameState, world: World, w: { req: IntentRequest
   return true;
 }
 
-/** The reference seeds. */
-export const REFERENCE_SEEDS = [17, 19, 42, 79];
+/**
+ * The reference seeds. The first four are inland lake camps with no birch
+ * in the home region, so a seed that exercises the sap window was chosen
+ * by scanning seeds 1 to 300 for a proper start (not the ring-39 fallback)
+ * with birch at home: 45 is the first that passes the April gate, and its
+ * shore reads no large game, which the other four never test. No landing
+ * in those 300 seeds is coastal, so seaweed and the sea shore are still
+ * outside the instrument.
+ */
+export const REFERENCE_SEEDS = [17, 19, 42, 79, 45];
 /**
  * The April gate (spec 7.1): the day a beginner who eats the least the
  * tables allow and burns the most runs out of fat. Derived, so it moves

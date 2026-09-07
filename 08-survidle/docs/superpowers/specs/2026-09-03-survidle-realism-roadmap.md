@@ -3723,7 +3723,12 @@ cell, about 810 kg at a shore, dug down where you stand and half the deficit
 back each growing season - so a patch goes poor and out locally and no
 survivor empties a region, with the year, April and lineage gates all
 holding where they stood; the unexploited line reads a stock, not an omission, and
-cannot see what rotted before the death; sap and seaweed never fire on
+cannot see what rotted before the death; seed 45 joined the reference
+seeds for its birch at home (its sap fires in May and its shore reads no
+large game, so it is the no-elk case: at level 20 it starves on 2 June),
+while no landing in 300 seeds is coastal by the start rule, so seaweed
+and the sea shore stay outside the instrument until a landing can be
+coastal; sap and seaweed had never fired on
 the reference seeds, so neither is measured by the without probe; and
 the lineage has not moved.
 

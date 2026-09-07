@@ -413,6 +413,28 @@ any reference seed - no birch in reach, no sea camp - so both read as free
 in the without table for want of an opportunity rather than for want of
 value.
 
+The author's answer, after review: a fifth reference seed that exercises
+more paths. Seeds 1 to 300 were scanned for a proper start (not the ring-39
+fallback, which freezes on day 4) with birch in the home region; 45 is the
+first that also passes the April gate, with seven birch cells at home.
+Its readings, measured alone at level 20 and from scratch: April pass, the
+life starving on day 38 with the sap taps credited in the May week before
+it; the stocked winter camp alive on 1 March; the year at level 20 starved
+on day 63 (2 June), eating 2,054 to 2,183 kcal a day against a 3,500 to
+3,600 burn with lean-wall days 0 of 7, because its shore reads no large
+game at all and the kills are squirrel, grouse, capercaillie and mallard,
+so it is the no-elk case on a fifth seed; the lineage 0 of 1 with lives of
+38, 58, 61, 57, 68 and 56 days. The gates read N of 5 from here on.
+
+The coast stays outside the instrument, and by construction: the landing
+searches outward from the map's centre for a region with forest over 0.45,
+at least 120 land cells, water under 0.15 of it, a shore and an outcrop,
+and no landing in 300 seeds is coastal, though 17 of the 5,836 coastal
+regions across the first 20 seeds would pass that filter. Seaweed, the
+sea fetch, the herring run and the ice-shore rules are content no player
+reaches without moving camp to the map's edge. Whether a landing should
+be able to be coastal is a design question for the author.
+
 **F11. The lineage is the gate that has not moved.** Its lives run 3 to 225
 days and the trend gate is 0 of 4. A list that ranks hunting first suits a
 level-20 camp with a bow and a rack; an heir landing in October with an

@@ -263,7 +263,7 @@ Every browser pass runs at 1440 by 900 and at 390 wide against
 terrain shares: `npx vite-node scripts/mapstats.ts 42`.
 
 `npm run reference` runs the day-one order list a competent player would
-write, headless, on four seeds, about ten seconds; the gate is alive and
+write, headless, on five seeds, about ten seconds; the gate is alive and
 fed on game day 26 from the arrival kit, in April - a short-term survival
 problem for a beginner with fire, a roof and water at the deficit the yield
 tables allow, with the day derived from that deficit and the food clause
@@ -275,7 +275,7 @@ is 20 July, 235 is 24 August); a start from July on is measured at the
 first snow rather than at a day. It is not part of `npm test`.
 
 `npm run horizon` runs a stocked camp with no player forward for up to 30
-days on the same four seeds, at each stage of the delegation ladder in
+days on the same five seeds, at each stage of the delegation ladder in
 turn (manual only, jobs and grinds, keeps), and reports the day and cause
 of the first death. It checks how long an idle camp holds at each stage,
 against the roadmap's provisional bands. `npm run horizon -- --start=<doy>`
@@ -284,7 +284,7 @@ opens each stage's camp on that day of year instead of 1 April (200 is
 
 `npm run year` runs the best survivor the sim can hold: a kitted camp with
 every producer, all six skills at 20, the reference list, from 1 April for
-a year, on the four seeds. It prints a line on the first of each month
+a year, on the five seeds. It prints a line on the first of each month
 (kcal eaten and burned a day, the stock at camp), the day of the first
 hang and the first large-game kill, the week before the death, and the
 outcome; the gate is alive after a year on 4 seeds. `--level=N` sets the
