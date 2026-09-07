@@ -364,6 +364,8 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   font: inherit; font-size: 13px;
   margin: 0 0 2px; padding: 0; cursor: pointer;
 }
+/* A search heading is a label, not a fold: same look, nothing to click. */
+div.fold { cursor: default; }
 input[data-do="filter"] {
   width: 100%; background: #181e27; color: var(--text);
   border: 1px solid var(--line); padding: 4px 6px;
