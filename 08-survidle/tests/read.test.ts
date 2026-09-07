@@ -72,6 +72,19 @@ describe("reading water", () => {
     expect(readHtml(state, world, state.player.region)).toContain("Shore read:");
   });
 
+  it("shores that read the same are one line, however many of them a coast-born survivor took in at a glance", () => {
+    const { state, world, r } = atShore();
+    const shores = r.cells.filter((c) => watersideCell(world, c) && shoreFish(world, r, c).length > 0);
+    expect(shores.length).toBeGreaterThan(3);
+    for (const c of shores) readShore(state, world, c);
+    const html = readHtml(state, world, state.player.region);
+    const lines = html.split("</div>").filter(Boolean);
+    // One line per reading, not per shore: the same fish in the same water said once.
+    const readings = new Set(shores.map((c) => state.player.known[c].fish.join(",")).filter((f) => f.length > 0));
+    expect(lines.length).toBe(readings.size);
+    expect(lines.length).toBeLessThan(shores.length);
+  });
+
   it("dies with the person: a new person starts with nothing read", () => {
     const { state, world, cell } = atShore();
     readShore(state, world, cell);

@@ -604,6 +604,30 @@ describe("the Orders panel", () => {
     expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep camp at 40 kg firewood");
   });
 
+  it("a wait with nothing to do says so once and shows no bar; a wait doing something names it and shows one", () => {
+    // The wait's own hour of rest is not a thing the player is waiting for: it
+    // ends when an order can run, not when the hour is up.
+    const { state, world } = newGame(1);
+    const st = regionState(state, world, state.player.region);
+    placeAtSpot(state, world, state.player.region, "camp");
+    addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 3);
+    expect(state.intent?.task).toBe("wait");
+    let html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toContain("Waiting at camp");
+    expect(html).not.toContain("Waiting at camp: waiting at camp");
+    expect(html).not.toContain('id="bar-task"');
+    // The fire is work, and work under way has its bar and its own words.
+    st.structures.firePit = true;
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    addItem(pile(state, st.campCell), "firewood", 5);
+    for (let i = 0; i < 120 && state.task?.id === "rest"; i++) advance(state, world, 1);
+    expect(state.task?.id).not.toBe("rest");
+    html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toContain("Waiting at camp: ");
+    expect(html).toContain('id="bar-task"');
+  });
+
   it("lists the orders in rank order with their state, counters and buttons", () => {
     // Seed 1's camp sits on forest ground, so the grind order is gathering within
     // the window below rather than still walking out to the forest spot.
@@ -616,8 +640,10 @@ describe("the Orders panel", () => {
     addItem(pile(state, st.campCell), "log", 6);
     addItem(pile(state, st.campCell), "firewood", 60);
     const keep = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
-    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    // Ranked under the grind: a once order that cannot run stops every order
+    // beneath it, so a cabin above the grind would leave nothing to draw.
+    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
     const cal = calendar(state.minute);
     let html = taskHtml(state, world, cal);
@@ -629,7 +655,7 @@ describe("the Orders panel", () => {
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
     expect(html).toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
-    expect(html).toContain(`data-act="order-down" data-id="${grind.id}" disabled`);
+    expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
     expect(html).not.toContain('data-act="stop"');
     // Counters appear once the work has completed.
@@ -639,7 +665,7 @@ describe("the Orders panel", () => {
     // Moving the cabin up shows in the next render.
     moveOrder(state, world, cabin.id, -1);
     html = taskHtml(state, world, calendar(state.minute));
-    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${keep.id}"`));
+    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${grind.id}"`));
   });
 
   it("a blocked order below the live one shows its own reason, not \"waiting\"", () => {
@@ -659,7 +685,7 @@ describe("the Orders panel", () => {
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
   });
 
-  it("shows the wait with the rest bar when nothing can run", () => {
+  it("shows the wait, and no bar, when nothing on the list can run", () => {
     const g = newGame(3);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
@@ -669,7 +695,7 @@ describe("the Orders panel", () => {
     advance(state, world, 2);
     const html = taskHtml(state, world, calendar(state.minute));
     expect(html).toContain("Waiting at camp");
-    expect(html).toContain('id="bar-task"');
+    expect(html).not.toContain('id="bar-task"');
   });
 });
 

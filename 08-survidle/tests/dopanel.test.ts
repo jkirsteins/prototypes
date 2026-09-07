@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
-import { placeAtSpot } from "../src/sim/position";
-import { regionAt } from "../src/world/gen";
+import { placeAt, placeAtSpot } from "../src/sim/position";
+import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, filterRows, FOLD_KEY, intentGroups, keyedRows, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
@@ -59,6 +59,32 @@ describe("fold and filter", () => {
     expect(filterRows(rows, "fire drill").map((r) => r.label)).toEqual(["Light the fire at the pit"]);
     expect(filterRows(rows, "fire  FLOOR").map((r) => r.label)).toEqual(["Gather dead wood"]);
     expect(filterRows(rows, "fire canoe").length).toBe(0);
+  });
+
+  it("work this ground will never offer is grey with no button, where merely blocked work can still be queued", () => {
+    // "No rock in Elgdalen" is not a wait: no outcrop is coming. Queuing it
+    // would park it at the head of the list, stopping every order under it
+    // until it was struck off by hand. A storm or a missing tool still queues.
+    const { state, world } = newGame(1);
+    const home = regionAt(world, state.player.region);
+    const bare = home.neighbours.map((n) => regionAt(world, n.id)).find((r) => !hasSpot(r, "outcrop"));
+    expect(bare).toBeDefined();
+    state.player.region = bare!.id;
+    placeAt(state, world, bare!.campCell);
+    const cal = calendar(state.minute, state.startDoy);
+    const stone = availableTasks(state, world, cal).find((o) => o.id === "stone")!;
+    expect(stone.ok).toBe(false);
+    expect(stone.never).toBe(true);
+    expect(stone.why).toBe(`no rock in ${bare!.name}`);
+    const html = doHtml(state, world, cal, newUiState());
+    const row = html.slice(html.indexOf('data-opt="intent:stone:"'), html.indexOf('data-opt="intent:stone:"') + 300);
+    expect(row).toContain("disabled");
+    expect(row).not.toContain('data-act="intent"');
+    // A row blocked for a reason that can change keeps its "add it anyway" button.
+    const blocked = availableTasks(state, world, cal).find((o) => !o.ok && !o.never)!;
+    expect(blocked).toBeDefined();
+    const other = html.slice(html.indexOf(`data-opt="intent:${blocked.id}:`));
+    expect(other.slice(0, 300)).toContain('data-act="intent"');
   });
 
   it("far rows are those that cannot start and sit more than a level short; Make lists startable first", () => {

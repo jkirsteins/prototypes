@@ -7,11 +7,11 @@ import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
-import { intentSentence } from "../sim/intent";
+import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
-import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy } from "../sim/epitaph";
+import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow, type HorizonId } from "../sim/forecast";
 import type { ForecastView } from "../sim/forecaster";
 import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
@@ -239,12 +239,25 @@ export function rosterHtml(state: GameState, world: World, id: number, cal: Cale
   return lines + readHtml(state, world, id);
 }
 
-/** The shores of this region the survivor has read, each with what lies where. Empty when none is. */
+/**
+ * The shores of this region the survivor has read, with what lies where.
+ * A reading is about the water rather than the cell, so shores that read
+ * the same are one line: a coast-born survivor takes in every shore of a
+ * ground at a glance, and a region has dozens of them. Empty when none is
+ * read; nearest first, as readCells orders them.
+ */
 export function readHtml(state: GameState, world: World, id: number): string {
-  return readCells(state, world, id)
-    .filter((c) => state.player.known[c].fish.length > 0)
-    .map((c) => `<div>Shore read: ${state.player.known[c].fish.map(fishLie).join(", ")}</div>`)
-    .join("");
+  const said = new Set<string>();
+  const out: string[] = [];
+  for (const c of readCells(state, world, id)) {
+    const fish = state.player.known[c].fish;
+    if (fish.length === 0) continue;
+    const line = fish.map(fishLie).join(", ");
+    if (said.has(line)) continue;
+    said.add(line);
+    out.push(`<div>Shore read: ${line}</div>`);
+  }
+  return out.join("");
 }
 
 export function regionHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
@@ -360,8 +373,13 @@ const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div
 function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
+  // An idle wait is waiting on the list, not on its own hour of rest: it says so
+  // plainly and shows no bar, since the hour running out changes nothing. A wait
+  // that is doing something - the fire, the body's own rest - names it and keeps
+  // the bar, which is that work's own.
+  const idle = it?.task === "wait" && it.step === WAITING_STEP;
   const waiting = it?.task === "wait"
-    ? `<div class="step">Waiting at camp: ${esc(plain(it.step))}</div>${state.task ? TASK_BAR : ""}`
+    ? `<div class="step">Waiting at camp${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
     : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
@@ -568,7 +586,7 @@ function ancestorLine(state: GameState): string {
   return `<p class="ancestor">${esc(fmtName(prev.name))} lived ${prev.died.day} days.</p>`;
 }
 
-export function tombstoneHtml(state: GameState, _world: World, ui: UiState): string {
+export function tombstoneHtml(state: GameState, _world: World, _ui: UiState): string {
   const rec = current(state);
   const next = landingDate(worldDate(state, state.dead!.minute)).date;
   const lines = entry(rec);
@@ -576,7 +594,7 @@ export function tombstoneHtml(state: GameState, _world: World, ui: UiState): str
 <h1>${esc(fmtName(rec.name))}</h1>
 <p>${esc(epitaphTail(rec))}</p>
 ${ancestorLine(state)}
-<div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>
+<div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec))}</div>
 ${entryLinesHtml(lines.slice(1))}
 <p class="dim">The next survivor carries ${esc(shareWord(CARRY_SHARE))} of what ${esc(rec.name.first)} knew, and none of the practice at any one thing.</p>
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
@@ -619,7 +637,10 @@ export function cemeteryHtml(state: GameState, ui: UiState): string {
   const dead = [...state.survivors].filter((s) => s.died !== null).reverse();
   const rows = dead.map((s) => {
     const open = ui.cemeteryOpen === s.index;
-    const lines = open ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>${entryLinesHtml(entry(s).slice(1))}` : "";
+    // Closed, a grave tells the three things worth telling; open, the entry says all of them and the stories would be it twice.
+    const lines = open
+      ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s))}</div>${entryLinesHtml(entry(s).slice(1))}`
+      : stories(s).map((t) => `<div class="s">${esc(t)}</div>`).join("");
     return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
   });
   const leave = ui.confirmLeave
@@ -633,12 +654,12 @@ ${rows.length ? rows.join("") : `<p class="dim">No one has died here yet.</p>`}
 </div>`;
 }
 
-export function journalHtml(state: GameState, cal: Calendar, ui: UiState): string {
+export function journalHtml(state: GameState, cal: Calendar, _ui: UiState): string {
   const n = nextThreshold(state, cal);
   const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
   const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
   const rec = current(state);
-  const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48, copy: true, copied: ui.copiedUntil > Date.now() })}</div>`;
+  const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48 })}</div>`;
   const mine = entry(current(state));
   const ancestors = state.survivors.slice(0, -1).reverse().map((s) => `<div class="e"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(fmtName(s.name))}</button> ${esc(epitaphTail(s))}</div>`);
   return `<h2>Journal</h2>${season}${card}${entryLinesHtml(mine)}${ancestors.length ? `<h3>Before you</h3><div class="entries">${ancestors.join("")}</div>` : ""}<button class="mini" data-act="cemetery">cemetery</button>`;

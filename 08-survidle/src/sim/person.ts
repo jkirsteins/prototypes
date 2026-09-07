@@ -105,29 +105,56 @@ export function body(state: GameState): Derived {
 export const BIG_EATER_PACE = 0.9;
 export const BIG_EATER_BURN = 1.1;
 
-const HOURS_WORDS = ["eight", "nine", "ten", "eleven", "twelve"];
-const HANDS_WORDS = ["clumsy", "unsure hands", "ordinary hands", "sure hands", "steady hands"];
-const EYES_WORDS = ["poor sight", "short sight", "ordinary sight", "sharp eyes", "eagle-eyed"];
+/**
+ * A grade says the word first and the quantity behind it: "Strong and
+ * tireless." is what a listener takes away, "carries 28 kg, 39 at a push"
+ * is what a player plans a carry with. Strength drives both the pack and
+ * the working day, so one row speaks for both.
+ */
+const STRENGTH_WORDS = ["Weak", "Slight", "Ordinary", "Strong", "Mighty"];
+const WIND_WORDS = ["soon spent", "short-winded", "steady", "tireless", "unflagging"];
+const BUILD_WORDS = ["Spare", "Lean", "Ordinary", "Solid", "Heavy"];
+const HANDS_WORDS = ["Clumsy hands", "Unsure hands", "Ordinary hands", "Sure hands", "Steady hands"];
+const EYES_WORDS = ["poor sight", "short sight", "ordinary sight", "sharp eyes", "an eagle's eye"];
 
 function kg(x: number): string {
   return Number.isInteger(x) ? `${x} kg` : `${x.toFixed(1)} kg`;
 }
 
-/** The four grade lines of a card: quantities for strength and build, words for hands and eyes. */
-export function gradeLines(p: Person): string[] {
+/** A grade line: the words a listener repeats, and the quantities that back them. */
+export interface GradeLine {
+  word: string;
+  evidence: string;
+}
+
+/**
+ * The three grades of a card. The pack figures are the same two the Pack
+ * panel names, in the same words, so the card and the header never disagree
+ * about what this body can lift.
+ */
+export function grades(p: Person): GradeLine[] {
   const d = derived(p);
   const b = p.axes.build;
   return [
-    `carries ${kg(d.packComfortableKg)} all day, ${kg(d.packHardKg)} at a push; works ${HOURS_WORDS[p.axes.strength + 2]} hours`,
-    `${d.massKg} kg${b > 0 ? ", sleeps warm" : b < 0 ? ", sleeps cold" : ""}`,
-    HANDS_WORDS[p.axes.hands + 2],
-    EYES_WORDS[p.axes.eyes + 2],
+    {
+      word: `${STRENGTH_WORDS[p.axes.strength + 2]} and ${WIND_WORDS[p.axes.strength + 2]}.`,
+      evidence: `carries ${kg(d.packComfortableKg)}, ${kg(d.packHardKg)} at a push; works ${d.workHours} hours`,
+    },
+    {
+      word: `${BUILD_WORDS[b + 2]}${b > 0 ? ", sleeps warm" : b < 0 ? ", sleeps cold" : ""}.`,
+      evidence: `${d.massKg} kg`,
+    },
+    { word: `${HANDS_WORDS[p.axes.hands + 2]}, ${EYES_WORDS[p.axes.eyes + 2]}.`, evidence: "" },
   ];
 }
 
+/**
+ * A quirk says what it gives; what it refuses is the fear, said once on the
+ * card's Fears line rather than twice a line apart.
+ */
 const QUIRK_LINES: Record<QuirkId, string> = {
-  coastBorn: "Coast-born. Reads any shore at a glance; will not go up on the fell in cloud.",
-  forestBorn: "Forest-born. Knows the forest's game two levels early; will not work the open shore in a storm.",
+  coastBorn: "Coast-born. Reads any shore at a glance.",
+  forestBorn: "Forest-born. Knows the forest's game two levels early.",
   sleepsLight: "Sleeps light. Wolves never reach the bed; a storm night is a long one, and the morning short.",
   bigEater: "Big eater. Works a tenth faster and burns a tenth more.",
   steadyByTheFire: "Steady by the fire. Lights in rain without fail.",

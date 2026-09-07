@@ -107,7 +107,7 @@ export function entry(rec: LifeRecord): string[] {
 }
 
 /**
- * The rank of a line for the card's three stories: the worst night with
+ * The rank of a line for the three stories: the worst night with
  * wolves, the first large kill, the winter thresholds, the walls raised, then
  * the rest of the entry's kinds in the order a listener would ask about them.
  */
@@ -124,7 +124,16 @@ function storyRank(e: LifeEvent): number {
   }
 }
 
-/** Three lines of the record at most, the best ranked, oldest first: what the card tells of a life. */
+/**
+ * Three lines of the record at most, the best ranked, oldest first: the
+ * highlights of a life.
+ *
+ * The closed grave is what shows them: a name, how the life ended, and the
+ * three things worth telling. The card carried them once and should not,
+ * because a card never appears without the life's full entry beside it - so
+ * an open grave drops them too, rather than print the entry twice a hand's
+ * width apart.
+ */
 export function stories(rec: LifeRecord): string[] {
   const ranked: { rank: number; day: number; text: string }[] = [];
   for (const e of rec.events) {

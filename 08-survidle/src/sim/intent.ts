@@ -26,7 +26,7 @@ import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { beginTask, check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, Where,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, UntilChoice, Where,
 } from "./types";
 
 /**
@@ -36,12 +36,21 @@ import type {
  * counted order, the wait - is the runner's, and so is the night out, a
  * once whose only content is the sleep the body serves.
  */
-export function intentMode(task: TaskId, until: Until): Intent["mode"] {
+export function intentMode(task: TaskId, until: Until | UntilChoice): Intent["mode"] {
   if (task === "night" || task === "wait") return "runner";
   return until.kind === "once" ? "hand" : "runner";
 }
 
 export type { IntentRequest, UntilChoice, Where } from "./types";
+
+/**
+ * The step of a wait with nothing else to do: an hour of rest, and then
+ * another, until an order can run. The panel reads it to tell that hour from
+ * the work a wait does do - keeping the fire, the body's own rest - since
+ * neither the words nor the hour's bar mean anything to a player who is
+ * waiting on the list rather than on the clock.
+ */
+export const WAITING_STEP = "waiting at camp";
 
 /** Work that is done at camp whatever the ground. */
 const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend", "crack", "grindBark"]);
@@ -656,7 +665,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   // can be done about it, and the rest follows as before.
   const fire = it.task === "wait" && here === it.campCell ? fireStep(state, world, cal, it.campCell) : null;
   const step: Step = fire ?? (it.task === "wait"
-    ? { id: "rest", step: "waiting at camp" }
+    ? { id: "rest", step: WAITING_STEP }
     : { id: it.task, arg: it.arg, step: workGerund(state, world, it) });
   if (!takeStep(state, world, cal, step, rng)) {
     if (it.orderId !== null) state.intent = null;

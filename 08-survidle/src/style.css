@@ -28,12 +28,26 @@ html, body {
   line-height: 1.4;
 }
 
+/* The page is a column: the board takes what is left of the viewport and its
+   own columns scroll inside it, the footer holds one line at the foot. */
+body { display: flex; flex-direction: column; height: 100vh; }
+
 #app {
   display: grid;
   grid-template-columns: 300px minmax(560px, 1fr) 420px;
   gap: 10px;
   padding: 10px;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
+}
+
+/* What was built, for telling one deploy from the next. */
+.build {
+  flex: none;
+  padding: 0 12px 6px;
+  color: var(--dim);
+  font-size: 11px;
+  text-align: right;
 }
 
 /* Each column is the viewport's height and scrolls inside itself, so a
@@ -438,7 +452,9 @@ button.act small, span.act small { display: block; color: var(--dim); }
 }
 #overlay h1 { margin: 0 0 8px; font-size: 20px; }
 #overlay .box button.act { width: auto; display: inline-block; margin-top: 12px; }
-.grave { margin: 4px 0; }
+/* A grave is a name, a death and what the life is remembered for, so its lines all start at one edge. */
+.grave { margin: 12px 0; }
+.grave > .mini { display: block; width: 100%; text-align: left; }
 .season { margin-bottom: 6px; }
 #overlay .box input[data-name] { width: 14em; }
 
@@ -480,11 +496,23 @@ button.act small.gives, span.act small.gives,
 .card.chosen { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .card b { display: block; margin-bottom: 4px; }
 .card .e { border-bottom: none; padding: 1px 0; color: var(--dim); }
+/* The card reads in blocks: a gap tells the grades from the quirks from this life from the record. */
+.cardbody { max-width: 62ch; }
+.cardblock { margin-top: 8px; }
+.cardblock:first-of-type { margin-top: 6px; }
+.cardday { color: var(--dim); margin-left: auto; font-size: 12px; }
+.card .g, .card .q { padding: 1px 0; padding-left: 1.2em; text-indent: -1.2em; }
+.card .g b { display: inline; margin: 0; color: var(--text); font-weight: 600; }
+.card .g .ev { color: var(--dim); }
+.card .q { color: var(--dim); }
+.card .q b { display: inline; margin: 0; color: var(--text); font-weight: 600; }
+.card .kv dd { color: var(--text); }
+/* A closed grave: the three things worth telling, under the name and the death. */
+.grave .s { color: var(--dim); padding: 1px 0 1px 1.2em; text-indent: -1.2em; margin-left: 8px; }
 .card .face, .stat-face { display: inline-block; vertical-align: middle; margin-right: 6px; }
 .cardhead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .cardhead b { margin: 0; }
 .card .cardbody { display: block; }
-.card pre.cardtext { white-space: pre-wrap; font: inherit; color: var(--text); margin: 6px 0 0; }
 #journal .card, #overlay .card { display: block; margin: 8px 0; cursor: default; }
 #overlay .box p .face { vertical-align: middle; margin-right: 8px; }
 @media (max-width: 700px) {
@@ -509,7 +537,11 @@ button.act small.gives, span.act small.gives,
    and the map come first, then the rest in reading order. The settings panel
    is fixed and outside #app, so it has no place in this order. */
 @media (max-width: 700px) {
-  #app { grid-template-columns: 1fr; height: auto; }
+  /* One column, and the page scrolls as a whole: the board grows past the
+     viewport instead of each column scrolling inside it, and the footer
+     follows the last panel. */
+  body { height: auto; min-height: 100vh; }
+  #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
   #task { order: 1; }
   #forecast { order: 2; }
