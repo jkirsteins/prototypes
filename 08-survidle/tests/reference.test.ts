@@ -33,7 +33,7 @@ import {
   WOOD_DUE_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
-import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY, SAP_TO_DOY } from "../src/sim/items";
+import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
 import { regionState } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
@@ -67,14 +67,15 @@ describe("the reference player", () => {
     // (the shore is open), the fire indoors (no hut), the hide coat, trousers and boots
     // (Crafting 8), the celt and the flaked axe, the wedge split and the dead wood (an axe is
     // in hand), and seaweed (an inland lake). The wants' own conditions shut the nests, the
-    // sap, the winter dig, the rack, the hang and the render, each waiting on a window or a
-    // stock camp has not got on day one. A level-1 survivor writes neither, so the runner
-    // reads both by hand and the list is what is left, every want of it a once job.
+    // sap, the winter dig, the winter pile and its logs, the rack, the hang and the render,
+    // each waiting on a window or on a stock camp has not got on day one. A level-1 survivor
+    // writes neither reading, so the runner reads both by hand and the list is what is left,
+    // every want of it a once job.
     const cal = calendar(state.minute, state.startDoy);
     const shape = (w: (typeof REFERENCE_ORDERS)[number]) => ({ id: -1, kind: w.kind, req: w.req, done: 0, minutes: 0, skipped: "" });
     const open = REFERENCE_ORDERS.filter((w) => wantOpen(state, world, w) && conditionOpen(state, world, cal, shape(w)) === null);
-    expect(list.length).toBe(REFERENCE_ORDERS.length - 25);
-    expect(open.length).toBe(REFERENCE_ORDERS.length - 25);
+    expect(list.length).toBe(REFERENCE_ORDERS.length - 27);
+    expect(open.length).toBe(REFERENCE_ORDERS.length - 27);
     list.forEach((o, i) => {
       expect(o.kind, `order ${i + 1}`).toBe("job");
       expect(o.req.until.kind, `order ${i + 1}`).toBe("once");
@@ -191,35 +192,38 @@ describe("the reference player", () => {
     else expect(tasks).not.toContain("bark");
   });
 
-  it("a seasonal once job is wanted again while its window is open: the tap drunk on the spot leaves nothing for a finished mark to stand on", () => {
-    const { state, world } = newGame(17, SAP_FROM_DOY);
-    const birch = findBirchCell(world);
-    placeAt(state, world, birch);
-    state.player.tools.push({ id: "knife", durability: 100 });
-    state.player.kcal = 3000;
-    state.player.water = 3;
-    state.player.warmth = 100;
-    state.player.health = 100;
-    const player = new ReferencePlayer([
-      { req: { task: "tapSap", until: { kind: "once" }, deliver: "camp", where: "nearest", when: { season: { from: SAP_FROM_DOY, to: SAP_TO_DOY } } }, kind: "job" },
-    ]);
-    const ref = { state, world, player };
-    const sapTotal = () => state.ledger.reduce((s, d) => s + d.yield.sap, 0);
-    stepReference(ref, 24 * 60);
-    const sap1 = sapTotal();
-    expect(sap1).toBeGreaterThan(0);
-    stepReference(ref, 24 * 60);
-    stepReference(ref, 24 * 60);
-    // A once job given as itself is normally a finished job for good (the knife would
-    // otherwise be made again); a want with a window is the exception, since its window
-    // and not a finished mark is what says when it is wanted, so three days inside one
-    // book more than one day's three-tap cap.
-    expect(sapTotal()).toBeGreaterThan(SAP_KCAL * SAP_TAPS_PER_DAY);
+  it("the sap tap is a count a day in its window: at the rung the order stands and costs no morning, under it the returning player gives it afresh", () => {
+    // A tap is drunk on the spot, so nothing at camp reads as done and a job done once would
+    // be a job done once a year. The count a day is what says otherwise, and it is the row's
+    // own promise rather than a rule about the vocabulary: at the condition rung the order
+    // carries the count and the window and never drops off, so the list never changes.
+    const tap = REFERENCE_ORDERS.find((w) => w.req.task === "tapSap")!;
+    const run = (level: number) => {
+      const { state, world } = newGame(17, SAP_FROM_DOY);
+      placeAt(state, world, findBirchCell(world));
+      state.player.tools.push({ id: "knife", durability: 100 });
+      state.player.kcal = 3000;
+      state.player.water = 3;
+      state.player.warmth = 100;
+      state.player.health = 100;
+      for (const s of SKILL_IDS) setSkillLevel(state, s, level);
+      const player = new ReferencePlayer([tap]);
+      stepReference({ state, world, player }, 3 * 24 * 60);
+      return { player, sap: state.ledger.reduce((s, d) => s + d.yield.sap, 0) };
+    };
+    // Three days inside the window book more than one day's three-tap cap at either level.
+    const twenty = run(20);
+    expect(twenty.sap).toBeGreaterThan(SAP_KCAL * SAP_TAPS_PER_DAY);
+    expect(twenty.player.attention(1, 3).mornings).toBe(0);
+    const five = run(5);
+    expect(five.sap).toBeGreaterThan(SAP_KCAL * SAP_TAPS_PER_DAY);
+    // Under the rung the count is stripped to a plain one, so the morning is the player's.
+    expect(five.player.attention(1, 3).mornings).toBeGreaterThan(0);
   });
 
-  // Every other once job pins the opposite: given as itself, it finishes for good, and a
-  // second look the next day leaves nothing new done and no order standing. REOPENING_TASKS
-  // holds only "tapSap"; these four are the shapes a general no-yield rule wrongly reopened.
+  // Every other job pins the opposite: given as itself, it finishes for good, and a second
+  // look the next day leaves nothing new done and no order standing. Work wanted again
+  // tomorrow says so with a count a day; these four are the shapes that must not reopen.
   it("a garment craft is finished for good: one coat's materials, not a fresh one every day camp holds hides", () => {
     const { state, world } = newGame(17);
     setSkillLevel(state, "crafting", 8);
@@ -602,7 +606,7 @@ describe("wants by level", () => {
   it("says the winter firewood window on the keep: midsummer to the thaw, shut through the spring", () => {
     const wood = REFERENCE_ORDERS.find((w) => w.req.task === "split" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg)!;
     const season = wood.req.when!.season!;
-    expect(inSeason(WINTER_WOOD_TO_DOY + 1, season)).toBe(false);
+    expect(inSeason(WINTER_WOOD_TO_DOY, season)).toBe(false);
     expect(inSeason(150, season)).toBe(false);
     expect(inSeason(WINTER_WOOD_FROM_DOY, season)).toBe(true);
     expect(inSeason(244, season)).toBe(true);

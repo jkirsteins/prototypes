@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, pile, TRACE_KG } from "../src/sim/inventory";
-import { AUTO_EAT_ORDER, EGG_FROM_DOY, EGG_TO_DOY, FOODS, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TO_DOY, SPOIL_HOURS } from "../src/sim/items";
+import {
+  AUTO_EAT_ORDER, EGG_FROM_DOY, EGG_TO_DOY, FOODS, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, ROOT_FROM_DOY, ROOT_TO_DOY,
+  SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS,
+} from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { inSeason, ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
@@ -72,11 +75,12 @@ describe("the list after the axe", () => {
     // sized from the measured hut winter, and the three methods move with it.
     const winterPile = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg);
     expect(winterPile.map(key)).toEqual(["split::keep", "splitWedges::keep", "deadwood::keep"]);
-    // The window is the order's own: midsummer to the first day of the thaw, shut through
-    // the spring and summer a pile stacked then would only sit through.
+    // The window is the order's own: midsummer to the day before the thaw, shut through the
+    // spring and summer a pile stacked then would only sit through, and shut on the thaw's
+    // own first day, which a season inclusive of its last day makes the day before it.
     for (const w of winterPile) {
-      expect(w.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY });
-      expect(inSeason(WINTER_WOOD_TO_DOY + 1, w.req.when!.season!)).toBe(false);
+      expect(w.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
+      expect(inSeason(WINTER_WOOD_TO_DOY, w.req.when!.season!)).toBe(false);
       expect(inSeason(150, w.req.when!.season!)).toBe(false);
       expect(inSeason(280, w.req.when!.season!)).toBe(true);
     }
@@ -112,6 +116,10 @@ describe("the list after the axe", () => {
     // Each gather says its own window, so nothing but the ground under the camp is left
     // for the runner to read: the nests, the sap and the summer dig by their windows.
     expect(want("eggs::job").req.when?.season).toEqual({ from: EGG_FROM_DOY, to: EGG_TO_DOY });
+    // The tap is a count a day inside its window, not a job done once: what it yields is
+    // drunk on the spot, so nothing at camp says it has been done and nothing but the day
+    // roll can ask for it again. The birches' own cap is what the count reads.
+    expect(want("tapSap::job").req.until).toEqual({ kind: "daily", n: SAP_TAPS_PER_DAY });
     expect(want("tapSap::job").req.when?.season).toEqual({ from: SAP_FROM_DOY, to: SAP_TO_DOY });
     const digs = REFERENCE_ORDERS.filter((w) => w.req.task === "roots" && w.kind === "job");
     expect(digs.map((w) => w.req.when?.season)).toEqual([
@@ -174,7 +182,7 @@ describe("the list after the axe", () => {
     expect(fish.req.when).toEqual({ stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } });
     // The paced pile: told from the summer keep of the same task by its target.
     const split = REFERENCE_ORDERS.find((w) => w.req.task === "split" && winterStockWant(w))!;
-    expect(split.req.when).toEqual({ season: { from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY });
+    expect(split.req.when).toEqual({ season: { from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 }, by: WOOD_DUE_DOY });
     expect(want("hang::grind").req.when).toEqual({ stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } });
     expect(want("cook:rawFat:grind").req.when).toEqual({ stock: { item: "rawFat", atLeast: TRACE_KG } });
     expect(want("crack::grind").req.when).toEqual({ stock: { item: "bone", atLeast: 1 } });
@@ -199,7 +207,7 @@ describe("the list after the axe", () => {
     // The winter pile, told from the summer keep of the same task by its target.
     const paced = ordersHere(state, world).find((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.firewoodKg);
     expect(paced?.req.when?.by).toBe(WOOD_DUE_DOY);
-    expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY });
+    expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
     expect(player.attention(1, 3).mornings).toBe(0);
   });
 

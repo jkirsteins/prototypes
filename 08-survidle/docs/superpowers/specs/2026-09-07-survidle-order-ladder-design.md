@@ -172,23 +172,25 @@ The wants that carry conditions:
 | eggs | daily 1, season 1 May to 30 June |
 | roots | daily 1, season 1 April to 31 October; a second want for the winter dig, daily 1, season 1 November to 31 March, given only with an axe in reach (a runner rule: the ice hole is what an axe keeps open) |
 | seaweed | daily 1, given only on a sea camp (a runner rule) |
-| tapSap | once, season the sap window |
+| tapSap | daily SAP_TAPS_PER_DAY, season the sap window |
 | cook rawFat grind | stock { rawFat, atLeast TRACE_KG } |
 | crack grind | stock { bone, atLeast 1 } |
 | hang grind | stock { rawMeat, atLeast HANG_ABOVE_KG } |
 | dryingRack once | stock { rawMeat, atLeast TRACE_KG } |
 | hunt any keep | target WINTER_STOCK.driedMeatKg times 3 in meat forms, restart four fifths of it |
 | fish any keep | 1 kg in fish forms, stock { driedMeat, under WINTER_STOCK.driedMeatKg } |
-| split, splitWedges, deadwood keeps | 600 kg, by 1 December, season midsummer to 1 April, above the hunt keep |
+| split, splitWedges, deadwood keeps | 600 kg, by 1 December, season midsummer to the day before the thaw (a season is inclusive of its last day and `WINTER_WOOD_TO_DOY` is the day the want shuts), above the hunt keep |
 | chop keep | 300 logs, by 1 December, the same season, above the hunt keep |
 | berries keep | season 1 July to 30 April (the summer season and the frozen lingon) |
 
 The named runner rules that stay in `wantOpen`, each a decision a player
 reads off the screen: water by method (shore open, hole with an axe under
-ice, melt with no axe); fire by method (pit until walls, indoors after);
-the snow shelter until walls; the named hunts, the garments and the spare
-axe by their recommended levels; the winter roots row by an axe in reach;
-seaweed by a sea camp. Every other branch of `wantOpen` goes.
+ice, melt with no axe); firewood by method, the same shape (the axe split
+while an axe is in reach, the wedges and the dead wood when none is); fire
+by method (pit until walls, indoors after); the snow shelter until walls;
+the named hunts, the garments and the spare axe by their recommended
+levels; the winter roots row by an axe in reach; seaweed by a sea camp.
+Every other branch of `wantOpen` goes.
 
 The returning player: for each want, `tick` computes `withinLadder` as
 today. When the result lost a condition, the runner applies the condition
@@ -199,8 +201,13 @@ withdraws at the target (the band by hand); a lost `daily` re-gives the
 counted job each morning; a lost `by` gives a plain keep at today's pace
 target and re-gives it as the target moves (once a week, the returning
 player's cadence). Each give and each withdrawal is an intervention.
-`DAILY_TASKS` and `REOPENING_TASKS` go: the sap tap is a once job with a
-season, re-given inside the window as any withdrawn-and-reopened want is.
+`DAILY_TASKS` and `REOPENING_TASKS` go: the sap tap is a daily count with a
+season, at the birches' own three taps a day. A tap is drunk on the spot,
+so nothing at camp reads as done and a job done once would be a job done
+once a year; the count a day is what asks for it again, and it is the row's
+own promise rather than a rule about the vocabulary, so at the condition
+rung the order carries it and costs no morning, and below the rung the
+returning player re-gives it as for any other daily count.
 
 The intervention count: `ReferencePlayer.interventions: Map<day, number>`
 counts every give and withdrawal the runner makes after the opening list

@@ -23,7 +23,7 @@ import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } f
 import { nearestCell } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
-  ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
+  ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
 } from "./items";
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
@@ -282,6 +282,15 @@ export const WOOD_DUE_DOY = 334;
  */
 export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
 
+/**
+ * The window the winter pile is stocked in and the day the whole of it is due,
+ * said once for the four rows that stock it. A season is inclusive of its last
+ * day and WINTER_WOOD_TO_DOY is the day the want shuts, so the last day the pile
+ * is asked for is the one before it: a survivor standing on the first day of the
+ * thaw has this winter's pile behind them and next winter's is a summer away.
+ */
+const WINTER_WOOD_WHEN: OrderWhen = { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY - 1 }, by: WOOD_DUE_DOY };
+
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
@@ -325,16 +334,16 @@ export const REFERENCE_ORDERS: Want[] = [
   job("build", { kind: "once" }, "dryingRack", "camp", { stock: { item: "rawMeat", atLeast: TRACE_KG } }),
   keep("build", 20, "snare"),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } } }, kind: "grind" },
-  keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
-  keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
-  keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
-  keep("chop", WINTER_STOCK.logs, undefined, "camp", { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY }, by: WOOD_DUE_DOY }),
+  keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_WOOD_WHEN),
+  keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_WOOD_WHEN),
+  keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_WOOD_WHEN),
+  keep("chop", WINTER_STOCK.logs, undefined, "camp", WINTER_WOOD_WHEN),
   keep("hunt", WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO, "any", "camp", { restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 }),
   job("eggs", { kind: "daily", n: PLANT_HOURS_PER_ROW }, undefined, "camp", { season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } }),
   job("roots", { kind: "daily", n: PLANT_HOURS_PER_ROW }, undefined, "camp", { season: { from: ROOT_FROM_DOY, to: ROOT_TO_DOY } }),
   job("roots", { kind: "daily", n: PLANT_HOURS_PER_ROW }, undefined, "camp", { season: { from: ROOT_TO_DOY + 1, to: ROOT_FROM_DOY - 1 } }),
   keep("cook", 1, "roots"),
-  job("tapSap", { kind: "once" }, undefined, "camp", { season: { from: SAP_FROM_DOY, to: SAP_TO_DOY } }),
+  job("tapSap", { kind: "daily", n: SAP_TAPS_PER_DAY }, undefined, "camp", { season: { from: SAP_FROM_DOY, to: SAP_TO_DOY } }),
   job("seaweed", { kind: "daily", n: PLANT_HOURS_PER_ROW }),
   keep("fish", 1, "any", "camp", { stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } }),
   // Midsummer to the turn of May: the summer window, and after it the frozen lingon dug
@@ -677,10 +686,10 @@ function pacedByHand(w: Want, best: Want): boolean {
  *
  * A stand-in that drops off is given again when the want is unmet; a want
  * given as its own kind that drops off is a finished job and is never given
- * twice, or the knife would be made again - except a once job with a
- * season, which leaves nothing behind for a later look to read (a tap is
- * drunk on the spot) and whose window, not a finished mark, is what says
- * when it is wanted again. A keep given as a keep stays for good.
+ * twice, or the knife would be made again. Work that is wanted again
+ * tomorrow says so on the want, with a count a day: a tap drunk on the spot
+ * leaves nothing behind for a later look to read, so nothing but its own
+ * daily count can bring it back. A keep given as a keep stays for good.
  * A `times` want's own probe reads `done`, which a fresh probe never
  * carries, so a once-job stand-in's units are banked in `completed` when
  * it drops off and fed back as the probe's `done` - otherwise a five-times
@@ -839,9 +848,9 @@ export class ReferencePlayer {
         continue;
       }
       // A completed want given as its own kind is a finished job for good, or the knife
-      // would be made again; a seasonal once job is the exception, since what it leaves
-      // behind is nothing a later look can read and its window is what wants it again.
-      if (this.trueKind.get(i) && !(w.req.until.kind === "once" && w.req.when?.season)) this.finished.add(i);
+      // would be made again. Work wanted again tomorrow says so with a count a day,
+      // which the morning clear above reopens.
+      if (this.trueKind.get(i)) this.finished.add(i);
       else if (g.units) this.completed.set(i, (this.completed.get(i) ?? 0) + g.units);
       this.given.delete(i);
       this.trueKind.delete(i);

@@ -69,10 +69,9 @@ describe("the epitaph", () => {
     // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
     // and a second rack another 40; the named hunts are grinds below the hut group rather than keeps, so raw meat
     // at camp never blocks a keep the hang grind is clearing; a soaked body under 5 C reads cold at warmth 45, so
-    // the early days buy warmth at the fire; and the winter woodpile keep runs from midsummer to 1 April
-    // inclusive, so a 1 April start sees it open on its first day and shut from its second, and neither of
-    // the sixty-day lives below reaches the window again - both epitaphs read the same with that day in the
-    // window as without it. The log keep beside it carries the same window, so a spring runner with nothing
+    // the early days buy warmth at the fire; and the winter woodpile keep runs from midsummer to the day
+    // before the thaw, which a 1 April start is one day past and neither of the sixty-day lives below
+    // reaches again. The log keep beside it carries the same window, so a spring runner with nothing
     // else able to run rests instead of felling; and stone is wanted twice, a once job for eight at the
     // opening and a keep of eight as the restock below the clothing block.
     // Both seeds starve at camp rather than freezing or dying on the trail: the reference
