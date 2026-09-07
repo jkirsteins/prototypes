@@ -224,7 +224,9 @@ describe("the two upper rungs", () => {
     expect(RUNG_LEVEL).toEqual({ job: 3, grind: 5, keep: 10, condition: 15, pace: 20 });
     expect(RUNG_ORDER).toEqual(["job", "grind", "keep", "condition", "pace"]);
     expect(RUNG_LINE.condition("Foraging")).toContain("season");
+    // The rung unlocks both pace words, so the line a player is shown says both.
     expect(RUNG_LINE.pace("Woodcraft")).toContain("date");
+    expect(RUNG_LINE.pace("Woodcraft")).toContain("spent by the season's close");
   });
 
   it("a daily count on a task with no yield to stock stays daily, drunk rather than kept", () => {

@@ -3812,21 +3812,20 @@ reported rather than required. The year's three deaths - seed 17 on day
 and all the fat finding under another name. That row is also where five
 seeds stop being enough: the same tree reads 2 of 5 there and 19 of 30
 alive on a thirty-seed sweep, better than any other shape measured, so the
-sweep is the reading and the gate is the shape. The year at level 10, run as a reading and not a gate, is 1 of
-5: a level-10 survivor has the keep rung and not the condition rung, so
-every season, stock line, restart and daily count on its list is
-stripped and played by hand, and the reading is what the two upper rungs
-are worth. A level-20 camp's attention runs 22 to 36 mornings a year,
+sweep is the reading and the gate is the shape. The year at level 10, run
+as a reading and not a gate, is 2 of 5: seeds 42 and 79 reach it, 17 froze
+on day 333, 19 starved on 93 and 45 on 116. A level-10 survivor has the
+keep rung and not the condition rung, so every season, stock line, restart
+and daily count on its list is stripped and played by hand, and the reading
+is what the two upper rungs are worth. A level-20 camp's attention runs 22 to 36 mornings a year,
 0.5 to 0.8 a week, and on seed 42 the water method alone is 65 of the 84
 flips a level-20 year counts, the other 19 being once-jobs dropping off
 as the plan finishes; the same tally at level 10 is the returning player
 made visible, the root row's daily count re-given 85 times and the two
 paced wood keeps 23 each - a tally from before the follow-up fixes, which
-changed the bucket row at every rung and the pace at the two upper ones;
-the level-10 year itself now reads 2 of 5 (seeds 42 and 79 reach it; 17
-froze on day 333, 19 starved on 93, 45 on 116) at 199, 67, 194, 222 and 99
-mornings of attention, which is the two upper rungs priced in mornings.
-Five runner fixes. The plant band's three hours
+changed the bucket row at every rung and the pace at the two upper ones.
+The level-10 year's own attention is 199, 67, 194, 222 and 99 mornings,
+which is the two upper rungs priced in mornings. Five runner fixes. The plant band's three hours
 are split across the rows a camp has, in whole hours - two of roots and,
 for six weeks, one of eggs - rather than divided by three including a
 sea-only seaweed row (measured on seed 45, whose inland camp never had

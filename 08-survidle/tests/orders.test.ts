@@ -986,6 +986,11 @@ describe("the vocabulary in the scheduler", () => {
     // The spending says itself on the row, right after the date it qualifies.
     const logs = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 89 }, by: 334, spend: true } }, "keep");
     expect(orderSentence(state, world, cal, logs)).toContain("by 1 December, spent by 31 March, from 2 July to 31 March");
+    // A spending with no date to spend from says nothing, since keepTargetToday
+    // holds the flat figure for it: the row never claims what it will not do.
+    const dateless = addOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 89 }, spend: true } }, "keep");
+    expect(orderSentence(state, world, cal, dateless)).not.toContain("spent by");
+    expect(keepTargetToday(calendar(0, 20), dateless)).toBeCloseTo(300, 6);
     const meat = addOrder(state, world, { task: "hunt", arg: "any", until: { kind: "campHas", qty: 240 }, deliver: "camp", where: "nearest", when: { restart: 192 } }, "keep");
     expect(orderSentence(state, world, cal, meat)).toContain("keep camp at 240 kg raw meat in any form, restart under 192");
     const roots = addOrder(state, world, { task: "roots", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest", when: { stock: { item: "bone", atLeast: 1 } } }, "job");

@@ -160,9 +160,11 @@ function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): st
   if (keep && level >= RUNG_LEVEL.condition) {
     // The spending box sits beside the date because it says what happens after
     // it: a store is spent by the window's close, a buffer holds at its figure.
+    // With the date on "any" there is no "after" to qualify, so the box is not
+    // drawn at all rather than offering a tick that would change nothing.
+    const spendBox = w.by === undefined ? "" : ` <label><input type="checkbox" data-row-spend${w.spend ? " checked" : ""}> spent by the season's close</label>`;
     parts.push(level >= RUNG_LEVEL.pace
-      ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select>`
-        + ` <label><input type="checkbox" data-row-spend${w.spend ? " checked" : ""}> spent by the season's close</label></span>`
+      ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select>${spendBox}</span>`
       : `<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "pace")))}</small>`);
   }
   return `<div class="when">${parts.join("")}</div>`;

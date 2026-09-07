@@ -156,12 +156,22 @@ describe("the condition fields", () => {
     state.skills.woodcraft.xp = levelMinutes(20);
     const at20 = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
     expect(at20).toContain("data-row-by");
-    expect(at20).toContain("data-row-spend");
-    expect(at20).toContain("spent by the season's close");
     expect(at20).not.toContain("pace at Woodcraft 20");
+    // The spending box comes with a date and not before it, so the row that has
+    // one shows it; the row still on "any" is the case below.
+    const dated = { ...ui, choice: { ...ui.choice, when: { by: 334 } } };
+    const withDate = rowHtml(doHtml(state, world, cal, dated), "intent:chop:");
+    expect(withDate).toContain("data-row-spend");
+    expect(withDate).toContain("spent by the season's close");
     // Ticked, the box draws itself ticked when the row is redrawn.
     const spending = { ...ui, choice: { ...ui.choice, when: { season: { from: 182, to: 89 }, by: 334, spend: true as const } } };
     expect(rowHtml(doHtml(state, world, cal, spending), "intent:chop:")).toContain("data-row-spend checked");
+    // With the date on "any" there is no "after the date" to qualify: the box is
+    // not drawn, so it cannot be ticked into a spending keepTargetToday ignores.
+    const dateless = { ...ui, choice: { ...ui.choice, when: { season: { from: 182, to: 89 } } } };
+    const noDate = rowHtml(doHtml(state, world, cal, dateless), "intent:chop:");
+    expect(noDate).toContain("data-row-by");
+    expect(noDate).not.toContain("data-row-spend");
     // A row with no stock to count has neither: nothing there reads a restart line or a date.
     const lit = rowHtml(doHtml(state, world, cal, { ...ui, open: { id: "light", arg: "" } }), "intent:light:");
     expect(lit).not.toContain("data-row-restart");

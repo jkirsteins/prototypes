@@ -53,7 +53,7 @@ export const RUNG_LINE: Record<Rung, (skill: string) => string> = {
   grind: (s) => `${s} is second nature now: grinds, work that never ends, from ${s}.`,
   keep: (s) => `{You} {keep} count of ${s.toLowerCase()} without thinking: keeps from ${s}.`,
   condition: (s) => `{You} {read} the season and the pile as one: orders from ${s} can carry a season, a stock line, a restart line or a daily count.`,
-  pace: (s) => `{You} {plan} ${s.toLowerCase()} by the calendar: a keep from ${s} can be due by a date.`,
+  pace: (s) => `{You} {plan} ${s.toLowerCase()} by the calendar: a keep from ${s} can be due by a date, held after it or spent by the season's close.`,
 };
 
 export const MASTERY_CAP = 99;

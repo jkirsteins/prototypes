@@ -66,12 +66,32 @@ either way; the count of seeds is the reading, the day is the shape.
 - **The thirty-seed sweep** (level-20 year, seeds 1 to 30, the same seeds
   before and after), the reading the two pace words were settled on:
 
-  | tree | alive | froze | starved | thirst | lineage |
-  |---|---|---|---|---|---|
-  | before the follow-up fixes | 18 | 5 | 6 | 1 | 5 of 5 |
-  | a store and a buffer both spent | 18 | **8** | 4 | 0 | 5 of 5 |
-  | a store and a buffer both held flat | 19 | 5 | 6 | 0 | **2 of 5** |
-  | spent store, held buffer (this tree) | **19** | **4** | 7 | 0 | 5 of 5 |
+  | tree | alive | froze | starved | thirst | year | lineage |
+  |---|---|---|---|---|---|---|
+  | main, before the item (`ef351b8`) | 16 | 8 | 6 | 0 | 3 of 5 | 1 of 5 |
+  | before the follow-up fixes (`c97917b`) | 18 | 5 | 6 | 1 | 4 of 5 | 5 of 5 |
+  | a store and a buffer both spent (`a35f94f`) | 18 | **8** | 4 | 0 | 3 of 5 | 5 of 5 |
+  | both held flat, no rise (`9b9c3cf`) | 19 | 5 | 6 | 0 | 3 of 5 | **2 of 5** |
+  | spent store, held buffer (this tree) | **19** | **4** | 7 | 0 | 2 of 5 | 5 of 5 |
+
+  The first row is the whole item's before: main's tree at `ef351b8`, the
+  same thirty seeds. Sixteen of thirty lived a year there against nineteen
+  here, and eight froze against four - the item halves the freezes and adds
+  three years. Most of that was won before this round: the list and the
+  vocabulary took the freezes from 8 to 5, and the two pace words took them
+  from 5 to 4. What the pace words are really worth is the row above them,
+  where the wrong shape put the freezes straight back to 8; a spent buffer
+  would have given back everything the item had gained.
+
+  It is also the row that makes the five-seed year gate's history plain:
+  main read 3 of 5 and this tree reads 2 of 5, on a tree that keeps three
+  more camps alive over thirty seeds and freezes half as many.
+
+  Rows one, two and five are `runs/sweep-30-seeds-main.txt`,
+  `sweep-30-seeds-before.txt` and `sweep-30-seeds-after.txt`; rows three
+  and four are named by their commits because their runs were not kept, and
+  re-reading one means unpacking that commit into a scratch tree and giving
+  it half an hour.
 
   Each of the two wrong shapes fails in its own direction and neither
   failure shows on five seeds. Spending the buffer as well as the store
@@ -297,7 +317,7 @@ unchanged beneath it all.
 - **Rung levels 15 and 20.** Conditions at 15, pace at 20, continuing the
   3, 5, 10 progression. The one number in the item with no source; the
   author may move it.
-- **Five condition shapes and two pace words**: a season window, a stock
+- **Four condition shapes and two pace words**: a season window, a stock
   condition, a restart line on a keep, a daily count, a target due by a
   date, and whether that target is held after the date or spent by the
   season's close. The second pace word was not in the item as planned and
@@ -376,8 +396,10 @@ export interface OrderWhen {
   stock?: { item: ItemId; atLeast?: number; under?: number };
   /** A keep that has read met at its target stays met until the stock falls under this. Rung: condition. */
   restart?: number;
-  /** A keep whose target is due in full on this day of year; the target rises to it linearly from the season's start (or the day the order was given) and, with a season, falls linearly back to nothing on the season's last day. Rung: pace. */
+  /** A keep whose target is due in full on this day of year; the target rises to it linearly from the season's start (or the day the order was given) and holds there after. Rung: pace. */
   by?: number;
+  /** Only on a keep with both a season and a `by`: past the due date the target falls linearly back to nothing on the season's last day, which is what a store built for one season and burned through it does. A buffer holds instead. Rung: pace. */
+  spend?: true;
 }
 
 export type UntilChoice =
@@ -390,7 +412,7 @@ export type UntilChoice =
 `RUNG_LEVEL = { job: 3, grind: 5, keep: 10, condition: 15, pace: 20 }`,
 `RUNG_WORD` and `RUNG_LINE` for the two new rungs ("Foraging 15: orders
 with a season, a stock line or a daily count", "Woodcraft 20: a keep due
-by a date"). `OrderKind` is unchanged; a rung is a property of an order,
+by a date, held after it or spent by the season's close"). `OrderKind` is unchanged; a rung is a property of an order,
 not its kind.
 
 Semantics, each in one place:
@@ -406,13 +428,20 @@ Semantics, each in one place:
 - `keepTargetToday(cal, o)` reads `by`: the target rises as
   `qty * (doy - from) / (by - from)` from the season's start to the due
   date, with the wrap handled; without a season the rise starts on the
-  day the order was given (`o.givenDoy`, stored at addOrder). Past the due
-  date a keep with a season falls the same way, `qty * (1 - (doy - by) /
-  (to - by))`, to nothing on the season's last day, since a stock due on a
-  date is one the days after it spend: what a winter pile is owed in March
-  is what March will burn. Without a season there is no close to fall to
-  and the target holds at `qty`. A keep with `by` is skipped as met while
-  the stock is at or above today's target.
+  day the order was given (`o.givenDoy`, stored at addOrder). On and after
+  `by` the target is `qty`, all the way round to the rise's own start. A
+  keep with `by` is skipped as met while the stock is at or above today's
+  target.
+- `keepTargetToday` reads `spend` after it, and only on a keep that
+  carries a season as well as a `by`: past the due date the target falls
+  `qty * (1 - (doy - by) / (to - by))`, evenly to nothing on the season's
+  last day, the mirror of the rise. It is the difference between a store
+  and a buffer. A store is cut for one season and burned through it, so
+  what it is owed in March is what March will burn; a buffer is drawn on
+  daily and refilled from the store beside it, so 1 March wants as much of
+  it as 1 December did. Both readings are the thirty-seed sweep's, in both
+  directions: a spent buffer took the freezes from 5 of 30 to 8, and a held
+  store froze seed 17 on day 342 with 593 kg of firewood standing.
 - `daily`: `runOrders` clears `o.done` at the day roll (`o.dayOpened`
   stored on the order) and never removes a daily job; the live intent
   runs it as `times n`.
@@ -426,7 +455,7 @@ Semantics, each in one place:
 
 `orderGate` checks the kind's rung as today, then each part of `when` and
 a `daily` until against the skill: a `season`, `stock`, `restart` or
-`daily` needs `condition`; a `by` needs `pace`. The gate's `why` names the
+`daily` needs `condition`; a `by` or a `spend` needs `pace`. The gate's `why` names the
 first rung short ("a season on an order at Foraging 15, {you} {are} 9").
 
 `withinLadder` strips what is not earned rather than refusing: a `by`

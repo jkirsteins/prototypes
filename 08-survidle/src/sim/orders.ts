@@ -249,7 +249,9 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   // window it runs in, the stock it waits on.
   const w = o.req.when;
   if (w?.by !== undefined) parts.push(`by ${fmtDoy(w.by)}`);
-  if (w?.spend && w.season) parts.push(`spent by ${fmtDoy(w.season.to)}`);
+  // The same two things keepTargetToday needs before it will spend anything: a
+  // row that names neither is not spending, whatever its when block carries.
+  if (w?.spend && w.season && w.by !== undefined) parts.push(`spent by ${fmtDoy(w.season.to)}`);
   if (w?.restart !== undefined) parts.push(`restart under ${w.restart}`);
   if (w?.season) parts.push(`from ${fmtDoy(w.season.from)} to ${fmtDoy(w.season.to)}`);
   if (w?.stock?.atLeast !== undefined) parts.push(`while camp has at least ${itemLabel(w.stock.item, w.stock.atLeast)}`);
