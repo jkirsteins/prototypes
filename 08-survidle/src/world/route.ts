@@ -54,7 +54,44 @@ export function findRoute(world: World, from: number, to: number, ice: IceMode =
   return route ? route.slice() : null;
 }
 
-function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: boolean): number[] | null {
+const knownCaches = new WeakMap<World, Map<string, number[] | null>>();
+
+/**
+ * `findRoute`, but refusing any cell the survivor has not mapped: `known`
+ * says which cells that is. The survivor's own standing cell is exempt -
+ * an heir lands where they land - but `to` is not, and a `to` outside
+ * `known` returns null without searching.
+ *
+ * `gen` is the caller's fresh `knowledgeGen()` reading and keys the cache
+ * alongside `from`/`to`/`ice`/`avoidFell`: pass a value read after the
+ * knowledge you are routing on, never a value held from an earlier call,
+ * or a route computed before ground opened up can be served stale.
+ */
+export function knownRoute(
+  world: World,
+  from: number,
+  to: number,
+  known: (cell: number) => boolean,
+  gen: number,
+  ice: IceMode = "none",
+  avoidFell = false,
+): number[] | null {
+  if (from === to) return [];
+  if (!known(to)) return null;
+  let cache = knownCaches.get(world);
+  if (!cache) {
+    cache = new Map();
+    knownCaches.set(world, cache);
+  }
+  const key = `${from}>${to}>${ice}${avoidFell ? ">nofell" : ""}>${gen}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit ? hit.slice() : null;
+  const route = astar(world, from, to, ice, avoidFell, known);
+  cache.set(key, route);
+  return route ? route.slice() : null;
+}
+
+function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: boolean, known?: (cell: number) => boolean): number[] | null {
   // A walker who will not go up on the fell treats it as water with no ice.
   const sp = (t: Terrain) => (avoidFell && t === "fell" ? 0 : speedOf(t, ice));
   const W = world.w;
@@ -78,7 +115,14 @@ function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: 
   const start = local(fx, fy);
   const goal = local(tx, ty);
   const speed = new Float32Array(n);
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) speed[local(x, y)] = sp(terrainOf(world, x, y));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const li = local(x, y);
+      // The standing cell stays enterable-from even when unmapped; every
+      // other cell also needs `known` on top of its terrain speed.
+      speed[li] = known && li !== start && !known(y * W + x) ? 0 : sp(terrainOf(world, x, y));
+    }
+  }
 
   const g = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
   const f = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
