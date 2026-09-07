@@ -7,36 +7,52 @@
     <title>08 - Survidle</title>
   </head>
   <body>
+    <!-- Left is info, middle is interactive, right is the queue. The left
+         column is read-only but for the away slider, which only changes what
+         is being read beside it. -->
     <div id="app">
       <aside id="left" class="col">
         <section id="stats" class="panel"></section>
+        <section id="camp" class="panel"></section>
         <section id="gear" class="panel"></section>
         <section id="skills" class="panel"></section>
-      </aside>
-      <main id="center" class="col">
-        <section id="clock" class="panel"></section>
-        <section id="map" class="panel">
-          <div id="mapdyn"></div>
-          <div class="legend"></div>
-        </section>
-        <section id="region" class="panel"></section>
-      </main>
-      <aside id="right" class="col">
-        <section id="task" class="panel"></section>
         <section id="forecast" class="panel"></section>
         <div id="away" class="panel">
           <label>away up to <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" /> <b data-away="label"></b></label>
           <button type="button" class="mini" data-act="manual-open">how to survive</button>
           <button type="button" class="mini" data-act="settings-open">settings</button>
         </div>
-        <section id="log" class="panel"></section>
-        <section id="actions" class="panel">
-          <h2>Do</h2>
-          <input type="search" data-do="filter" placeholder="filter" />
-          <div id="dorows"></div>
+      </aside>
+      <main id="center" class="col">
+        <section id="clock" class="panel"></section>
+        <section id="map" class="panel">
+          <div id="mapdyn"></div>
+          <!-- One element, in the markup from the start, so it is shown and
+               hidden rather than created and destroyed under the pointer. -->
+          <div id="maptip" hidden></div>
+          <div class="legend"></div>
         </section>
-        <section id="inventory" class="panel"></section>
-        <section id="journal" class="panel"></section>
+        <section id="task" class="panel"></section>
+        <!-- The tab container, where the HERE panel used to be. All four
+             panes exist at once and three are hidden: rendering one on demand
+             would destroy the other three and the scroll position each holds. -->
+        <section id="panes" class="panel">
+          <div id="panetabs" class="tabs"></div>
+          <div id="pane-do" class="pane">
+            <input type="search" data-do="filter" placeholder="filter" />
+            <div id="dosubs" class="subs"></div>
+            <div class="dosplit">
+              <div id="dopurposes"></div>
+              <div id="doitems"></div>
+            </div>
+          </div>
+          <div id="pane-log" class="pane" hidden><div id="log"></div></div>
+          <div id="pane-pack" class="pane" hidden><div id="inventory"></div></div>
+          <div id="pane-journal" class="pane" hidden><div id="journal"></div></div>
+        </section>
+      </main>
+      <aside id="right" class="col">
+        <section id="orders" class="panel"></section>
       </aside>
     </div>
     <footer id="build" class="build"></footer>

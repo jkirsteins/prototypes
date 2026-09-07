@@ -39,7 +39,7 @@ import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
+  manualHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
@@ -163,10 +163,9 @@ function render() {
     lastMapKey = key;
     if (setPanel("mapdyn", mapHtml(world, state, ui, cal))) scrollMapToSurvivor();
   }
-  setPanel("region", regionHtml(state, world, cal, ui));
   setPanel("task", taskHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
-  setPanel("dorows", doHtml(state, world, cal, ui, ui.folds));
+  setPanel("doitems", doHtml(state, world, cal, ui, ui.folds));
   setPanel("inventory", inventoryHtml(state, world, cal));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));

@@ -32,14 +32,61 @@ html, body {
    own columns scroll inside it, the footer holds one line at the foot. */
 body { display: flex; flex-direction: column; height: 100vh; }
 
+/* Left is info, middle is interactive, right is the queue. The queue alone
+   does not need the 420px the old stack of seven panels did, and the width
+   it gives back goes to the middle, where the Do split lives. */
 #app {
   display: grid;
-  grid-template-columns: 300px minmax(560px, 1fr) 420px;
+  grid-template-columns: 300px minmax(620px, 1fr) 260px;
   gap: 10px;
   padding: 10px;
   flex: 1;
   min-height: 0;
 }
+
+/* A panel with nothing in it yet takes no room and draws no border, so a
+   camp with nothing built and an empty queue read as empty rather than as
+   something that failed to load. */
+#camp:empty, #orders:empty { display: none; }
+
+/* The tab container that stands where the region panel stood. */
+#panes { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.tabs .tab {
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: var(--dim);
+  padding: 3px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.tabs .tab.on { color: var(--accent); border-color: var(--line); background: var(--panel); margin-bottom: -1px; }
+
+.subs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
+.subs .sub { background: none; border: none; color: var(--dim); padding: 2px 6px; font: inherit; cursor: pointer; }
+.subs .sub.on { color: var(--accent); border-bottom: 1px solid var(--accent); }
+
+/* Purposes choose, items scroll. Only the item pane scrolls, so it is the
+   only element in here whose scroll position there is to lose - and it is
+   never replaced, only morphed. */
+.dosplit { display: flex; min-height: 0; flex: 1; }
+#dopurposes { width: 120px; flex: none; border-right: 1px solid var(--line); padding-right: 6px; }
+#dopurposes .grp {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--dim);
+  padding: 3px 5px;
+  font: inherit;
+  cursor: pointer;
+}
+#dopurposes .grp.on { color: var(--accent); background: rgba(230, 194, 41, 0.1); }
+#doitems { flex: 1; min-width: 0; overflow-y: auto; padding-left: 8px; }
 
 /* What was built, for telling one deploy from the next. */
 .build {
@@ -557,18 +604,23 @@ button.act small.gives, span.act small.gives,
   #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
   #task { order: 1; }
-  #forecast { order: 2; }
-  #away { order: 3; }
-  #map { order: 4; }
-  #stats { order: 5; }
-  #actions { order: 6; }
-  #inventory { order: 7; }
-  #log { order: 8; }
-  #region { order: 9; }
-  #gear { order: 10; }
-  #skills { order: 11; }
-  #journal { order: 12; }
-  #clock { order: 13; }
+  #stats { order: 2; }
+  #forecast { order: 3; }
+  #away { order: 4; }
+  #orders { order: 5; }
+  #map { order: 6; }
+  #panes { order: 7; }
+  #camp { order: 8; }
+  #gear { order: 9; }
+  #skills { order: 10; }
+  #clock { order: 11; }
+
+  /* The split stacks: the purposes become a strip above the items, since
+     120px of names beside a 250px phone leaves no room for either. */
+  .dosplit { display: block; }
+  #dopurposes { width: auto; border-right: none; border-bottom: 1px solid var(--line); padding: 0 0 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  #dopurposes .grp { width: auto; }
+  #doitems { padding-left: 0; overflow-y: visible; }
 }
 
 /* Height as tone. The step is
