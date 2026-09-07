@@ -759,7 +759,7 @@ export class ReferencePlayer {
       const w = this.wants[i];
       if (!wantOpen(state, world, w, cal)) continue;
       const probe: Order = { id: -1, kind: w.kind, req: w.req, done: this.completed.get(i) ?? 0, minutes: 0, skipped: "" };
-      if (orderMet(state, world, probe, false)) continue;
+      if (orderMet(state, world, cal, probe, false)) continue;
       const best = withinLadder(state, w.req, w.kind);
       const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
       const units = !standIn ? undefined : best.req.until.kind === "once" ? 1 : best.req.until.kind === "times" ? best.req.until.n : undefined;

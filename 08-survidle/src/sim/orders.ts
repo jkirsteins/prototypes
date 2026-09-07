@@ -10,10 +10,10 @@ import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { KIT_ITEMS } from "./body";
 import { body } from "./person";
-import type { Calendar } from "./calendar";
+import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
-import { BARK_DRY_RATIO, STRUCTURES } from "./items";
+import { BARK_DRY_RATIO, ITEM_NAMES, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
@@ -37,7 +37,8 @@ export function ordersHere(state: GameState, world: World): Order[] {
 export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: number): Order {
   const st = regionState(state, world, state.player.region);
   const n = normalizeOrder(req, kind);
-  const o: Order = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "" };
+  // The day it was given is the rise's start for a paced keep that names no season.
+  const o: Order = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "", givenDoy: calendar(state.minute, state.startDoy).dayOfYear };
   st.orders.splice(rank === undefined ? st.orders.length : Math.min(rank, st.orders.length), 0, o);
   return o;
 }
@@ -63,38 +64,108 @@ export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
 }
 
 /**
- * A keep whose yield ages into a different item on its own reads both: a
- * strip of inner bark left at camp dries into flour's own raw material
- * within the hour a lit fire is going, faster than a beginner strips more
- * of it, so a keep counting only the fresh strip never reads met and
- * spends the whole day stripping bark forever with a pile of the dried
- * kind sitting beside it unground. The stock is read in the keep's own
- * unit, fresh-strip kilos: a kilo of the dried kind is `ratio` kilos of
- * the fresh strip it dried from (BARK_DRY_RATIO), so the also-item is
- * scaled up before it joins the sum rather than counted one for one.
+ * The forms a keep's yield is held in at camp, and what a kilo of each is
+ * worth in the keep's own unit. A keep counting the raw item alone can
+ * never read met while the cook, the rack and the body take that item the
+ * same day, and spends the whole day at the work with the pile it asked
+ * for sitting beside it under another name: a strip of inner bark dries
+ * into flour's raw material within the hour a lit fire is going, faster
+ * than a beginner strips more of it, and a hunt keep whose meat is all on
+ * the rack reads nothing at all. The ratio is what a kilo of the form
+ * came from, so dried meat is three kilos of the meat it dried from and a
+ * cooked fish is one of the raw.
  */
-const KEEP_ALSO: Partial<Record<TaskId, { item: ItemId; ratio: number }>> = {
-  innerBark: { item: "driedBark", ratio: BARK_DRY_RATIO },
+export const KEEP_FORMS: Partial<Record<TaskId, { item: ItemId; ratio: number }[]>> = {
+  hunt: [{ item: "cookedMeat", ratio: 1 }, { item: "driedMeat", ratio: 3 }],
+  fish: [{ item: "cookedFish", ratio: 1 }, { item: "oilyFish", ratio: 1 }, { item: "cookedOilyFish", ratio: 1 }],
+  roots: [{ item: "cookedRoots", ratio: 1 }],
+  innerBark: [{ item: "driedBark", ratio: BARK_DRY_RATIO }, { item: "barkFlour", ratio: BARK_DRY_RATIO }],
 };
+
+/** A day-of-year window, inclusive; from past to wraps the new year. */
+export function inSeason(doy: number, season: { from: number; to: number }): boolean {
+  return season.from <= season.to ? doy >= season.from && doy <= season.to : doy >= season.from || doy <= season.to;
+}
+
+/**
+ * The stock a keep holds in its own unit: the yield item, its stored forms
+ * at their ratios, and, for a kit item (arrow, snare), the pack too - a
+ * live order can only be carrying it because that pile is where camp's own
+ * kit is while it is in use, so a keep that carries its own stock out must
+ * not read itself as unmet the moment it does.
+ */
+export function keepStock(state: GameState, world: World, o: Order): number {
+  const st = regionState(state, world, state.player.region);
+  const camp = pile(state, st.campCell);
+  const keep = keepTarget(o);
+  if (!keep) return 0;
+  let have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
+  for (const f of KEEP_FORMS[o.req.task] ?? []) have += qty(camp, f.item) * f.ratio;
+  return have;
+}
+
+/**
+ * A keep's target today. Without a due date it is the whole figure. With
+ * one the figure is due in full on that day and the target rises to it
+ * evenly from the season's start, or from the day the order was given
+ * when it carries no season, so a winter pile is built across the autumn
+ * rather than in the week the order is first read. On and after the due
+ * date, and for the rest of the wrap back round to the start, the target
+ * is the whole figure.
+ */
+export function keepTargetToday(cal: Calendar, o: Order): number {
+  const keep = keepTarget(o);
+  if (!keep) return 0;
+  const by = o.req.when?.by;
+  if (by === undefined) return keep.qty;
+  const from = o.req.when?.season?.from ?? o.givenDoy ?? by;
+  const span = (((by - from) % 365) + 365) % 365;
+  if (span === 0) return keep.qty;
+  const gone = (((cal.dayOfYear - from) % 365) + 365) % 365;
+  return keep.qty * Math.min(1, gone / span);
+}
+
+/**
+ * Why an order's conditions shut it this morning, or null while they hold.
+ * The reason is the row's, so it names the season's opening day or the
+ * item the order waits on rather than saying only that something is shut.
+ */
+export function conditionOpen(state: GameState, world: World, cal: Calendar, o: Order): string | null {
+  const w = o.req.when;
+  if (!w) return null;
+  if (w.season && !inSeason(cal.dayOfYear, w.season)) return `out of season until ${fmtDoy(w.season.from)}`;
+  if (w.stock) {
+    const st = regionState(state, world, state.player.region);
+    const have = qty(pile(state, st.campCell), w.stock.item);
+    if (w.stock.atLeast !== undefined && have < w.stock.atLeast - 1e-9) return `waits for ${ITEM_NAMES[w.stock.item]} at camp`;
+    if (w.stock.under !== undefined && have >= w.stock.under - 1e-9) return `camp holds ${itemLabel(w.stock.item, w.stock.under)} already`;
+  }
+  return null;
+}
 
 /**
  * Whether the order asks for nothing right now. A keep is unmet under half
- * its target when idle and until the target once it is the live order, so
- * one low fire does not send the runner home to split a single log. The
- * camp pile counts: a keep is a promise about camp. A kit item (arrow,
- * snare) counts the pack too - a live order can only be carrying it
- * because that pile is where camp's own kit is while it is in use, so a
- * keep that carries its own stock out must not read itself as unmet the
- * moment it does.
+ * today's target when idle and until the target once it is the live order,
+ * so one low fire does not send the runner home to split a single log. The
+ * camp pile counts: a keep is a promise about camp. A restart line replaces
+ * both readings with a band: the keep reads met from the day the stock
+ * reaches the target until the day it falls under the line, so a keep at
+ * its target does not flicker back on for the first kilo eaten off it.
  */
-export function orderMet(state: GameState, world: World, o: Order, live: boolean): boolean {
+export function orderMet(state: GameState, world: World, cal: Calendar, o: Order, live: boolean): boolean {
   const st = regionState(state, world, state.player.region);
   const camp = pile(state, st.campCell);
   const keep = keepTarget(o);
   if (keep) {
-    const also = KEEP_ALSO[o.req.task];
-    const have = qty(camp, keep.item) + (also ? qty(camp, also.item) * also.ratio : 0) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
-    return live ? have >= keep.qty - 1e-9 : have >= keep.qty / 2 - 1e-9;
+    const have = keepStock(state, world, o);
+    const target = keepTargetToday(cal, o);
+    const restart = o.req.when?.restart;
+    if (restart !== undefined) {
+      if (have >= target - 1e-9) o.held = true;
+      else if (have < restart - 1e-9) o.held = false;
+      return o.held === true;
+    }
+    return live ? have >= target - 1e-9 : have >= target / 2 - 1e-9;
   }
   if (structureKeep(o.req, o.kind)) {
     if (o.req.arg === "snare") {
@@ -126,16 +197,23 @@ export function orderSentence(state: GameState, world: World, cal: Calendar, o: 
   const parts = [check(state, world, cal, o.req.task, o.req.arg, cell).label];
   const keep = keepTarget(o);
   const u = o.req.until;
-  // A keep whose stock reads a KEEP_ALSO pair names both forms it counts, or the row
-  // would claim to watch the fresh strip alone while it reads met on the dried one too.
-  const also = keep && KEEP_ALSO[o.req.task];
-  if (keep && also) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}, fresh or dried`);
-  else if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}`);
+  // A keep whose stock reads a KEEP_FORMS row says so, or the row would claim to
+  // watch the raw item alone while it reads met on the cooked and dried kinds too.
+  if (keep) parts.push(`keep camp at ${itemLabel(keep.item, keep.qty)}${KEEP_FORMS[o.req.task] ? " in any form" : ""}`);
   else if (o.kind === "keep" && (o.req.task === "light" || o.req.task === "lightIndoors")) parts.push("keep it lit");
   else if (structureKeep(o.req, o.kind)) parts.push(o.req.arg === "snare" ? `keep ${u.kind === "campHas" ? u.qty : 1} snares set` : `keep the ${STRUCTURES[o.req.arg as StructureId].name} laid`);
   else if (u.kind === "times") parts.push(`${o.done} of ${u.n} done`);
   else if (u.kind === "campHas") parts.push(`until camp has ${itemLabel(yieldItem(o.req.task, o.req.arg)!, u.qty)}`);
   else if (u.kind === "forever") parts.push("forever");
+  else if (u.kind === "daily") parts.push(`${u.n} a day`);
+  // The conditions read after the target, in the order they bite: what the target
+  // is due by, the line it restarts at, the window it runs in, the stock it waits on.
+  const w = o.req.when;
+  if (w?.by !== undefined) parts.push(`by ${fmtDoy(w.by)}`);
+  if (w?.restart !== undefined) parts.push(`restart under ${w.restart}`);
+  if (w?.season) parts.push(`from ${fmtDoy(w.season.from)} to ${fmtDoy(w.season.to)}`);
+  if (w?.stock?.atLeast !== undefined) parts.push(`while camp has at least ${itemLabel(w.stock.item, w.stock.atLeast)}`);
+  if (w?.stock?.under !== undefined) parts.push(`while camp has under ${itemLabel(w.stock.item, w.stock.under)}`);
   if (!keep && u.kind !== "campHas" && o.req.deliver === "camp" && o.req.task !== "haul" && yieldItem(o.req.task, o.req.arg) !== null) parts.push("bringing it to camp");
   if (typeof o.req.where === "string" && o.req.where !== "nearest") parts.push(`at ${SPOT_WORDS[o.req.where]}`);
   return parts.join(", ");
@@ -244,7 +322,15 @@ export function chooseOrder(state: GameState, world: World, cal: Calendar): Orde
       if (!chosen) chosen = o;
       continue;
     }
-    if (orderMet(state, world, o, o.id === liveId)) {
+    // Shut before met: an order out of season or waiting on a stock says so on
+    // its row, rather than showing "met" or whatever reason it was skipped for
+    // the last time its conditions let it run.
+    const shut = conditionOpen(state, world, cal, o);
+    if (shut) {
+      markSkipped(state, world, cal, o, shut);
+      continue;
+    }
+    if (orderMet(state, world, cal, o, o.id === liveId)) {
       markSkipped(state, world, cal, o, "");
       continue;
     }
@@ -300,7 +386,16 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   const st = regionState(state, world, state.player.region);
   const live = state.intent;
   for (const o of [...st.orders]) {
-    if (o.kind === "job" && orderMet(state, world, o, live?.orderId === o.id)) {
+    // A daily count is today's alone: the day roll clears it and the order stays
+    // on the list, since the promise is the count every day rather than once.
+    if (o.req.until.kind === "daily") {
+      if (o.dayOpened !== cal.day) {
+        o.done = 0;
+        o.dayOpened = cal.day;
+      }
+      continue;
+    }
+    if (o.kind === "job" && orderMet(state, world, cal, o, live?.orderId === o.id)) {
       log(state, `${orderSentence(state, world, cal, o)}: done.`, "good");
       removeOrder(state, world, o.id);
     }

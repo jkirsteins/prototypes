@@ -95,14 +95,14 @@ describe("the fill task", () => {
     const { g, state, world, camp } = waterCamp();
     const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
-    expect(until(g, () => orderMet(state, world, o, true), 6000)).toBe(true);
+    expect(until(g, () => orderMet(state, world, cal, o, true), 6000)).toBe(true);
     expect(qty(camp, "water")).toBeCloseTo(2, 5);
   });
 
   it("a keep run to its first delivery never logs 'the vessels are full' while walking the load home", () => {
     const { g, state, world, camp } = waterCamp();
     const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(until(g, () => orderMet(state, world, o, true), 6000)).toBe(true);
+    expect(until(g, () => orderMet(state, world, cal, o, true), 6000)).toBe(true);
     expect(qty(camp, "water")).toBeCloseTo(2, 5);
     expect(state.log.some((l) => l.text.includes("the vessels are full"))).toBe(false);
   });
@@ -154,7 +154,7 @@ describe("the fill task", () => {
     expect(watersideCell(world, st.iceHole!.cell)).toBe(true);
     placeAt(state, world, st.iceHole!.cell);
     expect(waterSource(state, world)).toBe(true);
-    expect(until(g, () => orderMet(state, world, o, true), 6000)).toBe(true);
+    expect(until(g, () => orderMet(state, world, cal, o, true), 6000)).toBe(true);
     expect(qty(camp, "water")).toBeCloseTo(2, 5);
     // The daily tick runs at 04:00; from 1 April 06:00 that is under a day away.
     expect(until(g, () => st.iceHole === null, 1500)).toBe(true);
