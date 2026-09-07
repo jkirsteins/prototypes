@@ -28,12 +28,26 @@ html, body {
   line-height: 1.4;
 }
 
+/* The page is a column: the board takes what is left of the viewport and its
+   own columns scroll inside it, the footer holds one line at the foot. */
+body { display: flex; flex-direction: column; height: 100vh; }
+
 #app {
   display: grid;
   grid-template-columns: 300px minmax(560px, 1fr) 420px;
   gap: 10px;
   padding: 10px;
-  height: 100vh;
+  flex: 1;
+  min-height: 0;
+}
+
+/* What was built, for telling one deploy from the next. */
+.build {
+  flex: none;
+  padding: 0 12px 6px;
+  color: var(--dim);
+  font-size: 11px;
+  text-align: right;
 }
 
 /* Each column is the viewport's height and scrolls inside itself, so a
@@ -498,7 +512,11 @@ button.act small, span.act small { display: block; color: var(--dim); }
    and the map come first, then the rest in reading order. The settings panel
    is fixed and outside #app, so it has no place in this order. */
 @media (max-width: 700px) {
-  #app { grid-template-columns: 1fr; height: auto; }
+  /* One column, and the page scrolls as a whole: the board grows past the
+     viewport instead of each column scrolling inside it, and the footer
+     follows the last panel. */
+  body { height: auto; min-height: 100vh; }
+  #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
   #task { order: 1; }
   #forecast { order: 2; }
