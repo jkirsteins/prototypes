@@ -13,11 +13,11 @@ import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_
 import type { GameState, ItemId, LifeRecord, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
-export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
+export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building", "wayfinding"];
 
 export const SKILL_NAMES: Record<SkillId, string> = {
   woodcraft: "Woodcraft", foraging: "Foraging", hunting: "Hunting",
-  fishing: "Fishing", crafting: "Crafting", building: "Building",
+  fishing: "Fishing", crafting: "Crafting", building: "Building", wayfinding: "Wayfinding",
 };
 
 /** The actions each skill owns; the pool's capacity is 100 hours per key. */
@@ -28,9 +28,21 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
   fishing: [...fishSpecies().map((s) => `fish:${s}`), "read", "trap"],
   crafting: [...RECIPE_IDS.map((r) => `craft:${r}`), "repair", "sharpen", "hone"],
   building: [...STRUCTURE_IDS.filter((s) => s !== "snare").map((s) => `build:${s}`), "light", "lightTorch", "cook:rawMeat", "cook:fish", "cook:oilyFish", "cook:rawFat", "cook:roots", "crack"],
+  // A later task adds searchHome's key once that task id exists.
+  wayfinding: ["explore"],
 };
 
 export const SKILL_CAP = 50;
+
+/**
+ * Whether a skill's practice ever opens a rung. Wayfinding is the one skill
+ * with no standing form: an explore sweep is started by hand every time,
+ * so there is no job, grind, keep, condition or pace for it to earn, and
+ * levelling it must never announce one.
+ */
+export function opensOrders(skill: SkillId): boolean {
+  return skill !== "wayfinding";
+}
 
 /** A rung is what an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
 export type Rung = OrderKind | "condition" | "pace";
@@ -88,7 +100,7 @@ export function carrySkills(state: GameState, from: LifeRecord): { skill: SkillI
     s.carried = minutes;
     const l = level(minutes);
     if (l >= 2) out.push({ skill: id, level: l });
-    for (const k of RUNG_ORDER) if (l >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
+    if (opensOrders(id)) for (const k of RUNG_ORDER) if (l >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
   }
   return out;
 }
@@ -168,6 +180,7 @@ export function skillOf(id: TaskId, arg?: string): SkillId | null {
     case "craft": case "repair": case "sharpen": case "hone": return "crafting";
     case "light": case "lightIndoors": case "lightTorch": case "cook": case "hang": case "crack": return "building";
     case "fill": case "iceHole": return "foraging";
+    case "explore": return "wayfinding";
     default: return null;
   }
 }
@@ -177,7 +190,7 @@ export function masteryKey(state: GameState, world: World, id: TaskId, arg?: str
   switch (id) {
     case "chop": return `chop:${hereTerrain(state, world)}`;
     case "sticks": case "bark": case "split": case "deadwood": case "splitWedges": case "berries": case "stone": case "eggs": case "roots": case "tapSap": case "seaweed":
-    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang":
+    case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "hang": case "explore":
       return id;
     // Grinding is foraging's too, the same practice as stripping the bark: the flour is the forager's.
     case "innerBark": case "grindBark": return "innerBark";
@@ -409,7 +422,7 @@ export function train(state: GameState, world: World, dt: number): void {
   if (after > before) {
     log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
     // Once per survivor by construction: a level is crossed once, and the heir is a new state.
-    for (const k of RUNG_ORDER) if (before < RUNG_LEVEL[k] && after >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
+    if (opensOrders(skill)) for (const k of RUNG_ORDER) if (before < RUNG_LEVEL[k] && after >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
   }
   const mBefore = masteryLevel(s.mastery[key] ?? 0);
   s.mastery[key] = (s.mastery[key] ?? 0) + dt;

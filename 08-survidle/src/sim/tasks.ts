@@ -1426,8 +1426,11 @@ function exploreFrontier(state: GameState, world: World, region: number): { cell
  */
 function pickVantage(state: GameState, world: World, cal: Calendar, region: number): { cell: number; path: number[] } | null {
   const candidates = exploreFrontier(state, world, region);
-  // Task 6 narrows this to 1 + the survivor's wayfinding level; until then, every reachable candidate is weighed.
-  const weighed = candidates.slice(0, candidates.length);
+  // A raw eye only ever checks the nearest candidate; a practised one weighs
+  // further down the nearest-first list before settling, so the vantage it
+  // settles on opens more ground per leg walked. No minutes are subtracted
+  // anywhere - the whole saving is this better pick.
+  const weighed = candidates.slice(0, 1 + skillLevel(state, "wayfinding"));
   let best: { cell: number; path: number[] } | null = null;
   let bestScore = -1;
   for (const c of weighed) {
@@ -1438,6 +1441,36 @@ function pickVantage(state: GameState, world: World, cal: Calendar, region: numb
     }
   }
   return best;
+}
+
+/**
+ * A twisted ankle or worse, off-trail on fell, rock or bog underfoot:
+ * wilderness travel surveys put a lower-limb injury near one per thousand
+ * hours of rough, trackless ground for someone who has not learned to read
+ * it - call it 0.1% an hour. A practised eye picks the sound line through
+ * the same ground and wears that risk down toward nothing by level 20;
+ * water and ice already carry their own risk (fallChance) and are not
+ * doubled up here.
+ */
+export function exploreInjuryChance(level: number): number {
+  return 0.001 * Math.max(0, 20 - level) / 19;
+}
+
+/**
+ * Rolled once per hour of the sweep, on whatever the survivor is standing
+ * on the moment that hour turns - not per cell, since a vantage leg can
+ * cross several kinds of ground in an hour and only the roughest three
+ * matter here.
+ */
+function exploreInjury(state: GameState, world: World, rng: Rng, before: number, after: number): void {
+  if (Math.floor(after / 60) <= Math.floor(before / 60)) return;
+  const terrain = hereTerrain(state, world);
+  if (terrain !== "fell" && terrain !== "rock" && terrain !== "bog") return;
+  const chance = exploreInjuryChance(skillLevel(state, "wayfinding"));
+  if (chance <= 0 || !rng.chance(chance)) return;
+  state.player.injured = Math.max(state.player.injured, 24 * 60);
+  log(state, "The ground gives underfoot. {You} {are} hurt.", "bad");
+  record(state, { kind: "injury", cause: "wayfinding" });
 }
 
 /**
@@ -1452,10 +1485,14 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
     state.task = null;
     return;
   }
+  // The route walked trains nothing; the eye reading the country as it goes is wayfinding's own practice.
+  train(state, world, dt);
+  const before = t.progress;
   const finished = walkAlong(state, world, cal, rng, dt);
   if (!state.route) return; // fell through the ice: the sweep is already over
   const route = state.route;
   t.progress += dt;
+  exploreInjury(state, world, rng, before, t.progress);
   if (!finished) {
     t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
     return;

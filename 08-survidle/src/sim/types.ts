@@ -409,6 +409,7 @@ export type LifeEventBody =
   | { kind: "toolWorn"; tool: ToolId }
   | { kind: "toolLost"; tool: ToolId }
   | { kind: "frostbite"; part: "toes" | "fingers" }
+  | { kind: "injury"; cause: "wayfinding" }
   | { kind: "storm" }
   | { kind: "repaired"; structure: StructureId }
   | { kind: "abandoned" };
@@ -483,7 +484,7 @@ export interface RunStats {
   killsKcal: number;
 }
 
-export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building";
+export type SkillId = "woodcraft" | "foraging" | "hunting" | "fishing" | "crafting" | "building" | "wayfinding";
 
 /** Practice, in minutes. A level is a count of hours behind the tool. */
 export interface SkillState {

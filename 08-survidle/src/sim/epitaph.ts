@@ -82,6 +82,7 @@ function eventLine(e: LifeEvent): string | null {
     case "toolWorn": return `Day ${e.day}. The ${TOOLS[e.tool].name} wore out.`;
     case "toolLost": return `Day ${e.day}. The ${TOOLS[e.tool].name} was lost.`;
     case "frostbite": return `Day ${e.day}. Lost ${e.part} to frostbite.`;
+    case "injury": return `Day ${e.day}. Hurt underfoot finding the way.`;
     case "storm": return `Day ${e.day}. A storm passed.`;
     case "abandoned": return null;
     case "entered": return null;
