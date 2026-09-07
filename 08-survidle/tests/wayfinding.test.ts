@@ -74,7 +74,7 @@ describe("wayfinding", () => {
   it("is the skill behind exploring", () => {
     expect(skillOf("explore")).toBe("wayfinding");
     expect(masteryKey({} as never, {} as never, "explore")).toBe("explore");
-    expect(MASTERY_KEYS.wayfinding).toEqual(["explore"]);
+    expect(MASTERY_KEYS.wayfinding).toEqual(["explore", "searchHome"]);
   });
 
   it("opens no orders, and logs no rung it does not have", () => {

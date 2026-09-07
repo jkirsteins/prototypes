@@ -4,6 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar, START_DOY } from "../src/sim/calendar";
 import { startIntent, type IntentRequest } from "../src/sim/intent";
 import { normalizeOrder } from "../src/sim/ladder";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
@@ -655,6 +656,8 @@ describe("orders belong to a camp", () => {
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(a.id);
     const nb = regionAt(world, home).neighbours[0].id;
+    mapRegion(state, world, home);
+    mapRegion(state, world, nb);
     expect(startTask(state, world, calendar(state.minute), "travel", `region:${nb}`)).toBe(true);
     expect(state.intent).toBeNull();
     expect(until(g, () => state.player.region === nb, 6000)).toBe(true);

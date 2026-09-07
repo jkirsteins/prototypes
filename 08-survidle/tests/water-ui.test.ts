@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { siteLine, siteReport } from "../src/sim/camp";
 import { addItem, pile } from "../src/sim/inventory";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
@@ -55,6 +56,7 @@ describe("the water line", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
+    mapRegion(state, world, state.player.region);
     expect(waterList(state, world, cal)).toMatch(/^shore \d+ min, endless$/);
     const wet = wetCell(world);
     state.seeps[wet] = { class: seepGround(world, wet)!, litres: 6, ice: 0, dug: state.minute };

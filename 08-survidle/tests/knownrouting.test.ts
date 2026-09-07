@@ -28,7 +28,7 @@ describe("the survivor routes on knowledge", () => {
     expect(discovery(state, far)).not.toBe(0);
     const o = check(state, world, cal, "travel", `region:${far}`);
     expect(o.ok).toBe(false);
-    expect(o.why).toBe("no way you know");
+    expect(o.why).toBe("{you} {know} no way there");
   });
 
   it("opens once the ground between is mapped", () => {

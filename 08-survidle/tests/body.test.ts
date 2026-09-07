@@ -7,6 +7,7 @@ import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/cale
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
@@ -268,6 +269,7 @@ describe("the body tier", () => {
     const waterside = r.cells.find((c) => c !== st.campCell && watersideCell(world, c) && findRoute(world, c, forestCell))!;
     st.campCell = waterside;
     placeAt(state, world, waterside);
+    mapRegion(state, world, state.player.region);
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "once" }, deliver: "leave", where: "forest" });
@@ -376,6 +378,7 @@ describe("the runner in the elements", () => {
     // 0.9 km off the water, and both fallbacks in this test actually walk somewhere.
     const g = newGame(10);
     const { state, world } = g;
+    mapRegion(state, world, state.player.region);
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -579,6 +582,7 @@ describe("the runner in the elements", () => {
     const here = 1685846;
     const campCell = 1685844;
     placeAt(state, world, here);
+    mapRegion(state, world, state.player.region);
     const st = regionState(state, world, state.player.region);
     st.campCell = campCell;
     state.weather.iceCm = 20;
@@ -664,6 +668,7 @@ describe("the runner in the elements", () => {
     // The camp itself is a shore cell now; stand in forest away from the water so the thirst has to walk.
     const dryForest = r.cells.find((c) => ["spruce", "pine", "birch"].includes(cellAt(world, c).terrain) && !neighbours(world, c).some((n) => cellAt(world, n).terrain === "water"))!;
     placeAt(state, world, dryForest);
+    mapRegion(state, world, 94);
     addItem(state.player.pack, "driedMeat", 2);
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
     expect(until(g, () => state.task?.id === "chop")).toBe(true);

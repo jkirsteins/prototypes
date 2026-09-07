@@ -1,8 +1,4 @@
 import { beforeEach, describe, expect, it } from "vitest";
-// Forces ./sim/tasks to finish initialising SPOT_NAMES before anything else in this
-// file's import graph reaches it first through a cycle - a pre-existing ordering
-// crash outside this task's files, not chased here, only dodged.
-import "../src/sim/tasks";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
@@ -194,6 +190,7 @@ describe("panels", () => {
       return new Set(cells.map((c) => `${Math.floor((cellAt(world, c).x - x0) / z)},${Math.floor((cellAt(world, c).y - y0) / z)}`)).size;
     };
     const points = (sel: string) => (document.querySelector(sel)!.getAttribute("points") ?? "").trim().split(/\s+/).filter(Boolean).length;
+    mapRegion(state, world, state.player.region);
     const k1 = mapKey(state, world, ui, cal);
     // The farthest spot, so the walk is long enough to be caught three cells in.
     const far = regionAt(world, state.player.region).spots.filter((s) => s.id !== "camp").reduce((a, b) => (b.km > a.km ? b : a));
@@ -446,14 +443,14 @@ describe("panels", () => {
     expect(document.querySelector(`#overlay [data-act="restart"]`)).toBeNull();
   });
 
-  it("skills panel lists six rows with level, hours to next, pool share and active perks", () => {
+  it("skills panel lists seven rows with level, hours to next, pool share and active perks", () => {
     const { state } = newGame(21);
     state.skills.woodcraft.xp = levelMinutes(7) + 60;
     state.skills.woodcraft.pool = poolCapacity("woodcraft") * 0.3;
     const h = skillsHtml(state);
     expect(h).toContain("Woodcraft");
     expect(h).toContain("Fishing");
-    expect((h.match(/class="skill"/g) ?? []).length).toBe(6);
+    expect((h.match(/class="skill"/g) ?? []).length).toBe(7);
     // Level 8 needs 98 h; level 7 had 72; one hour in, 25 h to go.
     expect(h).toContain("25 h to 8");
     expect(h).toContain("pool 30%");
@@ -633,6 +630,7 @@ describe("the Do panel", () => {
     const rng = new Rng(1);
     // Seed 21's camp cell is itself forest ground; stand off it (the heath) so the intent really walks to the forest.
     placeAtSpot(g.state, g.world, g.state.player.region, "heath");
+    mapRegion(g.state, g.world, g.state.player.region);
     startIntent(g.state, g.world, calendar(0), rng, { task: "chop", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" });
     let html = taskHtml(g.state, g.world, calendar(0));
     expect(html).toContain("Fell a tree, until camp has 40 logs, bringing it to camp");

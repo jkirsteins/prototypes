@@ -3,6 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { needsMending } from "../src/sim/camp";
 import { addItem, pile } from "../src/sim/inventory";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { placeAtSpot } from "../src/sim/position";
@@ -67,6 +68,7 @@ describe("structure decay", () => {
     st.structureAge.leanTo = 244 * 1440;
     addItem(pile(state, st.campCell), "stick", 2);
     placeAtSpot(state, world, state.player.region, "forest");
+    mapRegion(state, world, state.player.region);
     const o = addOrder(state, world, { task: "mend", arg: "leanTo", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     // A few minutes in, the order is already routed to the work, not left
     // reading "walk to camp" while a fallback wait happens to carry the

@@ -3,6 +3,7 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool, TRACE_KG } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt, placeAtSpot, spotHere, watersideCell } from "../src/sim/position";
@@ -100,6 +101,7 @@ describe("tasks", () => {
   it("a stopped walk leaves you on the way, and the next walk starts from there", () => {
     const g = newGame(3);
     const { state, world } = g;
+    mapRegion(state, world, state.player.region);
     // The farthest spot, so half the way is several cells.
     const r = regionAt(world, state.player.region);
     const far = r.spots.reduce((a, b) => (b.km > a.km ? b : a));
@@ -125,6 +127,8 @@ describe("tasks", () => {
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     const nb = r.neighbours[0];
+    mapRegion(state, world, state.player.region);
+    mapRegion(state, world, nb.id);
     const go = check(state, world, cal, "travel", `region:${nb.id}`);
     expect(go.ok).toBe(true);
     expect(go.duration).toBeGreaterThan(20);

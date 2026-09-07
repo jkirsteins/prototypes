@@ -106,7 +106,7 @@ describe("ice", () => {
     for (let m = 0; m < 30 && state.task; m++) stepTask(state, world, cal, rng, 1);
     expect(cellOf(state, world)).toBe(water);
     state.weather.iceCm = 3;
-    expect(check(state, world, cal, "walk", `cell:${land}`).why).toBe("no way there on foot");
+    expect(check(state, world, cal, "walk", `cell:${land}`).why).toBe("{you} {know} no way there");
     // Standing on water with the ice gone rolls the fall every minute.
     advance(state, world, 60 * 12);
     expect(state.dead !== null || state.log.some((e) => e.text.startsWith("Through the ice"))).toBe(true);

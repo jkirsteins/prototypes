@@ -4,6 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { PRODUCERS } from "../src/sim/capabilities";
 import { resolveCell } from "../src/sim/intent";
 import { addItem, freshTool, pile, qty } from "../src/sim/inventory";
+import { mapRegion } from "../src/sim/mapped";
 import { addOrder } from "../src/sim/orders";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
@@ -186,6 +187,7 @@ describe("digging a seep", () => {
     const { state, world } = ready();
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
+    mapRegion(state, world, state.player.region);
     const target = resolveCell(state, world, cal, "build", "seep", "nearest").cell;
     expect(seepGround(world, target)).not.toBeNull();
     expect(state.seeps[target]).toBeUndefined();
@@ -196,6 +198,7 @@ describe("digging a seep", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
+    mapRegion(state, world, state.player.region);
     state.player.tools.push(freshTool("barkBucket"));
     addItem(pile(state, st.campCell), "stick", 4);
     expect(check(state, world, cal, "build", "seep", resolveCell(state, world, cal, "build", "seep", "nearest").cell).ok).toBe(true);

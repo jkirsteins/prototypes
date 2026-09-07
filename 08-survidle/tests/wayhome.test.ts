@@ -38,7 +38,7 @@ describe("searching for the way home", () => {
     const cal = calendar(state.minute);
     const walk = check(state, world, cal, "walk", "spot:camp");
     expect(walk.ok).toBe(false);
-    expect(walk.why).toBe("no way you know");
+    expect(walk.why).toBe("{you} {know} no way there");
     const home = check(state, world, cal, "searchHome");
     expect(home.ok).toBe(true);
     // No duration is knowable, so none is promised.

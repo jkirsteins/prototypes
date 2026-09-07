@@ -5,11 +5,12 @@ import { addItem, herePile, pile, qty } from "../src/sim/inventory";
 import { setSkillLevel } from "../src/sim/horizon";
 import { giveOrder } from "../src/sim/ladder";
 import { beginAgain, demoteFog, land, landingCell, landingDate } from "../src/sim/landing";
+import { markKnown } from "../src/sim/mapped";
 import { fmtName } from "../src/sim/names";
 import { newGame } from "../src/sim/newgame";
 import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
-import { placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import { DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
@@ -135,6 +136,9 @@ describe("the dim map", () => {
     expect(document.querySelector("#map .c[title*='something lies here']")).toBeNull();
 
     enterRegion(state, world, state.player.region);
+    // A real re-entry always comes with a look around (placeAt's seeFrom); enterRegion
+    // alone only marks the region, so the ground underfoot is re-seen here by hand.
+    markKnown(state, cellOf(state, world));
     setPanel("map", mapHtml(world, state, ui, cal));
     expect(document.querySelectorAll("#map .c.pl").length).toBe(1);
   });

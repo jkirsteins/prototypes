@@ -5,6 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
 import { addItem, hasTool, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
 import { ITEM_KG, SAP_FROM_DOY } from "../src/sim/items";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
@@ -249,6 +250,7 @@ describe("the work tier", () => {
   it("a gather stops once the shortfall is in the pack, not once it is already home", () => {
     const g = newGame(3);
     const { state, world } = g;
+    mapRegion(state, world, state.player.region);
     const camp = regionState(state, world, state.player.region).campCell;
     startIntent(state, world, cal, rng(), req("stone", { until: { kind: "campHas", qty: 8 } }));
     expect(until(g, () => state.intent === null, 8000)).toBe(true);

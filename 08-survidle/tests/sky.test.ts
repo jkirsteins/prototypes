@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
+import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import type { Weather } from "../src/sim/types";
@@ -124,6 +125,7 @@ describe("sky in the page", () => {
   it("spot distances are from where you stand, with the walking time on the button", () => {
     const { state, world } = newGame(21);
     placeAtSpot(state, world, state.player.region, "forest");
+    mapRegion(state, world, state.player.region);
     const cal = at(13);
     setPanel("region", regionHtml(state, world, cal, newUiState()));
     const text = document.querySelector("#region")!.textContent!;
