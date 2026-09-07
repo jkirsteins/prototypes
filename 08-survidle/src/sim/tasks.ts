@@ -1,7 +1,7 @@
 import { Rng } from "../rng";
 import { CELL_KM } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
-import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
+import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
@@ -37,9 +37,10 @@ import {
 } from "./position";
 import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { isRead, readLine, readShore } from "./knowledge";
+import { isKnown, knownShare } from "./mapped";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
-import { seeFrom } from "./sight";
+import { seeFrom, sightRangeCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
 import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
@@ -823,6 +824,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (weight(p.pack) > body(state).packHardKg) return { ...o2, ok: false, why: "the pack is too heavy to lift" };
       return o2;
     }
+    case "explore": {
+      const target = walkTarget(state, world, arg ?? "");
+      const o = opt({ group: "move", label: `Explore ${target?.label ?? "?"}`, detail: "", repeatable: false });
+      if (!target) return { ...o, ok: false, why: "no such place" };
+      const region = cellAt(world, target.cell).region;
+      if (discovery(state, region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
+      if (knownShare(state, world, region) >= 1) return { ...o, ok: false, why: "{you} {know} that country" };
+      // No duration is promised: how long it takes is how long the ground takes.
+      return { ...o, duration: 0, detail: "as long as the ground takes" };
+    }
     case "haul": {
       const here = at;
       const campCell = st.campCell;
@@ -1101,6 +1112,17 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
   }
+  if (id === "explore") {
+    const target = walkTarget(state, world, arg ?? "")!;
+    const region = cellAt(world, target.cell).region;
+    const vantage = pickVantage(state, world, cal, region);
+    if (!vantage) return false;
+    const from = cellOf(state, world);
+    const ice = walkIceMode(state, false);
+    state.route = { target: vantage.cell, path: vantage.path, walked: [from], label: target.label, ice, lastLand: from };
+    state.task = { id, arg, progress: 0, duration: routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice), repeat: false };
+    return true;
+  }
   // Pick up where this task was left, if it was.
   const key = pauseKey(state, world, id, arg);
   const fresh = checkFresh(state, world, cal, id, arg);
@@ -1143,7 +1165,7 @@ export function setAside(state: GameState, world: World): void {
     const st = regionState(state, world, state.player.region);
     const sid = t.arg as StructureId;
     st.build[sid] = (st.build[sid] ?? 0) + t.progress;
-  } else if (t.id === "walk" || t.id === "travel") {
+  } else if (t.id === "walk" || t.id === "travel" || t.id === "explore") {
     state.route = null;
   } else {
     const key = pauseKey(state, world, t.id, t.arg);
@@ -1191,6 +1213,10 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (!t || state.dead) return;
   if (t.id === "walk" || t.id === "travel") {
     stepWalk(state, world, cal, rng, dt);
+    return;
+  }
+  if (t.id === "explore") {
+    stepExplore(state, world, cal, rng, dt);
     return;
   }
   const pace = WORK_TASKS.has(t.id) ? workSpeed(state, world) : 1;
@@ -1288,20 +1314,17 @@ export function fallThrough(state: GameState, world: World, rng: Rng, land: numb
 }
 
 /**
- * Moves the player along the route at the speed of the ground under foot.
- * The bar shows minutes: what has passed, and what the rest would take now.
- * Every water cell entered while the ice is under the safe thickness risks a
- * fall, which ends the walk on the spot (the thin-ice warning itself is
- * level-triggered in stepPlayer, which sees the same standing-on-water
- * condition whether you are mid-crossing or stopped).
+ * Walks the current route by dt minutes: the per-cell stepping, the ice
+ * roll, the region it puts the survivor in, the sight it opens from every
+ * cell entered. Shared by a plain walk and an exploring one, so the two
+ * can never drift apart on how a step is spent. Returns true once the
+ * route's path is empty - the leg has arrived, not necessarily the task.
+ * A fall through the ice ends the walk on the spot (fallThrough clears
+ * state.route and state.task itself); the caller reads that by checking
+ * state.route again rather than trusting this return.
  */
-function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
-  const t = state.task!;
-  const route = state.route;
-  if (!route) {
-    state.task = null;
-    return;
-  }
+function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): boolean {
+  const route = state.route!;
   const p = state.player;
   let km = (walkSpeed(state, cal, state.weather, hereTerrain(state, world), undefined, route.ice) / 60) * dt;
   while (km > 1e-9 && route.path.length) {
@@ -1323,7 +1346,7 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
         if (state.weather.iceCm < ICE_SAFE_CM) cue("iceCracks");
         if (state.weather.iceCm < ICE_SAFE_CM && rng.chance(fallChance(state.weather.iceCm))) {
           fallThrough(state, world, rng, route.lastLand);
-          return;
+          return true;
         }
       } else {
         route.lastLand = cell;
@@ -1337,9 +1360,29 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
       km = 0;
     }
   }
+  return route.path.length === 0;
+}
+
+/**
+ * Moves the player along the route at the speed of the ground under foot.
+ * The bar shows minutes: what has passed, and what the rest would take now.
+ * Every water cell entered while the ice is under the safe thickness risks a
+ * fall, which ends the walk on the spot (the thin-ice warning itself is
+ * level-triggered in stepPlayer, which sees the same standing-on-water
+ * condition whether you are mid-crossing or stopped).
+ */
+function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
+  const t = state.task!;
+  if (!state.route) {
+    state.task = null;
+    return;
+  }
+  const finished = walkAlong(state, world, cal, rng, dt);
+  if (!state.route) return; // fell through the ice: the walk is already over
+  const route = state.route;
   t.progress += dt;
   t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
-  if (!route.path.length) {
+  if (finished) {
     const label = route.label;
     const wasTravel = t.id === "travel";
     state.route = null;
@@ -1349,6 +1392,94 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
     if (spotHere(state, world) === "heath") collectSnares(state, world);
     collectTrap(state, world);
   }
+}
+
+/**
+ * The region's known cells still worth walking to: passable, already
+ * reachable from where the survivor stands, and standing next to ground
+ * not yet mapped. Nearest route first, so how far down this list the
+ * wayfinding level bothers to weigh (task 6's `1 + level`) is a plain
+ * slice of it.
+ */
+function exploreFrontier(state: GameState, world: World, region: number): { cell: number; path: number[] }[] {
+  const from = cellOf(state, world);
+  const ice = walkIceMode(state, false);
+  const avoidFell = fearsFell(state);
+  const out: { cell: number; path: number[] }[] = [];
+  for (const cell of regionAt(world, region).cells) {
+    if (cell === from) continue;
+    if (!passable(cellAt(world, cell).terrain)) continue;
+    if (!neighbours(world, cell).some((nb) => cellAt(world, nb).region === region && !isKnown(state, nb))) continue;
+    const path = survivorRoute(state, world, from, cell, ice, avoidFell);
+    if (path) out.push({ cell, path });
+  }
+  out.sort((a, b) => a.path.length - b.path.length);
+  return out;
+}
+
+/**
+ * The best of the candidates the survivor's wayfinding weighs: whichever
+ * vantage would open the most unknown ground - sightRangeCells there,
+ * squared, stands in for that well enough without ray-marching every one
+ * of them. Null when the region has nothing left reachable to see more
+ * from.
+ */
+function pickVantage(state: GameState, world: World, cal: Calendar, region: number): { cell: number; path: number[] } | null {
+  const candidates = exploreFrontier(state, world, region);
+  // Task 6 narrows this to 1 + the survivor's wayfinding level; until then, every reachable candidate is weighed.
+  const weighed = candidates.slice(0, candidates.length);
+  let best: { cell: number; path: number[] } | null = null;
+  let bestScore = -1;
+  for (const c of weighed) {
+    const score = sightRangeCells(state, world, cal, c.cell) ** 2;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/**
+ * Walks the current leg of an exploring sweep; when it lands, picks
+ * wherever unmapped ground of the region is best seen from next and sets
+ * off there. Ends the task once the region is fully known; stopping it by
+ * hand, like a walk, just ends it where the survivor stands.
+ */
+function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
+  const t = state.task!;
+  if (!state.route) {
+    state.task = null;
+    return;
+  }
+  const finished = walkAlong(state, world, cal, rng, dt);
+  if (!state.route) return; // fell through the ice: the sweep is already over
+  const route = state.route;
+  t.progress += dt;
+  if (!finished) {
+    t.duration = t.progress + routeMinutes(world, route.path, baseWalkSpeed(state, cal, state.weather), route.ice);
+    return;
+  }
+  placeAt(state, world, cellOf(state, world));
+  if (spotHere(state, world) === "heath") collectSnares(state, world);
+  collectTrap(state, world);
+  const region = cellAt(world, walkTarget(state, world, t.arg ?? "")!.cell).region;
+  if (knownShare(state, world, region) >= 1) {
+    state.route = null;
+    state.task = null;
+    log(state, `{You} {know} ${regionAt(world, region).name} now.`);
+    return;
+  }
+  const next = pickVantage(state, world, cal, region);
+  if (!next) {
+    // Nothing left the survivor can walk to would show them more of it.
+    state.route = null;
+    state.task = null;
+    return;
+  }
+  const from = cellOf(state, world);
+  state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
+  t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), route.ice);
 }
 
 /** Cuts an ice hole here: takes up an axe from the pack or the pile underfoot if none is in hand, wears it, and opens the hole. Both complete("fill") on an iced shore and complete("iceHole") share this so the two never drift. */
@@ -1776,6 +1907,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "wait":
     case "travel":
     case "walk":
+    case "explore":
     case "rest":
       return;
   }

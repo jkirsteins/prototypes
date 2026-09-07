@@ -156,7 +156,7 @@ export function activityLoop(state: GameState, s: Surroundings): { slot: string;
   const t = state.task;
   if (!t) return null;
   switch (t.id) {
-    case "walk": case "travel": return { slot: `step_${s.footing}`, period: 0.6 };
+    case "walk": case "travel": case "explore": return { slot: `step_${s.footing}`, period: 0.6 };
     case "chop": return { slot: "axe", period: 1.5 };
     case "split": return { slot: "axe", period: 2 };
     case "craft": return KNAPPED.has(t.arg as RecipeId) ? { slot: "knap", period: 1.2 } : null;
