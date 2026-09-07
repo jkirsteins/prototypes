@@ -3776,7 +3776,14 @@ day and a shore camp reads "oily fish read at the shore" for ever (K's
 finding F7). Beside each stock it prints what the ledger credited from
 that source in the week before the death, so "roots 125 kg, none taken
 this week" is a hole and "roots 125 kg, 306 kcal a day taken" is not.
-Diagnostic only; nothing in play changes.
+Diagnostic only; nothing in play changes. And for the lineage, what an
+heir inherited: the old camp's larder in kcal and its pile in kilos on
+the day the heir reaches it, printed on the life's landing line, so a
+lineage death can say whether the ancestor left nothing or the heir
+squandered it. The lineage is the gate this item is most likely to move
+(K's finding F11): an heir at Foraging 5 in October runs the level-20
+list today, hunting small game beside three logs, and the rungs give it
+the short plan its skills have earned instead.
 
 **Measured case.** A paced woodpile, applied as a runner rule to every
 survivor whatever its level, read on the four seeds against the K
