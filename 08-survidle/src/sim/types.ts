@@ -193,6 +193,9 @@ export interface IntentRequest {
  */
 export type OrderKind = "keep" | "grind" | "job";
 
+/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
+export type Rung = OrderKind | "condition" | "pace";
+
 export interface Order {
   /** Stable within the run; the live intent names its order by it. */
   id: number;
@@ -539,4 +542,13 @@ export interface GameState {
   spine: { fired: Partial<Record<ThresholdId, number>>; announced: Partial<Record<ThresholdId, number>> };
   /** The manual has been opened unasked once in this world. */
   manualSeen: boolean;
+  /**
+   * The rungs this survivor has been shown a moment for, and the ones
+   * earned but not yet shown. Per survivor rather than per world: a moment
+   * is about what this life can newly reach, so both are cleared on a
+   * landing. A rung an heir lands already holding is marked taught without
+   * being queued, and the welcome names those instead.
+   */
+  taught: Partial<Record<Rung, true>>;
+  teachQueue: Rung[];
 }

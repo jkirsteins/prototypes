@@ -10,7 +10,7 @@ import { body, hasQuirk } from "./person";
 import { starvation } from "./player";
 import { hereTerrain } from "./position";
 import { extrasClass, fatSeason, fishSpecies, huntedLand, type Species, SPECIES_DEFS } from "./species";
-import type { GameState, ItemId, LifeRecord, OrderKind, RecipeId, SkillId, SkillState, StructureId, TaskId } from "./types";
+import type { GameState, ItemId, LifeRecord, RecipeId, Rung, SkillId, SkillState, StructureId, TaskId } from "./types";
 import { log } from "./log";
 
 export const SKILL_IDS: SkillId[] = ["woodcraft", "foraging", "hunting", "fishing", "crafting", "building"];
@@ -33,7 +33,7 @@ export const MASTERY_KEYS: Record<SkillId, string[]> = {
 export const SKILL_CAP = 50;
 
 /** A rung is what an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
-export type Rung = OrderKind | "condition" | "pace";
+export type { Rung } from "./types";
 
 /**
  * The delegation ladder (idle curve spec, section 2; the order ladder
@@ -55,6 +55,24 @@ export const RUNG_LINE: Record<Rung, (skill: string) => string> = {
   condition: (s) => `{You} {read} the season and the pile as one: orders from ${s} can carry a season, a stock line, a restart line or a daily count.`,
   pace: (s) => `{You} {plan} ${s.toLowerCase()} by the calendar: a keep from ${s} can be due by a date, held after it or spent by the season's close.`,
 };
+
+/**
+ * Queues a rung's moment the first time this survivor opens it by
+ * practice. The log line beside the call is written on every unlock, in
+ * every skill; only the moment is once. Marking it here rather than when
+ * the moment closes is what makes two skills crossing the same rung
+ * inside one offline catch-up queue it a single time.
+ */
+export function teachOnce(state: GameState, r: Rung): void {
+  if (state.taught[r]) return;
+  state.taught[r] = true;
+  state.teachQueue.push(r);
+}
+
+/** A rung the survivor landed already holding: known, so never a moment. The welcome names it instead. */
+export function markTaught(state: GameState, r: Rung): void {
+  state.taught[r] = true;
+}
 
 export const MASTERY_CAP = 99;
 /** Level L needs 2 (L-1)^2 hours: 120 (L-1)^2 minutes. */
@@ -88,7 +106,13 @@ export function carrySkills(state: GameState, from: LifeRecord): { skill: SkillI
     s.carried = minutes;
     const l = level(minutes);
     if (l >= 2) out.push({ skill: id, level: l });
-    for (const k of RUNG_ORDER) if (l >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
+    // A rung carried in is one the survivor lands knowing: the log says so and
+    // the welcome names it, but nobody is stopped for what they were born with.
+    for (const k of RUNG_ORDER) {
+      if (l < RUNG_LEVEL[k]) continue;
+      log(state, RUNG_LINE[k](SKILL_NAMES[id]), "good");
+      markTaught(state, k);
+    }
   }
   return out;
 }
@@ -409,7 +433,11 @@ export function train(state: GameState, world: World, dt: number): void {
   if (after > before) {
     log(state, `${SKILL_NAMES[skill]} ${after}.`, "good");
     // Once per survivor by construction: a level is crossed once, and the heir is a new state.
-    for (const k of RUNG_ORDER) if (before < RUNG_LEVEL[k] && after >= RUNG_LEVEL[k]) log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
+    for (const k of RUNG_ORDER) {
+      if (before >= RUNG_LEVEL[k] || after < RUNG_LEVEL[k]) continue;
+      log(state, RUNG_LINE[k](SKILL_NAMES[skill]), "good");
+      teachOnce(state, k);
+    }
   }
   const mBefore = masteryLevel(s.mastery[key] ?? 0);
   s.mastery[key] = (s.mastery[key] ?? 0) + dt;

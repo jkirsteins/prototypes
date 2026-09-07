@@ -1,0 +1,115 @@
+import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
+import { setSkillLevel } from "../src/sim/horizon";
+import { beginAgain, land } from "../src/sim/landing";
+import { newGame } from "../src/sim/newgame";
+import { die } from "../src/sim/player";
+import { levelMinutes, markTaught, RUNG_LEVEL, teachOnce, train } from "../src/sim/skills";
+import { loadGame, saveGame } from "../src/sim/save";
+import { resetTeaching } from "../src/sim/teach";
+import { regionAt } from "../src/world/gen";
+
+/** A storage the save tests can hand to saveGame and loadGame without a DOM. */
+function memoryStorage(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  } as unknown as Storage;
+}
+
+describe("the teaching queue", () => {
+  it("queues a rung once, however many skills open it", () => {
+    const { state } = newGame(17);
+    teachOnce(state, "job");
+    teachOnce(state, "job");
+    expect(state.teachQueue).toEqual(["job"]);
+    expect(state.taught.job).toBe(true);
+  });
+
+  it("keeps the order the rungs were earned in", () => {
+    const { state } = newGame(17);
+    teachOnce(state, "job");
+    teachOnce(state, "grind");
+    expect(state.teachQueue).toEqual(["job", "grind"]);
+  });
+
+  it("never queues a rung the survivor landed already holding", () => {
+    const { state } = newGame(17);
+    markTaught(state, "job");
+    teachOnce(state, "job");
+    expect(state.teachQueue).toEqual([]);
+    expect(state.taught.job).toBe(true);
+  });
+
+  it("clears both fields, so the next survivor learns for themselves", () => {
+    const { state } = newGame(17);
+    teachOnce(state, "job");
+    resetTeaching(state);
+    expect(state.taught).toEqual({});
+    expect(state.teachQueue).toEqual([]);
+  });
+
+  it("carries the queue through a save, so a rung earned with the tab shut is still waiting", () => {
+    const { state } = newGame(17);
+    teachOnce(state, "keep");
+    const storage = memoryStorage();
+    saveGame(state, storage);
+    const back = loadGame(storage);
+    expect(back?.state.teachQueue).toEqual(["keep"]);
+    expect(back?.state.taught.keep).toBe(true);
+  });
+
+  it("gives a save written without the fields an empty queue rather than undefined", () => {
+    const { state } = newGame(17);
+    const storage = memoryStorage();
+    saveGame(state, storage);
+    const file = JSON.parse(storage.getItem("survidle.save")!);
+    file.state.taught = undefined;
+    file.state.teachQueue = undefined;
+    storage.setItem("survidle.save", JSON.stringify(file));
+    const back = loadGame(storage);
+    expect(back?.state.taught).toEqual({});
+    expect(back?.state.teachQueue).toEqual([]);
+  });
+
+  it("queues a rung the moment practice crosses it, and not a minute before", () => {
+    const { state, world } = newGame(17);
+    state.skills.woodcraft.xp = levelMinutes(RUNG_LEVEL.job) - 1;
+    state.task = { id: "chop", arg: "spruce", progress: 0, duration: 60, repeat: false };
+    train(state, world, 0.5);
+    expect(state.teachQueue).toEqual([]);
+    train(state, world, 1);
+    expect(state.teachQueue).toEqual(["job"]);
+  });
+
+  it("leaves an heir's queue empty, however many rungs they land holding", () => {
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "woodcraft", 12);
+    advance(state, world, 60);
+    die(state, "froze", regionAt(world, state.player.region).name);
+    beginAgain(state, world);
+    land(state, world);
+    // A quarter of level 12 is level 6: jobs and grinds, both carried in.
+    expect(state.taught.job).toBe(true);
+    expect(state.taught.grind).toBe(true);
+    expect(state.teachQueue).toEqual([]);
+  });
+
+  it("gives the heir their own slate, so a rung the ancestor had is still a moment when earned by practice", () => {
+    const { state, world } = newGame(17);
+    teachOnce(state, "job");
+    setSkillLevel(state, "woodcraft", 2);
+    advance(state, world, 60);
+    die(state, "froze", regionAt(world, state.player.region).name);
+    beginAgain(state, world);
+    land(state, world);
+    // Level 2 carries to level 1: the heir lands holding no rung at all.
+    expect(state.taught).toEqual({});
+    state.skills.woodcraft.xp = levelMinutes(RUNG_LEVEL.job) - 1;
+    state.task = { id: "chop", arg: "spruce", progress: 0, duration: 60, repeat: false };
+    train(state, world, 1);
+    expect(state.teachQueue).toEqual(["job"]);
+  });
+});
