@@ -82,12 +82,20 @@ describe("the grades at their seams", () => {
       expect(discovery(median.state, nb2.id)).toBe(0);
     }
     const day = calendar(4 * 60, START_DOY);
-    const night = calendar(20 * 60, START_DOY);
+    // A December midnight: an April night at this latitude is twilight for most
+    // of its length, and sharp eyes are worth part of their day's worth in it.
+    const night = { ...calendar(16 * 60, 334), moon: 0, moonLight: 0 };
+    for (const g of [sharp, median]) g.state.weather.clear = false;
     addItem(sharp.state.player.pack, "arrow", 5);
     addItem(median.state.player.pack, "arrow", 5);
     const s = huntOdds(sharp.state, sharp.world, day, 1, "hare");
     const m = huntOdds(median.state, median.world, day, 1, "hare");
     expect(s / m).toBeCloseTo(1.2);
+    // The pitch dark is the same dark for everyone; a twilight is not, and the
+    // quirk fades with the light rather than switching off at sunset.
     expect(huntOdds(sharp.state, sharp.world, night, 1, "hare")).toBeCloseTo(huntOdds(median.state, median.world, night, 1, "hare"));
+    // 16:00 on 1 December, a quarter of an hour after a 15:42 sunset.
+    const dusk = { ...calendar(8 * 60, 334), moon: 0, moonLight: 0 };
+    expect(huntOdds(sharp.state, sharp.world, dusk, 1, "hare")).toBeGreaterThan(huntOdds(median.state, median.world, dusk, 1, "hare"));
   });
 });

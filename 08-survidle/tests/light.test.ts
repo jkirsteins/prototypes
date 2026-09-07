@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar, LATITUDE_DEG } from "../src/sim/calendar";
-import { CAMP_FIRE_LUX, DARK_LUX, illuminance, lightWord, moonAltitude, skyLux, sunAltitude, TORCH_LUX, workOdds } from "../src/sim/light";
+import { CAMP_FIRE_LUX, DARK_LUX, illuminance, lightWord, moonAltitude, skyLux, sunAltitude, TORCH_LUX, lightFactor } from "../src/sim/light";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { placeAt } from "../src/sim/position";
@@ -99,19 +99,19 @@ describe("flame", () => {
 
 describe("the odds a light buys", () => {
   it("are full at the light the work needs and the floor in the dark", () => {
-    expect(workOdds(DARK_LUX, 20, 0.05)).toBeCloseTo(0.05, 5);
-    expect(workOdds(20, 20, 0.05)).toBeCloseTo(1, 5);
-    expect(workOdds(100_000, 20, 0.05)).toBe(1);
+    expect(lightFactor(DARK_LUX, 20, 0.05)).toBeCloseTo(0.05, 5);
+    expect(lightFactor(20, 20, 0.05)).toBeCloseTo(1, 5);
+    expect(lightFactor(100_000, 20, 0.05)).toBe(1);
   });
 
   it("put a torch within a hair of daylight and a moonlit snowfield halfway", () => {
-    expect(workOdds(TORCH_LUX, 20, 0.05)).toBeGreaterThan(0.9);
-    expect(workOdds(0.2, 20, 0.05)).toBeGreaterThan(0.5);
-    expect(workOdds(0.2, 20, 0.05)).toBeLessThan(0.7);
+    expect(lightFactor(TORCH_LUX, 20, 0.05)).toBeGreaterThan(0.9);
+    expect(lightFactor(0.2, 20, 0.05)).toBeGreaterThan(0.5);
+    expect(lightFactor(0.2, 20, 0.05)).toBeLessThan(0.7);
   });
 
   it("are far meaner for fine work than for gathering, at the same light", () => {
-    expect(workOdds(0.2, 500, 0.02)).toBeLessThan(workOdds(0.2, 20, 0.02));
+    expect(lightFactor(0.2, 500, 0.02)).toBeLessThan(lightFactor(0.2, 20, 0.02));
   });
 });
 

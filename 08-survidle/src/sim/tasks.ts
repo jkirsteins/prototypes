@@ -19,7 +19,7 @@ import {
   SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
 import { creditEaten, creditYield } from "./ledger";
-import { attemptOdds } from "./light";
+import { attemptOdds, illuminance, lightFactor, SPOT_LUX } from "./light";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
@@ -900,7 +900,11 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   const def = SPECIES_DEFS[species].hunt!;
   let odds = density * def.odds * oddsFactor(state, species);
   if (state.weather.snowCm > DEEP_SNOW_CM) odds *= 0.75;
-  if (cal.isNight) odds *= def.night ?? 0.7;
+  // What a hunter can see, by the light there is rather than by the clock:
+  // the species' own night figure is what the pitch dark leaves them, and
+  // dusk and a full moon fall where they fall between that and daylight.
+  const lux = illuminance(state, world, cal, cellOf(state, world));
+  odds *= lightFactor(lux, SPOT_LUX, def.night ?? 0.7);
   if (state.weather.precip !== "none") odds *= 0.85;
   const st = regionState(state, world, state.player.region);
   if (atCamp(state, world) && st.smoke > SMOKE_COUGH) odds *= 0.5;
@@ -908,8 +912,9 @@ export function huntOdds(state: GameState, world: World, cal: Calendar, density:
   if (SPECIES_DEFS[species].kind === "fish" && isRead(state, cellOf(state, world))) odds *= READ_ODDS;
   if (state.player.energy < 20) odds *= 0.5;
   else if (state.player.energy < 30) odds *= 0.75;
-  // Sharp eyes find game by day; the night is the same dark for everyone.
-  if (!cal.isNight) odds *= body(state).dayOdds;
+  // Sharp eyes are worth what there is to see by; the pitch dark is the same
+  // dark for everyone, and a bright day is where the whole of the quirk lands.
+  odds *= 1 + (body(state).dayOdds - 1) * lightFactor(lux, SPOT_LUX, 0);
   return Math.min(0.95, odds);
 }
 

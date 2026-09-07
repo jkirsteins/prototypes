@@ -138,16 +138,23 @@ export function illuminance(state: GameState, world: World, cal: Calendar, cell:
 }
 
 /**
- * The chance an attempt at this work comes off under this light: the floor
- * in the pitch dark, full odds once there is as much light as the work
- * honestly needs, and log-linear between, because that is how a hundredfold
- * more light feels like one step brighter.
+ * How much of its daylight self anything that needs light is worth under
+ * this much of it: the floor in the pitch dark, all of it once there is as
+ * much light as the work honestly needs, and log-linear between, because
+ * that is how a hundredfold more light feels like one step brighter. The
+ * odds of an attempt read this, and so do a walking pace and a hunter's
+ * chance of seeing anything.
  */
-export function workOdds(lux: number, needLux: number, darkOdds: number): number {
+export function lightFactor(lux: number, needLux: number, floor: number): number {
   const span = Math.log10(needLux) - Math.log10(DARK_LUX);
   const t = (Math.log10(Math.max(DARK_LUX, lux)) - Math.log10(DARK_LUX)) / span;
-  return Math.min(1, darkOdds + (1 - darkOdds) * Math.max(0, Math.min(1, t)));
+  return Math.min(1, floor + (1 - floor) * Math.max(0, Math.min(1, t)));
 }
+
+/** The light a person wants underfoot to keep a pace over rough ground. */
+export const WALK_LUX = 20;
+/** The light a hunter wants to see game at any distance; more than their own feet need. */
+export const SPOT_LUX = 50;
 
 /** What a person would call this much light. The lux itself is never shown. */
 export function lightWord(lux: number): string {
@@ -197,5 +204,5 @@ export const NIGHT_WORK: Partial<Record<TaskId, { needLux: number; darkOdds: num
 export function attemptOdds(state: GameState, world: World, cal: Calendar, task: TaskId): number {
   const need = NIGHT_WORK[task];
   if (!need) return 1;
-  return workOdds(illuminance(state, world, cal, cellOf(state, world)), need.needLux, need.darkOdds);
+  return lightFactor(illuminance(state, world, cal, cellOf(state, world)), need.needLux, need.darkOdds);
 }
