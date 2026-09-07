@@ -259,7 +259,7 @@ in full, and where they disagreed the game moved to the handbook's:
 | oily fish | 1,500 kcal/kg, 0.4 lean share | herring, char, salmon, trout named oily, 8 to 12 percent fat by weight so most of their calories are fat; the rest stay lean at 0.9 (the author's brief) |
 | roe | 1,600 kcal/kg, a tenth of the catch in the spawning window | a deliberate shortcut in place of sex, maturity or gonad state (the author's brief) |
 | eggs | 1,500 kcal/kg, 0.4 lean share, half a kilo an hour, May and June | eggs and young birds easy to get (Swedish) |
-| roots | 850 kcal/kg cooked, 0.3 kg/h in season and 0.1 through winter ice | cattail rhizome 210 g starch/kg, reed root-shoots 5 percent, dandelion root 23 percent, fifteen pieces for the ration (Swedish) |
+| roots | 850 kcal/kg cooked, 0.3 kg/h in season and 0.1 through winter ice; a cell holds its stand's rhizome, about 810 kg at a shore, 1,350 on wet ground and 90 on a meadow, dug down where you stand and half the deficit regrown each growing season | cattail rhizome 210 g starch/kg, reed root-shoots 5 percent, dandelion root 23 percent, fifteen pieces for the ration (Swedish); 1 to 3 kg dry of below-ground biomass a square metre in a Phragmites or Typha stand, fresh about three times dry, over a coarse stand share of nine hectares |
 | bark flour | 800 kcal/kg, 0.7 kg fresh an hour, three to one dried | time-consuming, low nutrition, usable all year, easiest on young branches in spring (Swedish); the cambium scraped late spring and early summer and dried (Kochanski) |
 | birch sap | 125 kcal a tap, three taps a region a day, early May to the leaves opening | 20 g of sugar a litre, 2 to 3 litres from a birch in a couple of hours, the rise in early May at this latitude (Swedish); a litre a day from a tap (Kochanski) |
 | seaweed | 200 kcal/kg, gut ceiling 2 kg a day | carries some carbohydrate and minerals, not calorie-dense (Swedish) |
@@ -3717,8 +3717,12 @@ the larder dips under the winter's food; inner bark returns 187 kcal a
 strip hour at the handbook's yield (275 on a level-20 ledger), off the
 reference list for it and settled as a storable emergency carbohydrate
 harvested in its window for the winter, never a standing row, a
-winter-stock target if autonomous play ever needs it; one survivor empties a
-region's roots; the unexploited line reads a stock, not an omission, and
+winter-stock target if autonomous play ever needs it; roots became a
+renewable local resource after the author's review - a stand's rhizome a
+cell, about 810 kg at a shore, dug down where you stand and half the deficit
+back each growing season - so a patch goes poor and out locally and no
+survivor empties a region, with the year, April and lineage gates all
+holding where they stood; the unexploited line reads a stock, not an omission, and
 cannot see what rotted before the death; sap and seaweed never fire on
 the reference seeds, so neither is measured by the without probe; and
 the lineage has not moved.

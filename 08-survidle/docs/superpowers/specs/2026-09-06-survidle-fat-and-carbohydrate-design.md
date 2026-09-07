@@ -379,6 +379,26 @@ three nothing. A level-20 camp digs its regional stock out and the task
 refuses with "the ground is dug out"; the 2026-09-05 ruling says a food
 population cannot be emptied, and the root stock is the one that can.
 
+The author's answer, after review: roots are a renewable local resource
+rather than a regional stock. A cell holds what its stand carries - a reed
+or cattail fringe at the water, a wet cell's margins, a meadow's sparse
+taproots, about 810, 1,350 and 90 kg against a dig of 0.3 kg an hour - and a
+dig draws from the cell under foot, so a patch dug below half of what it
+holds digs slower and reads dug over, an emptied one is dug out, and half of
+what a cell is short comes back across each growing season. Measured on the
+level-20 year with the dig rate, the cooked value and the season untouched:
+the year gate holds 3 of 4 on the same days, seed 17 freezing on day 284;
+April holds 4 of 4 on days 24, 24, 33 and 29; the lineage holds 1 of 4,
+seed 42's fifth life reaching the year. Roots run 164 to 191 kcal a day over
+the year, and each seed digs one cell and leaves it at 92 to 94 percent of
+full, so no cell on any seed reads dug over or dug out on any day. The
+source still matters: shut for the year it costs seed 17 and seed 19 their
+winters, which freeze on days 287 and 315, and the gate reads 2 of 4. The
+older without-roots reading (54, 280, 281, 116) was taken before the fish
+carried their real fat, so it and this one are not the same instrument. F5
+closes, and what a dug-out patch means now is that the next patch is a walk
+away.
+
 **F7. The unexploited line reads a stock, not an omission.** It cannot tell
 "there were roots and the survivor ignored them" from "there were roots and
 the survivor dug 172 kcal a day of them and 126 kg were still in the
@@ -553,12 +573,37 @@ not a potato field.
   through an ice hole at the shore; roots must be cooked (the cook task
   takes them, `cookedRoots` at 850 kcal/kg), and eaten raw they credit
   half. Identification is a recommended Foraging level of 3: below it a
-  dig spoils half its kilos the way an under-level craft spoils. A root
-  stock per region, `ROOT_STOCK_KG_PER_CELL` (3) for each shore, bog and
-  meadow cell, set on 1 April and drawn down by every dig, with no growth
-  inside the year: a dug-out bog stays dug out until the next spring, so
-  it is a season's larder and never a generator. Around 255 kcal an hour
-  in season, 85 in winter, before the Foraging yield factor.
+  dig spoils half its kilos the way an under-level craft spoils. Around
+  255 kcal an hour in season, 85 in winter, before the Foraging yield
+  factor.
+
+  Availability is per cell and renewable. A cell is 300 m on a side, nine
+  hectares, and it holds its own stand: `RHIZOME_KG_PER_M2` (3, fresh
+  mass at the low end of published below-ground biomass for a Phragmites
+  or Typha stand, 1 to 3 kg dry the square metre at about three times dry)
+  over the stand's share of that ground - `STAND_SHARE_SHORE` (0.03, a
+  10 m reed fringe along a 300 m water edge), `STAND_SHARE_BOG` (0.05, a
+  wet cell's open-water margins and hollows) or `STAND_SHARE_MEADOW` (0.1)
+  at `MEADOW_ROOT_KG_PER_M2` (a thirtieth of the density, for dandelion,
+  bistort and silverweed) - times `ROOT_HARVEST_FRACTION` (0.1) for the
+  share a digging stick lifts, the rest being too deep, too small or left
+  for the stand. That is about 810 kg at a shore, 1,350 on wet ground and
+  90 on a meadow, against a dig of 0.3 kg an hour; ground that is both
+  waterside and wet takes the larger figure, not the sum. Every share is
+  coarse by design. A dig draws from the cell under foot alone
+  (`RegionState.rootCells`, cell index to kilos, holding only the cells
+  that have been dug; an absent cell is at full), and below
+  `ROOT_POOR_SHARE` (0.5) of what it holds a patch gives up its roots in
+  proportion - a quarter of full digs at half rate - and its row reads
+  "dug over here, the next patch is better", with the walk aimed at the
+  nearest cell still above the line. Only an emptied cell is dug out.
+  `ROOT_REGROWTH_SHARE` (0.5) of what a cell is short comes back across
+  each growing season, `ROOT_GROWTH_FROM_DOY` (121, 1 May) to
+  `ROOT_GROWTH_TO_DOY` (273, the end of September), spread over the
+  window's days at the daily fraction that compounds to the season's
+  share: perennial clonal rhizome rebuilds from what stays in the ground.
+  So a patch goes poor and then out where you stand, temporarily and
+  locally, and one survivor cannot empty a region.
 - **Birch sap.** "Tap a birch" on birch ground with a knife, thirty
   minutes, in the sap rise (`SAP_FROM_DOY` 121 to `SAP_TO_DOY` 141, early
   May until the leaves open at this latitude): 2.5 litres drunk on the

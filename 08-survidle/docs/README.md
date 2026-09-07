@@ -159,7 +159,8 @@ waiting, and everything done while you are away run at the one scale.
   task, and a keep on dried meat runs it as the rack has room. Cracking a
   bone gives marrow, and a kill's fat must be rendered at a fire within
   three days or it spoils like meat. Roots dug at the water or through
-  winter ice, pine inner bark stripped and ground to flour, birch sap
+  winter ice, a patch giving them up slower as it is dug over and
+  growing back over the summer, pine inner bark stripped and ground to flour, birch sap
   tapped for three weeks in May and shore seaweed on a coastal camp fill
   the season's plant band; nests give eggs in May and June. Once the
   larder holds a winter's food, hunting and fishing stand down for the
@@ -319,7 +320,7 @@ not part of `npm test`, and it has no gate: every line is a reading.
   and the constants it lays, settles and melts by.
 - `src/world/terrain.ts`: world size, the geography, terrain thresholds, the region lattice.
 - `src/world/gen.ts`: region stats, capacities, spots, the start.
-- `src/sim/stocks.ts`: the spring egg stock and the regional root stock, seeded on 1 April or 1 May and drawn down by nothing else.
+- `src/sim/stocks.ts`: the spring egg stock, seeded on 1 May, and the root ground - what a cell's stand holds, what is left in each cell that has been dug, and the growing season's regrowth.
 - `src/sim/skills.ts`: the level curves, recommended levels, mastery extras and pool perks.
 - `src/ui/map.ts`: light sources and the rings they light.
 - `src/sim/water.ts`: the water reserve, drinking, filling vessels and auto-drink.
