@@ -5,10 +5,11 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
+import { current } from "../src/sim/record";
+import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
 import { loadGame, saveGame } from "../src/sim/save";
-import { CONCEPTS, resetTeaching } from "../src/sim/teach";
-import { conceptHtml, exampleFor } from "../src/ui/teachpanel";
+import { CONCEPTS, resetTeaching, tipFor, TIPS, welcomeLines } from "../src/sim/teach";
+import { conceptHtml, exampleFor, welcomeHtml } from "../src/ui/teachpanel";
 import { regionAt } from "../src/world/gen";
 
 /** A storage the save tests can hand to saveGame and loadGame without a DOM. */
@@ -165,5 +166,53 @@ describe("a concept moment", () => {
     const html = conceptHtml(state, world, cal, "job");
     expect(html).toContain(CONCEPTS.job.title);
     expect(html).toContain('data-act="teach-close"');
+  });
+});
+
+describe("the welcome", () => {
+  it("tells a fresh survivor that everything is theirs to click", () => {
+    const { state } = newGame(17);
+    const w = welcomeLines(state);
+    expect(w.held).toEqual([]);
+    expect(w.body.join(" ")).toContain("one at a time");
+    expect(w.body.join(" ")).toContain(String(RUNG_LEVEL.job));
+  });
+
+  it("names what an heir landed holding, and the rung it already opens", () => {
+    const { state } = newGame(17);
+    setSkillLevel(state, "woodcraft", RUNG_LEVEL.grind);
+    setSkillLevel(state, "building", RUNG_LEVEL.job);
+    const w = welcomeLines(state);
+    expect(w.held).toContain(`${SKILL_NAMES.woodcraft} ${RUNG_LEVEL.grind}`);
+    expect(w.held).toContain(`${SKILL_NAMES.building} ${RUNG_LEVEL.job}`);
+    // The highest rung any carried skill opens, not the lowest.
+    expect(w.body.join(" ")).toContain(RUNG_WORD.grind);
+  });
+
+  it("says so plainly when what carried over still opens no rung", () => {
+    const { state } = newGame(17);
+    setSkillLevel(state, "woodcraft", 2);
+    const w = welcomeLines(state);
+    expect(w.held).toEqual([`${SKILL_NAMES.woodcraft} 2`]);
+    expect(w.body.join(" ")).toContain("comes with practice");
+  });
+
+  it("gives a landing the same tip every time, and never the last landing's twice", () => {
+    expect(tipFor(17, 3)).toBe(tipFor(17, 3));
+    for (let i = 1; i < TIPS.length + 4; i++) expect(tipFor(17, i)).not.toBe(tipFor(17, i - 1));
+    for (let i = 1; i < TIPS.length + 4; i++) expect(tipFor(4242, i)).not.toBe(tipFor(4242, i - 1));
+  });
+
+  it("keeps every tip to one line the box can lay out", () => {
+    for (const t of TIPS) expect(t.length).toBeLessThanOrEqual(140);
+  });
+
+  it("draws the survivor's name, all six skills and its begin button", () => {
+    const { state } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = welcomeHtml(state, cal);
+    expect(html).toContain(current(state).name.first);
+    for (const s of SKILL_IDS) expect(html).toContain(SKILL_NAMES[s]);
+    expect(html).toContain('data-act="welcome-close"');
   });
 });

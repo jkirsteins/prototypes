@@ -449,6 +449,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* A moment: narrower than the manual, since it says one thing. */
 #overlay .box.teach { max-width: 460px; }
 #overlay .box.teach p { margin: 6px 0; }
+#overlay .box.teach.welcome { max-width: 520px; }
+#overlay .box.teach .statuses { margin: 10px 0; }
 #overlay .box.teach .example {
   font-weight: 600;
   padding: 8px 10px;

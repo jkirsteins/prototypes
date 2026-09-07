@@ -4,12 +4,15 @@
  * examples from the Do panel's own rows, run through the real gate, so a
  * moment can never promise an order the panel would refuse to give.
  */
-import type { Calendar } from "../sim/calendar";
+import { type Calendar, fmtDate } from "../sim/calendar";
 import { intentOption } from "../sim/intent";
 import { orderGate } from "../sim/ladder";
+import { MANUAL_SECTIONS } from "../sim/manual";
+import { fmtName } from "../sim/names";
 import { orderSentence } from "../sim/orders";
-import { RUNG_LEVEL, SKILL_IDS, skillLevel } from "../sim/skills";
-import { CONCEPTS } from "../sim/teach";
+import { current } from "../sim/record";
+import { RUNG_LEVEL, SKILL_IDS, SKILL_NAMES, skillLevel } from "../sim/skills";
+import { CONCEPTS, tipFor, welcomeLines } from "../sim/teach";
 import type { GameState, Order, Rung, TaskId } from "../sim/types";
 import { regionAt, type World } from "../world/gen";
 import { intentGroups } from "./dopanel";
@@ -60,5 +63,25 @@ export function conceptHtml(state: GameState, world: World, cal: Calendar, r: Ru
 ${c.lines.map((l) => `<p>${esc(l)}</p>`).join("")}
 ${shown}
 <button class="act" data-act="teach-close">Got it</button>
+</div>`;
+}
+
+/**
+ * The welcome a landing opens to, fresh survivor or heir alike. The first
+ * days' advice is taken from the manual's own first section rather than
+ * retyped, so the two cannot come to disagree about what to do first.
+ */
+export function welcomeHtml(state: GameState, cal: Calendar): string {
+  const rec = current(state);
+  const { body } = welcomeLines(state);
+  const skills = SKILL_IDS.map((s) => `<span class="tag">${esc(SKILL_NAMES[s])} ${skillLevel(state, s)}</span>`).join("");
+  return `<div class="box teach welcome">
+<h1>${esc(fmtName(rec.name))}</h1>
+<p class="dim">${esc(fmtDate(cal))}, day ${cal.day}.</p>
+${body.map((l) => `<p>${esc(l)}</p>`).join("")}
+<div class="statuses">${skills}</div>
+<p>${esc(MANUAL_SECTIONS[0].lines.slice(0, 2).join(" "))}</p>
+<p class="example">${esc(tipFor(state.seed, state.survivors.length))}</p>
+<button class="act" data-act="welcome-close">Begin</button>
 </div>`;
 }
