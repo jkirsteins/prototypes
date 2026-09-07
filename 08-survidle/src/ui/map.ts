@@ -12,10 +12,11 @@ import { FIRE_LOW_KG } from "../sim/items";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
 import { DIM, discovery, SEEN, VISITED } from "../sim/regionstate";
-import type { GameState, Terrain } from "../sim/types";
+import type { GameState, SpotId, Terrain } from "../sim/types";
 import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
+import { elevationAt, groundGlyph, toneCuts, toneOf, TREES, VARIANTS, type ToneCuts } from "./ground";
 import { lighting } from "./sky";
 
 export const GLYPH: Record<Terrain, string> = {
@@ -41,7 +42,23 @@ export const MARKS = {
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
   seep: { glyph: "s", cls: "mk-seep", label: "seep" },
+  forest: { glyph: "%", cls: "mk-spot", label: "forest" },
+  outcrop: { glyph: "o", cls: "mk-spot", label: "outcrop" },
+  shore: { glyph: "w", cls: "mk-spot", label: "shore" },
+  heath: { glyph: ";", cls: "mk-spot", label: "heath" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
+
+/**
+ * The places the HERE panel offers to walk to, as marks. Camp is not among them:
+ * it already has its own mark, and a camp is drawn wherever one stands rather
+ * than only at the region's own site.
+ */
+export const SPOT_MARKS: Partial<Record<SpotId, (typeof MARKS)[keyof typeof MARKS]>> = {
+  forest: MARKS.forest,
+  outcrop: MARKS.outcrop,
+  shore: MARKS.shore,
+  heath: MARKS.heath,
+};
 
 /**
  * The map's key: every terrain letter from the glyph table, then ice, then
@@ -50,14 +67,21 @@ export const MARKS = {
  * than rebuilt with the map.
  */
 export function legendHtml(): string {
+  // A terrain with forms names them all here instead of its plain letter, so the
+  // key never says "water" twice with a different glyph each time.
   const terrain = (Object.keys(GLYPH) as Terrain[])
-    .map((t) => `<span><b>${GLYPH[t] === "\"" ? "&quot;" : GLYPH[t]}</b> ${TERRAIN_NAME[t]}</span>`)
+    .map((t) => {
+      const v = VARIANTS[t];
+      const forms = (v ? v.forms : [GLYPH[t]]).map((g) => `<b>${g === '"' ? "&quot;" : g}</b>`).join(" ");
+      return `<span>${forms} ${TERRAIN_NAME[t]}${v ? `: ${v.reads}` : ""}</span>`;
+    })
     .join("");
   const marks = Object.values(MARKS)
     .map((m) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`)
     .join("");
   return (
     `${terrain}<span><b>=</b> ice</span>${marks}` +
+    `<span class="tone-key">brighter trees stand higher</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
     `<span class="fog-key">dark: never been there</span>`
@@ -297,6 +321,20 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const g = toGlyph(Number(k));
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.seep);
   }
+  // The named places, and only closer than the map opens at: the two close rungs
+  // showed the same ground at a larger size and nothing else, so this is what
+  // zooming in buys. A place is known once its region has been walked in.
+  if (z === 1 && ui.zoom < DEFAULT_ZOOM) {
+    for (const [id, r] of world.regions) {
+      if (discovery(state, id) !== VISITED) continue;
+      for (const sp of r.spots) {
+        const mark = SPOT_MARKS[sp.id];
+        if (!mark) continue;
+        const g = toGlyph(sp.cell);
+        if (g >= 0 && !markerAt.has(g)) markerAt.set(g, mark);
+      }
+    }
+  }
   const playerGlyph = toGlyph(playerCell);
   markerAt.set(playerGlyph, MARKS.you);
   const pileGlyphs = new Set<number>();
@@ -328,6 +366,24 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     }
   }
   const drawBorders = z <= 3;
+
+  // The height shading normalises to what is on screen, so every elevation must
+  // be read before any one cell's tone can be decided.
+  const elev = z === 1 ? new Float32Array(l.w * l.h) : null;
+  let cuts: ToneCuts | null = null;
+  if (elev) {
+    const seen: number[] = [];
+    for (let gy = 0; gy < l.h; gy++) {
+      for (let gx = 0; gx < l.w; gx++) {
+        const i = gy * l.w + gx;
+        if (regions[i] < 0 || !seenAt[i] || !TREES.includes(terrains[i])) continue;
+        const e = elevationAt(world.seed, x0 + gx * z, y0 + gy * z);
+        elev[i] = e;
+        seen.push(e);
+      }
+    }
+    cuts = toneCuts(seen);
+  }
 
   // The tools sit in the map's bottom left corner (drawn after the grid, placed
   // by the stylesheet), so they cost the panel no height of their own; the span
@@ -375,6 +431,14 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
       glyph = GLYPH[t];
+      // A coarser glyph is a block of mixed ground with no single field to report.
+      if (z === 1) {
+        glyph = groundGlyph(world.seed, x0 + gx * z, y0 + gy * z, t, glyph);
+        if (elev && TREES.includes(t)) {
+          const tone = toneOf(elev[i], cuts);
+          if (tone !== 1) cls.push(`tone-${tone}`);
+        }
+      }
       if (t === "water" && iceMode(state.weather) !== "none") {
         glyph = "=";
         cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
@@ -396,8 +460,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     if (m) {
       cls.push("mk", m.cls);
       glyph = m.glyph;
-      if (m.cls === "mk-player") title = `you, ${title}`;
-      if (m.cls === "mk-camp") title = `camp, ${title}`;
+      title = `${m.label}, ${title}`;
     }
     const act = reg >= 0 && seen > 0 ? ` data-act="select" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
