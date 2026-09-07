@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { GOALS, goalDeed } from "../src/sim/goals";
 import { newGame } from "../src/sim/newgame";
-import { goalsHtml, updateGoalBars } from "../src/ui/goalpanel";
+import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "../src/ui/goalpanel";
+import { newUiState } from "../src/ui/render";
 
 const cal = calendar(0);
 
@@ -46,5 +47,59 @@ describe("the goal panel", () => {
   it("escapes nothing it does not have to, and never leaks a tag", () => {
     const { state } = newGame(3);
     expect(goalsHtml(state, cal)).not.toContain("<script");
+  });
+});
+
+describe("the congratulation", () => {
+  it("opens on a queued completion", () => {
+    const { state } = newGame(3);
+    const ui = newUiState();
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    expect(goalMomentToOpen(state, ui)).toEqual(["firewood"]);
+  });
+
+  it("queues behind a rung moment, which is the larger event", () => {
+    const { state } = newGame(3);
+    const ui = newUiState();
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    ui.teach = "job";
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+  });
+
+  it("waits out the landing, the tombstone and the away report", () => {
+    const { state } = newGame(3);
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    const ui = newUiState();
+    ui.welcome = true;
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    ui.welcome = false;
+    state.dead = { cause: "froze", minute: 0 };
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+  });
+
+  it("gathers a catch-up's completions into one screen rather than a stack", () => {
+    const { state } = newGame(3);
+    const ui = newUiState();
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    goalDeed(state, { kind: "built", structure: "boughBed" });
+    expect(goalMomentToOpen(state, ui)).toEqual(["firewood", "bed"]);
+  });
+
+  it("names what was done and where to go next", () => {
+    const { state } = newGame(3);
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    const html = goalDoneHtml(state, cal, ["firewood"]);
+    expect(html).toContain("Bring 10 kg of firewood back to camp");
+    expect(html).toContain("Light a fire");
+    expect(html).toContain("goal-close");
+  });
+
+  it("introduces nothing when the ladder is finished", () => {
+    const { state } = newGame(3);
+    for (const g of GOALS) state.goals.done[g.id] = true;
+    const html = goalDoneHtml(state, cal, ["winter"]);
+    expect(html).toContain("Live to see the winter");
+    expect(html).not.toContain("Next");
   });
 });

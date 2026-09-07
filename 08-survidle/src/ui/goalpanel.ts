@@ -7,7 +7,7 @@
 import type { Calendar } from "../sim/calendar";
 import { activeGoals, goalDef, type GoalId } from "../sim/goals";
 import type { GameState } from "../sim/types";
-import { esc } from "./render";
+import { esc, type UiState } from "./render";
 
 /** The element ids a goal's fill and figure are written to each frame. */
 function barId(id: GoalId): string {
@@ -52,4 +52,36 @@ export function updateGoalBars(state: GameState, cal: Calendar, root: ParentNode
     const text = `${Math.round(at)} / ${g.target}${g.unit ? ` ${g.unit}` : ""}`;
     if (val && val.textContent !== text) val.textContent = text;
   }
+}
+
+/**
+ * The completions waiting to be shown, or null while something larger is
+ * open. A rung is the bigger event and is not pre-empted by a goal that
+ * finished in the same minute; a landing, a death and an away report all
+ * come first for the same reason.
+ */
+export function goalMomentToOpen(state: GameState, ui: UiState): GoalId[] | null {
+  if (ui.goalsDone || ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
+  return state.goals.queue.length > 0 ? [...state.goals.queue] : null;
+}
+
+/**
+ * The congratulation. Everything finished since the last one is named on
+ * the one screen, and the goals now standing are introduced under it, so
+ * a single dismissal leaves the player knowing where to walk.
+ */
+export function goalDoneHtml(state: GameState, cal: Calendar, done: GoalId[]): string {
+  const word = done.length > 1 ? "Goals reached" : "Goal reached";
+  const met = done.map((id) => `<p class="example">${esc(goalDef(id).title)}</p>`).join("");
+  const next = activeGoals(state, cal);
+  const ahead =
+    next.length === 0
+      ? `<p class="dim">That is the last of them. What you do here now is yours to choose.</p>`
+      : `<p class="dim">Next:</p>${next.map((id) => `<p class="example">${esc(goalDef(id).title)}</p>`).join("")}`;
+  return `<div class="box teach">
+<h1>${word}</h1>
+${met}
+${ahead}
+<button class="act" data-act="goal-close">On</button>
+</div>`;
 }

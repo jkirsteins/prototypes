@@ -36,7 +36,7 @@ import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, KW_PREFIX, loadFolds, saveFold } from "./ui/dopanel";
-import { goalsHtml, updateGoalBars } from "./ui/goalpanel";
+import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
@@ -205,6 +205,9 @@ function render() {
   } else if (ui.teach) {
     setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
     overlay.hidden = false;
+  } else if (ui.goalsDone) {
+    setPanel("overlay", goalDoneHtml(state, cal, ui.goalsDone));
+    overlay.hidden = false;
   } else {
     overlay.hidden = true;
   }
@@ -215,7 +218,7 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome) {
+  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalsDone) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -230,7 +233,7 @@ function frame(now: number) {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away || ui.teach || ui.welcome) {
+  } else if (ui.away || ui.teach || ui.welcome || ui.goalsDone) {
     // An open moment holds the game still. Without the bump, a modal left open
     // past thirty seconds trips the catch-up branch above, and the player
     // dismisses it into an away report they never earned.
@@ -240,6 +243,11 @@ function frame(now: number) {
   // crossed inside an offline catch-up waits behind that catch-up's own away
   // report; momentToOpen owns the whole rule.
   if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
+  const reached = goalMomentToOpen(state, ui);
+  if (reached) {
+    ui.goalsDone = reached;
+    state.goals.queue = [];
+  }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
@@ -408,6 +416,12 @@ function onClick(ev: Event) {
       ui.teach = null;
       // The same bump the away report's dismiss does: the minutes the moment
       // was open were paused, not spent away.
+      lastReal = performance.now();
+      break;
+    case "goal-close":
+      ui.goalsDone = null;
+      // The same bump the rung moment's dismiss does: the minutes the
+      // screen was open were paused, not spent away.
       lastReal = performance.now();
       break;
     case "leave-world":
