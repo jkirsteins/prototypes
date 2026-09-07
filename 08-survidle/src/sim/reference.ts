@@ -31,7 +31,7 @@ import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOURCES } from "./ledger";
-import { knownShare } from "./mapped";
+import { knownShare, mapRegion } from "./mapped";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder, stallingOrder } from "./orders";
 import { FAT_FULL } from "./player";
@@ -714,6 +714,11 @@ export function kitOut(state: GameState, world: World, producers = true): void {
     st.structures.waterStore = true;
     kitTrap(state, world);
   }
+  // A camp this built is one somebody has lived at, so its own country is
+  // known ground: the water and the wood are where the survivor has already
+  // been. Without this the kit stands in a valley nobody has walked, and the
+  // run dies of thirst beside a shore it may not route to.
+  mapRegion(state, world, p.region);
 }
 
 /** How often the player script looks at the list: the cost of playing by hand is the idle time between looks. */
