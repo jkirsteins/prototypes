@@ -56,7 +56,7 @@ this is an unpublished prototype and the sounds are worth hearing while it is
 being built. Two different conditions hide under that one heading, and they
 are not equally serious. The BBC RemArc licence covers personal, educational
 and research use only, so every BBC file must go before this is shipped, sold
-or advertised. The two Wikimedia files are CC BY-SA and may stay, provided
+or advertised. The three Wikimedia files are CC BY-SA and may stay, provided
 the credit below travels with them and the work that carries them is licensed
 alike. The CC0 files carry no condition at all; their credits are a courtesy.
 
