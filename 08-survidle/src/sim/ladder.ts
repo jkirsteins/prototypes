@@ -8,9 +8,11 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { startIntent, yieldItem } from "./intent";
-import { addOrder, ordersHere } from "./orders";
+import { intentOption, startIntent, yieldItem } from "./intent";
+import { log } from "./log";
+import { addOrder, orderSentence, ordersHere } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
+import { plain } from "./voice";
 import type { GameState, IntentRequest, Order, OrderKind, SkillId, TaskId } from "./types";
 
 /** Tasks that train no skill but can still be ordered take the skill of the work they serve. */
@@ -117,7 +119,14 @@ export function orderByHand(state: GameState, world: World, cal: Calendar, rng: 
   const live = state.intent;
   const liveHand = live?.mode === "hand" && live.orderId !== null ? ordersHere(state, world).findIndex((o) => o.id === live.orderId) : -1;
   const o = giveOrder(state, world, req, kind, liveHand + 1);
-  if (liveHand < 0) startIntent(state, world, cal, rng, o.req, o.id);
+  // A click that starts nothing says so. startIntent refuses when the check at
+  // the target cell fails, and its false was thrown away here: the order was
+  // left on the list reading "waiting" with nothing anywhere saying the click
+  // had not taken, which is a click the player has no reason to think failed.
+  if (liveHand < 0 && !startIntent(state, world, cal, rng, o.req, o.id)) {
+    const why = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
+    log(state, `${orderSentence(state, world, cal, o)}: cannot start now${why.ok ? "" : `, ${plain(why.why)}`}. It stays on the list.`, "bad");
+  }
   return o;
 }
 

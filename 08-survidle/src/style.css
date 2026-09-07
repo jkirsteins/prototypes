@@ -409,6 +409,25 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .opt .when { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: center; padding: 0 0 4px; color: var(--dim); font-size: 12px; }
 .when input { width: 4em; }
 .when select { max-width: 10em; }
+/*
+ * A row's concept tags. They sit between the row's own button and its "more",
+ * as their own column, so a long row's label wraps above them rather than
+ * pushing them off the line. Quiet by default and lit on hover: they are a
+ * label first and a control second, and a list of eleven bright chips would
+ * be louder than the rows they annotate.
+ */
+.opt .kws { display: flex; flex-wrap: wrap; gap: 3px; align-content: flex-start; align-items: flex-start; padding-top: 2px; }
+.opt .kw {
+  background: transparent; color: var(--dim);
+  border: 1px solid var(--line); border-radius: 8px;
+  font: inherit; font-size: 11px; line-height: 1.5; cursor: pointer;
+  padding: 0 6px; white-space: nowrap;
+}
+.opt .kw:hover { color: var(--accent); border-color: var(--accent); }
+/* The camp question stands in the row it replaces, so nothing under it moves. */
+.opt .confirm { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+.opt .confirm small { color: var(--dim); }
+
 .opt .rep {
   background: #181e27; color: var(--dim);
   border: 1px solid var(--line); font: inherit; cursor: pointer;
