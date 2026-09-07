@@ -12,7 +12,7 @@ import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
-  addOrder, chooseOrder, conditionOpen, inSeason, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, orderMet, orderSentence, ordersHere, removeOrder, runOrders, countWord, NIGHT_SKIP,
+  addOrder, chooseOrder, conditionOpen, inSeason, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, removeOrder, removeOrderByHand, runOrders, countWord, NIGHT_SKIP,
 } from "../src/sim/orders";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { BARK_DRY_RATIO } from "../src/sim/items";
@@ -348,7 +348,7 @@ describe("the scheduler", () => {
     expect(state.intent).toBeNull();
   });
 
-  it("removing the live order ends its intent at the next free minute; reordering takes effect then too", () => {
+  it("the raw mutators leave the live intent to the next free minute", () => {
     const g = campWith(3, { log: 6 });
     const { state, world } = g;
     const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
@@ -361,6 +361,83 @@ describe("the scheduler", () => {
     expect(until(g, () => state.intent?.orderId === b.id)).toBe(true);
     removeOrder(state, world, b.id);
     expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
+  });
+
+  it("a standing order moved above the live one starts on the next minute, and the work set aside keeps its share", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    // Far enough into the split that the share kept is worth reading, and well short of its end.
+    expect(until(g, () => state.task?.id === "split" && state.task.progress > 2)).toBe(true);
+    expect(state.intent?.orderId).toBe(a.id);
+    moveOrderByHand(state, world, cal, new Rng(1), b.id, -1);
+    expect(state.task).toBeNull();
+    expect(Object.values(state.paused).some((t) => t.id === "split")).toBe(true);
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(b.id);
+  });
+
+  it("a once order moved to the top starts on the click, the way giving one does", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks"), "job");
+    expect(until(g, () => state.task?.id === "split" && state.task.progress > 2)).toBe(true);
+    expect(state.intent?.orderId).toBe(a.id);
+    moveOrderByHand(state, world, cal, new Rng(1), b.id, -1);
+    expect(state.intent?.orderId).toBe(b.id);
+    expect(state.intent?.mode).toBe("hand");
+  });
+
+  it("removing the live order by hand frees the minute rather than waiting the chunk out", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    expect(until(g, () => state.task?.id === "split" && state.task.progress > 2)).toBe(true);
+    expect(state.intent?.orderId).toBe(a.id);
+    removeOrderByHand(state, world, cal, new Rng(1), a.id);
+    expect(state.task).toBeNull();
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(b.id);
+  });
+
+  it("a swap under a body need serves the body first, then runs the new top order", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "barkBucket", 1);
+    addItem(pile(state, st.campCell), "water", 3);
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    expect(until(g, () => state.task?.id === "split" && state.task.progress > 2)).toBe(true);
+    expect(state.intent?.orderId).toBe(a.id);
+    // Thirsty with camp water in reach: the body has a need to serve from here on.
+    state.player.water = 0.5;
+    moveOrderByHand(state, world, cal, new Rng(1), b.id, -1);
+    // The body is served before the moved order starts: the drink comes first,
+    // and the split it displaced never resumes, because b outranks a now.
+    expect(until(g, () => state.player.water > 1)).toBe(true);
+    expect(state.intent?.orderId).not.toBe(a.id);
+    // And once the body has nothing to ask for, the new top order is the one that runs.
+    expect(until(g, () => state.intent?.orderId === b.id)).toBe(true);
+    expect(state.intent?.task).toBe("sticks");
+  });
+
+  it("a move that does not change the choice leaves the work under way alone", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    const c = addOrder(state, world, req("chop", { until: { kind: "forever" } }), "grind");
+    expect(until(g, () => state.task?.id === "split" && state.task.progress > 2)).toBe(true);
+    expect(state.intent?.orderId).toBe(a.id);
+    // Swapping the two rows below the live one: the top order is still the choice.
+    moveOrderByHand(state, world, cal, new Rng(1), c.id, -1);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([a.id, c.id, b.id]);
+    expect(state.task?.id).toBe("split");
+    expect(state.intent?.orderId).toBe(a.id);
   });
 
   it("removing the last order clears its live intent, not just one among several", () => {

@@ -33,6 +33,32 @@ describe("fold and filter", () => {
     expect(filterRows(rows, "  ").length).toBe(3);
   });
 
+  it("the filter reads the whole row, so a word only the second line says still finds it", () => {
+    const rows = [
+      { label: "Gather dead wood", detail: "15 kg of firewood off the forest floor; no axe", why: "", group: "gather" },
+      { label: "Open an ice hole", detail: "20 minutes with the axe; skins over by morning", why: "", group: "camp" },
+      { label: "Gather sticks", detail: "6 sticks", why: "", group: "gather" },
+      { label: "Light the fire at the pit", detail: "fire drill and 1 kg firewood", why: "needs a fire pit", group: "camp" },
+    ];
+    expect(filterRows(rows, "firewood").map((r) => r.label)).toEqual(["Gather dead wood", "Light the fire at the pit"]);
+    // "no axe" on the dead wood row counts as an axe hit: reading the whole row
+    // is what makes the box find things, and the cost is a looser match.
+    expect(filterRows(rows, "axe").map((r) => r.label)).toEqual(["Gather dead wood", "Open an ice hole"]);
+    expect(filterRows(rows, "pit").map((r) => r.label)).toEqual(["Light the fire at the pit"]);
+    expect(filterRows(rows, "gather").map((r) => r.label)).toEqual(["Gather dead wood", "Gather sticks"]);
+  });
+
+  it("every word in the filter has to land somewhere, so a second word narrows", () => {
+    const rows = [
+      { label: "Gather dead wood", detail: "15 kg of firewood off the forest floor; no axe", why: "", group: "gather" },
+      { label: "Light the fire at the pit", detail: "fire drill and 1 kg firewood", why: "", group: "camp" },
+    ];
+    expect(filterRows(rows, "fire").length).toBe(2);
+    expect(filterRows(rows, "fire drill").map((r) => r.label)).toEqual(["Light the fire at the pit"]);
+    expect(filterRows(rows, "fire  FLOOR").map((r) => r.label)).toEqual(["Gather dead wood"]);
+    expect(filterRows(rows, "fire canoe").length).toBe(0);
+  });
+
   it("far rows are those that cannot start and sit more than a level short; Make lists startable first", () => {
     // Seed 17 on day 1: every skill sits at level 1, so a recipe recommended
     // well above that (bow, at Crafting 5) is both unstartable (no knife yet)
@@ -55,13 +81,13 @@ describe("fold and filter", () => {
     expect(makeFirst([bow, chop])).toEqual([chop, bow]);
   });
 
-  it("the filter narrows doHtml's rows to matching labels and drops emptied groups", () => {
+  it("the filter narrows doHtml's rows and drops emptied groups", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute);
     state.skills.woodcraft.xp = levelMinutes(5);
-    const html = doHtml(state, world, cal, { ...newUiState(), filter: "stick" });
-    expect(html).toContain("Gather sticks");
-    expect(html).not.toContain("Fell a tree");
+    const html = doHtml(state, world, cal, { ...newUiState(), filter: "tree" });
+    expect(html).toContain("Fell a tree");
+    expect(html).not.toContain("Gather sticks");
     expect((html.match(/data-group="/g) ?? []).length).toBe(1);
   });
 
