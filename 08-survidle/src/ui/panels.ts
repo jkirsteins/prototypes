@@ -528,7 +528,11 @@ export function instantHtml(state: GameState, world: World): string {
   const fill = atSource && p.tools.some((t) => (TOOLS[t.id].litres ?? 0) > (t.litres ?? 0))
     ? `<button class="mini" data-act="fill">fill vessels</button>`
     : "";
-  return `<div style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
+  // Named, so morphChildren finds this box again wherever it has moved to
+  // rather than matching it by position. A row of buttons whose contents
+  // come and go with what is in the pack is the last thing that should be
+  // matched by where it happened to sit last frame.
+  return `<div data-box="instant" style="margin:4px 0 8px;display:flex;flex-wrap:wrap;gap:4px">${foods}${fire}${drink}${fill}</div>`;
 }
 
 /** Water and ice live only in piles (spec 2.1); a take button would move litres into the pack, where they are inert. */

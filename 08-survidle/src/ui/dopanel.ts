@@ -427,5 +427,8 @@ export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiStat
     : intentGroups(regionAt(world, state.player.region))
       .map((g) => groupHtml(g, state, world, cal, ui, folds))
       .join("");
-  return `${instantHtml(state, world)}<div class="rows">${groups}</div>`;
+  // Named for the same reason the instant box is: the rows box holds
+  // everything that comes and goes, so it must be found again by name and
+  // not by where it sat last frame.
+  return `${instantHtml(state, world)}<div class="rows" data-box="rows">${groups}</div>`;
 }
