@@ -107,7 +107,7 @@ export function entry(rec: LifeRecord): string[] {
 }
 
 /**
- * The rank of a line for the card's three stories: the worst night with
+ * The rank of a line for the three stories: the worst night with
  * wolves, the first large kill, the winter thresholds, the walls raised, then
  * the rest of the entry's kinds in the order a listener would ask about them.
  */
@@ -124,7 +124,16 @@ function storyRank(e: LifeEvent): number {
   }
 }
 
-/** Three lines of the record at most, the best ranked, oldest first: what the card tells of a life. */
+/**
+ * Three lines of the record at most, the best ranked, oldest first: the
+ * highlights of a life.
+ *
+ * Nothing renders these now. The card used to carry them, and dropped them
+ * because a card never appears without the life's full entry beside it, so
+ * the three lines were the entry said twice a hand's width apart. The
+ * ranking is kept, and tested, for the first place that shows a life without
+ * its entry - a roll of ancestors, a share, a hall of the dead.
+ */
 export function stories(rec: LifeRecord): string[] {
   const ranked: { rank: number; day: number; text: string }[] = [];
   for (const e of rec.events) {

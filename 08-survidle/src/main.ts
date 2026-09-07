@@ -334,24 +334,6 @@ function onClick(ev: Event) {
       ui.cemetery = true;
       ui.confirmLeave = false;
       break;
-    case "copy-card": {
-      // The card's text sits beside the button; where the clipboard is refused, it is shown for copying by hand.
-      const pre = target.closest(".cardbody")?.querySelector<HTMLElement>(".cardtext");
-      if (!pre) break;
-      const copied = navigator.clipboard?.writeText(pre.textContent ?? "");
-      if (!copied) pre.hidden = false;
-      else
-        copied.then(
-          () => {
-            ui.copiedUntil = Date.now() + 1500;
-            render();
-          },
-          () => {
-            pre.hidden = false;
-          },
-        );
-      break;
-    }
     case "cemetery-open":
       ui.cemetery = true;
       ui.cemeteryOpen = Number(target.dataset.index);

@@ -1,16 +1,19 @@
 /**
- * The card: who a survivor is, rendered one way for the screen and one way
- * for the clipboard from the same lines, so what the copy button gives is
- * what the screen shows without the markup. Every card carries the face,
- * the name, the four grade lines and the quirks; the living survivor's adds
- * the day, what they know, fear and have lost, and three stories from the
- * record. Stories leave the game as plain text until presentation exists.
+ * The card: who a survivor is, in three blocks a reader can tell apart at a
+ * glance - the grades, the quirks, and this life. Every block is a group
+ * rather than another row in one grey list, because the card is read in a
+ * hurry: three across on the landing screen, beside an entry in the journal
+ * and the cemetery.
+ *
+ * A fact is stated once. What a quirk refuses is the Fears line and is not
+ * repeated in the quirk's own sentence; the dead say nothing under Knows,
+ * and no card retells the record, because in every place a card renders the
+ * life's own entry is printed beside it.
  */
 import { calendar } from "../sim/calendar";
-import { stories } from "../sim/epitaph";
 import { TOOLS } from "../sim/items";
 import { fmtName } from "../sim/names";
-import { gradeLines, quirkFear, quirkLine } from "../sim/person";
+import { type GradeLine, grades, quirkFear, quirkLine } from "../sim/person";
 import { current } from "../sim/record";
 import { level, SKILL_IDS, SKILL_NAMES } from "../sim/skills";
 import type { GameState, LifeRecord, Person } from "../sim/types";
@@ -19,37 +22,53 @@ import { esc } from "./render";
 
 export interface CardExtras {
   day: number;
-  know: string;
+  /** What they have learnt, or null for the dead, whose entry says it. */
+  know: string | null;
   fear: string;
   lost: string;
-  stories: string[];
 }
 
-/** The lines under the name, in order: grades, quirks, then the extras when given. */
-export function cardLines(person: Person, extras?: CardExtras): string[] {
-  const lines = [...gradeLines(person), ...person.quirks.map(quirkLine)];
+/** One labelled row of the life block. */
+interface Row {
+  label: string;
+  value: string;
+}
+
+export interface CardSections {
+  grades: GradeLine[];
+  quirks: string[];
+  life: Row[];
+}
+
+/** The card's blocks, in reading order. */
+export function cardSections(person: Person, extras?: CardExtras): CardSections {
+  const life: Row[] = [];
   if (extras) {
-    lines.push(`Day ${extras.day} of this life.`, `Knows: ${extras.know}`, `Fears: ${extras.fear}`, `Lost: ${extras.lost}`, ...extras.stories);
+    if (extras.know !== null) life.push({ label: "Knows", value: extras.know });
+    life.push({ label: "Fears", value: extras.fear }, { label: "Lost", value: extras.lost });
   }
-  return lines;
+  return { grades: grades(person), quirks: person.quirks.map(quirkLine), life };
 }
 
-export function cardText(person: Person, name: { first: string; last: string }, extras?: CardExtras): string {
-  return [fmtName(name), ...cardLines(person, extras)].join("\n");
+/** A quirk sentence, split so its name can carry the eye: "Forest-born." then the rest. */
+function quirkHtml(line: string): string {
+  const cut = line.indexOf(". ");
+  if (cut < 0) return `<div class="q"><b>${esc(line)}</b></div>`;
+  return `<div class="q"><b>${esc(line.slice(0, cut + 1))}</b> ${esc(line.slice(cut + 2))}</div>`;
 }
 
 /**
- * The card as HTML. With `copy` the card carries a copy button and its text
- * for the clipboard; a card inside the landing screen's pick button carries
- * neither, since a button cannot hold a button.
+ * The card as HTML. The day rides in the head beside the name, where it
+ * cannot be mistaken for the day that opens a story below.
  */
-export function cardHtml(person: Person, name: { first: string; last: string }, extras?: CardExtras, opts: { px?: number; copy?: boolean; copied?: boolean } = {}): string {
-  const lines = cardLines(person, extras);
+export function cardHtml(person: Person, name: { first: string; last: string }, extras?: CardExtras, opts: { px?: number } = {}): string {
+  const s = cardSections(person, extras);
   const px = opts.px ?? 64;
-  const copy = opts.copy
-    ? `<button class="mini" data-act="copy-card">${opts.copied ? "copied" : "copy"}</button><pre class="cardtext" hidden>${esc(cardText(person, name, extras))}</pre>`
-    : "";
-  return `<div class="cardbody"><div class="cardhead">${faceSvg(person, px)}<b>${esc(fmtName(name))}</b></div>${lines.map((t) => `<div class="e">${esc(t)}</div>`).join("")}${copy}</div>`;
+  const day = extras ? `<span class="cardday">day ${extras.day}</span>` : "";
+  const gradeRows = s.grades.map((g) => `<div class="g"><b>${esc(g.word)}</b>${g.evidence ? ` <span class="ev">${esc(g.evidence)}</span>` : ""}</div>`).join("");
+  const quirks = s.quirks.length ? `<div class="cardblock">${s.quirks.map(quirkHtml).join("")}</div>` : "";
+  const life = s.life.length ? `<dl class="cardblock kv">${s.life.map((r) => `<dt>${esc(r.label)}</dt><dd>${esc(r.value)}</dd>`).join("")}</dl>` : "";
+  return `<div class="cardbody"><div class="cardhead">${faceSvg(person, px)}<b>${esc(fmtName(name))}</b>${day}</div><div class="cardblock">${gradeRows}</div>${quirks}${life}</div>`;
 }
 
 /** What the living survivor's card adds, read from the state and the record. */
@@ -69,10 +88,10 @@ export function livingExtras(state: GameState): CardExtras {
     if (e.kind === "toolWorn") lost.push(`the ${TOOLS[e.tool].name}, worn out on day ${e.day}`);
     if (e.kind === "toolLost") lost.push(`the ${TOOLS[e.tool].name}, lost on day ${e.day}`);
   }
-  return { day: cal.day, know: know.endsWith(".") ? know : `${know}.`, fear, lost: lost.length ? `${lost.join("; ")}.` : "nothing.", stories: stories(rec) };
+  return { day: cal.day, know: know.endsWith(".") ? know : `${know}.`, fear, lost: lost.length ? `${lost.join("; ")}.` : "nothing." };
 }
 
-/** A dead survivor's card, for the tombstone and the cemetery: the record's own stories, nothing that needs the body. */
+/** A dead survivor's card, for the tombstone and the cemetery: what the record kept, nothing that needs the body. */
 export function deadExtras(rec: LifeRecord): CardExtras {
   const fears = rec.person.quirks.map(quirkFear).filter((f): f is string => f !== null);
   const lost: string[] = [];
@@ -83,9 +102,8 @@ export function deadExtras(rec: LifeRecord): CardExtras {
   }
   return {
     day: rec.died?.day ?? 0,
-    know: "what the entry says.",
+    know: null,
     fear: fears.length ? `${fears.join("; ")}.` : "nothing they would say.",
     lost: lost.length ? `${lost.join("; ")}.` : "nothing.",
-    stories: stories(rec),
   };
 }

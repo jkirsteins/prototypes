@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { newGame } from "../src/sim/newgame";
-import { derived, gradeLines, medianPerson, quirkFear, quirkLine, rollCandidates } from "../src/sim/person";
+import { derived, grades, medianPerson, QUIRKS, quirkFear, quirkLine, rollCandidates } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL } from "../src/sim/player";
 import { deserialize, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
@@ -86,18 +86,34 @@ describe("the person", () => {
     expect(derived({ ...p, axes: { strength: 0, build: 0, hands: 0, eyes: 1 } }).sightReach).toBe(2);
   });
 
-  it("shows grades as words and quantities, never the number", () => {
+  it("shows grades as the word first and the quantity behind it", () => {
     const p = medianPerson("f");
-    expect(gradeLines({ ...p, axes: { strength: 2, build: 2, hands: 2, eyes: 2 } })).toEqual([
-      "carries 30 kg all day, 42 kg at a push; works twelve hours", "84 kg, sleeps warm", "steady hands", "eagle-eyed",
+    expect(grades({ ...p, axes: { strength: 2, build: 2, hands: 2, eyes: 2 } })).toEqual([
+      { word: "Mighty and unflagging.", evidence: "carries 30 kg, 42 kg at a push; works 12 hours" },
+      { word: "Heavy, sleeps warm.", evidence: "84 kg" },
+      { word: "Steady hands, an eagle's eye.", evidence: "" },
     ]);
-    expect(gradeLines({ ...p, axes: { strength: -1, build: -2, hands: -2, eyes: -1 } })).toEqual([
-      "carries 22.5 kg all day, 31.5 kg at a push; works nine hours", "60 kg, sleeps cold", "clumsy", "short sight",
+    expect(grades({ ...p, axes: { strength: -1, build: -2, hands: -2, eyes: -1 } })).toEqual([
+      { word: "Slight and short-winded.", evidence: "carries 22.5 kg, 31.5 kg at a push; works 9 hours" },
+      { word: "Spare, sleeps cold.", evidence: "60 kg" },
+      { word: "Clumsy hands, short sight.", evidence: "" },
     ]);
-    expect(gradeLines(p)).toEqual(["carries 25 kg all day, 35 kg at a push; works ten hours", "72 kg", "ordinary hands", "ordinary sight"]);
-    expect(quirkLine("coastBorn")).toBe("Coast-born. Reads any shore at a glance; will not go up on the fell in cloud.");
+    expect(grades(p)).toEqual([
+      { word: "Ordinary and steady.", evidence: "carries 25 kg, 35 kg at a push; works 10 hours" },
+      { word: "Ordinary.", evidence: "72 kg" },
+      { word: "Ordinary hands, ordinary sight.", evidence: "" },
+    ]);
     expect(quirkFear("coastBorn")).toBe("the fell in cloud");
     expect(quirkFear("bigEater")).toBeNull();
+  });
+
+  it("says what a quirk refuses once: on the Fears line, never also in its own sentence", () => {
+    for (const q of QUIRKS) {
+      const fear = quirkFear(q);
+      if (fear) expect(quirkLine(q)).not.toContain(fear);
+      expect(quirkLine(q)).not.toMatch(/will not/);
+    }
+    expect(quirkLine("coastBorn")).toBe("Coast-born. Reads any shore at a glance.");
   });
 
   it("puts the median person on a new game's record and keeps a person through the save", () => {

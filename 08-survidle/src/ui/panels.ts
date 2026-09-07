@@ -577,7 +577,7 @@ function ancestorLine(state: GameState): string {
   return `<p class="ancestor">${esc(fmtName(prev.name))} lived ${prev.died.day} days.</p>`;
 }
 
-export function tombstoneHtml(state: GameState, _world: World, ui: UiState): string {
+export function tombstoneHtml(state: GameState, _world: World, _ui: UiState): string {
   const rec = current(state);
   const next = landingDate(worldDate(state, state.dead!.minute)).date;
   const lines = entry(rec);
@@ -585,7 +585,7 @@ export function tombstoneHtml(state: GameState, _world: World, ui: UiState): str
 <h1>${esc(fmtName(rec.name))}</h1>
 <p>${esc(epitaphTail(rec))}</p>
 ${ancestorLine(state)}
-<div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>
+<div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec))}</div>
 ${entryLinesHtml(lines.slice(1))}
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>
@@ -627,7 +627,7 @@ export function cemeteryHtml(state: GameState, ui: UiState): string {
   const dead = [...state.survivors].filter((s) => s.died !== null).reverse();
   const rows = dead.map((s) => {
     const open = ui.cemeteryOpen === s.index;
-    const lines = open ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>${entryLinesHtml(entry(s).slice(1))}` : "";
+    const lines = open ? `<div class="card">${cardHtml(s.person, s.name, deadExtras(s))}</div>${entryLinesHtml(entry(s).slice(1))}` : "";
     return `<div class="grave"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(epitaph(s))}</button>${lines}</div>`;
   });
   const leave = ui.confirmLeave
@@ -641,12 +641,12 @@ ${rows.length ? rows.join("") : `<p class="dim">No one has died here yet.</p>`}
 </div>`;
 }
 
-export function journalHtml(state: GameState, cal: Calendar, ui: UiState): string {
+export function journalHtml(state: GameState, cal: Calendar, _ui: UiState): string {
   const n = nextThreshold(state, cal);
   const when = n.inDays > 0 ? `expected in ${n.inDays} days` : "any day now";
   const season = `<div class="season"><b>Next: ${esc(NAMES[n.id])}</b>, ${when}. ${esc(ASKS_FOR[n.id])}</div>`;
   const rec = current(state);
-  const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48, copy: true, copied: ui.copiedUntil > Date.now() })}</div>`;
+  const card = `<div class="card">${cardHtml(rec.person, rec.name, livingExtras(state), { px: 48 })}</div>`;
   const mine = entry(current(state));
   const ancestors = state.survivors.slice(0, -1).reverse().map((s) => `<div class="e"><button class="mini" data-act="cemetery-open" data-index="${s.index}">${esc(fmtName(s.name))}</button> ${esc(epitaphTail(s))}</div>`);
   return `<h2>Journal</h2>${season}${card}${entryLinesHtml(mine)}${ancestors.length ? `<h3>Before you</h3><div class="entries">${ancestors.join("")}</div>` : ""}<button class="mini" data-act="cemetery">cemetery</button>`;
