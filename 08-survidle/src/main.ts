@@ -20,7 +20,7 @@ import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
 import { newWorld } from "./sim/newgame";
-import { moveOrder, removeOrder } from "./sim/orders";
+import { moveOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { current } from "./sim/record";
@@ -440,13 +440,13 @@ function onClick(ev: Event) {
       break;
     }
     case "order-up":
-      moveOrder(state, world, Number(target.dataset.id), -1);
+      moveOrderByHand(state, world, cal, rng, Number(target.dataset.id), -1);
       break;
     case "order-down":
-      moveOrder(state, world, Number(target.dataset.id), 1);
+      moveOrderByHand(state, world, cal, rng, Number(target.dataset.id), 1);
       break;
     case "order-remove":
-      removeOrder(state, world, Number(target.dataset.id));
+      removeOrderByHand(state, world, cal, rng, Number(target.dataset.id));
       break;
   }
   state.rng = rng.s;

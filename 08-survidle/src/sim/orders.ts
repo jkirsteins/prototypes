@@ -19,7 +19,7 @@ import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
 import { regionState } from "./regionstate";
-import { check } from "./tasks";
+import { check, setAside } from "./tasks";
 import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId } from "./types";
 import { campWaterCapacity } from "./water";
 
@@ -55,6 +55,38 @@ export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 
   const j = i + dir;
   if (i < 0 || j < 0 || j >= list.length) return;
   [list[i], list[j]] = [list[j], list[i]];
+}
+
+/**
+ * The scheduler decides again, now, because the player has just changed the
+ * list. Without this the decision waits for the chunk under way to end, and a
+ * chunk is a whole gathering or a walk across the map, so a row dragged to the
+ * top sits there doing nothing for as long as the work it displaced had left.
+ *
+ * A once order chosen starts on the spot, the way clicking one does: it is the
+ * player's, and startIntent sets aside whatever was running with its share
+ * kept. Anything else only frees the minute, and the choice is made where every
+ * other choice is made, in runOrders - so the body still speaks between orders,
+ * and a load already on its way to camp is still delivered first, since
+ * chooseOrder holds a delivering order as the chosen one and nothing here fires.
+ */
+function decideAgain(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+  const chosen = chooseOrder(state, world, cal);
+  if (chosen?.id === (state.intent?.orderId ?? null)) return;
+  if (chosen && chosen.req.until.kind === "once") startIntent(state, world, cal, rng, chosen.req, chosen.id);
+  else setAside(state, world);
+}
+
+/** The door for a rank the player changed. The bare mutator is the scheduler's own. */
+export function moveOrderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, id: number, dir: -1 | 1): void {
+  moveOrder(state, world, id, dir);
+  decideAgain(state, world, cal, rng);
+}
+
+/** The door for an order the player struck off. The bare mutator is the scheduler's own. */
+export function removeOrderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, id: number): void {
+  removeOrder(state, world, id);
+  decideAgain(state, world, cal, rng);
 }
 
 /** The stock a keep holds and its target, or null for any other order - including "keep it lit" and a keep on a structure, which hold no stock at all. */
