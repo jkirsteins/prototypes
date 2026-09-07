@@ -154,7 +154,10 @@ export type UntilChoice =
  * that has read met at its target stay met until the stock falls under
  * it, so the keep does not flicker at its line. A "by" day makes a keep's
  * target rise to its figure across the season (or from the day the order
- * was given) and hold there after. The ladder gates each part by rung.
+ * was given); with a season it falls back to nothing across the rest of
+ * that season, since a stock due on a date is one the days after it spend,
+ * and without a season it holds at the figure. The ladder gates each part
+ * by rung.
  */
 export interface OrderWhen {
   season?: { from: number; to: number };

@@ -887,13 +887,19 @@ describe("the vocabulary in the scheduler", () => {
     expect(keepBand(7, 10, 6, undefined)).toBe(false);
   });
 
-  it("a due date paces a keep's target across its season and holds after", () => {
+  it("a due date paces a keep's target up to its date and back down to its season's close", () => {
     const { state, world } = newGame(17);
-    const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 600 }, deliver: "camp", where: "nearest", when: { season: { from: 182, to: 90 }, by: 334 } }, "keep");
+    const season = { from: 182, to: 89 };
+    const o = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 600 }, deliver: "camp", where: "nearest", when: { season, by: 334 } }, "keep");
     expect(keepTargetToday(calendar(0, 182), o)).toBeCloseTo(0, 6);
     expect(keepTargetToday(calendar(0, 258), o)).toBeCloseTo(300, 6);
     expect(keepTargetToday(calendar(0, 334), o)).toBeCloseTo(600, 6);
-    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo(600, 6);
+    // Past the due date the target is what is left to burn before the season
+    // closes, so a winter pile the thaw is three weeks off asks for a fifth of
+    // itself rather than the whole 600 kg again.
+    expect(keepTargetToday(calendar(0, 20), o)).toBeCloseTo((600 * (89 - 20)) / (89 + 365 - 334), 6);
+    expect(keepTargetToday(calendar(0, 89), o)).toBeLessThan(1);
+    expect(inSeason(90, season)).toBe(false);
   });
 
   it("a paced keep with no season rises from the day it was given, and one due that same day asks the whole figure", () => {
@@ -908,6 +914,10 @@ describe("the vocabulary in the scheduler", () => {
     expect(keepTargetToday(calendar(0, START_DOY), today)).toBeCloseTo(100, 6);
     today.givenDoy = undefined;
     expect(keepTargetToday(calendar(0, START_DOY + 5), today)).toBeCloseTo(100, 6);
+    // No season is no close to fall to: the figure stands after the date, all the
+    // way round to the day the rise starts again.
+    expect(keepTargetToday(calendar(0, START_DOY + 200), o)).toBeCloseTo(100, 6);
+    expect(keepTargetToday(calendar(0, START_DOY - 1), o)).toBeCloseTo(100, 6);
   });
 
   it("a stock line shuts an order with a reason the row shows, and a season the same", () => {

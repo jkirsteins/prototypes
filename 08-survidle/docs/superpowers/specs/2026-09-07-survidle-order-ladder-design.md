@@ -247,6 +247,10 @@ unchanged beneath it all.
   December (the day the winter stock is what a competent player has), the
   shape the fat item measured; it is a rung-20 order and an heir below the
   rung gets the returning player's plain keep at today's target instead.
+  The pace is a rise and a fall, not a rise and a plateau: a winter pile is
+  what is burned before the thaw, so past the due date the target falls to
+  nothing on the season's last day. A camp reading the whole 600 kg as owed
+  through March fells for a pile the thaw would leave standing.
 - **The plant band's daily count is a condition.** "An hour of roots a
   day" is a daily job at 15; below it the runner re-gives the counted job
   each morning as a returning player would and the count shows it.
@@ -275,7 +279,7 @@ export interface OrderWhen {
   stock?: { item: ItemId; atLeast?: number; under?: number };
   /** A keep that has read met at its target stays met until the stock falls under this. Rung: condition. */
   restart?: number;
-  /** A keep whose target is due in full on this day of year; the target rises to it linearly from the season's start (or the day the order was given) and holds after. Rung: pace. */
+  /** A keep whose target is due in full on this day of year; the target rises to it linearly from the season's start (or the day the order was given) and, with a season, falls linearly back to nothing on the season's last day. Rung: pace. */
   by?: number;
 }
 
@@ -302,12 +306,16 @@ Semantics, each in one place:
   it flips to true when the stock reaches the target and back to false
   when the stock falls under `restart`; while `held`, the keep reads met.
   Without `restart` the reading is what it is today.
-- `keepTargetToday(cal, o)` reads `by`: with a season, the target is
-  `qty * clamp((doy - from) / (by - from), 0, 1)` on the calendar's day of
-  year, with the wrap handled; without a season the rise starts on the
-  day the order was given (`o.givenDoy`, stored at addOrder). On and after
-  `by` the target is `qty`. A keep with `by` is skipped as met while the
-  stock is at or above today's target.
+- `keepTargetToday(cal, o)` reads `by`: the target rises as
+  `qty * (doy - from) / (by - from)` from the season's start to the due
+  date, with the wrap handled; without a season the rise starts on the
+  day the order was given (`o.givenDoy`, stored at addOrder). Past the due
+  date a keep with a season falls the same way, `qty * (1 - (doy - by) /
+  (to - by))`, to nothing on the season's last day, since a stock due on a
+  date is one the days after it spend: what a winter pile is owed in March
+  is what March will burn. Without a season there is no close to fall to
+  and the target holds at `qty`. A keep with `by` is skipped as met while
+  the stock is at or above today's target.
 - `daily`: `runOrders` clears `o.done` at the day roll (`o.dayOpened`
   stored on the order) and never removes a daily job; the live intent
   runs it as `times n`.

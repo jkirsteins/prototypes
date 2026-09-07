@@ -271,7 +271,9 @@ export const WINTER_WOOD_TO_DOY = 90;
  * competent player has at camp" is measured on and the day the winter gate
  * starts its own reading from. The woodpile keeps rise to their figures by
  * it, so the pile is built across the autumn and the rows under it keep
- * their share of every day until it is.
+ * their share of every day until it is, and fall away again across the
+ * winter the pile is burned in, so what the rows ask for in March is what
+ * March has left to burn.
  */
 export const WOOD_DUE_DOY = 334;
 
@@ -297,6 +299,8 @@ export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs:
  * day and WINTER_WOOD_TO_DOY is the day the want shuts, so the last day the pile
  * is asked for is the one before it: a survivor standing on the first day of the
  * thaw has this winter's pile behind them and next winter's is a summer away.
+ * The window's own close is what the target falls to nothing on, so the four
+ * rows ask for the whole pile on 1 December and for nothing by the thaw.
  */
 const WINTER_WOOD_WHEN: OrderWhen = { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY - 1 }, by: WOOD_DUE_DOY };
 

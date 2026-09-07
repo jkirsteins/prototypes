@@ -106,27 +106,43 @@ export function keepStock(state: GameState, world: World, o: Order): number {
   return have;
 }
 
+/** Days from one day of year to another, forward round the year. */
+function daysFrom(a: number, b: number): number {
+  return (((b - a) % 365) + 365) % 365;
+}
+
 /**
  * A keep's target today. Without a due date it is the whole figure. With
  * one the figure is due in full on that day and the target rises to it
  * evenly from the season's start, or from the day the order was given
  * when it carries no season, so a winter pile is built across the autumn
- * rather than in the week the order is first read. On and after the due
- * date, and for the rest of the wrap back round to the start, the target
- * is the whole figure. The rise starts at nothing, so a paced keep asks
- * for nothing on the first day of its season and the rows under it have
- * that day to themselves.
+ * rather than in the week the order is first read. The rise starts at
+ * nothing, so a paced keep asks for nothing on the first day of its
+ * season and the rows under it have that day to themselves.
+ *
+ * Past the due date a keep with a season falls the same way, evenly to
+ * nothing on the season's last day, because a winter pile is what is
+ * burned before the thaw: what is still wanted in March is what March
+ * will burn, not the whole figure December was due. A camp holding 593 kg
+ * of firewood on 1 March read the full 600 kg as owed and spent its last
+ * week felling in 65 cm of snow at -20 C for a pile the thaw would leave
+ * standing. With no season there is no close to fall to, and the whole
+ * figure stands from the due date round to the rise's own start.
  */
 export function keepTargetToday(cal: Calendar, o: Order): number {
   const keep = keepTarget(o);
   if (!keep) return 0;
   const by = o.req.when?.by;
   if (by === undefined) return keep.qty;
-  const from = o.req.when?.season?.from ?? o.givenDoy ?? by;
-  const span = (((by - from) % 365) + 365) % 365;
-  if (span === 0) return keep.qty;
-  const gone = (((cal.dayOfYear - from) % 365) + 365) % 365;
-  return keep.qty * Math.min(1, gone / span);
+  const season = o.req.when?.season;
+  const from = season?.from ?? o.givenDoy ?? by;
+  const rise = daysFrom(from, by);
+  const gone = daysFrom(from, cal.dayOfYear);
+  if (rise === 0 || gone <= rise) return rise === 0 ? keep.qty : (keep.qty * gone) / rise;
+  if (!season) return keep.qty;
+  const fall = daysFrom(by, season.to);
+  const since = daysFrom(by, cal.dayOfYear);
+  return since >= fall ? 0 : keep.qty * (1 - since / fall);
 }
 
 /**
