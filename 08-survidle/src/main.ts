@@ -35,7 +35,7 @@ import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
-import { legendHtml, mapHtml, mapKey, ZOOMS } from "./ui/map";
+import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
@@ -468,7 +468,7 @@ function onClick(ev: Event) {
 }
 
 function zoomBy(delta: number) {
-  ui.zoom = Math.max(0, Math.min(ZOOMS.length - 1, ui.zoom + delta));
+  ui.zoom = Math.max(0, Math.min(LEVELS.length - 1, ui.zoom + delta));
 }
 
 boot();

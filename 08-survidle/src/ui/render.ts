@@ -1,6 +1,7 @@
 import { monthStartDoy } from "../sim/calendar";
 import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
+import { DEFAULT_ZOOM } from "./map";
 import type { AwaySummary } from "../sim/save";
 import type { TaskGroup } from "../sim/tasks";
 import type { IntentRequest, ItemId, OrderKind, OrderWhen, SpotId, TaskId, UntilChoice } from "../sim/types";
@@ -121,7 +122,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 export function newUiState(): UiState {
   return {
     tab: "gather", selected: null, away: null, confirmAbandon: false,
-    cemetery: false, manual: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, copiedUntil: 0, zoom: 0,
+    cemetery: false, manual: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, copiedUntil: 0, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), advanced: false, filter: "", moreOpen: [], folds: {},
     hurry: newHurry(),
   };

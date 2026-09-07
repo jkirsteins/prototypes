@@ -16,7 +16,7 @@ import type { TaskGroup } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars, updateHurryBar } from "../src/ui/bars";
-import { mapHtml, mapKey, VIEW_H, VIEW_W, viewOrigin, ZOOMS } from "../src/ui/map";
+import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { doHtml } from "../src/ui/dopanel";
 import { actionsHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
@@ -93,13 +93,53 @@ describe("panels", () => {
     resetPanels();
   });
 
+  it("zooms in two levels past the cell: the same ground drawn on a smaller grid of bigger glyphs, and the map still opens where it did", () => {
+    // Every level closer than the default reads one cell per glyph: past the cell
+    // there is nothing finer to draw, so zooming in makes the ground bigger.
+    const open = LEVELS[DEFAULT_ZOOM];
+    expect(open).toEqual({ cells: 1, w: 72, h: 36, px: 11, line: 14, font: 12 });
+    expect(newUiState().zoom).toBe(DEFAULT_ZOOM);
+    expect(DEFAULT_ZOOM).toBeGreaterThanOrEqual(2);
+    for (let z = 0; z < DEFAULT_ZOOM; z++) {
+      expect(LEVELS[z].cells).toBe(1);
+      expect(LEVELS[z].px).toBeGreaterThan(LEVELS[z + 1].px);
+      expect(LEVELS[z].w).toBeLessThan(LEVELS[z + 1].w);
+      // The box on screen stays the size it was, within a glyph either way.
+      expect(Math.abs(LEVELS[z].w * LEVELS[z].px - open.w * open.px)).toBeLessThanOrEqual(LEVELS[z].px);
+      expect(Math.abs(LEVELS[z].h * LEVELS[z].line - open.h * open.line)).toBeLessThanOrEqual(LEVELS[z].line);
+    }
+  });
+
+  it("the closest zoom draws its own grid, and the grid carries its size for the stylesheet", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(0);
+    const ui = newUiState();
+    ui.zoom = 0;
+    setPanel("map", mapHtml(world, state, ui, cal));
+    const l = LEVELS[0];
+    expect(document.querySelectorAll("#map .c").length).toBe(l.w * l.h);
+    const grid = document.querySelector<HTMLElement>("#map .grid")!;
+    expect(grid.getAttribute("style")).toContain(`--cols:${l.w}`);
+    expect(grid.getAttribute("style")).toContain(`--px:${l.px}px`);
+    expect(document.querySelector("#map svg.walk")!.getAttribute("viewBox")).toBe(`0 0 ${l.w} ${l.h}`);
+  });
+
+  it("the zoom buttons sit in the map's bottom left corner, drawn after the grid", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(0);
+    setPanel("map", mapHtml(world, state, newUiState(), cal));
+    const html = document.getElementById("map")!.innerHTML;
+    expect(html.indexOf("maptools")).toBeGreaterThan(html.indexOf("scroll-x"));
+    expect(document.querySelectorAll("#map .maptools [data-act=zoom]").length).toBe(2);
+  });
+
   it("renders one span per cell with region borders and the player marker on the player's cell", () => {
     const { state, world } = newGame(21);
     const cal = calendar(0);
     const ui = newUiState();
     setPanel("map", mapHtml(world, state, ui, cal));
     const cells = document.querySelectorAll("#map .c");
-    expect(cells.length).toBe(VIEW_W * VIEW_H);
+    expect(cells.length).toBe(LEVELS[ui.zoom].w * LEVELS[ui.zoom].h);
     expect(document.querySelectorAll("#map .c.bl, #map .c.br, #map .c.bt, #map .c.bb").length).toBeGreaterThan(50);
     expect(document.querySelectorAll("#map .mk-player").length).toBe(1);
     expect(document.querySelectorAll("#map .c.fog").length).toBeGreaterThan(100);

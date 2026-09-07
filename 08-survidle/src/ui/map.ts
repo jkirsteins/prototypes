@@ -62,25 +62,68 @@ export function legendHtml(): string {
 }
 
 export const SNOW_SHOWN_CM = 5;
-export const VIEW_W = 72;
-export const VIEW_H = 36;
-/** Cells per glyph at each zoom level; the last is the smallest that fits the whole world on screen. */
-export const ZOOMS = [1, 3, 9, Math.max(Math.ceil(1800 / VIEW_W), Math.ceil(1300 / VIEW_H))];
+
+/**
+ * One rung of the zoom ladder: how much ground a glyph stands for, how many
+ * glyphs are drawn, and how big each is on screen.
+ */
+export interface ZoomLevel {
+  /** Cells per glyph. */
+  cells: number;
+  /** Glyphs across and down. */
+  w: number;
+  h: number;
+  /** The glyph box and its type, in pixels; the stylesheet reads all three off the grid. */
+  px: number;
+  line: number;
+  font: number;
+}
+
+/** The board every level from the cell outwards is drawn on: 72 by 36 small glyphs. */
+const BOARD = { w: 72, h: 36, px: 11, line: 14, font: 12 };
+
+/**
+ * The ladder, closest first. Past one cell per glyph there is nothing finer
+ * to draw, so the two closest rungs hold the cell and grow the glyph, which
+ * means fewer of them: the map keeps the same box on screen throughout and
+ * shows less ground the closer it goes, the way a zoom should. The last rung
+ * is the smallest that fits the whole world.
+ */
+export const LEVELS: ZoomLevel[] = [
+  { cells: 1, w: 36, h: 18, px: 22, line: 28, font: 23 },
+  { cells: 1, w: 49, h: 24, px: 16, line: 21, font: 17 },
+  { cells: 1, ...BOARD },
+  { cells: 3, ...BOARD },
+  { cells: 9, ...BOARD },
+  { cells: Math.max(Math.ceil(1800 / BOARD.w), Math.ceil(1300 / BOARD.h)), ...BOARD },
+];
+
+/** Where a fresh screen opens: one cell per glyph on the whole board, as it always did. */
+export const DEFAULT_ZOOM = 2;
+
+/** The level at this rung, clamped, so a stale zoom index can never draw nothing. */
+export function levelAt(zoom: number): ZoomLevel {
+  return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, zoom))];
+}
+
+/** Cells per glyph at each zoom level. */
+export const ZOOMS = LEVELS.map((l) => l.cells);
 /** Priority when a block's ground is tied: what the eye should see first. */
 const TIE_ORDER: Terrain[] = ["water", "fell", "rock", "spruce", "pine", "birch", "bog", "meadow"];
 
 export function zoomLabel(zoom: number): string {
-  const km = ZOOMS[zoom] * 0.3;
+  const km = levelAt(zoom).cells * 0.3;
   return km < 1 ? `${Math.round(km * 1000)} m per glyph` : `${km.toFixed(1)} km per glyph`;
 }
 
 /** Top-left cell of the viewport, so the player sits in the middle glyph. */
 export function viewOrigin(state: GameState, world: World, zoom: number): { x0: number; y0: number } {
-  const z = ZOOMS[zoom];
+  const l = levelAt(zoom);
+  const z = l.cells;
   const px = Math.floor(state.player.x);
   const py = Math.floor(state.player.y);
-  const spanX = VIEW_W * z;
-  const spanY = VIEW_H * z;
+  const spanX = l.w * z;
+  const spanY = l.h * z;
   let x0 = px - Math.floor(spanX / 2);
   let y0 = py - Math.floor(spanY / 2);
   // Clamp to the world's edge, or centre a world smaller than the view; the
@@ -147,7 +190,7 @@ export function lightSources(state: GameState, world: World): LightSource[] {
  * the nearer ring. Rings shrink with zoom: whole at one cell per glyph,
  * the source alone at three, nothing beyond.
  */
-export function litRings(sources: LightSource[], toGlyph: (cell: number) => number, z: number): Map<number, number> {
+export function litRings(sources: LightSource[], toGlyph: (cell: number) => number, z: number, view: { w: number; h: number }): Map<number, number> {
   const rings = new Map<number, number>();
   const reachAt = z === 1 ? 2 : z === 3 ? 0 : -1;
   if (reachAt < 0) return rings;
@@ -155,16 +198,16 @@ export function litRings(sources: LightSource[], toGlyph: (cell: number) => numb
     const g = toGlyph(s.cell);
     if (g < 0) continue;
     const reach = Math.min(s.reach, reachAt);
-    const gx = g % VIEW_W;
-    const gy = Math.floor(g / VIEW_W);
+    const gx = g % view.w;
+    const gy = Math.floor(g / view.w);
     for (let dy = -reach; dy <= reach; dy++) {
       for (let dx = -reach; dx <= reach; dx++) {
         const d = Math.max(Math.abs(dx), Math.abs(dy));
         if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
         const x = gx + dx;
         const y = gy + dy;
-        if (x < 0 || y < 0 || x >= VIEW_W || y >= VIEW_H) continue;
-        const i = y * VIEW_W + x;
+        if (x < 0 || y < 0 || x >= view.w || y >= view.h) continue;
+        const i = y * view.w + x;
         const prev = rings.get(i);
         if (prev === undefined || d < prev) rings.set(i, d);
       }
@@ -187,7 +230,7 @@ export function flickerDelay(i: number): string {
  * a glyph collapse to one point, and a polyline of one point draws nothing.
  * With no route the element is emitted empty, so the markup has one shape.
  */
-function walkSvg(world: World, state: GameState, here: number, x0: number, y0: number, z: number): string {
+function walkSvg(world: World, state: GameState, here: number, x0: number, y0: number, z: number, view: { w: number; h: number }): string {
   const route = state.route;
   const points = (cells: number[]): string => {
     const out: string[] = [];
@@ -203,7 +246,7 @@ function walkSvg(world: World, state: GameState, here: number, x0: number, y0: n
   };
   const behind = route ? points([...route.walked, here]) : "";
   const ahead = route ? points([here, ...route.path]) : "";
-  return `<svg class="walk" viewBox="0 0 ${VIEW_W} ${VIEW_H}" preserveAspectRatio="none"><polyline class="walk-behind" points="${behind}"/><polyline class="walk-ahead" points="${ahead}"/></svg>`;
+  return `<svg class="walk" viewBox="0 0 ${view.w} ${view.h}" preserveAspectRatio="none"><polyline class="walk-behind" points="${behind}"/><polyline class="walk-ahead" points="${ahead}"/></svg>`;
 }
 
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
@@ -221,15 +264,16 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const cur = state.player.region;
   const sel = ui.selected;
   const snow = state.weather.snowCm > SNOW_SHOWN_CM;
-  const z = ZOOMS[ui.zoom];
+  const l = levelAt(ui.zoom);
+  const z = l.cells;
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const playerCell = cellOf(state, world);
   const toGlyph = (cell: number): number => {
     const c = cellAt(world, cell);
     const gx = Math.floor((c.x - x0) / z);
     const gy = Math.floor((c.y - y0) / z);
-    if (gx < 0 || gy < 0 || gx >= VIEW_W || gy >= VIEW_H) return -1;
-    return gy * VIEW_W + gx;
+    if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return -1;
+    return gy * l.w + gx;
   };
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
@@ -257,17 +301,17 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const g = toGlyph(Number(k));
     if (g >= 0) pileGlyphs.add(g);
   }
-  const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z) : new Map<number, number>();
+  const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z, l) : new Map<number, number>();
 
   // Region, ground and discovery per glyph, then borders between glyphs.
-  const regions = new Int32Array(VIEW_W * VIEW_H);
-  const terrains: Terrain[] = new Array(VIEW_W * VIEW_H);
-  const seenAt = new Uint8Array(VIEW_W * VIEW_H);
-  for (let gy = 0; gy < VIEW_H; gy++) {
-    for (let gx = 0; gx < VIEW_W; gx++) {
+  const regions = new Int32Array(l.w * l.h);
+  const terrains: Terrain[] = new Array(l.w * l.h);
+  const seenAt = new Uint8Array(l.w * l.h);
+  for (let gy = 0; gy < l.h; gy++) {
+    for (let gx = 0; gx < l.w; gx++) {
       const cx = x0 + gx * z;
       const cy = y0 + gy * z;
-      const i = gy * VIEW_W + gx;
+      const i = gy * l.w + gx;
       const inside = cx >= 0 && cy >= 0 && cx < world.w && cy < world.h;
       if (!inside) {
         regions[i] = -1;
@@ -282,12 +326,19 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   }
   const drawBorders = z <= 3;
 
+  // The tools sit in the map's bottom left corner (drawn after the grid, placed
+  // by the stylesheet), so they cost the panel no height of their own; the span
+  // the two buttons stand over is the label's title rather than a line of text.
+  // The three closest rungs all read a cell per glyph, so the span is what tells
+  // them apart on the label; "centred on you" is the title and not the corner.
+  const span = `${(l.w * z * 0.3).toFixed(0)} by ${(l.h * z * 0.3).toFixed(0)} km`;
+  const tools = `<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === LEVELS.length - 1 ? "disabled" : ""} title="Farther (minus key)">-</button><span class="dim" title="${esc(`${span} on screen, centred on you`)}">${zoomLabel(ui.zoom)}, ${span}</span></div>`;
+
   const parts: string[] = [];
-  parts.push(`<div class="maptools"><button class="mini" data-act="zoom" data-dir="in" ${ui.zoom === 0 ? "disabled" : ""} title="Closer (plus key)">+ closer</button><button class="mini" data-act="zoom" data-dir="out" ${ui.zoom === ZOOMS.length - 1 ? "disabled" : ""} title="Farther (minus key)">- farther</button><span class="dim">${zoomLabel(ui.zoom)}, ${(VIEW_W * z * 0.3).toFixed(0)} by ${(VIEW_H * z * 0.3).toFixed(0)} km on screen, centred on you</span></div>`);
-  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}">`);
-  for (let i = 0; i < VIEW_W * VIEW_H; i++) {
-    const gx = i % VIEW_W;
-    const gy = Math.floor(i / VIEW_W);
+  parts.push(`<div class="scroll-x"><div class="grid${snow ? " snow" : ""}${cal.isNight ? " night" : ""}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
+  for (let i = 0; i < l.w * l.h; i++) {
+    const gx = i % l.w;
+    const gy = Math.floor(i / l.w);
     const reg = regions[i];
     const seen = reg >= 0 ? seenAt[i] : 0;
     const cls = ["c"];
@@ -305,9 +356,9 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (seen === SEEN || seen === DIM) cls.push("dim");
       if (drawBorders) {
         if (gx > 0 && regions[i - 1] !== reg) cls.push("bl");
-        if (gx < VIEW_W - 1 && regions[i + 1] !== reg) cls.push("br");
-        if (gy > 0 && regions[i - VIEW_W] !== reg) cls.push("bt");
-        if (gy < VIEW_H - 1 && regions[i + VIEW_W] !== reg) cls.push("bb");
+        if (gx < l.w - 1 && regions[i + 1] !== reg) cls.push("br");
+        if (gy > 0 && regions[i - l.w] !== reg) cls.push("bt");
+        if (gy < l.h - 1 && regions[i + l.w] !== reg) cls.push("bb");
       }
       if (reg === cur) cls.push("cur");
       if (sel !== null && reg === sel) cls.push("sel");
@@ -341,6 +392,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
     parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z)}</div></div>`);
+  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}</div></div>${tools}`);
   return parts.join("");
 }

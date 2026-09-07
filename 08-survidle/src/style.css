@@ -165,18 +165,24 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    stops supplying that on the phone layout, and the body would scroll
    sideways instead of just the map. */
 #map { padding: 8px; min-width: 0; }
+/* The map's own corner: the zoom controls float over the bottom left of the
+   grid rather than taking a row above it. */
+#mapdyn { position: relative; }
 /* The grid is a fixed 72 glyphs wide and can outrun a narrow column; it
    scrolls sideways inside this box rather than the page ever scrolling
    horizontally. */
 .scroll-x { overflow-x: auto; }
 .grid {
   --bright: 1; --sat: 1; --tint: rgb(0, 0, 0); --tint-a: 0;
+  /* The glyph grid's shape is the zoom level's, written onto the element by
+     mapHtml; the fallbacks are the level the map opens at. */
+  --cols: 72; --px: 11px; --line: 14px; --font: 12px;
   position: relative;
   display: grid;
-  grid-template-columns: repeat(72, 11px);
-  grid-auto-rows: 14px;
-  font-size: 12px;
-  line-height: 14px;
+  grid-template-columns: repeat(var(--cols), var(--px));
+  grid-auto-rows: var(--line);
+  font-size: var(--font);
+  line-height: var(--line);
   background: #05070c;
   width: max-content;
   user-select: none;
@@ -195,7 +201,14 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.fog::before { content: "\00b7"; }
 .grid .c.void { color: transparent; background: #05070c; }
 .grid .c.dim { opacity: 0.45; }
-.maptools { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.maptools {
+  position: absolute; left: 6px; bottom: 6px; z-index: 3;
+  display: flex; gap: 6px; align-items: center;
+  padding: 3px 6px;
+  background: rgba(5, 7, 12, 0.82);
+  border: 1px solid var(--line);
+}
+.maptools button.mini { min-width: 22px; }
 .legend .fog-key { color: #4a5160; }
 /* Your walk: a line through the glyph centres, solid ahead, dashed behind. It sits after the shade
    and carries no z-index, so it is over the night and under the @ and the fire glow. */
