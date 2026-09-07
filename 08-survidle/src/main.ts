@@ -556,8 +556,11 @@ document.addEventListener("input", (ev) => {
       ? { first: t || state.landing.name.first, last: state.landing.name.last }
       : { first: t.slice(0, i), last: t.slice(i + 1).trim() };
   } else if (el.matches("[data-do=filter]")) {
+    // No render here on purpose. The frame loop redraws everything anyway, so
+    // the list follows the keystroke within one frame; rendering from the
+    // keystroke as well doubles a frame's work on the one input a player
+    // holds down a key in.
     ui.filter = el.value;
-    render();
   }
 });
 document.addEventListener("change", (ev) => {

@@ -55,6 +55,8 @@ const VOCABULARY: { words: string; rows: string[] }[] = [
   { words: "tool gear", rows: ["craft", "sharpen", "hone"] },
   { words: "clothing clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
   { words: "dark darkness", rows: ["lightTorch", "craft:torch"] },
+  // The fire site is a fire pit and a hearth to everyone who has not read its label.
+  { words: "firepit hearth", rows: ["build:firePit", "light"] },
 ];
 
 /** Every row the vocabulary names, for the test that each one is a row that exists. */
@@ -73,6 +75,11 @@ function keywordsFor(id: string | undefined, arg: string | undefined): string {
   return `${KEYWORDS.get(id) ?? ""} ${arg ? (KEYWORDS.get(`${id}:${arg}`) ?? "") : ""}`;
 }
 
+/** What a row says out loud, in the order a reader's eye takes it: its own name first, then the lines under it. */
+function spokenText(r: FilterableRow): [string, string] {
+  return [r.label.toLowerCase(), [r.detail, r.why, r.group].filter(Boolean).join(" ").toLowerCase()];
+}
+
 /** Everything a row says plus everything it answers to, as one lowercase haystack. */
 function rowText(r: FilterableRow): string {
   return [r.label, r.detail, r.why, r.group, keywordsFor(r.id, r.arg)].filter(Boolean).join(" ").toLowerCase();
@@ -87,6 +94,26 @@ interface FilterableRow {
   group?: string;
 }
 
+/** The words a filter is made of: lowercase, blanks dropped. */
+function filterWords(text: string): string[] {
+  return text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+/**
+ * How squarely a row answers the words: 0 when its own name carries them all,
+ * 1 when the lines under the name finish the job, 2 when only the invisible
+ * keywords do, -1 when it does not answer at all. "fire" is answered by the
+ * fire site at 0 and by Gather dead wood at 2, and that gap is what lets the
+ * panel widen a search without burying the thing that was asked for.
+ */
+function matchTier(r: FilterableRow, words: string[]): number {
+  const [name, lines] = spokenText(r);
+  if (words.every((w) => name.includes(w))) return 0;
+  if (words.every((w) => `${name} ${lines}`.includes(w))) return 1;
+  const hay = rowText(r);
+  return words.every((w) => hay.includes(w)) ? 2 : -1;
+}
+
 /**
  * Rows the filter finds, case-insensitive; an empty (or blank) filter keeps
  * everything. The match reads the whole row rather than the label alone, so a
@@ -94,15 +121,29 @@ interface FilterableRow {
  * under Open an ice hole - still finds the row it belongs to, and the
  * VOCABULARY above adds the words a row answers to but never says. Every word
  * in the filter has to land somewhere in that row, so a second word narrows
- * instead of widening.
+ * instead of widening. Best answer first, ties in the order they were listed.
  */
 export function filterRows<T extends FilterableRow>(rows: T[], text: string): T[] {
-  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const words = filterWords(text);
   if (!words.length) return rows;
-  return rows.filter((r) => {
-    const hay = rowText(r);
-    return words.every((w) => hay.includes(w));
-  });
+  return rows
+    .map((r, i) => ({ r, i, tier: matchTier(r, words) }))
+    .filter((x) => x.tier >= 0)
+    .sort((a, b) => a.tier - b.tier || a.i - b.i)
+    .map((x) => x.r);
+}
+
+/**
+ * The same rows, split where the answer stops being direct: `direct` is what
+ * the row itself says, `related` is what only the keywords claim. A reader
+ * who types "fire" gets the fire rows as a list short enough to read, and the
+ * wood and cooking rows the word also reaches under a heading that says so.
+ */
+export function rankRows<T extends FilterableRow>(rows: T[], text: string): { direct: T[]; related: T[] } {
+  const words = filterWords(text);
+  const found = filterRows(rows, text);
+  if (!words.length) return { direct: found, related: [] };
+  return { direct: found.filter((r) => matchTier(r, words) < 2), related: found.filter((r) => matchTier(r, words) === 2) };
 }
 
 /**
@@ -318,33 +359,31 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${more}${expand}</div>`;
 }
 
-/** A group's rows, built at the open row's own chosen spot (so its duration and ok reflect that spot), then narrowed by the filter. */
-function groupOptions(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
-  const rows = g.items.map(({ id, arg }) => {
+/** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */
+function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  return g.items.map(({ id, arg }) => {
     const argKey = arg ?? "";
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
     return withProgression(state, world, intentOption(state, world, cal, id, arg, where));
   });
-  return filterRows(rows, ui.filter);
 }
 
 /**
  * One Do group: a folding heading, then its rows - Make's startable rows
  * first - with the far ones (cannot start, skill more than a level under
  * the rung) tucked behind a "more (N)" line until ui.moreOpen names the
- * group. Left out entirely once the filter empties it. A non-empty filter
- * skips the far fold outright: a match the reader typed for is never the
- * one row left hidden behind "more".
+ * group. Groups are what the panel shows when the filter box is empty;
+ * `searchHtml` takes over the moment it is not.
  */
 function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean>): string {
-  const options = groupOptions(g, state, world, cal, ui);
+  const options = groupRows(g, state, world, cal, ui);
   if (!options.length) return "";
   const open = folds[g.label] !== false;
   const heading = `<button class="fold" data-act="fold" data-group="${esc(g.label)}">${open ? "-" : "+"} ${esc(g.label)}</button>`;
   if (!open) return `<div class="grp">${heading}</div>`;
   const ordered = g.label === "Make" ? makeFirst(options) : options;
-  const { near, far } = ui.filter.trim() ? { near: ordered, far: [] as TaskOption[] } : splitFar(ordered, state);
+  const { near, far } = splitFar(ordered, state);
   const nearHtml = near.map((o) => intentRowHtml(o, ui, state, world)).join("");
   const moreOpen = ui.moreOpen.includes(g.label);
   const farHtml = !far.length ? "" : moreOpen
@@ -353,10 +392,33 @@ function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, 
   return `<div class="grp">${heading}${nearHtml}${farHtml}</div>`;
 }
 
+/**
+ * What a filter shows instead of the groups: one ranked list, the rows that
+ * say the words above the rows that merely answer to them. The groups and
+ * their folds are gone for as long as the box has text in it - a search that
+ * left its answer shut inside a folded group, or three headings down from the
+ * word that was typed, is the search that sent the reader looking by hand.
+ */
+function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
+  const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
+  const { direct, related } = rankRows(rows, ui.filter);
+  const typed = esc(ui.filter.trim());
+  if (!direct.length && !related.length) return `<div class="grp"><div class="fold">nothing answers to "${typed}"</div></div>`;
+  const section = (heading: string, list: TaskOption[]) =>
+    !list.length ? "" : `<div class="grp"><div class="fold">${heading}</div>${list.map((o) => intentRowHtml(o, ui, state, world)).join("")}</div>`;
+  // "also" only means something under rows that said the word themselves. A
+  // search every row answers only through its keywords - "firepit", which no
+  // label spells that way - is a list of answers, not a list of afterthoughts.
+  if (!direct.length) return section(typed, related);
+  return `${section(typed, direct)}${section(`also answers to "${typed}"`, related)}`;
+}
+
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean> = {}): string {
-  const groups = intentGroups(regionAt(world, state.player.region))
-    .map((g) => groupHtml(g, state, world, cal, ui, folds))
-    .join("");
+  const groups = ui.filter.trim()
+    ? searchHtml(state, world, cal, ui)
+    : intentGroups(regionAt(world, state.player.region))
+      .map((g) => groupHtml(g, state, world, cal, ui, folds))
+      .join("");
   const adv = `<div style="margin-top:8px"><button class="mini${ui.advanced ? " on" : ""}" data-act="advanced">advanced: ${ui.advanced ? "on" : "off"}</button></div>${ui.advanced ? actionsHtml(state, world, cal, ui, false) : ""}`;
   return `${instantHtml(state, world)}<div class="rows">${groups}</div>${adv}`;
 }

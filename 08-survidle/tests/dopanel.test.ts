@@ -5,7 +5,7 @@ import { placeAt, placeAtSpot } from "../src/sim/position";
 import { hasSpot, regionAt } from "../src/world/gen";
 import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
-import { doHtml, filterRows, FOLD_KEY, intentGroups, keyedRows, loadFolds, makeFirst, saveFold, splitFar } from "../src/ui/dopanel";
+import { doHtml, filterRows, FOLD_KEY, intentGroups, keyedRows, loadFolds, makeFirst, rankRows, saveFold, splitFar } from "../src/ui/dopanel";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { TASK_IDS } from "../src/sim/types";
@@ -123,6 +123,29 @@ describe("fold and filter", () => {
     expect(filterRows(rows, "nonsense").length).toBe(0);
   });
 
+  it("the fire site answers to the two names a reader is likelier to type", () => {
+    const rows = [
+      { id: "build" as TaskId, arg: "firePit", label: "fire site", detail: "a ring of stones", why: "", group: "build" },
+      { id: "sticks" as TaskId, label: "Gather sticks", detail: "6 sticks", why: "", group: "gather" },
+    ];
+    expect(filterRows(rows, "firepit").map((r) => r.label)).toEqual(["fire site"]);
+    expect(filterRows(rows, "fire pit").map((r) => r.label)).toEqual(["fire site"]);
+    expect(filterRows(rows, "hearth").map((r) => r.label)).toEqual(["fire site"]);
+  });
+
+  it("the rows come back best answer first: name, then the lines under it, then the keywords", () => {
+    const rows = [
+      { id: "deadwood" as TaskId, label: "Gather dead wood", detail: "15 kg off the forest floor", why: "", group: "gather" },
+      { id: "iceHole" as TaskId, label: "Open an ice hole", detail: "20 minutes; skins over by morning", why: "needs a fire to thaw", group: "camp" },
+      { id: "light" as TaskId, label: "Light the fire at the site", detail: "fire drill and 1 kg firewood", why: "", group: "camp" },
+    ];
+    expect(filterRows(rows, "fire").map((r) => r.label)).toEqual(["Light the fire at the site", "Open an ice hole", "Gather dead wood"]);
+    const { direct, related } = rankRows(rows, "fire");
+    expect(direct.map((r) => r.label)).toEqual(["Light the fire at the site", "Open an ice hole"]);
+    expect(related.map((r) => r.label)).toEqual(["Gather dead wood"]);
+    expect(rankRows(rows, "  ")).toEqual({ direct: rows, related: [] });
+  });
+
   it("keywords ride with the row's own text, so one word from each still narrows", () => {
     const rows = [
       { id: "lightTorch" as TaskId, label: "Light a torch", detail: "burns 1 h; no night penalty on foot", why: "", group: "camp" },
@@ -148,14 +171,49 @@ describe("fold and filter", () => {
     }
   });
 
-  it("the filter narrows doHtml's rows and drops emptied groups", () => {
+  it("the filter narrows doHtml's rows and puts the groups and their folds away", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute);
     state.skills.woodcraft.xp = levelMinutes(5);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "tree" });
     expect(html).toContain("Fell a tree");
     expect(html).not.toContain("Gather sticks");
-    expect((html.match(/data-group="/g) ?? []).length).toBe(1);
+    expect(html).not.toContain('data-act="fold"');
+  });
+
+  it("a search reads past a shut group: what folds hide, the filter still finds", () => {
+    // The fire site lives under Make. Shutting Make used to take it out of
+    // every search, which is the one moment a reader is sure it exists.
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute);
+    const html = doHtml(state, world, cal, { ...newUiState(), filter: "firepit" }, { Make: false });
+    expect(html).toContain('data-opt="intent:build:firePit"');
+    // No label spells it that way, so every row here is a keyword answer:
+    // calling them "also" would leave the heading over an empty list.
+    expect(html).not.toContain("also answers to");
+  });
+
+  it("a broad word leads with the rows that say it and puts the rest under their own heading", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = doHtml(state, world, cal, { ...newUiState(), filter: "fire" });
+    const split = html.indexOf('also answers to "fire"');
+    expect(split).toBeGreaterThan(0);
+    // The rows whose own name says "fire" lead the list, in front of the ones
+    // whose second line says it, and the split holds back the ones that answer
+    // to it only through the invisible keywords.
+    const opts = [...html.matchAll(/data-opt="intent:([^"]*)"/g)].map((m) => m[1]);
+    expect(opts.slice(0, 4)).toEqual(["light:", "lightIndoors:", "craft:fireDrill", "build:firePit"]);
+    expect(html.indexOf('data-opt="intent:deadwood:"')).toBeLessThan(split);
+    expect(html.indexOf('data-opt="intent:sticks:"')).toBeGreaterThan(split);
+  });
+
+  it("a filter nothing answers says so rather than emptying the panel", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = doHtml(state, world, cal, { ...newUiState(), filter: "kayak" });
+    expect(html).toContain('nothing answers to "kayak"');
+    expect(html).not.toContain('class="opt');
   });
 
   it("a folded group renders its heading only", () => {
