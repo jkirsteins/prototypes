@@ -59,6 +59,26 @@ function findBirchCell(world: World): number {
 }
 
 describe("the reference player", () => {
+  it("takes the one order that is stalling the list off it, and puts it back when it can run", () => {
+    // A once order stops every order under it, and under the ladder's rungs
+    // every want is a once job. The opening list's first row is the thaw, and
+    // in a summer with nothing frozen it can never start: a player reads that
+    // row and strikes it off rather than leaving the list standing all day.
+    const ref = setUpReference(17, true);
+    ref.player.tick(ref.state, ref.world);
+    expect(ordersHere(ref.state, ref.world)[0].req.task).toBe("thaw");
+    stepReference(ref, 60);
+    const list = ordersHere(ref.state, ref.world);
+    expect(list.some((o) => o.req.task === "thaw")).toBe(false);
+    // The rows under it run, and only the stalling row came off: a row waiting
+    // on the work of the rows above it holds nothing up and stays.
+    expect(list.length).toBeGreaterThan(20);
+    stepReference(ref, 5 * 60);
+    expect(ref.state.dead).toBeNull();
+    const camp = pile(ref.state, regionState(ref.state, ref.world, ref.state.player.region).campCell);
+    expect(qty(camp, "water") + qty(camp, "ice")).toBeGreaterThan(0);
+  });
+
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
     const { state, world, player } = setUpReference(17);
     expect(ordersHere(state, world)).toEqual([]);

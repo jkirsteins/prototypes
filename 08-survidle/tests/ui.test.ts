@@ -640,8 +640,10 @@ describe("the Orders panel", () => {
     addItem(pile(state, st.campCell), "log", 6);
     addItem(pile(state, st.campCell), "firewood", 60);
     const keep = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
-    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    // Ranked under the grind: a once order that cannot run stops every order
+    // beneath it, so a cabin above the grind would leave nothing to draw.
+    const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
     const cal = calendar(state.minute);
     let html = taskHtml(state, world, cal);
@@ -653,7 +655,7 @@ describe("the Orders panel", () => {
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
     expect(html).toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
-    expect(html).toContain(`data-act="order-down" data-id="${grind.id}" disabled`);
+    expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
     expect(html).not.toContain('data-act="stop"');
     // Counters appear once the work has completed.
@@ -663,7 +665,7 @@ describe("the Orders panel", () => {
     // Moving the cabin up shows in the next render.
     moveOrder(state, world, cabin.id, -1);
     html = taskHtml(state, world, calendar(state.minute));
-    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${keep.id}"`));
+    expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${grind.id}"`));
   });
 
   it("a blocked order below the live one shows its own reason, not \"waiting\"", () => {

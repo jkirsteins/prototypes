@@ -90,8 +90,12 @@ describe("the epitaph", () => {
     // This run is a level-1 opening that always starves in its third or fourth week, and
     // a few minutes moved either way swings the day by several - the number to read here
     // is that neither seed dies of the cold with a woodpile beside it any more.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 26. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 28. Starved at camp, with nothing in the pack and 20 kg of firewood at camp."`);
+    // They moved once more when a once order began stopping the list under it:
+    // the opening list is all once jobs at level 1, so the order the plan is
+    // written in now decides what gets done, and seed 17 spends its third week
+    // differently for it.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Aldona Niemi. Day 23. Starved at camp, with nothing in the pack and 79 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Astrid Dahl. Day 30. Starved at camp, with nothing in the pack and 4 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {
