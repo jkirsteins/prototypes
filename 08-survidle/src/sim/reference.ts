@@ -18,7 +18,7 @@ import { CELL_KM } from "../units";
 import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
-import { calendar, START_DOY, type Calendar } from "./calendar";
+import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
 import { nearestCell } from "./intent";
 import {
@@ -28,7 +28,7 @@ import {
 import { shoreFish } from "./knowledge";
 import { beginAgain, land, oldCampRegion } from "./landing";
 import { giveOrder, withinLadder } from "./ladder";
-import { creditYield, type WeekAverage, weekBefore, YIELD_SOURCES } from "./ledger";
+import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOURCES } from "./ledger";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
@@ -502,6 +502,13 @@ export function fed(week: WeekAverage): boolean {
 
 const kcalFmt = (n: number) => `${Math.round(n).toLocaleString("en-US")} kcal`;
 
+export interface UnexploitedItem {
+  name: string;
+  amount: string;
+  /** What `weekBefore` credited from the source this item reads off, in the week before the death (or now, alive): "N kcal a day taken" or "none taken" (order ladder spec section 5). */
+  taken: string;
+}
+
 /**
  * The non-lean calories accessible at a starvation death and not taken
  * (fat and carbohydrate design, section 1): fat, roe and eggs at camp or
@@ -512,46 +519,58 @@ const kcalFmt = (n: number) => `${Math.round(n).toLocaleString("en-US")} kcal`;
  * the death, not from the without probe's disabled sources - the probe
  * asks a different question (section 7).
  */
-export function unexploited(state: GameState, world: World): { name: string; amount: string }[] {
-  const out: { name: string; amount: string }[] = [];
+export function unexploited(state: GameState, world: World): UnexploitedItem[] {
+  const out: UnexploitedItem[] = [];
   const cal = calendar(state.minute, state.startDoy);
   const region = state.player.region;
   const st = regionState(state, world, region);
   const camp = pile(state, st.campCell);
   const pack = state.player.pack;
 
-  const atCampOrPack = (food: FoodId, campName: string, packName: string) => {
+  const day = state.dead ? dayNumber(state.dead.minute) : dayNumber(state.minute);
+  const week = weekBefore(state.ledger, day);
+  // Each item reads the ledger source its own kcal is booked under by
+  // creditYield in tasks.ts: fat, rendered or raw, is credited at the kill
+  // under "hunt"; a cracked bone's marrow is its own "marrow" credit; a
+  // nest is the eggs job's own stock, so it reads "eggs", the source
+  // gathering it would book to; an oily or spawning read is not itself a
+  // catch, so it reads "fish", the source the catch it promises would book
+  // to, rather than "roe" (the roe itself is a separate, later credit).
+  const taken = (source: YieldSource) => (week.yield[source] > 1e-9 ? `${kcalFmt(week.yield[source])} a day taken` : "none taken");
+
+  const atCampOrPack = (food: FoodId, campName: string, packName: string, source: YieldSource) => {
+    const t = taken(source);
     const c = qty(camp, food);
-    if (c > 1e-9) out.push({ name: campName, amount: kcalFmt(c * FOODS[food].kcalPerKg) });
+    if (c > 1e-9) out.push({ name: campName, amount: kcalFmt(c * FOODS[food].kcalPerKg), taken: t });
     const k = qty(pack, food);
-    if (k > 1e-9) out.push({ name: packName, amount: kcalFmt(k * FOODS[food].kcalPerKg) });
+    if (k > 1e-9) out.push({ name: packName, amount: kcalFmt(k * FOODS[food].kcalPerKg), taken: t });
   };
-  atCampOrPack("fat", "fat at camp", "fat in the pack");
-  atCampOrPack("roe", "roe at camp", "roe in the pack");
-  atCampOrPack("eggs", "eggs at camp", "eggs in the pack");
+  atCampOrPack("fat", "fat at camp", "fat in the pack", "hunt");
+  atCampOrPack("roe", "roe at camp", "roe in the pack", "roe");
+  atCampOrPack("eggs", "eggs at camp", "eggs in the pack", "eggs");
 
   const rawFat = qty(camp, "rawFat") + qty(pack, "rawFat");
-  if (rawFat > 1e-9) out.push({ name: "raw fat unrendered", amount: `${rawFat.toFixed(1)} kg` });
+  if (rawFat > 1e-9) out.push({ name: "raw fat unrendered", amount: `${rawFat.toFixed(1)} kg`, taken: taken("hunt") });
 
   const bones = qty(camp, "bone");
-  if (bones > 1e-9) out.push({ name: "bones uncracked", amount: `${Math.round(bones)}` });
+  if (bones > 1e-9) out.push({ name: "bones uncracked", amount: `${Math.round(bones)}`, taken: taken("marrow") });
 
   // Above zero and in season: nestsFor confirms the region structurally supports
   // the stock, beside the run's own depleting count. The roots need no such
   // second reading - what is left is counted off the ground itself, cell by cell.
   if (cal.dayOfYear >= EGG_FROM_DOY && cal.dayOfYear <= EGG_TO_DOY && st.nests > 1e-9 && nestsFor(world, st, region) > 1e-9) {
-    out.push({ name: "nests", amount: `${st.nests.toFixed(1)} clutches` });
+    out.push({ name: "nests", amount: `${st.nests.toFixed(1)} clutches`, taken: taken("eggs") });
   }
 
   const rootGround = (c: number) => heathCell(world, c) || watersideCell(world, c);
   const rootsLeft = rootKgLeft(st, world, region);
   if (cal.dayOfYear >= ROOT_FROM_DOY && cal.dayOfYear <= ROOT_TO_DOY && rootsLeft > 1e-9 && rootGround(nearestCell(state, world, rootGround))) {
-    out.push({ name: "roots", amount: `${rootsLeft.toFixed(1)} kg` });
+    out.push({ name: "roots", amount: `${rootsLeft.toFixed(1)} kg`, taken: taken("roots") });
   }
 
   if (cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY) {
     const pineGround = (c: number) => cellAt(world, c).terrain === "pine";
-    if (pineGround(nearestCell(state, world, pineGround))) out.push({ name: "pine ground", amount: "reachable" });
+    if (pineGround(nearestCell(state, world, pineGround))) out.push({ name: "pine ground", amount: "reachable", taken: taken("bark") });
   }
 
   let oilyRead = false;
@@ -563,17 +582,17 @@ export function unexploited(state: GameState, world: World): { name: string; amo
       if (inSpawn(s, cal.month)) spawnRead = true;
     }
   }
-  if (oilyRead) out.push({ name: "oily fish read", amount: "at the shore" });
-  if (spawnRead) out.push({ name: "spawning fish read", amount: "roe at the shore" });
+  if (oilyRead) out.push({ name: "oily fish read", amount: "at the shore", taken: taken("fish") });
+  if (spawnRead) out.push({ name: "spawning fish read", amount: "roe at the shore", taken: taken("fish") });
 
   if (cal.dayOfYear >= SAP_FROM_DOY && cal.dayOfYear <= SAP_TO_DOY) {
     const birchGround = (c: number) => cellAt(world, c).terrain === "birch";
-    if (birchGround(nearestCell(state, world, birchGround))) out.push({ name: "birch sap", amount: "in its window" });
+    if (birchGround(nearestCell(state, world, birchGround))) out.push({ name: "birch sap", amount: "in its window", taken: taken("sap") });
   }
 
   // seaweedAvailable is the seaweed task's own check (position and ice together), shared here so the two cannot drift.
   const seaGround = (c: number) => seaweedAvailable(state, world, c);
-  if (seaGround(nearestCell(state, world, seaGround))) out.push({ name: "seaweed", amount: "on the sea shore" });
+  if (seaGround(nearestCell(state, world, seaGround))) out.push({ name: "seaweed", amount: "on the sea shore", taken: taken("seaweed") });
 
   return out;
 }
@@ -581,7 +600,7 @@ export function unexploited(state: GameState, world: World): { name: string; amo
 /** The unexploited line a starvation death's report carries: what sat accessible and was not taken, or "none" for luck or strategy (spec section 7). */
 export function starvationCause(state: GameState, world: World): string {
   const u = unexploited(state, world);
-  return u.length ? `unexploited: ${u.map((x) => `${x.name} ${x.amount}`).join(", ")}` : "unexploited: none";
+  return u.length ? `unexploited: ${u.map((x) => `${x.name} ${x.amount}, ${x.taken}`).join(", ")}` : "unexploited: none";
 }
 
 function checkpointDays(gate: Gate): number[] {
@@ -734,6 +753,11 @@ export class ReferencePlayer {
     let mornings = 0;
     for (let d = fromDay; d <= toDay; d++) if ((this.interventions.get(d) ?? 0) > 0) mornings++;
     return { mornings, days: toDay - fromDay + 1 };
+  }
+
+  /** The first morning this player's list stood, once it has: where a run's own attention count starts from. Day 1 before that first tick. */
+  get startDay(): number {
+    return this.openingDay ?? 1;
   }
 
   /** One act of attention, unless it is the opening list itself. */
@@ -915,6 +939,8 @@ export interface ReferenceReport {
   record: LifeRecord;
   /** For a starvation death, the unexploited line read at the moment it fell; null for any other outcome (spec 7). */
   unexploited: string | null;
+  /** Mornings the list changed over the whole run, of the days it ran (order ladder spec section 4-5). */
+  attention: { mornings: number; days: number };
 }
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
@@ -1001,7 +1027,8 @@ export function measure(ref: { state: GameState; world: World; player: Reference
   const at = gateDay === null ? undefined : checkpoints.find((c) => c.day >= gateDay);
   const passed = gateDay !== null && passesGate(state.dead ? day : null, gateDay) && at?.fed === true;
   const unexploitedLine = state.dead?.cause === "starved" ? starvationCause(state, world) : null;
-  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state), unexploited: unexploitedLine };
+  const attention = ref.player.attention(ref.player.startDay, day);
+  return { seed: state.seed, startRing: world.startRing, checkpoints, outcome, passed, gate, gateDay, firstSnowDay, surplus, record: current(state), unexploited: unexploitedLine, attention };
 }
 
 export function runReference(seed: number, days: number, opts: { kitted?: boolean; startDoy?: number } = {}): ReferenceReport {

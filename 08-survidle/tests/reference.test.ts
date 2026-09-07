@@ -33,6 +33,7 @@ import {
   WOOD_DUE_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
+import { runYear } from "../src/sim/year";
 import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
 import { regionState } from "../src/sim/regionstate";
@@ -484,6 +485,14 @@ describe("the reference player", () => {
     expect(new Set(days).size).toBe(days.length);
     expect(days[days.length - 1]).toBe(REFERENCE_TARGET_DAY);
   });
+
+  it("carries the attention count for the whole run: mornings the list changed, of the days it ran", () => {
+    const r = runReference(17, 5);
+    // A from-scratch run's list stands from day 1, so the days asked about are the whole run.
+    expect(r.attention.days).toBe(r.outcome.day);
+    expect(r.attention.mornings).toBeGreaterThanOrEqual(0);
+    expect(r.attention.mornings).toBeLessThanOrEqual(r.attention.days);
+  });
 });
 
 describe("the heir", () => {
@@ -741,5 +750,20 @@ describe("the lineage gate", () => {
     const last = l.lives[l.lives.length - 1].report;
     if (last.outcome.kind === "reached") expect(last.outcome.day).toBeGreaterThanOrEqual(3);
     for (const life of l.lives.slice(0, -1)) expect(life.report.outcome.kind).toBe("died");
+  });
+});
+
+describe("the year report's attention", () => {
+  it("carries the whole run's attention and each month line its own, both mornings of days shapes", () => {
+    const r = runYear(17, { level: 20, days: 40 });
+    expect(r.attention.days).toBe(r.outcome.day);
+    expect(r.attention.mornings).toBeGreaterThanOrEqual(0);
+    expect(r.attention.mornings).toBeLessThanOrEqual(r.attention.days);
+    expect(r.months.length).toBeGreaterThan(0);
+    for (const m of r.months) {
+      expect(m.attention.days).toBeGreaterThan(0);
+      expect(m.attention.mornings).toBeGreaterThanOrEqual(0);
+      expect(m.attention.mornings).toBeLessThanOrEqual(m.attention.days);
+    }
   });
 });

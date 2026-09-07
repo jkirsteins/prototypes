@@ -58,13 +58,13 @@ function print(r: YearReport): void {
     const food = Object.entries(m.stock.foodByKind).map(([k, v]) => `${k} ${v}`).join(", ") || "none";
     // December, January and February (deep-cold spec 1.1): the winter month lines carry the verdict, gating nothing.
     const deepCold = m.month === 11 || m.month === 0 || m.month === 1 ? `; deep-cold band ${verdict(m.burnPerDay, BURN.deepCold)}` : "";
-    console.log(`  1 ${monthName(m.month)} (day ${m.day}): eaten ${m.eatenPerDay}/day, burned ${m.burnPerDay}/day; at camp ${m.stock.foodKcal} kcal (${food}), ${m.stock.firewoodKg} kg firewood, ${m.stock.logs} logs, snow ${m.snowCm} cm${deepCold}`);
+    console.log(`  1 ${monthName(m.month)} (day ${m.day}): eaten ${m.eatenPerDay}/day, burned ${m.burnPerDay}/day; at camp ${m.stock.foodKcal} kcal (${food}), ${m.stock.firewoodKg} kg firewood, ${m.stock.logs} logs, snow ${m.snowCm} cm${deepCold}; attention ${m.attention.mornings} of ${m.attention.days} mornings`);
   }
   console.log(`  surplus: first hang ${r.surplus.hang === null ? "never" : `day ${r.surplus.hang}`}, first large game ${r.surplus.largeGame === null ? "never" : `day ${r.surplus.largeGame}`}`);
   const daysRun = r.outcome.day;
   console.log(`  kills: ${Object.entries(r.kills).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}; large game ${Math.round(r.killsKcal / daysRun)} kcal a day (${verdict(r.killsKcal / daysRun, APRIL.rows.largeGame!.experienced)})`);
   for (const line of weekLines(r.lastWeek, r.lastDayOfYear)) console.log(`    ${line}`);
-  console.log(`  ${r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `alive at day ${r.outcome.day}`}`);
+  console.log(`  ${r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `alive at day ${r.outcome.day}`}; attention: ${r.attention.mornings} mornings of ${r.attention.days}`);
   if (r.unexploited) console.log(`  ${r.unexploited}`);
 }
 

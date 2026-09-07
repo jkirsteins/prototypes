@@ -39,6 +39,8 @@ export interface MonthLine {
   stock: { foodKcal: number; foodByKind: Record<string, number>; firewoodKg: number; logs: number };
   /** Snow on the ground, rounded cm. */
   snowCm: number;
+  /** Mornings the list changed since the last month line, of the days since it (order ladder spec section 4-5). */
+  attention: { mornings: number; days: number };
 }
 
 export interface YearReport {
@@ -59,6 +61,8 @@ export interface YearReport {
   killsKcal: number;
   /** For a starvation death, the unexploited line read at the moment it fell; null for any other outcome (spec 7). */
   unexploited: string | null;
+  /** Mornings the list changed over the whole run, of the days it ran (order ladder spec section 4-5). */
+  attention: { mornings: number; days: number };
 }
 
 export interface YearOptions {
@@ -97,8 +101,8 @@ function stockAt(state: GameState, world: World): MonthLine["stock"] {
 }
 
 /** Runs one life a day at a time, writing a month line on the first of each month and the surplus days as they happen. */
-function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal" | "unexploited"> {
-  const { state, world } = ref;
+function runLife(ref: { state: GameState; world: World; player: ReferencePlayer }, days: number): Pick<YearReport, "months" | "surplus" | "outcome" | "lastWeek" | "lastDayOfYear" | "kills" | "killsKcal" | "unexploited" | "attention"> {
+  const { state, world, player } = ref;
   const months: MonthLine[] = [];
   const surplus: YearReport["surplus"] = { hang: null, largeGame: null };
   let lastLineDay = 1;
@@ -110,7 +114,10 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
     if (surplus.largeGame === null && current(state).events.some((e) => e.kind === "firstKill" && LARGE_GAME.includes(e.species))) surplus.largeGame = cal.day;
     if (cal.dayOfMonth === 1 && cal.day > lastLineDay) {
       const avg = between(state.ledger, lastLineDay, cal.day);
-      months.push({ month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm) });
+      months.push({
+        month: cal.month, day: cal.day, eatenPerDay: Math.round(avg.eaten), burnPerDay: Math.round(avg.burn), stock: stockAt(state, world), snowCm: Math.round(state.weather.snowCm),
+        attention: player.attention(lastLineDay, cal.day - 1),
+      });
       lastLineDay = cal.day;
     }
   }
@@ -120,7 +127,7 @@ function runLife(ref: { state: GameState; world: World; player: ReferencePlayer 
   const unexploitedLine = state.dead?.cause === "starved" ? starvationCause(state, world) : null;
   return {
     months, surplus, outcome, lastWeek: weekBefore(state.ledger, day), lastDayOfYear: calendar(state.minute, state.startDoy).dayOfYear,
-    kills, killsKcal: state.stats.killsKcal, unexploited: unexploitedLine,
+    kills, killsKcal: state.stats.killsKcal, unexploited: unexploitedLine, attention: player.attention(player.startDay, day),
   };
 }
 

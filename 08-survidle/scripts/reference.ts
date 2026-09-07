@@ -68,7 +68,7 @@ function printCheckpoints(r: ReferenceReport): void {
 function passLine(r: ReferenceReport): string {
   const gateText = r.gate.kind === "day" ? `day ${r.gate.day}` : r.firstSnowDay === null ? "first snow (none yet)" : `first snow, day ${r.firstSnowDay}`;
   const verdict = r.passed ? `alive and fed at ${gateText}, ` : `gate ${gateText}: failed, `;
-  return `${verdict}${outcomeText(r)}`;
+  return `${verdict}${outcomeText(r)}; attention: ${r.attention.mornings} mornings of ${r.attention.days}`;
 }
 
 function runBlock(seed: number, kit: boolean): boolean {
