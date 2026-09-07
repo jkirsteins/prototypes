@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { calendar } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { levelMinutes, markTaught, RUNG_LEVEL, teachOnce, train } from "../src/sim/skills";
+import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
 import { loadGame, saveGame } from "../src/sim/save";
-import { resetTeaching } from "../src/sim/teach";
+import { CONCEPTS, resetTeaching } from "../src/sim/teach";
+import { conceptHtml, exampleFor } from "../src/ui/teachpanel";
 import { regionAt } from "../src/world/gen";
 
 /** A storage the save tests can hand to saveGame and loadGame without a DOM. */
@@ -111,5 +113,57 @@ describe("the teaching queue", () => {
     state.task = { id: "chop", arg: "spruce", progress: 0, duration: 60, repeat: false };
     train(state, world, 1);
     expect(state.teachQueue).toEqual(["job"]);
+  });
+});
+
+describe("a concept moment", () => {
+  it("has an entry for every rung, so a rung cannot open into silence", () => {
+    for (const r of RUNG_ORDER) {
+      expect(CONCEPTS[r].title.length).toBeGreaterThan(0);
+      expect(CONCEPTS[r].lines.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("names the concept and never the skill: which skill got there first is the log's business", () => {
+    for (const r of RUNG_ORDER) {
+      const text = `${CONCEPTS[r].title} ${CONCEPTS[r].lines.join(" ")}`;
+      for (const name of Object.values(SKILL_NAMES)) expect(text).not.toContain(name);
+    }
+  });
+
+  it("builds an example a player could really give, worded as the order list would word it", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    for (const s of SKILL_IDS) setSkillLevel(state, s, RUNG_LEVEL.grind);
+    const ex = exampleFor(state, world, cal, "grind");
+    expect(ex).not.toBeNull();
+    expect(ex).toContain("forever");
+  });
+
+  it("shows its prose alone rather than inventing work when no row can carry the rung", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    // Nothing has reached the pace rung on a first morning.
+    expect(exampleFor(state, world, cal, "pace")).toBeNull();
+    expect(conceptHtml(state, world, cal, "pace")).not.toContain("You could now say");
+  });
+
+  it("never throws, for any rung at any level", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    for (const r of RUNG_ORDER) {
+      for (const l of [1, RUNG_LEVEL.job, RUNG_LEVEL.pace]) {
+        for (const s of SKILL_IDS) setSkillLevel(state, s, l);
+        expect(() => conceptHtml(state, world, cal, r)).not.toThrow();
+      }
+    }
+  });
+
+  it("puts the rung's own title and its close button in the box", () => {
+    const { state, world } = newGame(17);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = conceptHtml(state, world, cal, "job");
+    expect(html).toContain(CONCEPTS.job.title);
+    expect(html).toContain('data-act="teach-close"');
   });
 });

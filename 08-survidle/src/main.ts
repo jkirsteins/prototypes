@@ -40,6 +40,7 @@ import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
+import { conceptHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
@@ -193,6 +194,9 @@ function render() {
   } else if (state.dead) {
     setPanel("overlay", tombstoneHtml(state, world, ui));
     overlay.hidden = false;
+  } else if (ui.teach) {
+    setPanel("overlay", conceptHtml(state, world, cal, ui.teach));
+    overlay.hidden = false;
   } else {
     overlay.hidden = true;
   }
@@ -203,7 +207,7 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !state.landing && !ui.away) {
+  if (!state.dead && !state.landing && !ui.away && !ui.teach) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -218,8 +222,17 @@ function frame(now: number) {
       advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away) {
+  } else if (ui.away || ui.teach) {
+    // An open moment holds the game still. Without the bump, a modal left open
+    // past thirty seconds trips the catch-up branch above, and the player
+    // dismisses it into an away report they never earned.
     lastReal = now;
+  }
+  // One moment at a time, and never over a landing, a tombstone, the manual or
+  // an away report: those win the chain in render(), so a rung earned under one
+  // of them waits in the queue until it is gone.
+  if (!ui.teach && !ui.away && !ui.manual && !state.landing && !state.dead && state.teachQueue.length) {
+    ui.teach = state.teachQueue.shift()!;
   }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
@@ -372,6 +385,12 @@ function onClick(ev: Event) {
       break;
     case "manual-close":
       ui.manual = false;
+      break;
+    case "teach-close":
+      ui.teach = null;
+      // The same bump the away report's dismiss does: the minutes the moment
+      // was open were paused, not spent away.
+      lastReal = performance.now();
       break;
     case "leave-world":
       ui.confirmLeave = true;
