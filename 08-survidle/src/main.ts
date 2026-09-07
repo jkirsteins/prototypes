@@ -41,7 +41,7 @@ import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
 } from "./ui/panels";
-import { conceptHtml, welcomeHtml } from "./ui/teachpanel";
+import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
@@ -232,12 +232,10 @@ function frame(now: number) {
     // dismisses it into an away report they never earned.
     lastReal = now;
   }
-  // One moment at a time, and never over a landing, a tombstone, the manual, the
-  // welcome or an away report: those win the chain in render(), so a rung earned
-  // under one of them waits in the queue until it is gone.
-  if (!ui.teach && !ui.away && !ui.manual && !ui.welcome && !state.landing && !state.dead && state.teachQueue.length) {
-    ui.teach = state.teachQueue.shift()!;
-  }
+  // One moment at a time, and never over an overlay that outranks it. A rung
+  // crossed inside an offline catch-up waits behind that catch-up's own away
+  // report; momentToOpen owns the whole rule.
+  if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);

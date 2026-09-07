@@ -7,9 +7,11 @@ import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { current } from "../src/sim/record";
 import { levelMinutes, markTaught, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD, SKILL_IDS, SKILL_NAMES, teachOnce, train } from "../src/sim/skills";
-import { loadGame, saveGame } from "../src/sim/save";
+import { catchUp, loadGame, saveGame } from "../src/sim/save";
 import { CONCEPTS, resetTeaching, tipFor, TIPS, welcomeLines } from "../src/sim/teach";
-import { conceptHtml, exampleFor, welcomeHtml } from "../src/ui/teachpanel";
+import { giveOrder } from "../src/sim/ladder";
+import { conceptHtml, exampleFor, momentToOpen, welcomeHtml } from "../src/ui/teachpanel";
+import { newUiState, type UiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
 
 /** A storage the save tests can hand to saveGame and loadGame without a DOM. */
@@ -178,6 +180,84 @@ describe("a concept moment", () => {
     const html = conceptHtml(state, world, cal, "job");
     expect(html).toContain(CONCEPTS.job.title);
     expect(html).toContain('data-act="teach-close"');
+  });
+});
+
+describe("a moment never opens over something else", () => {
+  it("waits behind the away report for a rung crossed while nobody was watching", () => {
+    const { state, world } = newGame(17);
+    // The order is given at the rung that allows it, the way a player gives it;
+    // the practice is then wound back to a minute under the next one.
+    setSkillLevel(state, "woodcraft", RUNG_LEVEL.grind);
+    giveOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    state.skills.woodcraft.xp = levelMinutes(RUNG_LEVEL.grind) - 1;
+    resetTeaching(state);
+    const ui = newUiState();
+    // Three game hours away (the argument is real seconds, and one of those is
+    // one game minute): long enough to walk out and cross the rung at the
+    // stump, short enough that a first-day survivor with no fire is still
+    // alive to be taught anything.
+    ui.away = catchUp(state, world, 180);
+    expect(state.dead).toBeNull();
+    expect(state.teachQueue).toEqual(["grind"]);
+    // The report of what happened comes first; the teaching waits its turn.
+    expect(momentToOpen(state, ui)).toBeNull();
+    ui.away = null;
+    expect(momentToOpen(state, ui)).toBe("grind");
+  });
+
+  it("still never opens when the catch-up killed them: the tombstone outranks it", () => {
+    const { state, world } = newGame(17);
+    setSkillLevel(state, "woodcraft", RUNG_LEVEL.grind);
+    giveOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    state.skills.woodcraft.xp = levelMinutes(RUNG_LEVEL.grind) - 1;
+    resetTeaching(state);
+    const ui = newUiState();
+    // Days of felling in April with no fire is a death, and the rung is crossed
+    // long before it: the queue fills and is never spent.
+    ui.away = catchUp(state, world, 24 * 3600);
+    expect(state.dead).toBeTruthy();
+    expect(state.teachQueue).toEqual(["grind"]);
+    expect(momentToOpen(state, ui)).toBeNull();
+    ui.away = null;
+    expect(momentToOpen(state, ui)).toBeNull();
+  });
+
+  it("stays shut behind every overlay that outranks it", () => {
+    const { state } = newGame(17);
+    teachOnce(state, "job");
+    for (const shut of ["away", "welcome", "manual", "cemetery", "teach"] as const) {
+      const ui = newUiState();
+      if (shut === "away") ui.away = { entries: [], orders: [], movedTo: null } as unknown as NonNullable<UiState["away"]>;
+      else if (shut === "teach") ui.teach = "keep";
+      else ui[shut] = true;
+      expect(momentToOpen(state, ui), shut).toBeNull();
+    }
+    expect(momentToOpen(state, newUiState())).toBe("job");
+  });
+
+  it("stays shut over a tombstone, and over the landing that follows it", () => {
+    const { state, world } = newGame(17);
+    teachOnce(state, "job");
+    die(state, "froze", regionAt(world, state.player.region).name);
+    expect(state.dead).toBeTruthy();
+    expect(momentToOpen(state, newUiState())).toBeNull();
+    beginAgain(state, world);
+    expect(state.landing).toBeTruthy();
+    expect(momentToOpen(state, newUiState())).toBeNull();
+    // Nothing was consumed by being refused; the landing is what clears it.
+    expect(state.teachQueue).toEqual(["job"]);
+    land(state, world);
+    expect(state.teachQueue).toEqual([]);
+  });
+
+  it("reads the queue without draining it, so the caller decides when one opens", () => {
+    const { state } = newGame(17);
+    teachOnce(state, "job");
+    teachOnce(state, "grind");
+    expect(momentToOpen(state, newUiState())).toBe("job");
+    expect(momentToOpen(state, newUiState())).toBe("job");
+    expect(state.teachQueue).toEqual(["job", "grind"]);
   });
 });
 

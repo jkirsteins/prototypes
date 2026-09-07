@@ -16,7 +16,7 @@ import { CONCEPTS, tipFor, welcomeLines } from "../sim/teach";
 import type { GameState, Order, Rung, TaskId } from "../sim/types";
 import { regionAt, type World } from "../world/gen";
 import { intentGroups } from "./dopanel";
-import { defaultChoiceFor, esc, rowRequest, type RowChoice } from "./render";
+import { defaultChoiceFor, esc, rowRequest, type RowChoice, type UiState } from "./render";
 
 /**
  * The kind a rung's example is given as. A condition and a pace are laid
@@ -57,6 +57,21 @@ export function exampleFor(state: GameState, world: World, cal: Calendar, r: Run
     }
   }
   return null;
+}
+
+/**
+ * The moment to open now, or null while something else owns the screen.
+ *
+ * Every overlay that beats `teach` in render()'s chain holds the queue shut,
+ * and the away report is the one that matters: a rung crossed inside an
+ * offline catch-up is queued by the catch-up itself, and the player has to
+ * read what happened while they were gone before the game starts teaching
+ * them. The cemetery is here for a second reason - a moment opened behind it
+ * would be invisible and would stop the clock while the player reads.
+ */
+export function momentToOpen(state: GameState, ui: UiState): Rung | null {
+  if (ui.teach || ui.welcome || ui.manual || ui.cemetery || ui.away || state.landing || state.dead) return null;
+  return state.teachQueue[0] ?? null;
 }
 
 export function conceptHtml(state: GameState, world: World, cal: Calendar, r: Rung): string {

@@ -394,3 +394,34 @@ DevTools browser: `Emulation` overrides are **session-scoped**. Setting
 the metrics in one process and measuring in another leaves
 `(hover: none)` false, and the touch rules go unchecked while the pass
 reports green. Set and measure on one WebSocket.
+
+### Nothing is taught over a catch-up
+
+A rung crossed while nobody was watching is queued by the catch-up
+itself, and the player has to read what happened before the game starts
+teaching them. `momentToOpen` in `src/ui/teachpanel.ts` owns that whole
+rule and is the only thing the frame loop asks: it returns null while the
+away report, the welcome, the manual, the cemetery, another moment, a
+landing or a tombstone holds the screen. Two things then hold the line
+independently - the drain never fires, and `away` outranks `teach` in
+render()'s chain even if it somehow did.
+
+The cemetery is in that list for a second reason. It outranks `teach` in
+the chain, so a moment drained behind it would be invisible *and* would
+stop the clock while the player read the graves.
+
+Read on seed 17, at 1440 by 900: a standing grind one minute under the
+rung, the save backdated five minutes and reloaded. The catch-up carries
+Woodcraft from 1919 to 2053 minutes and queues `["grind"]`; across ten
+frames the queue stays undrained behind a `box` away report and the
+clock does not move; "While you were away" reads first, and dismissing it
+opens Grinds with "Fell a tree, forever". The lethal case is covered too:
+when the catch-up kills the survivor the queue fills and is never spent -
+the tombstone outranks the moment, and the landing clears the queue.
+
+Two test-aid notes for anyone reproducing this. `?seed=` makes `boot()`
+skip the save outright, by design, so a catch-up test has to use a
+different parameter (`?x=1` works - `boot` only checks `seed` and `day`).
+And `pagehide` writes a save on unload, which overwrites a backdated
+`savedAt` before the reload can read it; patch `localStorage.setItem` to
+swallow that one key before navigating.
