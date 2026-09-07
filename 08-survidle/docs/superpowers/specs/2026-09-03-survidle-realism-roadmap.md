@@ -3806,34 +3806,54 @@ a question this item will meet.
 **Built.** Spec `2026-09-07-survidle-order-ladder-design.md`, plan
 `2026-09-07-survidle-order-ladder.md`. Measured on the five reference
 seeds: April 5 of 5, winter 5 of 5, the year at level 20 4 of 5 (from 3)
-- seed 17 starves on day 353, five lean-wall days of the last seven,
-with 345 kg of dried meat and a kilo of fat at camp and a burn of 6,912
-kcal a day of which 3,535 is walking - and the lineage 4 of 5 (from 1),
-seed 79 the one seed whose six lives never reach a year. The year at
-level 10, run as a reading and not a gate, is 2 of 5. A level-20 camp's
-attention runs 17 to 33 mornings a year, and on seed 42 the water method
-alone is 55 of the 74 flips a level-20 year counts. The one runner fix:
-the plant band's three hours are split across the rows a camp has
-rather than divided by three including a sea-only seaweed row (measured
-on seed 45, whose inland camp never had that row standing, dug 273 kcal
-a day under the band and starved on the lean wall on day 200 with 19
-tonnes of rhizome in reach), which took the year gate from 3 of 5 to 4
-of 5 and the lineage from 3 of 5 to 4 of 5. Findings left for the
-author: seed 17's level-20 death is the site and not the vocabulary, its
-wood, water and bog far enough from the camp cell that March's walking
-is a third of its burn and the winter-wood keeps run behind their paced
-target all autumn; no shape at any rung can say "hunt until the camp has
-its fat", since a keep's item comes from its task and no task yields fat
-directly, so the fat and not the meat is what runs a camp out; rewriting
-the winter shore's fish row to read the camp's fat instead of a season
-was measured and withdrawn, since the fat crosses the winter stock's
-20 kg line in midsummer on the same seed too and the row shuts anyway,
-dying on day 296 rather than 323 - the row needs a second catch, not a
-second line; the heir's walk home carries no order at all until the
-runner reaches the region, so a heir walking a fortnight after death has
-no fire and no shelter on the road; and the ice hysteresis around
-`ICE_SHORE_CM`, the water method's 55 of 74 flips a year, is the whole
-of a level-20 camp's attention - a reading and not a defect.
+- seed 17 is the one that falls, freezing on day 342 with 56.6 kg of
+dried meat and 2.4 kg of raw meat at camp and no fat at all, seven
+lean-wall days of the last seven and a burn of 8,234 kcal a day of which
+5,103 is walking, a starving body that froze rather than a cold camp,
+since 593 kg of firewood stood at camp on 1 March - and the lineage 5 of
+5 (from 1), with the trend gate at 3 of 5 and reported rather than
+required. The year at level 10, run as a reading and not a gate, is 1 of
+5: a level-10 survivor has the keep rung and not the condition rung, so
+every season, stock line, restart and daily count on its list is
+stripped and played by hand, and the reading is what the two upper rungs
+are worth. A level-20 camp's attention runs 16 to 32 mornings a year,
+0.3 to 0.6 a week, and on seed 42 the water method alone is 65 of the 84
+flips a level-20 year counts, the other 19 being once-jobs dropping off
+as the plan finishes; the same tally at level 10 is the returning player
+made visible, the root row's daily count re-given 85 times and the two
+paced wood keeps 23 each. Two runner fixes. The plant band's three hours
+are split across the rows a camp has, in whole hours - two of roots and,
+for six weeks, one of eggs - rather than divided by three including a
+sea-only seaweed row (measured on seed 45, whose inland camp never had
+that row standing, dug 273 kcal a day under the band and starved on the
+lean wall on day 200 with 19 tonnes of rhizome in reach), which took the
+year gate from 3 of 5 to 4 of 5. And the plan dies with the planner:
+`beginAgain` left every region's order list standing, so an heir
+inherited its ancestors' plan along with their camp - seed 17's old
+region held 28 orders when the second heir landed and 126 by the end of
+the sixth life, and a level-9 heir was working seasons and stock lines a
+level-18 ancestor had earned, none of it counted as its own attention -
+and the landing now clears the lists beside the ice holes, which took
+the lineage to 5 of 5. Findings left for the author: seed 17's level-20
+death is the site and not the vocabulary, its wood, water and bog far
+enough from the camp cell that March's walking is more than half its
+burn and the winter-wood keeps run behind their paced target all autumn;
+no shape at any rung can say "hunt until the camp has its fat", since a
+keep's item comes from its task, no task yields fat directly and a stock
+line can only shut a row, so the fat and not the meat is what runs a
+camp out; rewriting the winter shore's fish row to read the camp's fat
+instead was measured and withdrawn, since the fat crosses the winter
+stock's 20 kg line in midsummer on the same seed too and the row shuts
+anyway, dying on day 296 rather than 323 - the row needs a second catch,
+not a second line; the heir's walk home carries no order at all until
+the runner reaches the region, so an heir walking a fortnight after
+death has no fire and no shelter on the road, and two of seed 79's lives
+froze there on days 5 and 11; `setUpStage` gives a want without reading
+its own `when`, so a horizon keeps-rung stage stands up on 1 April
+holding a full 600 kg wood keep out of its season, a reading and not a
+gate; and the ice hysteresis around `ICE_SHORE_CM`, the water method's
+65 of 84 flips a year, is the whole of a level-20 camp's attention - a
+reading and not a defect.
 
 ### M. A landing on the coast
 
