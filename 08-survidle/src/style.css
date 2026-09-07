@@ -136,7 +136,19 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .tag.good { border-color: var(--good); }
 
 /* Sound */
-#sound { display: flex; gap: 12px; align-items: center; padding: 6px 10px; }
+/* Settings: the sound and the play-data beacon, off the board until asked for.
+   Fixed rather than in a column, so opening it never moves the game about. */
+#settings {
+  position: fixed; top: 12px; right: 12px; z-index: 11;
+  max-width: min(420px, calc(100vw - 24px));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+#settings[hidden] { display: none; }
+#settings h2 button { float: right; }
+#settings > div { padding: 6px 0; }
+#settings > div + div { border-top: 1px solid var(--line); }
+
+#sound { display: flex; gap: 12px; align-items: center; }
 #sound input[type="range"] { width: 120px; }
 #sound button.off { color: var(--dim); text-decoration: line-through; }
 
@@ -456,7 +468,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* One column on a phone. `.col` goes `display: contents` so its sections
    become #app's direct grid items and can be reordered individually by
    `order`, rather than moving whole columns: the check-in (task, forecast)
-   and the map come first, then the rest in reading order, settings last. */
+   and the map come first, then the rest in reading order. The settings panel
+   is fixed and outside #app, so it has no place in this order. */
 @media (max-width: 700px) {
   #app { grid-template-columns: 1fr; height: auto; }
   .col { display: contents; }
@@ -473,6 +486,4 @@ button.act small, span.act small { display: block; color: var(--dim); }
   #skills { order: 11; }
   #journal { order: 12; }
   #clock { order: 13; }
-  #sound { order: 14; }
-  #beacon { order: 15; }
 }

@@ -30,10 +30,78 @@ export function saveFold(storage: Storage, group: string, open: boolean): void {
   storage.setItem(FOLD_KEY, JSON.stringify({ ...loadFolds(storage), [group]: open }));
 }
 
-/** Rows whose label contains the filter, case-insensitive; an empty (or blank) filter keeps everything. */
-export function filterRows<T extends { label: string }>(rows: T[], text: string): T[] {
-  const q = text.trim().toLowerCase();
-  return q ? rows.filter((r) => r.label.toLowerCase().includes(q)) : rows;
+/**
+ * The words a row answers to that it never says out loud. Nothing on the
+ * torch row says "fire" and nothing on the bough bed says "sleep", so a
+ * reader who types the thing they want rather than the thing it is called
+ * finds nothing without this. The words are never rendered: they widen what
+ * the filter matches and change no part of the panel a player looks at.
+ *
+ * A row is named by its task id, or by `craft:<recipe>` and `build:<structure>`
+ * where one task covers many rows. A concept lists every row it covers, the
+ * ones whose own text already carries the word included, so each line reads as
+ * the whole answer to that search rather than as the leftovers. A row that no
+ * concept names is not a bug: most rows say what they are for.
+ */
+const VOCABULARY: { words: string; rows: string[] }[] = [
+  { words: "fire tinder kindling", rows: ["light", "lightIndoors", "lightTorch", "craft:torch", "craft:fireDrill", "build:firePit", "chop", "deadwood", "sticks", "bark", "split", "splitWedges", "melt", "night"] },
+  { words: "fuel firewood", rows: ["chop", "deadwood", "sticks", "split", "splitWedges"] },
+  { words: "food eat hunger", rows: ["hunt", "fish", "cook", "berries", "eggs", "roots", "innerBark", "seaweed", "tapSap", "crack", "grindBark", "hang", "setTrap", "emptyTrap", "build:snare", "build:dryingRack", "craft:snare", "craft:bow", "craft:arrows", "craft:fishingSpear", "craft:basketTrap"] },
+  { words: "water drink thirst", rows: ["fill", "melt", "thaw", "iceHole", "tapSap", "build:seep", "build:waterStore", "craft:barkBucket", "craft:waterskin"] },
+  { words: "warmth heat cold", rows: ["light", "lightIndoors", "lightTorch", "night", "sleep", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "build:boughBed", "repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens", "craft:hideBlanket"] },
+  { words: "sleep rest bed", rows: ["sleep", "rest", "night", "build:boughBed", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter", "craft:hideBlanket"] },
+  { words: "shelter roof", rows: ["makeCamp", "build:leanTo", "build:cabin", "build:turfHut", "build:snowShelter"] },
+  { words: "tool gear", rows: ["craft", "sharpen", "hone"] },
+  { words: "clothing clothes", rows: ["repair", "craft:hideCoat", "craft:hideTrousers", "craft:hideBoots", "craft:furHat", "craft:furMittens"] },
+  { words: "dark darkness", rows: ["lightTorch", "craft:torch"] },
+];
+
+/** Every row the vocabulary names, for the test that each one is a row that exists. */
+export function keyedRows(): string[] {
+  return [...new Set(VOCABULARY.flatMap((v) => v.rows))];
+}
+
+const KEYWORDS = new Map<string, string>();
+for (const { words, rows } of VOCABULARY) {
+  for (const row of rows) KEYWORDS.set(row, `${KEYWORDS.get(row) ?? ""} ${words}`);
+}
+
+/** A row's invisible keywords: the ones for the whole task, plus the ones for this recipe or structure. */
+function keywordsFor(id: string | undefined, arg: string | undefined): string {
+  if (!id) return "";
+  return `${KEYWORDS.get(id) ?? ""} ${arg ? (KEYWORDS.get(`${id}:${arg}`) ?? "") : ""}`;
+}
+
+/** Everything a row says plus everything it answers to, as one lowercase haystack. */
+function rowText(r: FilterableRow): string {
+  return [r.label, r.detail, r.why, r.group, keywordsFor(r.id, r.arg)].filter(Boolean).join(" ").toLowerCase();
+}
+
+interface FilterableRow {
+  id?: string;
+  arg?: string;
+  label: string;
+  detail?: string;
+  why?: string;
+  group?: string;
+}
+
+/**
+ * Rows the filter finds, case-insensitive; an empty (or blank) filter keeps
+ * everything. The match reads the whole row rather than the label alone, so a
+ * word only the second line says - "firewood" under Gather dead wood, "axe"
+ * under Open an ice hole - still finds the row it belongs to, and the
+ * VOCABULARY above adds the words a row answers to but never says. Every word
+ * in the filter has to land somewhere in that row, so a second word narrows
+ * instead of widening.
+ */
+export function filterRows<T extends FilterableRow>(rows: T[], text: string): T[] {
+  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return rows;
+  return rows.filter((r) => {
+    const hay = rowText(r);
+    return words.every((w) => hay.includes(w));
+  });
 }
 
 /**

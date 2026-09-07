@@ -2,7 +2,9 @@ import { calendar } from "../sim/calendar";
 import { burnPerHour, fuelTotal } from "../sim/fire";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { regionState } from "../sim/regionstate";
-import type { GameState } from "../sim/types";
+import { levelShare, masteryProgress, poolShare } from "../sim/skills";
+import { garmentWet } from "../sim/clothing";
+import type { GameState, SkillId } from "../sim/types";
 import { WATER_FULL } from "../sim/water";
 import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
@@ -50,4 +52,56 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
 /** Every frame: the pulse's bar on the live row, so the list's markup does not churn while it drains. */
 export function updateHurryBar(h: HurryState, root: ParentNode = document): void {
   setBar("hurry", pulseLeft(h), undefined, root);
+}
+
+/**
+ * The share a named fill draws, 0 to 1, or null when nothing in the state
+ * answers to the name. Every name is a lookup, so a fill can be written from
+ * the state alone without the panel that drew it being rebuilt.
+ */
+export function fillShare(state: GameState, spec: string): number | null {
+  const at = spec.indexOf(":");
+  if (at < 0) return null;
+  const arg = spec.slice(at + 1);
+  switch (spec.slice(0, at)) {
+    case "garment": {
+      const g = state.player.clothing.find((c) => c.id === arg);
+      return g ? g.durability / 100 : null;
+    }
+    case "garmentWet": {
+      const g = state.player.clothing.find((c) => c.id === arg);
+      return g ? garmentWet(g) / 100 : null;
+    }
+    case "tool": {
+      const t = state.player.tools.find((x) => x.id === arg);
+      return t ? t.durability / 100 : null;
+    }
+    case "skill":
+      return levelShare(state, arg as SkillId);
+    case "pool":
+      return poolShare(state, arg as SkillId);
+    case "mastery": {
+      const [skill, key] = arg.split("|");
+      return skill && key ? masteryProgress(state, skill as SkillId, key).share : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Every frame: every bar whose fill names where its value comes from.
+ *
+ * A width that moves every frame would make its panel's markup differ every
+ * frame, and the panel would be reparsed and rediffed at that rate to shift
+ * one bar. So no fill carries a width. It carries the name of what it draws
+ * and is written here, one property on one element, while the markup around
+ * it holds still. tests/churn.test.ts holds the line.
+ */
+export function updateFills(state: GameState, root: ParentNode = document): void {
+  for (const fill of root.querySelectorAll<HTMLElement>("[data-fill]")) {
+    const share = fillShare(state, fill.dataset.fill ?? "");
+    if (share === null) continue;
+    fill.style.width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
+  }
 }

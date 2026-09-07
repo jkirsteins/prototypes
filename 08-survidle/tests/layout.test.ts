@@ -11,6 +11,26 @@ describe("the layout", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
+  it("the sound and the beacon live in a settings panel that is hidden until it is asked for", () => {
+    const html = readFileSync("index.html", "utf8");
+    const open = html.indexOf('data-act="settings-open"');
+    expect(open).toBeGreaterThan(0);
+    const settings = html.indexOf('id="settings"');
+    expect(settings).toBeGreaterThan(0);
+    // Hidden on the same element, so a fresh page spends no room on either control.
+    const tag = html.slice(settings, html.indexOf(">", settings));
+    expect(tag).toContain("hidden");
+    // Both controls inside it, and neither left behind in a column.
+    const close = html.indexOf("</div>", html.indexOf('data-act="settings-close"'));
+    const inside = html.slice(settings, html.indexOf('id="overlay"'));
+    expect(inside).toContain('id="sound"');
+    expect(inside).toContain('id="beacon"');
+    expect(close).toBeGreaterThan(0);
+    const columns = html.slice(html.indexOf('id="app"'), settings);
+    expect(columns).not.toContain('id="sound"');
+    expect(columns).not.toContain('id="beacon"');
+  });
+
   it("the legend names every terrain letter the map draws", () => {
     const html = legendHtml();
     for (const letter of Object.values(GLYPH)) {

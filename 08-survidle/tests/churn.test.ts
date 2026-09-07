@@ -1,0 +1,156 @@
+/**
+ * The churn budget.
+ *
+ * A panel is drawn by building its whole markup as a string and, when that
+ * string differs from last frame's, morphing the panel to match it. The
+ * morph is what makes a redraw safe - nothing a person is using gets taken
+ * away - but a redraw still costs a parse and a walk of the panel, and the
+ * cheapest one is the one that never happens.
+ *
+ * What puts a panel over budget is a value that moves faster than the panel
+ * has any business redrawing: a raw float where the reader is shown a whole
+ * number, a share that climbs with every minute of work. Such a value does
+ * not belong in the markup. It belongs on an element with a name, written
+ * each frame by src/ui/bars.ts, which is what the body's bars, the hurry
+ * pulse, the wear bars and the Do rows' mastery all do.
+ *
+ * This ran red when it was written: the gear panel redrew on 300 frames of
+ * 300, because the clothing wear bars carried unrounded percentages.
+ */
+import { describe, expect, it } from "vitest";
+import { advance } from "../src/sim/advance";
+import { calendar } from "../src/sim/calendar";
+import { newGame } from "../src/sim/newgame";
+import { startTask } from "../src/sim/tasks";
+import { Rng } from "../src/rng";
+import { doHtml } from "../src/ui/dopanel";
+import { mapHtml, mapKey } from "../src/ui/map";
+import { clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, logHtml, regionHtml, skillsHtml, statsHtml, taskHtml } from "../src/ui/panels";
+import { newUiState } from "../src/ui/render";
+import { fillShare } from "../src/ui/bars";
+import { emptyView } from "../src/sim/forecaster";
+import { feltTemperature } from "../src/sim/player";
+import { ambientTemperature } from "../src/sim/weather";
+import { GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
+import { PEAK } from "../src/ui/hurry";
+
+const FRAMES = 300;
+/** Frames a second, so the run below is five seconds of the worst case: work in hand, hurried to the peak. */
+const FPS = 60;
+const MINUTES_PER_FRAME = (GAME_MINUTES_PER_REAL_SECOND * PEAK) / FPS;
+
+/**
+ * What each panel may redraw over the run below.
+ *
+ * A budget is a claim about what the panel shows, not a tolerance for churn.
+ * Thirty game minutes pass here, so a panel reading to the game minute - the
+ * clock, a countdown to the next level, an order's running total, a timed
+ * status - turns over about thirty times and gets MINUTE. Everything else
+ * shows quantities that only a day, a task or an event moves, and a handful
+ * covers those. A panel that wants more is showing something that moves per
+ * frame, and that something belongs in a named fill written by bars.ts.
+ *
+ * Measured at the time of writing: clock 31, skills 31 while working, and 0
+ * to 2 for every other panel.
+ */
+const MINUTE = 35;
+const BUDGET: Record<string, number> = {
+  stats: MINUTE,
+  gear: 2,
+  skills: MINUTE,
+  clock: MINUTE,
+  region: 5,
+  task: MINUTE,
+  forecast: 2,
+  dorows: 5,
+  inventory: 5,
+  journal: 5,
+  log: 5,
+  map: 5,
+};
+
+function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]): Record<string, string> {
+  const ui = newUiState();
+  const cal = calendar(state.minute, state.startDoy);
+  const ambient = ambientTemperature(cal, state.weather);
+  return {
+    stats: statsHtml(state, world, cal, ambient, ui),
+    gear: gearHtml(state, feltTemperature(state, world, ambient)),
+    skills: skillsHtml(state),
+    clock: clockHtml(state, world, cal, ambient, 1),
+    region: regionHtml(state, world, cal, ui),
+    task: taskHtml(state, world, cal),
+    forecast: forecastHtml(emptyView(), state),
+    dorows: doHtml(state, world, cal, ui, {}),
+    inventory: inventoryHtml(state, world),
+    journal: journalHtml(state, cal, ui),
+    log: logHtml(state),
+    // The map is guarded by its own key rather than by its markup, so the key is what is measured.
+    map: `${mapKey(state, world, ui, cal)}|${mapHtml(world, state, ui, cal)}`,
+  };
+}
+
+/** Runs the panels over a stretch of frames and counts, per panel, how many of them changed its markup. */
+function churn(seed: number, work: boolean): Record<string, number> {
+  const { state, world } = newGame(seed);
+  if (work) {
+    const cal = calendar(state.minute, state.startDoy);
+    startTask(state, world, cal, "deadwood", undefined, true, new Rng(state.rng));
+  }
+  let prev = panels(state, world);
+  const counts: Record<string, number> = {};
+  for (const id of Object.keys(prev)) counts[id] = 0;
+  for (let f = 0; f < FRAMES; f++) {
+    advance(state, world, MINUTES_PER_FRAME);
+    const now = panels(state, world);
+    for (const id of Object.keys(now)) if (now[id] !== prev[id]) counts[id]++;
+    prev = now;
+  }
+  return counts;
+}
+
+describe("no panel redraws faster than what it is showing", () => {
+  for (const work of [false, true]) {
+    it(`${work ? "with work in hand" : "standing idle"}, every panel stays inside its budget`, () => {
+      const counts = churn(21, work);
+      const over = Object.entries(counts)
+        .filter(([id, n]) => n > BUDGET[id])
+        .map(([id, n]) => `${id}: ${n} of ${FRAMES} frames, budget ${BUDGET[id]}`);
+      // The whole table rides along, so a failure says what every panel did and not just the one over.
+      expect(over, JSON.stringify(counts)).toEqual([]);
+    });
+  }
+
+  it("no panel redraws on every frame, whatever it is showing", () => {
+    for (const work of [false, true]) {
+      const counts = churn(19, work);
+      // A panel rebuilt every frame is never right: nothing a person reads changes sixty times a second.
+      const everyFrame = Object.entries(counts).filter(([, n]) => n >= FRAMES).map(([id]) => id);
+      expect(everyFrame).toEqual([]);
+    }
+  });
+
+  /**
+   * The rule the budgets above rest on, checked directly so a new bar cannot
+   * quietly reintroduce the problem: a fill names what it draws, and its
+   * width is written by updateFills from the state.
+   */
+  it("no panel bakes a width into a bar's fill", () => {
+    const { state, world } = newGame(21);
+    for (const [id, html] of Object.entries(panels(state, world))) {
+      const baked = [...html.matchAll(/<div class="fill"[^>]*style="[^"]*width/g)];
+      expect({ id, baked: baked.map((m) => m[0]) }).toEqual({ id, baked: [] });
+    }
+  });
+
+  it("every name a fill carries is one the state can answer", () => {
+    const { state, world } = newGame(21);
+    const names = new Set<string>();
+    for (const html of Object.values(panels(state, world))) {
+      for (const m of html.matchAll(/data-fill="([^"]*)"/g)) names.add(m[1].replace(/&amp;/g, "&"));
+    }
+    expect(names.size).toBeGreaterThan(0);
+    const unanswered = [...names].filter((n) => fillShare(state, n) === null);
+    expect(unanswered).toEqual([]);
+  });
+});

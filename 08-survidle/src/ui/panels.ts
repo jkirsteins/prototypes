@@ -46,18 +46,31 @@ function bar(id: string, cls: string, label: string): string {
   return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div><span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
 }
 
-function durBar(v: number): string {
-  return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" style="width:${Math.max(0, Math.min(100, v))}%"></div></div>`;
+/**
+ * No bar's fill carries a width. A width is a moving number, and a panel is
+ * redrawn whenever its markup string differs from last frame's, so one raw
+ * width puts the whole panel through a parse and a diff sixty times a second
+ * to move one bar a fraction of a pixel. A fill names the thing it draws
+ * instead, and updateFills in bars.ts writes the width straight onto the
+ * element, touching nothing else. tests/churn.test.ts holds the line.
+ */
+function durBar(v: number, of: string): string {
+  return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" data-fill="${esc(of)}"></div></div>`;
 }
 
 function wetBar(g: Garment): string {
   const w = garmentWet(g);
   const label = w > 80 ? "soaked" : w > 50 ? "wet" : "";
-  return `<div class="bar dur wet"><div class="fill" style="width:${Math.max(0, Math.min(100, w))}%"></div>${label ? `<span class="lbl"><span>${label}</span></span>` : ""}</div>`;
+  return `<div class="bar dur wet"><div class="fill" data-fill="${esc(`garmentWet:${g.id}`)}"></div>${label ? `<span class="lbl"><span>${label}</span></span>` : ""}</div>`;
 }
 
-export function masteryBar(m: { level: number; share: number }): string {
-  return `<div class="bar mastery" title="mastery ${m.level}"><div class="fill" style="width:${Math.round(m.share * 100)}%"></div><span class="lbl"><span>mastery ${m.level}</span></span></div>`;
+/**
+ * A row's mastery. Only the level is in the markup, and that moves about once
+ * a session; the share climbs with every minute of work, so the fill names
+ * the mastery it draws and leaves the width to updateFills.
+ */
+export function masteryBar(m: { level: number; share: number; skill: SkillId; key: string }): string {
+  return `<div class="bar mastery" title="mastery ${m.level}"><div class="fill" data-fill="${esc(`mastery:${m.skill}|${m.key}`)}"></div><span class="lbl"><span>mastery ${m.level}</span></span></div>`;
 }
 
 /** What the pool is giving right now, in words. */
@@ -118,11 +131,11 @@ export function gearHtml(state: GameState, felt: number): string {
       const def = CLOTHING[g.id];
       const warmth = def.sleep ? `+${def.sleep} C asleep` : `+${def.insulation} C`;
       const cold = (def.slot === "boots" && cf) || (def.slot === "mittens" && ch) ? ` <small class="bad">${def.slot === "boots" ? "feet cold" : "hands cold"}</small>` : "";
-      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${cold}${durBar(g.durability)}${wetBar(g)}</div>`;
+      return `<div>${def.name} <small>${warmth}, ${Math.round(g.durability)}%</small>${cold}${durBar(g.durability, `garment:${g.id}`)}${wetBar(g)}</div>`;
     })
     .join("");
   const tools = p.tools.length
-    ? p.tools.map((t) => `<div>${TOOLS[t.id].name} <small>${Math.round(t.durability)}%</small>${durBar(t.durability)}</div>`).join("")
+    ? p.tools.map((t) => `<div>${TOOLS[t.id].name} <small>${Math.round(t.durability)}%</small>${durBar(t.durability, `tool:${t.id}`)}</div>`).join("")
     : "<div class=\"dim\">no tools</div>";
   return `<h2>Worn <span class="r">+${insulation(state).toFixed(1)} C</span></h2>${clothes}<h2 style="margin-top:10px">Tools</h2>${tools}`;
 }
@@ -132,8 +145,6 @@ export function skillsHtml(state: GameState): string {
     const s = state.skills[id];
     const l = level(s.xp);
     const next = l >= SKILL_CAP ? null : levelMinutes(l + 1);
-    const from = levelMinutes(l);
-    const share = next ? (s.xp - from) / (next - from) : 1;
     const toNext = next ? `${fmtDuration(next - s.xp)} to ${l + 1}` : "at the cap";
     const pool = poolShare(state, id);
     const perks = poolPerks(pool, id);
@@ -151,8 +162,8 @@ export function skillsHtml(state: GameState): string {
         ? ` carried from ${esc(fmtName(state.survivors[state.survivors.length - 2].name))}`
         : "";
     return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}${carriedNote}</span></div>
-<div class="bar dur"><div class="fill" style="width:${Math.round(share * 100)}%"></div></div>
-<div class="bar pool"><div class="fill" style="width:${Math.round(pool * 100)}%"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
+<div class="bar dur"><div class="fill" data-fill="skill:${id}"></div></div>
+<div class="bar pool"><div class="fill" data-fill="pool:${id}"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
 ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}<div class="rungs"><small>${rungs}</small></div></div>`;
   });
   return `<h2>Skills</h2>${rows.join("")}`;

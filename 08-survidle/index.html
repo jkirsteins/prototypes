@@ -14,16 +14,6 @@
         <section id="skills" class="panel"></section>
       </aside>
       <main id="center" class="col">
-        <div id="sound" class="panel">
-          <button type="button" data-sound="mute">Sound</button>
-          <input type="range" min="0" max="100" step="1" data-sound="volume" aria-label="volume" />
-          <label><input type="checkbox" data-sound="ambience" /> ambience</label>
-          <span class="dim" data-sound="note"></span>
-        </div>
-        <div id="beacon" class="panel">
-          <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
-          <span class="dim" data-beacon="note"></span>
-        </div>
         <section id="clock" class="panel"></section>
         <section id="map" class="panel">
           <div id="mapdyn"></div>
@@ -37,6 +27,7 @@
         <div id="away" class="panel">
           <label>away up to <input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" /> <b data-away="label"></b></label>
           <button type="button" class="mini" data-act="manual-open">how to survive</button>
+          <button type="button" class="mini" data-act="settings-open">settings</button>
         </div>
         <section id="log" class="panel"></section>
         <section id="actions" class="panel">
@@ -47,6 +38,19 @@
         <section id="inventory" class="panel"></section>
         <section id="journal" class="panel"></section>
       </aside>
+    </div>
+    <div id="settings" class="panel" hidden>
+      <h2>Settings <button type="button" class="mini" data-act="settings-close">close</button></h2>
+      <div id="sound">
+        <button type="button" data-sound="mute">Sound</button>
+        <input type="range" min="0" max="100" step="1" data-sound="volume" aria-label="volume" />
+        <label><input type="checkbox" data-sound="ambience" /> ambience</label>
+        <span class="dim" data-sound="note"></span>
+      </div>
+      <div id="beacon">
+        <label><input type="checkbox" data-beacon="on" /> share anonymous play data</label>
+        <span class="dim" data-beacon="note"></span>
+      </div>
     </div>
     <div id="overlay" hidden></div>
     <script type="module" src="/src/main.ts"></script>
