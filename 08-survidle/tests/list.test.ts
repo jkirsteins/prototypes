@@ -9,7 +9,7 @@ import { newGame } from "../src/sim/newgame";
 import { inSeason, ordersHere, removeOrder } from "../src/sim/orders";
 import { regionState } from "../src/sim/regionstate";
 import {
-  HANG_ABOVE_KG, PLANT_HOURS_PER_ROW, REFERENCE_ORDERS, setUpReference, stepReference, wantOpen, winterStockWant,
+  HANG_ABOVE_KG, PLANT_HOURS_ROOTS, PLANT_HOURS_WINDOW_ROW, REFERENCE_ORDERS, setUpReference, stepReference, wantOpen, winterStockWant,
   WINTER_STOCK, WINTER_WOOD_TO_DOY, WOOD_DUE_DOY,
 } from "../src/sim/reference";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
@@ -17,6 +17,7 @@ import { MIDSUMMER_DOY, PLANT_HOURS_PER_DAY } from "../src/sim/tables";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
+const daily = (w: (typeof REFERENCE_ORDERS)[number]) => (w.req.until.kind === "daily" ? w.req.until.n : null);
 
 describe("the list after the axe", () => {
   // A vessel that froze full has no room, so a fill tops off nothing and the
@@ -136,21 +137,31 @@ describe("the list after the axe", () => {
     expect(wantOpen(state, world, digs[1])).toBe(false);
   });
 
-  it("asks for the plant band by the day, and splits the handbook's three hours across the rows a camp has", () => {
+  it("asks for the plant band by the day, in whole hours that divide the handbook's three", () => {
     // A keep measured in food at camp can never read met while the body eats what it brings
     // home, so the plant keeps took four and a half to seven and a half hours a day and the
     // hunt rows below them never got a turn. These are daily counts instead: spent, the row
     // waits for the morning, and the day roll is what starts it over.
     for (const t of ["eggs::job", "roots::job", "seaweed::job"]) {
       expect(want(t).kind).toBe("job");
-      expect(want(t).req.until).toEqual({ kind: "daily", n: PLANT_HOURS_PER_ROW });
+      expect(want(t).req.until.kind).toBe("daily");
     }
-    // The rows a camp has: the root row and the egg row. The winter dig is the root row in the
-    // months the summer one is shut, and seaweed is a sea camp's row, given by a runner rule
-    // and never standing at an inland lake - so a budget divided by it leaves an hour unspent
-    // every day. A level-20 camp on seed 45 dug 273 kcal a day, under the band, and starved on
-    // the lean wall on day 200 with 19 tonnes of rhizome in reach.
-    expect(PLANT_HOURS_PER_ROW * 2).toBe(PLANT_HOURS_PER_DAY);
+    // A count is completions of an hour's task, so every daily count on the list is whole:
+    // half a dig is not a dig, and a fraction only ever rounds up in the running.
+    for (const w of REFERENCE_ORDERS) {
+      if (w.req.until.kind !== "daily") continue;
+      expect(Number.isInteger(w.req.until.n)).toBe(true);
+    }
+    // The rows an inland camp has divide the band in whole hours: two of roots, the row that
+    // stands all year, and one of eggs in its six weeks. Seaweed is a sea camp's row, given by
+    // a runner rule and never standing at an inland lake, and dividing the budget by it left an
+    // hour unspent every day: a level-20 camp on seed 45 dug 273 kcal a day, under the band,
+    // and starved on the lean wall on day 200 with 19 tonnes of rhizome in reach. On a coast
+    // the seaweed row takes its hour on top, one over the band, on a shore no gate reaches.
+    expect(PLANT_HOURS_ROOTS + PLANT_HOURS_WINDOW_ROW).toBe(PLANT_HOURS_PER_DAY);
+    expect(daily(want("roots::job"))).toBe(PLANT_HOURS_ROOTS);
+    expect(daily(want("eggs::job"))).toBe(PLANT_HOURS_WINDOW_ROW);
+    expect(daily(want("seaweed::job"))).toBe(PLANT_HOURS_WINDOW_ROW);
   });
 
   it("gives a daily want its count once a day: spent, it waits for the morning", () => {
@@ -162,7 +173,7 @@ describe("the list after the axe", () => {
     const first = roots();
     expect(first).toBeDefined();
     // Spend the day's count by hand: the order drops off the next look and is not given again.
-    first!.done = PLANT_HOURS_PER_ROW;
+    first!.done = PLANT_HOURS_ROOTS;
     removeOrder(state, world, first!.id);
     player.tick(state, world);
     expect(roots()).toBeUndefined();
@@ -174,7 +185,7 @@ describe("the list after the axe", () => {
 
   it("the wants carry their conditions, and wantOpen holds only the named runner rules", () => {
     const eggs = want("eggs::job");
-    expect(eggs.req.until).toEqual({ kind: "daily", n: PLANT_HOURS_PER_ROW });
+    expect(eggs.req.until).toEqual({ kind: "daily", n: PLANT_HOURS_WINDOW_ROW });
     expect(eggs.req.when).toEqual({ season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } });
     // The hunt keep's figure is the winter stock's dried meat in the raw kilos it dried from,
     // which is the unit the keep counts its forms in, and it restarts at four fifths of that -
