@@ -31,7 +31,7 @@ import type { GameState, ItemId, TaskId } from "./sim/types";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
-import { updateBars, updateHurryBar } from "./ui/bars";
+import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
@@ -169,6 +169,7 @@ function render() {
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
+  updateFills(state);
   updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
 

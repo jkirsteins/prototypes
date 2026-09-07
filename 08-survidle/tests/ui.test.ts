@@ -308,7 +308,7 @@ describe("panels", () => {
     expect(h).toContain("5% faster");
   });
 
-  it("commitChoiceN clamps to at least 1 on every keystroke, and setPanel refuses to redraw a panel while its number field has focus", () => {
+  it("commitChoiceN clamps to at least 1 on every keystroke", () => {
     const ui = newUiState();
     commitChoiceN(ui, "7");
     expect(ui.choice.n).toBe(7);
@@ -318,32 +318,70 @@ describe("panels", () => {
     expect(ui.choice.n).toBe(1);
     commitChoiceN(ui, "3.6");
     expect(ui.choice.n).toBe(4);
-
-    document.body.innerHTML = `<div id="actions"></div>`;
-    expect(setPanel("actions", `<input data-row-n value="5">`)).toBe(true);
-    const field = document.querySelector<HTMLInputElement>("[data-row-n]")!;
-    field.focus();
-    expect(document.activeElement).toBe(field);
-    // A redraw carrying different html is refused outright while the field is focused, and the DOM is left alone.
-    expect(setPanel("actions", "<p>a different render</p>")).toBe(false);
-    expect(document.querySelector("[data-row-n]")).not.toBeNull();
-    field.blur();
-    expect(setPanel("actions", "<p>a different render</p>")).toBe(true);
-    expect(document.querySelector("[data-row-n]")).toBeNull();
   });
 
-  it("setPanel skips a rewrite while a row-n field inside the panel has focus, and proceeds while the filter field outside it has focus", () => {
-    document.body.innerHTML = `<div id="actions"><input data-do="filter"><div id="dorows"><input data-row-n value="5"></div></div>`;
+  it("a redraw leaves untouched nodes alone rather than rebuilding them", () => {
+    document.body.innerHTML = `<div id="dorows"></div>`;
     resetPanels();
-    const rowN = document.querySelector<HTMLInputElement>("[data-row-n]")!;
-    rowN.focus();
-    expect(setPanel("dorows", "<p>a different render</p>")).toBe(false);
-    expect(document.querySelector("[data-row-n]")).not.toBeNull();
+    expect(setPanel("dorows", `<div class="rows"><div class="opt" data-opt="a">first</div><div class="opt" data-opt="b">second</div></div>`)).toBe(true);
+    const box = document.querySelector<HTMLElement>(".rows")!;
+    const a = document.querySelector('[data-opt="a"]')!;
+    const b = document.querySelector('[data-opt="b"]')!;
+    // A row inserted above the others, and one of them reworded.
+    expect(setPanel("dorows", `<div class="rows"><div class="opt" data-opt="c">new</div><div class="opt" data-opt="a">first</div><div class="opt" data-opt="b">changed</div></div>`)).toBe(true);
+    expect(document.querySelector<HTMLElement>(".rows")).toBe(box);
+    expect(document.querySelector('[data-opt="a"]')).toBe(a);
+    expect(document.querySelector('[data-opt="b"]')).toBe(b);
+    expect(b.textContent).toBe("changed");
+    expect([...box.children].map((c) => (c as HTMLElement).dataset.opt)).toEqual(["c", "a", "b"]);
+  });
 
-    const filter = document.querySelector<HTMLInputElement>("[data-do]")!;
-    filter.focus();
-    expect(setPanel("dorows", "<p>a different render</p>")).toBe(true);
+  it("a redraw carries the field being typed in across it: focus, the typed string and the caret", () => {
+    document.body.innerHTML = `<div id="dorows"></div>`;
+    resetPanels();
+    expect(setPanel("dorows", `<div class="row"><input data-row-n value="5"></div>`)).toBe(true);
+    const field = document.querySelector<HTMLInputElement>("[data-row-n]")!;
+    field.focus();
+    // Mid-edit: the field holds a string the state has not got, and the caret sits inside it.
+    field.value = "12";
+    field.setSelectionRange(1, 1);
+    // The panel redraws around it rather than freezing until the field is left.
+    expect(setPanel("dorows", `<div class="row"><input data-row-n value="1"></div><div class="row">more</div>`)).toBe(true);
+    const after = document.querySelector<HTMLInputElement>("[data-row-n]")!;
+    expect(document.body.textContent).toContain("more");
+    // The same field, never taken away, so focus and caret were never lost in the first place.
+    expect(after).toBe(field);
+    expect(document.activeElement).toBe(after);
+    expect(after.value).toBe("12");
+    expect(after.selectionStart).toBe(1);
+  });
+
+  it("a redraw keeps a focused dropdown focused, and leaves where a list was scrolled alone", () => {
+    document.body.innerHTML = `<div id="dorows"></div>`;
+    resetPanels();
+    const rows = `<div class="rows"><select data-act="row-where" data-id="chop"><option value="nearest">nearest</option></select></div>`;
+    expect(setPanel("dorows", rows)).toBe(true);
+    const box = document.querySelector<HTMLElement>(".rows")!;
+    box.scrollTop = 220;
+    const sel = document.querySelector<HTMLSelectElement>("select")!;
+    sel.focus();
+    expect(setPanel("dorows", `${rows}<p>a mastery bar ticked</p>`)).toBe(true);
+    expect(document.body.textContent).toContain("a mastery bar ticked");
+    // The select and the scrolled box are the same nodes as before, so neither had anything to lose.
+    expect(document.querySelector("select")).toBe(sel);
+    expect(document.activeElement).toBe(sel);
+    expect(document.querySelector<HTMLElement>(".rows")).toBe(box);
+    expect(box.scrollTop).toBe(220);
+  });
+
+  it("a redraw that takes the focused control away does not strand focus on a detached node", () => {
+    document.body.innerHTML = `<div id="dorows"></div>`;
+    resetPanels();
+    expect(setPanel("dorows", `<input data-row-n value="5">`)).toBe(true);
+    document.querySelector<HTMLInputElement>("[data-row-n]")!.focus();
+    expect(setPanel("dorows", "<p>the row is gone</p>")).toBe(true);
     expect(document.querySelector("[data-row-n]")).toBeNull();
+    expect(document.body.contains(document.activeElement)).toBe(true);
   });
 });
 

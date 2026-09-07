@@ -24,8 +24,8 @@ import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
 import { disabled } from "./probe";
 import { hasEvent, record } from "./record";
 import {
-  chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
-  masteryKey, masteryLevel, masteryMinutes, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
+  chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance,
+  masteryKey, masteryProgress, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
   skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
 } from "./skills";
 import { sleepMinutes } from "./sleep";
@@ -42,7 +42,7 @@ import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GA
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
-  type SpotId, type StructureId, type TaskId, type ToolId,
+  type SkillId, type SpotId, type StructureId, type TaskId, type ToolId,
 } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
@@ -64,8 +64,8 @@ export interface TaskOption {
   repeatable: boolean;
   /** Share already done and waiting to be resumed, when there is one. */
   resume?: number;
-  /** Mastery of this action, and the share of the way to the next mastery level. */
-  mastery?: { level: number; share: number };
+  /** Mastery of this action, the share of the way to the next level, and the skill and key it is kept under. */
+  mastery?: { level: number; share: number; skill: SkillId; key: string };
   /** The recommended level, whether you are under it, and by how many levels. */
   recommended?: { text: string; under: boolean; short: number };
 }
@@ -967,10 +967,7 @@ export function withProgression(state: GameState, world: World, o: TaskOption): 
   const skill = skillOf(o.id, o.arg);
   const key = skill ? masteryKey(state, world, o.id, o.arg) : null;
   if (!skill || !key) return o;
-  const minutes = state.skills[skill].mastery[key] ?? 0;
-  const m = masteryLevel(minutes);
-  const span = masteryMinutes(m + 1) - masteryMinutes(m);
-  const out: TaskOption = { ...o, mastery: { level: m, share: m >= MASTERY_CAP ? 1 : (minutes - masteryMinutes(m)) / span } };
+  const out: TaskOption = { ...o, mastery: { ...masteryProgress(state, skill, key), skill, key } };
   const rec = RECOMMENDED[key];
   if (!rec) return out;
   const g = gap(state, key);

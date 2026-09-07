@@ -128,24 +128,131 @@ export function newUiState(): UiState {
 const last = new Map<string, string>();
 
 /**
- * Replaces a panel's markup only when it changed, so a button is never
- * swapped out from under the pointer between mousedown and mouseup. Also
- * skipped, without caching the new html, while a typed-in field inside this
- * panel has focus - the row's count, a condition's number, the name box:
- * rewriting the innerHTML there would destroy the focused input
- * mid-keystroke. Left uncached so the write is retried (and the field's
- * value re-synced) as soon as focus moves elsewhere. A select is not
- * guarded: it commits on the change, so a redraw that rebuilds it with the
- * chosen option selected loses nothing but the focus ring.
+ * Panels are written as whole markup strings, and the cheap way to put one on
+ * the screen is to assign it to innerHTML. That throws away every node in the
+ * panel and builds new ones, and with them goes everything the DOM owns and
+ * the game state has never heard of: how far a list is scrolled, which
+ * control has focus and where its caret sits, an open dropdown, the phase of
+ * a running animation. A panel that redraws while someone is using it then
+ * yanks the list back to the top and drops what they were typing into.
+ *
+ * So the markup is not assigned; it is morphed in. The new string is parsed
+ * to a detached tree and the panel is walked against it, changing only what
+ * actually differs: an attribute here, a line of text there, a row inserted
+ * or dropped. A node that is the same before and after is never touched, and
+ * a node that is never touched keeps its scroll, its focus and its caret
+ * because it was never taken away. This is what React and its neighbours do
+ * with a virtual DOM, and the reason to do it here rather than adopt one is
+ * that it costs a page of code and no dependency, and every panel goes on
+ * being authored as the template string it already is.
+ */
+
+/**
+ * What names an element among its siblings, so a row that moved is found
+ * again rather than being rebuilt in place. A Do row's data-opt, a fill's
+ * data-fill and a button's data-act all serve; an element carrying none is
+ * matched by its position, which is what plain text and layout divs want.
+ */
+function keyOf(el: Element): string | null {
+  if (el.id) return `#${el.id}`;
+  const data = Object.entries((el as HTMLElement).dataset ?? {})
+    .map(([k, v]) => `${k}=${v}`)
+    .sort()
+    .join(",");
+  return data ? `${el.tagName}[${data}]` : null;
+}
+
+function sameKind(a: Node, b: Node): boolean {
+  if (a.nodeType !== b.nodeType) return false;
+  return a.nodeType === Node.ELEMENT_NODE ? (a as Element).tagName === (b as Element).tagName : true;
+}
+
+/**
+ * Brings one element's attributes to match another's.
+ *
+ * style is the exception, and deliberately: the width of every bar is
+ * written straight onto the element each frame by bars.ts, and the markup
+ * never mentions it. Clearing a style the markup does not carry would wipe
+ * those every time a panel changed. A style the markup does state still wins.
+ */
+function morphAttrs(from: Element, to: Element): void {
+  for (const attr of [...to.attributes]) {
+    if (from.getAttribute(attr.name) !== attr.value) from.setAttribute(attr.name, attr.value);
+  }
+  for (const attr of [...from.attributes]) {
+    if (attr.name !== "style" && !to.hasAttribute(attr.name)) from.removeAttribute(attr.name);
+  }
+  // A field's value follows the state only while nobody is in it: what is half-typed is the player's.
+  const tag = from.tagName;
+  if ((tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") && from !== document.activeElement) {
+    const want = to.getAttribute("value");
+    const field = from as HTMLInputElement;
+    if (want !== null && field.value !== want) field.value = want;
+  }
+}
+
+/** Walks one element's children against another's, moving, changing and dropping rather than replacing. */
+function morphChildren(from: Element, to: Element | DocumentFragment): void {
+  // Rows that carry a name can be found again wherever they have moved to.
+  const named = new Map<string, Element>();
+  for (const node of [...from.childNodes]) {
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const k = keyOf(node as Element);
+    if (k && !named.has(k)) named.set(k, node as Element);
+  }
+  let at: ChildNode | null = from.firstChild;
+  for (const want of [...to.childNodes]) {
+    const key = want.nodeType === Node.ELEMENT_NODE ? keyOf(want as Element) : null;
+    const bykey = key ? named.get(key) : undefined;
+    let take: ChildNode | null = null;
+    if (bykey && sameKind(bykey, want)) {
+      // Named: reuse it wherever it sat, so a row keeps its identity across an insertion above it.
+      if (bykey !== at) from.insertBefore(bykey, at);
+      take = bykey;
+      named.delete(key as string);
+      at = bykey;
+    } else if (at && sameKind(at, want) && !(at.nodeType === Node.ELEMENT_NODE && keyOf(at as Element))) {
+      take = at;
+    }
+    if (take) {
+      morphNode(take, want);
+      at = take.nextSibling;
+    } else {
+      from.insertBefore(want.cloneNode(true), at);
+    }
+  }
+  while (at) {
+    const next: ChildNode | null = at.nextSibling;
+    at.remove();
+    at = next;
+  }
+}
+
+function morphNode(from: Node, to: Node): void {
+  if (from.nodeType !== Node.ELEMENT_NODE) {
+    if (from.nodeValue !== to.nodeValue) from.nodeValue = to.nodeValue;
+    return;
+  }
+  morphAttrs(from as Element, to as Element);
+  morphChildren(from as Element, to as Element);
+}
+
+/**
+ * Replaces a panel's markup only when it changed, and changes only the parts
+ * of it that actually differ. A button is never swapped out from under the
+ * pointer between mousedown and mouseup, a list keeps its place, and a field
+ * being typed into keeps its text, its focus and its caret - not because any
+ * of that is saved and put back, but because the nodes holding it are left
+ * alone.
  */
 export function setPanel(id: string, html: string, root: ParentNode = document): boolean {
   if (last.get(id) === html) return false;
   const el = root.querySelector<HTMLElement>(`#${id}`);
   if (!el) return false;
-  const focused = document.activeElement;
-  if (focused?.matches("input") && el.contains(focused)) return false;
   last.set(id, html);
-  el.innerHTML = html;
+  const parsed = document.createElement("template");
+  parsed.innerHTML = html;
+  morphChildren(el, parsed.content);
   return true;
 }
 

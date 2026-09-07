@@ -131,8 +131,29 @@ export function skillLevel(state: GameState, skill: SkillId): number {
   return level(state.skills[skill].xp);
 }
 
+/** The share of the way from this skill's level to the next, 1 at the cap. The one source for the line and its bar. */
+export function levelShare(state: GameState, skill: SkillId): number {
+  const xp = state.skills[skill].xp;
+  const l = level(xp);
+  if (l >= SKILL_CAP) return 1;
+  const from = levelMinutes(l);
+  return (xp - from) / (levelMinutes(l + 1) - from);
+}
+
 export function masteryOf(state: GameState, skill: SkillId, key: string): number {
   return masteryLevel(state.skills[skill].mastery[key] ?? 0);
+}
+
+/**
+ * Mastery of one key and the share of the way to the next level. The one
+ * source for both the option a row is built from and the bar the screen
+ * writes each frame, so the two cannot drift apart.
+ */
+export function masteryProgress(state: GameState, skill: SkillId, key: string): { level: number; share: number } {
+  const minutes = state.skills[skill].mastery[key] ?? 0;
+  const m = masteryLevel(minutes);
+  const span = masteryMinutes(m + 1) - masteryMinutes(m);
+  return { level: m, share: m >= MASTERY_CAP ? 1 : (minutes - masteryMinutes(m)) / span };
 }
 
 /** The skill a task trains, or null for walks and waits. */
