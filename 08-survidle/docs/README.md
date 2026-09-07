@@ -78,6 +78,12 @@ waiting, and everything done while you are away run at the one scale.
   clipboard as text; the tombstone and the cemetery keep it. While you are
   here the log says "you"; what happened while the tab was closed is told
   by name.
+- **A fire needs no stone.** The fire site is ground cleared to bare earth,
+  so no camp is ever one where a fire is impossible; what the ground changes
+  is the work. Twenty minutes on a dry meadow, half an hour under spruce
+  where the duff has to be scraped back, an hour on peat, which cannot be
+  scraped at all and takes a platform of green wood instead - and the same
+  platform, another half hour, over deep snow.
 - **An axe is honed, not worn out.** The iron axe blunts with use and a
   whetstone brings the edge back for nothing; only a flaked stone axe
   shatters, and an iron axe is lost only through the ice. A fire needs no

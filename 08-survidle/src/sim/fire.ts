@@ -7,9 +7,9 @@ import { cellAt, type World } from "../world/gen";
 import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
-import { BARK_DRY_RATIO } from "./items";
+import { BARK_DRY_RATIO, STRUCTURES } from "./items";
 import { regionState, touchedRegions } from "./regionstate";
-import type { GameState, Inventory, ItemId, RegionState, Weather } from "./types";
+import type { GameState, Inventory, ItemId, RegionState, Terrain, Weather } from "./types";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
 
@@ -211,4 +211,23 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     dryBudget([state.player.pack], 0.5, dt);
     dryBudget([state.player.pack], 0.5, dt, "freshBark", "driedBark", BARK_DRY_RATIO);
   }
+}
+
+/**
+ * A fire needs no stone: it needs ground that will not carry the fire away
+ * under it. Clearing to mineral soil is the whole of the work, and every
+ * ground allows it - what changes is how long it takes. Deep moss and duff
+ * under spruce has to be scraped back to soil; peat cannot be scraped at all
+ * (a fire in it burns down and sideways out of sight), so the fire goes up on
+ * a platform of green wood instead, which is most of an hour's work. Kochanski
+ * lays that same platform over deep snow.
+ */
+const FIRE_SITE_MINUTES: Partial<Record<Terrain, number>> = { spruce: 30, bog: 60 };
+/** Snow deep enough that the site is a platform on top of it rather than a scrape through it. */
+export const FIRE_SITE_SNOW_CM = 20;
+export const FIRE_SITE_SNOW_MINUTES = 30;
+
+/** The minutes a fire site costs on this ground under this much snow. */
+export function fireSiteMinutes(terrain: Terrain, snowCm: number): number {
+  return (FIRE_SITE_MINUTES[terrain] ?? STRUCTURES.firePit.minutes) + (snowCm >= FIRE_SITE_SNOW_CM ? FIRE_SITE_SNOW_MINUTES : 0);
 }

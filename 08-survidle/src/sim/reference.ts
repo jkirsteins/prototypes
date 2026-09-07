@@ -106,9 +106,10 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * lying at camp. The grind is blocked with "nothing is frozen" the rest of
  * the year, which is what a want at the head of the list has to be. Then
  * the fire-and-roof chain, worked with the arrival axe alone
- * - stone for the ring, sticks, bark and cordage as raw stock (cordage
- * kept to eight, since arrows, snares and the bucket all draw on it), the
- * fire pit, the fire drill, the keep that lights the fire and relights it,
+ * - the fire site first, since it asks for nothing but the ground, then
+ * stone, sticks, bark and cordage as raw stock (cordage kept to eight,
+ * since arrows, snares and the bucket all draw on it), the fire drill,
+ * the keep that lights the fire and relights it,
  * one tree felled, a day's firewood split from it, and the lean-to. Then the
  * knife and the snares, right after the lean-to: a competent day two sets
  * snares before spending hours at anything else (the knife is two stone,
@@ -140,10 +141,10 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * pile takes it up on the way out. The basket trap is the one craft that
  * is not, since it is set and not held. Stone is wanted twice for the
  * same reason and in two kinds. The opening keeps its once job for eight,
- * because it has to be met on day one: the fire pit needs six stones and
- * the knife two, and a keep at level 1 is given as a stand-in that has to
- * be given again, which happens only once camp is under half the target -
- * four stone, where the fire pit alone wants six. The restock is the keep,
+ * because it has to be met on day one: the knife needs two and the
+ * whetstone the edge wants soon after another, and a keep at level 1 is
+ * given as a stand-in that has to be given again, which happens only once
+ * camp is under half the target - four stone. The restock is the keep,
  * far down beside the axe it feeds, where topping up under four is what a
  * restock should do: arrows take three stone per five and a stone axe
  * three, and the once job alone ran out and left every year seed with no
@@ -339,11 +340,15 @@ export const REFERENCE_ORDERS: Want[] = [
   keep("fill", 2, "shore"),
   keep("fill", 2, "hole"),
   keep("melt", 2),
+  // The fire site first: it asks for nothing but the ground, so there is no
+  // reason to spend a morning at the outcrop before there is anywhere to burn
+  // what the morning is for. The stone that follows is the axe's and the
+  // whetstone's, not the fire's.
+  job("build", { kind: "once" }, "firePit"),
   job("stone", { kind: "campHas", qty: 8 }),
   keep("sticks", 10),
   keep("bark", 12),
   keep("craft", 8, "cordage"),
-  job("build", { kind: "once" }, "firePit"),
   keep("craft", 1, "fireDrill"),
   keep("light", 1),
   keep("lightIndoors", 1),
@@ -787,7 +792,7 @@ export class ReferencePlayer {
    * `home` is the region of the old camp for an heir: the first log line
    * gives the bearing, and a competent player walks there before anything
    * else, since the camp orders deliver to is the region's own and the old
-   * one has the fire pit, the stone and the snares the list would otherwise
+   * one has the fire site, the stone and the snares the list would otherwise
    * spend its first days on. The walk is the real travel task, paid in hours,
    * burn and nights on the way, and no order is given until the region is
    * reached. The first survivor has no home and starts on the list at once.

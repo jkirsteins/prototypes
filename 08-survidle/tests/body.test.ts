@@ -87,7 +87,7 @@ describe("the body tier", () => {
     expect(other.state.task?.id).toBe("chop");
   });
 
-  it("makes a fire for the night when the means are at camp: pit from stones, a split log, then light", () => {
+  it("makes a fire for the night when the means are at camp: the site, a split log, then light", () => {
     const { g, state, world, camp } = felling();
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "stone", 6);
@@ -100,7 +100,7 @@ describe("the body tier", () => {
       if (steps.at(-1) !== s) steps.push(s);
       return state.task?.id === "sleep";
     }, 1500);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp to doze", "laying a fire pit", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp to doze", "clearing the fire site", "splitting a log for the fire", "lighting the fire", "dozing by the fire"]));
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 
@@ -439,7 +439,7 @@ describe("the runner in the elements", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
   });
 
-  it("a storm at a cold pit with a drill and dry wood lights the fire before waiting it out", () => {
+  it("a storm at a cold site with a drill and dry wood lights the fire before waiting it out", () => {
     const { g, state, world, camp } = felling();
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "stone", 6);
@@ -452,7 +452,7 @@ describe("the runner in the elements", () => {
       if (steps.at(-1) !== s) steps.push(s);
       return state.intent?.step === "waiting out the storm";
     }, 600);
-    expect(steps).toEqual(expect.arrayContaining(["walking to camp before the storm", "laying a fire pit", "lighting the fire", "waiting out the storm"]));
+    expect(steps).toEqual(expect.arrayContaining(["walking to camp before the storm", "clearing the fire site", "lighting the fire", "waiting out the storm"]));
     expect(regionState(state, world, state.player.region).fire.lit).toBe(true);
   });
 

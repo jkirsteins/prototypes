@@ -11,7 +11,7 @@ import { autoEat, edible, HUNGRY_LINE } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
-import { AXES, axeInHand, hasTool, pile, qty, takeUp, transfer, weight } from "./inventory";
+import { AXES, axeInHand, hasTool, pile, qty, takeUp, toolNear, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
 import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
@@ -343,15 +343,19 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   const p = state.player;
   const st = regionState(state, world, p.region);
   if (st.fire.lit) return null;
+  // Every step below is preparation for a light, so the drill decides whether
+  // any of it is worth the walk home. The fire site is bare ground and can be
+  // cleared anywhere; without a drill, clearing it warms nobody tonight.
+  if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
   if (!st.structures.firePit) {
-    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "laying a fire pit" } : null;
+    return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
   const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
   if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
   if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
-  if (hasTool(p, "fireDrill") && firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {
+  if (firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {
     return { id: "split", step: "splitting a log for the fire" };
   }
   return null;

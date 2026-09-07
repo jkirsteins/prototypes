@@ -41,12 +41,13 @@ export const CAPABILITIES: CapabilityRow[] = [
     alone: "the rungs are how any skill delegates; they receive nothing and give the horizon",
   },
   {
-    id: "fire pit",
+    id: "fire site",
     keys: ["build:firePit"],
     tier: "structure",
-    receives: ["foraging"],
+    receives: [],
     gives: "a fire: warmth, cooking, light, drying",
     limits: "firewood",
+    alone: "cleared ground and nothing else, so that no camp can be one where a fire is impossible",
   },
   {
     id: "lean-to",

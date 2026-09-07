@@ -26,7 +26,7 @@ describe("moving the camp is allowed while nothing stands at it", () => {
     const st = regionState(state, world, state.player.region);
     expect(canMoveCamp(state, world)).toEqual({ ok: true });
     st.structures.firePit = true;
-    expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire pit stands there" });
+    expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire site stands there" });
     st.structures.firePit = false;
     st.fire.fuelKg = 2;
     expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire is banked there" });
@@ -197,7 +197,7 @@ describe("make camp here", () => {
     const cal = calendar(state.minute, state.startDoy);
     st.structures.firePit = true;
     expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")).toEqual(
-      expect.objectContaining({ ok: false, why: "the fire pit stands there" }),
+      expect.objectContaining({ ok: false, why: "the fire site stands there" }),
     );
     st.structures.firePit = false;
     addItem(pile(state, st.campCell), "stick", 30);
