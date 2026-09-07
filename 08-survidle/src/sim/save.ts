@@ -2,6 +2,7 @@ import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
 import { calendar, START_DOY } from "./calendar";
+import { newGoals } from "./goals";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
@@ -58,6 +59,10 @@ function fillDefaults(state: GameState): void {
   state.landing ??= null;
   state.spine ??= { fired: {}, announced: {} };
   state.manualSeen ??= false;
+  // A save from before the ladder starts at its top, standing in the season
+  // it is in, so the load itself credits nothing. Under-crediting beats
+  // inferring a history from state, which is the inference goals exist to avoid.
+  state.goals ??= newGoals(calendar(state.minute, state.startDoy).season);
   state.taught ??= {};
   state.teachQueue ??= [];
   // A save from before the world was the thing saved: its survivor becomes the first of the world, recorded from now.
