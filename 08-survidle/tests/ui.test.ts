@@ -381,7 +381,8 @@ describe("the Do panel", () => {
   it("a lean food past the day's ceiling shows a disabled eat button with its own reason; fat's stays open", () => {
     const g = newGame(21);
     const p = g.state.player;
-    p.leanToday = { day: 1, kcal: LEAN_KCAL_PER_DAY };
+    // Lean kcal lives on the shared gut counter's leanKcal field.
+    p.gut = { day: 1, kg: {}, leanKcal: LEAN_KCAL_PER_DAY };
     addItem(p.pack, "cookedMeat", 1);
     addItem(p.pack, "fat", 1);
     const html = instantHtml(g.state, g.world);

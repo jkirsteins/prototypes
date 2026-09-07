@@ -20,6 +20,8 @@ describe("the manual", () => {
     for (const l of MANUAL_LINKS) expect(html).toContain(l.url);
     expect(html).toContain('data-act="manual-close"');
     expect(html).not.toMatch(/[\u2014\u2013\u2026\u2018\u2019\u201c\u201d]/);
+    const food = MANUAL_SECTIONS.find((s) => s.title === "Food and the seasons")!;
+    expect(food.lines).toContain("Hare alone starves you; you need fat: marrow, oily fish, eggs and roe in their season.");
   });
 
   it("opens once on a world's first landing and never for a heir", () => {

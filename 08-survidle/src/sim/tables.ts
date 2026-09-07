@@ -21,11 +21,23 @@ export interface YieldTable {
 
 const row = (beginner: Band, experienced: Band): Record<Tier, Band> => ({ beginner, experienced });
 
+/**
+ * The hours a day the Swedish handbook budgets for plant work - "count on
+ * about three hours a day to gather and prepare the plants you need" for its
+ * 500 kcal carbohydrate ration. It is the plants row's own number, quoted
+ * beside the band below, and it is a budget for the whole plant band and not
+ * for any one plant: the reference list spends it an hour to each of its
+ * plant rows. An hour is also about the ration on its own at a skilled
+ * forager's root rate, which is the other way to read the same figure.
+ */
+export const PLANT_HOURS_PER_DAY = 3;
+
 /** April, inland boreal forest. "About 0" for large game is a band of nothing. */
 export const APRIL: YieldTable = {
   name: "April",
   rows: {
-    plants: row(band(0, 150), band(100, 400)),
+    // The Swedish handbook budgets three hours a day of plant work for the 500 kcal ration.
+    plants: row(band(0, 400), band(200, 800)),
     fishing: row(band(0, 400), band(300, 1200)),
     passiveFishing: row(band(0, 500), band(800, 2500)),
     traps: row(band(0, 150), band(200, 700)),
@@ -75,6 +87,14 @@ export const SOURCE_ROWS: Record<YieldSource, TableRow[]> = {
   hunt: ["hunting", "largeGame"],
   berries: ["plants"],
   kit: [],
+  // Marrow came off a hunt's bones: the hunting rows.
+  marrow: ["hunting", "largeGame"],
+  roe: ["fishing"],
+  eggs: ["birds"],
+  bark: ["plants"],
+  roots: ["plants"],
+  sap: ["plants"],
+  seaweed: ["plants"],
 };
 
 /** The band a source is measured against in a table: its rows' bands summed, or null when the table has none of them. */
@@ -127,15 +147,10 @@ export function coldBand(dayOfYear: number): Band {
 /** A night's sleep for a working adult. */
 export const SLEEP_HOURS = band(7, 9);
 
-/** Bilberries and lingonberries, and a hand picker at a good patch. The ceiling is the gut's, spec 5.2. */
+/** Bilberries and lingonberries, and a hand picker at a good patch. The gut's own ceiling is items.ts's GUT.berries. */
 export const BERRY = {
   kcalPerKg: band(400, 600),
   pickKgPerHour: band(0.5, 1.5),
-  // The Swedish handbook's not over two litres of berries a day, about 1.2 kg, past which the gut turns.
-  /** Kilos a day eaten at full credit. */
-  fullCreditKg: 1.2,
-  /** Kilos a day past which the body will not eat another. */
-  refuseKg: 2,
 };
 
 export function verdict(value: number, b: Band): "in band" | "under" | "over" {

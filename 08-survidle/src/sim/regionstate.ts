@@ -10,6 +10,7 @@ import { readShore } from "./knowledge";
 import { body, hasQuirk } from "./person";
 import { watersideCell } from "./position";
 import { record } from "./record";
+import { seedSeasonalStocks } from "./stocks";
 import type { GameState, RegionState, Species } from "./types";
 
 /** Starting numbers: seven tenths of what the land can hold. */
@@ -41,6 +42,9 @@ export function newRegionState(world: World, id: number): RegionState {
     nextOrderId: 1,
     iceHole: null,
     trap: null,
+    nests: 0,
+    rootCells: {},
+    sapTaps: { day: 0, n: 0 },
   };
 }
 
@@ -52,9 +56,16 @@ export function newRegionState(world: World, id: number): RegionState {
  */
 export function fillPopulations(state: GameState, world: World): void {
   for (const [key, st] of Object.entries(state.regions)) {
-    const start = startingPop(world, Number(key));
+    const id = Number(key);
+    const start = startingPop(world, id);
     for (const k of Object.keys(st.pop)) if (!(k in start)) delete st.pop[k as Species];
     for (const s of Object.keys(start) as Species[]) st.pop[s] ??= start[s];
+    // A save from before the seasonal stocks carries -1 for its nests (save.ts marks it there,
+    // having no world to seed with). This is the first place after a load that has one, so a
+    // region that never knew about nests is seeded here as though every roll up to today had
+    // run - otherwise it reads "the nests are empty" until 1 May, everywhere, on a game that
+    // only ever did the right thing.
+    if (st.nests < 0) seedSeasonalStocks(state, world, st, id);
   }
 }
 
@@ -63,6 +74,11 @@ export function regionState(state: GameState, world: World, id: number): RegionS
   if (!st) {
     st = newRegionState(world, id);
     state.regions[id] = st;
+    // The one place a region's state is first created (newRegionState has no other
+    // caller): seed it as though every roll up to today had already run, so a
+    // region first touched mid-season reads no differently from one dailyCamp has
+    // been rolling since the season opened.
+    seedSeasonalStocks(state, world, st, id);
   }
   return st;
 }

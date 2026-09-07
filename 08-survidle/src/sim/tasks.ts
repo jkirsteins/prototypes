@@ -5,20 +5,23 @@ import { cellAt, hasSpot, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute, passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
-import type { Calendar } from "./calendar";
+import { dayNumber, type Calendar } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
-  removeItem, takeUp, toolNear, totalQty, transfer, wearTool, weight,
+  removeItem, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
 } from "./inventory";
 import {
-  BERRY_PICK_KG, CLOTHING, DECAYING, FOODS, ITEM_KG, ITEM_NAMES, MAX_RACKS, MAX_SNARES, MEND, RECIPES, RECIPE_IDS, SNOW_SHELTER_CM, STRUCTURES,
-  STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
+  BARK_DRY_RATIO, BARK_FLOUR_MINUTES_PER_KG, BARK_FRESH_KG_PER_HOUR, BARK_FROM_DOY, BARK_TO_DOY, BARK_TREE_SHARE,
+  BERRY_PICK_KG, BERRY_WINTER_SHARE, CLOTHING, DECAYING, EGG_CLUTCH_KG, EGG_FROM_DOY, EGG_KG_PER_HOUR, EGG_TO_DOY, FOODS, ITEM_KG, ITEM_NAMES, KCAL_FULL, MARROW_KG_PER_BONE, MAX_RACKS, MAX_SNARES, MEND,
+  RECIPES, RECIPE_IDS, ROE_SHARE, ROOT_FROM_DOY, ROOT_KG_PER_HOUR, ROOT_TO_DOY, ROOT_WINTER_KG_PER_HOUR, SAP_FROM_DOY, SAP_KCAL, SAP_LITRES, SAP_TAPS_PER_DAY, SAP_TO_DOY,
+  SEAWEED_KG_PER_HOUR, SNOW_SHELTER_CM, STRUCTURES, STRUCTURE_IDS, TOOLS, TORCH_BURN_MINUTES,
 } from "./items";
-import { creditYield } from "./ledger";
+import { creditEaten, creditYield } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed, die, walkSpeed, workSpeed } from "./player";
+import { disabled } from "./probe";
 import { hasEvent, record } from "./record";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance, MASTERY_CAP,
@@ -34,7 +37,8 @@ import { lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from 
 import { isRead, readLine, readShore } from "./knowledge";
 import { discovery, regionState } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
-import { fishSpecies, huntedLand, isFish, type Species, SPECIES_DEFS, waterOf } from "./species";
+import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
+import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GAME, marrowFactor, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
@@ -69,7 +73,7 @@ export interface TaskOption {
 export const SPOT_NAMES = SPOT_WORDS;
 
 /** Work that stays where it was left: the half-felled tree is in that cell of forest. */
-const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read"]);
+const LOCATED = new Set<TaskId>(["chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook", "iceHole", "read", "eggs", "innerBark", "roots", "tapSap", "seaweed"]);
 /** Work you carry in your hands wherever you go. */
 const CARRIED = new Set<TaskId>(["craft", "repair", "sharpen", "hone", "light", "lightIndoors", "lightTorch"]);
 
@@ -86,11 +90,11 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
   return key ? (state.paused[key]?.fraction ?? 0) : 0;
 }
 
-/** Tasks whose pace depends on the body; the rest are walks and waits. */
-const WORK_TASKS = new Set<TaskId>([
+/** Tasks whose pace depends on the body; the rest are walks and waits. Exported so a test can hold availableTasks to covering every one of them. */
+export const WORK_TASKS = new Set<TaskId>([
   "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
-  "setTrap", "emptyTrap", "makeCamp",
+  "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
 ]);
 
 /** The tool a task swings, or null. What check looks for in reach and beginTask takes up. */
@@ -106,6 +110,8 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
     case "fill": return "barkBucket";
     case "iceHole": return "axe";
     case "mend": return null;
+    case "innerBark": return "knife";
+    case "tapSap": return "knife";
     default: return null;
   }
 }
@@ -113,6 +119,21 @@ export function toolFor(id: TaskId, arg?: string): ToolId | null {
 /** Berries ripen mid-July and are gone by mid-October. */
 export function berrySeason(cal: Calendar): boolean {
   return cal.dayOfYear >= BERRY_FROM_DOY && cal.dayOfYear <= BERRY_TO_DOY;
+}
+
+/** November to April, month 0-indexed: the window the frozen lingon under the snow are worth digging for. */
+function winterBerries(cal: Calendar): boolean {
+  return cal.month >= 10 || cal.month <= 3;
+}
+
+/** Inner bark strips full rate off young spring branches; the rest of the year, half. */
+export function barkSeason(cal: Calendar): boolean {
+  return cal.dayOfYear >= BARK_FROM_DOY && cal.dayOfYear <= BARK_TO_DOY;
+}
+
+/** Whether a cell yields seaweed right now: a sea shore, with the water open. Shared by the seaweed task's check and the unexploited line so the two cannot drift apart. */
+export function seaweedAvailable(state: GameState, world: World, cell: number): boolean {
+  return watersideCell(world, cell, "sea") && state.weather.iceCm < ICE_SHORE_CM;
 }
 
 function needsList(needs: { item: string; qty: number; alt?: string }[]): string {
@@ -405,9 +426,60 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     case "stone":
       return ground(rockCell(world, at), "outcrop", "rock", opt({ group: "gather", label: "Gather stone", detail: `${Math.round(3 * yieldFactor(state, "foraging"))} stone`, duration: 30, repeatable: true }));
     case "berries": {
-      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label: "Pick berries", detail: `${(BERRY_PICK_KG * yieldFactor(state, "foraging")).toFixed(1)} kg berries, mid-July to mid-October`, duration: 60, repeatable: true }));
+      const winter = winterBerries(cal);
+      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging") * (winter ? BERRY_WINTER_SHARE : 1);
+      const label = winter ? "Pick frozen lingon under the snow" : "Pick berries";
+      const detail = winter ? `${kg.toFixed(2)} kg berries, dug from under the snow` : `${kg.toFixed(1)} kg berries, mid-July to mid-October`;
+      const o = ground(heathCell(world, at), "heath", "heath", opt({ group: "gather", label, detail, duration: 60, repeatable: true }));
       if (!o.ok) return o;
+      if (winter) {
+        if (state.weather.snowCm >= DEEP_SNOW_CM) return { ...o, ok: false, why: "under too much snow" };
+        return o;
+      }
       if (!berrySeason(cal)) return { ...o, ok: false, why: "nothing ripe yet" };
+      return o;
+    }
+    case "innerBark": {
+      const o = opt({ group: "gather", label: "Strip inner bark", detail: `${BARK_FRESH_KG_PER_HOUR} kg an hour on pine, half outside spring; dries three to one, grinds to flour`, duration: 60, repeatable: true });
+      if (terrain !== "pine") return { ...o, ok: false, why: "stand in pine forest" };
+      if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
+      if (st.wood < 1) return { ...o, ok: false, why: "the pines are stripped" };
+      if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
+      return o;
+    }
+    case "roots": {
+      const ground = watersideCell(world, at) || terrain === "bog" || terrain === "meadow";
+      const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
+      const full = rootCellFullKg(world, at);
+      const left = rootCellKg(st, world, at);
+      const factor = rootDigFactor(left, full);
+      const rate = Number(((winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR) * factor).toFixed(3));
+      const dug = `${rate} kg an hour with a digging stick; cattail and reed at the water, dandelion on the meadow; cook them`;
+      // A patch thins before it goes: the row says which it is, so the next dig is aimed at ground that still has a stand on it.
+      const detail = factor < 1 ? `dug over here, the next patch is better; ${dug}` : dug;
+      const o = opt({ group: "gather", label: "Dig roots", detail, duration: 60, repeatable: true });
+      if (!ground) return { ...o, ok: false, why: "stand by the water, on the bog or on the meadow" };
+      if (winter && !(watersideCell(world, at) && iceHoleOpen(state, at))) return { ...o, ok: false, why: "the ground is frozen; an ice hole reaches the rhizomes" };
+      if (totalQty(invs, "stick") < 1) return { ...o, ok: false, why: "needs a stick to dig with" };
+      if (left <= TRACE_KG) return { ...o, ok: false, why: "the ground is dug out" };
+      if (disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
+      return o;
+    }
+    case "tapSap": {
+      const o = opt({ group: "gather", label: "Tap a birch", detail: `${SAP_LITRES} litres of sap drunk on the spot, ${SAP_KCAL} kcal; early May until the leaves open`, duration: 30, repeatable: true });
+      if (terrain !== "birch") return { ...o, ok: false, why: "stand among birches" };
+      if (cal.dayOfYear < SAP_FROM_DOY || cal.dayOfYear > SAP_TO_DOY) return { ...o, ok: false, why: cal.dayOfYear < SAP_FROM_DOY ? "the sap has not risen" : "the sap has stopped" };
+      if (!kitInReach(state, world, "knife", toolInvs) && !hasTool(p, "knife")) return { ...o, ok: false, why: "needs a knife" };
+      if (st.sapTaps.day === dayNumber(state.minute) && st.sapTaps.n >= SAP_TAPS_PER_DAY) return { ...o, ok: false, why: "the birches have given today's sap" };
+      if (disabled("sap")) return { ...o, ok: false, why: "disabled for the probe" };
+      return o;
+    }
+    case "seaweed": {
+      const o = opt({ group: "gather", label: "Gather seaweed", detail: `${SEAWEED_KG_PER_HOUR} kg an hour off the rocks; two kilos a day is all a body takes`, duration: 60, repeatable: true });
+      if (!seaweedAvailable(state, world, at)) {
+        return { ...o, ok: false, why: !watersideCell(world, at, "sea") ? "stand on the sea shore" : "the shore is iced over" };
+      }
+      if (disabled("seaweed")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
     case "split": {
@@ -433,7 +505,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${rackCapacity(st)} kg on the racks, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
       if (!o.ok) return o;
       if (!st.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
-      if (raw <= 1e-9) return { ...o, ok: false, why: "no raw meat here" };
+      if (raw <= TRACE_KG) return { ...o, ok: false, why: "no raw meat here" };
       if (room <= 1e-9) return { ...o, ok: false, why: "the rack is full" };
       return o;
     }
@@ -547,12 +619,42 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "cook": {
-      const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
+      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "oilyFish" | "rawFat" | "roots";
       const kg = Math.min(1, totalQty(invs, food));
-      const o = needCamp(opt({ group: "camp", label: `Cook ${ITEM_NAMES[food]}`, detail: "1 kg at a time over the fire", duration: Math.max(1, 10 * kg), repeatable: true }));
+      const label = food === "rawFat" ? "Render fat" : `Cook ${ITEM_NAMES[food]}`;
+      const detail = food === "rawFat" ? "1 kg at a time; raw fat rots in three warm days, rendered it keeps" : "1 kg at a time over the fire";
+      const o = needCamp(opt({ group: "camp", label, detail, duration: Math.max(1, 10 * kg), repeatable: true }));
       if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (kg <= 0) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
+      if (kg <= TRACE_KG) return { ...o, ok: false, why: `no ${ITEM_NAMES[food]} here` };
+      if (food === "roots" && disabled("roots")) return { ...o, ok: false, why: "disabled for the probe" };
+      return o;
+    }
+    case "crack": {
+      const o = needCamp(opt({ group: "camp", label: "Crack bones for marrow", detail: `${MARROW_KG_PER_BONE * 1000} g of marrow a bone at a fat animal, less in spring; the fragments still make a needle`, duration: 20, repeatable: true }));
+      if (!o.ok) return o;
+      if (totalQty(invs, "bone") < 1) return { ...o, ok: false, why: "no bones here" };
+      if (totalQty(toolInvs, "stone") < 1 && !axeInHand(p)) return { ...o, ok: false, why: "needs a stone or the axe" };
+      if (disabled("marrow")) return { ...o, ok: false, why: "disabled for the probe" };
+      return o;
+    }
+    case "eggs": {
+      const shore = watersideCell(world, at);
+      const heath = heathCell(world, at);
+      const o = opt({ group: "gather", label: "Gather eggs", detail: `${EGG_KG_PER_HOUR} kg an hour from the nests; May and June, and the nests empty`, duration: 60, repeatable: true });
+      if (!(shore || heath)) return { ...o, ok: false, why: "stand by the water or on the heath" };
+      if (cal.dayOfYear < EGG_FROM_DOY || cal.dayOfYear > EGG_TO_DOY) return { ...o, ok: false, why: "no eggs until May" };
+      if (st.nests <= 1e-9) return { ...o, ok: false, why: "the nests are empty" };
+      if (disabled("eggs")) return { ...o, ok: false, why: "disabled for the probe" };
+      return o;
+    }
+    case "grindBark": {
+      const kg = Math.min(1, totalQty(invs, "driedBark"));
+      const o = needCamp(opt({ group: "camp", label: "Grind bark flour", detail: "20 minutes a kilo with a stone", duration: Math.max(1, Math.round(BARK_FLOUR_MINUTES_PER_KG * kg)), repeatable: true }));
+      if (!o.ok) return o;
+      if (kg <= TRACE_KG) return { ...o, ok: false, why: "no dried bark here" };
+      if (totalQty(toolInvs, "stone") < 1) return { ...o, ok: false, why: "needs a stone" };
+      if (disabled("bark")) return { ...o, ok: false, why: "disabled for the probe" };
       return o;
     }
     case "craft": {
@@ -700,7 +802,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false });
       if (here === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
       const kg = weight(pile(state, at));
-      if (kg <= 0) return { ...o, ok: false, why: "nothing on the ground here" };
+      if (kg <= TRACE_KG) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
       const route = findRoute(world, here, campCell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "no way to camp on foot" };
@@ -821,7 +923,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   const out: TaskOption[] = [];
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
-  for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries"] as TaskId[]) out.push(check(state, world, cal, id));
+  for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries", "eggs", "innerBark", "roots", "tapSap", "seaweed"] as TaskId[]) out.push(check(state, world, cal, id));
   out.push(check(state, world, cal, "hunt", "any"));
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
   out.push(check(state, world, cal, "fish", "any"));
@@ -831,6 +933,11 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   out.push(check(state, world, cal, "emptyTrap"));
   out.push(check(state, world, cal, "cook", "rawMeat"));
   out.push(check(state, world, cal, "cook", "fish"));
+  out.push(check(state, world, cal, "cook", "oilyFish"));
+  out.push(check(state, world, cal, "cook", "rawFat"));
+  out.push(check(state, world, cal, "cook", "roots"));
+  out.push(check(state, world, cal, "crack"));
+  out.push(check(state, world, cal, "grindBark"));
   out.push(check(state, world, cal, "light"));
   out.push(check(state, world, cal, "lightIndoors"));
   out.push(check(state, world, cal, "lightTorch"));
@@ -1206,6 +1313,20 @@ function cutIceHole(state: GameState, world: World): void {
   log(state, "{You} {cut} a hole in the ice.");
 }
 
+/** Bones do not remember their animal: the crack reads this year's most-killed large game, and the ungulate curve when there is none. */
+function marrowAnimal(state: GameState): Species {
+  let best: Species = "deer";
+  let bestKills = 0;
+  for (const s of [...LARGE_GAME, "bear" as Species]) {
+    const kills = state.stats.kills[s] ?? 0;
+    if (kills > bestKills) {
+      best = s;
+      bestKills = kills;
+    }
+  }
+  return best;
+}
+
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
@@ -1242,9 +1363,48 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "berries": {
-      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging");
+      const kg = BERRY_PICK_KG * yieldFactor(state, "foraging") * (winterBerries(cal) ? BERRY_WINTER_SHARE : 1);
       produce(state, world, "berries", kg);
       creditYield(state, "berries", kg * FOODS.berries.kcalPerKg);
+      return;
+    }
+    case "innerBark": {
+      const kg = BARK_FRESH_KG_PER_HOUR * yieldFactor(state, "foraging") * (barkSeason(cal) ? 1 : 0.5);
+      st.wood -= kg * BARK_TREE_SHARE;
+      produce(state, world, "freshBark", kg);
+      creditYield(state, "bark", (kg / BARK_DRY_RATIO) * FOODS.barkFlour.kcalPerKg);
+      log(state, `{You} {strip} the pines: ${(kg * 1000).toFixed(0)} g of inner bark.`, "good");
+      return;
+    }
+    case "roots": {
+      const at = cellOf(state, world);
+      const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
+      const left = rootCellKg(st, world, at);
+      const rate = (winter ? ROOT_WINTER_KG_PER_HOUR : ROOT_KG_PER_HOUR) * rootDigFactor(left, rootCellFullKg(world, at));
+      const take = Math.min(rate * yieldFactor(state, "foraging"), left);
+      setRootCellKg(st, world, at, left - take);
+      // Under Foraging 3 half of what comes up is not worth keeping.
+      const kept = gap(state, "roots") > 0 ? take / 2 : take;
+      if (kept < take) log(state, "{You} {dig} up as much that is not food as is.", "bad");
+      produce(state, world, "roots", kept);
+      creditYield(state, "roots", kept * FOODS.cookedRoots.kcalPerKg);
+      return;
+    }
+    case "tapSap": {
+      const day = dayNumber(state.minute);
+      st.sapTaps = st.sapTaps.day === day ? { day, n: st.sapTaps.n + 1 } : { day, n: 1 };
+      p.water = WATER_FULL;
+      p.kcal = Math.min(KCAL_FULL, p.kcal + SAP_KCAL);
+      creditEaten(state, SAP_KCAL, 0);
+      creditYield(state, "sap", SAP_KCAL);
+      log(state, "{You} {drink} the sap as it runs.", "good");
+      return;
+    }
+    case "seaweed": {
+      const kg = SEAWEED_KG_PER_HOUR * yieldFactor(state, "foraging");
+      produce(state, world, "seaweed", kg);
+      creditYield(state, "seaweed", kg * FOODS.seaweed.kcalPerKg);
+      log(state, `{You} {gather} seaweed off the rocks: ${(kg * 1000).toFixed(0)} g.`, "good");
       return;
     }
     case "split": {
@@ -1284,8 +1444,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         const where = produce(state, world, "rawMeat", x.meatKg);
         if (x.hideKg) produce(state, world, "hide", x.hideKg);
         if (x.furKg) produce(state, world, "fur", x.furKg);
-        if (x.fatKg) produce(state, world, "fat", x.fatKg);
-        creditYield(state, "hunt", x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg);
+        if (x.fatKg) produce(state, world, "rawFat", x.fatKg);
+        // Raw meat plus raw fat, the kill's own kcal: one figure fed to the hunting row and, for
+        // large game and bear, to the stats the year report reads against the seasonal fat band.
+        const kcal = x.meatKg * FOODS.rawMeat.kcalPerKg + (x.fatKg ?? 0) * FOODS.fat.kcalPerKg;
+        creditYield(state, "hunt", kcal);
+        if (LARGE_GAME.includes(s) || s === "bear") state.stats.killsKcal += kcal;
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
         log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than {you} can carry; it lies where it fell" : ""}.`, "good");
@@ -1327,10 +1491,16 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         state.stats.animals++;
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const kg = fishKg(state, s) * yieldFactor(state, "fishing");
-        produce(state, world, "fish", kg);
+        const item = fishItem(s);
+        produce(state, world, item, kg);
         // Raw fish is not eaten; the yield is what it cooks to.
-        creditYield(state, "fish", kg * FOODS.cookedFish.kcalPerKg);
-        log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
+        creditYield(state, "fish", kg * FOODS[item === "fish" ? "cookedFish" : "cookedOilyFish"].kcalPerKg);
+        if (inSpawn(s, cal.month) && !disabled("roe")) {
+          const roe = Math.round(kg * ROE_SHARE * 100) / 100;
+          produce(state, world, "roe", roe);
+          creditYield(state, "roe", roe * FOODS.roe.kcalPerKg);
+          log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg, and ${Math.round(roe * 1000)} g of roe.`, "good");
+        } else log(state, `${anAnimal(s, true)}, ${kg.toFixed(1)} kg.`, "good");
       } else log(state, "Nothing bites.");
       return;
     }
@@ -1343,7 +1513,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     case "setTrap": {
       const here = cellOf(state, world);
       consume(invs, [{ item: "basketTrap", qty: 1 }]);
-      st.trap = { cell: here, kg: 0, fish: [...state.player.known[here].fish], age: 0 };
+      st.trap = { cell: here, kg: 0, oilyKg: 0, fish: [...state.player.known[here].fish], age: 0 };
       log(state, `The trap is set at ${whereIs(state, world, here)}.`);
       state.stats.structures++;
       return;
@@ -1354,10 +1524,35 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       return;
     }
     case "cook": {
-      const food = (arg ?? "rawMeat") as "rawMeat" | "fish";
+      const food = (arg ?? "rawMeat") as "rawMeat" | "fish" | "oilyFish" | "rawFat" | "roots";
       const kg = Math.min(1, totalQty(invs, food));
       consume(invs, [{ item: food, qty: kg }]);
-      produce(state, world, food === "rawMeat" ? "cookedMeat" : "cookedFish", kg);
+      const out = food === "rawMeat" ? "cookedMeat" : food === "fish" ? "cookedFish" : food === "oilyFish" ? "cookedOilyFish" : food === "roots" ? "cookedRoots" : "fat";
+      produce(state, world, out, kg);
+      return;
+    }
+    case "crack": {
+      consume(invs, [{ item: "bone", qty: 1 }]);
+      const kg = Math.round(MARROW_KG_PER_BONE * marrowFactor(fatSeason(marrowAnimal(state), cal.month)) * 1000) / 1000;
+      produce(state, world, "fat", kg);
+      produce(state, world, "crackedBone", 1);
+      creditYield(state, "marrow", kg * FOODS.fat.kcalPerKg);
+      log(state, `{You} {crack} a bone: ${Math.round(kg * 1000)} g of marrow.`, "good");
+      return;
+    }
+    case "eggs": {
+      const kg = Math.min(EGG_KG_PER_HOUR * yieldFactor(state, "foraging"), st.nests * EGG_CLUTCH_KG);
+      st.nests -= kg / EGG_CLUTCH_KG;
+      produce(state, world, "eggs", kg);
+      creditYield(state, "eggs", kg * FOODS.eggs.kcalPerKg);
+      log(state, `{You} {gather} the nests: ${(kg * 1000).toFixed(0)} g of eggs.`, "good");
+      return;
+    }
+    case "grindBark": {
+      const kg = Math.min(1, totalQty(invs, "driedBark"));
+      consume(invs, [{ item: "driedBark", qty: kg }]);
+      produce(state, world, "barkFlour", kg);
+      log(state, `{You} {grind} the bark: ${(kg * 1000).toFixed(0)} g of flour.`, "good");
       return;
     }
     case "craft": {
@@ -1538,15 +1733,24 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
   }
 }
 
-/** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken. */
+/** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken (fish and oily fish together). */
 function takeTrapFish(state: GameState, world: World): number {
   const st = regionState(state, world, state.player.region);
   const kg = st.trap?.kg ?? 0;
   if (!st.trap || kg <= 1e-9) return 0;
+  const oilyKg = st.trap.oilyKg;
+  const leanKg = kg - oilyKg;
   st.trap.kg = 0;
+  st.trap.oilyKg = 0;
   st.trap.age = 0;
-  produce(state, world, "fish", kg);
-  creditYield(state, "trap", kg * FOODS.cookedFish.kcalPerKg);
+  if (leanKg > 1e-9) {
+    produce(state, world, "fish", leanKg);
+    creditYield(state, "trap", leanKg * FOODS.cookedFish.kcalPerKg);
+  }
+  if (oilyKg > 1e-9) {
+    produce(state, world, "oilyFish", oilyKg);
+    creditYield(state, "trap", oilyKg * FOODS.cookedOilyFish.kcalPerKg);
+  }
   state.stats.animals++;
   return kg;
 }

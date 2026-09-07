@@ -12,8 +12,14 @@
  * expert large-game band, spec 1.4) and, on its December, January and
  * February month lines, a deep-cold verdict beside the burn (spec 1.1) -
  * both diagnostics, gating nothing.
+ *
+ * --without=<source> (fat and carbohydrate design, section 7) shuts one
+ * source of the without probe for the run: marrow, oilyFish, roe, eggs,
+ * roots, bark, sap or seaweed, comma-separated for more than one. No
+ * source's removal should take the year gate from its reading to 0 of 4.
  */
 import { calendar, fmtDate, monthName } from "../src/sim/calendar";
+import { DISABLED, PROBE_SOURCES, type ProbeSource } from "../src/sim/probe";
 import { REFERENCE_SEEDS, weekLines } from "../src/sim/reference";
 import { APRIL, BURN, verdict } from "../src/sim/tables";
 import { runWinter, runYear, type YearReport } from "../src/sim/year";
@@ -32,13 +38,22 @@ if (startDoy !== undefined && !(Number.isInteger(startDoy) && startDoy >= 0 && s
   console.error("--start takes a day of year, 0 to 364: 90 is 1 April, 334 is 1 December");
   process.exit(2);
 }
+const withoutSources: ProbeSource[] = flag("without") ? (flag("without")!.split(",") as ProbeSource[]) : [];
+for (const s of withoutSources) {
+  if (!PROBE_SOURCES.includes(s)) {
+    console.error(`--without takes one of: ${PROBE_SOURCES.join(", ")}`);
+    process.exit(2);
+  }
+  DISABLED.add(s);
+}
 const seeds = rawArgs.filter((a) => !a.startsWith("--")).map(Number).filter((n) => Number.isFinite(n));
 const runSeeds = seeds.length ? seeds : REFERENCE_SEEDS;
 
 function print(r: YearReport): void {
   const from = fmtDate(calendar(0, r.startDoy));
   const who = r.stocked ? `stocked winter camp (${r.stocked.driedMeatKg} kg dried meat, ${r.stocked.fatKg} kg fat, ${r.stocked.firewoodKg} kg firewood, ${r.stocked.logs} logs)` : r.kitted ? `kitted camp, skills ${r.level}` : "fresh survivor, arrival kit";
-  console.log(`seed ${r.seed} (${who}, from ${from}):`);
+  const without = withoutSources.length ? `, without ${withoutSources.join(", ")}` : "";
+  console.log(`seed ${r.seed} (${who}, from ${from}${without}):`);
   for (const m of r.months) {
     const food = Object.entries(m.stock.foodByKind).map(([k, v]) => `${k} ${v}`).join(", ") || "none";
     // December, January and February (deep-cold spec 1.1): the winter month lines carry the verdict, gating nothing.
@@ -50,6 +65,7 @@ function print(r: YearReport): void {
   console.log(`  kills: ${Object.entries(r.kills).map(([s, n]) => `${s} ${n}`).join(", ") || "none"}; large game ${Math.round(r.killsKcal / daysRun)} kcal a day (${verdict(r.killsKcal / daysRun, APRIL.rows.largeGame!.experienced)})`);
   for (const line of weekLines(r.lastWeek, r.lastDayOfYear)) console.log(`    ${line}`);
   console.log(`  ${r.outcome.kind === "died" ? `died day ${r.outcome.day}, ${r.outcome.cause}` : `alive at day ${r.outcome.day}`}`);
+  if (r.unexploited) console.log(`  ${r.unexploited}`);
 }
 
 let passed = 0;

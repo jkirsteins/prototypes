@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
 import { fillPopulations } from "../src/sim/regionstate";
+import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { AWAY_HOURS_MAX } from "../src/units";
+import type { GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 
 class MemStorage implements Storage {
@@ -82,7 +85,7 @@ describe("save", () => {
     // structure that says one stands, and a trap's age from the day it was set.
     st.structures.dryingRack = true;
     st.racks = 1;
-    st.trap = { cell: st.campCell, kg: 0, fish: [], age: 0 };
+    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
     delete raw.state.player.autoDrink;
@@ -293,5 +296,34 @@ describe("the version 6 save", () => {
       expect(st.trap).toBeNull();
     }
     expect(file.state.ledger[0].yield.trap).toBe(0);
+  });
+
+  it("a save carrying a region's roots as one number loads with every cell at full, and one from before the seasonal stocks gets its nests", () => {
+    // A region's kilos say nothing about which cells they were dug from, so the number is dropped
+    // and the ground reads full: what one survivor took out of nine hectares is inside the season's
+    // regrowth anyway. The nests have no such ground to fall back on, so fillDefaults marks them
+    // unset with -1 and fillPopulations - which walks the same regions with the world in hand -
+    // seeds them; without it every region read "the nests are empty" on a game that did nothing wrong.
+    const { state, world } = newGame(17, 160);
+    const id = state.player.region;
+    const raw = JSON.parse(serialize(state)) as { version: number; state: GameState };
+    raw.version = 6;
+    for (const st of Object.values(raw.state.regions)) {
+      delete (st as { rootCells?: Record<number, number> }).rootCells;
+      (st as { roots?: number }).roots = 12;
+      delete (st as { nests?: number }).nests;
+    }
+    const file = deserialize(JSON.stringify(raw))!;
+    const st = file.state.regions[id]!;
+    expect(st.rootCells).toEqual({});
+    expect((st as { roots?: number }).roots).toBeUndefined();
+    expect(rootKgLeft(st, world, id)).toBeCloseTo(rootStockFor(world, id), 6);
+    expect(st.nests).toBe(-1);
+    fillPopulations(file.state, world);
+    expect(st.nests).toBeGreaterThan(0);
+    // A heath really gathered out reads no clutches and is left alone.
+    st.nests = 0;
+    fillPopulations(file.state, world);
+    expect(st.nests).toBe(0);
   });
 });

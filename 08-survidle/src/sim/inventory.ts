@@ -13,6 +13,18 @@ export function emptyInventory(): Inventory {
   return { items: {}, stacks: {} };
 }
 
+/**
+ * Below this a quantity is a floating-point residue rather than stock:
+ * `consume` stops at it and takes nothing, `removeItem` drops the stack and
+ * `listItems` does not name it. So anything that reads a pile to decide
+ * whether work is possible must compare against this and not against zero.
+ * A task that reads a residue as stock is legal, consumes nothing and is
+ * offered again the moment it finishes: a level-20 camp with 2e-13 kg of
+ * roots left cooked them a minute at a time for six hours a day and starved
+ * on day 82 with the whole list below the cook waiting.
+ */
+export const TRACE_KG = 1e-9;
+
 function isPerishable(item: ItemId): item is PerishableId {
   return (PERISHABLES as string[]).includes(item);
 }

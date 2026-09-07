@@ -57,14 +57,13 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     frostbite: { feet: 0, hands: 0 },
     toes: false,
     fingers: false,
-    berriesToday: { day: 1, kg: 0 },
-    leanToday: { day: 1, kcal: 0 },
+    gut: { day: 1, kg: {}, leanKcal: 0 },
     known: {},
   };
   state.task = null;
   state.log = [];
   state.dead = null;
-  state.stats = { trees: 0, animals: 0, structures: 0, km: 0, kills: {} };
+  state.stats = { trees: 0, animals: 0, structures: 0, km: 0, kills: {}, killsKcal: 0 };
   state.skills = newSkills();
   state.paused = {};
   state.route = null;

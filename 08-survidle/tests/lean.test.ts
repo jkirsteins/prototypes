@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { autoEat, eat, edible } from "../src/sim/actions";
 import { addItem } from "../src/sim/inventory";
-import { FOODS, LEAN_KCAL_PER_DAY, LEAN_FOODS } from "../src/sim/items";
+import { leanEatenToday } from "../src/sim/gut";
+import { FOODS, LEAN_KCAL_PER_DAY } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { leanEatenToday } from "../src/sim/lean";
 
 describe("the lean ceiling", () => {
   it("meat and fish are lean, fat and berries are not, and the numbers are the handbooks'", () => {
-    expect([...LEAN_FOODS].sort()).toEqual(["cookedFish", "cookedMeat", "driedMeat", "rawMeat"]);
+    expect(FOODS.cookedMeat.leanShare).toBe(1);
+    expect(FOODS.fat.leanShare).toBe(0);
     expect(LEAN_KCAL_PER_DAY).toBe(1600);
     expect(FOODS.rawMeat.kcalPerKg).toBe(1100);
     expect(FOODS.cookedMeat.kcalPerKg).toBe(1100);
@@ -46,7 +47,8 @@ describe("the lean ceiling", () => {
     const { state, world } = newGame(17);
     const p = state.player;
     p.kcal = 100;
-    p.leanToday = { day: 1, kcal: LEAN_KCAL_PER_DAY - 100 };
+    // Lean kcal lives on the shared gut counter's leanKcal field.
+    p.gut = { day: 1, kg: {}, leanKcal: LEAN_KCAL_PER_DAY - 100 };
     addItem(p.pack, "cookedMeat", 1);
     const before = p.kcal;
     eat(state, world, "cookedMeat", new Rng(1));

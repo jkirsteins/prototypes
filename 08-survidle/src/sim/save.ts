@@ -69,6 +69,7 @@ function fillDefaults(state: GameState): void {
   state.player.known ??= {};
   state.seeps ??= {};
   state.stats.kills ??= {};
+  state.stats.killsKcal ??= 0;
   for (const st of Object.values(state.regions)) {
     st.structureAge ??= {};
     st.racks ??= st.structures.dryingRack ? 1 : 0;
@@ -76,8 +77,32 @@ function fillDefaults(state: GameState): void {
     st.structures.waterStore ??= false;
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
+    if (st.trap) st.trap.oilyKg ??= 0;
+    // A save older than the seasonal stocks knows no nests. Zero is a real reading - a heath
+    // whose clutches are gathered out - so it cannot stand for "never knew", and this function
+    // has no world to seed a real stock with. -1 says "unset" and fillPopulations, which walks
+    // the same regions with the world in hand, seeds it.
+    st.nests ??= -1;
+    // A region's roots were one number for the whole region once, which says nothing about
+    // which cells they came out of. It is dropped and the ground reads full: what one survivor
+    // took out of nine hectares a cell is inside a season's regrowth anyway.
+    delete (st as unknown as Record<string, unknown>).roots;
+    st.rootCells ??= {};
+    st.sapTaps ??= { day: 0, n: 0 };
   }
-  for (const d of state.ledger) d.yield.trap ??= 0;
+  for (const d of state.ledger) {
+    d.yield.trap ??= 0;
+    d.yield.marrow ??= 0;
+    d.yield.roe ??= 0;
+    d.yield.eggs ??= 0;
+    d.yield.roots ??= 0;
+    d.yield.bark ??= 0;
+    d.yield.sap ??= 0;
+    d.yield.seaweed ??= 0;
+    d.leanKcal ??= 0;
+    d.nonLeanKcal ??= 0;
+    d.leanAtCamp ??= false;
+  }
   if (state.intent) {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;
@@ -129,8 +154,9 @@ function fillDefaults(state: GameState): void {
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
   p.fingers ??= false;
-  p.berriesToday ??= { day: 0, kg: 0 };
-  p.leanToday ??= { day: 0, kcal: 0 };
+  p.gut ??= { day: 0, kg: {}, leanKcal: 0 };
+  delete (p as { berriesToday?: unknown }).berriesToday;
+  delete (p as { leanToday?: unknown }).leanToday;
   // A save from before the two processes has one number for both: read its
   // fatigue as the debt's mirror, which is where a rested body sits, and no
   // night under way. The clock rules that number carried are gone and so are

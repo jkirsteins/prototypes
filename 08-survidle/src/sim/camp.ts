@@ -4,21 +4,26 @@ import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, weight } from "./inventory";
+import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
 import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
-  BOUGH_BED_DAYS, DECAYING, FIRE_LOW_KG, FIRE_MAX_KG, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
+import { noteLarder } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
-import { SPECIES_DEFS } from "./species";
+import { fishItem, SPECIES_DEFS } from "./species";
+import { growRoots, nestsFor, rootStockFor } from "./stocks";
 import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean, walkableIce } from "./weather";
+
+/** Re-exported so every caller that wants the figure (tests included) reaches it through camp.ts, beside dailyCamp's own use of it. */
+export { rootStockFor };
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
@@ -155,11 +160,18 @@ const FALLS: Record<DecayingId, (name: string) => string> = {
   turfHut: (n) => `The roof of the hut at ${n} has come down.`,
 };
 
+/** Lean food: fully lean meat and fish (FOODS.leanShare 1), the kind the ceiling caps outright. */
+const LEAN_FOOD_IDS = (Object.keys(FOODS) as FoodId[]).filter((f) => FOODS[f].leanShare === 1);
+
 /** Once a day at 04:00: snares catch, catches rot, forest regrows. */
 export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rng, who: Presence | null): void {
   for (const id of touchedRegions(state)) {
     const r = regionAt(world, id);
     const st = state.regions[id];
+    if (who && id === who.region) {
+      const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty([state.player.pack, pile(state, st.campCell)], f) > 1e-9);
+      noteLarder(state, leanAtCamp);
+    }
     if (st.snareCatch.count > 0) {
       st.snareCatch.age += 1440;
       if (st.snareCatch.age > SNARE_CATCH_MAX_AGE) {
@@ -182,6 +194,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       if (st.trap.age > SNARE_CATCH_MAX_AGE) {
         log(state, `The fish in the trap at ${r.name} have rotted.`, "bad");
         st.trap.kg = 0;
+        st.trap.oilyKg = 0;
         st.trap.age = 0;
       }
     }
@@ -199,7 +212,11 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
           const d = regionDensity(state, world, id, s, cal);
           if (!rng.chance(d * SPECIES_DEFS[s].hunt!.odds * TRAP_ODDS * factor)) continue;
           st.pop[s] = Math.max(0, popOf(st, s) - 1);
-          st.trap.kg = Math.min(TRAP_HOLD_KG, st.trap.kg + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
+          const before = st.trap.kg;
+          st.trap.kg = Math.min(TRAP_HOLD_KG, before + (SPECIES_DEFS[s].yields?.meatKg ?? 0) * kgFactor);
+          // The class through fishItem, the same call the spear's catch makes, so the without
+          // probe shuts the oily side in one place rather than leaking it into the trap.
+          if (fishItem(s) === "oilyFish") st.trap.oilyKg += st.trap.kg - before;
         }
       }
     }
@@ -234,6 +251,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       st.iceHole = null;
       if (who && id === who.region) log(state, "The ice hole has skinned over.");
     }
+    if (cal.dayOfYear === EGG_FROM_DOY) st.nests = nestsFor(world, st, id);
+    if (cal.dayOfYear === EGG_TO_DOY + 1) st.nests = 0;
+    growRoots(st, world, cal.dayOfYear);
     const forestCells = r.forest * r.cells.length;
     st.wood = Math.min(r.wood0, st.wood + (0.5 * forestCells) / 365);
   }

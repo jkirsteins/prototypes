@@ -1,4 +1,4 @@
-import { edible, itemLabel } from "../sim/actions";
+import { edible, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
@@ -458,7 +458,7 @@ export function instantHtml(state: GameState, world: World): string {
       if (have <= 1e-9) return "";
       const def = FOODS[f];
       const refused = !edible(state, f);
-      const reason = f === "berries" ? "not another berry today" : "not more lean meat today";
+      const reason = refusalReason(state, f);
       return `<button class="mini" data-act="eat" data-food="${f}" ${refused ? "disabled" : ""}>eat ${itemLabel(f, Math.min(def.portionKg, have))} <small>${refused ? reason : `+${Math.round(def.kcalPerKg * Math.min(def.portionKg, have))} kcal${def.sickChance ? ", risky" : ""}`}</small></button>`;
     })
     .join(" ");

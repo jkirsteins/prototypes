@@ -21,7 +21,7 @@ import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 /** Tasks done at camp, by the fire and under the roof. */
 const CAMP_TASKS = new Set<TaskId>([
   "rest", "night", "wait", // a waiting body burns at the camp rate too, the same as rest and night
-  "sleep", "craft", "cook", "split", "splitWedges", "repair", "build", "mend", "light", "lightTorch", "sharpen", "hone", "melt", "thaw", "lightIndoors", "hang",
+  "sleep", "craft", "cook", "split", "splitWedges", "repair", "build", "mend", "light", "lightTorch", "sharpen", "hone", "melt", "thaw", "lightIndoors", "hang", "crack", "grindBark",
 ]);
 
 /** Awake hours that are not work: the ledger counts everything else on a task as a working minute. */
@@ -33,8 +33,8 @@ export function activityOf(task: Task | null): Activity {
   if (!task) return "rest";
   switch (task.id) {
     case "sleep": return "sleep";
-    case "rest": case "night": case "wait": case "craft": case "cook": case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": return "rest";
-    case "sticks": case "bark": case "stone": case "berries": case "deadwood": case "hunt": case "fish": case "fill": case "hang": case "read": case "setTrap": case "emptyTrap": case "makeCamp": return "light";
+    case "rest": case "night": case "wait": case "craft": case "cook": case "repair": case "sharpen": case "hone": case "light": case "lightTorch": case "melt": case "thaw": case "lightIndoors": case "crack": case "grindBark": return "rest";
+    case "sticks": case "bark": case "stone": case "berries": case "eggs": case "innerBark": case "roots": case "tapSap": case "seaweed": case "deadwood": case "hunt": case "fish": case "fill": case "hang": case "read": case "setTrap": case "emptyTrap": case "makeCamp": return "light";
     case "travel": case "walk": case "haul": return "walk";
     case "chop": case "split": case "splitWedges": case "build": case "mend": case "iceHole": return "heavy";
   }

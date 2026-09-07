@@ -173,4 +173,12 @@ export const CAPABILITIES: CapabilityRow[] = [
     gives: "a winter roof from nothing but the snow: -3 C inside whatever the night, the bough bed under you",
     limits: "40 cm of snow, no fire inside, three warm days and it is gone",
   },
+  {
+    id: "roots and rhizomes",
+    keys: ["rec:roots"],
+    tier: { skill: "foraging", level: 3 },
+    receives: ["fishing"],
+    gives: "starch from the shore and the bog: cattail, reed and dandelion root, cooked",
+    limits: "a stick, the cooking, and a stock that is dug out by autumn and not back until spring",
+  },
 ];

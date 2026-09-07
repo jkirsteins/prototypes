@@ -5,20 +5,21 @@
  * the tasks do, exactly as when a player clicks them one by one.
  */
 import type { Rng } from "../rng";
-import { regionAt, spotOf, type World } from "../world/gen";
+import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { findRoute } from "../world/route";
 import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
-import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, transfer, weight } from "./inventory";
+import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
-import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, STRUCTURES } from "./items";
+import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
 import { log } from "./log";
 import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
 import { regionState } from "./regionstate";
 import { nearestSeep, seepGround } from "./seep";
+import { rootCellFullKg, rootCellKg } from "./stocks";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { isRunning, type Step, takeStep, walkStep } from "./steps";
@@ -31,7 +32,7 @@ import type {
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend", "crack", "grindBark"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
@@ -72,12 +73,18 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
     case "bark": return "bark";
     case "stone": return "stone";
     case "berries": return "berries";
+    case "eggs": return "eggs";
+    case "innerBark": return "freshBark";
+    case "grindBark": return "barkFlour";
+    case "roots": return "roots";
+    case "tapSap": return null;
+    case "seaweed": return "seaweed";
     case "split": return "firewood";
     case "splitWedges": return "firewood";
     case "deadwood": return "firewood";
     case "hunt": return "rawMeat";
     case "fish": return "fish";
-    case "cook": return arg === "fish" ? "cookedFish" : "cookedMeat";
+    case "cook": return arg === "fish" ? "cookedFish" : arg === "oilyFish" ? "cookedOilyFish" : arg === "rawFat" ? "fat" : arg === "roots" ? "cookedRoots" : "cookedMeat";
     case "craft": return RECIPES[arg as RecipeId].out.item ?? null;
     case "fill": return "water";
     case "melt": return "water";
@@ -91,11 +98,14 @@ export function yieldItem(task: TaskId, arg?: string): ItemId | null {
 export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   if (task === "haul") return "all";
   if (task === "chop") return ["log", "stick"];
-  if (task === "hunt") return ["rawMeat", "hide", "fur", "fat", "bone", "sinew"];
+  if (task === "hunt") return ["rawMeat", "hide", "fur", "rawFat", "bone", "sinew"];
   // A fill's or a melt's litres never sit in the pack as an item; packCarries reads the vessels instead.
   if (task === "fill" || task === "melt") return ["water"];
   // Hang moves raw meat onto the rack; nothing lands in the pack for a delivery to carry.
   if (task === "hang") return [];
+  // A catch can be either fish class, and a spawning one brings roe too.
+  if (task === "fish") return ["fish", "oilyFish", "roe"];
+  if (task === "emptyTrap") return ["fish", "oilyFish"];
   const one = yieldItem(task, arg);
   return one ? [one] : [];
 }
@@ -144,6 +154,18 @@ function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where
   return forest ? { cell: forest.cell, note: note("forest") } : { cell: here, note: "" };
 }
 
+/**
+ * The nearest cell of this region matching `pred`, by straight line then a
+ * route check, `here` when none does.
+ */
+export function nearestCell(state: GameState, world: World, pred: (cell: number) => boolean): number {
+  const here = cellOf(state, world);
+  const r = regionAt(world, state.player.region);
+  const cells = r.cells.filter(pred).sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
+  for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return c;
+  return here;
+}
+
 /** Where the work is done, decided once. The note says when the chosen spot did not suit. */
 export function resolveCell(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): { cell: number; note: string } {
   const here = cellOf(state, world);
@@ -156,12 +178,8 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   const st = regionState(state, world, state.player.region);
   if (HERE.has(task)) return { cell: here, note: "" };
   if (task === "build" && arg === "seep") {
-    // The nearest wet cell with no seep on it, by straight line then a route check.
-    const cells = r.cells
-      .filter((c) => seepGround(world, c) !== null && !state.seeps[c])
-      .sort((a, b) => straightKm(world, here, a) - straightKm(world, here, b));
-    for (const c of cells.slice(0, 8)) if (findRoute(world, here, c, "none", fearsFell(state))) return { cell: c, note: "" };
-    return { cell: here, note: "" };
+    // The nearest wet cell with no seep on it.
+    return { cell: nearestCell(state, world, (c) => seepGround(world, c) !== null && !state.seeps[c]), note: "" };
   }
   if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell, note: "" };
   if (task === "craft") {
@@ -180,6 +198,28 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   if (task === "setTrap") {
     const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);
     if (cells.length) return { cell: cells[0], note: "" };
+  }
+  if (task === "eggs") {
+    const spot = (r.capacity.mallard || r.capacity.eider ? spotOf(r, "shore") : null) ?? spotOf(r, "heath");
+    return { cell: spot ? spot.cell : here, note: "" };
+  }
+  if (task === "innerBark") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "pine"), note: "" };
+  if (task === "tapSap") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "birch"), note: "" };
+  if (task === "seaweed") return { cell: nearestCell(state, world, (c) => watersideCell(world, c, "sea")), note: "" };
+  if (task === "roots") {
+    // Outside the digging season the bog and the meadow are frozen solid and only the water
+    // reaches the rhizomes, through a hole cut in the ice. So a winter dig goes to the open
+    // hole and not to the nearest root ground: sent to the bog it was refused with "the
+    // ground is frozen" every winter day, and the winter row on the list never once ran.
+    const winter = cal.dayOfYear < ROOT_FROM_DOY || cal.dayOfYear > ROOT_TO_DOY;
+    if (winter && st.iceHole && watersideCell(world, st.iceHole.cell)) return { cell: st.iceHole.cell, note: "" };
+    // A patch worth digging first: a cell dug below the poor line gives up its roots slower,
+    // and the ground next to it has not been touched. Failing that, whatever is left anywhere.
+    const worth = (c: number) => rootCellKg(st, world, c) >= rootCellFullKg(world, c) * ROOT_POOR_SHARE;
+    const anyLeft = (c: number) => rootCellKg(st, world, c) > TRACE_KG;
+    const root = (c: number) => rootCellFullKg(world, c) > 0;
+    const good = (c: number) => root(c) && worth(c);
+    return { cell: nearestCell(state, world, r.cells.some(good) ? good : (c) => root(c) && anyLeft(c)), note: "" };
   }
   const ground = groundOf(task, arg);
   if (!ground) return { cell: here, note: "" };
@@ -350,14 +390,26 @@ function loadFull(state: GameState, it: Intent): boolean {
   return weight(state.player.pack) + weight(pile(state, it.cell)) >= body(state).packHardKg - 1e-9;
 }
 
-function dropEverything(state: GameState, world: World): void {
+/**
+ * Everything off the back onto the pile here, except the kit this order
+ * carries out with it. Returns whether anything actually moved: a hunt with
+ * a bow keeps its arrows, so a pack holding only those is a pack that
+ * cannot be emptied, and a caller that treated the unload as a step taken
+ * would take it again the next minute and forever. A level-20 camp on seed
+ * 19 did exactly that - fourteen hours a day standing at its own fire
+ * "unloading at camp" with ten arrows in the pack - and starved on day 42
+ * with an elk down and 5,645 kcal a day gathered.
+ */
+function dropEverything(state: GameState, world: World): boolean {
   const from = state.player.pack;
   const here = cellOf(state, world);
   const to = pile(state, here);
   const keep = new Set(orderKit(state));
-  for (const { item, qty: q } of listItems(from)) if (!keep.has(item)) transfer(from, to, item, q);
+  let moved = false;
+  for (const { item, qty: q } of listItems(from)) if (!keep.has(item)) moved = transfer(from, to, item, q) > 1e-9 || moved;
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
-  if (state.intent?.campCell === here) pourVessels(state.player, to, regionState(state, world, state.player.region));
+  if (state.intent?.campCell === here) moved = pourVessels(state.player, to, regionState(state, world, state.player.region)) > 1e-9 || moved;
+  return moved;
 }
 
 type Outcome = "again" | undefined;
@@ -401,11 +453,14 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
     }
   }
   // At camp, whatever is on the back comes off, yield or not - it is not going back out.
+  // A pack holding nothing but this order's own kit comes off as nothing, and that is not a
+  // step taken: fall through to the walk rather than claim one and stand here forever.
   if (packCarries(state, world, it) || (here === it.campCell && !isEmpty(pack))) {
     if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with the load");
-    dropEverything(state, world);
-    it.step = "unloading at camp";
-    return "again";
+    if (dropEverything(state, world)) {
+      it.step = "unloading at camp";
+      return "again";
+    }
   }
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, " for the rest");
   // At the pile with nothing loaded and nothing that counts: what is on your back is in the way. Take it to camp.
@@ -505,6 +560,12 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   bark: () => "stripping bark",
   stone: () => "gathering stone",
   berries: () => "picking berries",
+  eggs: () => "gathering eggs",
+  innerBark: () => "stripping inner bark",
+  grindBark: () => "grinding bark flour",
+  roots: () => "digging roots",
+  tapSap: () => "tapping a birch",
+  seaweed: () => "gathering seaweed",
   split: () => "splitting a log",
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",
@@ -525,6 +586,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   iceHole: () => "cutting an ice hole",
   hang: () => "hanging meat to dry",
   makeCamp: () => "making camp",
+  crack: () => "cracking bones",
 };
 
 /**
@@ -551,8 +613,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   // back (it favours the pack over the ground when there is room) goes onto the
   // camp pile at once, so campHas can see it and nothing is ever carried back out.
   // Idempotent: once the pack holds none of the yield this does not fire again.
-  if (it.deliver === "camp" && here === it.campCell && packCarries(state, world, it)) {
-    dropEverything(state, world);
+  if (it.deliver === "camp" && here === it.campCell && packCarries(state, world, it) && dropEverything(state, world)) {
     it.step = "unloading at camp";
     return "again";
   }

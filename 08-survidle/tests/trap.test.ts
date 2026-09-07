@@ -14,6 +14,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { check, startTask } from "../src/sim/tasks";
 import { ICE_SHORE_CM } from "../src/sim/water";
+import { regionAt } from "../src/world/gen";
 
 const cal = calendar(0);
 type G = ReturnType<typeof newGame>;
@@ -97,6 +98,26 @@ describe("the basket trap", () => {
     expect(trapFactor(0)).toBe(1);
     expect(trapFactor(20)).toBeCloseTo(4 / 3, 9);
     expect(trapFactor(50)).toBeCloseTo(5 / 3, 9);
+  });
+
+  it("a trap whose shore holds char draws oily kilos, and the take produces oily fish", () => {
+    const g = readyToSet(200);
+    setTrap(g);
+    // Force the draw onto a single oily species regardless of what this shore actually read.
+    g.st.trap!.fish = ["char"];
+    regionAt(g.world, g.state.player.region).capacity.char = 100000;
+    g.st.pop.char = 100000;
+    advance(g.state, g.world, 10 * 1440);
+    expect(g.st.trap!.kg).toBeGreaterThan(0);
+    expect(g.st.trap!.oilyKg).toBeCloseTo(g.st.trap!.kg, 6);
+    placeAt(g.state, g.world, g.cell);
+    expect(startTask(g.state, g.world, cal, "emptyTrap")).toBe(true);
+    let n = 0;
+    while (g.state.task && n < 200) { advance(g.state, g.world, 5); n++; }
+    expect(g.st.trap!.kg).toBe(0);
+    expect(g.st.trap!.oilyKg).toBe(0);
+    expect(qty(g.state.player.pack, "oilyFish")).toBeGreaterThan(0);
+    expect(qty(g.state.player.pack, "fish")).toBe(0);
   });
 
   it("keeps drawing with nobody home, at the base rate", () => {
