@@ -81,7 +81,7 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     region: regionHtml(state, world, cal, ui),
     task: taskHtml(state, world, cal),
     forecast: forecastHtml(emptyView(), state),
-    dorows: doHtml(state, world, cal, ui, {}),
+    dorows: doHtml(state, world, cal, ui),
     inventory: inventoryHtml(state, world, cal),
     journal: journalHtml(state, cal, ui),
     log: logHtml(state),

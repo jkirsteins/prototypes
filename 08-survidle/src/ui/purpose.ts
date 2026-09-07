@@ -128,6 +128,11 @@ const HOME: Record<string, [SubtabId, string]> = {
 };
 
 function home(id: TaskId, arg?: string): [SubtabId, string] | null {
+  // Mending a thing serves whatever the thing serves: a lean-to is shelter
+  // mended or new, a drying rack is food either way. So a mend row takes the
+  // home its structure has rather than needing a second table that could
+  // drift from the first.
+  if (id === "mend" && arg) return HOME[`build:${arg}`] ?? null;
   return HOME[rowKey(id, arg)] ?? HOME[id] ?? null;
 }
 

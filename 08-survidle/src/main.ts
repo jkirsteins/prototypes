@@ -35,7 +35,7 @@ import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
-import { doHtml, loadFolds, saveFold } from "./ui/dopanel";
+import { doHtml, doPurposesHtml } from "./ui/dopanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
@@ -110,7 +110,6 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.away = null;
   ui.hurry = newHurry();
   ui.confirmAbandon = false;
-  ui.folds = loadFolds(localStorage);
   ui.panes = loadPanes(localStorage);
   resetPanels();
   resetForecastAt();
@@ -119,7 +118,6 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
 }
 
 function boot() {
-  ui.folds = loadFolds(localStorage);
   ui.panes = loadPanes(localStorage);
   const saved = forcedSeed || startDoy !== undefined ? null : loadGame();
   if (saved) {
@@ -177,7 +175,8 @@ function render() {
     const el = document.getElementById(`pane-${id}`);
     if (el) el.hidden = id !== ui.panes.pane;
   }
-  setPanel("doitems", doHtml(state, world, cal, ui, ui.folds));
+  setPanel("dopurposes", doPurposesHtml(state, world, ui));
+  setPanel("doitems", doHtml(state, world, cal, ui));
   setPanel("inventory", inventoryHtml(state, world, cal));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
@@ -452,19 +451,6 @@ function onClick(ev: Event) {
     case "row-deliver":
       ui.choice.deliver = ui.choice.deliver === "camp" ? "leave" : "camp";
       break;
-    case "fold": {
-      const group = target.dataset.group ?? "";
-      const open = !(ui.folds[group] ?? true);
-      ui.folds[group] = open;
-      saveFold(localStorage, group, open);
-      break;
-    }
-    case "more": {
-      const group = target.dataset.group ?? "";
-      if (ui.moreOpen.includes(group)) ui.moreOpen = ui.moreOpen.filter((g) => g !== group);
-      else ui.moreOpen.push(group);
-      break;
-    }
     case "hurry":
       hurryClick(ui.hurry, hurryKind(state), state.intent?.orderId ?? null);
       break;

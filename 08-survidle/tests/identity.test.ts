@@ -35,7 +35,7 @@ describe("a redraw takes nothing away", () => {
   });
 
   function draw(ui: ReturnType<typeof newUiState>) {
-    setPanel("doitems", doHtml(state, world, cal, ui, ui.folds));
+    setPanel("doitems", doHtml(state, world, cal, ui));
   }
 
   it("the item pane is the same node across every redraw", () => {

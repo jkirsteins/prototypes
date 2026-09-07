@@ -18,9 +18,10 @@ import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
 import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
-import { doHtml, intentGroups } from "../src/ui/dopanel";
+import { doHtml } from "../src/ui/dopanel";
 import { clockHtml, forecastHtml, instantHtml, inventoryHtml, regionHtml, rosterHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
+import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
@@ -28,15 +29,18 @@ import { findRoute } from "../src/world/route";
 
 /**
  * Everything the player can reach, from the panels they actually have: the Do
- * list with every group's far rows opened, the HERE panel that holds the walks,
- * and the Pack panel that holds the haul. There is no second list behind a
- * toggle any more, so reachability is measured against these three or it is not
- * measured at all.
+ * list, the HERE panel that holds the walks, and the Pack panel that holds the
+ * haul. There is no second list behind a toggle, so reachability is measured
+ * against these three or it is not measured at all.
+ *
+ * The Do list shows one subtab and one purpose at a time, so all of it means
+ * all of them. Nothing is hidden behind a "more" any more: a pane holds a
+ * handful of rows and shows every one, saying why where it cannot be started.
  */
 function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnType<typeof newGame>["world"]) {
   const cal = calendar(state.minute);
-  const ui = { ...newUiState(), moreOpen: intentGroups(regionAt(world, state.player.region)).map((g) => g.label) };
-  return [doHtml(state, world, cal, ui), regionHtml(state, world, cal, ui), inventoryHtml(state, world, cal)].join("\n");
+  const ui = newUiState();
+  return [allPanesHtml(state, world, cal), regionHtml(state, world, cal, ui), inventoryHtml(state, world, cal)].join("\n");
 }
 
 describe("reachability: everything in the catalogue has a button", () => {
@@ -581,11 +585,11 @@ describe("the Do panel", () => {
   state.skills.woodcraft.xp = levelMinutes(5);
 
   it("has the instant buttons and one row per intent, judged at the work's place", () => {
-    // Most of the catalogue sits two or more levels above a fresh survivor's
-    // skill, which is exactly what "more" is for: open it on every group that
-    // carries far rows so this test can still see the whole roster.
-    const ui = { ...newUiState(), moreOpen: ["Hunt", "Make", "Build"] };
-    const html = doHtml(state, world, cal, ui);
+    // The roster is spread across the panes now, so the whole of it is the
+    // whole of them. Nothing is hidden behind a "more" any more: a pane holds
+    // a handful of rows, and what a survivor cannot do yet still shows and
+    // says why.
+    const html = allPanesHtml(state, world, cal);
     expect(html).toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
@@ -617,15 +621,15 @@ describe("the Do panel", () => {
   });
 
   it("the Hunt group also offers reading the shore and setting and emptying the trap", () => {
-    // Seed 21's start region has a shore (tests/start.test.ts covers this generally); the rows
-    // render as buttons whether or not they are greyed with a reason. Fishing 5 sits three
-    // levels past this survivor, so the trap pair is far: open "more" to see it.
-    const ui = { ...newUiState(), moreOpen: ["Hunt"] };
-    const html = doHtml(state, world, cal, ui);
-    const huntGroup = html.slice(html.indexOf('data-group="Hunt"'), html.indexOf('data-group="Camp"'));
-    expect(huntGroup).toContain("Read the water");
-    expect(huntGroup).toContain("Set the trap");
-    expect(huntGroup).toContain("Empty the trap");
+    // Seed 21's start region has a shore (tests/start.test.ts covers this
+    // generally); the rows render as buttons whether or not they are greyed
+    // with a reason. Reading the water is scouting; the trap is its own
+    // purpose, since setting one and emptying it are different jobs.
+    expect(paneHtml(state, world, cal, "read")).toContain("Read the water");
+    const traps = paneHtml(state, world, cal, "setTrap");
+    expect(traps).toContain("Set the trap");
+    expect(paneHtml(state, world, cal, "emptyTrap")).toContain("Empty the trap");
+    expect(traps).not.toContain("Read the water");
   });
 
   it("there is one Do list and no second one behind a toggle", () => {
@@ -657,7 +661,7 @@ describe("the Do panel", () => {
     addItem(pile(g.state, camp), "stick", 8);
     addItem(pile(g.state, camp), "cordage", 2);
     addItem(pile(g.state, forest), "log", 4);
-    const html = doHtml(g.state, g.world, calendar(g.state.minute), newUiState());
+    const html = paneHtml(g.state, g.world, calendar(g.state.minute), "build", "leanTo");
     expect(html).toContain('data-act="intent" data-id="build" data-arg="leanTo"');
   });
 
@@ -667,7 +671,7 @@ describe("the Do panel", () => {
     const r = regionAt(g.world, g.state.player.region);
     const forest = spotOf(r, "forest")!.cell;
     addItem(pile(g.state, forest), "log", 4);
-    const html = doHtml(g.state, g.world, calendar(g.state.minute), newUiState());
+    const html = paneHtml(g.state, g.world, calendar(g.state.minute), "build", "leanTo");
     expect(html).toContain('class="opt off" data-opt="intent:build:leanTo"');
   });
 
@@ -722,13 +726,14 @@ describe("the Orders panel", () => {
     // Woodcraft 10 opens the keep rung, so split's row is blocked by "no logs here", not the ladder gate.
     state.skills.woodcraft.xp = levelMinutes(10);
     const cal = calendar(0);
-    let html = doHtml(state, world, cal, newUiState());
+    let html = paneHtml(state, world, cal, "split");
     // Split needs logs this camp has none of: dim, with the reason, and still clickable.
     expect(html).toMatch(/class="opt off" data-opt="intent:split:"><button class="act" data-act="intent" data-id="split"/);
     expect(html).toContain("no logs here");
-    const ui = newUiState();
-    ui.open = { id: "split", arg: "" };
-    ui.choice = { ...defaultChoice(), until: "keep", n: 40 };
+    const ui = paneFor("split", undefined, {
+      open: { id: "split", arg: "" },
+      choice: { ...defaultChoice(), until: "keep", n: 40 },
+    });
     html = doHtml(state, world, cal, ui);
     expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep camp at 40 kg firewood");
   });
@@ -841,10 +846,8 @@ describe("the Do panel and the ladder", () => {
   it("opening a row's kinds does not hide any other row's data-opt", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute);
-    const closed = doHtml(state, world, cal, newUiState());
-    const ui = newUiState();
-    ui.open = { id: "split", arg: "" };
-    const opened = doHtml(state, world, cal, ui);
+    const closed = paneHtml(state, world, cal, "split");
+    const opened = paneHtml(state, world, cal, "split", undefined, { open: { id: "split", arg: "" } });
     const opts = (h: string) => [...h.matchAll(/data-opt="intent:[^"]*"/g)].map((m) => m[0]).sort();
     expect(opts(opened)).toEqual(opts(closed));
   });
@@ -865,9 +868,7 @@ describe("the kind per row", () => {
   it("the open row renders the six kinds, greys the unearned ones with the rung they need, and other rows render no expansion", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = newUiState();
-    ui.open = { id: "fish", arg: "any" };
-    const html = doHtml(state, world, cal, ui);
+    const html = paneHtml(state, world, cal, "fish", "any", { open: { id: "fish", arg: "any" } });
     const open = html.slice(html.indexOf('data-opt="intent:fish:any"'));
     expect(open).toContain('data-act="row-kind"');
     for (const k of ["once", "times", "daily", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
@@ -876,14 +877,14 @@ describe("the kind per row", () => {
     expect(open).toContain("keeps at Fishing 10, you are 1");
     expect(open).toContain('data-row-n');
     expect(open).toContain('data-act="row-deliver"');
-    const closed = html.slice(html.indexOf('data-opt="intent:sticks:"'), html.indexOf('data-opt="intent:sticks:"') + 600);
+    // A row nobody opened, in its own pane: no expansion, but a way in.
+    const sticks = paneHtml(state, world, cal, "sticks");
+    const closed = sticks.slice(sticks.indexOf('data-opt="intent:sticks:"'), sticks.indexOf('data-opt="intent:sticks:"') + 600);
     expect(closed).not.toContain('data-act="row-kind"');
     expect(closed).toContain('data-act="row-more"');
     // rest is a NOT_ORDERS task: rowRequest always collapses its choice to a once job, so it gets
     // no more button and no expansion at all, even when ui.open somehow names it.
-    const restUi = newUiState();
-    restUi.open = { id: "rest", arg: "" };
-    const restHtml = doHtml(state, world, cal, restUi);
+    const restHtml = paneHtml(state, world, cal, "rest", undefined, { open: { id: "rest", arg: "" } });
     const restRow = restHtml.slice(restHtml.indexOf('data-opt="intent:rest:"'), restHtml.indexOf('data-opt="intent:rest:"') + 400);
     expect(restRow).not.toContain('data-act="row-kind"');
     expect(restRow).not.toContain('data-act="row-more"');
@@ -892,9 +893,7 @@ describe("the kind per row", () => {
   it("the where-select follows the real ground rule, not the display group: fill is grouped camp but grounded to the shore", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = newUiState();
-    ui.open = { id: "fill", arg: "shore" };
-    const html = doHtml(state, world, cal, ui);
+    const html = paneHtml(state, world, cal, "fill", "shore", { open: { id: "fill", arg: "shore" } });
     const open = html.slice(html.indexOf('data-opt="intent:fill:shore"'));
     expect(open).toContain('data-act="row-where"');
   });

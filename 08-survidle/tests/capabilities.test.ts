@@ -5,9 +5,9 @@ import { RECIPES, STRUCTURE_IDS, STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { RECOMMENDED, RUNG_LEVEL } from "../src/sim/skills";
-import { doHtml } from "../src/ui/dopanel";
 import { regionHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
+import { allPanesHtml } from "./pane";
 
 const keys = new Set(CAPABILITIES.flatMap((r) => r.keys));
 
@@ -116,7 +116,7 @@ describe("what a capability tells the panel", () => {
   it("promises a producer on its Do row, built or not", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const html = doHtml(state, world, cal, newUiState());
+    const html = allPanesHtml(state, world, cal);
     expect(html).toContain("the first food a camp makes without you");
   });
 });

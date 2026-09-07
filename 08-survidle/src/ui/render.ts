@@ -40,10 +40,6 @@ export interface UiState {
   choice: RowChoice;
   /** The Do panel's filter box: narrows rows to those whose label contains it, case-insensitive. */
   filter: string;
-  /** Do groups whose far rows ("more (N)") have been opened this render lifetime. */
-  moreOpen: string[];
-  /** The Do panel's fold state, held here and written through on toggle so a frame never has to re-read storage. */
-  folds: Record<string, boolean>;
   /** The hurry: how fast the work chosen by hand is running right now. Never saved. */
   hurry: HurryState;
 }
@@ -125,7 +121,7 @@ export function newUiState(): UiState {
   return {
     panes: defaultPanes(), selected: null, away: null, confirmAbandon: false,
     cemetery: false, manual: false, teach: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
-    open: null, choice: defaultChoice(), filter: "", moreOpen: [], folds: {},
+    open: null, choice: defaultChoice(), filter: "",
     hurry: newHurry(),
   };
 }

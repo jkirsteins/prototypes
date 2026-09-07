@@ -13,23 +13,9 @@ import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { instantHtml, masteryLine } from "./panels";
+import { purposesHtml } from "./panes";
+import { PURPOSES, purposeOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
-
-/** The Do panel's fold state, under one local storage key: which groups are shut. Absent means open. */
-export const FOLD_KEY = "survidle.ui";
-
-export function loadFolds(storage: Storage): Record<string, boolean> {
-  try {
-    const parsed: unknown = JSON.parse(storage.getItem(FOLD_KEY) ?? "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    return {};
-  }
-}
-
-export function saveFold(storage: Storage, group: string, open: boolean): void {
-  storage.setItem(FOLD_KEY, JSON.stringify({ ...loadFolds(storage), [group]: open }));
-}
 
 /**
  * The words a row answers to that it never says out loud. Nothing on the
@@ -144,22 +130,6 @@ export function rankRows<T extends FilterableRow>(rows: T[], text: string): { di
   const found = filterRows(rows, text);
   if (!words.length) return { direct: found, related: [] };
   return { direct: found.filter((r) => matchTier(r, words) < 2), related: found.filter((r) => matchTier(r, words) === 2) };
-}
-
-/**
- * Rows that cannot start now and whose skill sits more than a level under
- * the row's recommended rung: tucked behind "more" so the panel opens on
- * what a fresh survivor can actually reach for. A row with no
- * recommendation, or one within a level of it, is never far, whatever `ok`
- * says. `withProgression` already carries the gap on `recommended.short`.
- */
-export function splitFar(rows: TaskOption[], _state: GameState): { near: TaskOption[]; far: TaskOption[] } {
-  const near: TaskOption[] = [];
-  const far: TaskOption[] = [];
-  for (const o of rows) {
-    (!o.ok && (o.recommended?.short ?? 0) > 1 ? far : near).push(o);
-  }
-  return { near, far };
 }
 
 /** Startable rows first; everything else keeps its order behind them. */
@@ -378,57 +348,78 @@ function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, 
 }
 
 /**
- * One Do group: a folding heading, then its rows - Make's startable rows
- * first - with the far ones (cannot start, skill more than a level under
- * the rung) tucked behind a "more (N)" line until ui.moreOpen names the
- * group. Groups are what the panel shows when the filter box is empty;
- * `searchHtml` takes over the moment it is not.
+ * The box the rows sit in, whether they came from a purpose or from the
+ * filter.
+ *
+ * Both views use it and both give it the same name, because a row that
+ * changed depth between them would be destroyed and rebuilt on every
+ * keystroke: morphChildren finds a named node again among its siblings,
+ * and a row whose parent is a different node has no siblings to be found
+ * among. The heading is the only thing that differs.
  */
-function groupHtml(g: { label: string; items: { id: TaskId; arg?: string }[] }, state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean>): string {
-  const options = groupRows(g, state, world, cal, ui);
-  if (!options.length) return "";
-  const open = folds[g.label] !== false;
-  const heading = `<button class="fold" data-act="fold" data-group="${esc(g.label)}">${open ? "-" : "+"} ${esc(g.label)}</button>`;
-  if (!open) return `<div class="grp">${heading}</div>`;
-  const ordered = g.label === "Make" ? makeFirst(options) : options;
-  const { near, far } = splitFar(ordered, state);
-  const nearHtml = near.map((o) => intentRowHtml(o, ui, state, world)).join("");
-  const moreOpen = ui.moreOpen.includes(g.label);
-  const farHtml = !far.length ? "" : moreOpen
-    ? `${far.map((o) => intentRowHtml(o, ui, state, world)).join("")}<button class="mini" data-act="more" data-group="${esc(g.label)}">less</button>`
-    : `<button class="mini" data-act="more" data-group="${esc(g.label)}">more (${far.length})</button>`;
-  return `<div class="grp">${heading}${nearHtml}${farHtml}</div>`;
+function rowsBox(key: string, heading: string, rows: string): string {
+  const head = heading ? `<div class="fold">${heading}</div>` : "";
+  return `<div class="grp" data-rows="${key}">${head}${rows}</div>`;
 }
 
 /**
- * What a filter shows instead of the groups: one ranked list, the rows that
- * say the words above the rows that merely answer to them. The groups and
- * their folds are gone for as long as the box has text in it - a search that
- * left its answer shut inside a folded group, or three headings down from the
- * word that was typed, is the search that sent the reader looking by hand.
+ * What a filter shows instead of the pane: one ranked list across every
+ * subtab, the rows that say the words above the rows that merely answer to
+ * them. The purposes stand aside for as long as the box has text in it - a
+ * search that left its answer shut inside a purpose the reader was not
+ * looking at is the search that sent them looking by hand.
  */
 function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => groupRows(g, state, world, cal, ui));
   const { direct, related } = rankRows(rows, ui.filter);
   const typed = esc(ui.filter.trim());
-  if (!direct.length && !related.length) return `<div class="grp"><div class="fold">nothing answers to "${typed}"</div></div>`;
-  const section = (heading: string, list: TaskOption[]) =>
-    !list.length ? "" : `<div class="grp"><div class="fold">${heading}</div>${list.map((o) => intentRowHtml(o, ui, state, world)).join("")}</div>`;
+  if (!direct.length && !related.length) return rowsBox("main", `nothing answers to "${typed}"`, "");
+  const body = (list: TaskOption[]) => list.map((o) => intentRowHtml(o, ui, state, world)).join("");
   // "also" only means something under rows that said the word themselves. A
   // search every row answers only through its keywords - "firepit", which no
   // label spells that way - is a list of answers, not a list of afterthoughts.
-  if (!direct.length) return section(typed, related);
-  return `${section(typed, direct)}${section(`also answers to "${typed}"`, related)}`;
+  if (!direct.length) return rowsBox("main", typed, body(related));
+  return `${rowsBox("main", typed, body(direct))}${rowsBox("also", `also answers to "${typed}"`, body(related))}`;
 }
 
-export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState, folds: Record<string, boolean> = {}): string {
-  const groups = ui.filter.trim()
+/**
+ * The rows of the showing subtab and purpose, startable ones first.
+ *
+ * Nothing is tucked away behind a "more": a pane holds a handful of rows
+ * now rather than the whole of Camp, and learning what is available is
+ * most of learning the game. What a player cannot do yet still shows, and
+ * says why.
+ */
+function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
+  const wanted = intentGroups(regionAt(world, state.player.region))
+    .flatMap((g) => g.items)
+    .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose);
+  return makeFirst(groupRows({ label: ui.panes.subtab, items: wanted }, state, world, cal, ui));
+}
+
+/** How many rows each purpose of the showing subtab holds, for the counts the left pane carries. */
+export function purposeCounts(state: GameState, world: World, ui: UiState): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
+  for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
+    if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
+    const q = purposeOf(i.id, i.arg);
+    if (q !== null && q in counts) counts[q]++;
+  }
+  return counts;
+}
+
+/** The left pane of the Do split: the purposes this subtab offers, and how many rows each holds. */
+export function doPurposesHtml(state: GameState, world: World, ui: UiState): string {
+  return purposesHtml(ui.panes, purposeCounts(state, world, ui));
+}
+
+/** The item pane: the rows of one purpose, or what the filter found across all of them. */
+export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
+  const body = ui.filter.trim()
     ? searchHtml(state, world, cal, ui)
-    : intentGroups(regionAt(world, state.player.region))
-      .map((g) => groupHtml(g, state, world, cal, ui, folds))
-      .join("");
-  // Named for the same reason the instant box is: the rows box holds
-  // everything that comes and goes, so it must be found again by name and
-  // not by where it sat last frame.
-  return `${instantHtml(state, world)}<div class="rows" data-box="rows">${groups}</div>`;
+    : ((rows) => (rows.length ? rowsBox("main", "", rows.map((o) => intentRowHtml(o, ui, state, world)).join("")) : rowsBox("main", "nothing here yet", "")))(
+        paneRows(state, world, cal, ui),
+      );
+  return `${instantHtml(state, world)}${body}`;
 }

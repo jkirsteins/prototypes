@@ -11,7 +11,6 @@ import { regionState } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
-import { doHtml } from "../src/ui/dopanel";
 import { mapHtml } from "../src/ui/map";
 import { regionHtml } from "../src/ui/panels";
 import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
@@ -19,6 +18,7 @@ import { fmtKm } from "../src/units";
 import { regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { neighbourLandCell } from "./siting-helpers";
+import { paneHtml } from "./pane";
 
 describe("moving the camp is allowed while nothing stands at it", () => {
   it("is ok on a fresh game, and names the structure, the banked fire or the pile that blocks it", () => {
@@ -255,7 +255,7 @@ describe("make camp here", () => {
   it("the greyed row at camp has no clickable queue path", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const html = doHtml(state, world, cal, newUiState());
+    const html = paneHtml(state, world, cal, "makeCamp");
     expect(html).toContain("this is the camp");
     expect(html).not.toMatch(/data-act="intent"\s+data-id="makeCamp"/);
   });
