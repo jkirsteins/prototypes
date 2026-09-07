@@ -342,8 +342,11 @@ readings are judged rather than chased:
   Expect keeps to read met more of the time and grinds to be interrupted
   more.
 
-The golden replay hashes move. They are regenerated deliberately, in their
-own commit, with the readings recorded beside them.
+There is no golden replay in this tree - the gates are `npm run reference`
+(April, and `--heir` for the lineage), `npm run year`, `npm run december`,
+`npm run horizon` and `tests/slow/lineage.test.ts`. Several tests in the
+fast suite do assert exact seeded outcomes, and those move too; each is
+re-read against what the run now does rather than pinned back.
 
 **The gates are not tuned to stay green.** A gate that goes red on a
 correct rule is a reading about the game, and it is reported as one.
