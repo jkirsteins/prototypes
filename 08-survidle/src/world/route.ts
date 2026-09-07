@@ -65,14 +65,18 @@ const knownCaches = new WeakMap<World, Map<string, number[] | null>>();
  * `gen` is the caller's fresh `knowledgeGen()` reading and keys the cache
  * alongside `from`/`to`/`ice`/`avoidFell`: pass a value read after the
  * knowledge you are routing on, never a value held from an earlier call,
- * or a route computed before ground opened up can be served stale.
+ * or a route computed before ground opened up can be served stale. A
+ * caller whose `known` means something beyond plain `knowledgeGen()` (an
+ * exploring sweep's "or unmapped ground of this region") folds that into
+ * `gen` too - a string tag is as good a cache key as a number, and keeps
+ * that route's cache entries apart from every other caller's.
  */
 export function knownRoute(
   world: World,
   from: number,
   to: number,
   known: (cell: number) => boolean,
-  gen: number,
+  gen: number | string,
   ice: IceMode = "none",
   avoidFell = false,
 ): number[] | null {

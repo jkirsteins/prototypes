@@ -8,7 +8,7 @@ import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
-import { survivorRoute } from "./routing";
+import { exploreRoute, survivorRoute } from "./routing";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
   removeItem, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
@@ -1115,12 +1115,12 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   if (id === "explore") {
     const target = walkTarget(state, world, arg ?? "")!;
     const region = cellAt(world, target.cell).region;
-    const vantage = pickVantage(state, world, cal, region);
-    if (!vantage) return false;
     const from = cellOf(state, world);
+    const vantage = pickVantage(state, world, cal, region, [from]);
+    if (!vantage) return false;
     const ice = walkIceMode(state, false);
     state.route = { target: vantage.cell, path: vantage.path, walked: [from], label: target.label, ice, lastLand: from };
-    state.task = { id, arg, progress: 0, duration: routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice), repeat: false };
+    state.task = { id, arg, progress: 0, duration: routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice), repeat: false, visited: [from, vantage.cell] };
     return true;
   }
   // Pick up where this task was left, if it was.
@@ -1395,22 +1395,26 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
 }
 
 /**
- * The region's known cells still worth walking to: passable, already
- * reachable from where the survivor stands, and standing next to ground
- * not yet mapped. Nearest route first, so how far down this list the
- * wayfinding level bothers to weigh (task 6's `1 + level`) is a plain
- * slice of it.
+ * The region's cells still worth walking to: passable, reachable from
+ * where the survivor stands (known ground, or unmapped ground of this
+ * same region - exploreRoute may cross that, since walking into the dark
+ * is what exploring is), standing next to ground not yet mapped, and not
+ * a cell this sweep has already stood at (`visited`: pickVantage never
+ * repeats one, so a candidate whose only unseen neighbour turns out to
+ * open nothing gets dropped rather than picked forever). Nearest route
+ * first, so how far down this list the wayfinding level bothers to weigh
+ * (task 6's `1 + level`) is a plain slice of it.
  */
-function exploreFrontier(state: GameState, world: World, region: number): { cell: number; path: number[] }[] {
+function exploreFrontier(state: GameState, world: World, region: number, visited: readonly number[]): { cell: number; path: number[] }[] {
   const from = cellOf(state, world);
   const ice = walkIceMode(state, false);
   const avoidFell = fearsFell(state);
   const out: { cell: number; path: number[] }[] = [];
   for (const cell of regionAt(world, region).cells) {
-    if (cell === from) continue;
+    if (cell === from || visited.includes(cell)) continue;
     if (!passable(cellAt(world, cell).terrain)) continue;
     if (!neighbours(world, cell).some((nb) => cellAt(world, nb).region === region && !isKnown(state, nb))) continue;
-    const path = survivorRoute(state, world, from, cell, ice, avoidFell);
+    const path = exploreRoute(state, world, from, cell, region, ice, avoidFell);
     if (path) out.push({ cell, path });
   }
   out.sort((a, b) => a.path.length - b.path.length);
@@ -1426,8 +1430,8 @@ function exploreFrontier(state: GameState, world: World, region: number): { cell
  * free, so it always wins. Null when the region has nothing left reachable
  * to see more from.
  */
-function pickVantage(state: GameState, world: World, cal: Calendar, region: number): { cell: number; path: number[] } | null {
-  const candidates = exploreFrontier(state, world, region);
+function pickVantage(state: GameState, world: World, cal: Calendar, region: number, visited: readonly number[]): { cell: number; path: number[] } | null {
+  const candidates = exploreFrontier(state, world, region, visited);
   // skillLevel never reads below 1, so a raw eye already weighs two
   // candidates, not one; a level-20 eye weighs 21 before settling.
   const weighed = candidates.slice(0, 1 + skillLevel(state, "wayfinding"));
@@ -1511,7 +1515,7 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
     log(state, `{You} {know} ${regionAt(world, region).name} now.`);
     return;
   }
-  const next = pickVantage(state, world, cal, region);
+  const next = pickVantage(state, world, cal, region, t.visited ?? []);
   if (!next) {
     // Nothing left the survivor can walk to would show them more of it.
     state.route = null;
@@ -1520,6 +1524,7 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
   }
   const from = cellOf(state, world);
   state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
+  t.visited = [...(t.visited ?? []), next.cell];
   t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), route.ice);
 }
 

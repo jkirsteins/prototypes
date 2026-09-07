@@ -105,6 +105,8 @@ export interface Task {
   any?: boolean;
   /** The dark has already cost this task an attempt and been remarked on; the rest of them are silent. */
   darkSaid?: boolean;
+  /** Cells an exploring sweep has already stood at, the starting cell included; pickVantage never picks one twice. */
+  visited?: number[];
 }
 
 /**
