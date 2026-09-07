@@ -19,6 +19,7 @@ import {
   REFERENCE_ORDERS,
   REFERENCE_TARGET_DAY,
   ReferencePlayer,
+  REGIVE_DAYS,
   runHeir,
   runLineage,
   runReference,
@@ -584,19 +585,19 @@ describe("wants by level", () => {
   });
 
   it("stands in for the pace by hand at woodcraft 10: a plain keep at today's target, withdrawn when the thaw closes the window", () => {
-    // Keeps are earned at woodcraft 10 and the due date at 20, so the woodpile stands as a
-    // keep aimed at what the date asks for this morning, and the window is the runner's to
+    // Keeps are earned at woodcraft 10 and the due date at 20, so the log reserve stands as
+    // a keep aimed at what the date asks for this morning, and the window is the runner's to
     // read. A month into the window: the rise starts at nothing on its first day.
     const start = WINTER_WOOD_FROM_DOY + 30;
     const { state, world } = newGame(17, start);
     setSkillLevel(state, "woodcraft", 10);
     const player = new ReferencePlayer();
-    // Above the list's 60 kg summer keep, which is what tells the two apart under the rung.
-    const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty > 60);
+    // Above the list's 4-log summer keep, which is what tells the two apart under the rung.
+    const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
     player.tick(state, world);
     expect(woodpile().length).toBe(1);
     const target = woodpile()[0].req.until;
-    expect(target.kind === "campHas" && target.qty).toBeCloseTo((WINTER_STOCK.firewoodKg * 30) / (WOOD_DUE_DOY - WINTER_WOOD_FROM_DOY));
+    expect(target.kind === "campHas" && target.qty).toBeCloseTo((WINTER_STOCK.logs * 30) / (WOOD_DUE_DOY - WINTER_WOOD_FROM_DOY));
     expect(woodpile()[0].req.when).toBeUndefined();
     // Forward to the day after the thaw's first: the days left in the year, then April's second.
     state.minute = (365 - start + WINTER_WOOD_TO_DOY + 1) * 1440;
@@ -620,8 +621,35 @@ describe("wants by level", () => {
     expect(inSeason(WINTER_WOOD_FROM_DOY, season)).toBe(true);
     expect(inSeason(244, season)).toBe(true);
     expect(inSeason(20, season)).toBe(true);
-    // The whole figure is due on 1 December, so the pile is built across the autumn.
-    expect(wood.req.when!.by).toBe(WOOD_DUE_DOY);
+    // The buffer carries the window and no due date: it is the pile the fire draws on
+    // daily, refilled from the reserve, so 1 March wants as much of it as 1 December.
+    expect(wood.req.when!.by).toBeUndefined();
+    // The reserve is the row the date belongs to: the whole figure due on 1 December, so
+    // the felling is spread across the autumn, and away again as the winter spends it.
+    const reserve = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.logs)!;
+    expect(reserve.req.when!.season).toEqual(season);
+    expect(reserve.req.when!.by).toBe(WOOD_DUE_DOY);
+  });
+
+  it("follows a paced keep down by hand as readily as up, on the same weekly look", () => {
+    // Under Woodcraft 20 the due date is stripped and the runner stands in for it, so a
+    // camp that never earns the rung must still stop felling for a reserve the thaw will
+    // leave standing: the returning player reads their own pile against the winter left
+    // and lowers the ask, which costs the same morning that raising it did.
+    const { state, world } = newGame(17, WOOD_DUE_DOY);
+    setSkillLevel(state, "woodcraft", 10);
+    const player = new ReferencePlayer();
+    const reserve = () => ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
+    player.tick(state, world);
+    // The due date itself: the stand-in is given at the whole figure.
+    const peak = reserve()!.req.until;
+    expect(peak.kind === "campHas" && peak.qty).toBeCloseTo(WINTER_STOCK.logs);
+    // A week on, a week's worth of the fall off the peak, and the row is given again at it.
+    state.minute = REGIVE_DAYS * 1440;
+    player.tick(state, world);
+    const later = reserve()!.req.until;
+    const fall = ((WINTER_WOOD_TO_DOY - 1 - WOOD_DUE_DOY) % 365 + 365) % 365;
+    expect(later.kind === "campHas" && later.qty).toBeCloseTo(WINTER_STOCK.logs * (1 - REGIVE_DAYS / fall));
   });
 
   it("stone is wanted twice: a once job for eight at the opening, and a keep of eight below the clothing block as the restock", () => {
@@ -656,8 +684,11 @@ describe("wants by level", () => {
     // The three named hunts are all that is left at the foot of the list.
     const tail = REFERENCE_ORDERS.slice(-3);
     expect(tail.map((w) => `${w.req.task}:${w.req.arg}:${w.kind}`)).toEqual(["hunt:elk:grind", "hunt:reindeer:grind", "hunt:deer:grind"]);
-    // The log keep carries the woodpile's window and its due date; the summer's 4-log keep carries neither.
-    expect(logs.req.when).toEqual(woodpile.req.when);
+    // The log keep carries the woodpile's window and, alone of the four, its due date;
+    // the summer's 4-log keep carries neither.
+    expect(logs.req.when!.season).toEqual(woodpile.req.when!.season);
+    expect(logs.req.when!.by).toBe(WOOD_DUE_DOY);
+    expect(woodpile.req.when!.by).toBeUndefined();
     const summer = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && w.req.until.kind === "campHas" && w.req.until.qty === 4)!;
     expect(summer.req.when).toBeUndefined();
   });

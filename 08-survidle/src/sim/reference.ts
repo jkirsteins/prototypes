@@ -188,12 +188,12 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  *
  * The winter stock's own four keeps - the split pile in its three methods
  * and the logs that are the stock's unsplit half - sit above the hunt keep
- * rather than in this loop, since what they promise is due on a date and
- * the day it is due by is the one thing a hunt cannot be put off past. Each
- * carries the window it is stocked against and that date: midsummer to the
- * thaw, the whole figure due on WOOD_DUE_DOY, so the pile is built across
- * the autumn rather than in the week the order is first read, and a list
- * that reaches these rows in April or May asks for nothing at all.
+ * rather than in this loop, since what they promise is the winter itself and
+ * a hunt is the one thing that can wait for it. All four carry the window
+ * they are stocked against, midsummer to the thaw, so a list that reaches
+ * these rows in April or May asks for nothing at all. Only the log row
+ * carries the due date: the reserve is what the autumn builds and the winter
+ * spends, and the buffer above it is flat because a buffer is due every day.
  *
  * Inner bark is not on the list. At the handbook's own yield it is the
  * worst hour a survivor can spend: about 275 kcal an hour against fishing's
@@ -269,11 +269,11 @@ export const WINTER_WOOD_TO_DOY = 90;
 /**
  * The day the winter stock is due in full: 1 December, the day "what a
  * competent player has at camp" is measured on and the day the winter gate
- * starts its own reading from. The woodpile keeps rise to their figures by
- * it, so the pile is built across the autumn and the rows under it keep
- * their share of every day until it is, and fall away again across the
- * winter the pile is burned in, so what the rows ask for in March is what
- * March has left to burn.
+ * starts its own reading from. The log reserve rises to its figure by it, so
+ * the felling is spread across the autumn and the rows under it keep their
+ * share of every day until it is, and falls away again across the winter the
+ * reserve is spent in, so what it asks for in March is what March has left to
+ * burn. The split buffer beside it carries no due date; see WINTER_BUFFER_WHEN.
  */
 export const WOOD_DUE_DOY = 334;
 
@@ -294,15 +294,35 @@ export const WOOD_DUE_DOY = 334;
 export const WINTER_STOCK = { driedMeatKg: 80, fatKg: 20, firewoodKg: 600, logs: 300 };
 
 /**
- * The window the winter pile is stocked in and the day the whole of it is due,
- * said once for the four rows that stock it. A season is inclusive of its last
- * day and WINTER_WOOD_TO_DOY is the day the want shuts, so the last day the pile
- * is asked for is the one before it: a survivor standing on the first day of the
- * thaw has this winter's pile behind them and next winter's is a summer away.
- * The window's own close is what the target falls to nothing on, so the four
- * rows ask for the whole pile on 1 December and for nothing by the thaw.
+ * The window the winter pile is stocked in, said once for the four rows that
+ * stock it. A season is inclusive of its last day and WINTER_WOOD_TO_DOY is the
+ * day the want shuts, so the last day the pile is asked for is the one before
+ * it: a survivor standing on the first day of the thaw has this winter's pile
+ * behind them and next winter's is a summer away.
  */
-const WINTER_WOOD_WHEN: OrderWhen = { season: { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY - 1 }, by: WOOD_DUE_DOY };
+const WINTER_WOOD_SEASON = { from: WINTER_WOOD_FROM_DOY, to: WINTER_WOOD_TO_DOY - 1 };
+
+/**
+ * The three firewood rows: the window and nothing else. What they promise is
+ * the split pile a camp burns out of, which is a working buffer and not a
+ * store - the fire draws it down every day and the reserve beside it fills it
+ * back up - so it is flat across the whole window, wanted as much on 1 March
+ * as on 1 December, and refused for the minutes it takes to read "needs a log"
+ * whenever the reserve is empty. It carries no due date because there is no
+ * day by which a buffer is due: it is due every day.
+ */
+const WINTER_BUFFER_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON };
+
+/**
+ * The log reserve: the window and the day the whole of it is due. This is the
+ * row the pace belongs to, and the only one. Standing timber cut and stacked
+ * is the store the winter is spent out of, so it rises to its figure across
+ * the autumn and falls away again as the winter burns it, reaching nothing at
+ * the thaw - a pile stacked in March is next winter's, and asking for it costs
+ * a week of felling in deep snow. Seed 17 froze on day 342 owing 257 logs with
+ * 593 kg of firewood already at camp.
+ */
+const WINTER_RESERVE_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON, by: WOOD_DUE_DOY };
 
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
 export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
@@ -353,10 +373,10 @@ export const REFERENCE_ORDERS: Want[] = [
   job("build", { kind: "once" }, "dryingRack", "camp", { stock: { item: "rawMeat", atLeast: TRACE_KG } }),
   keep("build", 20, "snare"),
   { req: { task: "hang", until: { kind: "forever" }, deliver: "leave", where: "nearest", when: { stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } } }, kind: "grind" },
-  keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_WOOD_WHEN),
-  keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_WOOD_WHEN),
-  keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_WOOD_WHEN),
-  keep("chop", WINTER_STOCK.logs, undefined, "camp", WINTER_WOOD_WHEN),
+  keep("split", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
+  keep("splitWedges", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
+  keep("deadwood", WINTER_STOCK.firewoodKg, undefined, "camp", WINTER_BUFFER_WHEN),
+  keep("chop", WINTER_STOCK.logs, undefined, "camp", WINTER_RESERVE_WHEN),
   keep("hunt", WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO, "any", "camp", { restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 }),
   job("eggs", { kind: "daily", n: PLANT_HOURS_WINDOW_ROW }, undefined, "camp", { season: { from: EGG_FROM_DOY, to: EGG_TO_DOY } }),
   job("roots", { kind: "daily", n: PLANT_HOURS_ROOTS }, undefined, "camp", { season: { from: ROOT_FROM_DOY, to: ROOT_TO_DOY } }),
@@ -690,12 +710,13 @@ export const OPENING_TICK_MINUTES = 60;
 
 /**
  * How often a player who is standing in for a due date comes back to move
- * the target up. A pile due in December is a plan a player looks at about
- * once a week, and a keep re-given every morning at a target an eighth of
- * a kilo higher is not a plan at all. It is the runner's habit and no rule
- * of the world's, so it lives here and nothing else reads it.
+ * the target, in either direction. A pile due in December is a plan a player
+ * looks at about once a week, and a keep re-given every morning at a target
+ * an eighth of a kilo apart is not a plan at all. It is the runner's habit
+ * and no rule of the world's, so it lives here and nothing in the sim reads
+ * it; the cadence itself is what its test asserts against.
  */
-const REGIVE_DAYS = 7;
+export const REGIVE_DAYS = 7;
 
 /** Whether the ladder took the due date off this want, leaving the runner to pace it by hand. */
 function pacedByHand(w: Want, best: Want): boolean {
@@ -715,7 +736,10 @@ function pacedByHand(w: Want, best: Want): boolean {
  * the pile holds; a stripped restart line is read as a band, met at the
  * target and open again under the line; a stripped daily count is given
  * afresh each morning; and a stripped due date is a plain keep at today's
- * target, re-given as the target rises and no oftener than REGIVE_DAYS.
+ * target, re-given as the target moves either way and no oftener than
+ * REGIVE_DAYS - a player who cannot write the date down still reads the pile
+ * they have against the winter left, and lowers the ask as readily as they
+ * raised it.
  * Every one of those gives and withdrawals past the opening list is a
  * morning the player spent on the list, and so is a flip of a named runner
  * rule; `interventions` counts them and `attention` reads them back. At the
@@ -882,9 +906,13 @@ export class ReferencePlayer {
           continue;
         }
         // A keep standing in for a due date is replaced when the date has moved
-        // the target up, which a player does on their weekly look and not daily.
+        // the target, up in the autumn or down through the winter, which a
+        // player does on their weekly look and not daily. Following the ask
+        // down is the same act as following it up and costs the same morning:
+        // a survivor who reads their own pile against the winter left stops
+        // felling for a reserve the thaw will leave standing, rung or no rung.
         const p = this.paced.get(i);
-        if (p && pacedByHand(w, best) && cal.day - p.day >= REGIVE_DAYS && this.pacedTarget(cal, i) > p.qty + 1e-9) {
+        if (p && pacedByHand(w, best) && cal.day - p.day >= REGIVE_DAYS && Math.abs(this.pacedTarget(cal, i) - p.qty) > 1e-9) {
           this.withdraw(state, world, cal, i, g.id);
           this.give(state, world, cal, i, best);
         }

@@ -195,15 +195,24 @@ describe("the list after the axe", () => {
     expect(hunt.req.when).toEqual({ restart: (WINTER_STOCK.driedMeatKg * MEAT_DRY_RATIO * 4) / 5 });
     const fish = want("fish:any:keep");
     expect(fish.req.when).toEqual({ stock: { item: "driedMeat", under: WINTER_STOCK.driedMeatKg } });
-    // The paced pile: told from the summer keep of the same task by its target.
-    const split = REFERENCE_ORDERS.find((w) => w.req.task === "split" && winterStockWant(w))!;
-    expect(split.req.when).toEqual({ season: { from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 }, by: WOOD_DUE_DOY });
+    // The pace is the log reserve's and no other row's: the reserve is what the autumn
+    // builds and the winter spends, so it carries the due date, while the split buffer
+    // beside it is flat across the window because a buffer is due every day. A falling
+    // buffer is what froze seed 15 on day 280 with 138 uncut logs and 1.7 million kcal
+    // at camp, over the thirty-seed sweep that separated the two.
+    const season = { from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 };
+    const reserve = REFERENCE_ORDERS.find((w) => w.req.task === "chop" && winterStockWant(w))!;
+    expect(reserve.req.when).toEqual({ season, by: WOOD_DUE_DOY });
+    for (const task of ["split", "splitWedges", "deadwood"]) {
+      const buffer = REFERENCE_ORDERS.find((w) => w.req.task === task && winterStockWant(w))!;
+      expect(buffer.req.when, task).toEqual({ season });
+    }
     expect(want("hang::grind").req.when).toEqual({ stock: { item: "rawMeat", atLeast: HANG_ABOVE_KG } });
     expect(want("cook:rawFat:grind").req.when).toEqual({ stock: { item: "rawFat", atLeast: TRACE_KG } });
     expect(want("crack::grind").req.when).toEqual({ stock: { item: "bone", atLeast: 1 } });
     expect(want("build:dryingRack:job").req.when).toEqual({ stock: { item: "rawMeat", atLeast: TRACE_KG } });
     const tasks = REFERENCE_ORDERS.map(key);
-    expect(REFERENCE_ORDERS.indexOf(split)).toBeLessThan(tasks.indexOf("hunt:any:keep"));
+    expect(REFERENCE_ORDERS.indexOf(reserve)).toBeLessThan(tasks.indexOf("hunt:any:keep"));
     // A winter's dried meat at camp is the two food rows' own business, read off their
     // band and their stock line by whoever holds the order, and no rule in the runner.
     const { state, world } = newGame(17);
@@ -212,15 +221,15 @@ describe("the list after the axe", () => {
   });
 
   it("the runner gives the plain shape under the rung and counts the morning as a returning player", () => {
-    // A month into the wood window, so the pile's target has risen off the nothing it starts
-    // its season at and stands above the kit's own 20 kg, and high summer, so no shore ices
-    // over and none of the named rules flips in the three days.
+    // A month into the wood window, so the reserve's target has risen off the nothing it
+    // starts its season at, and high summer, so no shore ices over and none of the named
+    // rules flips in the three days.
     const { state, world, player } = setUpReference(17, true, MIDSUMMER_DOY + 30);
     for (const s of SKILL_IDS) state.skills[s].xp = levelMinutes(20);
-    // Kitted, all skills 20: the wood keep goes with its pace and its season and no morning is counted for it.
+    // Kitted, all skills 20: the reserve goes with its pace and its season and no morning is counted for it.
     stepReference({ state, world, player }, 1440 * 3);
-    // The winter pile, told from the summer keep of the same task by its target.
-    const paced = ordersHere(state, world).find((o) => o.req.task === "split" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.firewoodKg);
+    // The log reserve, told from the summer keep of the same task by its target.
+    const paced = ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.logs);
     expect(paced?.req.when?.by).toBe(WOOD_DUE_DOY);
     expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
     expect(player.attention(1, 3).mornings).toBe(0);

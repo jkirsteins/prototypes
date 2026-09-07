@@ -121,13 +121,14 @@ function daysFrom(a: number, b: number): number {
  * season and the rows under it have that day to themselves.
  *
  * Past the due date a keep with a season falls the same way, evenly to
- * nothing on the season's last day, because a winter pile is what is
- * burned before the thaw: what is still wanted in March is what March
+ * nothing on the season's last day, because a store due on a date is one
+ * the days after it spend: what is still wanted in March is what March
  * will burn, not the whole figure December was due. A camp holding 593 kg
- * of firewood on 1 March read the full 600 kg as owed and spent its last
- * week felling in 65 cm of snow at -20 C for a pile the thaw would leave
- * standing. With no season there is no close to fall to, and the whole
- * figure stands from the due date round to the rise's own start.
+ * of firewood on 1 March, with the thaw 24 days off at 60 kg a day, has
+ * its pile; asking it for the whole 600 buys a week of felling in 65 cm of
+ * snow at -20 C for wood the thaw would leave standing. With no season
+ * there is no close to fall to, and the whole figure stands from the due
+ * date round to the rise's own start.
  */
 export function keepTargetToday(cal: Calendar, o: Order): number {
   const keep = keepTarget(o);
