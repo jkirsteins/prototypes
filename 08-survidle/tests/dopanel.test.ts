@@ -7,6 +7,7 @@ import { levelMinutes } from "../src/sim/skills";
 import { availableTasks } from "../src/sim/tasks";
 import { doHtml, doPurposesHtml, filterRows, intentGroups, keyedRows, makeFirst, purposeCounts, rankRows } from "../src/ui/dopanel";
 import { purposeOf, subtabOf } from "../src/ui/purpose";
+import { paneHtml } from "./pane";
 import { defaultChoice, defaultChoiceFor, newUiState, rowRequest, setWhenField } from "../src/ui/render";
 import { RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
 import { TASK_IDS } from "../src/sim/types";
@@ -411,5 +412,51 @@ describe("the fetch rows", () => {
     expect(rowRequest(defaultChoiceFor("fill"), "fill", "shore").req.deliver).toBe("camp");
     expect(rowRequest(defaultChoiceFor("melt"), "melt", undefined).req.deliver).toBe("camp");
     expect(rowRequest(defaultChoiceFor("chop"), "chop", undefined).req.deliver).toBe("leave");
+  });
+});
+
+describe("a row says what it is, and what stops it", () => {
+  // He said it plainly: he did not understand some of the text on a row. A
+  // row you can do says its name and how long; a row you cannot says why.
+  // The rest is one click away rather than in the way of the scan.
+
+  it("a row you can do says its name and how long, and not its prose", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = paneHtml(state, world, cal, "deadwood");
+    const at = html.indexOf('data-opt="intent:deadwood:"');
+    const face = html.slice(at, html.indexOf("</button>", at));
+    expect(face).toMatch(/\d+ (min|h)/);
+    // "10 kg of firewood off the forest floor" is the detail. It is not
+    // deleted, it moves under `more`.
+    expect(face).not.toContain("forest floor");
+  });
+
+  it("the detail is under more, so nothing is lost, only moved", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const open = paneHtml(state, world, cal, "deadwood", undefined, { open: { id: "deadwood", arg: "" } });
+    expect(open.slice(open.indexOf('data-opt="intent:deadwood:"'))).toContain("forest floor");
+  });
+
+  it("a row you cannot do says why, which is the whole reason it is there", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    // Nothing is lit and no drill has been made: the row must say so, since
+    // a greyed button he had to infer a fire drill from is what cost a life.
+    const html = paneHtml(state, world, cal, "light");
+    const at = html.indexOf('data-opt="intent:light:"');
+    expect(at).toBeGreaterThan(-1);
+    const face = html.slice(at, html.indexOf("</button>", at));
+    expect(face.length).toBeGreaterThan(0);
+    expect(face).toMatch(/no |needs|nothing/i);
+  });
+
+  it("a producer still promises what it gives, since nothing else says the game is idle", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = paneHtml(state, world, cal, "build", "dryingRack");
+    const at = html.indexOf('data-opt="intent:build:dryingRack"');
+    expect(html.slice(at, at + 600)).toContain("gives");
   });
 });

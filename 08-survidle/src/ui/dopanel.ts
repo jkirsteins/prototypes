@@ -299,7 +299,9 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
   const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
-  return `<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
+  // What the face no longer says, said here in full.
+  const detail = o.detail ? `<div class="detail"><small>${esc(plain(o.detail))}</small></div>` : "";
+  return `${detail}<div class="expand">${buttons}${n}${deliver}${where}</div>${whenHtml(o, arg, ui, state)}`;
 }
 
 /**
@@ -332,8 +334,11 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     const act = queueable ? ` data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}" title="Add it anyway; it waits until it can start"` : " disabled";
     return `<div class="opt off${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act"${act}>${esc(o.label)}${rec}<small>${esc(plain(o.why))}${o.detail ? ` - ${esc(plain(o.detail))}` : ""}</small>${bar}${gives}</button>${more}${expand}</div>`;
   }
-  const time = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  const line = [time, o.detail ? plain(o.detail) : ""].filter(Boolean).join("; ");
+  // A row you can do says its name and how long. Its detail is a sentence a
+  // reader has to parse mid-scan, and the scan is what this panel is for, so
+  // it moves under `more` rather than going away: still there for whoever
+  // wants it, out of the way of whoever is looking for something else.
+  const line = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
   return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${more}${expand}</div>`;
 }
 

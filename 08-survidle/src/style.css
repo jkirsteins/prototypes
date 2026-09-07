@@ -87,6 +87,8 @@ body { display: flex; flex-direction: column; height: 100vh; }
 }
 #dopurposes .grp.on { color: var(--accent); background: rgba(230, 194, 41, 0.1); }
 #doitems { flex: 1; min-width: 0; overflow-y: auto; padding-left: 8px; }
+/* What the row's face stopped saying, under the row that was opened. */
+.opt .detail { padding: 2px 0 4px; }
 
 /* What was built, for telling one deploy from the next. */
 .build {
