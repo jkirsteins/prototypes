@@ -424,7 +424,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   warn(state, "sleepy", sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT, "{You} can barely keep {your} eyes open.");
   // The evening by the fire announces itself the way the yawn does, and it is
   // news rather than a warning.
-  warn(state, "spent", p.energy < SPENT_AT, "A day's work done. {You} {rest} by the fire.", "plain");
+  warn(state, "spent", p.energy < SPENT_AT, "A day's work done. Time to rest by the fire.", "plain");
   warn(state, "thirst", p.water < THIRSTY_L, "{You} {are} thirsty.");
   const here = cellOf(state, world);
   const onThinIce = cellAt(world, here).terrain === "water" && w.iceCm < ICE_SAFE_CM;

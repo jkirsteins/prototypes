@@ -224,7 +224,7 @@ export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "snar
  * What the player set out to do. The runner re-reads the world every minute
  * and starts one ordinary task at a time; nothing else is planned ahead.
  */
-export interface Intent {
+interface IntentBase {
   /** The work underneath, in the terms startTask speaks. */
   task: TaskId;
   arg?: string;
@@ -238,16 +238,42 @@ export interface Intent {
   done: number;
   /** What the runner is doing right now, for the Doing panel. */
   step: string;
-  need: BodyNeed | null;
-  /** Warmth when the current rest step began, so its gain can be judged when it completes. Unset outside a rest step. */
-  restFromWarmth?: number;
-  /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
-  coldSpent?: boolean;
   /** The order this intent serves, or null for one started by hand. */
   orderId: number | null;
   /** The scheduler has chosen another order: deliver what is owed, then end. */
   windDown: boolean;
 }
+
+/**
+ * Work the player chose in the moment: a once order, or an intent started
+ * by hand. It is the player's, the way a raw action under the advanced
+ * toggle is: the runner walks to the work and does it, and the body never
+ * takes it over or moves it anywhere. The body still speaks - the tags and
+ * the log say tired, spent, sleepy, cold - and the player decides. There
+ * is no need to serve, so there is no field to serve it in: the body tier
+ * takes a RunnerIntent and cannot be handed this one.
+ */
+export interface HandIntent extends IntentBase {
+  mode: "hand";
+  need: null;
+}
+
+/**
+ * The runner's own: a standing or counted order, the wait at camp, and the
+ * night out (whose whole content is the body's sleep). The body tier
+ * outranks it - sleep, storm, cold, thirst, hunger, snares, spent, home -
+ * and these are that tier's fields.
+ */
+export interface RunnerIntent extends IntentBase {
+  mode: "runner";
+  need: BodyNeed | null;
+  /** Warmth when the current rest step began, so its gain can be judged when it completes. Unset outside a rest step. */
+  restFromWarmth?: number;
+  /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
+  coldSpent?: boolean;
+}
+
+export type Intent = HandIntent | RunnerIntent;
 
 /** Where a seep's water comes from: saturated peat, or damp ground. */
 export type SeepClass = "bog" | "damp";

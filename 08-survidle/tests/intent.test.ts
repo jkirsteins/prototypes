@@ -282,7 +282,7 @@ describe("the work tier", () => {
     // Built by hand rather than through startIntent: lighting needs a fire pit in
     // place, and this test is only about the sentence a light intent reads as.
     const light: Intent = {
-      task: "light", cell: camp, campCell: camp,
+      mode: "hand", task: "light", cell: camp, campCell: camp,
       until: { kind: "once" }, deliver: "camp", done: 0,
       step: "lighting the fire", need: null, orderId: null, windDown: false,
     };
@@ -442,7 +442,7 @@ describe("a rest's gain, not just its completion, decides whether cold is spent"
     const { state, world } = newGame(3);
     const camp = regionState(state, world, state.player.region).campCell;
     state.intent = {
-      task: "chop", cell: camp, campCell: camp,
+      mode: "runner", task: "chop", cell: camp, campCell: camp,
       until: { kind: "forever" }, deliver: "leave", done: 0, step: "", need: "cold", orderId: null, windDown: false,
     };
     const it = state.intent;

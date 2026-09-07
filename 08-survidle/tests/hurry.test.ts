@@ -137,9 +137,13 @@ describe("what is hurried", () => {
     startIntent(state, world, cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(state.intent?.orderId).toBeNull();
     expect(hurryKind(state)).toBe("auto");
-    state.intent!.need = "sleep";
+    // A body need is the runner's alone: work chosen by hand has none to turn to.
+    startIntent(state, world, cal, new Rng(1), { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
+    const it = state.intent!;
+    if (it.mode !== "runner") throw new Error("a forever intent is the runner's");
+    it.need = "sleep";
     expect(hurryKind(state)).toBe("none");
-    state.intent!.need = null;
+    it.need = null;
     expect(hurryKind(state)).toBe("auto");
     die(state, "froze");
     expect(hurryKind(state)).toBe("none");

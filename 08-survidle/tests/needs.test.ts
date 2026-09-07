@@ -15,11 +15,16 @@ import { regionState } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
 import { check, startTask } from "../src/sim/tasks";
-import type { Task } from "../src/sim/types";
+import type { RunnerIntent, Task } from "../src/sim/types";
 import { regionAt, spotOf } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
+/** The live intent, which these traces expect to be the runner's own. */
+function runner(state: G["state"]): RunnerIntent {
+  if (state.intent?.mode !== "runner") throw new Error("the live intent is not the runner's");
+  return state.intent;
+}
 function until(g: G, pred: () => boolean, max = 3000): boolean {
   for (let i = 0; i < max; i++) {
     if (pred()) return true;
@@ -47,8 +52,8 @@ describe("the need order", () => {
     addItem(p.pack, "barkBucket", 1);
     takeUp(state, world, "barkBucket");
     p.tools.find((t) => t.id === "barkBucket")!.litres = 2;
-    expect(canFeed(state, world, cal, state.intent!)).toBe(false);
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("thirsty");
+    expect(canFeed(state, world, cal, runner(state))).toBe(false);
+    expect(currentNeed(state, world, cal, runner(state))).toBe("thirsty");
   });
 
   it("both in reach: thirst first, then hunger", () => {
@@ -60,9 +65,9 @@ describe("the need order", () => {
     addItem(p.pack, "barkBucket", 1);
     takeUp(state, world, "barkBucket");
     p.tools.find((t) => t.id === "barkBucket")!.litres = 2;
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("thirsty");
+    expect(currentNeed(state, world, cal, runner(state))).toBe("thirsty");
     p.water = 3;
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("hungry");
+    expect(currentNeed(state, world, cal, runner(state))).toBe("hungry");
   });
 
   it("hungry with no food and no water in reach is no need at all", () => {
@@ -70,7 +75,7 @@ describe("the need order", () => {
     const p = state.player;
     p.kcal = 1000;
     p.water = 3;
-    expect(currentNeed(state, world, cal, state.intent!)).toBeNull();
+    expect(currentNeed(state, world, cal, runner(state))).toBeNull();
   });
 
   it("thirsty at camp with the fire out and snow down: light the fire, then melt", () => {
@@ -87,7 +92,7 @@ describe("the need order", () => {
     takeUp(state, world, "fireDrill");
     addItem(pile(state, st.campCell), "firewood", 10);
     p.water = 0.5;
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("thirsty");
+    expect(currentNeed(state, world, cal, runner(state))).toBe("thirsty");
     expect(until(g, () => st.fire.lit, 120)).toBe(true);
     expect(until(g, () => p.water > 1, 120)).toBe(true);
   });
@@ -100,7 +105,7 @@ describe("the need order", () => {
     addItem(pile(state, st.campCell), "water", 2);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     p.water = 0.5;
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("thirsty");
+    expect(currentNeed(state, world, cal, runner(state))).toBe("thirsty");
     expect(until(g, () => p.water > 1, 600)).toBe(true);
     expect(qty(pile(state, st.campCell), "water")).toBeLessThan(2);
   });
@@ -248,9 +253,9 @@ describe("wet and cold", () => {
     expect(ambientTemperature(cal, state.weather)).toBeLessThan(5);
     state.player.warmth = 40;
     state.player.wetness = 0;
-    expect(currentNeed(state, world, cal, state.intent!)).not.toBe("cold");
+    expect(currentNeed(state, world, cal, runner(state))).not.toBe("cold");
     state.player.wetness = 80;
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("cold");
+    expect(currentNeed(state, world, cal, runner(state))).toBe("cold");
     expect(SOAKED_WETNESS).toBe(60);
     expect(WET_COLD_C).toBe(5);
   });
@@ -336,17 +341,17 @@ describe("sleep by the model, not by the clock", () => {
     p.water = WATER_FULL;
     // A point under the onset line at this hour: still up, whatever the dark.
     p.sleepDebt = debtFor(SLEEP_ONSET - 1, night.hour);
-    expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
+    expect(currentNeed(state, world, night, runner(state))).not.toBe("sleep");
     // A point over it: to bed.
     p.sleepDebt = debtFor(SLEEP_ONSET + 1, night.hour);
-    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    expect(currentNeed(state, world, night, runner(state))).toBe("sleep");
     // The sleep holds down to the wake line and lets go under it. The gap
     // between the two lines is what stops a body stirring at every dip.
-    state.intent!.need = "sleep";
+    runner(state).need = "sleep";
     p.sleepDebt = debtFor(WAKE_AT + 1, night.hour);
-    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    expect(currentNeed(state, world, night, runner(state))).toBe("sleep");
     p.sleepDebt = debtFor(WAKE_AT - 1, night.hour);
-    expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
+    expect(currentNeed(state, world, night, runner(state))).not.toBe("sleep");
   });
 
   it("a body under the collapse line sleeps parched and holds that sleep until it is rested", () => {
@@ -356,15 +361,15 @@ describe("sleep by the model, not by the clock", () => {
     p.sleepDebt = 0;
     p.water = 0.1;
     p.energy = SLEEP_AT;
-    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    expect(currentNeed(state, world, night, runner(state))).toBe("sleep");
     expect(state.player.sleeping).toEqual({ collapsed: true });
     // Past the collapse line but not yet rested: still down.
     p.energy = RESTED_AT - 1;
-    expect(currentNeed(state, world, night, state.intent!)).toBe("sleep");
+    expect(currentNeed(state, world, night, runner(state))).toBe("sleep");
     // Rested, and with no sleepiness to hold it there, it is up by the fire.
     p.energy = RESTED_AT;
-    state.intent!.need = null;
-    expect(currentNeed(state, world, night, state.intent!)).not.toBe("sleep");
+    runner(state).need = null;
+    expect(currentNeed(state, world, night, runner(state))).not.toBe("sleep");
     expect(state.player.sleeping).toBeNull();
   });
 
@@ -378,7 +383,7 @@ describe("sleep by the model, not by the clock", () => {
     p.water = WATER_FULL;
     p.sleepDebt = 20;
     expect(sleepiness(p.sleepDebt, late.hour)).toBeLessThan(SLEEP_ONSET);
-    expect(currentNeed(state, world, late, state.intent!)).toBeNull();
+    expect(currentNeed(state, world, late, runner(state))).toBeNull();
   });
 
   it("a spent body rests by the fire until it is rested, and not until a clock says dawn", () => {
@@ -387,12 +392,12 @@ describe("sleep by the model, not by the clock", () => {
     p.sleepDebt = 0;
     p.water = WATER_FULL;
     p.energy = SPENT_AT - 1;
-    expect(currentNeed(state, world, night, state.intent!)).toBe("spent");
-    state.intent!.need = "spent";
+    expect(currentNeed(state, world, night, runner(state))).toBe("spent");
+    runner(state).need = "spent";
     p.energy = RESTED_AT - 1;
-    expect(currentNeed(state, world, night, state.intent!)).toBe("spent");
+    expect(currentNeed(state, world, night, runner(state))).toBe("spent");
     p.energy = RESTED_AT;
-    expect(currentNeed(state, world, night, state.intent!)).not.toBe("spent");
+    expect(currentNeed(state, world, night, runner(state))).not.toBe("spent");
   });
 
   it("the sleep task runs to the model's wake line, with no dawn floor and no cap", () => {

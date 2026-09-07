@@ -12,12 +12,18 @@ import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
+import type { RunnerIntent } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG } from "../src/units";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
+/** The live intent, which these traces expect to be the runner's own. */
+function runner(state: G["state"]): RunnerIntent {
+  if (state.intent?.mode !== "runner") throw new Error("the live intent is not the runner's");
+  return state.intent;
+}
 const rng = () => new Rng(1);
 function until(g: G, pred: () => boolean, max = 3000): boolean {
   for (let i = 0; i < max; i++) {
@@ -126,7 +132,7 @@ describe("the body tier", () => {
     // The fire actually raises warmth: the rest runs to completion and gains real ground, so it is not "spent".
     expect(until(g, () => state.task?.id !== "rest", 200)).toBe(true);
     expect(state.player.warmth).toBeGreaterThan(45);
-    expect(state.intent?.coldSpent).toBeFalsy();
+    expect(runner(state).coldSpent).toBeFalsy();
     // Cold again: the need re-enters normally, not stuck spent from the rest that worked.
     state.player.warmth = 29;
     advance(state, world, 1);
@@ -178,13 +184,13 @@ describe("the body tier", () => {
     expect(cellOf(state, world)).toBe(camp);
     expect(until(g, () => state.task?.id !== "rest", 200)).toBe(true);
     expect(state.intent?.need).toBeNull();
-    expect(state.intent?.coldSpent).toBe(true);
+    expect(runner(state).coldSpent).toBe(true);
     // Spent, not stuck: the chop resumes rather than resting forever for nothing.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // Warm again some other way (not by resting here): coldSpent lets go once warmth clears WARM_AT.
     state.player.warmth = 80;
     advance(state, world, 1);
-    expect(state.intent?.coldSpent).toBe(false);
+    expect(runner(state).coldSpent).toBe(false);
     state.player.warmth = 29;
     advance(state, world, 1);
     expect(state.intent?.need).toBe("cold");
@@ -324,7 +330,7 @@ describe("the body tier", () => {
     expect(sawThirsty).toBe(true);
   });
 
-  it("a cabin build is set aside for the night and picked up with its minutes kept", () => {
+  it("a once cabin build is the player's: the night does not claim it, and a build set aside by hand is picked up with its minutes kept", () => {
     const g = newGame(3);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
@@ -334,15 +340,20 @@ describe("the body tier", () => {
     addItem(pile(state, camp), "stone", 12);
     addItem(pile(state, camp), "cordage", 8);
     addItem(state.player.pack, "driedMeat", 2);
-    // At energy 25 the cabin's slow early-mastery pace bakes fewer than 4 banked
-    // minutes into the ~37 minutes before sleep claims it; 40 gives it room to clear 10.
     state.player.energy = 40;
     startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(state.task?.id).toBe("build");
-    expect(until(g, () => state.task?.id === "sleep", 1500)).toBe(true);
+    // Past the spent line and the collapse, and the build goes on: work chosen by hand has no body tier.
+    advance(state, world, 600);
+    expect(state.task?.id).toBe("build");
+    expect(state.player.energy).toBeLessThan(20);
+    // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
+    startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     const banked = st.build.cabin ?? 0;
     expect(banked).toBeGreaterThan(10);
-    expect(until(g, () => state.task?.id === "build", 1500)).toBe(true);
+    expect(until(g, () => state.intent?.task !== "sticks", 1500)).toBe(true);
+    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    expect(until(g, () => state.task?.id === "build", 200)).toBe(true);
     expect(state.task!.duration).toBeCloseTo(3600 - banked, 0);
   });
 });

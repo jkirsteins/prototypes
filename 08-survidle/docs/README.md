@@ -52,7 +52,15 @@ waiting, and everything done while you are away run at the one scale.
   built while you are away. With orders but nothing to do, you wait at
   camp, where the nights are by the fire. The game does the walking, the
   work, the hauling, and when the body asks for it, the walk back to camp,
-  a fire from what is at camp, and the night's sleep. An "advanced" toggle
+  a fire from what is at camp, and the night's sleep. A once order is
+  yours: it goes to the top of the list and starts on the click, whatever
+  the body says, and nothing interrupts it - spent, sleepy and cold are
+  tags and log lines while it runs, and what to do about them is your
+  call. Standing and counted orders are the runner's, and so is the gap
+  between any two orders: there the body speaks first, and the next order
+  starts once it has been served. So a list of once orders left to run
+  while you are away still sleeps, drinks and lights its fire, between
+  them rather than in them. An "advanced" toggle
   shows the raw single actions underneath, one at a time. The reference
   runner the sim measures itself against plays this way too: below a rung
   it works the plain shape at today's reading, giving or withdrawing it as

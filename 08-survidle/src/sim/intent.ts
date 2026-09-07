@@ -26,8 +26,20 @@ import { isRunning, type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, Where,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, Where,
 } from "./types";
+
+/**
+ * Whose an intent is, read once from what it was asked to do. A once order
+ * is the player's own choice in the moment and stays theirs: the body never
+ * moves it. Everything the runner keeps going on its own - a standing or
+ * counted order, the wait - is the runner's, and so is the night out, a
+ * once whose only content is the sleep the body serves.
+ */
+export function intentMode(task: TaskId, until: Until): Intent["mode"] {
+  if (task === "night" || task === "wait") return "runner";
+  return until.kind === "once" ? "hand" : "runner";
+}
 
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
@@ -292,9 +304,9 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   }
   // Tentatively in place, so the kit check below sees the new task; reverted on a failed check.
   const prevIntent = state.intent;
+  const campCell = regionState(state, world, state.player.region).campCell;
   state.intent = {
-    task: req.task, arg: req.arg, cell,
-    campCell: regionState(state, world, state.player.region).campCell,
+    mode: intentMode(req.task, until), task: req.task, arg: req.arg, cell, campCell,
     until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
   };
   // A bow hunt's arrows, or a set-snares job's snares, must be in the pack before the
@@ -306,7 +318,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
     if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
       if (pocketed > 0) {
         const kit = orderKit(state)[0];
-        if (kit) transfer(state.player.pack, pile(state, state.intent.campCell), kit, pocketed);
+        if (kit) transfer(state.player.pack, pile(state, campCell), kit, pocketed);
       }
       state.intent = prevIntent;
       return false;
@@ -653,14 +665,8 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   return undefined;
 }
 
-/**
- * Called once a minute by advance, after stepTask. The body tier may take
- * over a running task; the work tier runs only when the slot is free. At
- * most eight instant actions chain in one call, as the old haul plan did.
- */
-export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
-  if (!state.intent || state.dead) return;
-  const it = state.intent;
+/** The body tier's minute: reads the need and, when one holds and has a step, takes it. True when the body has the slot. */
+function serveBody(state: GameState, world: World, cal: Calendar, rng: Rng, it: RunnerIntent): boolean {
   const need = currentNeed(state, world, cal, it);
   it.need = need;
   // The model ends a sleep, not the task's own clock. A sleep task is as long
@@ -668,13 +674,24 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
   // when the body is past the wake line it gets up on that minute rather than
   // lying out the rest of an hour it no longer needs.
   if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
-  if (need) {
-    const s = bodyStep(state, world, cal, rng, it, need);
-    if (s) {
-      if (!isRunning(state, s)) takeStep(state, world, cal, s);
-      return;
-    }
-  }
+  if (!need) return false;
+  const s = bodyStep(state, world, cal, rng, it, need);
+  if (!s) return false;
+  if (!isRunning(state, s)) takeStep(state, world, cal, s);
+  return true;
+}
+
+/**
+ * Called once a minute by advance, after stepTask. The body tier may take
+ * over a running task of the runner's own; work chosen by hand has no body
+ * tier, the way a raw action has none. The work tier runs only when the
+ * slot is free. At most eight instant actions chain in one call, as the
+ * old haul plan did.
+ */
+export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
+  if (!state.intent || state.dead) return;
+  const it = state.intent;
+  if (it.mode === "runner" && serveBody(state, world, cal, rng, it)) return;
   for (let guard = 0; guard < 8 && state.intent && !state.task; guard++) {
     if (workStep(state, world, cal, rng) !== "again") return;
   }

@@ -11,7 +11,8 @@ import { sexOfName } from "./names";
 import { medianPerson, rollCandidates } from "./person";
 import { regionState } from "./regionstate";
 import { newSkills } from "./skills";
-import type { GameState, Inventory, LogEntry, TaskId } from "./types";
+import { intentMode } from "./intent";
+import type { GameState, Intent, Inventory, LogEntry, TaskId, Until } from "./types";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -106,6 +107,11 @@ function fillDefaults(state: GameState): void {
   if (state.intent) {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;
+    // Whose the intent is was read off what it was asked to do; a save from
+    // before that reads the same way, and a hand intent carries no need.
+    const it = state.intent as Partial<Intent> & { task: TaskId; until: Until };
+    it.mode ??= intentMode(it.task, it.until);
+    if (it.mode === "hand") it.need = null;
   }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;

@@ -45,10 +45,10 @@ Three states, read from the game state every frame by `hurryKind`:
   spent, home); dead; the landing screen; the away report open.
 
 The rule under the three is the one the player was given: what you
-chose in the moment is hurried, what you left running is not. A body
-need inside a once order is the body's, not the player's, so a once
-felling that turns into a walk home for the night slows back to the one
-scale at the turn.
+chose in the moment is hurried, what you left running is not. A once
+order has no body tier - it is the player's from start to end - so it
+runs at the auto rate to the end; the body's turn comes between orders,
+in the wait, at the one scale.
 
 ## 2. The two curves
 
@@ -213,8 +213,9 @@ waiting, and everything done while you are away run at the one scale."
   clicked; then the thin bar fills and drains in under a second, the
   clock line spikes to 11 and falls, and a click during the drain does
   nothing. Clicking steadily reads about 6 on average.
-- Let a once order run into the evening: when the runner turns to the
-  walk home the line drops to 1 and stays there through the night.
+- Let a once order run into the evening: the line holds to the end of
+  the work; the wait that follows it, and the walk home in that wait,
+  read 1 and stay there through the night.
 - A pulse mid-way when the order is removed with `x`: the bar goes with
   the row and the line reads 1.
 

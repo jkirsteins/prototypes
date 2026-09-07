@@ -5,9 +5,11 @@
  * are earned per skill, at RUNG_LEVEL. The gate reads the level at the
  * moment an order is given, on the kind the order is actually added as.
  */
+import type { Rng } from "../rng";
 import type { World } from "../world/gen";
-import { yieldItem } from "./intent";
-import { addOrder } from "./orders";
+import type { Calendar } from "./calendar";
+import { startIntent, yieldItem } from "./intent";
+import { addOrder, ordersHere } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
 import type { GameState, IntentRequest, Order, OrderKind, SkillId, TaskId } from "./types";
 
@@ -100,6 +102,23 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
   const gate = orderGate(state, req, kind);
   if (!gate.ok) throw new Error(gate.why);
   return addOrder(state, world, req, kind, rank);
+}
+
+/**
+ * An order given by hand at the panel. A standing or counted order joins
+ * the bottom of the list and is the runner's to serve. A once order is the
+ * player's own choice in the moment: it goes to the top of the list and
+ * starts now, whatever the body says and whatever the runner was doing,
+ * which is set aside with its minutes kept. A second once given while one
+ * of the player's is live queues behind it rather than cutting in.
+ */
+export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): Order {
+  if (normalizeOrder(req, kind).req.until.kind !== "once") return giveOrder(state, world, req, kind);
+  const live = state.intent;
+  const liveHand = live?.mode === "hand" && live.orderId !== null ? ordersHere(state, world).findIndex((o) => o.id === live.orderId) : -1;
+  const o = giveOrder(state, world, req, kind, liveHand + 1);
+  if (liveHand < 0) startIntent(state, world, cal, rng, o.req, o.id);
+  return o;
 }
 
 /** Trees a player fells per click when the grind is shut but a count is open. */

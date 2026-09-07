@@ -22,7 +22,7 @@ import { seepStopped } from "./seep";
 import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
-import type { BodyNeed, GameState, Intent, ItemId } from "./types";
+import type { BodyNeed, GameState, Intent, ItemId, RunnerIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
 
@@ -63,7 +63,7 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
 }
 
 /** The need that holds now, sleep first. A need already being served keeps holding until its own exit. */
-export function currentNeed(state: GameState, world: World, cal: Calendar, it: Intent): BodyNeed | null {
+export function currentNeed(state: GameState, world: World, cal: Calendar, it: RunnerIntent): BodyNeed | null {
   const p = state.player;
   // Read once, before the sleep clauses, because both have a say in them.
   const thirsty = p.water < THIRSTY_L && canQuench(state, world, cal);
@@ -114,8 +114,25 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: I
   return null;
 }
 
+/**
+ * What the body asks for when the runner is its own with nothing sticky
+ * behind it: the reading the wait would take on its first minute. The
+ * scheduler asks this between orders, so an order starts only when the
+ * body has nothing to say, and work chosen by hand, which has no body tier
+ * of its own, is still followed by the night, the drink or the fire the
+ * body was owed.
+ */
+export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNeed | null {
+  const campCell = regionState(state, world, state.player.region).campCell;
+  const wait: RunnerIntent = {
+    mode: "runner", task: "wait", cell: campCell, campCell, until: { kind: "forever" }, deliver: "leave",
+    done: 0, step: "", need: null, orderId: null, windDown: false,
+  };
+  return currentNeed(state, world, cal, wait);
+}
+
 /** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */
-export function canFeed(state: GameState, world: World, cal: Calendar, it: Intent): boolean {
+export function canFeed(state: GameState, world: World, cal: Calendar, it: RunnerIntent): boolean {
   const p = state.player;
   if (AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(p.pack, f) > 1e-9)) return true;
   const camp = pile(state, it.campCell);
@@ -140,7 +157,7 @@ export function minutesToCamp(state: GameState, world: World, cal: Calendar): nu
  * walk time sets does not flicker the need in and out and send the runner
  * back out for one more minute of work between crossings.
  */
-function homeBeforeDark(state: GameState, world: World, cal: Calendar, it: Intent): boolean {
+function homeBeforeDark(state: GameState, world: World, cal: Calendar, it: RunnerIntent): boolean {
   if (cal.season !== "winter" || cal.isNight) return false;
   if (it.need === "home") return true;
   const st = regionState(state, world, state.player.region);
@@ -153,7 +170,7 @@ function homeBeforeDark(state: GameState, world: World, cal: Calendar, it: Inten
 }
 
 /** The step a need calls for, or null when there is nothing to start for it. */
-export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: Intent, need: BodyNeed): Step | null {
+export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: RunnerIntent, need: BodyNeed): Step | null {
   switch (need) {
     case "hungry": return hungryStep(state, world, cal, rng, it);
     case "thirsty": return thirstyStep(state, world, cal);
@@ -353,7 +370,7 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
 }
 
 /** Walk to this region's camp, make a fire if the means are here, then sleep or rest. */
-function campStep(state: GameState, world: World, cal: Calendar, it: Intent, need: "sleep" | "cold" | "spent"): Step {
+function campStep(state: GameState, world: World, cal: Calendar, it: RunnerIntent, need: "sleep" | "cold" | "spent"): Step {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const here = cellOf(state, world);
@@ -385,7 +402,7 @@ function campStep(state: GameState, world: World, cal: Calendar, it: Intent, nee
 }
 
 /** Eat what is in reach, walking the order until the hungry line is passed or nothing is left to take; else go where the food is; else nothing. Force is set: the runner eats regardless of the player's auto-eat toggle. */
-function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: Intent): Step | null {
+function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: RunnerIntent): Step | null {
   const before = state.player.kcal;
   autoEat(state, world, rng, true);
   if (state.player.kcal > before) return null;

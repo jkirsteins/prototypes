@@ -8,7 +8,7 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { KIT_ITEMS } from "./body";
+import { bodyAsks, KIT_ITEMS } from "./body";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
@@ -477,6 +477,17 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     return;
   }
   if (chosen) {
+    // Between orders the runner is its own, and the body speaks first. An
+    // order starts only when the body asks for nothing; while it does, the
+    // runner waits and the wait's body tier serves it - the walk home, the
+    // fire, the night, the drink - and the order starts once the wait has
+    // nothing left to serve. This is the only body turn work chosen by hand
+    // ever gets, since a once order carries no body tier of its own.
+    const waiting = live?.mode === "runner" && live.task === "wait" ? live : null;
+    if (waiting ? waiting.need !== null : bodyAsks(state, world, cal) !== null) {
+      if (!waiting) startIntent(state, world, cal, rng, WAIT);
+      return;
+    }
     // chooseOrder just ran the same check and walk check startIntent repeats, so this cannot fail.
     startIntent(state, world, cal, rng, chosen.req, chosen.id);
     return;

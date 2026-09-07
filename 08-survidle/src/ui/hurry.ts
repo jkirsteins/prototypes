@@ -40,7 +40,7 @@ export function hurryKind(state: GameState): HurryKind {
   if (state.dead || state.landing) return "none";
   const it = state.intent;
   if (!it) return state.task ? "auto" : "none";
-  if (it.need !== null || it.task === "wait") return "none";
+  if (it.task === "wait" || (it.mode === "runner" && it.need !== null)) return "none";
   if (it.orderId === null || it.until.kind === "once") return "auto";
   return "click";
 }

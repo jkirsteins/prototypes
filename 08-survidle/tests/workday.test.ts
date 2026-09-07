@@ -13,7 +13,13 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
-import type { GameState } from "../src/sim/types";
+import type { GameState, RunnerIntent } from "../src/sim/types";
+/** The live intent, which these traces expect to be the runner's own. */
+function runner(state: GameState): RunnerIntent {
+  if (state.intent?.mode !== "runner") throw new Error("the live intent is not the runner's");
+  return state.intent;
+}
+
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
@@ -78,7 +84,7 @@ describe("the working day", () => {
     const cal = calendar(state.minute, state.startDoy);
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
     state.player.water = WATER_FULL;
-    expect(currentNeed(state, world, cal, state.intent!)).toBe("sleep");
+    expect(currentNeed(state, world, cal, runner(state))).toBe("sleep");
     expect(state.player.sleeping).toEqual({ collapsed: false });
     const back = deserialize(serialize(state))!.state;
     expect(back.player.sleeping).toEqual({ collapsed: false });
@@ -167,7 +173,7 @@ describe("the working day", () => {
 
   it("a spent body drinks its fill before it sits down for the evening", () => {
     const { state, world } = felling();
-    const it = state.intent!;
+    const it = runner(state);
     state.player.energy = SPENT_AT - 1;
     placeAtSpot(state, world, state.player.region, "shore");
     state.player.water = 1.5;
@@ -180,7 +186,7 @@ describe("the working day", () => {
 
   it("a sleepy body gets up to drink first, and lies down once it is full", () => {
     const { state, world } = felling();
-    const it = state.intent!;
+    const it = runner(state);
     placeAtSpot(state, world, state.player.region, "shore");
     state.minute = calmNight(state);
     const cal = calendar(state.minute);
@@ -195,7 +201,7 @@ describe("the working day", () => {
 
   it("a sleep in progress lets go at the wake line, and the same reading holds by day and by night", () => {
     const { state, world } = felling();
-    const it = state.intent!;
+    const it = runner(state);
     state.player.energy = 100;
     state.player.water = WATER_FULL;
     for (const minute of [25 * 60, 14 * 60]) {
@@ -214,7 +220,7 @@ describe("the working day", () => {
 
   it("a sleep set aside is a night interrupted, not a night over: the body goes back to bed", () => {
     const { state, world } = felling();
-    const it = state.intent!;
+    const it = runner(state);
     const cal = calendar(state.minute);
     state.player.energy = 100;
     state.player.water = WATER_FULL;

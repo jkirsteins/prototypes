@@ -16,7 +16,7 @@ import { since } from "./sim/epitaph";
 import { createForecaster, noteMonthRow } from "./sim/forecaster";
 import { startIntent, type Where } from "./sim/intent";
 import type { FoodId } from "./sim/items";
-import { giveOrder, orderGate } from "./sim/ladder";
+import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
 import { newWorld } from "./sim/newgame";
@@ -384,7 +384,7 @@ function onClick(ev: Event) {
       // the order finally starts; RowChoice has no cell of its own to carry that.
       if (req.task === "makeCamp") req.where = { cell: cellOf(state, world) };
       // The row is greyed with no button when the gate is shut; this is the belt to that brace.
-      if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
+      if (orderGate(state, req, kind).ok) orderByHand(state, world, cal, rng, req, kind);
       break;
     }
     case "row-more": {
@@ -403,7 +403,7 @@ function onClick(ev: Event) {
       if (!target.classList.contains("off")) {
         ui.choice.until = target.dataset.until as RowChoice["until"];
         const { req, kind } = rowRequest(ui.choice, id, arg);
-        if (orderGate(state, req, kind).ok) giveOrder(state, world, req, kind);
+        if (orderGate(state, req, kind).ok) orderByHand(state, world, cal, rng, req, kind);
         ui.open = null;
       }
       break;
@@ -436,7 +436,7 @@ function onClick(ev: Event) {
       // Located work names its cell; carried work has none, so it resolves through
       // "nearest" - camp for camp-bound work, wherever the player stands for craft.
       const where: Where = target.dataset.cell !== undefined ? { cell: Number(target.dataset.cell) } : "nearest";
-      giveOrder(state, world, { task: id, arg, until: { kind: "once" }, deliver: "leave", where }, "job");
+      orderByHand(state, world, cal, rng, { task: id, arg, until: { kind: "once" }, deliver: "leave", where }, "job");
       break;
     }
     case "order-up":
