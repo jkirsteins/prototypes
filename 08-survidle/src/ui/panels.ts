@@ -285,6 +285,43 @@ export function readHtml(state: GameState, world: World, id: number): string {
  * a thing the player built stops, so this sits in the info column and is
  * never behind a pointer or a tab.
  */
+/**
+ * The ways out of this region, in a corner of the map.
+ *
+ * It used to sit at the foot of the region panel and only after picking a
+ * neighbour on the map, so a player who never worked out that regions were
+ * clickable never learned there was anywhere else to go. Neighbours only:
+ * a short list of real choices beats a long one of distant places, and it
+ * is the same rule travel itself follows.
+ *
+ * Ground that is not known yet cannot be walked to, so it offers the way
+ * it opens instead - an exploration rather than a promise of arrival.
+ */
+export function travelHtml(state: GameState, world: World, cal: Calendar): string {
+  const from = regionAt(world, state.player.region);
+  const ways = from.neighbours
+    .map((n) => {
+      const r = regionAt(world, n.id);
+      const name = esc(r.name);
+      // Named, so morphing finds each way again rather than matching by
+      // position: what a way offers changes as the ground becomes known.
+      const open = `<div class="way" data-way="${n.id}">`;
+      if (knownShare(state, world, n.id) >= 1) {
+        const go = check(state, world, cal, "travel", `region:${n.id}`);
+        const ice = thinIceButton(state, world, cal, "travel", `region:${n.id}`, go);
+        return go.ok
+          ? `${open}<button class="mini" data-act="task" data-id="travel" data-arg="region:${n.id}">Go to ${name}</button> <small>${esc(fmtDuration(go.duration))}</small>${ice}</div>`
+          : `${open}<span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
+      }
+      const ex = check(state, world, cal, "explore", `region:${n.id}`);
+      return ex.ok
+        ? `${open}<button class="mini" data-act="task" data-id="explore" data-arg="region:${n.id}">Explore ${name}</button></div>`
+        : `${open}<span class="dim">${name}: ${esc(plain(ex.why))}</span></div>`;
+    })
+    .join("");
+  return `<div class="waylabel">ways out</div>${ways}`;
+}
+
 export function campHtml(state: GameState, world: World): string {
   const id = state.player.region;
   const r = regionAt(world, id);

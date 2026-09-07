@@ -42,7 +42,7 @@ import { cellFromPoint, LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import { tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
+  manualHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
@@ -160,6 +160,7 @@ function render() {
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world));
+  setPanel("maptravel", travelHtml(state, world, cal));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));

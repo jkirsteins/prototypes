@@ -247,6 +247,22 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   font-size: 12px;
 }
 #maptip[hidden] { display: none; }
+
+/* The ways out, over the map's top right. They sit on the ground they lead
+   off rather than at the foot of a panel a player had to find first. */
+#maptravel {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  max-width: 240px;
+  padding: 4px 7px;
+  background: rgba(12, 15, 20, 0.82);
+  border: 1px solid var(--line);
+  font-size: 11px;
+}
+#maptravel .waylabel { color: var(--dim); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+#maptravel .way { padding: 1px 0; }
 #maptip button { pointer-events: auto; }
 #maptip .tiphead { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
 #maptip .tiphead b { color: var(--accent); }
