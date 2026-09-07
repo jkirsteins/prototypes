@@ -14,6 +14,7 @@ import { fmtWorldDate } from "./epitaph";
 import { addItem, pile } from "./inventory";
 import { STRUCTURES } from "./items";
 import { log } from "./log";
+import { dimAll } from "./mapped";
 import { fmtName } from "./names";
 import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
@@ -93,9 +94,10 @@ export function layDownPack(state: GameState, world: World): void {
   p.tools = [];
 }
 
-/** Every discovered region forgets to dim: seen once, from the journal now, not from standing there. */
+/** Every discovered region and every walked cell forgets to dim: known once, from the journal now, not from standing there. */
 export function demoteFog(state: GameState): void {
   for (const id of Object.keys(state.discovered)) state.discovered[Number(id)] = DIM;
+  dimAll(state);
 }
 
 /** How much stands at a camp: the eight one-off structures plus however many snares. */

@@ -55,6 +55,16 @@ export function newRegionState(world: World, id: number): RegionState {
  * load, with the world in hand, which fillDefaults does not have.
  */
 export function fillPopulations(state: GameState, world: World): void {
+  // A save from before cells were the thing walked: everything its survivor entered or
+  // read of is ground they could have walked, so it opens whole rather than stranding
+  // them on ground routing no longer trusts.
+  if (!state.mapped) {
+    state.mapped = {};
+    for (const [id, d] of Object.entries(state.discovered)) {
+      if (d === SEEN) continue;
+      for (const c of regionAt(world, Number(id)).cells) state.mapped[c] = d === DIM ? 3 : 1;
+    }
+  }
   for (const [key, st] of Object.entries(state.regions)) {
     const id = Number(key);
     const start = startingPop(world, id);

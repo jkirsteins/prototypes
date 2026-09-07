@@ -510,6 +510,8 @@ export interface GameState {
   regions: Record<number, RegionState>;
   /** Fog of war: 1 seen from next door, 2 visited, 3 dim (visited once, since forgotten). Absent means unknown. */
   discovered: Record<number, 1 | 2 | 3>;
+  /** Ground whose walking is known: 1 this life's, 3 the journal's. Absent means unknown. */
+  mapped: Record<number, 1 | 3>;
   weather: Weather;
   task: Task | null;
   log: LogEntry[];
