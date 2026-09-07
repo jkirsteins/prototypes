@@ -71,11 +71,42 @@ describe("the congratulation", () => {
     const { state } = newGame(3);
     goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
     const ui = newUiState();
+
+    // Each guard blocks the opening while a completion is queued.
+    ui.goalsDone = ["firewood"];
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    ui.goalsDone = null;
+
+    ui.teach = "job";
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    ui.teach = null;
+
     ui.welcome = true;
     expect(goalMomentToOpen(state, ui)).toBe(null);
     ui.welcome = false;
+
+    ui.manual = true;
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    ui.manual = false;
+
+    ui.cemetery = true;
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    ui.cemetery = false;
+
+    ui.away = { entries: [], orders: [], movedTo: null };
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    ui.away = null;
+
+    state.landing = { cell: 0, region: 0, date: { doy: 1, year: 1 }, gapDays: 0, candidates: [], boat: 0, chosen: 0, name: { first: "Test", last: "Name" }, oldCamp: null };
+    expect(goalMomentToOpen(state, ui)).toBe(null);
+    state.landing = null;
+
     state.dead = { cause: "froze", minute: 0 };
     expect(goalMomentToOpen(state, ui)).toBe(null);
+    state.dead = null;
+
+    // With all guards clear, the queued completion opens.
+    expect(goalMomentToOpen(state, ui)).toEqual(["firewood"]);
   });
 
   it("gathers a catch-up's completions into one screen rather than a stack", () => {
