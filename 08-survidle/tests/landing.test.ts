@@ -164,6 +164,8 @@ describe("what the heir is told", () => {
     die(state, "froze");
     const html = tombstoneHtml(state, world, newUiState());
     expect(html).toContain(`${fmtName(state.survivors[0].name)} lived ${firstDay} days.`);
+    // The quarter carry is a rule of the world, learned here rather than by dying twice.
+    expect(html).toContain("a quarter of what");
   });
 
   // A plan is the dead's and the camp is the world's. The ladder gates an order at the

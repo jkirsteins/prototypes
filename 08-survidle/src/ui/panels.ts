@@ -27,7 +27,7 @@ import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, watersideCell }
 import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
-import { level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
+import { CARRY_SHARE, level, levelMinutes, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
   availableTasks, check, fallChance, pausedList, SPOT_NAMES, type TaskGroup, type TaskOption, whereIs,
@@ -35,7 +35,7 @@ import {
 import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
-import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND } from "../units";
+import { fmtDuration, fmtKg, fmtKm, fmtReal, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
@@ -377,7 +377,10 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
       : `<div class="head">`;
-    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${btns}</div>${second}</div>`;
+    // Words and not only the title: a touch device has no hover to show one, and
+    // a mouse never rests on a row long enough to find it.
+    const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
+    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
   }).join("");
   return `${waiting}${rows}`;
 }
@@ -575,6 +578,7 @@ export function tombstoneHtml(state: GameState, _world: World, ui: UiState): str
 ${ancestorLine(state)}
 <div class="card">${cardHtml(rec.person, rec.name, deadExtras(rec), { copy: true, copied: ui.copiedUntil > Date.now() })}</div>
 ${entryLinesHtml(lines.slice(1))}
+<p class="dim">The next survivor carries ${esc(shareWord(CARRY_SHARE))} of what ${esc(rec.name.first)} knew, and none of the practice at any one thing.</p>
 <p>The next boat lands in ${esc(monthOfDoy(next.doy))}, year ${next.year}.</p>
 <button class="act" data-act="begin-again">Begin again</button>
 <button class="mini" data-act="cemetery">cemetery</button>

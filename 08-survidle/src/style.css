@@ -103,6 +103,8 @@ small, .dim { color: var(--dim); }
 .bar.hurry .fill { background: var(--accent); transition: none; }
 #task .order .head.hurry { cursor: pointer; }
 #task .order .head.hurry:hover b { color: var(--accent); }
+#task .order .head .hint { color: var(--dim); white-space: nowrap; }
+#task .order .head.hurry:hover .hint { color: var(--accent); }
 .clockrow .hurrying { color: var(--accent); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
