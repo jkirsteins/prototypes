@@ -18,6 +18,7 @@ import { ambientTemperature, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
 import { elevationAt, groundGlyph, toneCuts, toneOf, TREES, VARIANTS, type ToneCuts } from "./ground";
+import { moodOf } from "./mood";
 import { lighting } from "./sky";
 
 export const GLYPH: Record<Terrain, string> = {
@@ -304,7 +305,7 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}`;
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}`;
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
@@ -480,6 +481,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const m = markerAt.get(i);
     if (m) {
       cls.push("mk", m.cls);
+      // The mood rides as a class and not as a data attribute: the morph keys an
+      // element by its data attributes, so a mood written there would make every
+      // change of task replace the glyph's node instead of retitling it.
+      if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
       glyph = m.glyph;
       title = `${m.label}, ${title}`;
     }

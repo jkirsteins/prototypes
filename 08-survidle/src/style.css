@@ -327,6 +327,46 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 #map .legend b.mk-seep { color: #6fa8dc; }
 #map .legend b.mk-spot { color: #c8a35a; }
 
+/*
+ * The survivor moves. What the person is doing is filed under one of five
+ * moods (ui/mood.ts) and written as a class on the @ and on the header
+ * portrait, so both say the same thing at once and the sim is asked nothing
+ * twice. All of it is quiet on purpose: a motion you notice when it stops
+ * rather than one that competes with the firelight or the walk line. Walking
+ * and working are the two that move; resting, sleeping and idle are told by
+ * stillness, which is the reading they want anyway.
+ */
+@keyframes step { from { transform: translateY(0); } to { transform: translateY(-1px); } }
+@keyframes toil { from { background-color: var(--m0); } to { background-color: var(--m1); } }
+@keyframes breathe { from { transform: scale(1); } to { transform: scale(1.04); } }
+
+.grid .c.mk-player.mood-walk { animation: step 1.2s ease-in-out infinite alternate; }
+.grid .c.mk-player.mood-work {
+  --m0: #b8860b; --m1: #d8a327;
+  animation: toil 2.4s ease-in-out infinite alternate;
+}
+/* Asleep is a dimmer @ and no motion at all; rest and idle are the plain mark. */
+.grid .c.mk-player.mood-sleep { background: #7d5c08; }
+.grid .c.mk-player.mood-rest, .grid .c.mk-player.mood-idle { animation: none; }
+
+/* The portrait animates by its wrapper and never by its pixels: the face is
+   64 SVG rects redrawn from the person, and moving those every frame would
+   spend the churn budget tests/churn.test.ts guards for a 24px breath. */
+.stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep { transform-origin: 50% 60%; }
+.stat-face.mood-walk { animation: step 1.2s ease-in-out infinite alternate; }
+.stat-face.mood-work { animation: breathe 3.4s ease-in-out infinite alternate; }
+.stat-face.mood-rest { animation: breathe 4.6s ease-in-out infinite alternate; }
+.stat-face.mood-sleep { opacity: 0.65; animation: breathe 5.6s ease-in-out infinite alternate; }
+.stat-face.mood-idle { animation: none; }
+
+/* Somebody who has asked their system for less motion is asking this screen too. */
+@media (prefers-reduced-motion: reduce) {
+  .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
+  .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep {
+    animation: none;
+  }
+}
+
 /* Firelight. The source cell rises above the shade and the tint; ring cells stay under the shade and only their overlay rises. */
 @keyframes flicker { from { background-color: var(--f0); } to { background-color: var(--f1); } }
 /* At the two close zooms .grid.night .c.lit-0 below overrides this; at coarser zooms only the marker pulses. */

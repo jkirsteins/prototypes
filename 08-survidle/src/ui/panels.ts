@@ -19,6 +19,7 @@ import { daysInWords, landingDate, nextBoatDate } from "../sim/landing";
 import { MANUAL_LINKS, MANUAL_SECTIONS } from "../sim/manual";
 import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
+import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, orderMet, orderSentence, ordersHere } from "../sim/orders";
@@ -114,7 +115,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
   if (sleepiness(p.sleepDebt, cal.hour) >= SLEEPY_AT) tags.push(`<span class="tag bad">sleepy</span>`);
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
-  return `<h2><span class="stat-face">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
+  return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
 ${bar("kcal", "kcal", "Food")}
 <div class="dim">fat: ${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg</div>
