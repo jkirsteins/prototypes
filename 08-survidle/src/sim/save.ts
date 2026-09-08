@@ -231,6 +231,9 @@ function fillDefaults(state: GameState): void {
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
     st.fire.unattended ??= 0;
+    st.fire.embers ??= 0;
+    st.fire.litSince ??= null;
+    st.fire.rainHeld ??= 0;
     st.smoke ??= 0;
     st.logsWet ??= 1440;
     st.orders ??= [];

@@ -3,9 +3,10 @@ import { cellAt, regionAt, type World } from "../world/gen";
 import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
-import { calendar, type Calendar } from "./calendar";
+import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
-import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
+import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
+import { goalDeed, KEPT_DAYS } from "./goals";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
@@ -27,6 +28,13 @@ export { rootStockFor };
 
 /** Fires, racks and rot, every minute, everywhere; `who` is null with nobody home. */
 export function stepCamp(state: GameState, world: World, ambient: number, dt: number, who: Presence | null): void {
+  const cal = calendar(state.minute, state.startDoy);
+  // Read here rather than after: dailyCamp's own gate below flips state.lastDay
+  // later in this same tick, so this still catches the one tick the day turns.
+  const daily = cal.dayIndex > state.lastDay && cal.hour >= DAILY_HOUR;
+  // True on the single tick dawn falls in, however long dt is: the tick just
+  // before this one had dawn less than dt minutes off.
+  const dawnThisTick = minutesUntilDawn(state.minute - dt, state.startDoy) <= dt + 1e-9;
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     const mine = who !== null && id === who.region;
@@ -51,13 +59,64 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.wetKg = 0;
         st.fire.lit = false;
         st.fire.indoors = false;
-        log(state, mine ? "The fire has gone out." : `The fire at ${name()} has gone out.`, "bad");
+        // Rain that beat the fire beat the coals with it; a fire that simply
+        // ate its wood leaves them, which is how a night is got through.
+        st.fire.embers = drownedLow ? 0 : EMBER_MINUTES;
+        if (st.fire.embers <= 0) {
+          st.fire.litSince = null;
+          st.fire.rainHeld = 0;
+        }
+        log(state, mine
+          ? (st.fire.embers > 0 ? "The flames are down to coals." : "The fire has gone out.")
+          : `The fire at ${name()} has gone out.`, "bad");
+      }
+    }
+
+    if (!st.fire.lit && st.fire.embers > 0) {
+      const wet = state.weather.precip !== "none" && !roofed(st) ? EMBER_RAIN_RATE : 1;
+      st.fire.embers = Math.max(0, st.fire.embers - dt * wet);
+      if (st.fire.embers === 0) {
+        st.fire.litSince = null;
+        st.fire.rainHeld = 0;
+        log(state, mine ? "The last of the coals goes grey." : `The fire at ${name()} is dead.`, "bad");
       }
     }
 
     // A lit fire left with no one at camp to mind it runs its unattended clock.
     st.fire.unattended = st.fire.lit && !atCampHere ? st.fire.unattended + dt : 0;
     stepSmoke(st, atCampHere, dt);
+
+    // Embers count as alive here same as flame: coals kept through the night
+    // or a storm are the whole point of banking a fire rather than a chore
+    // that only counts while it is burning bright.
+    const fireAlive = st.fire.lit || hasEmbers(st.fire);
+    // Held, not just endured: only while the fire is alive and the rain is
+    // actually falling on it does the clock run; a dead fire's held time
+    // means nothing, so it is cleared at the two death points above.
+    const rainingOnIt = fireAlive && state.weather.precip !== "none";
+    if (rainingOnIt) st.fire.rainHeld += dt;
+    // These three goals are the player's own only: an untended camp fire in
+    // a region the player has left is real, but it is not what the player
+    // is being asked to keep. `mine` alone, not `atCampHere`, because being
+    // away from the pit within your own camp - out at the snares, asleep -
+    // is exactly the case these goals are meant to reward, not punish.
+    if (mine) {
+      if (rainingOnIt) goalDeed(state, { kind: "keptRain", minutes: st.fire.rainHeld });
+      if (fireAlive && st.fire.litSince !== null) {
+        const elapsed = state.minute - st.fire.litSince;
+        // The daily roll alone can sit up to a day short of the target, since it only
+        // ever samples DAILY_HOUR: a fire lit mid-morning reaches three days mid-morning
+        // too, a span the roll does not visit until the next one. Emitting again the
+        // instant elapsed crosses KEPT_DAYS lands the credit on the day it is earned;
+        // goalDeed already ignores a goal once done, so the daily roll's own emission
+        // afterwards costs nothing.
+        const crossedKeptDays = elapsed >= KEPT_DAYS * 24 * 60 && elapsed - dt < KEPT_DAYS * 24 * 60;
+        if (daily || crossedKeptDays) goalDeed(state, { kind: "keptFor", minutes: elapsed });
+      }
+      if (dawnThisTick && fireAlive && st.fire.litSince !== null && st.fire.litSince <= lastDusk(state.minute, state.startDoy)) {
+        goalDeed(state, { kind: "keptNight" });
+      }
+    }
 
     if (st.rack.kg > 0) {
       // Dry air dries; rain dries at half the rate, so two dry days become four wet ones.

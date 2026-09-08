@@ -90,7 +90,7 @@ describe("save", () => {
     expect(state.weather.iceCm).toBe(0);
     expect(state.weather.storm).toBeNull();
     const st = state.regions[state.player.region];
-    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 });
+    expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 });
     expect(st.smoke).toBe(0);
     expect(st.structures.hearth).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });
@@ -114,6 +114,9 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].fire.wetKg;
     delete raw.state.regions[state.player.region].fire.indoors;
     delete raw.state.regions[state.player.region].fire.unattended;
+    delete raw.state.regions[state.player.region].fire.embers;
+    delete raw.state.regions[state.player.region].fire.litSince;
+    delete raw.state.regions[state.player.region].fire.rainHeld;
     delete raw.state.regions[state.player.region].smoke;
     delete raw.state.regions[state.player.region].structures.hearth;
     delete raw.state.regions[state.player.region].logsWet;
@@ -135,6 +138,9 @@ describe("save", () => {
     expect(back.regions[state.player.region].fire.wetKg).toBe(0);
     expect(back.regions[state.player.region].fire.indoors).toBe(false);
     expect(back.regions[state.player.region].fire.unattended).toBe(0);
+    expect(back.regions[state.player.region].fire.embers).toBe(0);
+    expect(back.regions[state.player.region].fire.litSince).toBeNull();
+    expect(back.regions[state.player.region].fire.rainHeld).toBe(0);
     expect(back.regions[state.player.region].smoke).toBe(0);
     expect(back.regions[state.player.region].structures.hearth).toBe(false);
     expect(back.regions[state.player.region].logsWet).toBe(1440);

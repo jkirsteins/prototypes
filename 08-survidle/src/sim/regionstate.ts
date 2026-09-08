@@ -34,7 +34,7 @@ export function newRegionState(world: World, id: number): RegionState {
     meltDays: 0,
     structureAge: {},
     build: {},
-    fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 },
+    fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 },
     rack: { kg: 0, dried: 0 },
     snareCatch: { count: 0, age: 0 },
     smoke: 0,

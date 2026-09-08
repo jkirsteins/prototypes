@@ -9,6 +9,7 @@
  */
 import type { World } from "../world/gen";
 import { type Calendar, calendar, LATITUDE_DEG } from "./calendar";
+import { EMBER_LUX, hasEmbers } from "./fire";
 import { discovery, VISITED } from "./regionstate";
 import { cellOf } from "./position";
 import type { GameState, RegionState, TaskId } from "./types";
@@ -132,7 +133,11 @@ export function visitedCamps(state: GameState): { id: number; st: RegionState; c
 /** The light to work by at a cell: the sky, plus a lit fire at its own camp and a lit torch wherever it is carried. */
 export function illuminance(state: GameState, world: World, cal: Calendar, cell: number): number {
   let lux = skyLux(cal, state.weather.clear, state.weather.snowCm);
-  for (const c of visitedCamps(state)) if (c.cell === cell && c.st.fire.lit) lux += CAMP_FIRE_LUX;
+  for (const c of visitedCamps(state)) {
+    if (c.cell !== cell) continue;
+    if (c.st.fire.lit) lux += CAMP_FIRE_LUX;
+    else if (hasEmbers(c.st.fire)) lux += EMBER_LUX;
+  }
   if (state.player.torch.lit && cellOf(state, world) === cell) lux += TORCH_LUX;
   return lux;
 }

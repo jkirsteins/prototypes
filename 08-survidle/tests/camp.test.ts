@@ -29,8 +29,12 @@ describe("camp", () => {
     expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(10);
     // Nobody feeding it is the only way a fire goes out.
     for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
+    // Thirteen hours outlasts both the burn and the ember window that follows
+    // it, so the fire is out for good rather than merely down to coals.
     expect(st.fire.lit).toBe(false);
-    expect(state.log.some((e) => e.text.includes("gone out"))).toBe(true);
+    expect(st.fire.embers).toBe(0);
+    expect(state.log.some((e) => e.text.includes("down to coals"))).toBe(true);
+    expect(state.log.some((e) => e.text.includes("goes grey"))).toBe(true);
   });
 
   it("dries 3 kg of raw meat into 1 kg over two dry days", () => {

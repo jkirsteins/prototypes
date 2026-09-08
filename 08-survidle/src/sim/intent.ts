@@ -10,7 +10,6 @@ import { itemLabel } from "./actions";
 import { campNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
-import { goalDeed } from "./goals";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
@@ -453,17 +452,7 @@ function dropEverything(state: GameState, world: World): boolean {
   for (const { item, qty: q } of listItems(from)) {
     if (keep.has(item)) continue;
     const kg = transfer(from, to, item, q);
-    if (kg > 1e-9) {
-      moved = true;
-      // What this survivor carried in, which is the only thing a goal counts.
-      // This over-credits one way round: fetch wood the camp pile already
-      // holds into the pack on an order, walk it away and back, and this
-      // counts it delivered again, because nothing here remembers where an
-      // item in the pack came from. Accepted - building that memory costs
-      // more than the walk-out-and-back it would prevent, which already
-      // costs more clicks than gathering the wood for real.
-      if (atHome) goalDeed(state, { kind: "delivered", item, kg });
-    }
+    if (kg > 1e-9) moved = true;
   }
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
   if (atHome) moved = pourVessels(state.player, to, regionState(state, world, state.player.region)) > 1e-9 || moved;
