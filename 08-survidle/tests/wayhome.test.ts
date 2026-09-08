@@ -32,6 +32,11 @@ function landHeir(seed: number): G {
   // The heir lands in a region with no camp of its own; these tests are about the
   // walk home to one, so the heir makes camp on the region's own ground first.
   siteCamp(state, world);
+  // The landing maps the whole region so a fresh camp can be chosen with the
+  // ground in view; these tests are about the search a survivor standing on
+  // ground it has not otherwise walked would still have to make, so that
+  // mapping is undone here rather than in the sim itself.
+  for (const c of regionAt(world, state.player.region).cells) delete state.mapped[c];
   return { state, world };
 }
 

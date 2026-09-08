@@ -526,7 +526,7 @@ export interface SkillState {
 }
 
 export type GoalId =
-  | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
+  | "site" | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
   | "water" | "snare" | "store" | "spring" | "summer" | "autumn" | "winter";
 
 export interface GoalState {

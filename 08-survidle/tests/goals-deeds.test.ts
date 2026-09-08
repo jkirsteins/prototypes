@@ -3,7 +3,7 @@ import { Rng } from "../src/rng";
 import { drop, dropAll, take } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { activeGoals, goalDeed } from "../src/sim/goals";
+import { activeGoals, goalDeed, GOALS } from "../src/sim/goals";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { ITEM_KG } from "../src/sim/items";
@@ -19,6 +19,12 @@ import { siteCamp } from "./siting-helpers";
 const cal = calendar(0);
 
 describe("deeds reach the ladder", () => {
+  it("the first goal is choosing where to live, credited by making camp", () => {
+    const { state } = newGame(3);
+    expect(GOALS[0].id).toBe("site");
+    expect(goalDeed(state, { kind: "task", id: "makeCamp" })).toContain("site");
+  });
+
   it("credits the fire when this survivor lights one", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);

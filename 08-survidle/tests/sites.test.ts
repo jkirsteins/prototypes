@@ -3,9 +3,11 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { dailyCamp } from "../src/sim/camp";
 import { BOUGH_BED_DAYS, STRUCTURE_LIFE_DAYS } from "../src/sim/items";
+import { beginAgain, land } from "../src/sim/landing";
+import { knownShare } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { atCamp, campCellOf, cellOf, placeAt } from "../src/sim/position";
-import { feltTemperature, INDOOR_C } from "../src/sim/player";
+import { die, feltTemperature, INDOOR_C } from "../src/sim/player";
 import { campSite, newSite, regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { migrate } from "../src/sim/save";
 import { MAX_SNARES } from "../src/sim/items";
@@ -13,7 +15,32 @@ import { beginTask, check, NO_CAMP } from "../src/sim/tasks";
 import { advance } from "../src/sim/advance";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
+import { regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+
+describe("the landing reads the ground it chooses on", () => {
+  it("the first survivor lands with the region mapped and no camp", () => {
+    const { state, world } = newGame(2);
+    expect(regionState(state, world, state.player.region).campCell).toBeNull();
+    expect(knownShare(state, world, state.player.region)).toBe(1);
+  });
+
+  it("an heir lands with no camp while the ancestor's camp still stands", () => {
+    const { state, world } = newGame(2);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(beginTask(state, world, cal, "makeCamp")).toBe(true);
+    advance(state, world, 20);
+    const home = state.player.region;
+    const homeCamp = regionState(state, world, home).campCell!;
+    siteFor(regionState(state, world, home), homeCamp).structures.leanTo = true;
+    die(state, "froze", regionAt(world, home).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Test", last: "Name" });
+    expect(regionState(state, world, home).campCell).toBe(homeCamp);
+    expect(siteAt(regionState(state, world, home), homeCamp)!.structures.leanTo).toBe(true);
+    if (state.player.region !== home) expect(regionState(state, world, state.player.region).campCell).toBeNull();
+  });
+});
 
 describe("no camp until one is made", () => {
   it("a region never lived in has no camp", () => {

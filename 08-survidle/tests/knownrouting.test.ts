@@ -45,9 +45,10 @@ describe("the survivor routes on knowledge", () => {
   it("keeps camp siting on the world's own ground", () => {
     const { state, world } = newGame(3);
     const home = state.player.region;
-    const r = regionAt(world, home);
-    // The first look from camp does not reach the whole region, so some
-    // spot is ground the survivor has never seen.
+    // The landing maps the home region whole; a neighbour, never visited, is
+    // ground the survivor has never seen, which is what this case is about.
+    const nb = regionAt(world, home).neighbours[0].id;
+    const r = regionAt(world, nb);
     expect(r.spots.some((s) => !isKnown(state, s.cell))).toBe(true);
     // Siting scores a cell the survivor has never seen, unchanged: it
     // reads the true grid, so every spot still gets a real minutes figure.

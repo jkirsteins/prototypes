@@ -40,6 +40,10 @@ describe("knownRoute", () => {
 
     const from = idx(0, 0);
     const to = idx(3, 0);
+    // The landing already maps the whole home region; drop this short stretch
+    // back to unknown so the cache has a real "not yet known" state to prove
+    // itself against, the same shape ground the survivor had never mapped once had.
+    for (let dx = 0; dx <= 3; dx++) delete state.mapped[idx(dx, 0)];
 
     expect(knownRoute(world, from, to, known, knowledgeGen())).toBeNull();
     for (let dx = 0; dx <= 3; dx++) markKnown(state, idx(dx, 0));

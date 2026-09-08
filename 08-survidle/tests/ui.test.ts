@@ -381,7 +381,11 @@ describe("panels", () => {
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const l = LEVELS[ui.zoom];
     const cells = new Set(home.cells);
-    // A run of cells in the home region, in view, that the landing sight never reached.
+    // The landing maps the home region whole; unmap it here so there is fog
+    // to draw a corridor across, the same shape ground the sight alone never
+    // reached would leave.
+    for (const c of cells) delete state.mapped[c];
+    // A run of cells in the home region, in view, that is not known.
     let run: number[] = [];
     outer: for (let y = y0; y < y0 + l.h; y++) {
       run = [];

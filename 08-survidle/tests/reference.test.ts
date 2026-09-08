@@ -473,9 +473,11 @@ describe("the reference player", () => {
   });
 
   it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
-    // Seed 79, not 17: the bough bed keep right after the lean-to (reference.ts) moves seed 17's
-    // death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this checkpoint.
-    const r = runReference(79, 27);
+    // Seed 1, not 17 or 79: the bough bed keep right after the lean-to (reference.ts) moves
+    // seed 17's death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this
+    // checkpoint; seed 79 now ranges to a farther spot once the landing region is known whole
+    // (Task 6) and freezes on day 16, working past dark, before it reaches the checkpoint either.
+    const r = runReference(1, 27);
     const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
     expect(c).toBeDefined();
     expect(c!.week.days).toBe(7);
