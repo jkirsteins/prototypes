@@ -15,6 +15,7 @@ import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { addOrder, ordersHere } from "../src/sim/orders";
 import { check } from "../src/sim/tasks";
+import { herePile } from "../src/sim/inventory";
 import { inventoryHtml, landingHtml, logHtml, ordersHtml } from "../src/ui/panels";
 import { regionAt } from "../src/world/gen";
 
@@ -97,5 +98,44 @@ describe("the pack says what each thing weighs", () => {
     const at = html.indexOf("firewood");
     expect(at).toBeGreaterThan(-1);
     expect(html.slice(at, at + 120)).toMatch(/5(\.0)? kg/);
+  });
+});
+
+
+describe("carried and on the ground are two halves", () => {
+  it("each is its own box, and says which it is", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    addItem(state.player.pack, "firewood", 2);
+    addItem(herePile(state, world), "stone", 3);
+    const html = inventoryHtml(state, world, cal);
+    // One has a weight limit that kills and the other has none, so a reader
+    // scanning for a thing must be able to tell which half they found it in.
+    expect(html).toContain('data-inv="carry"');
+    expect(html).toContain('data-inv="ground"');
+    expect(html).toContain("Carried");
+    expect(html).toContain("On the ground");
+  });
+
+  it("only the carried half offers to drop, and only the ground half to take", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    addItem(state.player.pack, "firewood", 2);
+    addItem(herePile(state, world), "stone", 3);
+    const html = inventoryHtml(state, world, cal);
+    const carry = html.slice(html.indexOf('data-inv="carry"'), html.indexOf('data-inv="ground"'));
+    const ground = html.slice(html.indexOf('data-inv="ground"'));
+    expect(carry).toContain('data-act="drop"');
+    expect(carry).not.toContain('data-act="take"');
+    expect(ground).toContain('data-act="take"');
+    expect(ground).not.toContain('data-act="drop"');
+  });
+
+  it("the carried half says what the limit is, because that one can kill you", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = inventoryHtml(state, world, cal);
+    expect(html).toMatch(/comfortable/);
+    expect(html).toMatch(/max/);
   });
 });

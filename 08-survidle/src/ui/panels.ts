@@ -120,10 +120,11 @@ ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}
 ${bar("wet", "wet", "Wet")}
 <div class="statuses">${tags.join("")}</div>
-<div>
-  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under 1800 kcal">auto-eat: ${p.autoEat ? "on" : "off"}</button>
-  <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">auto-feed fire: ${p.autoFeed ? "on" : "off"}</button>
-  <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">auto-drink: ${p.autoDrink ? "on" : "off"}</button>
+<div class="autos">
+  <span class="dim">auto</span>
+  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under 1800 kcal">eat</button>
+  <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">drink</button>
+  <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">feed fire</button>
 </div>
 <div style="margin-top:8px">
   ${ui.confirmAbandon
@@ -189,18 +190,25 @@ export function clockHtml(state: GameState, world: World, cal: Calendar, ambient
   const storm = state.weather.storm && stormNow(state.weather, state.minute)
     ? `<span class="bad">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</span>` : "";
   const dry = groundDry(state.weather, cal) ? `<span class="bad">tinder dry</span>` : "";
-  return `<div class="clockrow"><div class="line">
-<span class="big">Day ${cal.day}</span>
-<span>${fmtDate(cal)}, ${cal.season}</span>
-<span class="big">${fmtClock(cal.hour)}</span>
-<span>${sun}, light ${fmtClock(cal.sunrise)} to ${fmtClock(cal.sunset)}</span>
-<span class="${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C, ${weatherLabel(state.weather, ambient)}</span>
-${snow}
-${ice}
-${storm}
-${dry}
-<span class="${rate > 1 ? "hurrying" : "dim"}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span>
-</div>${skyHtml()}</div>`;
+  // The ground's depths and the warnings: true, and rarely the thing a
+  // player is looking at the clock to learn. They sit under the weather as
+  // small print rather than in the headline, where three centimetres of
+  // snow read as loudly as the hour.
+  const ground = [snow, ice, storm, dry].filter(Boolean).join(" ");
+  return `<div class="clockrow">
+<div class="when">
+<div class="big">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
+<div class="dim">${fmtDate(cal)}, ${cal.season}</div>
+<div class="dim">${sun}, light ${fmtClock(cal.sunrise)} to ${fmtClock(cal.sunset)}</div>
+<div class="${rate > 1 ? "hurrying" : "dim"}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</div>
+</div>
+<div class="weather">
+${skyHtml()}
+<div class="temp ${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C</div>
+<div class="sky-word">${weatherLabel(state.weather, ambient)}</div>
+${ground ? `<div class="ground">${ground}</div>` : ""}
+</div>
+</div>`;
 }
 
 /**
@@ -546,17 +554,34 @@ function haulHtml(state: GameState, world: World, cal: Calendar): string {
   return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}, ${fmtDuration(o.duration)}</small></button></div>`;
 }
 
+/**
+ * Everything within reach, in two halves that must not be mistaken for
+ * each other: what the survivor carries, and what is lying on the ground
+ * under them.
+ *
+ * They were two headings in one flow, and a reader scanning for a thing
+ * could not tell which half they had found it in - which matters, because
+ * the carried half has a weight limit that kills and the ground half has
+ * none. Each is its own bordered box, says whose it is, and carries only
+ * the buttons that half can offer: drop from the pack, take from the
+ * ground.
+ */
 export function inventoryHtml(state: GameState, world: World, cal: Calendar): string {
   const p = state.player;
   const kg = weight(p.pack);
   const d = body(state);
   const over = kg > d.packHardKg ? "bad" : kg > d.packComfortableKg ? "accent" : "";
+  const carried = listItems(p.pack);
   const here = herePile(state, world);
-  return `<h2>Pack <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
-${invRows(listItems(p.pack), "drop")}
-${listItems(p.pack).length ? `<div style="margin-top:4px"><button class="mini" data-act="drop-all">drop everything here</button></div>` : ""}
-<h2 style="margin-top:10px">On the ground here, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
-${invRows(listItems(here), "take")}${haulHtml(state, world, cal)}`;
+  const dropAll = carried.length ? `<div class="invact"><button class="mini" data-act="drop-all">drop everything here</button></div>` : "";
+  return `<div class="invsec carry" data-inv="carry">
+<h2>Carried <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
+${invRows(carried, "drop")}${dropAll}
+</div>
+<div class="invsec ground" data-inv="ground">
+<h2>On the ground, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
+${invRows(listItems(here), "take")}${haulHtml(state, world, cal)}
+</div>`;
 }
 
 export function fmtLogTime(e: LogEntry): string {

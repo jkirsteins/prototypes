@@ -340,14 +340,25 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid .c.fog::before { content: "\00b7"; }
 .grid .c.void { color: transparent; background: #05070c; }
 .grid .c.dim { opacity: 0.45; }
+/* Set and forget: the zoom sits in the map's corner as a note rather than a
+   panel of its own. It is nice to have and it is not what anybody came to
+   the map to read, so it takes no border and no full-sized type. */
 .maptools {
   position: absolute; left: 6px; bottom: 6px; z-index: 3;
-  display: flex; gap: 6px; align-items: center;
-  padding: 3px 6px;
-  background: rgba(5, 7, 12, 0.82);
-  border: 1px solid var(--line);
+  display: flex; gap: 5px; align-items: center;
+  font-size: 10px;
+  opacity: 0.7;
 }
-.maptools button.mini { min-width: 22px; }
+.maptools:hover { opacity: 1; }
+/* No box, so the ground shows through behind it: a shadow keeps the words
+   readable over glyphs without giving them a panel back. */
+.maptools span { text-shadow: 0 0 3px #05070c, 0 0 2px #05070c; }
+.maptools button.mini {
+  min-width: 18px;
+  font-size: 10px;
+  padding: 0 4px;
+  background: rgba(5, 7, 12, 0.7);
+}
 .legend .fog-key { color: #4a5160; }
 /* Your walk: a line through the glyph centres, solid ahead, dashed behind. It sits after the shade
    and carries no z-index, so it is over the night and under the @ and the fire glow. */
@@ -683,6 +694,44 @@ button.act small, span.act small { display: block; color: var(--dim); }
 
 /* Inventory */
 .inv { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }
+
+/* What you carry and what is lying under you are two different things: one
+   has a weight limit that kills and the other has none. They were two
+   headings in one flow, and a reader scanning for something could not tell
+   which half they had found it in. */
+.invsec { border: 1px solid var(--line); padding: 6px 9px; }
+.invsec + .invsec { margin-top: 8px; }
+.invsec.carry { border-left: 2px solid var(--accent); }
+.invsec.ground { border-left: 2px solid var(--dim); }
+.invsec h2 { margin-top: 0; }
+.invact { margin-top: 4px; }
+
+/* The clock reads as a line and a square beside it: what day and hour it
+   is on the left, the weather as its own tile on the right. The ground's
+   depths and the warnings are small print under the weather rather than
+   headline text - three centimetres of snow read as loudly as the hour. */
+#clock .clockrow { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+#clock .when { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#clock .when .big { font-size: 16px; color: #fff; }
+#clock .when .hour { margin-left: 8px; }
+#clock .weather {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "sky temp" "sky word" "ground ground";
+  gap: 0 8px;
+  align-items: center;
+  text-align: right;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  min-width: 150px;
+}
+#clock .weather .sky { grid-area: sky; }
+#clock .weather .temp { grid-area: temp; font-size: 16px; color: #fff; align-self: end; }
+#clock .weather .sky-word { grid-area: word; color: var(--dim); align-self: start; }
+#clock .weather .ground { grid-area: ground; color: var(--dim); font-size: 11px; text-align: right; margin-top: 2px; }
+#clock .weather .ground .bad { color: var(--bad); }
+
 .inv .n { white-space: nowrap; }
 .inv .ctl { white-space: nowrap; }
 

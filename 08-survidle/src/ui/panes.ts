@@ -25,7 +25,7 @@ export type PaneId = "do" | "log" | "pack" | "journal";
  */
 export const PANE_IDS: PaneId[] = ["do", "pack", "log", "journal"];
 
-const PANE_LABEL: Record<PaneId, string> = { do: "Do", log: "Log", pack: "Pack", journal: "Journal" };
+const PANE_LABEL: Record<PaneId, string> = { do: "Do", pack: "Inventory", log: "Log", journal: "Journal" };
 
 export interface Panes {
   pane: PaneId;
