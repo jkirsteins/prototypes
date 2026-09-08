@@ -462,6 +462,27 @@ Run `npm run year` and `npm run december`. The pre-change baseline is at `/tmp/f
 
 **Report the readings. Do not change `EMBER_MINUTES` to make a gate pass.**
 
+- [ ] **Step 3b: Are the three fire goals actually reached in a real run?**
+
+The unit tests prove the fire logic; they do not prove a real player gets there,
+because they top the survivor up to stop them starving while standing at camp.
+The year run drives a reference player who forages for 366 days, so it is the
+honest evidence.
+
+Instrument the year run (or a copy of `scripts/year.ts` under the scratch
+directory - do not commit a modified script unless it earns its place) to report,
+for each of `keptNight`, `keptDays` and `keptRain`: whether it was credited, and
+on which day.
+
+The one under suspicion is `keptDays`. It sits before `roof` in the ladder, so
+the player attempting it has no roof, and with no roof rain doubles the burn rate
+and halves the ember window. A single unlucky rainy absence inside the
+seventy-two hours can end the run in four to six hours rather than the
+fair-weather twelve to twenty.
+
+**Report what you measure. Do not move the goal or soften it - that is the
+author's call, and it wants evidence first.**
+
 - [ ] **Step 4: Browser pass**
 
 Drive the real page and confirm a fire falling to coals reads as coals rather than as out, and that relighting from coals is quick. See the memory note on planting a save: the app overwrites `localStorage` on `pagehide`, so plant from a non-app URL on the same origin, and stamp `savedAt` to now or the away report will be the overlay on top.
