@@ -258,6 +258,24 @@ export const NEED_LOG_LINES: Record<BodyNeed, string> = {
   home: "{You} {have} no way home before dark.",
 };
 
+/**
+ * The third of the need's three voices: the clause that follows work being
+ * set aside for the body, in the log's own person. NEED_WORDS and
+ * NEED_LOG_LINES both say a want that cannot be answered - "no water within
+ * reach" - and this one says a want that is about to be, which is the
+ * opposite reading and cannot borrow their words.
+ */
+export const NEED_ASIDE: Record<BodyNeed, string> = {
+  sleep: "{you} {need} sleep",
+  storm: "the storm is coming",
+  cold: "{you} {are} cold",
+  thirsty: "{you} {are} thirsty",
+  hungry: "{you} {are} hungry",
+  snares: "the snares want checking",
+  spent: "{you} {are} worked out",
+  home: "{you} {have} to be home before dark",
+};
+
 /** Stands in for a step a dry read finds ready without ever taking it: only whether bodyStep returned something is read back, never what it was. */
 const DRY_READY: Step = { id: "wait", step: "" };
 

@@ -15,8 +15,9 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { bodyStep, currentNeed, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
-import { startIntent } from "./intent";
+import { bodyStep, currentNeed, NEED_ASIDE, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
+import { intentSentence, startIntent } from "./intent";
+import { log } from "./log";
 import { regionState } from "./regionstate";
 import { isRunning, takeStep } from "./steps";
 import { setAside } from "./tasks";
@@ -109,6 +110,13 @@ export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng:
   // it is the sleep this row would take anyway, so the step goes under that
   // order rather than taking the night away from it.
   if (state.intent?.task !== "night" && (!state.intent || state.intent.orderId !== o.id)) {
+    // Work with no row behind it is not picked up again: the list is what
+    // brings work back, and an intent nothing on the list stands for has
+    // nothing to bring it back with. So it is said aloud, once, as it goes -
+    // a survivor quietly not doing what was asked is the thing the list
+    // exists to stop. The wait at camp is not work and says nothing.
+    const dropped = state.intent && state.intent.orderId === null && state.intent.task !== "wait" ? state.intent : null;
+    if (dropped) log(state, `${intentSentence(state, world, cal, dropped)}: set aside, ${NEED_ASIDE[need]}.`, "bad");
     startIntent(state, world, cal, rng, BODY_REQ, o.id, false);
   }
   takeStep(state, world, cal, s);

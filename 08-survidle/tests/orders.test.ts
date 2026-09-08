@@ -458,6 +458,27 @@ describe("the scheduler", () => {
     expect(state.intent?.orderId).toBe(a.id);
   });
 
+  it("a move that does not change the choice leaves the work alone with the body wanting something too", () => {
+    const g = campWith(3, { log: 6 });
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    addItem(pile(state, st.campCell), "barkBucket", 1);
+    addItem(pile(state, st.campCell), "water", 3);
+    const a = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
+    const b = addOrder(state, world, req("sticks", { until: { kind: "forever" } }), "grind");
+    const c = addOrder(state, world, req("chop", { until: { kind: "forever" } }), "grind");
+    expect(until(g, () => state.task?.id === "split" && state.task.progress > 2)).toBe(true);
+    const done = state.task!.progress;
+    // Thirsty, with camp water in reach: the body's row is the row with the
+    // minute now, and the question the move asks is still about the work.
+    state.player.water = 0.5;
+    moveOrderByHand(state, world, cal, new Rng(1), c.id, -1);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([bodyRowOf(state, world)!.id, a.id, c.id, b.id]);
+    expect(state.task?.id).toBe("split");
+    expect(state.task!.progress).toBe(done);
+    expect(state.intent?.orderId).toBe(a.id);
+  });
+
   it("removing the last order clears its live intent, not just one among several", () => {
     const g = campWith(3, { log: 6 });
     const { state, world } = g;

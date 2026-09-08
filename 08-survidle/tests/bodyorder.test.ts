@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { NEED_LOG_LINES, NEED_WORDS } from "../src/sim/body";
 import { advance } from "../src/sim/advance";
+import { intentSentence, startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { SPENT_AT } from "../src/sim/sleep";
 import { addOrder, removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
@@ -97,8 +98,8 @@ describe("the body row", () => {
     addItem(p.pack, "driedMeat", 1);
     // tasks.ts clears bodyNeed to null the instant a sleep or a rest's
     // estimated span completes, so the scheduler gets one clean minute
-    // before serveBody decides the need is still there. A judgement that
-    // wrote the answer back would close that minute before it opened.
+    // before the body's row decides the need is still there. A judgement
+    // that wrote the answer back would close that minute before it opened.
     p.bodyNeed = null;
     judgeBodyRow(state, world, cal, new Rng(1));
     expect(p.bodyNeed).toBeNull();
@@ -164,5 +165,31 @@ describe("the body row takes its turn by rank", () => {
     advance(state, world, 1);
     expect(state.task?.id).toBe("sleep");
     expect(state.task!.progress).toBeGreaterThanOrEqual(slept);
+  });
+});
+
+describe("work with no row behind it", () => {
+  it("says so when the body takes the minute off it, since nothing on the list will bring it back", () => {
+    const { state, world } = newGame(3);
+    // Started by hand with no order behind it, the way a raw haul click is:
+    // there is no row to pick it up again once the body has the minute.
+    placeAtSpot(state, world, state.player.region, "forest");
+    startIntent(state, world, cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" });
+    const said = intentSentence(state, world, cal, state.intent!);
+    expect(state.intent?.orderId).toBeNull();
+    // Thirsty with nothing to drink from, so the need wants his feet and the
+    // row has to claim the minute to answer it.
+    state.player.water = 0;
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
+    expect(state.log.some((e) => e.text === `${said}: set aside, {you} {are} thirsty.`)).toBe(true);
+  });
+
+  it("says nothing about the wait at camp, which is not work anybody asked for", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
+    state.player.water = 0;
+    advance(state, world, 3);
+    expect(state.log.some((e) => e.text.includes("set aside,"))).toBe(false);
   });
 });

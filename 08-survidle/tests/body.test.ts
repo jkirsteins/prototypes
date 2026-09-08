@@ -316,9 +316,13 @@ describe("the body's row against the work", () => {
     const { state, world, camp } = felling(10);
     const seen = new Map<string, number>();
     let sawThirsty = false;
+    let sleptAtCamp = false;
+    let choppedAfterTheNight = 0;
     for (let m = 0; m < 1440 * 1.5; m++) {
       advance(state, world, 1);
       if (state.player.bodyNeed === "thirsty") sawThirsty = true;
+      if (state.task?.id === "sleep" && cellOf(state, world) === camp) sleptAtCamp = true;
+      if (sleptAtCamp && state.task?.id === "chop") choppedAfterTheNight++;
       const k = `${state.task?.id ?? "idle"}@${cellOf(state, world) === camp ? "camp" : "away"}`;
       seen.set(k, (seen.get(k) ?? 0) + 1);
     }
@@ -328,11 +332,11 @@ describe("the body's row against the work", () => {
     // The camp is a shore cell and may itself be forest, so the felling is counted wherever it happens.
     const chopMin = (seen.get("chop@away") ?? 0) + (seen.get("chop@camp") ?? 0);
     expect(chopMin).toBeGreaterThan(300);
-    // The felling is still the standing work and the minute still belongs to
-    // a row on the list. Which row it is at the sampling minute is not the
-    // point: a body resting off a day's work holds it as often as the axe
-    // does, and that is the felling waiting its turn rather than stopping.
-    expect(ordersHere(state, world).some((o) => o.id === state.intent?.orderId)).toBe(true);
+    // The work goes on at dawn: a felling the body took the night off from is
+    // picked up again the next morning, in quantity, which is the half of
+    // this trace that a body row holding the minute could quietly break. The
+    // row it is picked up from is still on the list at the end.
+    expect(choppedAfterTheNight).toBeGreaterThan(120);
     expect(ordersHere(state, world).some((o) => o.req.task === "chop")).toBe(true);
     expect(sawThirsty).toBe(true);
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the

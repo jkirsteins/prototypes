@@ -82,14 +82,20 @@ export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 
  * A once order chosen starts on the spot, the way clicking one does: it is the
  * player's, and startIntent sets aside whatever was running with its share
  * kept. Anything else only frees the minute, and the choice is made where every
- * other choice is made, in runOrders - so the body still speaks between orders,
- * and a load already on its way to camp is still delivered first, since
- * chooseOrder holds a delivering order as the chosen one and nothing here fires.
+ * other choice is made, in runOrders - so the body still gets its turn there,
+ * and a load already on its way to camp is still delivered first, since a
+ * delivering order reads ready and nothing here fires.
+ *
+ * What is asked is the work choice and not the row with the minute: a body
+ * that wants something outranks the work, but it is not what the player just
+ * moved and it is not what the moved row displaces. Reading it here would
+ * bin the chunk in hand every time the list was nudged while the survivor
+ * happened to be thirsty.
  */
 function decideAgain(state: GameState, world: World, cal: Calendar, rng: Rng): void {
-  const chosen = chooseOrder(state, world, cal);
-  if (chosen?.id === (state.intent?.orderId ?? null)) return;
-  if (chosen && chosen.req.until.kind === "once") startIntent(state, world, cal, rng, chosen.req, chosen.id);
+  const work = judgeOrders(state, world, cal).work;
+  if (work?.id === (state.intent?.orderId ?? null)) return;
+  if (work && work.req.until.kind === "once") startIntent(state, world, cal, rng, work.req, work.id);
   else setAside(state, world);
 }
 
@@ -366,11 +372,13 @@ function readOrder(state: GameState, world: World, cal: Calendar, o: Order, live
 function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string, instead: Order | null): void {
   if (why && !o.skipped) {
     // The body row is not a promise being skipped, so it does not read like
-    // one: no row title in front of it, no colon, no "instead" - it never
-    // competes to be chosen, so nothing it names is ever a stand-in for it.
-    // `why` here is the row's own fragment (NEED_WORDS), which is right for
-    // o.skipped below but wrong for the log: bodyLogLine reads the need
-    // again, fresh, and says it in the log's own person voice instead.
+    // one: no row title in front of it, no colon, no "instead". A body that
+    // cannot be answered is not a request going unserved in favour of
+    // another, it is a want with nothing in reach to meet it, and naming the
+    // work that ran in its place would read as an excuse for it. `why` here
+    // is the row's own fragment (NEED_WORDS), which is right for o.skipped
+    // below but wrong for the log: bodyLogLine reads the need again, fresh,
+    // and says it in the log's own person voice instead.
     if (isBodyRow(o)) log(state, bodyLogLine(state, world, cal) ?? why, "bad");
     else {
       const asked = o.req.until.kind === "once";
@@ -615,9 +623,13 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
 export function waitingLine(state: GameState, world: World, cal: Calendar, o: Order, judged: Judgement): string {
   if (o.skipped) return o.skipped;
   if (orderMet(state, world, cal, o, false)) return "met";
-  const { chosen, blockedBy } = judged;
+  // The work under way, not the row with the minute: those differ while the
+  // body has it, and "waiting its turn, behind Look after yourself" would
+  // tell a row it is behind something that is not work and will be done with
+  // the minute before the next one turns over.
+  const { work, blockedBy } = judged;
   if (blockedBy && blockedBy.id !== o.id) return `held up by the pinned "${orderSentence(state, world, cal, blockedBy)}"`;
-  if (chosen && chosen.id !== o.id) return `waiting its turn, behind "${orderSentence(state, world, cal, chosen)}"`;
+  if (work && work.id !== o.id) return `waiting its turn, behind "${orderSentence(state, world, cal, work)}"`;
   return "waiting its turn";
 }
 

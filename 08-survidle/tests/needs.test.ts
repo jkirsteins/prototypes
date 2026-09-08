@@ -443,7 +443,7 @@ describe("sleep by the model, not by the clock", () => {
     // state.task to null there and reads this access as unreachable, since it
     // cannot see that startIntent assigns a task of its own.
     expect((state.task as Task | null)?.id).toBe("rest");
-    // Sleepy: the body tier takes the rest over on the next minute.
+    // Sleepy: the body's row takes the rest over on the next minute.
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, calendar(state.minute, state.startDoy).hour);
     advance(state, world, 1);
     expect((state.task as Task | null)?.id).toBe("sleep");
