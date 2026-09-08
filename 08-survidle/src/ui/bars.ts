@@ -1,6 +1,6 @@
 import { calendar } from "../sim/calendar";
 import { burnPerHour, fuelTotal, hasEmbers } from "../sim/fire";
-import { HUNGRY_LINE } from "../sim/actions";
+import { hungerLine } from "../sim/actions";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { fatLandmarks, personOf } from "../sim/person";
 import { FAT_KCAL_PER_KG } from "../sim/player";
@@ -46,7 +46,13 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // Under the meal line the bar reads as harm: the meal was due and did not
   // happen, and the fat bar under it is what is paying for the difference.
   const kcalBar = root.querySelector<HTMLElement>("#bar-kcal")?.parentElement;
-  kcalBar?.classList.toggle("low", p.kcal < HUNGRY_LINE);
+  const line = hungerLine(state);
+  kcalBar?.classList.toggle("low", p.kcal < line);
+  // The mark itself moves with the same line - a lean reserve eats sooner,
+  // a well-provisioned one later - so it is written here every frame rather
+  // than baked into the markup (tests/churn.test.ts).
+  const hungerMark = kcalBar?.querySelector<HTMLElement>('[data-mark="hunger"]');
+  if (hungerMark) hungerMark.style.left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
   // A meal is over in one simulated minute, and a bar that refills silently
   // is the whole of what the player could not see. The fill is left to flash
   // for a moment wherever the reserve rose.

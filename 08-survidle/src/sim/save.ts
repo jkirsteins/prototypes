@@ -8,8 +8,7 @@ import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
 import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
-import { fatLandmarks, medianPerson, rollCandidates } from "./person";
-import { current } from "./record";
+import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
@@ -165,7 +164,7 @@ function fillDefaults(state: GameState): void {
   }
   const p = state.player;
   p.torch ??= { lit: false, minutes: 0 };
-  p.fat ??= fatLandmarks(current(state).person).typical;
+  p.fat ??= fatLandmarks(personOf(state)).typical;
   p.water ??= 2.5;
   p.autoDrink ??= true;
   p.frostbite ??= { feet: 0, hands: 0 };
