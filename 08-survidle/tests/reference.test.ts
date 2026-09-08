@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { calendar, coastOpen, START_DOY } from "../src/sim/calendar";
+import { calendar, START_DOY } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
@@ -34,7 +34,6 @@ import {
   WOOD_DUE_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
-import { runYear } from "../src/sim/year";
 import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
 import { regionState } from "../src/sim/regionstate";
@@ -516,36 +515,10 @@ describe("the reference player", () => {
   });
 });
 
+// An heir actually raised - two lives lived out, the gap, the walk home to the
+// old camp - lives in tests/slow/heir.test.ts (`npm run test:slow`); what stays
+// here is the end of runHeir that costs nothing to reach.
 describe("the heir", () => {
-  it("runs two lives on seed 17 and lands the heir in the open season near the old camp", () => {
-    const r = runHeir(17, 70);
-    expect(r.first.outcome.kind).toBe("died");
-    expect(r.gapDays).toBeGreaterThanOrEqual(90);
-    expect(coastOpen(r.landed.doy)).toBe(true);
-    expect(r.found.kmToOldCamp).toBeGreaterThanOrEqual(3);
-    expect(r.found.kmToOldCamp).toBeLessThanOrEqual(20);
-    expect(r.heir.record.index).toBe(2);
-    expect(r.heir.checkpoints.length).toBeGreaterThan(0);
-  }, 30000);
-
-  // Two lives of ninety days is seconds of simulation, so the two readings
-  // taken off the same run share it rather than raising the heir twice. Ninety,
-  // because the first life on seed 17 starves on day 61 with the camp on the shore.
-  let sixty: ReturnType<typeof runHeir>;
-  beforeAll(() => {
-    sixty = runHeir(17, 90);
-  }, 30000);
-
-  it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
-    expect(sixty.found.reachedCampDay).not.toBeNull();
-    expect(sixty.found.reachedCampDay!).toBeLessThanOrEqual(3);
-  });
-
-  it("reports the trap's kilos and the new structures in the found line", () => {
-    expect(sixty.found).toHaveProperty("trapKg");
-    expect(sixty.found.trapKg === null || sixty.found.trapKg >= 0).toBe(true);
-  });
-
   it("a first life still alive at the day cap has no heir to raise, and stands in for both", () => {
     const r = runHeir(17, 1);
     expect(r.first.outcome.kind).toBe("reached");
@@ -554,16 +527,10 @@ describe("the heir", () => {
   });
 });
 
-// The three-life run over a quarter of a year lives in tests/slow/lineage.test.ts
-// (`npm run test:slow`); what stays here is the shape of a lineage, cheaply.
+// Any lineage that actually raises an heir - the two-life run and the three-life
+// run over a quarter of a year - lives in tests/slow/lineage.test.ts (`npm run
+// test:slow`); what stays here is the shape of a lineage that never has to.
 describe("the lineage", () => {
-  it("raises an heir after the first life dies, landing it in the open coast with the old camp to find", () => {
-    const r = runLineage(17, 90, 2);
-    expect(r.lives.length).toBe(2);
-    expect(r.lives[1].found).not.toBeNull();
-    expect(coastOpen(r.lives[1].landed.doy)).toBe(true);
-  }, 30000);
-
   it("stops early when a life reaches the day cap alive", () => {
     const r = runLineage(17, 5, 3);
     expect(r.lives.length).toBe(1);
@@ -810,17 +777,5 @@ describe("the lineage gate", () => {
   });
 });
 
-describe("the year report's attention", () => {
-  it("carries the whole run's attention and each month line its own, both mornings of days shapes", () => {
-    const r = runYear(17, { level: 20, days: 40 });
-    expect(r.attention.days).toBe(r.outcome.day);
-    expect(r.attention.mornings).toBeGreaterThanOrEqual(0);
-    expect(r.attention.mornings).toBeLessThanOrEqual(r.attention.days);
-    expect(r.months.length).toBeGreaterThan(0);
-    for (const m of r.months) {
-      expect(m.attention.days).toBeGreaterThan(0);
-      expect(m.attention.mornings).toBeGreaterThanOrEqual(0);
-      expect(m.attention.mornings).toBeLessThanOrEqual(m.attention.days);
-    }
-  });
-});
+// The attention count off a real forty-day year run lives in
+// tests/slow/year-attention.test.ts (`npm run test:slow`).
