@@ -2,11 +2,11 @@ import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { isCareRow } from "../sim/bodyorder";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
+import { needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
-import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pileAt, pilesIn, qty, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
@@ -28,7 +28,7 @@ import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation } from "
 import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
-import { regionState } from "../sim/regionstate";
+import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
@@ -300,22 +300,26 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
   ].join(", ");
   const myCell = cellOf(state, world);
+  // The live camp, or null where nobody has made one: the generated "camp" spot is
+  // ground, not a camp, so its row is left out until there is a camp to draw.
+  const liveCamp = campCellOf(state, world, id);
   const spots = r.spots
     .map((s) => {
+      if (s.id === "camp" && liveCamp === null) return "";
       const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
       const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
       if (!here) {
-        const km = kmBetween(state, world, campCellOf(state, world, id), s.cell);
-        const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
+        const km = liveCamp === null ? null : kmBetween(state, world, liveCamp, s.cell);
+        const dist = s.id === "camp" || liveCamp === null ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
         return `<div>${SPOT_WORDS[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
       // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
       // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
-      const cell = s.id === "camp" ? campCellOf(state, world, id) : s.cell;
+      const cell = s.id === "camp" ? liveCamp! : s.cell;
       // A generated spot sited on the live camp's own cell would draw a second row for
       // the same cell (two "you are here" once you stand on it); the camp row above,
       // listed first, already stands for it.
-      if (s.id !== "camp" && cell === campCellOf(state, world, id)) return "";
+      if (s.id !== "camp" && cell === liveCamp) return "";
       if (cell === myCell) return `<div><b>@</b> ${SPOT_WORDS[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
@@ -341,18 +345,19 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       return `<div>${fmtKg(weight(x.inv))} lying at ${esc(whereIs(state, world, x.cell))}${btn}</div>`;
     })
     .join("");
+  const site = campSite(st);
   const built: string[] = [];
-  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
-  if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
-  if (st.structures.cabin) built.push("log cabin");
-  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
-  if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
-  if (st.structures.boughBed) built.push("bough bed");
-  if (st.structures.waterStore) built.push("water trough");
-  if (st.structures.snowShelter) built.push("snow shelter");
-  if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
+  if (site?.structures.firePit) built.push(STRUCTURES.firePit.name);
+  if (site?.structures.leanTo) built.push(needsMending(site, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
+  if (site?.structures.cabin) built.push("log cabin");
+  if (site?.structures.turfHut) built.push(needsMending(site, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
+  if (site?.structures.dryingRack) built.push(needsMending(site, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
+  if (site?.structures.boughBed) built.push("bough bed");
+  if (site?.structures.waterStore) built.push("water trough");
+  if (site?.structures.snowShelter) built.push("snow shelter");
+  if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
+  const unfinished = site ? (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`) : [];
   // A third word between burning and cold: coals are live but not fed, the
   // routine state after every tended night rather than an exception. The
   // fuel bar below (shown only "here") already ticks off how long they last;
@@ -363,12 +368,12 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     : hasEmbers(st.fire)
       ? '<span class="ember">coals</span>'
       : '<span class="dim">cold</span>';
-  const fire = st.structures.firePit ? `<div>fire: ${fireWord}</div>${here ? bar("fire", "fire", "Fuel") : ""}` : "";
-  const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
+  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${here ? bar("fire", "fire", "Fuel") : ""}` : "";
+  const rack = site?.structures.dryingRack
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
-  const campPile = pile(state, st.campCell);
-  const cap = campWaterCapacity(campPile, st);
+  const campPile = pileAt(state, st.campCell);
+  const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
@@ -393,11 +398,9 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
         : `<div style="margin-top:6px"><span class="dim">${esc(plain(ex.why))}</span></div>`;
     }
   }
-  // What this cell offers as a camp, shown only when it is not the camp already; a move
-  // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.
-  const move = here && myCell !== campCellOf(state, world, id) ? canMoveCamp(state, world) : null;
-  const asCamp = move
-    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(plain(move.why))})`}</dd>`
+  // What this cell offers as a camp, shown only when it is not the camp already.
+  const asCamp = here && myCell !== campCellOf(state, world, id)
+    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}</dd>`
     : "";
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>

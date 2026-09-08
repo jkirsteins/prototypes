@@ -7,13 +7,13 @@
  * the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
-import { fuelTotal, hasEmbers } from "../sim/fire";
+import { fuelTotal, hasEmbers, roofed } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
 import { visitedCamps } from "../sim/light";
-import { discovery, VISITED } from "../sim/regionstate";
-import type { GameState, Terrain } from "../sim/types";
+import { discovery, siteAt, VISITED } from "../sim/regionstate";
+import type { GameState, RegionState, Terrain } from "../sim/types";
 import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
 import { esc, type UiState } from "./render";
@@ -295,9 +295,23 @@ function walkSvg(world: World, state: GameState, here: number, x0: number, y0: n
   return `<svg class="walk" viewBox="0 0 ${view.w} ${view.h}" preserveAspectRatio="none"><polyline class="walk-behind" points="${behind}"/><polyline class="walk-ahead" points="${ahead}"/></svg>`;
 }
 
+/**
+ * Every cell in a region worth a mark: the camp itself, even bare, plus
+ * every site a camp has since moved away from and left standing.
+ */
+function markedCells(st: RegionState): number[] {
+  const cells = new Set<number>(Object.keys(st.sites).map(Number));
+  if (st.campCell !== null) cells.add(st.campCell);
+  return [...cells].sort((a, b) => a - b);
+}
+
 /** Everything the map's markup depends on, so it is rebuilt only when one of them changes. */
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
-  const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo || r.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : hasEmbers(r.fire) ? "e" : ""}${r.trap ? "T" : ""}`).join(",");
+  const marks = Object.entries(state.regions).map(([id, r]) => {
+    const cells = markedCells(r);
+    const roofs = cells.map((c) => (roofed(siteAt(r, c)) ? "H" : "-")).join("");
+    return `${id}@${cells.join(".")}:${roofs}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : hasEmbers(r.fire) ? "e" : ""}${r.trap ? "T" : ""}`;
+  }).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
@@ -326,14 +340,19 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   };
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
-  for (const { st, cell } of visitedCamps(state)) {
-    let m: (typeof MARKS)[keyof typeof MARKS];
-    if (st.fire.lit) m = MARKS.fire;
-    else if (hasEmbers(st.fire)) m = MARKS.coals;
-    else if (st.structures.cabin || st.structures.leanTo || st.structures.turfHut) m = MARKS.shelter;
-    else m = MARKS.camp;
-    const g = toGlyph(cell);
-    if (g >= 0) markerAt.set(g, m);
+  for (const [idText, st] of Object.entries(state.regions)) {
+    if (discovery(state, Number(idText)) !== VISITED) continue;
+    for (const cell of markedCells(st)) {
+      const isCamp = cell === st.campCell;
+      let m: (typeof MARKS)[keyof typeof MARKS];
+      // Only the camp itself can carry the region's one fire; a site the camp has
+      // moved away from is read by its roof alone.
+      if (isCamp && st.fire.lit) m = MARKS.fire;
+      else if (isCamp && hasEmbers(st.fire)) m = MARKS.coals;
+      else m = roofed(siteAt(st, cell)) ? MARKS.shelter : MARKS.camp;
+      const g = toGlyph(cell);
+      if (g >= 0) markerAt.set(g, m);
+    }
   }
   for (const r of Object.values(state.regions)) {
     if (!r.trap) continue;

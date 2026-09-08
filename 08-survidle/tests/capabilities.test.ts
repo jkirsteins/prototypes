@@ -3,11 +3,12 @@ import { CAPABILITIES, type CapabilityKey, capabilityFor, NOT_TIERS, PRODUCERS, 
 import { calendar } from "../src/sim/calendar";
 import { RECIPES, STRUCTURE_IDS, STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { RECOMMENDED, RUNG_LEVEL } from "../src/sim/skills";
 import { doHtml } from "../src/ui/dopanel";
 import { regionHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
+import { siteCamp } from "./siting-helpers";
 
 const keys = new Set(CAPABILITIES.flatMap((r) => r.keys));
 
@@ -93,28 +94,31 @@ describe("what a capability tells the panel", () => {
 
   it("knows which producers stand at this camp and which do not", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const rack = capabilityFor("build", "dryingRack")!;
     const trap = capabilityFor("craft", "basketTrap")!;
     expect(standingHere(state, st, world, rack)).toBe(false);
-    st.structures.dryingRack = true;
+    siteFor(st, st.campCell!).structures.dryingRack = true;
     expect(standingHere(state, st, world, rack)).toBe(true);
     expect(standingHere(state, st, world, trap)).toBe(false);
-    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
+    st.trap = { cell: st.campCell!, kg: 0, oilyKg: 0, fish: [], age: 0 };
     expect(standingHere(state, st, world, trap)).toBe(true);
   });
 
   it("names a standing producer's limit in the region panel, and says nothing when none stands", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const st = regionState(state, world, state.player.region);
     expect(regionHtml(state, world, cal, newUiState())).not.toContain("40 kg a rack");
-    st.structures.dryingRack = true;
+    siteFor(st, st.campCell!).structures.dryingRack = true;
     expect(regionHtml(state, world, cal, newUiState())).toContain("40 kg a rack");
   });
 
   it("promises a producer on its Do row, built or not", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const html = doHtml(state, world, cal, newUiState());
     expect(html).toContain("the first food a camp makes without you");

@@ -11,9 +11,10 @@ import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, step
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { rosterHtml } from "../src/ui/panels";
 import { cellAt, regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 function run(g: G, minutes: number, seed = 1) {
@@ -30,6 +31,7 @@ const cal = calendar(0);
 describe("tasks", () => {
   it("felling a tree needs forest under foot and an axe, and leaves logs on this cell", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     // Stand on ground that is not forest: no felling there.
     const r = regionAt(world, state.player.region);
@@ -51,6 +53,7 @@ describe("tasks", () => {
 
   it("repeats until it cannot", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     regionState(state, world, state.player.region).wood = 2;
@@ -63,6 +66,7 @@ describe("tasks", () => {
 
   it("walks along a route at the speed of the ground and arrives at the spot", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     const forest = spotOf(r, "forest")!;
@@ -80,6 +84,7 @@ describe("tasks", () => {
 
   it("the route remembers every cell it walked, the start first, so the whole walk is the route as first found", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     const forest = spotOf(r, "forest")!;
@@ -100,6 +105,7 @@ describe("tasks", () => {
 
   it("a stopped walk leaves you on the way, and the next walk starts from there", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     mapRegion(state, world, state.player.region);
     // The farthest spot, so half the way is several cells.
@@ -124,6 +130,7 @@ describe("tasks", () => {
 
   it("travels to a neighbouring region's camp and can go anywhere with a route", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     const nb = r.neighbours[0];
@@ -135,12 +142,13 @@ describe("tasks", () => {
     startTask(state, world, cal, "travel", `region:${nb.id}`);
     done(g, 5000);
     expect(state.player.region).toBe(nb.id);
-    expect(cellOf(state, world)).toBe(regionAt(world, nb.id).campCell);
+    expect(cellOf(state, world)).toBe(regionAt(world, nb.id).campCell!);
     expect(state.log.some((e) => e.text.includes(`{You} {reach} ${regionAt(world, nb.id).name}`))).toBe(true);
   });
 
   it("crafts through the chain: cordage, a fire drill that needs no knife, then the knife itself", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     addItem(state.player.pack, "bark", 6);
     addItem(state.player.pack, "stone", 2);
@@ -163,6 +171,7 @@ describe("tasks", () => {
 
   it("clears a fire site at camp, lights it and cooks", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     addItem(state.player.pack, "firewood", 3);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
@@ -173,7 +182,7 @@ describe("tasks", () => {
     expect(qty(herePile(state, world), "stone")).toBe(0);
     done(g);
     const st = regionState(state, world, state.player.region);
-    expect(st.structures.firePit).toBe(true);
+    expect(campSite(st)!.structures.firePit).toBe(true);
     startTask(state, world, cal, "light");
     done(g);
     expect(st.fire.lit).toBe(true);
@@ -184,6 +193,7 @@ describe("tasks", () => {
 
   it("keeps build progress when stopped", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     addItem(herePile(state, world), "stick", 8);
     addItem(herePile(state, world), "log", 4);
@@ -192,17 +202,18 @@ describe("tasks", () => {
     run(g, 100);
     stopTask(state, world);
     const st = regionState(state, world, state.player.region);
-    expect(st.build.leanTo).toBeGreaterThan(99);
+    expect(campSite(st)!.build.leanTo).toBeGreaterThan(99);
     const again = check(state, world, cal, "build", "leanTo");
     expect(again.ok).toBe(true);
     expect(again.duration).toBeCloseTo(140, 0);
     startTask(state, world, cal, "build", "leanTo");
     done(g);
-    expect(st.structures.leanTo).toBe(true);
+    expect(campSite(st)!.structures.leanTo).toBe(true);
   });
 
   it("hunts deer in the forest with a bow and eventually succeeds", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     state.player.tools.push({ id: "bow", durability: 100 });
@@ -217,6 +228,7 @@ describe("tasks", () => {
 
   it("haul is not repeatable: nothing in the advanced list offers it a loop button", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     addItem(herePile(state, world), "log", 1);
     expect(check(state, world, cal, "haul").repeatable).toBe(false);
   });
@@ -224,6 +236,7 @@ describe("tasks", () => {
   it("offers every kind of task somewhere in the list, legal or not", () => {
     // Seed 4: a starting region with a lake, so the list has a fishing row at all.
     const { state, world } = newGame(4);
+    siteCamp(state, world);
     const ids = new Set(availableTasks(state, world, calendar(0)).map((o) => o.id));
     for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "hunt", "fish", "read", "setTrap", "emptyTrap", "cook", "craft", "repair", "sharpen", "build", "light", "walk", "haul", "rest", "sleep", "travel"]) {
       expect(ids.has(id as never)).toBe(true);
@@ -232,6 +245,7 @@ describe("tasks", () => {
 
   it("legality can be judged at a cell you do not stand on", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, state.player.region);
     const forest = spotOf(r, "forest")!;
@@ -256,6 +270,7 @@ describe("tasks", () => {
 
   it("beginTask leaves an intent in place; startTask and stopTask clear it", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     const intent = { mode: "runner" as const, task: "chop" as const, cell: cellOf(state, world), campCell: regionState(state, world, state.player.region).campCell, until: { kind: "forever" as const }, deliver: "leave" as const, done: 0, step: "", orderId: null, windDown: false };
@@ -274,6 +289,7 @@ describe("tasks", () => {
 
   it("night is not a task you can start; a sleep under a night intent counts as its completion", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     expect(startTask(state, world, cal, "night")).toBe(false);
     state.intent = { mode: "runner", task: "night", cell: cellOf(state, world), campCell: cellOf(state, world), until: { kind: "once" }, deliver: "leave", done: 0, step: "", orderId: null, windDown: false };
@@ -293,6 +309,7 @@ describe("anything", () => {
 
   it("offers Hunt anything and Fish for anything ahead of the species rows", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const rows = availableTasks(g.state, g.world, cal).filter((o) => o.group === "hunt");
     expect(rows[0]).toMatchObject({ id: "hunt", arg: "any", label: "Hunt anything" });
     const fishAt = rows.findIndex((o) => o.id === "fish");
@@ -304,6 +321,7 @@ describe("anything", () => {
 
   it("draws only from species about, on ground that suits them", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     armed(g);
     placeAtSpot(state, world, state.player.region, "forest");
@@ -323,6 +341,7 @@ describe("anything", () => {
 
   it("starts as the species drawn, trains it, and draws again on repeat", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     armed(g);
     placeAtSpot(state, world, state.player.region, "forest");
@@ -345,6 +364,7 @@ describe("anything", () => {
     // region 1865 is a coast with both a lake shore and a sea shore; change it if the map
     // changes, with the reason here.
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     armed(g);
     const r = regionAt(world, 1865);
@@ -364,6 +384,7 @@ describe("anything", () => {
 
   it("an intent for a named species that adopts a running \"anything\" hunt still counts the kill", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     armed(g);
     placeAtSpot(state, world, state.player.region, "heath");
@@ -383,6 +404,7 @@ describe("away for the season", () => {
   const REGION = 1865;
   function armedAt(seed: number, cell: number) {
     const g = newGame(seed);
+    siteCamp(g.state, g.world);
     g.state.player.tools.push({ id: "bow", durability: 100, litres: 0, frozen: false }, { id: "fishingSpear", durability: 100, litres: 0, frozen: false });
     addItem(g.state.player.pack, "arrow", 10);
     placeAt(g.state, g.world, cell);
@@ -465,6 +487,7 @@ describe("away for the season", () => {
 describe("mend clothing", () => {
   it("waits until the most worn piece is at or under MEND_AT, so a patch never buys less than its hide", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     state.player.tools.push({ id: "needle", durability: 100 });
     addItem(state.player.pack, "hide", 1);
     for (const g of state.player.clothing) g.durability = MEND_AT + 1;
@@ -480,10 +503,11 @@ describe("mend clothing", () => {
     // legality shuts it between wearings; a grind that always ran there would
     // starve every keep below it.
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     state.player.tools.push({ id: "needle", durability: 100 });
-    addItem(pile(state, st.campCell), "hide", 1);
+    addItem(pile(state, st.campCell!), "hide", 1);
     addOrder(state, world, { task: "repair", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     for (const g of state.player.clothing) g.durability = MEND_AT + 1;
     expect(chooseOrder(state, world, cal)).toBeNull();
@@ -499,6 +523,7 @@ describe("mend clothing", () => {
     // missing from it cannot be started by hand and reads as its bare id while it runs: a
     // survivor digging roots read "roots" and one rendering fat read "cook".
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const offered = new Set(availableTasks(state, world, cal).map((o) => o.id));
     for (const id of WORK_TASKS) expect(offered, id).toContain(id);
   });
@@ -509,10 +534,11 @@ describe("mend clothing", () => {
     // offered again at once. A level-20 camp cooked 2e-13 kg of roots for six
     // hours a day on seed 79 and starved on day 82 under it.
     const { state, world } = newGame(11);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     st.fire.lit = true;
-    const camp = pile(state, st.campCell);
+    const camp = pile(state, st.campCell!);
     addItem(camp, "roots", TRACE_KG / 2);
     expect(check(state, world, cal, "cook", "roots")).toMatchObject({ ok: false, why: "no roots here" });
     addItem(camp, "roots", 1);

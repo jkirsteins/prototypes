@@ -45,16 +45,16 @@ const OWN_WORD: Partial<Record<GoalId, string[]>> = {
 };
 
 describe("the goal ladder", () => {
-  it("holds out one goal in the opening and starts with the firewood", () => {
+  it("holds out one goal in the opening and starts with choosing where to live", () => {
     const { state } = newGame(3);
-    expect(activeGoals(state, cal)).toEqual(["firewood"]);
+    expect(activeGoals(state, cal)).toEqual(["site"]);
   });
 
   it("stays one goal at a time through the whole opening chain, fire-keeping included", () => {
     const { state } = newGame(3);
-    // firewood is covered by the case above; walk the rest of the chain the
+    // site is covered by the case above; walk the rest of the chain the
     // same way, since a width bug widens silently rather than crashing.
-    for (const id of ["firewood", "fire"] as const) {
+    for (const id of ["site", "firewood", "fire"] as const) {
       state.goals.done[id] = true;
       expect(activeGoals(state, cal).length).toBe(1);
     }
@@ -64,19 +64,19 @@ describe("the goal ladder", () => {
 
   it("widens to two once the fire and food chain is behind it", () => {
     const { state } = newGame(3);
-    for (const id of ["firewood", "fire", "cook", "keptNight"] as const) state.goals.done[id] = true;
+    for (const id of ["site", "firewood", "fire", "cook", "keptNight"] as const) state.goals.done[id] = true;
     expect(activeGoals(state, cal)).toEqual(["bed", "keptDays"]);
   });
 
   it("widens to three once the camp jobs run in parallel", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 8)) state.goals.done[g.id] = true;
+    for (const g of GOALS.slice(0, 9)) state.goals.done[g.id] = true;
     expect(activeGoals(state, cal)).toEqual(["water", "snare", "store"]);
   });
 
   it("never shows more than the seasons can fill, and never narrows", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 10)) state.goals.done[g.id] = true;
+    for (const g of GOALS.slice(0, 11)) state.goals.done[g.id] = true;
     const active = activeGoals(state, cal);
     // One worked goal left and the whole tail behind it, which is one slot.
     expect(active[0]).toBe("store");
@@ -207,7 +207,7 @@ describe("goals are the world's, not a life's", () => {
     expect(state.goals.progress).toEqual({ firewood: 6 });
   });
 
-  it("fillDefaults gives a save with no goals field an empty ladder standing in today's season", () => {
+  it("migrate gives a save with no goals field an empty ladder standing in today's season", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state)) as { version: number; state: Record<string, unknown> };
     delete raw.state.goals;

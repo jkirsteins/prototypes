@@ -12,6 +12,7 @@ import { emptyBurn, emptyYield } from "../src/sim/ledger";
 import { addItem, pile } from "../src/sim/inventory";
 import { regionState } from "../src/sim/regionstate";
 import { cellIdx, regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 afterEach(() => DISABLED.clear());
 
@@ -22,6 +23,7 @@ describe("the without probe and the unexploited line", () => {
     expect(fishItem("char")).toBe("fish");
     DISABLED.add("marrow");
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     addItem(state.player.pack, "bone", 1);
     addItem(state.player.pack, "stone", 1);
     expect(check(state, world, calendar(0), "crack").why).toBe("disabled for the probe");
@@ -33,27 +35,29 @@ describe("the without probe and the unexploited line", () => {
     // without table's oilyFish row was a partial shutdown.
     // Seed 17's home region holds trout, the oily species the trap can draw here.
     const { state, world } = newGame(17, 200);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     expect(regionAt(world, state.player.region).capacity.trout).toBeGreaterThan(0);
     const cal = calendar(0, 200);
-    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: ["trout"], age: 0 };
+    st.trap = { cell: st.campCell!, kg: 0, oilyKg: 0, fish: ["trout"], age: 0 };
     DISABLED.add("oilyFish");
     for (let d = 0; d < 40; d++) dailyCamp(state, world, cal, new Rng(d), null);
     expect(st.trap!.kg).toBeGreaterThan(0);
     expect(st.trap!.oilyKg).toBe(0);
     // With the source open the same draws fill the oily side.
     DISABLED.clear();
-    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: ["trout"], age: 0 };
+    st.trap = { cell: st.campCell!, kg: 0, oilyKg: 0, fish: ["trout"], age: 0 };
     for (let d = 0; d < 40; d++) dailyCamp(state, world, cal, new Rng(d), null);
     expect(st.trap!.oilyKg).toBeGreaterThan(0);
   });
 
   it("names fat at camp and bones uncracked, and reads none when there is nothing", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const before = unexploited(state, world);
-    addItem(pile(state, st.campCell), "fat", 2);
-    addItem(pile(state, st.campCell), "bone", 3);
+    addItem(pile(state, st.campCell!), "fat", 2);
+    addItem(pile(state, st.campCell!), "bone", 3);
     const after = unexploited(state, world);
     expect(after.some((u) => u.name === "fat at camp" && u.amount.includes("18,000"))).toBe(true);
     expect(after.some((u) => u.name === "bones uncracked")).toBe(true);
@@ -64,9 +68,10 @@ describe("the without probe and the unexploited line", () => {
 
   it("the taken half reads what the ledger credited from the item's own source in the week before, hunt for fat and marrow for bones", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "fat", 2);
-    addItem(pile(state, st.campCell), "bone", 3);
+    addItem(pile(state, st.campCell!), "fat", 2);
+    addItem(pile(state, st.campCell!), "bone", 3);
     // newGame seeds day 1's own row (the arrival kit's kcal); replace it rather than
     // duplicate it, or weekBefore's average would divide by eight rows, not seven.
     state.ledger.length = 0;
@@ -87,6 +92,7 @@ describe("the without probe and the unexploited line", () => {
   // region: a land cell beside a "sea"-kind water cell, stood on directly.
   it("the seaweed bullet reads the shore's ice exactly as the seaweed task does", () => {
     const { state, world } = newGame(17, 90);
+    siteCamp(state, world);
     placeAt(state, world, cellIdx(world, 1224, 12));
     state.weather.iceCm = 0;
     expect(unexploited(state, world).some((u) => u.name === "seaweed")).toBe(true);

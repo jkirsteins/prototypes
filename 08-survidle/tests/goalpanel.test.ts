@@ -10,7 +10,7 @@ const cal = calendar(0);
 describe("the goal panel", () => {
   it("shows the opening goal by name", () => {
     const { state } = newGame(3);
-    expect(goalsHtml(state, cal)).toContain("Gather 10 kg of firewood");
+    expect(goalsHtml(state, cal)).toContain("Choose where to live");
   });
 
   it("shows nothing once the ladder is finished, so the panel can collapse", () => {
@@ -29,6 +29,7 @@ describe("the goal panel", () => {
 
   it("writes the figure and the fill onto the named elements each frame", () => {
     const { state } = newGame(3);
+    state.goals.done.site = true;
     goalDeed(state, { kind: "gathered", item: "firewood", kg: 4 });
     document.body.innerHTML = `<div id="goals">${goalsHtml(state, cal)}</div>`;
     updateGoalBars(state, cal);
@@ -38,6 +39,7 @@ describe("the goal panel", () => {
 
   it("floors the figure rather than rounding it up to a target not yet reached", () => {
     const { state } = newGame(3);
+    state.goals.done.site = true;
     goalDeed(state, { kind: "gathered", item: "firewood", kg: 9.6 });
     document.body.innerHTML = `<div id="goals">${goalsHtml(state, cal)}</div>`;
     updateGoalBars(state, cal);
@@ -47,6 +49,7 @@ describe("the goal panel", () => {
 
   it("draws no bar on a goal that is simply done or not done", () => {
     const { state } = newGame(3);
+    state.goals.done.site = true;
     state.goals.done.firewood = true;
     const html = goalsHtml(state, cal);
     expect(html).toContain("Light a fire");
@@ -128,6 +131,7 @@ describe("the congratulation", () => {
 
   it("names what was done and where to go next", () => {
     const { state } = newGame(3);
+    state.goals.done.site = true;
     goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
     const html = goalDoneHtml(state, cal, ["firewood"]);
     expect(html).toContain("Gather 10 kg of firewood");

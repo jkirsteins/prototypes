@@ -12,6 +12,7 @@ import { baseWalkSpeed, FAT_KCAL_PER_KG, starvation, stepPlayer, workSpeed } fro
 import { current } from "../src/sim/record";
 import type { Person } from "../src/sim/types";
 import { waterLossPerHour } from "../src/sim/water";
+import { siteCamp } from "./siting-helpers";
 
 describe("the fat reserve", () => {
   it("costs fat and no health for an hour with kcal at zero and fat above zero", () => {
@@ -90,6 +91,7 @@ describe("body mass", () => {
 describe("the berry ceiling", () => {
   function berried(kg: number) {
     const g = newGame(1);
+    siteCamp(g.state, g.world);
     addItem(g.state.player.pack, "berries", kg);
     return g;
   }

@@ -8,7 +8,7 @@ import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { advance } from "../src/sim/advance";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { mapRegion } from "../src/sim/mapped";
-import { regionState } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 import { cellAt, neighbours } from "../src/world/gen";
 import { startTask } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
@@ -174,7 +174,7 @@ describe("where a row lands", () => {
   it("a haul given by hand is a row like any other: it runs, delivers, and drops off when the ground is bare", () => {
     const { state, world } = newGame(3);
     mapRegion(state, world, state.player.region);
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = siteCamp(state, world);
     const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
     placeAt(state, world, spot);
     addItem(state.player.pack, "driedMeat", 2);
@@ -190,7 +190,7 @@ describe("where a row lands", () => {
   it("a haul displaced mid-carry is not done: the row stands until the load is at camp", () => {
     const { state, world } = newGame(3);
     mapRegion(state, world, state.player.region);
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = siteCamp(state, world);
     const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
     placeAt(state, world, spot);
     addItem(state.player.pack, "driedMeat", 2);

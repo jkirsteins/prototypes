@@ -6,10 +6,11 @@ import { addItem, freshTool, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, orderMet } from "../src/sim/orders";
 import { placeAt, watersideCell } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { beginTask, check } from "../src/sim/tasks";
 import { ICE_SHORE_CM, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
 import { regionAt, spotOf } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -23,10 +24,11 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
 /** Seed 17's start has a shore. Two buckets: one in hand, one at camp. */
 function waterCamp(seed = 17) {
   const g = newGame(seed);
+  siteCamp(g.state, g.world);
   const { state, world } = g;
   const st = regionState(state, world, state.player.region);
-  placeAt(state, world, st.campCell);
-  const camp = pile(state, st.campCell);
+  placeAt(state, world, st.campCell!);
+  const camp = pile(state, st.campCell!);
   addItem(camp, "barkBucket", 1);
   addItem(state.player.pack, "barkBucket", 1);
   takeUp(state, world, "barkBucket");
@@ -109,6 +111,7 @@ describe("the fill task", () => {
 
   it("with a vessel in hand and none at camp, a full carried vessel reports the truer reason", () => {
     const g = newGame(17);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     addItem(state.player.pack, "barkBucket", 1);
     takeUp(state, world, "barkBucket");
@@ -131,9 +134,10 @@ describe("the fill task", () => {
 
   it("a keep with no vessel anywhere reads as needing one, not as already at capacity", () => {
     const g = newGame(17);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     // No barkBucket in the pack, the pile, or in hand: camp capacity is 0
     // litres, same as a camp that is genuinely full. Zero is not full.
     const o = addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
@@ -179,7 +183,7 @@ describe("the fill task", () => {
     const { state, world, st } = waterCamp();
     state.weather.iceCm = 10;
     state.weather.snowCm = 20;
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
@@ -190,7 +194,7 @@ describe("the fill task", () => {
     advance(state, world, 180);
     expect(st.iceHole).toBeNull();
     expect(state.log.some((l) => l.text.includes("melting"))).toBe(false);
-    expect(qty(pile(state, st.campCell), "water")).toBe(0);
+    expect(qty(pile(state, st.campCell!), "water")).toBe(0);
   });
 
   it("the hole order needs an axe, and is not offered on an open shore", () => {
@@ -214,11 +218,12 @@ describe("the fill task", () => {
 describe("the trip's vessel", () => {
   it("takes up the vessel with the most room, and a partly full one only when it is alone", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     // A half full skin in hand, an empty bucket in the pile: the bucket has more room.
     state.player.tools.push({ ...freshTool("waterskin"), litres: 2.5 });
-    addItem(pile(state, st.campCell), "barkBucket", 1);
+    addItem(pile(state, st.campCell!), "barkBucket", 1);
     expect(tripVessel(state, world)).toEqual({ id: "barkBucket", inHand: false, room: 2 });
     expect(tripLitres(state, world)).toBeCloseTo(2.5, 5);
     takeUpTripVessel(state, world);
@@ -228,6 +233,7 @@ describe("the trip's vessel", () => {
 
   it("with only a partly full vessel anywhere, the trip takes it", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     addItem(state.player.pack, "waterskin", 1);
     takeUp(state, world, "waterskin");
     state.player.tools.find((t) => t.id === "waterskin")!.litres = 1;
@@ -245,20 +251,21 @@ describe("the trip's vessel", () => {
 describe("the winter methods", () => {
   it("a melt keep fills the vessel at the fire and pours it at camp, and never cuts a hole", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
-    st.structures.firePit = true;
+    placeAt(state, world, st.campCell!);
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     state.player.tools.push(freshTool("barkBucket"));
-    addItem(pile(state, st.campCell), "barkBucket", 1);
+    addItem(pile(state, st.campCell!), "barkBucket", 1);
     state.weather.iceCm = ICE_SHORE_CM;
     state.weather.snowCm = 20;
     expect(yieldItem("melt")).toBe("water");
     const o = addOrder(state, world, { task: "melt", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
     advance(state, world, 180);
-    expect(qty(pile(state, st.campCell), "water")).toBeGreaterThan(0);
+    expect(qty(pile(state, st.campCell!), "water")).toBeGreaterThan(0);
     expect(st.iceHole).toBeNull();
   });
 });

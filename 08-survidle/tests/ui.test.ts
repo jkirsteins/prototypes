@@ -13,7 +13,7 @@ import { die } from "../src/sim/player";
 import { fatLandmarks } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
-import { discovery, regionState, SEEN } from "../src/sim/regionstate";
+import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
@@ -28,6 +28,7 @@ import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, spotOf, speciesHere } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
+import { siteCamp } from "./siting-helpers";
 
 /**
  * Everything the player can reach, from the panels they actually have: the Do
@@ -44,6 +45,7 @@ function allActions(state: ReturnType<typeof newGame>["state"], world: ReturnTyp
 
 describe("reachability: everything in the catalogue has a button", () => {
   const { state, world } = newGame(21);
+  siteCamp(state, world);
   // A walk is only offered over ground the survivor knows, so this asks its
   // question of a survivor who has been round their own valley and the next.
   mapRegion(state, world, state.player.region);
@@ -95,8 +97,8 @@ describe("reachability: everything in the catalogue has a button", () => {
   it("offers a real mend button once a lean-to stands worn and the sticks are in reach", () => {
     const worn = newGame(21);
     const st = regionState(worn.state, worn.world, worn.state.player.region);
-    st.structures.leanTo = true;
-    st.structureAge.leanTo = 244 * 1440;
+    siteFor(st, st.campCell!).structures.leanTo = true;
+    siteFor(st, st.campCell!).structureAge.leanTo = 244 * 1440;
     addItem(worn.state.player.pack, "stick", 2);
     const h = allActions(worn.state, worn.world);
     expect(h).toContain(`data-act="intent" data-id="mend" data-arg="leanTo"`);
@@ -155,6 +157,7 @@ describe("panels", () => {
 
   it("the closest zoom draws its own grid, and the grid carries its size for the stylesheet", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     ui.zoom = 0;
@@ -169,6 +172,7 @@ describe("panels", () => {
 
   it("a rebuilt grid is born with the hour's light, so a zoom does not fade in from full day", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     // Dusk, where the light is well away from the stylesheet's daylight defaults.
     const cal = calendar(19 * 60);
     const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
@@ -185,6 +189,7 @@ describe("panels", () => {
 
   it("the falling weather is on the grid it is built with, not toggled on a frame later", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(12 * 60);
     state.weather.precip = "heavy";
     state.weather.clear = false;
@@ -196,6 +201,7 @@ describe("panels", () => {
 
   it("the zoom buttons sit in the map's bottom left corner, drawn after the grid", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     setPanel("map", mapHtml(world, state, newUiState(), cal));
     const html = document.getElementById("map")!.innerHTML;
@@ -205,6 +211,7 @@ describe("panels", () => {
 
   it("renders one span per cell with region borders and the player marker on the player's cell", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     // Borders and the current-region tint only draw over ground actually known; a
@@ -222,6 +229,7 @@ describe("panels", () => {
 
   it("draws the walk as a line, solid ahead and dashed behind, and marks cells with something lying on them", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     const z = ZOOMS[ui.zoom];
@@ -266,12 +274,13 @@ describe("panels", () => {
 
   it("marks this region's camp with an x whenever you are not on its glyph", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     const st = regionState(state, world, state.player.region);
     setPanel("map", mapHtml(world, state, ui, cal));
     expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
-    const nb = neighbours(world, st.campCell).find((c) => cellAt(world, c).terrain !== "water")!;
+    const nb = neighbours(world, st.campCell!).find((c) => cellAt(world, c).terrain !== "water")!;
     placeAt(state, world, nb);
     setPanel("map", mapHtml(world, state, ui, cal));
     const camp = document.querySelectorAll<HTMLElement>("#map .mk-camp");
@@ -290,6 +299,7 @@ describe("panels", () => {
 
   it("the live row of a counted order is a click target with a pulse bar, a once order's row is not", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const cal = calendar(0);
     addOrder(state, world, { task: "sticks", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
@@ -312,6 +322,7 @@ describe("panels", () => {
 
   it("the clock line reads the hurry's rate", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const cal = calendar(0);
     document.body.insertAdjacentHTML("beforeend", `<div id="clock"></div>`);
     setPanel("clock", clockHtml(state, world, cal, 5));
@@ -323,6 +334,7 @@ describe("panels", () => {
 
   it("bars follow the state", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ambient = ambientTemperature(cal, state.weather);
     setPanel("stats", statsHtml(state, world, cal, ambient, newUiState()));
@@ -338,6 +350,7 @@ describe("panels", () => {
 
   it("region card shows the travel button for another region, and the spots and loose piles for here", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const nb = regionAt(world, state.player.region).neighbours[0].id;
     // Walked whole, as though a previous life had already mapped both regions and
@@ -345,7 +358,7 @@ describe("panels", () => {
     // path itself is marked known too, or the route has nowhere known to cross.
     mapRegion(state, world, state.player.region);
     mapRegion(state, world, nb);
-    const path = findRoute(world, cellOf(state, world), regionAt(world, nb).campCell)!;
+    const path = findRoute(world, cellOf(state, world), regionAt(world, nb).campCell!)!;
     for (const c of path) markKnown(state, c);
     setPanel("region", regionHtml(state, world, cal, { ...newUiState(), selected: nb }));
     expect(document.querySelector(`#region [data-act="task"][data-id="travel"][data-arg="region:${nb}"]`)).not.toBeNull();
@@ -364,13 +377,18 @@ describe("panels", () => {
 
   it("draws a corridor as a thread, not an open polygon", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     const home = regionAt(world, state.player.region);
     const { x0, y0 } = viewOrigin(state, world, ui.zoom);
     const l = LEVELS[ui.zoom];
     const cells = new Set(home.cells);
-    // A run of cells in the home region, in view, that the landing sight never reached.
+    // The landing maps the home region whole; unmap it here so there is fog
+    // to draw a corridor across, the same shape ground the sight alone never
+    // reached would leave.
+    for (const c of cells) delete state.mapped[c];
+    // A run of cells in the home region, in view, that is not known.
     let run: number[] = [];
     outer: for (let y = y0; y < y0 + l.h; y++) {
       run = [];
@@ -401,6 +419,7 @@ describe("panels", () => {
 
   it("names black ground it has heard of, and offers Explore rather than Go", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(0);
     const home = state.player.region;
     const nbId = regionAt(world, home).neighbours[0].id;
@@ -432,16 +451,18 @@ describe("panels", () => {
 
   it("the region panel shows camp water against its capacity", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(0);
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "barkBucket", 2);
-    addItem(pile(state, st.campCell), "water", 3);
+    addItem(pile(state, st.campCell!), "barkBucket", 2);
+    addItem(pile(state, st.campCell!), "water", 3);
     const html = regionHtml(state, world, cal, newUiState());
     expect(html).toContain("water: 3.0 of 4.0 l");
   });
 
   it("lists the roster in Game, Birds, Fish and Heard lines, only species that live here", () => {
     const { state, world } = newGame(5);
+    siteCamp(state, world);
     const id = state.player.region;
     const html = rosterHtml(state, world, id, calendar(1440 * 275)); // January
     const r = regionAt(world, id);
@@ -459,6 +480,7 @@ describe("panels", () => {
 
   it("inventory lists pack and ground with take and drop", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     addItem(state.player.pack, "stick", 3);
     setPanel("inventory", inventoryHtml(state, world, calendar(state.minute)));
     expect(document.querySelector(`#inventory [data-act="drop"][data-item="stick"]`)).not.toBeNull();
@@ -467,8 +489,9 @@ describe("panels", () => {
 
   it("water on the ground gets no take button: it is inert in the pack", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     addItem(herePile(state, world), "water", 2);
     setPanel("inventory", inventoryHtml(state, world, calendar(state.minute)));
     expect(document.querySelector(`#inventory [data-act="take"][data-item="water"]`)).toBeNull();
@@ -476,6 +499,7 @@ describe("panels", () => {
 
   it("tombstone names the cause through the epitaph and offers to begin again, never a restart", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     die(state, "froze", regionAt(world, state.player.region).name);
     setPanel("overlay", tombstoneHtml(state, world, newUiState()));
     expect(document.querySelector("#overlay")!.textContent).toContain("Died of cold");
@@ -577,6 +601,7 @@ describe("panels", () => {
 
 describe("the Do panel", () => {
   const { state, world } = newGame(21);
+  siteCamp(state, world);
   const cal = calendar(state.minute);
   // Woodcraft 5 keeps chop's row open at the grind and job rungs the tests below reach for.
   // The ladder gate has its own tests; these rows are about a row's own kind buttons, so
@@ -607,6 +632,7 @@ describe("the Do panel", () => {
 
   it("a lean food past the day's ceiling shows a disabled eat button with its own reason; fat's stays open", () => {
     const g = newGame(21);
+    siteCamp(g.state, g.world);
     const p = g.state.player;
     // Lean kcal lives on the shared gut counter's leanKcal field.
     p.gut = { day: 1, kg: {}, leanKcal: LEAN_KCAL_PER_DAY };
@@ -641,6 +667,7 @@ describe("the Do panel", () => {
 
   it("haul is offered beside the ground pile it would carry, not in the Do list", () => {
     const g = newGame(21);
+    siteCamp(g.state, g.world);
     // Away from camp, with something on the ground worth carrying home. The
     // haul is a walk back, so the way home has to be ground they know.
     mapRegion(g.state, g.world, g.state.player.region);
@@ -654,7 +681,8 @@ describe("the Do panel", () => {
   it("a build blocked only by materials elsewhere in the region is not greyed out, and names what it would fetch", () => {
     // Fetch fixture: sticks and cordage already at camp, the missing logs sitting at the forest.
     const g = newGame(3);
-    const camp = regionState(g.state, g.world, g.state.player.region).campCell;
+    siteCamp(g.state, g.world);
+    const camp = regionState(g.state, g.world, g.state.player.region).campCell!;
     const r = regionAt(g.world, g.state.player.region);
     const forest = spotOf(r, "forest")!.cell;
     addItem(pile(g.state, camp), "stick", 8);
@@ -666,7 +694,9 @@ describe("the Do panel", () => {
 
   it("a build already finished renders as a greyed row, not a fetchable one, however much sits elsewhere", () => {
     const g = newGame(3);
-    regionState(g.state, g.world, g.state.player.region).structures.leanTo = true;
+    siteCamp(g.state, g.world);
+    const ust = regionState(g.state, g.world, g.state.player.region);
+    siteFor(ust, ust.campCell!).structures.leanTo = true;
     const r = regionAt(g.world, g.state.player.region);
     const forest = spotOf(r, "forest")!.cell;
     addItem(pile(g.state, forest), "log", 4);
@@ -676,6 +706,7 @@ describe("the Do panel", () => {
 
   it("the Doing panel reads the intent as a sentence with its step, and set-aside work can be finished from anywhere", () => {
     const g = newGame(21);
+    siteCamp(g.state, g.world);
     const rng = new Rng(1);
     // Seed 21's camp cell is itself forest ground; stand off it (the heath) so the intent really walks to the forest.
     placeAtSpot(g.state, g.world, g.state.player.region, "heath");
@@ -699,10 +730,11 @@ describe("the Do panel", () => {
 
   it("carried work's finish button names no cell, so it resolves through nearest and still reaches camp", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "firewood", 2);
     // Paused partway through, at camp; light is carried work, so its paused entry carries no cell.
@@ -722,6 +754,7 @@ describe("the Do panel", () => {
 describe("the Orders panel", () => {
   it("a blocked row is still a button, and its open keep button words the count by the item", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     // Woodcraft 10 opens the keep rung, so split's row is blocked by "no logs here", not the ladder gate.
     state.skills.woodcraft.xp = levelMinutes(10);
     const cal = calendar(0);
@@ -740,6 +773,7 @@ describe("the Orders panel", () => {
     // The wait's own hour of rest is not a thing the player is waiting for: it
     // ends when an order can run, not when the hour is up.
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAtSpot(state, world, state.player.region, "camp");
     addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
@@ -750,9 +784,9 @@ describe("the Orders panel", () => {
     expect(html).not.toContain("Waiting at camp: waiting at camp");
     expect(html).not.toContain('id="bar-task"');
     // The fire is work, and work under way has its bar and its own words.
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     for (let i = 0; i < 120 && state.task?.id === "rest"; i++) advance(state, world, 1);
     expect(state.task?.id).not.toBe("rest");
     html = taskHtml(state, world, calendar(state.minute));
@@ -764,13 +798,14 @@ describe("the Orders panel", () => {
     // Seed 1's camp sits on forest ground, so the grind order is gathering within
     // the window below rather than still walking out to the forest spot.
     const g = newGame(1);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     placeAtSpot(state, world, state.player.region, "camp");
-    addItem(pile(state, st.campCell), "log", 6);
-    addItem(pile(state, st.campCell), "firewood", 60);
+    addItem(pile(state, st.campCell!), "log", 6);
+    addItem(pile(state, st.campCell!), "firewood", 60);
     const keep = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     // Ranked under the grind: below the live row, so it reads "waiting its
@@ -822,11 +857,12 @@ describe("the Orders panel", () => {
 
   it("a blocked order below the live one names the row it is waiting behind, not its own reason", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     placeAtSpot(state, world, state.player.region, "camp");
-    addItem(pile(state, st.campCell), "log", 6);
+    addItem(pile(state, st.campCell!), "log", 6);
     const grind = addOrder(state, world, { task: "split", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
@@ -843,10 +879,11 @@ describe("the Orders panel", () => {
 
   it("shows the wait, and no bar, when nothing on the list can run", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     placeAtSpot(state, world, state.player.region, "camp");
-    addItem(pile(state, st.campCell), "firewood", 60);
+    addItem(pile(state, st.campCell!), "firewood", 60);
     addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     advance(state, world, 2);
     const html = taskHtml(state, world, calendar(state.minute));
@@ -867,6 +904,7 @@ describe("the Do panel and the ladder", () => {
 
   it("opening a row's kinds does not hide any other row's data-opt", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const cal = calendar(state.minute);
     const closed = doHtml(state, world, cal, newUiState());
     const ui = newUiState();
@@ -891,6 +929,7 @@ describe("the kind per row", () => {
 
   it("the open row renders the six kinds, greys the unearned ones with the rung they need, and other rows render no expansion", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
     ui.open = { id: "fish", arg: "any" };
@@ -918,6 +957,7 @@ describe("the kind per row", () => {
 
   it("the where-select follows the real ground rule, not the display group: fill is grouped camp but grounded to the shore", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const ui = newUiState();
     ui.open = { id: "fill", arg: "shore" };
@@ -928,6 +968,7 @@ describe("the kind per row", () => {
 
   it("no strip: the panel has no data-strip kind buttons and no strip sentence", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const html = doHtml(state, world, calendar(state.minute, state.startDoy), newUiState());
     expect(html).not.toContain('data-act="strip"');
     expect(html).not.toContain("data-strip=");

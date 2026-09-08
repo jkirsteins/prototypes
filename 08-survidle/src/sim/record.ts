@@ -54,10 +54,12 @@ export function fillDied(state: GameState, cause: DeathCause, regionName: string
   const p = state.player;
   const cal = calendar(state.minute, state.startDoy);
   const st = state.regions[p.region];
-  const camp = st ? state.piles[st.campCell] : undefined;
+  const campCell = st?.campCell ?? null;
+  const camp = campCell === null ? undefined : state.piles[campCell];
   let campFoodKcal = 0;
   if (camp) for (const f of Object.keys(FOODS) as FoodId[]) campFoodKcal += qty(camp, f) * FOODS[f].kcalPerKg;
-  const km = st ? Math.hypot(p.x - ((st.campCell % WORLD_W) + 0.5), p.y - (Math.floor(st.campCell / WORLD_W) + 0.5)) * CELL_KM : 0;
+  // No camp made, no distance from one: the survivor died wherever they stood.
+  const km = campCell === null ? 0 : Math.hypot(p.x - ((campCell % WORLD_W) + 0.5), p.y - (Math.floor(campCell / WORLD_W) + 0.5)) * CELL_KM;
   const rec = current(state);
   const last = [...rec.events].reverse().find((e) => e.kind === "threshold");
   const died: Died = {

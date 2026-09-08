@@ -15,6 +15,7 @@ import { check, startTask } from "../src/sim/tasks";
 import { drink, fillVessels, FREEZE_C, sourceLitres, waterSource } from "../src/sim/water";
 import { MARKS } from "../src/ui/map";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
@@ -52,6 +53,7 @@ describe("seep ground", () => {
 describe("a seep", () => {
   function dug(seed = 17) {
     const g = newGame(seed);
+    siteCamp(g.state, g.world);
     const cell = wetCell(g.world);
     g.state.seeps[cell] = { class: seepGround(g.world, cell)!, litres: 0, ice: 0, dug: g.state.minute };
     return { ...g, cell };
@@ -102,7 +104,7 @@ describe("a seep", () => {
 
   it("ticks with the world, and an old save loads with no seeps", () => {
     const { state, world, cell } = dug();
-    placeAt(state, world, regionState(state, world, state.player.region).campCell);
+    placeAt(state, world, regionState(state, world, state.player.region).campCell!);
     advance(state, world, 60);
     expect(state.seeps[cell].litres).toBeGreaterThan(0);
     const raw = JSON.parse(serialize(state));
@@ -114,6 +116,7 @@ describe("a seep", () => {
 describe("drinking from a seep", () => {
   it("a drink takes the pool and no more, and a fill leaves with what the pool had", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cell = wetCell(world);
     state.seeps[cell] = { class: seepGround(world, cell)!, litres: 2, ice: 0, dug: state.minute };
     placeAt(state, world, cell);
@@ -131,8 +134,9 @@ describe("drinking from a seep", () => {
 
   it("the seep row goes to the nearest seep that holds water, and is greyed with why when none does", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     state.player.tools.push(freshTool("barkBucket"));
     expect(check(state, world, cal, "fill", "seep").why).toBe("no seep dug");
     const cell = wetCell(world);
@@ -152,6 +156,7 @@ describe("drinking from a seep", () => {
 describe("digging a seep", () => {
   function ready(seed = 17) {
     const g = newGame(seed);
+    siteCamp(g.state, g.world);
     const cell = wetCell(g.world);
     placeAt(g.state, g.world, cell);
     g.state.player.tools.push(freshTool("barkBucket"));
@@ -186,7 +191,7 @@ describe("digging a seep", () => {
   it("the dig order walks to the nearest wet cell without a seep", () => {
     const { state, world } = ready();
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     mapRegion(state, world, state.player.region);
     const target = resolveCell(state, world, cal, "build", "seep", "nearest").cell;
     expect(seepGround(world, target)).not.toBeNull();
@@ -196,11 +201,12 @@ describe("digging a seep", () => {
 
   it("a dig ordered from camp pockets its sticks from the camp pile and digs at the nearest wet cell", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     mapRegion(state, world, state.player.region);
     state.player.tools.push(freshTool("barkBucket"));
-    addItem(pile(state, st.campCell), "stick", 4);
+    addItem(pile(state, st.campCell!), "stick", 4);
     expect(check(state, world, cal, "build", "seep", resolveCell(state, world, cal, "build", "seep", "nearest").cell).ok).toBe(true);
     addOrder(state, world, { task: "build", arg: "seep", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     let dug = false;
@@ -209,7 +215,7 @@ describe("digging a seep", () => {
       dug = Object.keys(state.seeps).length > 0;
     }
     expect(dug).toBe(true);
-    expect(qty(pile(state, st.campCell), "stick")).toBe(0);
+    expect(qty(pile(state, st.campCell!), "stick")).toBe(0);
   });
 
   it("re-digging is offered on the seep's cell past two thirds of its life and resets its clock", () => {
@@ -223,7 +229,7 @@ describe("digging a seep", () => {
     startTask(state, world, cal, "mend", "seep");
     advance(state, world, 60);
     expect(state.seeps[cell].dug).toBeGreaterThanOrEqual(SEEP_LIFE_DAYS * 1440);
-    placeAt(state, world, regionState(state, world, state.player.region).campCell);
+    placeAt(state, world, regionState(state, world, state.player.region).campCell!);
     expect(check(state, world, cal, "mend", "seep").why).toBe("no seep here");
   });
 

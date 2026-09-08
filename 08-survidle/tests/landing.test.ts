@@ -13,7 +13,7 @@ import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
-import { DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
+import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
@@ -21,6 +21,7 @@ import { tombstoneHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { CELL_KM } from "../src/units";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("the gap", () => {
   it("opens the coast a month after the mean crosses zero in spring and closes when it crosses in autumn", () => {
@@ -43,7 +44,8 @@ describe("the landing", () => {
   it("picks a shore cell 3 to 20 km from the old camp, the same one every time", () => {
     for (const seed of [17, 19, 42, 79]) {
       const { state, world } = newGame(seed);
-      const camp = regionState(state, world, state.player.region).campCell;
+      siteCamp(state, world);
+      const camp = regionState(state, world, state.player.region).campCell!;
       const a = landingCell(world, camp, seed, 2);
       expect(landingCell(world, camp, seed, 2)).toBe(a);
       const c = cellAt(world, a);
@@ -58,10 +60,11 @@ describe("the landing", () => {
 
   it("begins again: the pack lies where the body fell, the world has run the gap, the fog is dim, the clock is the landing's", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
-    st.structures.leanTo = true;
-    addItem(pile(state, st.campCell), "firewood", 10);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
+    addItem(pile(state, st.campCell!), "firewood", 10);
     advance(state, world, 20 * 1440);
     const deathCell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x);
     die(state, "froze", regionAt(world, state.player.region).name);
@@ -77,9 +80,9 @@ describe("the landing", () => {
     expect(state.minute).toBe(0);
     expect(state.startDoy).toBe(200);
     expect(state.year).toBe(1);
-    expect(st.structures.leanTo).toBe(true);
-    expect(st.structures.firePit).toBe(true);
-    expect(qty(pile(state, st.campCell), "firewood")).toBe(10);
+    expect(campSite(st)!.structures.leanTo).toBe(true);
+    expect(campSite(st)!.structures.firePit).toBe(true);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBe(10);
     expect(qty(pile(state, deathCell), "driedMeat")).toBeCloseTo(packMeat, 3);
     for (const id of Object.keys(state.discovered)) expect(discovery(state, Number(id))).toBe(DIM);
     expect(state.survivors).toHaveLength(1);
@@ -88,23 +91,25 @@ describe("the landing", () => {
 
   it("reads the old camp from where the survivor built, not from wherever they died", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const startRegion = state.player.region;
     const st = regionState(state, world, startRegion);
-    st.structures.firePit = true;
-    st.structures.snares = 2;
+    siteFor(st, st.campCell!).structures.firePit = true;
+    st.snares = 2;
     const startName = regionAt(world, startRegion).name;
     const neighbour = regionAt(world, startRegion).neighbours[0].id;
     placeAtSpot(state, world, neighbour, "camp");
     die(state, "froze", regionAt(world, neighbour).name);
     beginAgain(state, world);
     const oldCamp = state.landing!.oldCamp;
-    expect(oldCamp).toBe(st.campCell);
+    expect(oldCamp).toBe(st.campCell!);
     land(state, world, { first: "Ilze", last: "Berg" });
     expect(state.log[0].text).toContain(`The old camp at ${startName}`);
   });
 
   it("lands: a second survivor with a fresh body, the first log line pointing at the old camp", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     advance(state, world, 5 * 1440);
     die(state, "froze", regionAt(world, state.player.region).name);
     beginAgain(state, world);
@@ -125,6 +130,7 @@ describe("the dim map", () => {
     document.body.innerHTML = `<div id="map"></div>`;
     resetPanels();
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     addItem(herePile(state, world), "stone", 2);
@@ -149,11 +155,12 @@ describe("the dim map", () => {
 describe("what the heir is told", () => {
   it("quotes the ancestor's journal for what was built, and the tombstone the ancestor's day", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAtSpot(state, world, state.player.region, "shore");
-    st.structures.firePit = true;
-    st.structures.dryingRack = true;
-    st.racks = 1;
+    siteFor(st, st.campCell!).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.dryingRack = true;
+    siteFor(st, st.campCell!).racks = 1;
     const rec = current(state);
     rec.events.push({ kind: "built", structure: "firePit", day: 2, date: { year: 1, doy: 91 } });
     rec.events.push({ kind: "built", structure: "dryingRack", day: 9, date: { year: 1, doy: 98 } });
@@ -180,9 +187,10 @@ describe("what the heir is told", () => {
   // and none of that work would be counted as a morning of its own attention.
   it("leaves the heir the world and not the dead's orders", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
     const region = state.player.region;
-    const camp = regionState(state, world, region).campCell;
+    const camp = regionState(state, world, region).campCell!;
     addItem(pile(state, camp), "firewood", 40);
     giveOrder(state, world, { task: "roots", until: { kind: "daily", n: 2 }, deliver: "camp", where: "nearest", when: { season: { from: 90, to: 304 } } }, "job");
     giveOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest" }, "keep");
@@ -233,6 +241,7 @@ describe("what the heir is told", () => {
 
   it("says nothing about the journal when nothing was built, and the first tombstone has no comparison", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
     advance(state, world, 2 * 1440);
     die(state, "starved");

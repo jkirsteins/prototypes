@@ -13,7 +13,7 @@ import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
 import { body, fatLandmarks } from "./person";
 import { current } from "./record";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { log, warn } from "./log";
 import type { GameState, ItemId } from "./types";
 
@@ -231,9 +231,10 @@ export function addFirewood(state: GameState, world: World, kg: number): number 
 export function loadRack(state: GameState, world: World): number {
   const p = state.player;
   const st = regionState(state, world, p.region);
-  if (!atCamp(state, world) || !st.structures.dryingRack) return 0;
+  const site = campSite(st);
+  if (!atCamp(state, world) || !site?.structures.dryingRack) return 0;
   const invs = [p.pack, herePile(state, world)];
-  const room = rackCapacity(st) - st.rack.kg;
+  const room = rackCapacity(site) - st.rack.kg;
   const kg = Math.min(room, totalQty(invs, "rawMeat"));
   if (kg <= 1e-9) return 0;
   let left = kg;

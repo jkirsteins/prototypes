@@ -10,10 +10,10 @@ import { ordersHere, orderSentence } from "./orders";
 import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
 import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
-import { regionState } from "./regionstate";
+import { newSite, regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
-import type { GameState, Intent, Inventory, LogEntry, TaskId, Until } from "./types";
+import type { DecayingId, GameState, Intent, Inventory, LogEntry, StructureId, TaskId, Until } from "./types";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -33,7 +33,7 @@ export function deserialize(text: string): SaveFile | null {
   try {
     const file = JSON.parse(text) as { version: number; savedAt: number; state: GameState };
     if (!(file?.version >= 3 && file?.version <= 7) || !file.state || typeof file.savedAt !== "number") return null;
-    fillDefaults(file.state);
+    migrate(file.state);
     return file as unknown as SaveFile;
   } catch {
     return null;
@@ -45,7 +45,7 @@ export function deserialize(text: string): SaveFile | null {
  * run in progress survives a new structure the same way it survives a new
  * region: by not having it yet.
  */
-function fillDefaults(state: GameState): void {
+export function migrate(state: GameState): void {
   state.startDoy ??= START_DOY;
   state.awayHours ??= AWAY_HOURS_DEFAULT;
   state.skills ??= newSkills();
@@ -83,10 +83,6 @@ function fillDefaults(state: GameState): void {
   state.stats.kills ??= {};
   state.stats.killsKcal ??= 0;
   for (const st of Object.values(state.regions)) {
-    st.structureAge ??= {};
-    st.racks ??= st.structures.dryingRack ? 1 : 0;
-    st.structures.turfHut ??= false;
-    st.structures.waterStore ??= false;
     st.trap ??= null;
     if (st.trap) st.trap.age ??= 0;
     if (st.trap) st.trap.oilyKg ??= 0;
@@ -222,11 +218,41 @@ function fillDefaults(state: GameState): void {
     state.route.walked ??= [];
   }
   for (const st of Object.values(state.regions)) {
-    st.structures.boughBed ??= false;
-    st.structures.hearth ??= false;
-    st.structures.snowShelter ??= false;
-    st.boughBedAge ??= 0;
-    st.meltDays ??= 0;
+    // A save from before sites kept one camp's worth of structures flat on the region.
+    const flat = st as unknown as { structures?: Record<string, number | boolean>; racks?: number; boughBedAge?: number; meltDays?: number; structureAge?: Partial<Record<DecayingId, number>>; build?: Partial<Record<StructureId, number>> };
+    if (flat.structures) {
+      const site = newSite();
+      const old = flat.structures;
+      site.structures.firePit = Boolean(old.firePit);
+      site.structures.leanTo = Boolean(old.leanTo);
+      site.structures.cabin = Boolean(old.cabin);
+      site.structures.dryingRack = Boolean(old.dryingRack);
+      site.structures.boughBed = Boolean(old.boughBed);
+      site.structures.hearth = Boolean(old.hearth);
+      site.structures.turfHut = Boolean(old.turfHut);
+      site.structures.waterStore = Boolean(old.waterStore);
+      site.structures.snowShelter = Boolean(old.snowShelter);
+      // A save from before racks were counted has only the flag: one rack stood if dryingRack did.
+      site.racks = flat.racks ?? (old.dryingRack ? 1 : 0);
+      site.boughBedAge = flat.boughBedAge ?? 0;
+      site.meltDays = flat.meltDays ?? 0;
+      site.structureAge = flat.structureAge ?? {};
+      site.build = flat.build ?? {};
+      st.snares = Number(old.snares ?? 0);
+      st.sites = {};
+      // A region touched but never lived in gets no site, the same as one raised today.
+      const lived = Object.values(site.structures).some(Boolean) || Object.keys(site.build).length > 0;
+      // A save from before a camp could be missing always has one: only a fresh region starts with none.
+      if (lived && st.campCell !== null) st.sites[st.campCell] = site;
+      delete flat.structures;
+      delete flat.racks;
+      delete flat.boughBedAge;
+      delete flat.meltDays;
+      delete flat.structureAge;
+      delete flat.build;
+    }
+    st.sites ??= {};
+    st.snares ??= 0;
     st.fire.wetKg ??= 0;
     st.fire.indoors ??= false;
     st.fire.unattended ??= 0;

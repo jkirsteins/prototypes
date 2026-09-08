@@ -9,7 +9,7 @@ import { itemLabel, take } from "../src/sim/actions";
 import { newGame } from "../src/sim/newgame";
 import { causeFrom, stepPlayer, workSpeed } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import {
   campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
@@ -18,12 +18,14 @@ import {
 import { ambientTemperature } from "../src/sim/weather";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
 describe("water", () => {
   it("loses a tenth of a litre an hour idle and more working, cold or hot", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     expect(waterLossPerHour(state, 10)).toBeCloseTo(0.1, 6);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     expect(waterLossPerHour(state, 10)).toBeCloseTo(0.35, 6);
@@ -53,6 +55,7 @@ describe("water", () => {
 
   it("drinks at a shore and not away from water; auto-drink keeps the reserve up while the tab runs", () => {
     const g = newGame(42);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     // Camp is a shore cell; stand on the dry forest spot first.
     placeAtSpot(state, world, state.player.region, "forest");
@@ -73,6 +76,7 @@ describe("water", () => {
 
   it("a shore under two centimetres of ice still gives water; thicker is iced over", () => {
     const { state, world } = newGame(42);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
     state.weather.iceCm = 1.9;
     expect(waterSource(state, world)).toBe(true);
@@ -82,6 +86,7 @@ describe("water", () => {
 
   it("an iced-over shore logs the warning once and offers a disabled drink button saying so", () => {
     const { state, world } = newGame(42);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
     state.weather.iceCm = ICE_SHORE_CM + 1;
     advance(state, world, 1);
@@ -109,6 +114,7 @@ describe("water", () => {
 describe("vessels and snow", () => {
   it("a bark bucket carries two litres from the shore and is drunk from anywhere", () => {
     const { state, world } = newGame(42);
+    siteCamp(state, world);
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 });
     placeAtSpot(state, world, state.player.region, "shore");
     expect(fillVessels(state, world)).toBe(2);
@@ -121,9 +127,10 @@ describe("vessels and snow", () => {
 
   it("melting snow at the fire costs a kilo of wood a litre; thawing frees a frozen vessel", () => {
     const g = newGame(17);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
     state.weather.snowCm = 5;
@@ -152,6 +159,7 @@ describe("vessels and snow", () => {
 
   it("water in a still pack freezes at -5 and a full bucket may split", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.player.tools.push({ id: "waterskin", durability: 100, litres: 3 });
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 2 });
     state.player.energy = 100;
@@ -169,10 +177,11 @@ describe("vessels and snow", () => {
 
 function atCamp(seed = 17) {
   const g = newGame(seed);
+  siteCamp(g.state, g.world);
   const { state, world } = g;
   const st = regionState(state, world, state.player.region);
-  placeAt(state, world, st.campCell);
-  return { g, state, world, st, camp: pile(state, st.campCell) };
+  placeAt(state, world, st.campCell!);
+  return { g, state, world, st, camp: pile(state, st.campCell!) };
 }
 
 describe("water at camp", () => {
@@ -212,7 +221,7 @@ describe("water at camp", () => {
     expect(qty(camp, "ice")).toBeCloseTo(1.5, 5);
     expect(qty(camp, "barkBucket")).toBe(2);
     expect(state.log.some((l) => l.text === "The water at camp has frozen.")).toBe(true);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     // Two litres an hour: half an hour thaws one.
@@ -262,6 +271,7 @@ describe("water at camp", () => {
 
   it("a warm room costs no extra water at rest; work in it does, and cold dry air does whatever you do", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.task = null;
     const rest = waterLossPerHour(state, 25);
     expect(rest).toBeCloseTo(0.1, 6);

@@ -62,14 +62,14 @@ import { currentNeed, KIT_ITEMS } from "./body";
 import { bodyRowOf, BODY_SENTENCE, CAMP_SENTENCE, careLogLine, isBodyRow, isCampRow, isCareRow, judgeBodyRow, judgeCampRow, serveBodyRow, serveCareRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
-import { pile, qty } from "./inventory";
+import { pileAt, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { check, setAside } from "./tasks";
 import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId, Verdict } from "./types";
 import { campWaterCapacity } from "./water";
@@ -231,7 +231,7 @@ export function inSeason(doy: number, season: { from: number; to: number }): boo
  */
 export function keepStock(state: GameState, world: World, o: Order): number {
   const st = regionState(state, world, state.player.region);
-  const camp = pile(state, st.campCell);
+  const camp = pileAt(state, st.campCell);
   const keep = keepTarget(o);
   if (!keep) return 0;
   let have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
@@ -295,7 +295,7 @@ export function conditionOpen(state: GameState, world: World, cal: Calendar, o: 
   if (w.season && !inSeason(cal.dayOfYear, w.season)) return `out of season until ${fmtDoy(w.season.from)}`;
   if (w.stock) {
     const st = regionState(state, world, state.player.region);
-    const have = qty(pile(state, st.campCell), w.stock.item);
+    const have = qty(pileAt(state, st.campCell), w.stock.item);
     // The tolerance on the line is a hair either side of the figure itself rather than a
     // hair above nothing, or a line drawn at a trace - "any raw meat at all", which is what
     // a drying rack waits for - would be a line the float guard swallows and never shuts.
@@ -343,15 +343,15 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   if (structureKeep(o.req, o.kind)) {
     if (o.req.arg === "snare") {
       const want = o.req.until.kind === "campHas" ? o.req.until.qty : 1;
-      return live ? st.structures.snares >= want : st.structures.snares >= want / 2;
+      return live ? st.snares >= want : st.snares >= want / 2;
     }
-    return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.kind === "grind") return false;
   // A seep stands on a cell, not at the camp: its dig is a job done once.
   if (o.req.task === "build" && o.req.arg === "seep") return o.done >= 1;
   if (o.req.task === "build" && o.req.arg !== "snare") {
-    return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
   // Nothing counts a trip, so a haul has no tally for a once to read. What
@@ -370,7 +370,7 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   switch (u.kind) {
     case "once": return o.done >= 1;
     case "times": return o.done >= u.n;
-    case "campHas": return qty(pile(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
+    case "campHas": return qty(pileAt(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
     case "forever": return false;
     case "daily": return o.done - (o.dayBase ?? 0) >= u.n;
   }
@@ -704,8 +704,8 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
   const keep = keepTarget(o);
   if (keep?.item === "water") {
     const homeSt = regionState(state, world, state.player.region);
-    const camp = pile(state, homeSt.campCell);
-    const cap = campWaterCapacity(camp, homeSt);
+    const camp = pileAt(state, homeSt.campCell);
+    const cap = campWaterCapacity(camp, campSite(homeSt));
     // cap === 0 means no vessel has ever reached camp, not that camp is full.
     if (cap > 0 && cap < keep.qty && qty(camp, "water") + qty(camp, "ice") >= cap - 1e-9) {
       return { v: "shut", why: `camp holds ${cap % 1 === 0 ? cap : cap.toFixed(1)} litres; more vessels at camp would hold more` };

@@ -12,10 +12,10 @@ import { log, warn } from "./log";
 import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
-import { regionState } from "./regionstate";
+import { regionState, siteAt } from "./regionstate";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
-import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
@@ -46,23 +46,31 @@ export function isCampTask(task: Task | null): boolean {
 }
 
 /** The roof's own warmth, whichever roof stands, regardless of a snow shelter beside it: cabin over turf hut over lean-to. */
-export function roofBonus(r: RegionState): number {
-  if (r.structures.cabin) return 15;
-  if (r.structures.turfHut) return 10;
-  if (r.structures.leanTo) return 5;
+export function roofBonus(site: Site | null): number {
+  if (!site) return 0;
+  if (site.structures.cabin) return 15;
+  if (site.structures.turfHut) return 10;
+  if (site.structures.leanTo) return 5;
   return 0;
 }
 
 /** Degrees of comfort the shelter gives, for someone at camp doing camp things. */
-export function shelterBonus(r: RegionState): number {
-  if (r.structures.snowShelter && !r.structures.cabin && !r.structures.turfHut) return 0;
-  return roofBonus(r);
+export function shelterBonus(site: Site | null): number {
+  if (!site) return 0;
+  if (site.structures.snowShelter && !site.structures.cabin && !site.structures.turfHut) return 0;
+  return roofBonus(site);
 }
 
-/** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
+/**
+ * True when the player is under a roof: doing camp things on a cell something
+ * shelter-shaped stands on. The roof is the one under the survivor's feet, the
+ * same one feltTemperature reads, so a lean-to left behind at an old camp still
+ * keeps the rain off whoever walks back into it.
+ */
 export function sheltered(state: GameState, world: World): boolean {
-  const r = regionState(state, world, state.player.region);
-  return atCamp(state, world) && isCampTask(state.task) && (r.structures.cabin || r.structures.leanTo || r.structures.turfHut || r.structures.snowShelter);
+  const site = siteAt(regionState(state, world, state.player.region), cellOf(state, world));
+  if (!site) return false;
+  return isCampTask(state.task) && (site.structures.cabin || site.structures.leanTo || site.structures.turfHut || site.structures.snowShelter);
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
@@ -128,14 +136,19 @@ export const SNOW_FLOOR_C = -3;
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
+  // A roof is a roof wherever it stands: the camp's, or one the survivor
+  // moved away from and has walked back into out of the rain.
+  const here = siteAt(r, cellOf(state, world));
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   // A cabin holds its room temperature only once the fire has a hearth to
   // burn on: without one the fire is at the pit outside, and the walls are a
   // roof and no more.
-  const inCabin = r.structures.cabin && r.structures.hearth;
-  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (r.structures.turfHut || inCabin);
-  const inSnow = camp && campTask && r.structures.snowShelter && !indoors;
+  const inCabin = here?.structures.cabin && here.structures.hearth;
+  // Warm indoor air comes from the camp's own fire burning inside these walls; a hut
+  // standing at a site the survivor left is a cold roof, whatever the camp's fire is doing.
+  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (here?.structures.turfHut || inCabin);
+  const inSnow = campTask && here?.structures.snowShelter && !indoors;
   let felt: number;
   if (indoors) {
     felt = Math.max(ambient, inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) + insulation(state);
@@ -145,16 +158,17 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
     // either alone - reachable whenever a hut or cabin stands but its fire is unlit,
     // since nothing clears a snow shelter but three warm days in a row.
     const withSnow = Math.max(ambient, SNOW_FLOOR_C);
-    const withRoof = ambient + roofBonus(r);
+    const withRoof = ambient + roofBonus(here);
     felt = Math.max(withSnow, withRoof) + insulation(state);
   } else {
     felt = ambient + insulation(state);
     // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
-    if (camp && campTask) felt += shelterBonus(r);
+    if (campTask) felt += shelterBonus(here);
   }
+  // The fire is the camp's: there is no fire burning at a site the survivor left.
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
   if (bedded(state.task)) felt += beddingInsulation(state);
-  if (camp && state.task?.id === "sleep" && r.structures.boughBed) felt += BOUGH_BED_C;
+  if (state.task?.id === "sleep" && here?.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
@@ -306,7 +320,9 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   const roof = sheltered(state, world);
-  const walled = roof && (r.structures.cabin || r.structures.turfHut || r.structures.snowShelter);
+  // Walls are the walls the survivor is standing inside, the same place roof reads.
+  const site = siteAt(r, cellOf(state, world));
+  const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);
   const h = dt / 60;
 
   const x: Exposure = {

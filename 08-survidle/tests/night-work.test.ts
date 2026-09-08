@@ -11,6 +11,7 @@ import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 /**
  * 8 December, a long night with a new moon over it: the sky puts nothing at
@@ -28,9 +29,10 @@ const MIDDAY = 5 * 60;
  */
 function camp(minute: number) {
   const { state, world } = newGame(17, DECEMBER);
+  siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
   const wood = regionAt(world, state.player.region).cells.find((c) => cellAt(world, c).terrain === "pine" || cellAt(world, c).terrain === "spruce");
-  placeAt(state, world, wood ?? st.campCell);
+  placeAt(state, world, wood ?? st.campCell!);
   state.minute = minute;
   state.weather.clear = false;
   state.weather.snowCm = 0;
@@ -95,8 +97,9 @@ describe("work in the dark", () => {
 describe("the runner keeps its night gate", () => {
   it("still skips a standing order for the forest after dark, with the reason it always gave", () => {
     const { state, world } = newGame(17, DECEMBER);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     addOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 60 }, deliver: "camp", where: "nearest" }, "keep");
     state.minute = MIDNIGHT;
     const night = calendar(state.minute, state.startDoy);

@@ -10,6 +10,7 @@ import { addOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RESTED_AT, SPENT_AT } from "../src/sim/sleep";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -24,8 +25,9 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
 /** Seed 39: meadow camp, forest 0.6 km away. The body is at camp, a hair past the spent line and with a round trip's worth of energy over the collapse, which is the one thing that would end a once. */
 function spentAtCamp() {
   const g = newGame(39);
+  siteCamp(g.state, g.world);
   const { state, world } = g;
-  const camp = regionState(state, world, state.player.region).campCell;
+  const camp = regionState(state, world, state.player.region).campCell!;
   placeAt(state, world, camp);
   addItem(state.player.pack, "driedMeat", 2);
   state.player.energy = SPENT_AT - 1;

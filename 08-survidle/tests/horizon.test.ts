@@ -5,7 +5,7 @@ import { newGame } from "../src/sim/newgame";
 import { isCareRow } from "../src/sim/bodyorder";
 import { ordersHere } from "../src/sim/orders";
 import { REFERENCE_ORDERS } from "../src/sim/reference";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { SKILL_IDS, skillLevel } from "../src/sim/skills";
 
 const stage = (id: string) => HORIZON_STAGES.find((s) => s.id === id)!;
@@ -87,20 +87,20 @@ describe("the horizon stages", () => {
   it("the producers stages stand the hut, the trough and a trap on the kitted camp, and the stocked one adds stores", () => {
     const { state, world } = setUpStage(17, stage("producers"));
     const st = regionState(state, world, state.player.region);
-    expect(st.structures.turfHut).toBe(true);
-    expect(st.structures.waterStore).toBe(true);
+    expect(campSite(st)!.structures.turfHut).toBe(true);
+    expect(campSite(st)!.structures.waterStore).toBe(true);
     // All four reference seeds land the kitted camp beside a shore with fish, so the trap is always set here.
     expect(st.trap).not.toBeNull();
     expect(st.trap!.fish.length).toBeGreaterThan(0);
     expect(stage("producers").band).toEqual([10, 20]);
     expect(stage("stocked").band).toEqual([20, 60]);
     const s2 = setUpStage(17, stage("stocked"));
-    const camp = pile(s2.state, regionState(s2.state, s2.world, s2.state.player.region).campCell);
+    const camp = pile(s2.state, regionState(s2.state, s2.world, s2.state.player.region).campCell!);
     expect(qty(camp, "driedMeat")).toBeGreaterThanOrEqual(10);
     expect(qty(camp, "water")).toBeGreaterThanOrEqual(20);
     expect(qty(camp, "firewood")).toBeGreaterThanOrEqual(200);
     const manual = setUpStage(17, stage("manual"));
-    expect(regionState(manual.state, manual.world, manual.state.player.region).structures.turfHut).toBe(false);
+    expect(campSite(regionState(manual.state, manual.world, manual.state.player.region))!.structures.turfHut).toBe(false);
   });
 
   it("a manual camp dies before the six-day cap on seed 17, and inBand agrees with the band", () => {

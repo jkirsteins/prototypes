@@ -9,13 +9,15 @@ import { addItem, pile, removeItem, qty } from "../src/sim/inventory";
 import { GAME_MINUTES_PER_REAL_SECOND } from "../src/units";
 import { AUTO_EAT_ORDER } from "../src/sim/items";
 import { WATER_FULL } from "../src/sim/water";
+import { siteCamp } from "./siting-helpers";
 
 /** A kitted camp on seed 17 with the reference orders and a stocked larder. */
 function stocked() {
   const g = newGame(17);
+  siteCamp(g.state, g.world);
   kitOut(g.state, g.world);
   for (const w of REFERENCE_ORDERS) addOrder(g.state, g.world, w.req, w.kind);
-  addItem(pile(g.state, regionState(g.state, g.world, g.state.player.region).campCell), "driedMeat", 5);
+  addItem(pile(g.state, regionState(g.state, g.world, g.state.player.region).campCell!), "driedMeat", 5);
   return g;
 }
 
@@ -55,7 +57,7 @@ describe("a forecast row", () => {
     expect(alive).toEqual({ id: "tonight", runs: 3, died: 0, cause: null, day: null });
     regionState(state, world, state.player.region).orders = [];
     const inv = state.player.pack;
-    const campPile = pile(state, regionState(state, world, state.player.region).campCell);
+    const campPile = pile(state, regionState(state, world, state.player.region).campCell!);
     const foodIds = [...AUTO_EAT_ORDER, "rawMeat"] as const;
     for (const f of foodIds) {
       removeItem(inv, f, qty(inv, f));

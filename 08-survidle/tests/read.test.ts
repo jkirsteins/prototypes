@@ -12,12 +12,14 @@ import { regionAt } from "../src/world/gen";
 import { cellOf, watersideCell } from "../src/sim/position";
 import { regionDensity } from "../src/sim/animals";
 import { readHtml } from "../src/ui/panels";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
 /** Seed 4's start region has a lake; the player is put on its shore spot. */
 function atShore() {
   const g = newGame(4);
+  siteCamp(g.state, g.world);
   placeAtSpot(g.state, g.world, g.state.player.region, "shore");
   return { ...g, cell: cellOf(g.state, g.world), r: regionAt(g.world, g.state.player.region) };
 }

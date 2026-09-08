@@ -20,7 +20,7 @@ function stocked() {
   const g = newGame(17);
   kitOut(g.state, g.world);
   for (const w of REFERENCE_ORDERS) addOrder(g.state, g.world, w.req, w.kind);
-  addItem(pile(g.state, regionState(g.state, g.world, g.state.player.region).campCell), "driedMeat", 5);
+  addItem(pile(g.state, regionState(g.state, g.world, g.state.player.region).campCell!), "driedMeat", 5);
   return g;
 }
 

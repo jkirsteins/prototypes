@@ -11,6 +11,7 @@ import { bodyRowOf, campRowOf, isBodyRow, isCampRow, judgeBodyRow, judgeCampRow,
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 import { Rng } from "../src/rng";
 import { hurryKind } from "../src/ui/hurry";
 import { deserialize, serialize } from "../src/sim/save";
@@ -100,14 +101,15 @@ describe("the body row", () => {
   it("a dry read never feeds the fire: judging a storm at camp leaves the woodpile and the fire's own fuel untouched", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     st.fire.lit = true;
     st.fire.fuelKg = 1;
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
     for (let i = 0; i < 20; i++) judgeBodyRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(1);
-    expect(qty(pile(state, st.campCell), "firewood")).toBe(5);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
   });
 
   it("a dry read never lays the body down: the sleep latch is the serving read's to move", () => {
@@ -141,24 +143,26 @@ describe("the body row", () => {
   it("a dry read of the camp row never feeds the fire: judging a fire at the low mark leaves the woodpile and the fire's own fuel untouched", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
     for (let i = 0; i < 20; i++) judgeCampRow(state, world, cal, new Rng(1));
     expect(st.fire.fuelKg).toBe(FIRE_LOW_KG);
-    expect(qty(pile(state, st.campCell), "firewood")).toBe(5);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBe(5);
   });
 
   it("the camp row reads met with nothing to keep, and goes back to met once the wood is on", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("met");
     st.fire.lit = true;
     st.fire.fuelKg = FIRE_LOW_KG;
-    addItem(pile(state, st.campCell), "firewood", 5);
+    addItem(pile(state, st.campCell!), "firewood", 5);
     expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
     // The wet read is what actually puts the wood on, and the row has
     // nothing left to ask for after it.
@@ -288,10 +292,11 @@ describe("work with no row behind it", () => {
   it("says nothing about the wait at camp, which is not work anybody asked for", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
     // A keep camp already meets: the list has a row on it and nothing to do
     // about it, which is what puts the survivor on the scheduler's own wait.
-    addItem(pile(state, st.campCell), "firewood", 60);
+    addItem(pile(state, st.campCell!), "firewood", 60);
     addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     let waiting = false;
     for (let m = 0; m < 200 && !waiting; m++) {

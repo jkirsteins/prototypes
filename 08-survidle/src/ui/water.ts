@@ -6,10 +6,10 @@
 import { regionAt, type World } from "../world/gen";
 import { routeMinutes } from "../world/route";
 import type { Calendar } from "../sim/calendar";
-import { pile, qty } from "../sim/inventory";
+import { pile, pileAt, qty } from "../sim/inventory";
 import { baseWalkSpeed } from "../sim/player";
 import { cellOf, watersideCell } from "../sim/position";
-import { regionState } from "../sim/regionstate";
+import { campSite, regionState } from "../sim/regionstate";
 import { survivorRoute } from "../sim/routing";
 import { SEEP, seepGround, seepStopped } from "../sim/seep";
 import type { GameState } from "../sim/types";
@@ -34,9 +34,9 @@ export function waterLine(state: GameState, world: World, cal: Calendar): string
   const cell = cellOf(state, world);
   const st = regionState(state, world, state.player.region);
   const parts: string[] = [];
-  if (cell === st.campCell) {
+  if (cell === st.campCell && st.campCell !== null) {
     const camp = pile(state, st.campCell);
-    const cap = campWaterCapacity(camp, st);
+    const cap = campWaterCapacity(camp, campSite(st));
     if (cap > 0 || qty(camp, "water") > 1e-9) parts.push(`${qty(camp, "water").toFixed(1)} of ${cap.toFixed(1)} l at camp`);
   }
   if (watersideCell(world, cell)) {
@@ -87,8 +87,8 @@ export function waterList(state: GameState, world: World, cal: Calendar): string
     const s = state.seeps[seep.cell];
     parts.push(`seep ${seep.minutes} min, ${s.litres.toFixed(1)} of ${SEEP[s.class].poolL} l`);
   }
-  const campL = qty(pile(state, st.campCell), "water");
-  if (campL > 1e-9) parts.push(`camp water ${campL.toFixed(1)} l, ${here === st.campCell ? 0 : (walkMinutes(state, world, cal, st.campCell) ?? "?")} min`);
+  const campL = qty(pileAt(state, st.campCell), "water");
+  if (campL > 1e-9 && st.campCell !== null) parts.push(`camp water ${campL.toFixed(1)} l, ${here === st.campCell ? 0 : (walkMinutes(state, world, cal, st.campCell) ?? "?")} min`);
   if (st.fire.lit && st.fire.fuelKg >= 1 && state.weather.snowCm >= 1) parts.push("snow at the fire, 1 l per 15 min and 1 kg wood");
   return parts.length ? parts.join("; ") : "no water in this region";
 }

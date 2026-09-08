@@ -4,10 +4,11 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, qty } from "../src/sim/inventory";
 import { MARROW_KG_PER_BONE, RECIPES, SPOIL_HOURS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { huntExtras } from "../src/sim/skills";
 import { fatSeason, marrowFactor, SPECIES_DEFS } from "../src/sim/species";
 import { check, startTask, stepTask } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 describe("the carcass", () => {
   it("fat peaks are the handbooks' animals and the season scales them", () => {
@@ -45,8 +46,9 @@ describe("the carcass", () => {
 
   it("render fat is the cook task on raw fat, at a lit fire, ten minutes a kilo", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
     addItem(state.player.pack, "rawFat", 2);
@@ -63,6 +65,7 @@ describe("the carcass", () => {
 
   it("cracking a bone gives marrow as fat and a cracked bone that still makes a needle", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     addItem(state.player.pack, "bone", 2);
     addItem(state.player.pack, "stone", 1);
     const cal = calendar(0);
