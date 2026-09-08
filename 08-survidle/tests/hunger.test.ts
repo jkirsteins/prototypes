@@ -94,3 +94,25 @@ describe("auto-eat", () => {
     expect(state.log.length).toBeGreaterThan(warned + 1);
   });
 });
+
+describe("hunger and satiety", () => {
+  it("eats past the line it started at, up to the satiety target", () => {
+    const { state, world } = newGame(1);
+    state.player.kcal = HUNGRY_LINE - 1;
+    addItem(state.player.pack, "driedMeat", 5);
+    autoEat(state, world, new Rng(1));
+    expect(state.player.kcal).toBeGreaterThan(HUNGRY_LINE + 100);
+    expect(state.player.kcal).toBeLessThanOrEqual(KCAL_FULL);
+  });
+
+  it("banks the surplus as fat when a deep larder meets a full stomach", () => {
+    const { state, world } = newGame(1);
+    const fat0 = state.player.fat;
+    // A season of plenty: the pack never empties and the body never goes without.
+    for (let m = 0; m < 30 * 1440; m++) {
+      for (const f of ["driedMeat", "cookedOilyFish", "cookedRoots", "fat"] as const) addItem(state.player.pack, f, 1);
+      advance(state, world, 1);
+    }
+    expect(state.player.fat).toBeGreaterThan(fat0);
+  });
+});

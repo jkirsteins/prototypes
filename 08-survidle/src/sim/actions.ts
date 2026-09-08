@@ -90,25 +90,51 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
 export const HUNGRY_LINE = 1800;
 
 /**
- * Eats when the reserve runs low: the order is least valuable first and fat
- * last, and the walk goes on until the line is passed or nothing is left
- * that the body will take. A refused food (a capped one past its line, lean
- * food past the ceiling) is skipped, not a stop, so a body at the lean wall
- * with fat at hand eats the fat rather than starving beside it, and a body
- * with room under the ceiling eats the lean food and keeps the fat.
+ * The reserve a meal is eaten up to, once it has started. HUNGRY_LINE
+ * answers when eating begins; this answers when it stops, and holding the
+ * two apart is what a meal is - the gap between them is the surplus a good
+ * day can bank as fat, which is why a single shared number left the body
+ * unable to gain fat at all no matter how full the larder was.
  *
- * The meal speaks once, not once a portion: crossing the line takes several
- * portions and a line each would bury the log. Crossing it with nothing to
- * take speaks once too, and does not speak again until a meal has cleared
- * the latch - the news a player can still act on is that the food ran out,
- * and repeating it every minute is not more news.
+ * It sits close enough to KCAL_FULL that the portion which carries a body
+ * across this line often carries it into the stomach's own cap as well:
+ * cooked roots, the cheapest food that never runs dry, are 255 kcal a
+ * portion against the 100 kcal left here. So an ordinary meal routinely
+ * banks a little fat on top of feeding the body, the same rule a kill's
+ * surplus already follows in `eat`.
+ */
+export const SATIETY_BASE = 2900;
+
+/**
+ * Eats when the reserve runs low: the order is least valuable first and fat
+ * last, and the walk goes on until the satiety target is passed or nothing
+ * is left that the body will take. A refused food (a capped one past its
+ * line, lean food past the ceiling) is skipped, not a stop, so a body at the
+ * lean wall with fat at hand eats the fat rather than starving beside it,
+ * and a body with room under the ceiling eats the lean food and keeps the
+ * fat.
+ *
+ * Entry is still gated on HUNGRY_LINE: a body above the line does not eat at
+ * all, no matter how far below SATIETY_BASE it sits. Once a meal starts, it
+ * fills past the line it started at, up to the target - that is what turns
+ * "just enough" into a surplus the body can store.
+ *
+ * The meal speaks once, not once a portion: crossing the target takes
+ * several portions and a line each would bury the log. Crossing the hungry
+ * line with nothing to take speaks once too, and does not speak again until
+ * a meal has cleared the latch - the news a player can still act on is that
+ * the food ran out, and repeating it every minute is not more news.
  */
 export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
   const p = state.player;
   if (!force && !p.autoEat) return;
+  if (p.kcal >= HUNGRY_LINE) {
+    warn(state, "hungry", false, "");
+    return;
+  }
   const eaten = new Map<FoodId, number>();
   let guard = 0;
-  while (p.kcal < HUNGRY_LINE && guard++ < 200) {
+  while (p.kcal < SATIETY_BASE && guard++ < 200) {
     let ate = false;
     for (const food of AUTO_EAT_ORDER) {
       const had = totalQty([p.pack, herePile(state, world)], food);
