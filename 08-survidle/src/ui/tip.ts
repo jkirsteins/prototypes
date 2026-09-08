@@ -16,13 +16,14 @@
  */
 import type { Calendar } from "../sim/calendar";
 import { cellPossibilities } from "../sim/camp";
-import { weight } from "../sim/inventory";
+import { listItems, weight } from "../sim/inventory";
+import { itemLabel } from "../sim/items";
 import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
-import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
+import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import { check, whereIs } from "../sim/tasks";
-import type { GameState } from "../sim/types";
+import type { GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
 import { fmtKg } from "../units";
 import { walkableIce } from "../sim/weather";
@@ -77,6 +78,31 @@ function compactWhere(where: string): string {
   if (!match) return where;
   const direction = { north: "N", south: "S", east: "E", west: "W" }[match[2]];
   return `${match[1]} ${direction}`;
+}
+
+/** An inventory in the compact words used by the map's always-visible stores. */
+function inventoryItems(inv: Inventory | undefined): string {
+  const items = inv ? listItems(inv) : [];
+  return items.length ? items.map(({ item, qty }) => itemLabel(item, qty)).join(", ") : "nothing";
+}
+
+function inventoryRow(label: string, inv: Inventory | undefined): string {
+  return inv && weight(inv) > 0 ? `<div><b>${label}:</b> ${esc(inventoryItems(inv))}</div>` : "";
+}
+
+/** Camp stores, plus a non-empty known pile on the cell currently highlighted. */
+export function mapInventoryHtml(state: GameState, world: World, highlighted: number | null): string {
+  const camp = campCellOf(state, world);
+  const here = cellOf(state, world);
+  const rows = [
+    inventoryRow("Camp", camp === null ? undefined : state.piles[camp]),
+    inventoryRow("Carried", state.player.pack),
+    here !== camp ? inventoryRow("Here", state.piles[here]) : "",
+    highlighted !== null && highlighted !== camp && highlighted !== here && isKnown(state, highlighted)
+      ? inventoryRow("Highlighted", state.piles[highlighted])
+      : "",
+  ].join("");
+  return rows ? `<div class="mapinv-label">Inventory</div>${rows}` : "";
 }
 
 export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {

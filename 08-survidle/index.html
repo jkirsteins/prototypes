@@ -26,6 +26,9 @@
       <main id="center" class="col">
         <section id="map" class="panel">
           <div id="mapdyn"></div>
+          <!-- Camp stores stay visible on the map; a non-empty cell under
+               the pointer joins them while it is highlighted. -->
+          <div id="mapinventory"></div>
           <!-- One element, in the markup from the start, so it is shown and
                hidden rather than created and destroyed under the pointer. -->
           <div id="maptip" hidden></div>

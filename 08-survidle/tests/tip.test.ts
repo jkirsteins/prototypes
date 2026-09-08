@@ -13,15 +13,15 @@
  */
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { addItem, pile } from "../src/sim/inventory";
+import { addItem, emptyInventory, pile } from "../src/sim/inventory";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
-import { campCellOf, cellOf } from "../src/sim/position";
+import { campCellOf, cellOf, placeAt } from "../src/sim/position";
 import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
-import { tipHtml, tipKey } from "../src/ui/tip";
+import { mapInventoryHtml, tipHtml, tipKey } from "../src/ui/tip";
 import { cellAt, regionAt } from "../src/world/gen";
 
 /** The point at the middle of the glyph holding this cell, in the board's own pixels. */
@@ -203,5 +203,61 @@ describe("the tooltip's key", () => {
     const before = tipKey(state, world, camp);
     addItem(pile(state, camp), "firewood", 5);
     expect(tipKey(state, world, camp)).not.toBe(before);
+  });
+});
+
+describe("the map inventory", () => {
+  const read = (html: string) => {
+    const el = document.createElement("div");
+    el.innerHTML = html;
+    return el.textContent;
+  };
+
+  it("always shows the camp pile and adds a non-empty highlighted cell", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
+    const highlighted = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
+    markKnown(state, highlighted);
+    state.player.pack = emptyInventory();
+    addItem(state.player.pack, "stick", 4);
+    addItem(pile(state, camp), "firewood", 20);
+    addItem(pile(state, highlighted), "log", 2);
+
+    const resting = read(mapInventoryHtml(state, world, null));
+    expect(resting).toContain("Camp: 20 kg firewood");
+    expect(resting).toContain("Carried: 4 sticks");
+    const hovered = read(mapInventoryHtml(state, world, highlighted));
+    expect(hovered).toContain("Camp: 20 kg firewood");
+    expect(hovered).toContain("Carried: 4 sticks");
+    expect(hovered).toContain("Highlighted: 2 logs");
+  });
+
+  it("shows the ground under the survivor when it is not camp", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
+    const here = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
+    placeAt(state, world, here);
+    addItem(pile(state, here), "stick", 4);
+
+    const html = read(mapInventoryHtml(state, world, null));
+    expect(html).not.toContain("Camp:");
+    expect(html).toContain("Here: 4 sticks");
+  });
+
+  it("does not add an empty or duplicate highlighted row", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
+    const empty = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
+    markKnown(state, empty);
+    state.player.pack = emptyInventory();
+
+    expect(mapInventoryHtml(state, world, camp)).toBe("");
+    expect(mapInventoryHtml(state, world, empty)).toBe("");
+
+    placeAt(state, world, empty);
+    expect(mapInventoryHtml(state, world, null)).toBe("");
   });
 });

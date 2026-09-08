@@ -110,6 +110,21 @@ describe("the layout", () => {
     expect(tip).toBeLessThan(html.indexOf('id="task"'));
   });
 
+  it("keeps the camp inventory on the map and aligns every corner overlay to its content", () => {
+    const html = page();
+    const inventory = html.indexOf('id="mapinventory"');
+    expect(inventory).toBeGreaterThan(html.indexOf('id="map"'));
+    expect(inventory).toBeLessThan(html.indexOf('id="task"'));
+
+    expect(rule("#map")).toContain("--map-overlay-inset: 8px");
+    expect(rule("#mapinventory")).toMatch(/top:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#mapinventory")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#mapinventory:empty")).toContain("display: none");
+    expect(rule("#maptravel")).toMatch(/top:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#maptravel")).toMatch(/right:\s*var\(--map-overlay-inset\)/);
+    expect(rule("#maptip")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
+  });
+
   it("the sound and the beacon live in a settings panel that is hidden until it is asked for", () => {
     const html = readFileSync("index.html", "utf8");
     const open = html.indexOf('data-act="settings-open"');

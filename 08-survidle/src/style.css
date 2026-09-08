@@ -65,7 +65,7 @@ body { display: flex; flex-direction: column; height: 100vh; }
    growing past that buys empty space around the glyphs. It gives way when
    the window is short - to a floor, never to a strip - and the room above
    that goes to the list, which can always use more. */
-#map { flex: 0 1 auto; height: 50vh; min-height: 260px; }
+#map { --map-overlay-inset: 8px; flex: 0 1 auto; height: 50vh; min-height: 260px; }
 /* The middle column does not scroll: the map would slide up out of the
    window and the list's last purpose would be cut off at the foot, which
    is what a column of three things each asking for its own height does.
@@ -330,7 +330,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #maptip {
   position: absolute;
   z-index: 5;
-  left: 6px;
+  left: var(--map-overlay-inset);
   bottom: 30px;
   max-width: min(480px, calc(100% - 12px));
   padding: 6px 9px;
@@ -352,8 +352,8 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    off rather than at the foot of a panel a player had to find first. */
 #maptravel {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: var(--map-overlay-inset);
+  right: var(--map-overlay-inset);
   /* Bounded by the map it hangs off, and scrolling inside itself: a short
      map used to let this spill over the panels underneath. */
   max-height: calc(100% - 12px);
@@ -371,6 +371,25 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #maptip .tiphead b { color: var(--accent); }
 #maptip > div { padding: 1px 0; }
 #maptip .tip-route { all: unset; color: var(--text); cursor: pointer; }
+
+/* The camp pile is the map's fixed reference point. A highlighted loose
+   pile joins it temporarily, without turning this readout into another
+   inventory pane or covering the cells with controls. */
+#mapinventory {
+  position: absolute;
+  z-index: 4;
+  top: var(--map-overlay-inset);
+  left: var(--map-overlay-inset);
+  max-width: min(360px, calc(50% - 12px));
+  padding: 4px 7px;
+  background: rgba(12, 15, 20, 0.82);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  pointer-events: none;
+}
+#mapinventory .mapinv-label { color: var(--dim); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
+#mapinventory b { color: var(--text); }
+#mapinventory:empty { display: none; }
 
 /* Map */
 /* min-width: 0 lets the grid track shrink below the map's natural width;

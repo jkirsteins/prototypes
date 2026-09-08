@@ -19,6 +19,7 @@ import { check } from "../src/sim/tasks";
 import { herePile } from "../src/sim/inventory";
 import { inventoryHtml, landingHtml, logHtml, ordersHtml } from "../src/ui/panels";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("the names are Norwegian", () => {
   it("the letters are the real ones, not the nearest ASCII", () => {
@@ -143,5 +144,23 @@ describe("carried and on the ground are two halves", () => {
     const html = inventoryHtml(state, world, cal);
     expect(html).toMatch(/comfortable/);
     expect(html).toMatch(/max/);
+  });
+
+  it("does not say the survivor is at camp twice in the ground half", () => {
+    const { state, world } = newGame(21);
+    siteCamp(state, world);
+    const cal = calendar(state.minute, state.startDoy);
+    addItem(herePile(state, world), "log", 1);
+    const html = inventoryHtml(state, world, cal);
+    expect(html).toContain("On the ground, at camp");
+    expect(html).not.toContain("you are at camp");
+  });
+
+  it("omits the ground half entirely when nothing is there", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const html = inventoryHtml(state, world, cal);
+    expect(html).not.toContain('data-inv="ground"');
+    expect(html).not.toContain("nothing on the ground here");
   });
 });

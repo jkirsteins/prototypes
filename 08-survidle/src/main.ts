@@ -42,7 +42,7 @@ import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
 import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
-import { tipHtml, tipKey } from "./ui/tip";
+import { mapInventoryHtml, tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
@@ -188,6 +188,7 @@ function render() {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world, cal));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
+  setPanel("mapinventory", mapInventoryHtml(state, world, ui.hover));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));

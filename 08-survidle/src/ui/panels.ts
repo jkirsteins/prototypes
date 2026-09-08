@@ -765,9 +765,10 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
  * organised by what work produces.
  */
 function haulHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay): string {
+  const camp = campCellOf(state, world);
+  if (camp !== null && camp === cellOf(state, world)) return "";
   const o = check(state, world, cal, "haul");
   if (!o.ok) return o.why ? `<div style="margin-top:4px"><span class="dim">${esc(plain(o.why))}</span></div>` : "";
-  const camp = campCellOf(state, world);
   const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, walkableIce(state.weather));
   const estimate = km === null ? fmtDuration(o.duration) : formatTravel(km * 2, o.duration, display);
   return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}; ${esc(estimate)}</small></button></div>`;
@@ -792,6 +793,7 @@ export function inventoryHtml(state: GameState, world: World, cal: Calendar, dis
   const over = kg > d.packHardKg ? "bad" : kg > d.packComfortableKg ? "accent" : "";
   const carried = listItems(p.pack);
   const here = herePile(state, world);
+  const ground = listItems(here);
   const dropAll = carried.length ? `<div class="invact"><button class="mini" data-act="drop-all">drop everything here</button></div>` : "";
   // Eating, drinking and feeding the fire stand over what they are done
   // with. Under the map they read as a queue with something already in it,
@@ -799,11 +801,11 @@ export function inventoryHtml(state: GameState, world: World, cal: Calendar, dis
   return `${instantHtml(state, world)}<div class="invsec carry" data-inv="carry">
 <h2>Carried <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
 ${invRows(carried, "drop")}${dropAll}
-</div>
+</div>${ground.length ? `
 <div class="invsec ground" data-inv="ground">
 <h2>On the ground, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
-${invRows(listItems(here), "take")}${haulHtml(state, world, cal, display)}
-</div>`;
+${invRows(ground, "take")}${haulHtml(state, world, cal, display)}
+</div>` : ""}`;
 }
 
 export function fmtLogTime(e: LogEntry): string {
