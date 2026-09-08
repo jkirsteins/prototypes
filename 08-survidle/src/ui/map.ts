@@ -7,7 +7,7 @@
  * the world moves under them.
  */
 import type { Calendar } from "../sim/calendar";
-import { fuelTotal } from "../sim/fire";
+import { fuelTotal, hasEmbers } from "../sim/fire";
 import { FIRE_LOW_KG } from "../sim/items";
 import { knowledgeGen } from "../sim/mapped";
 import { cellOf } from "../sim/position";
@@ -48,6 +48,8 @@ const TERRAIN_NAME: Record<Terrain, string> = {
 export const MARKS = {
   you: { glyph: "@", cls: "mk-player", label: "you" },
   fire: { glyph: "F", cls: "mk-fire", label: "fire" },
+  // Lowercase of the same letter: the same fire, banked rather than fed.
+  coals: { glyph: "f", cls: "mk-coals", label: "coals" },
   shelter: { glyph: "H", cls: "mk-shelter", label: "shelter" },
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
@@ -213,12 +215,16 @@ function blockInfo(state: GameState, world: World, x0: number, y0: number, z: nu
 
 export interface LightSource { cell: number; reach: number }
 
-/** Where light is on the map tonight: every visited camp's lit fire, two rings when it is well fed, one when low. */
+/**
+ * Where light is on the map tonight: every visited camp's lit fire, two
+ * rings when it is well fed, one when low; banked coals reach only their
+ * own cell, since a nightly ember bed is not the glow that finds wood by.
+ */
 export function lightSources(state: GameState, world: World): LightSource[] {
   const out: LightSource[] = [];
   for (const { st, cell } of visitedCamps(state)) {
-    if (!st.fire.lit) continue;
-    out.push({ cell, reach: fuelTotal(st.fire) >= FIRE_LOW_KG ? 2 : 1 });
+    if (st.fire.lit) out.push({ cell, reach: fuelTotal(st.fire) >= FIRE_LOW_KG ? 2 : 1 });
+    else if (hasEmbers(st.fire)) out.push({ cell, reach: 0 });
   }
   if (state.player.torch.lit) out.push({ cell: cellOf(state, world), reach: 1 });
   return out;
@@ -293,7 +299,7 @@ function walkSvg(world: World, state: GameState, here: number, x0: number, y0: n
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
   const marks = Object.entries(state.regions).map(([id, r]) => {
     const site = campSite(r);
-    return `${id}${site?.structures.cabin || site?.structures.leanTo || site?.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}${r.trap ? "T" : ""}`;
+    return `${id}${site?.structures.cabin || site?.structures.leanTo || site?.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : hasEmbers(r.fire) ? "e" : ""}${r.trap ? "T" : ""}`;
   }).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
@@ -327,6 +333,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     let m: (typeof MARKS)[keyof typeof MARKS];
     const site = campSite(st);
     if (st.fire.lit) m = MARKS.fire;
+    else if (hasEmbers(st.fire)) m = MARKS.coals;
     else if (site?.structures.cabin || site?.structures.leanTo || site?.structures.turfHut) m = MARKS.shelter;
     else m = MARKS.camp;
     const g = toGlyph(cell);
