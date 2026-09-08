@@ -402,6 +402,30 @@ describe("the site report", () => {
   });
 });
 
+describe("the region panel before any camp exists", () => {
+  it("reads the ground wherever the survivor stands, and measures no distance from a camp that isn't there", () => {
+    const { state, world } = newGame(17);
+    const home = state.player.region;
+    const st = regionState(state, world, home);
+    expect(st.campCell).toBeNull();
+    const cal = calendar(state.minute, state.startDoy);
+
+    // Every cell is a candidate with no camp sited yet, so the Here section
+    // reads the ground under the survivor's feet without them moving at all.
+    const hereHtml = regionHtml(state, world, cal, newUiState());
+    expect(hereHtml).toContain("as a camp");
+
+    // A neighbour nobody has camped in either: its places are named, but
+    // nothing is measured from a camp it does not have.
+    const neighbourId = regionAt(world, home).neighbours[0].id;
+    const spot = regionAt(world, neighbourId).spots.find((s) => s.id !== "camp");
+    expect(spot).toBeDefined();
+    const overviewHtml = regionHtml(state, world, cal, { ...newUiState(), selected: neighbourId });
+    expect(overviewHtml).toContain(SPOT_WORDS[spot!.id]);
+    expect(overviewHtml).not.toContain("from camp");
+  });
+});
+
 describe("checking travel to a neighbour touches no region state", () => {
   it("availableTasks's every-neighbour travel check does not grow state.regions", () => {
     const { state, world } = newGame(17);
