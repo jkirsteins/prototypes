@@ -45,6 +45,7 @@ import {
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
+import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
@@ -88,6 +89,7 @@ const ui = newUiState();
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
+const portraitMotion = createPortraitMotion();
 // Read by fresh() below (called from boot(), before the forecaster exists) and by
 // requestForecast() (defined after boot(), once world is real) - declared here so
 // neither reads it before it is initialized.
@@ -253,6 +255,7 @@ function frame(now: number) {
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
   render();
+  portraitMotion.frame(document, now, document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
@@ -653,6 +656,7 @@ window.addEventListener("pagehide", () => saveGame(state));
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 render();
+portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
 requestAnimationFrame(frame);
 
 // For poking at the run from the console and for browser checks.
