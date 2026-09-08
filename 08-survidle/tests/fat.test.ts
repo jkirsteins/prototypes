@@ -3,12 +3,12 @@ import { Rng } from "../src/rng";
 import { autoEat, eat, edible } from "../src/sim/actions";
 import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { gutRefused } from "../src/sim/gut";
-import { addItem, qty } from "../src/sim/inventory";
+import { addItem, qty, weight } from "../src/sim/inventory";
 import { GUT, KCAL_FULL } from "../src/sim/items";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { body, bodyMassKg, derived, fatLandmarks, MEDIAN_MASS_KG } from "../src/sim/person";
-import { FAT_KCAL_PER_KG, starvation, stepPlayer, workSpeed } from "../src/sim/player";
+import { baseWalkSpeed, FAT_KCAL_PER_KG, starvation, stepPlayer, workSpeed } from "../src/sim/player";
 import { current } from "../src/sim/record";
 import type { Person } from "../src/sim/types";
 import { waterLossPerHour } from "../src/sim/water";
@@ -305,5 +305,54 @@ describe("no ceiling", () => {
   it("lands a new survivor at the typical reserve", () => {
     const { state } = newGame(1);
     expect(state.player.fat).toBeCloseTo(fatLandmarks(current(state).person).typical, 6);
+  });
+});
+
+describe("carrying the reserve", () => {
+  const walkHour = (fatKg: number) => {
+    const { state, world } = newGame(17);
+    state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
+    state.player.fat = fatKg * FAT_KCAL_PER_KG;
+    state.player.kcal = KCAL_FULL;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    return KCAL_FULL - state.player.kcal;
+  };
+
+  it("costs a heavier body more to walk an hour", () => {
+    expect(walkHour(20)).toBeGreaterThan(walkHour(5) * 1.05);
+  });
+
+  it("does not slow it down", () => {
+    const { state } = newGame(17);
+    state.player.fat = 5 * FAT_KCAL_PER_KG;
+    const thin = baseWalkSpeed(state, calendar(0, state.startDoy), state.weather, 0);
+    state.player.fat = 25 * FAT_KCAL_PER_KG;
+    expect(baseWalkSpeed(state, calendar(0, state.startDoy), state.weather, 0)).toBeCloseTo(thin, 6);
+  });
+
+  it("leaves work done standing still alone", () => {
+    const craftHour = (fatKg: number) => {
+      const { state, world } = newGame(17);
+      state.task = { id: "craft", progress: 0, duration: 60, repeat: false };
+      state.player.fat = fatKg * FAT_KCAL_PER_KG;
+      state.player.kcal = KCAL_FULL;
+      for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+      return KCAL_FULL - state.player.kcal;
+    };
+    // Resting burn still rises with mass; the work above it does not.
+    const heavy = craftHour(20), light = craftHour(5);
+    expect(heavy - light).toBeLessThan(walkHour(20) - walkHour(5));
+  });
+
+  it("still charges more for a carried kilo than for a kilo of the body", () => {
+    const { state, world } = newGame(17);
+    state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
+    const perKgBody = (walkHour(20) - walkHour(5)) / 15;
+    state.player.fat = 5 * FAT_KCAL_PER_KG;
+    state.player.kcal = KCAL_FULL;
+    addItem(state.player.pack, "log", 3);
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    const loaded = KCAL_FULL - state.player.kcal;
+    expect((loaded - walkHour(5)) / Math.max(1, weight(state.player.pack))).toBeGreaterThan(perKgBody);
   });
 });

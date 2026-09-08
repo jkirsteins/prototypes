@@ -98,8 +98,8 @@ export const FAT_KCAL_PER_KG = 9000;
 
 /** How far into the failing range - lower landmark down to the floor - each word waits for. */
 const FAT_THIN = 0.25;
-const FAT_RIBS = 0.5;
-const FAT_WASTING = 0.75;
+export const FAT_RIBS = 0.5;
+export const FAT_WASTING = 0.75;
 
 /**
  * How far the body has fallen into its failing range: nothing at the lower
@@ -201,6 +201,21 @@ export function baseWalkSpeed(state: GameState, cal: Calendar, weather: Weather,
 export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, terrain: Terrain, loadKg = carried(state.player), ice: IceMode = "none"): number {
   return baseWalkSpeed(state, cal, weather, loadKg) * speedOf(terrain, ice);
 }
+
+/**
+ * The share of a task's work above base that is the body being moved, and so
+ * scales with total mass. Walking is all of it. A task absent from this table
+ * does not scale with mass at all - work done standing in one place costs
+ * what it costs whoever is doing it, and a heavier body pays for its reserve
+ * through the resting burn instead.
+ *
+ * Same convention as NIGHT_WORK in light.ts: absence means the effect does
+ * not apply.
+ */
+export const ON_THE_FEET: Partial<Record<TaskId, number>> = {
+  walk: 1, travel: 1, haul: 1, explore: 1, searchHome: 1,
+  hunt: 0.6, berries: 0.4, roots: 0.4, sticks: 0.4, deadwood: 0.4, seaweed: 0.4, stone: 0.4,
+};
 
 /**
  * Flat kcal/h for activities that do not depend on the ground. Heavy is axe
@@ -307,6 +322,10 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   if (a === "walk") {
     burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
     if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
+    // Moving the body costs what the body weighs. The load below is charged
+    // separately and more steeply: a pack on the back is carried far less
+    // efficiently than the body carrying it.
+    burn *= massFactor(state);
     if (carried(p) > d.packHardKg) burn += LOAD_KCAL_PER_HOUR.hard;
     else if (carried(p) > d.packComfortableKg) burn += LOAD_KCAL_PER_HOUR.comfortable;
   } else {
@@ -314,7 +333,9 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   }
   // The base is this body's resting burn and the work above it is scaled by its strength.
   const eats = hasQuirk(state, "bigEater") ? BIG_EATER_BURN : 1;
-  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats;
+  // Work that moves the body scales with what the body weighs; the rest is effort, and strength is the axis for that.
+  const feet = a === "walk" ? 0 : (state.task && ON_THE_FEET[state.task.id]) || 0;
+  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats * (1 + (massFactor(state) - 1) * feet);
   // The reserve is mass the body carries everywhere, so resting costs more for a body that has one.
   const base = BASE_KCAL_PER_HOUR * massFactor(state) * eats;
   burn = base + above;
