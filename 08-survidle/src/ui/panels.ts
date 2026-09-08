@@ -1,7 +1,7 @@
 import { edible, HUNGRY_LINE, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
-import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
+import { needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
@@ -389,11 +389,9 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
         : `<div style="margin-top:6px"><span class="dim">${esc(plain(ex.why))}</span></div>`;
     }
   }
-  // What this cell offers as a camp, shown only when it is not the camp already; a move
-  // blocked at the old camp (a structure, a banked fire, a loose pile) says why beside it.
-  const move = here && myCell !== campCellOf(state, world, id) ? canMoveCamp(state, world) : null;
-  const asCamp = move
-    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}${move.ok ? "" : ` (${esc(plain(move.why))})`}</dd>`
+  // What this cell offers as a camp, shown only when it is not the camp already.
+  const asCamp = here && myCell !== campCellOf(state, world, id)
+    ? `<dt>as a camp</dt><dd>${esc(siteLine(siteReport(state, world, myCell)))}</dd>`
     : "";
   return `<h2>${here ? "Here" : "Region"} <span class="r">${r.area.toFixed(1)} km2</span></h2>
 <div><b class="accent">${esc(r.name)}</b>${here ? ` <small>you are ${esc(describeWhere(state, world))}</small>` : ""}${ui.selected !== null ? ` <button class="mini" data-act="select" data-r="${p.region}">back to here</button>` : ""}</div>

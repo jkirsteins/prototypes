@@ -6,7 +6,7 @@ import { passable, routeKm, routeMinutes } from "../world/route";
 import { loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
-import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
+import { leaveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
 import { cue } from "./cues";
 import { exploreRoute, survivorRoute } from "./routing";
 import {
@@ -39,7 +39,7 @@ import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roof
 import { goalDeed } from "./goals";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
-import { campSite, discovery, regionState, siteFor } from "./regionstate";
+import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
@@ -47,7 +47,7 @@ import { fatSeason, fishItem, fishSpecies, huntedLand, inSpawn, isFish, LARGE_GA
 import { BERRY_FROM_DOY, BERRY_TO_DOY } from "./tables";
 import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
-  type SkillId, type SpotId, type StructureId, type TaskId, type ToolId,
+  type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId,
 } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
@@ -878,8 +878,6 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = opt({ group: "camp", label: "Make camp here", detail: "", duration: 20 });
       if (at === campCellOf(state, world)) return { ...o, ok: false, why: "this is the camp" };
       if (!passable(terrain)) return { ...o, ok: false, why: "not here" };
-      const move = canMoveCamp(state, world);
-      if (!move.ok) return { ...o, ok: false, why: move.why };
       return { ...o, detail: siteLine(siteReport(state, world, at)) };
     }
     case "night":
@@ -1720,6 +1718,29 @@ function marrowAnimal(state: GameState): Species {
   return best;
 }
 
+/** hearth has no build entry of its own, so STRUCTURES cannot name it the way every other structure is named. */
+const SITE_STRUCTURE_NAME: Partial<Record<keyof Site["structures"], string>> = { hearth: "hearth" };
+
+/**
+ * What making camp elsewhere leaves standing at the old cell: read before leaveCamp runs,
+ * or the fire's fuel and the rack's load are already gone from them and this counts nothing
+ * for what only leaveCamp would have tipped into the pile. "" when nothing is left at all.
+ */
+export function leftBehind(state: GameState, world: World): string {
+  const st = regionState(state, world, state.player.region);
+  const site = siteAt(st, st.campCell);
+  const names = site
+    ? (Object.keys(site.structures) as (keyof Site["structures"])[])
+        .filter((sid) => site.structures[sid])
+        .map((sid) => SITE_STRUCTURE_NAME[sid] ?? STRUCTURES[sid as StructureId].name)
+    : [];
+  const kg = weight(pile(state, st.campCell)) + st.fire.fuelKg + st.fire.wetKg + st.rack.kg;
+  const parts = kg > 1e-9 ? [...names, `${Math.round(kg * 10) / 10} kg`] : names;
+  if (parts.length === 0) return "";
+  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return `The ${list} ${parts.length === 1 ? "stays" : "stay"} at the old camp.`;
+}
+
 /**
  * Every finished task, and the one place goals hear about it. The switch
  * below is untouched: a deed is what happened, not a special case inside
@@ -2141,9 +2162,11 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "makeCamp": {
       const here = cellOf(state, world);
+      const left = leftBehind(state, world);
+      leaveCamp(state, world);
       st.campCell = here;
       if (state.intent) state.intent.campCell = here;
-      log(state, "{You} {make} camp here.");
+      log(state, left ? `{You} {make} camp here. ${left}` : "{You} {make} camp here.");
       return;
     }
     // A sleep leaves nothing behind it: it ran to the wake line, and whether

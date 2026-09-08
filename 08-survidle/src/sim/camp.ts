@@ -4,12 +4,12 @@ import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
+import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
 import { goalDeed, KEPT_DAYS } from "./goals";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { noteLarder } from "./ledger";
 import { log } from "./log";
@@ -331,38 +331,32 @@ export function needsMending(site: Site | null, id: DecayingId): boolean {
 }
 
 /**
- * The word canMoveCamp names for each structure flag that can hold a camp in place, in the order
- * Site.structures declares them, snares excepted since they stand on the heath, not the camp cell.
- * Names come from STRUCTURES where a structure is built there; a hearth has no build entry of its own.
+ * What a camp leaves when the survivor moves on. Nothing travels: the fuel comes off
+ * the fire and the meat off the rack into the pile at the cell they stood on, and the
+ * survivor may walk back for them. The fire itself does not survive the move either -
+ * it dies exactly as it would running out of fuel, coals and all, so a camp left
+ * behind and a camp burnt out come to the same state.
  */
-const STRUCTURE_WORD: Partial<Record<keyof Site["structures"], string>> = {
-  firePit: STRUCTURES.firePit.name,
-  leanTo: STRUCTURES.leanTo.name,
-  cabin: STRUCTURES.cabin.name,
-  dryingRack: STRUCTURES.dryingRack.name,
-  boughBed: STRUCTURES.boughBed.name,
-  hearth: "hearth",
-  turfHut: STRUCTURES.turfHut.name,
-  waterStore: STRUCTURES.waterStore.name,
-  snowShelter: STRUCTURES.snowShelter.name,
-};
-
-/** Whether the camp may be moved: nothing built at it, no fire banked, nothing lying in its pile. */
-export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok: false; why: string } {
+export function leaveCamp(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
-  const site = campSite(st);
-  if (site) {
-    for (const [key, word] of Object.entries(STRUCTURE_WORD)) {
-      if (site.structures[key as keyof typeof site.structures]) return { ok: false, why: `the ${word} stands there` };
-    }
-  }
-  if (st.fire.lit || fuelTotal(st.fire) > 0) return { ok: false, why: "the fire is banked there" };
-  // Read only: pile() would insert an empty inventory at the camp cell, which the map
-  // then underlines as though something lay there.
-  const p = state.piles[st.campCell];
-  const kg = p ? weight(p) : 0;
-  if (kg > 1e-9) return { ok: false, why: `${Math.round(kg * 10) / 10} kg lie at the old camp, carry them first` };
-  return { ok: true };
+  const old = pile(state, st.campCell);
+  const dry = st.fire.fuelKg;
+  const wet = st.fire.wetKg;
+  const meat = st.rack.kg;
+  if (dry > 1e-9) addItem(old, "firewood", dry);
+  if (wet > 1e-9) addItem(old, "wetFirewood", wet);
+  if (meat > 1e-9) addItem(old, "rawMeat", meat);
+  st.fire.lit = false;
+  st.fire.fuelKg = 0;
+  st.fire.wetKg = 0;
+  st.fire.indoors = false;
+  st.fire.unattended = 0;
+  st.fire.embers = 0;
+  st.fire.litSince = null;
+  st.fire.rainHeld = 0;
+  st.smoke = 0;
+  st.rack.kg = 0;
+  st.rack.dried = 0;
 }
 
 export interface SiteReport {

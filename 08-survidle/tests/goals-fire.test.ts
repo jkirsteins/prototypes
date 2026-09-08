@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { leaveCamp } from "../src/sim/camp";
 import { EMBER_MINUTES } from "../src/sim/fire";
 import { newGame } from "../src/sim/newgame";
 import { FAT_FULL } from "../src/sim/player";
@@ -191,6 +192,19 @@ describe("the fire goals credit only the player's own region", () => {
     expect(state.goals.done.keptNight).toBeUndefined();
     expect(state.goals.done.keptDays).toBeUndefined();
     expect(state.goals.done.keptRain).toBeUndefined();
+  });
+});
+
+describe("leaving a camp kills its fire outright", () => {
+  it("does not keep crediting a fire-keeping goal once the camp is left behind", () => {
+    const { state, world, st } = litCamp();
+    run(state, world, 2 * 24 * 60); // short of the three days keptDays asks for
+    leaveCamp(state, world);
+    expect(st.fire.lit).toBe(false);
+    expect(st.fire.embers).toBe(0);
+    expect(st.fire.litSince).toBeNull();
+    run(state, world, 3 * 24 * 60); // long enough to cross keptDays had the run survived
+    expect(state.goals.done.keptDays).toBeUndefined();
   });
 });
 

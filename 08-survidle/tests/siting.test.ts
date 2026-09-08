@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { canMoveCamp, siteLine, siteReport } from "../src/sim/camp";
+import { leaveCamp, siteLine, siteReport } from "../src/sim/camp";
 import { calendar } from "../src/sim/calendar";
-import { addItem, pile, removeItem } from "../src/sim/inventory";
+import { addItem, pile, qty } from "../src/sim/inventory";
 import { giveOrder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { baseWalkSpeed } from "../src/sim/player";
 import { atCamp, campCellOf, cellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
-import { regionState, siteFor } from "../src/sim/regionstate";
+import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
@@ -20,32 +20,77 @@ import { regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { neighbourLandCell } from "./siting-helpers";
 
-describe("moving the camp is allowed while nothing stands at it", () => {
-  it("is ok on a fresh game, and names the structure, the banked fire or the pile that blocks it", () => {
+describe("making camp elsewhere is always legal, and leaves what it held", () => {
+  it("is legal wherever the survivor stands, a structure, a banked fire and a loose pile at the old camp notwithstanding", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
-    expect(canMoveCamp(state, world)).toEqual({ ok: true });
     siteFor(st, st.campCell).structures.firePit = true;
-    expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire site stands there" });
-    siteFor(st, st.campCell).structures.firePit = false;
     st.fire.fuelKg = 2;
-    expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire is banked there" });
-    st.fire.fuelKg = 0;
     addItem(pile(state, st.campCell), "stick", 30);
-    expect(canMoveCamp(state, world).ok).toBe(false);
-    expect((canMoveCamp(state, world) as { why: string }).why).toMatch(/^\d+(\.\d)? kg lie at the old camp, carry them first$/);
-    st.snares = 3;
-    removeItem(pile(state, st.campCell), "stick", 30);
-    expect(canMoveCamp(state, world)).toEqual({ ok: true });
+    placeAt(state, world, neighbourLandCell(world, st.campCell));
+    const cal = calendar(state.minute, state.startDoy);
+    expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")!.ok).toBe(true);
   });
 
-  it("wet wood alone still banks the fire, with no dry fuel at all", () => {
+  it("moving on leaves the site, the pile, the fuel and the rack's load behind, and kills the fire outright", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
+    const old = st.campCell;
+    siteFor(st, old).structures.firePit = true;
+    siteFor(st, old).structures.leanTo = true;
+    // Banked, not burning: the fire is out but its wood is still stacked there, so
+    // the 20-minute walk to the new site does not eat into the kilos this pins.
     st.fire.lit = false;
-    st.fire.fuelKg = 0;
-    st.fire.wetKg = 2;
-    expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire is banked there" });
+    st.fire.fuelKg = 4;
+    st.fire.wetKg = 1;
+    st.fire.embers = 30;
+    st.fire.litSince = state.minute - 60;
+    st.fire.rainHeld = 5;
+    st.rack.kg = 3;
+    st.rack.dried = 500;
+    addItem(pile(state, old), "stone", 2);
+    const away = neighbourLandCell(world, old);
+    placeAt(state, world, away);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(beginTask(state, world, cal, "makeCamp")).toBe(true);
+    advance(state, world, 20);
+    expect(st.campCell).toBe(away);
+    expect(siteAt(st, old)!.structures.leanTo).toBe(true);
+    expect(siteAt(st, away)).toBeNull();
+    expect(st.fire.lit).toBe(false);
+    expect(st.fire.embers).toBe(0);
+    expect(st.fire.litSince).toBeNull();
+    expect(st.fire.rainHeld).toBe(0);
+    expect(st.rack.kg).toBe(0);
+    expect(st.rack.dried).toBe(0);
+    // The lean-to left standing there dries the pile's own wood as any lean-to does, so the
+    // split between the two items may have moved a touch; the kilos of wood themselves have not.
+    expect(qty(pile(state, old), "firewood") + qty(pile(state, old), "wetFirewood")).toBeCloseTo(5, 1);
+    expect(qty(pile(state, old), "rawMeat")).toBeCloseTo(3, 1);
+    expect(qty(pile(state, old), "stone")).toBe(2);
+    expect(qty(pile(state, away), "firewood")).toBe(0);
+  });
+
+  it("a camp with a hut on it can still be moved", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell).structures.turfHut = true;
+    addItem(pile(state, st.campCell), "stone", 5);
+    st.fire.lit = true;
+    st.fire.fuelKg = 2;
+    placeAt(state, world, neighbourLandCell(world, st.campCell));
+    const cal = calendar(state.minute, state.startDoy);
+    expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")!.ok).toBe(true);
+  });
+
+  it("leaving an already bare camp leaves nothing behind, on a fire long since dead", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    leaveCamp(state, world);
+    expect(st.fire.lit).toBe(false);
+    expect(st.fire.embers).toBe(0);
+    expect(st.fire.litSince).toBeNull();
+    expect(st.rack.kg).toBe(0);
   });
 
   it("reads the camp pile without creating one where nothing lies", () => {
@@ -189,21 +234,19 @@ describe("make camp here", () => {
     expect(state.log.some((e) => e.text === "{You} {make} camp here.")).toBe(true);
   });
 
-  it("names why it cannot start: a structure at the old camp, or a loose pile there", () => {
+  it("names what stays at the old camp in the log line: the structure and the pile, not the fire's kilos twice", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
-    const next = neighbourLandCell(world, st.campCell);
+    const old = st.campCell;
+    siteFor(st, old).structures.firePit = true;
+    addItem(pile(state, old), "stick", 30);
+    const next = neighbourLandCell(world, old);
     placeAt(state, world, next);
     const cal = calendar(state.minute, state.startDoy);
-    siteFor(st, st.campCell).structures.firePit = true;
-    expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")).toEqual(
-      expect.objectContaining({ ok: false, why: "the fire site stands there" }),
-    );
-    siteFor(st, st.campCell).structures.firePit = false;
-    addItem(pile(state, st.campCell), "stick", 30);
-    expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")!.ok).toBe(false);
-    removeItem(pile(state, st.campCell), "stick", 30);
-    expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")!.ok).toBe(true);
+    expect(beginTask(state, world, cal, "makeCamp")).toBe(true);
+    advance(state, world, 20);
+    expect(siteAt(st, old)!.structures.firePit).toBe(true);
+    expect(state.log.some((e) => e.text === "{You} {make} camp here. The fire site and 15 kg stay at the old camp.")).toBe(true);
   });
 
   it("a live intent's camp follows the move", () => {
@@ -294,7 +337,7 @@ describe("the site report", () => {
     expect(regionHtml(state, world, cal, newUiState())).toContain("as a camp");
   });
 
-  it("names why a move is blocked beside what the cell offers as a camp", () => {
+  it("shows what a cell offers as a camp with a fire banked at the old one, no refusal beside it", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     const next = neighbourLandCell(world, st.campCell);
@@ -303,7 +346,7 @@ describe("the site report", () => {
     st.fire.fuelKg = 2;
     const html = regionHtml(state, world, cal, newUiState());
     expect(html).toContain("as a camp");
-    expect(html).toContain("the fire is banked there");
+    expect(html).not.toContain("the fire is banked there");
   });
 });
 
