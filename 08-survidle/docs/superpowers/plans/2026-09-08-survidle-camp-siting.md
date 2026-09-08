@@ -504,7 +504,17 @@ git commit -m "feat(survidle): a roof keeps the rain off wherever it stands"
   });
 ```
 
-`run` here means "complete the task": use whatever helper the existing task tests use to finish a task (see `tests/camp.test.ts` or `tests/firesite.test.ts` for the pattern - it may be `startTask` plus `advance`). Do not invent one.
+`run` is not a helper - spell the pattern out the way `tests/firesite.test.ts:27-30` does:
+
+```ts
+const cal = calendar(state.minute, state.startDoy);
+const o = check(state, world, cal, "makeCamp");
+expect(o.ok).toBe(true);
+expect(startTask(state, world, cal, "makeCamp")).toBe(true);
+advance(state, world, o.duration);
+```
+
+Import `check` and `startTask` from `../src/sim/tasks` and `advance` from `../src/sim/advance`. Use this same block everywhere this plan writes `run(state, world, "makeCamp")`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -624,6 +634,16 @@ git commit -m "feat(survidle): a camp may be left, and nothing it held travels w
     expect(st.campCell).toBe(here);
     expect(atCamp(state, world)).toBe(true);
   });
+
+  it("snares still catch with no camp sited", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    expect(st.campCell).toBeNull();
+    st.snares = MAX_SNARES;
+    st.pop.hare = 50;
+    for (let d = 0; d < 20; d++) dailyCamp(state, world, calendar(state.minute, state.startDoy), new Rng(d), { region: state.player.region, atCamp: false });
+    expect(st.snareCatch.count).toBeGreaterThan(0);
+  });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -691,7 +711,24 @@ The landing region is mapped on arrival, the goals ladder opens with the choice,
   });
 ```
 
-Import `knownShare` from `../src/sim/mapped`, `GOALS` and `goalDeed` from `../src/sim/goals`.
+```ts
+  it("an heir lands with no camp while the ancestor's still stands", () => {
+    const { state, world } = newGame(2);
+    // Live a camp into being, then kill the survivor and land the heir.
+    run(state, world, "makeCamp");
+    const home = state.player.region;
+    const homeCamp = regionState(state, world, home).campCell!;
+    campSite(regionState(state, world, home))!.structures.leanTo = true;
+    state.dead = { minute: state.minute, cause: "cold" } as GameState["dead"];
+    beginAgain(state, world);
+    land(state, world, "Test");
+    expect(regionState(state, world, home).campCell).toBe(homeCamp);
+    expect(siteAt(regionState(state, world, home), homeCamp)!.structures.leanTo).toBe(true);
+    if (state.player.region !== home) expect(regionState(state, world, state.player.region).campCell).toBeNull();
+  });
+```
+
+Copy the exact shape of `state.dead` from `tests/gap.test.ts` rather than the sketch above. Import `knownShare` from `../src/sim/mapped`, `GOALS` and `goalDeed` from `../src/sim/goals`, `beginAgain` and `land` from `../src/sim/landing`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
