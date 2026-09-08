@@ -21,7 +21,6 @@ import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { feltTemperature, insulation, starvation } from "../sim/player";
-import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
 import { regionState } from "../sim/regionstate";
@@ -39,7 +38,7 @@ import { regionAt, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
-import { skyHtml } from "./sky";
+import { skyHtml, WALL } from "./sky";
 
 function bar(id: string, cls: string, label: string, markAt?: number): string {
   // A mark is a fixed share of the bar, so it belongs in the markup: it is
@@ -188,29 +187,19 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
   return `<h2>Skills</h2>${rows.join("")}`;
 }
 
-export function clockHtml(state: GameState, world: World, cal: Calendar, _ambient: number, rate = 1): string {
-  // What a person would call the light where they stand, which after dark is
-  // the difference between a night's work and a night's groping about. The
-  // lux behind it is never shown. The weather has its own widget.
-  const sun = lightWord(illuminance(state, world, cal, cellOf(state, world)));
-  return `<div class="when">
-<div class="big">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
-<div class="dim">${fmtDate(cal)}, ${cal.season} &middot; ${sun}</div>
-<div class="${rate > 1 ? "hurrying" : "dim"}"><small>1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</small></div>
-</div>`;
-}
-
 /**
- * The weather, as its own widget, built the way a phone's is.
+ * The weather, and the day, as one widget built the way a phone's is.
  *
- * The sky's picture and the day's ends at the top, the temperature large
- * enough to read without looking for it, the sky in a word under it, then
- * the pairs a reader scans rather than reads. What the ground is doing -
- * snow, ice, a storm, tinder dry - is one of those pairs rather than a
- * headline, because whether there are two or three centimetres of snow is
- * true and is not what anybody opens a panel to learn.
+ * The sky is its whole background - the same drawing the map is lit from,
+ * stretched behind the numbers - with the day and the hour over it, the
+ * day's ends in the corner, the temperature large enough to read without
+ * looking for it, and then the pairs a reader scans rather than reads.
+ *
+ * The clock used to be a panel of its own above the map. What it said fits
+ * here in three lines, and the row it was taking is now map, which is what
+ * a player is actually looking at.
  */
-export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number): string {
+export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1): string {
   const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
   const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
   const ground = [snow, ice].filter(Boolean).join(", ");
@@ -219,8 +208,12 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
   const felt = Math.round(feltTemperature(state, world, ambient));
   return `<div class="wx">
+<div class="wx-bg">${skyHtml(WALL)}</div>
 <div class="wx-head">
-  <div class="wx-sky">${skyHtml()}</div>
+  <div class="wx-day">
+    <div class="wx-clock">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
+    <div class="wx-date">${fmtDate(cal)}, ${cal.season}</div>
+  </div>
   <div class="wx-sun"><div>&uarr; ${fmtClock(cal.sunrise)}</div><div>&darr; ${fmtClock(cal.sunset)}</div></div>
 </div>
 <div class="wx-temp ${ambient < -10 ? "bad" : ""}">${Math.round(ambient)}<span class="deg">C</span></div>
@@ -230,7 +223,7 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   ${ground ? `<div class="wx-k">Ground</div><div class="wx-v">${ground}</div>` : ""}
 </div>
 ${storm}${dry}
-<div class="wx-where">${esc(regionAt(world, state.player.region).name)}</div>
+<div class="wx-where">${esc(regionAt(world, state.player.region).name)}<span class="wx-rate ${rate > 1 ? "hurrying" : ""}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span></div>
 </div>`;
 }
 

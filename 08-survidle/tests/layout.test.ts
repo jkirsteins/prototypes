@@ -51,9 +51,14 @@ describe("the layout", () => {
     const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
     const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
 
-    for (const id of ["stats", "camp", "gear", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
-    for (const id of ["clock", "map", "task", "panes"]) expect(mid).toContain(`id="${id}"`);
+    for (const id of ["goals", "stats", "camp", "gear", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    // The clock is gone: the day and the hour are three lines in the weather
+    // widget, and the row it took is map now.
+    for (const id of ["map", "task", "panes"]) expect(mid).toContain(`id="${id}"`);
+    expect(mid).not.toContain('id="clock"');
     expect(right).toContain('id="orders"');
+    // The weather sits above the queue, by the author's direction.
+    expect(right).toContain('id="weather"');
 
     // The queue column holds the queue. Everything that used to be stacked
     // under it is a pane in the middle now.

@@ -752,29 +752,64 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .invsec h2 { margin-top: 0; }
 .invact { margin-top: 4px; }
 
-#clock .when { display: flex; flex-direction: column; gap: 2px; }
-#clock .when .big { font-size: 16px; color: #fff; }
-#clock .when .hour { margin-left: 8px; }
 
 /* The weather, built the way a phone's widget is: the sky behind, the day's
    ends in the corner, the temperature large enough to read without looking
    for it, then the pairs a reader scans rather than reads. What the ground
    is doing is one of those pairs and not a headline. */
-#weather { padding: 0; overflow: hidden; }
-.wx { padding: 10px 12px 12px; background: linear-gradient(160deg, #1b2740 0%, #141a26 62%, #12161d 100%); }
-.wx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.wx-sky { line-height: 0; }
-.wx-sky .sky { width: 96px; height: auto; }
-.wx-sun { text-align: right; color: var(--dim); font-size: 11px; line-height: 1.35; }
-.wx-temp { font-size: 34px; line-height: 1.1; color: #fff; margin-top: 6px; }
-.wx-temp .deg { font-size: 16px; color: var(--dim); margin-left: 3px; }
-.wx-temp.bad { color: var(--bad); }
-.wx-word { color: var(--dim); margin-bottom: 8px; }
-.wx-rows { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; font-size: 12px; }
-.wx-k { color: var(--dim); }
-.wx-v.bad { color: var(--bad); }
-.wx-warn { color: var(--bad); font-size: 12px; margin-top: 4px; }
-.wx-where { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--dim); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+#weather { padding: 0; overflow: hidden; position: relative; }
+.wx { position: relative; padding: 10px 12px 12px; min-height: 190px; }
+
+/* The sky is the widget, not a picture in the corner of it: the same
+   drawing the map is lit from, stretched behind the numbers. The scrim is
+   what keeps them readable at noon, when the sky behind them is bright. */
+.wx-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
+.wx-bg .sky { width: 100%; height: 100%; display: block; }
+.wx-bg::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(6, 9, 14, 0.15) 0%, rgba(6, 9, 14, 0.55) 55%, rgba(6, 9, 14, 0.85) 100%);
+}
+.wx > *:not(.wx-bg) { position: relative; z-index: 1; }
+
+.wx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.wx-clock { font-size: 15px; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+.wx-clock .hour { margin-left: 6px; }
+.wx-date { color: rgba(255, 255, 255, 0.7); font-size: 11px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.wx-sun { text-align: right; color: rgba(255, 255, 255, 0.75); font-size: 11px; line-height: 1.35; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.wx-temp { font-size: 34px; line-height: 1.1; color: #fff; margin-top: 10px; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6); }
+.wx-temp .deg { font-size: 16px; color: rgba(255, 255, 255, 0.7); margin-left: 3px; }
+.wx-temp.bad { color: #ffb3b3; }
+.wx-word { color: rgba(255, 255, 255, 0.8); margin-bottom: 8px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.wx-rows { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; font-size: 12px; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.wx-k { color: rgba(255, 255, 255, 0.65); }
+.wx-v.bad { color: #ffb3b3; }
+.wx-warn { color: #ffb3b3; font-size: 12px; margin-top: 4px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
+.wx-where { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.18); color: rgba(255, 255, 255, 0.6); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.wx-rate { letter-spacing: 0; text-transform: none; color: rgba(255, 255, 255, 0.45); }
+.wx-rate.hurrying { color: var(--accent); }
+
+/* What the air is doing, drawn rather than named. Cloud drifts, and what
+   falls out of it falls: snow wanders down, rain goes straight and fast,
+   and a storm leans both of them over and hurries them along. */
+.sky-cloud ellipse { fill: var(--cloud, #8a97a8); opacity: 0.5; }
+.sky-cloud { animation: sky-drift var(--drift, 120s) linear infinite; }
+@keyframes sky-drift { from { transform: translateX(0); } to { transform: translateX(-240px); } }
+
+#sky-fall .sky-drop { transform: translate(var(--x), var(--y)); }
+#sky-fall line { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; opacity: 0; }
+#sky-fall circle { fill: rgba(255, 255, 255, 0.85); opacity: 0; }
+.sky.rain #sky-fall line { opacity: 1; animation: sky-rain 0.9s linear infinite; animation-delay: calc(var(--n) * -0.9s); }
+.sky.snow #sky-fall circle { opacity: 1; animation: sky-snow 6s linear infinite; animation-delay: calc(var(--n) * -6s); }
+.sky.storm #sky-fall line { animation-duration: 0.5s; }
+.sky.storm #sky-fall circle { animation-duration: 3s; }
+.sky.storm .sky-cloud { animation-duration: 26s; }
+@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(-14px, 220px); } }
+@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(10px, 220px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }
+}
 
 /* A place is one button, and what it costs is inside it: a name in a button
    beside a sentence saying "from here" spent two thirds of the row on words
@@ -997,3 +1032,12 @@ button.act small.gives, span.act small.gives,
 .grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-0 { color: #63614e; }
 .grid.season-winter:not(.snow) .c:not(.mk).t-meadow.tone-2 { color: #9a9880; }
 .grid.season-winter:not(.snow) .c:not(.mk).t-bog { color: #6f7b78; }
+
+/* The sky gallery (sky.html): every condition the weather widget draws, side
+   by side, at the size it is drawn at on the board. */
+.skytitle { font-size: 16px; font-weight: normal; color: var(--dim); padding: 12px 16px 0; margin: 0; }
+.skygallery { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; align-items: flex-start; }
+.skycase { margin: 0; width: 260px; }
+.skycase-box { padding: 0; overflow: hidden; }
+.skycase figcaption { color: var(--dim); font-size: 11px; padding: 6px 2px 0; line-height: 1.5; }
+.skycase figcaption b { color: var(--text); }

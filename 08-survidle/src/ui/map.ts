@@ -569,7 +569,15 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     }
     // Selecting is what puts the Explore button on the panel, so a named region stays
     // clickable on the map whether or not its ground itself has been walked.
-    const act = named ? ` data-act="select" data-r="${reg}"` : "";
+    //
+    // The index rides with it, and has to. keyOf names an element by its
+    // data attributes, so every cell of one region would otherwise carry the
+    // same name - and morphChildren, which registers one node per name and
+    // moves it to where the name is next wanted, would haul a glyph across
+    // the board on every redraw and shift everything after it. That is the
+    // flicker on the @ and the camp's x: they are the cells whose names
+    // differ enough to be found and moved.
+    const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
     const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
     parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);

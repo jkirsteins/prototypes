@@ -27,7 +27,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       // faces.html is the face self-test page, reached from the game by ?faces=1.
-      input: { main: "index.html", faces: "faces.html" },
+      // sky.html is the same for the weather widget's skies.
+      input: { main: "index.html", faces: "faces.html", sky: "sky.html" },
     },
   },
 });

@@ -5,7 +5,7 @@ import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import type { Weather } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
-import { clockHtml, placesHtml, weatherHtml } from "../src/ui/panels";
+import { placesHtml, weatherHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, skyHtml, updateSky } from "../src/ui/sky";
@@ -96,14 +96,13 @@ describe("lighting", () => {
 
 describe("sky in the page", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<div id="clock"></div><div id="weather"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div>`;
+    document.body.innerHTML = `<div id="weather"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div>`;
     resetPanels();
   });
 
   it("moves the sun and lights the map grid every frame", () => {
     const { state, world } = newGame(21);
     const cal = at(13);
-    setPanel("clock", clockHtml(state, world, cal, 5));
     // The sky is drawn in the weather widget now, not the clock line.
     setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));
     setPanel("map", mapHtml(world, state, newUiState(), cal));

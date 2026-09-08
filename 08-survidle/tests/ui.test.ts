@@ -19,7 +19,7 @@ import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
-import { campHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml } from "../src/ui/panels";
+import { campHtml, forecastHtml, instantHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml, weatherHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { tipHtml } from "../src/ui/tip";
@@ -313,15 +313,23 @@ describe("panels", () => {
     expect(document.querySelectorAll("#orders .bar.hurry").length).toBe(0);
   });
 
-  it("the clock line reads the hurry's rate", () => {
+  it("the weather widget reads the hurry's rate", () => {
     const { state, world } = newGame(3);
     const cal = calendar(0);
-    document.body.insertAdjacentHTML("beforeend", `<div id="clock"></div>`);
-    setPanel("clock", clockHtml(state, world, cal, 5));
-    expect(document.querySelector("#clock .when > :last-child")?.textContent).toBe("1 s = 1 game min");
-    expect(document.querySelectorAll("#clock .hurrying").length).toBe(0);
-    setPanel("clock", clockHtml(state, world, cal, 5, 6));
-    expect(document.querySelector("#clock .hurrying")?.textContent).toBe("1 s = 6 game min");
+    document.body.insertAdjacentHTML("beforeend", `<div id="weather"></div>`);
+    setPanel("weather", weatherHtml(state, world, cal, 5));
+    expect(document.querySelector("#weather .wx-rate")?.textContent).toBe("1 s = 1 game min");
+    expect(document.querySelectorAll("#weather .hurrying").length).toBe(0);
+    setPanel("weather", weatherHtml(state, world, cal, 5, 6));
+    expect(document.querySelector("#weather .hurrying")?.textContent).toBe("1 s = 6 game min");
+  });
+
+  it("and says the day, the hour and the date, which the clock panel used to", () => {
+    const { state, world } = newGame(3);
+    const cal = calendar(0);
+    const html = weatherHtml(state, world, cal, 5);
+    expect(html).toContain("Day 1");
+    expect(html).toMatch(/wx-date/);
   });
 
   it("bars follow the state", () => {

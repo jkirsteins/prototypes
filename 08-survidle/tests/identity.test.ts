@@ -20,7 +20,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
+import { advance } from "../src/sim/advance";
 import { doHtml } from "../src/ui/dopanel";
+import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 
 describe("a redraw takes nothing away", () => {
@@ -117,5 +119,50 @@ describe("a redraw takes nothing away", () => {
       const keyed = el.id !== "" || Object.keys((el as HTMLElement).dataset).length > 0;
       expect(keyed, `unkeyed container: ${el.outerHTML.slice(0, 90)}`).toBe(true);
     }
+  });
+});
+
+describe("no two children of one parent answer to the same name", () => {
+  it("the map's cells each have their own, so a redraw moves none of them", () => {
+    // keyOf names an element by its id or its data attributes, and
+    // morphChildren keeps ONE node per name: the first it meets. When the
+    // name is next wanted it moves that node there, and everything after it
+    // shifts. Hundreds of cells sharing "select, region 5" is therefore not
+    // a tidy repetition, it is a glyph hauled across the board on every
+    // redraw - which is what the @ and the camp's x were seen to do.
+    resetPanels();
+    document.body.innerHTML = `<div id="probe"></div>`;
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    setPanel("probe", mapHtml(world, state, newUiState(), cal));
+    const grid = document.querySelector(".grid") as HTMLElement;
+    expect(grid).not.toBeNull();
+    const seen = new Map<string, number>();
+    for (const el of [...grid.children]) {
+      const data = Object.entries((el as HTMLElement).dataset).map(([k, v]) => `${k}=${v}`).sort().join(",");
+      const key = el.id ? `#${el.id}` : data ? `${el.tagName}[${data}]` : "";
+      if (!key) continue;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    const shared = [...seen].filter(([, n]) => n > 1).map(([k, n]) => `${k} x${n}`);
+    expect(shared).toEqual([]);
+  });
+
+  it("a glyph keeps its place across a redraw as the survivor moves", () => {
+    resetPanels();
+    document.body.innerHTML = `<div id="probe"></div>`;
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const ui = newUiState();
+    setPanel("probe", mapHtml(world, state, ui, cal));
+    const cells = [...(document.querySelector(".grid") as HTMLElement).children];
+    const middle = cells[Math.floor(cells.length / 2)];
+    // Take a step and draw again: the board is the same size, so every cell
+    // should still be the node it was, in the place it was.
+    advance(state, world, 30);
+    setPanel("probe", mapHtml(world, state, ui, cal));
+    const after = [...(document.querySelector(".grid") as HTMLElement).children];
+    expect(after.length).toBe(cells.length);
+    expect(after[Math.floor(after.length / 2)]).toBe(middle);
   });
 });

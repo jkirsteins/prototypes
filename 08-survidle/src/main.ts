@@ -42,7 +42,7 @@ import type { SubtabId } from "./ui/purpose";
 import { cellFromPoint, LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import { tipHtml, tipKey } from "./ui/tip";
 import {
-  awayHtml, campHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
+  awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
@@ -180,8 +180,7 @@ function render() {
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));
-  setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));
-  setPanel("weather", weatherHtml(state, world, cal, ambient));
+  setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
