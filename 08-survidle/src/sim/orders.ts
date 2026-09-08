@@ -1,9 +1,39 @@
 /**
- * Standing orders: a ranked list per camp of keeps ("keep camp at 40 kg
- * firewood"), grinds ("fell trees forever") and jobs ("build a cabin"). The
- * scheduler below decides which order the live intent serves; the intent
- * runner does everything else, exactly as when the player clicks an intent
- * by hand.
+ * The order list: one ranked list per camp, of keeps ("keep camp at 40 kg
+ * firewood"), grinds ("fell trees forever"), jobs ("build a cabin") and the
+ * survivor's own body. judgeOrders reads it top down, on every render and
+ * every minute, and asks each row whether it could run right now; the first
+ * ready row is the one with the minute, and a row that cannot run - out of
+ * season, missing a tool, no route to the site - is passed over rather than
+ * stopping anything, because the list is what the survivor does next rather
+ * than a contract to be honoured in the order it was written. Only a pin
+ * stops the list: the player saying nothing past this row until I say so.
+ * Once a row is chosen, runOrders starts it through the same startIntent a
+ * click uses, so an order and a hand-picked task run on identical machinery.
+ *
+ * The body is a row on this list, not a tier above or below the work: sleep,
+ * food, water, warmth, shelter and coming home before dark are one row,
+ * ranked by the player against the keeps, the grinds and the jobs the same
+ * way those rank against each other. Where the body sits decides whether a
+ * thirsty survivor drops the axe now or finishes the tree first, and there
+ * is no second scheduler anywhere in the game to answer that question for
+ * them - see bodyorder.ts for the row itself.
+ *
+ * A row below the one holding the minute is spared the expensive half of
+ * its own reading - the site search and the walk check, either of which can
+ * route across the whole region - since asking whether it could run when it
+ * has no way to act on the answer is work spent for nothing. Only a row at
+ * or above the live one, or every row when nothing is live, pays that cost.
+ * This is the prefix rule; walkJudged below exists only so its test can see
+ * it holding.
+ *
+ * Judging a row must never act on it. judgeOrders runs far oftener than a
+ * minute turns over - every render reads it fresh - so a row's want is read
+ * with peekNeed and a dry bodyStep, never eating, drinking or feeding a fire
+ * on the body's behalf; only runOrders and serveBodyRow, at most once a
+ * minute, use the writing versions, currentNeed and a wet step. Reaching for
+ * the wrong pair is the one mistake this file is written to make easy to
+ * catch on sight.
  */
 import { Rng } from "../rng";
 import type { World } from "../world/gen";

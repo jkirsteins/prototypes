@@ -1,7 +1,7 @@
 /**
- * The body's own tier, read off the player rather than off whatever is
- * running: sleep, storm, cold, thirst, hunger, the fire, snares, spent,
- * home, in that order, and what to do about each. Every step is an ordinary task; the fire
+ * The body's own tier, read off the player rather than off whatever is running:
+ * sleep, storm, cold, thirst, hunger, the fire, snares, spent, home, in that
+ * order, and what to do about each. Every step is an ordinary task; the fire
  * steps are guarded by check, so a missing drill or an under-level pit is
  * skipped, never an error.
  */

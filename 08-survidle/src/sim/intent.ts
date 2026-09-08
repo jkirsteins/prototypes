@@ -698,11 +698,16 @@ function isBodyRowIntent(state: GameState, world: World, it: Intent): boolean {
 }
 
 /**
- * Called once a minute by advance, after stepTask. The runner works the
- * minute the scheduler gave it and nothing else: which row has the minute,
- * the body's included, is settled on the list before this runs. The work
- * tier runs only when the slot is free. At most eight instant actions
- * chain in one call, as the old haul plan did.
+ * Called once a minute by advance, after stepTask. The runner takes the
+ * minute the scheduler already gave it and nothing more: which row holds
+ * it, the body's own included, was decided on the list before this ever
+ * runs, and nothing here revisits that choice. The collapse clause below
+ * is the one thing beneath it - the floor under work the player chose by
+ * hand, which nothing else is allowed to interrupt once it outranks the
+ * body's row. Instant actions that cost the clock nothing - loading up,
+ * unloading at camp, laying out materials for a build - chain in one
+ * call, up to eight of them, for as long as nothing has claimed the
+ * minute as a task of its own.
  */
 export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (!state.intent || state.dead) return;
