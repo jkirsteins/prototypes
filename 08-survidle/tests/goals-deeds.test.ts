@@ -6,6 +6,7 @@ import { calendar } from "../src/sim/calendar";
 import { activeGoals, goalDeed } from "../src/sim/goals";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
+import { ITEM_KG } from "../src/sim/items";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
@@ -80,6 +81,28 @@ describe("deeds reach the ladder", () => {
     advance(state, world, o.duration + 1);
     expect(state.goals.progress.firewood).toBeCloseTo(DEADWOOD_KG);
     expect(state.goals.done.firewood).toBe(true);
+  });
+
+  it("credits goal 1 by the kilos a real split actually produces", () => {
+    const { state, world } = newGame(3);
+    // The landing kit's own axe is what split() needs; no forest cell required.
+    addItem(state.player.pack, "log", 1);
+    const o = check(state, world, cal, "split");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "split")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(state.goals.progress.firewood).toBeCloseTo(ITEM_KG.log);
+  });
+
+  it("credits goal 1 by the kilos a real splitWedges actually produces", () => {
+    const { state, world } = newGame(3);
+    addItem(state.player.pack, "log", 1);
+    addItem(state.player.pack, "wedge", 2);
+    const o = check(state, world, cal, "splitWedges");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "splitWedges")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(state.goals.progress.firewood).toBeCloseTo(ITEM_KG.log);
   });
 
   it("credits nothing when a standing order carries firewood home and drops it at camp", () => {
