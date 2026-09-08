@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { Rng } from "../src/rng";
+import { calendar } from "../src/sim/calendar";
+import { dailyCamp } from "../src/sim/camp";
+import { BOUGH_BED_DAYS, STRUCTURE_LIFE_DAYS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { campSite, newSite, regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { migrate } from "../src/sim/save";
@@ -99,5 +103,29 @@ describe("sites", () => {
     st.build = {};
     migrate(state);
     expect(Object.keys(regionState(state, world, state.player.region).sites)).toHaveLength(0);
+  });
+
+  it("a site away from the camp ages and falls on its own clock", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    const away = st.campCell + 1;
+    const site = siteFor(st, away);
+    site.structures.leanTo = true;
+    site.structureAge.leanTo = STRUCTURE_LIFE_DAYS.leanTo * 1440 - 1440;
+    const cal = calendar(state.minute, state.startDoy);
+    dailyCamp(state, world, cal, new Rng(1), { region: state.player.region, atCamp: true });
+    expect(siteAt(st, away)!.structures.leanTo).toBe(false);
+    expect(state.log.some((e) => e.text.includes("fallen in"))).toBe(true);
+  });
+
+  it("a bough bed away from the camp goes flat on its own clock", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    const away = st.campCell + 1;
+    const site = siteFor(st, away);
+    site.structures.boughBed = true;
+    site.boughBedAge = BOUGH_BED_DAYS * 1440 - 1440;
+    dailyCamp(state, world, calendar(state.minute, state.startDoy), new Rng(1), { region: state.player.region, atCamp: true });
+    expect(siteAt(st, away)!.structures.boughBed).toBe(false);
   });
 });

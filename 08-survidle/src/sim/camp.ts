@@ -168,7 +168,6 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
   for (const id of touchedRegions(state)) {
     const r = regionAt(world, id);
     const st = state.regions[id];
-    const site = campSite(st);
     if (who && id === who.region) {
       const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty([state.player.pack, pile(state, st.campCell)], f) > 1e-9);
       noteLarder(state, leanAtCamp);
@@ -222,8 +221,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
       }
     }
     // Nothing decays where nothing stands: every check below is on a structure that
-    // must already be true, which cannot hold with no site raised at the camp cell.
-    if (site) {
+    // must already be true, which cannot hold at a cell with no site raised on it.
+    for (const [cell, site] of Object.entries(st.sites)) {
       if (site.structures.boughBed) {
         site.boughBedAge += 1440;
         if (site.boughBedAge >= BOUGH_BED_DAYS * 1440) {
@@ -247,8 +246,11 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         if (site.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
         site.structures[sid] = false;
         delete site.structureAge[sid];
-        if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; site.racks = 0; }
-        if (sid === "turfHut") st.fire.indoors = false;
+        if (sid === "dryingRack") {
+          if (Number(cell) === st.campCell) { st.rack.kg = 0; st.rack.dried = 0; }
+          site.racks = 0;
+        }
+        if (sid === "turfHut" && Number(cell) === st.campCell) st.fire.indoors = false;
         log(state, FALLS[sid](r.name), "bad");
       }
     }
