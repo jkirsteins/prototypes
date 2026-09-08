@@ -5,7 +5,7 @@ import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
-import { burnPerHour, dryWood, fuelTotal, roofed, stepSmoke } from "./fire";
+import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, roofed, stepSmoke } from "./fire";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
@@ -54,7 +54,22 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.wetKg = 0;
         st.fire.lit = false;
         st.fire.indoors = false;
-        log(state, mine ? "The fire has gone out." : `The fire at ${name()} has gone out.`, "bad");
+        // Rain that beat the fire beat the coals with it; a fire that simply
+        // ate its wood leaves them, which is how a night is got through.
+        st.fire.embers = drownedLow ? 0 : EMBER_MINUTES;
+        if (st.fire.embers <= 0) st.fire.litSince = null;
+        log(state, mine
+          ? (st.fire.embers > 0 ? "The flames are down to coals." : "The fire has gone out.")
+          : `The fire at ${name()} has gone out.`, "bad");
+      }
+    }
+
+    if (!st.fire.lit && st.fire.embers > 0) {
+      const wet = state.weather.precip !== "none" && !roofed(st) ? EMBER_RAIN_RATE : 1;
+      st.fire.embers = Math.max(0, st.fire.embers - dt * wet);
+      if (st.fire.embers === 0) {
+        st.fire.litSince = null;
+        log(state, mine ? "The last of the coals goes grey." : `The fire at ${name()} is dead.`, "bad");
       }
     }
 
