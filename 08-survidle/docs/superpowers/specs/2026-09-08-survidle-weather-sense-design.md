@@ -208,53 +208,87 @@ minute walk from a neighbouring region, so stage 2 or 3 should.
 
 ### 7. What kind of storm
 
-One storm behaves one way today. The author named four that ask for
-different answers, and they change what the right move is:
+One storm behaves one way today. Four kinds ask for different answers, and
+carrying all four is what gives weather sense something to be sense *about*:
+knowing a storm is coming matters less than knowing which one.
 
-- **Rain and cold wind** - the common case. A roof and a fed fire.
-- **Snow** - a windbreak serves, and a snow shelter becomes possible where
-  the snow is right. The weather model already knows snow from rain
-  (`ambient <= 0` in `burnPerHour`).
-- **Gale** - the priority is a protected site and building low, not a big
-  shelter. Terrain lee matters more than roof.
-- **Lightning** - shelter-building itself becomes the danger under isolated
-  tall trees or on a ridge, which inverts the usual terrain advice.
+- **Rain and cold wind** - the common case. A roof and a fed fire. Cover
+  overhead is what counts.
+- **Snow** - colder, but the precipitation itself is less of an enemy: a
+  windbreak serves where a roof would be needed in rain, and drifted snow
+  becomes cover in its own right. The weather model already knows snow from
+  rain (`ambient <= 0`).
+- **Gale** - wind is the danger, not water. What matters is the **lee** and
+  a **low profile**. A tall frame shelter in a gale is worse than a scrape
+  behind a boulder: it catches wind, and it can come down. So a gale reads
+  a shelter's profile as well as its protection, and terrain lee - rock,
+  dense spruce, a depression - counts for more than a roof.
+- **Lightning** - the terrain advice **inverts**. The ground that shelters
+  you from rain is what kills you here: an isolated tall tree, a rock
+  outcrop, a ridge, high open fell. The right answer is low ground, away
+  from lone trees, and *not* the overhang you would run to in rain.
 
-**Recommendation on scope:** carry rain-versus-snow now, since the weather
-model already distinguishes them and the snow shelter already exists. Take
-gale and lightning as a later piece - each needs its own terrain rule and
-lightning needs a hazard model this game does not have. Splitting it this
-way keeps this spec buildable.
+That inversion is the reason lightning earns its place rather than being
+deferred. It is the one storm where a survivor who knows only "a storm is
+coming" does the wrong thing by doing the obvious thing, and where a
+survivor who read the sky properly goes somewhere else entirely. It turns
+the forecast's second stage - what kind, how hard - from a convenience into
+the difference between living and not.
+
+**What each kind reads:**
+
+| Kind | Danger | What answers it | What is now wrong |
+|---|---|---|---|
+| Rain | wet, fuel burn | cover overhead, level 2 | open ground |
+| Snow | cold | windbreak, drifted cover | nothing much |
+| Gale | wind, falling timber | lee and low profile | tall frame shelters, exposed ground |
+| Lightning | strike | low ground, no lone trees | overhangs, ridges, isolated tall trees |
+
+A shelter therefore carries a **profile** (low or high) beside its
+protection level, and a cell carries whether it is **lee** and whether it is
+**exposed high ground**. Both are readable off terrain the world already
+generates: rock and fell are high and exposed, a depression or dense spruce
+is lee, a frame shelter is high profile and a found scrape or cave is low.
 
 ### 8. The skills
 
-The author's direction is one skill per shelter *family*, tied to genuinely
-different techniques. Their list, and what this spec proposes doing with it:
+Skills here are **categories of technique, not of material**. A snow cave
+dug into a drift is not a different skill from a rock overhang - both are
+reading the land for cover that already exists. Piling snow into a quinzhee
+is not a different skill from raising a lean-to - both are building a
+structure out of what is to hand. Naming a skill after snow would prescribe
+the material and split one competence in two.
 
-| Named | Proposed | Why |
-|---|---|---|
-| Natural shelter finding | **Natural shelter** | its own skill, the new primary |
-| Rock/overhang improvement | folded into Natural shelter | finding cover and improving it are one technique, practised together |
-| Lean-to building | **Frame shelter** | frame plus covering |
-| Debris shelter building | folded into Frame shelter | same act, different covering |
-| Windbreak construction | folded into Frame shelter | a windbreak is half a lean-to |
-| Snow shelter building | **Snow shelter** | genuinely different, and seasonal |
-| Permanent hut building | stays in existing `building` | already there, already levelled |
+So the categories are what the survivor *does*:
 
-Plus **Weather sense** from section 6. That is four new skills, taking the
-ladder from seven to eleven.
+- **Natural shelter** - finding cover the land already gives, judging a
+  site, and improving what is found. Overhang, tree well, root plate,
+  drifted snow, the lee of a boulder, a depression out of the wind. Covers
+  the author's "natural shelter finding" and "rock/overhang improvement",
+  and takes snow caves too. This is also where **choosing where to sit a
+  storm out** lives, which is what a gale and a lightning storm are really
+  asking of the survivor.
+- **Shelter building** - raising a structure from materials: frame and
+  covering, debris piled on, a windbreak, a heaped and hollowed quinzhee.
+  Covers "lean-to", "debris shelter", "windbreak" and the built half of
+  snow work. Material-agnostic; terrain and season decide what is available
+  to build with, not which skill is used.
+- **Weather sense** - reading what is coming, and which kind (section 6).
+
+Permanent work - the turf hut, the cabin - stays in the existing `building`
+skill, where it already is and already levels.
+
+That is **three new skills**, taking the ladder from seven to ten.
 
 **The cost, stated plainly.** The idle curve spec assigns jobs, grinds and
-keeps per skill, and `MASTERY_KEYS` gives each skill its own action pool. Four
-new skills is four new sets of those, and it widens every panel that lists
-skills, the carry between heirs (`CARRY_SHARE`), and the rung moments. This
-is the largest single change in the spec and it is deliberate - the author's
-reasoning is that in an idle game the progression *is* the reward, and that
-distinct levels create survivor profiles: a survivor strong in natural
-shelter searches first, one strong in snow shelter skips searching in winter
-and builds. Both readings are defensible; the trim, if wanted, is to fold
-Snow shelter into Frame shelter and Weather sense into wayfinding, which
-would make it two new skills instead of four.
+keeps per skill, and `MASTERY_KEYS` gives each its own action pool. Three
+new skills is three new sets of those, and it widens every panel listing
+skills, the heir carry (`CARRY_SHARE`) and the rung moments. It is the
+largest single change here and it is deliberate: the progression is part of
+the reward, and distinct levels make distinct survivors. One strong in
+natural shelter searches first and rides out storms where they stand; one
+strong in shelter building carries an axe and raises what they need. Those
+are different players, which is the point.
 
 ### 9. When it compounds
 
@@ -274,10 +308,12 @@ rule. No new death cause, no storm-specific health drain.
 
 - Lengthening the plain hour as a fix on its own; the measurements say it is
   not the constraint.
-- Gale and lightning as distinct storms (section 7).
 - Any change to the camp's own fire, its embers, its keeping goals, or one
   camp per region.
 - Weather beyond storms: the seasonal model, precipitation and ice.
+- Falling timber as a hazard in its own right. A gale reads a shelter's
+  profile, but trees coming down on a survivor is a hazard model this game
+  does not have and should not gain here.
 - Anything that lets a found or emergency shelter drift into being a camp.
 
 ## Testing
@@ -301,6 +337,13 @@ rule. No new death cause, no storm-specific health drain.
   make digging in the default when home is close.
 - A survivor caught in a neighbouring region, 90 minutes out, survives by
   finding and improving cover, which is the case this spec exists for.
+- A gale reads profile: the same protection level in a high frame shelter
+  serves worse than in a low found one, and lee ground beats a roof.
+- Lightning inverts the ground: the overhang and the ridge that answer rain
+  are the wrong answer here, and a survivor who knows only that a storm is
+  coming goes to the wrong place.
+- A forecast that names the kind lets a survivor pick ground the plain
+  warning would not have sent them to.
 
 ## Gates
 
@@ -318,9 +361,10 @@ worse, and it will say so first.
 
 ## Open questions for the author
 
-1. Whether an open fire may cook, or only warm (section 5).
+Taken one at a time, in this order:
+
+1. Whether an open fire may cook and boil, or only warm (section 5).
 2. The emergency shelter's minutes per protection level, against the
    handbooks (section 4).
-3. Whether four new skills is the right size, or the two-skill trim is
-   (section 8).
-4. Whether gale and lightning are deferred, as recommended (section 7).
+3. Whether a survivor caught by lightning on the wrong ground should be
+   able to die of it, or only ever be driven off that ground (section 7).
