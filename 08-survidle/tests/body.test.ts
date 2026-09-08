@@ -7,6 +7,7 @@ import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/cale
 import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
+import { KCAL_FULL } from "../src/sim/items";
 import { mapRegion } from "../src/sim/mapped";
 import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
@@ -681,7 +682,7 @@ describe("the runner in the elements", () => {
     state.minute = 320 * 1440 + 240;
     state.player.tools.push({ id: "waterskin", durability: 100, litres: 3, frozen: false });
     state.player.water = 3;
-    state.player.kcal = 5000;
+    state.player.kcal = KCAL_FULL;
     state.player.health = 100;
     run(900);
     expect(sawThin).toBe(false);

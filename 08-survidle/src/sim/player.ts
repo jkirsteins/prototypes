@@ -8,14 +8,14 @@ import { carried } from "./inventory";
 import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { lightFactor, skyLux, TORCH_LUX, WALK_LUX } from "./light";
-import { log } from "./log";
+import { log, warn } from "./log";
 import { BIG_EATER_BURN, body, hasQuirk } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
-import type { DeathCause, GameState, IceMode, LogEntry, RegionState, Task, TaskId, Terrain, Weather } from "./types";
+import type { DeathCause, GameState, IceMode, RegionState, Task, TaskId, Terrain, Weather } from "./types";
 import { ICE_SHORE_CM, THIRSTY_L, stepWater } from "./water";
 import { DEEP_SNOW_CM, ICE_SAFE_CM, stormNow } from "./weather";
 
@@ -418,7 +418,9 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   }
 
   // Milestone warnings, once per crossing.
-  warn(state, "kcal", p.kcal <= 1200, "{You} {are} starving.");
+  // Starving is the fat reserve going, not the stomach: the stomach empties
+  // whenever the food runs out, and autoEat says so at the meal line.
+  warn(state, "kcal", starvation(state) >= 0.5, "{You} {are} starving.");
   warn(state, "thin", p.fat < FAT_THIN * d.fatFull, "{You} {are} getting thin.");
   warn(state, "ribs", p.fat < FAT_RIBS * d.fatFull, "{Your} ribs show.");
   warn(state, "wasting", p.fat < FAT_WASTING * d.fatFull, "{You} {are} wasting away.");
@@ -438,26 +440,6 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   warn(state, "co", smoking, "The air is thick. {You} {wake} coughing.");
 
   return drains;
-}
-
-const warned = new WeakMap<GameState, Set<string>>();
-/**
- * Says a line the first minute a threshold is crossed, and not again until the
- * body comes back over it. Most of these are bad news; "plain" is for a
- * crossing that is only news, and reads in the log's ordinary voice.
- */
-function warn(state: GameState, key: string, active: boolean, text: string, kind: LogEntry["kind"] | "plain" = "bad") {
-  let set = warned.get(state);
-  if (!set) {
-    set = new Set();
-    warned.set(state, set);
-  }
-  if (active && !set.has(key)) {
-    set.add(key);
-    log(state, text, kind === "plain" ? undefined : kind);
-  } else if (!active && set.has(key)) {
-    set.delete(key);
-  }
 }
 
 /** Names the death from the drains that killed: the largest of them. */

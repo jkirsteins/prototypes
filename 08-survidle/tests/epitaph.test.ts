@@ -80,14 +80,13 @@ describe("the epitaph", () => {
     // of the wood-first grind order, so it empties where the ledger above finds it. Seed 19
     // is the shape a level-1 opening holds: the larder gives out weeks before the woodpile
     // does, and it starves at its own fire with wood to spare. Seed 17 is the other end of
-    // it - a far ring, where a storm on the fourth day shuts the survivor in at camp with
-    // nothing stored to drink. A body sitting a storm out has one need and it is shelter,
-    // so it sits there parched: the storm is what kills it and thirst is what it dies of.
+    // it - a far ring, whose opening week goes badly enough that the body is still short of
+    // its own camp when it stops, a few hundred metres out with nothing stored behind it.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 6. Died of thirst at camp, with nothing in the pack and no firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 29. Starved at camp, with nothing in the pack and 39 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 6. Died of cold 0.2 km from camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 22. Starved at camp, with nothing in the pack and 40 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

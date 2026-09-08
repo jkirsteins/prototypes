@@ -125,6 +125,32 @@ small, .dim { color: var(--dim); }
 .bar.dur.wet .fill { background: var(--water); opacity: .7; }
 .bar.dur.wet .lbl { font-size: 9px; line-height: 8px; }
 .bar.low .fill { background: var(--bad); }
+/* The meal line: where a falling reserve triggers a meal. Fixed share of the
+   bar, drawn in the markup, so nothing about it moves frame to frame. It has
+   to read against two grounds - the fill when the body is fed, the dark bar
+   when it is not - and the fed state is the one a player sees all game, so
+   the line carries its own dark outline rather than leaning on either. */
+.bar .mark {
+  position: absolute; top: 0; bottom: 0;
+  width: 3px; margin-left: -1.5px;
+  background: #fff;
+  opacity: .9;
+  box-shadow: 0 0 0 1px rgba(10, 13, 18, .85);
+}
+/* A meal landed: the fill brightens for a moment so the refill is seen and
+   not only logged. */
+@keyframes fed { from { filter: brightness(2.4); } to { filter: brightness(1); } }
+.bar.fed .fill { animation: fed 0.7s ease-out; }
+/* The reserve behind the stomach: a slimmer bar tucked under the Food bar it
+   backs, so the pair reads as one thing with a front and a back. Its own
+   label size, because the shared thin-bar rule leaves a 16px line in an 8px
+   box and the text is cut in half. */
+.bar.fat {
+  height: 12px;
+  margin: -6px 0 8px;
+}
+.bar.fat .lbl { font-size: 10px; line-height: 12px; }
+.bar.fat .fill { background: var(--kcal); opacity: .5; }
 .bar.mastery { height: 10px; margin: 4px 0 0; }
 .bar.mastery .fill { background: #4b6a8f; }
 .bar.mastery .lbl { font-size: 9px; line-height: 8px; }

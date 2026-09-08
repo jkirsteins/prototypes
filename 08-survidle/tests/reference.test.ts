@@ -400,7 +400,7 @@ describe("the reference player", () => {
     const reserve = FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
-    expect(REFERENCE_TARGET_DAY).toBe(20);
+    expect(REFERENCE_TARGET_DAY).toBe(19);
     expect(KITTED_TARGET_DAY).toBe(30);
   });
 
@@ -497,12 +497,14 @@ describe("the reference player", () => {
 
   it("a capped run does not double the checkpoint", () => {
     // calendar()'s day is dayIndex + 1, so a run of REFERENCE_TARGET_DAY - 1 full days
-    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 79
-    // is alive there (it passes the April gate; seed 17 no longer does, since the bough
-    // bed keep right after the lean-to moves its death to day 19), so the day cap and the
-    // REFERENCE_TARGET_DAY checkpoint land on the same day, without hunting for a seed that
-    // dies there instead - this does not cover the death-landing-on-a-checkpoint variant of
-    // the same branch.
+    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops, so the day
+    // cap and the REFERENCE_TARGET_DAY checkpoint land on the same day. This does not cover
+    // the death-landing-on-a-checkpoint variant of the same branch.
+    //
+    // Which seed stands here is incidental: the subject is the cap, and any run still alive
+    // at it will do. A seed that starts dying before the cap is a reading for the gate to
+    // report, not a reason to change what this test is about - swap in another living seed
+    // and leave the death where the gate can see it.
     const r = runReference(79, REFERENCE_TARGET_DAY - 1);
     expect(r.outcome).toEqual({ kind: "reached", day: REFERENCE_TARGET_DAY });
     const days = r.checkpoints.map((c) => c.day);
