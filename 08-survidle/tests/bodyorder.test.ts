@@ -187,9 +187,24 @@ describe("work with no row behind it", () => {
 
   it("says nothing about the wait at camp, which is not work anybody asked for", () => {
     const { state, world } = newGame(3);
-    addOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
-    state.player.water = 0;
-    advance(state, world, 3);
+    const st = regionState(state, world, state.player.region);
+    placeAtSpot(state, world, state.player.region, "camp");
+    // A keep camp already meets: the list has a row on it and nothing to do
+    // about it, which is what puts the survivor on the scheduler's own wait.
+    addItem(pile(state, st.campCell), "firewood", 60);
+    addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
+    let waiting = false;
+    for (let m = 0; m < 200 && !waiting; m++) {
+      advance(state, world, 1);
+      waiting = state.intent?.task === "wait" && state.intent.orderId === null;
+    }
+    expect(waiting).toBe(true);
+    // The body takes that minute off the wait: sleep at camp is a step of its
+    // own, so the row claims the intent rather than resting on under it.
+    state.player.sleepDebt = 1000;
+    advance(state, world, 2);
+    expect(state.task?.id).toBe("sleep");
+    expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
     expect(state.log.some((e) => e.text.includes("set aside,"))).toBe(false);
   });
 });
