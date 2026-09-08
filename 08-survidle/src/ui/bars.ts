@@ -1,5 +1,5 @@
 import { calendar } from "../sim/calendar";
-import { burnPerHour, fuelTotal } from "../sim/fire";
+import { burnPerHour, fuelTotal, hasEmbers } from "../sim/fire";
 import { HUNGRY_LINE } from "../sim/actions";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
 import { body } from "../sim/person";
@@ -63,9 +63,15 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   const total = fuelTotal(st.fire);
   const ambient = ambientTemperature(calendar(state.minute, state.startDoy), state.weather);
   const burnsFor = fmtDuration((total / burnPerHour(state.weather, ambient, st)) * 60);
-  const fireText = st.fire.wetKg > 0
-    ? `${st.fire.fuelKg.toFixed(1)} kg dry, ${st.fire.wetKg.toFixed(1)} kg wet, ${burnsFor}`
-    : `${st.fire.fuelKg.toFixed(1)} kg, ${burnsFor}`;
+  // Fuel is spent to zero the moment a fire falls to coals, so the plain
+  // "0.0 kg" text below would read exactly like a dead fire. This is the one
+  // place a per-minute count is safe to write: it lands on a named element
+  // every frame rather than into a panel's diffed markup (tests/churn.test.ts).
+  const fireText = hasEmbers(st.fire)
+    ? `coals, ${fmtDuration(st.fire.embers)} left`
+    : st.fire.wetKg > 0
+      ? `${st.fire.fuelKg.toFixed(1)} kg dry, ${st.fire.wetKg.toFixed(1)} kg wet, ${burnsFor}`
+      : `${st.fire.fuelKg.toFixed(1)} kg, ${burnsFor}`;
   setBar("fire", total / FIRE_MAX_KG, fireText, root);
 
   const t = state.task;
