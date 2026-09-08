@@ -264,3 +264,32 @@ describe("the floor", () => {
     expect(state.player.health).toBeCloseTo(h0, 1);
   });
 });
+
+describe("the body's words about its reserve", () => {
+  it("says nothing while the body sits in its settling zone", () => {
+    const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.fat = l.typical;
+    state.player.kcal = KCAL_FULL;
+    const before = state.log.length;
+    for (let m = 0; m < 120; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    const said = state.log.slice(before).map((e) => e.text);
+    expect(said.some((t) => /thin|ribs|wasting|starving/i.test(t))).toBe(false);
+  });
+
+  it("says them in order as the reserve falls toward the floor", () => {
+    const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    const seen: string[] = [];
+    for (const share of [0.7, 0.4, 0.1]) {
+      state.player.fat = l.floor + (l.lower - l.floor) * share;
+      state.player.kcal = KCAL_FULL;
+      const before = state.log.length;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+      seen.push(...state.log.slice(before).map((e) => e.text));
+    }
+    expect(seen.some((t) => /thin/i.test(t))).toBe(true);
+    expect(seen.some((t) => /ribs/i.test(t))).toBe(true);
+    expect(seen.some((t) => /wasting/i.test(t))).toBe(true);
+  });
+});

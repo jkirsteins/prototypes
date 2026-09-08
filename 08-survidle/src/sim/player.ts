@@ -104,10 +104,10 @@ export const FAT_KCAL_PER_KG = 9000;
  */
 export const FAT_FULL = 80000;
 
-/** The fat warnings' thresholds, as shares of FAT_FULL. */
-const FAT_THIN = 0.75;
+/** How far into the failing range - lower landmark down to the floor - each word waits for. */
+const FAT_THIN = 0.25;
 const FAT_RIBS = 0.5;
-const FAT_WASTING = 0.25;
+const FAT_WASTING = 0.75;
 
 /**
  * How far the body has fallen into its failing range: nothing at the lower
@@ -428,10 +428,13 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   // Milestone warnings, once per crossing.
   // Starving is the fat reserve going, not the stomach: the stomach empties
   // whenever the food runs out, and autoEat says so at the meal line.
-  warn(state, "kcal", starvation(state) >= 0.5, "{You} {are} starving.");
-  warn(state, "thin", p.fat < FAT_THIN * d.fatFull, "{You} {are} getting thin.");
-  warn(state, "ribs", p.fat < FAT_RIBS * d.fatFull, "{Your} ribs show.");
-  warn(state, "wasting", p.fat < FAT_WASTING * d.fatFull, "{You} {are} wasting away.");
+  // The words track the failing range, so a lean body in its settling zone is
+  // not told its ribs show.
+  const failing = starvation(state);
+  warn(state, "kcal", failing >= 0.5, "{You} {are} starving.");
+  warn(state, "thin", failing > FAT_THIN, "{You} {are} getting thin.");
+  warn(state, "ribs", failing > FAT_RIBS, "{Your} ribs show.");
+  warn(state, "wasting", failing > FAT_WASTING, "{You} {are} wasting away.");
   warn(state, "warm", p.warmth < 30, "{You} {are} shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "{You} {are} soaked through.");
   warn(state, "tired", p.energy < 20, "{You} can barely lift {your} arms. Sleep.");
