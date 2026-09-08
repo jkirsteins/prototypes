@@ -5,7 +5,7 @@ import { dailyCamp } from "../src/sim/camp";
 import { BOUGH_BED_DAYS, STRUCTURE_LIFE_DAYS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
-import { feltTemperature } from "../src/sim/player";
+import { feltTemperature, INDOOR_C } from "../src/sim/player";
 import { campSite, newSite, regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { migrate } from "../src/sim/save";
 
@@ -154,5 +154,24 @@ describe("sites", () => {
     placeAt(state, world, st.campCell);
     expect(feltTemperature(state, world, 0)).toBe(onBareGround);
     expect(siteAt(st, bare)).toBeNull();
+  });
+
+  it("an indoor fire warms only the camp's own hut, not a second hut elsewhere", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell).structures.turfHut = true;
+    st.fire.lit = true;
+    st.fire.indoors = true;
+    const away = st.campCell + 1;
+    siteFor(st, away).structures.turfHut = true;
+    placeAt(state, world, away);
+    state.task = { id: "sleep", progress: 0, duration: 480, repeat: false };
+    const atAwayHut = feltTemperature(state, world, -30);
+    placeAt(state, world, st.campCell);
+    const atCampHut = feltTemperature(state, world, -30);
+    // The away hut is a passive roof only: no fire burns there, so the room-temperature
+    // floor the camp's indoor fire gives must not follow the survivor to a second hut.
+    expect(atAwayHut).toBeLessThan(atCampHut);
+    expect(atAwayHut).toBeLessThan(INDOOR_C.turfHut);
   });
 });

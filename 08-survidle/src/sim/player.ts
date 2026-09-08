@@ -143,7 +143,9 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   // burn on: without one the fire is at the pit outside, and the walls are a
   // roof and no more.
   const inCabin = here?.structures.cabin && here.structures.hearth;
-  const indoors = campTask && r.fire.lit && r.fire.indoors && (here?.structures.turfHut || inCabin);
+  // Warm indoor air comes from the camp's own fire burning inside these walls; a hut
+  // standing at a site the survivor left is a cold roof, whatever the camp's fire is doing.
+  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (here?.structures.turfHut || inCabin);
   const inSnow = campTask && here?.structures.snowShelter && !indoors;
   let felt: number;
   if (indoors) {
