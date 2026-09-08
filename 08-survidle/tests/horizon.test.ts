@@ -85,8 +85,8 @@ describe("the horizon stages", () => {
   it("the producers stages stand the hut, the trough and a trap on the kitted camp, and the stocked one adds stores", () => {
     const { state, world } = setUpStage(17, stage("producers"));
     const st = regionState(state, world, state.player.region);
-    expect(campSite(st).structures.turfHut).toBe(true);
-    expect(campSite(st).structures.waterStore).toBe(true);
+    expect(campSite(st)!.structures.turfHut).toBe(true);
+    expect(campSite(st)!.structures.waterStore).toBe(true);
     // All four reference seeds land the kitted camp beside a shore with fish, so the trap is always set here.
     expect(st.trap).not.toBeNull();
     expect(st.trap!.fish.length).toBeGreaterThan(0);
@@ -98,7 +98,7 @@ describe("the horizon stages", () => {
     expect(qty(camp, "water")).toBeGreaterThanOrEqual(20);
     expect(qty(camp, "firewood")).toBeGreaterThanOrEqual(200);
     const manual = setUpStage(17, stage("manual"));
-    expect(campSite(regionState(manual.state, manual.world, manual.state.player.region)).structures.turfHut).toBe(false);
+    expect(campSite(regionState(manual.state, manual.world, manual.state.player.region))!.structures.turfHut).toBe(false);
   });
 
   it("a manual camp dies before the six-day cap on seed 17, and inBand agrees with the band", () => {

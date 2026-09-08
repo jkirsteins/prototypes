@@ -8,7 +8,7 @@ import { addItem, pile, qty } from "../src/sim/inventory";
 import { MAX_SNARES, SNARE_ODDS_PER_NIGHT } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 
@@ -16,7 +16,7 @@ describe("camp", () => {
   it("burns 3 kg of firewood an hour and feeds itself from camp while you are there", () => {
     const { state, world } = newGame(2);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 6;
     addItem(pile(state, st.campCell), "firewood", 10);
@@ -33,7 +33,7 @@ describe("camp", () => {
   it("dries 3 kg of raw meat into 1 kg over two dry days", () => {
     const { state, world } = newGame(2);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.dryingRack = true;
+    siteFor(st, st.campCell).structures.dryingRack = true;
     addItem(state.player.pack, "rawMeat", 3);
     expect(loadRack(state, world)).toBeCloseTo(3);
     for (let m = 0; m < 48 * 60; m++) stepCamp(state, world, -5, 1, { region: state.player.region, atCamp: true });
@@ -96,7 +96,8 @@ describe("camp", () => {
       if (state.player.health < 100) hits++;
     }
     expect(hits).toBeGreaterThan(5);
-    campSite(regionState(state, world, state.player.region)).structures.leanTo = true;
+    const lst = regionState(state, world, state.player.region);
+    siteFor(lst, lst.campCell).structures.leanTo = true;
     hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;

@@ -6,7 +6,7 @@ import { WATER_STORE_L } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import { campWaterCapacity, campWaterRoom, pourVessels } from "../src/sim/water";
 import { regionHtml } from "../src/ui/panels";
@@ -30,7 +30,7 @@ describe("the water trough", () => {
     expect(check(state, world, cal, "build", "waterStore")).toMatchObject({ ok: true, duration: 180 });
     expect(startTask(state, world, cal, "build", "waterStore")).toBe(true);
     advance(state, world, 180 * 2);
-    expect(campSite(st).structures.waterStore).toBe(true);
+    expect(campSite(st)!.structures.waterStore).toBe(true);
     expect(campWaterCapacity(inv, campSite(st))).toBe(WATER_STORE_L);
     addItem(inv, "barkBucket", 1);
     expect(campWaterCapacity(inv, campSite(st))).toBe(WATER_STORE_L + 2);
@@ -39,7 +39,7 @@ describe("the water trough", () => {
 
   it("takes what the vessels pour until it is full", () => {
     const { state, st, camp: inv } = camp();
-    campSite(st).structures.waterStore = true;
+    siteFor(st, st.campCell).structures.waterStore = true;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 2 }, { id: "barkBucket", durability: 100, litres: 2 });
     expect(campWaterRoom(inv, campSite(st))).toBe(WATER_STORE_L);
     expect(pourVessels(state.player, inv, campSite(st))).toBe(4);
@@ -49,7 +49,7 @@ describe("the water trough", () => {
 
   it("lets a fill keep hold more water at camp than the vessels alone could", () => {
     const { state, world, st, camp: inv } = camp();
-    campSite(st).structures.waterStore = true;
+    siteFor(st, st.campCell).structures.waterStore = true;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 0 }, { id: "barkBucket", durability: 100, litres: 0 });
     addOrder(state, world, { task: "fill", until: { kind: "campHas", qty: 20 }, deliver: "camp", where: "nearest" }, "job");
     advance(state, world, 2 * 1440);
@@ -58,7 +58,7 @@ describe("the water trough", () => {
 
   it("shows on the camp panel as capacity", () => {
     const { state, world, st } = camp();
-    campSite(st).structures.waterStore = true;
+    siteFor(st, st.campCell).structures.waterStore = true;
     const html = regionHtml(state, world, cal, newUiState());
     expect(html).toContain("water trough");
     expect(html).toContain(`of ${WATER_STORE_L.toFixed(1)} l`);

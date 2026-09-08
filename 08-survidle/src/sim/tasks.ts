@@ -39,7 +39,7 @@ import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, split
 import { goalDeed } from "./goals";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
-import { campSite, discovery, regionState } from "./regionstate";
+import { campSite, discovery, regionState, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
@@ -542,7 +542,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const kg = Math.min(raw, room);
       const o = needCamp(opt({ group: "camp", label: "Hang meat to dry", detail: `5 minutes a kilo; ${rackCapacity(site)} kg on the racks, two dry days`, duration: Math.max(1, Math.round(5 * kg)), repeatable: false }));
       if (!o.ok) return o;
-      if (!site.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
+      if (!site?.structures.dryingRack) return { ...o, ok: false, why: "needs a drying rack" };
       if (raw <= TRACE_KG) return { ...o, ok: false, why: "no raw meat here" };
       if (room <= 1e-9) return { ...o, ok: false, why: "the rack is full" };
       return o;
@@ -731,7 +731,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const sid = arg as StructureId;
       const def = STRUCTURES[sid];
       const site = campSite(st);
-      const done = site.build[sid] ?? 0;
+      const done = site?.build[sid] ?? 0;
       const total = buildMinutes(state, world, sid, at);
       const o = opt({ group: "build", label: def.name, detail: def.needs.length ? `${needsList(def.needs)}; ${def.desc}` : def.desc, duration: Math.max(1, total - done) });
       if (sid === "snare") {
@@ -757,16 +757,16 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       }
       if (!camp) return { ...o, ok: false, why: "walk to camp" };
       if (sid === "snowShelter") {
-        if (site.structures.turfHut || site.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
-        if (site.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
+        if (site?.structures.turfHut || site?.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
+        if (site?.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
         if (state.weather.snowCm < SNOW_SHELTER_CM) return { ...o, ok: false, why: `needs ${SNOW_SHELTER_CM} cm of snow` };
         if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% heaped` };
         return o;
       }
       if (sid === "dryingRack") {
-        if (site.racks >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
-      } else if (site.structures[sid]) return { ...o, ok: false, why: "already built here" };
-      if ((sid === "cabin" || sid === "turfHut") && !site.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
+        if ((site?.racks ?? 0) >= MAX_RACKS) return { ...o, ok: false, why: "two racks stand here already" };
+      } else if (site?.structures[sid]) return { ...o, ok: false, why: "already built here" };
+      if ((sid === "cabin" || sid === "turfHut") && !site?.structures.firePit) return { ...o, ok: false, why: "clear the fire site first" };
       if (done > 0) return { ...o, detail: `${Math.round((done / total) * 100)}% ${def.needs.length ? "built; materials already laid out" : "done"}` };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
       return o;
@@ -788,7 +788,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = needCamp(opt({ group: "camp", label, detail, duration: def.minutes, repeatable: false }));
       if (!o.ok) return o;
       const site = campSite(st);
-      if (!site.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };
+      if (!site?.structures[sid]) return { ...o, ok: false, why: `no ${name} here` };
       if (!needsMending(site, sid)) return { ...o, ok: false, why: "stands well enough" };
       if (!canConsume(invs, def.needs)) return { ...o, ok: false, why: "missing materials at camp" };
       return o;
@@ -801,7 +801,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         duration: lr.minutes,
       }));
       if (!o.ok) return o;
-      if (!campSite(st).structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
+      if (!campSite(st)?.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
@@ -912,12 +912,12 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const site = campSite(st);
       const o = needCamp(opt({
         group: "camp", label: "Light a fire indoors",
-        detail: site.structures.cabin && site.structures.hearth ? "at the hearth" : site.structures.turfHut && !site.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
+        detail: site?.structures.cabin && site.structures.hearth ? "at the hearth" : site?.structures.turfHut && !site.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
         duration: 10,
       }));
       if (!o.ok) return o;
-      if (site.structures.snowShelter && !site.structures.turfHut && !site.structures.cabin) return { ...o, ok: false, why: "snow does not take a fire" };
-      if (!site.structures.cabin && !site.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
+      if (site?.structures.snowShelter && !site.structures.turfHut && !site.structures.cabin) return { ...o, ok: false, why: "snow does not take a fire" };
+      if (!site?.structures.cabin && !site?.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
       if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
@@ -948,7 +948,7 @@ export function bedText(state: GameState, world: World): string {
   const st = regionState(state, world, state.player.region);
   const camp = atCamp(state, world);
   const site = campSite(st);
-  const bed = camp && site.structures.boughBed;
+  const bed = camp && site?.structures.boughBed;
   const roof = camp && roofed(site);
   const blanket = state.player.clothing.some((g) => CLOTHING[g.id].slot === "blanket");
   const on = bed ? "on a bough bed" : "on bare ground";
@@ -1139,10 +1139,14 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     any = true;
     log(state, id === "hunt" ? `Fresh sign: ${anAnimal(drawn)}.` : `A swirl under the bank: ${SPECIES_DEFS[drawn].name}.`);
   }
-  if (id === "build" && !(campSite(regionState(state, world, state.player.region)).build[arg as StructureId] ?? 0)) {
+  if (id === "build" && !(campSite(regionState(state, world, state.player.region))?.build[arg as StructureId] ?? 0)) {
     // Materials are committed when the work starts, and stay laid out if you stop.
     consume(reach(state, world), STRUCTURES[arg as StructureId].needs);
-    if (arg !== "snare") campSite(regionState(state, world, state.player.region)).build[arg as StructureId] = 0.001;
+    // The first minute of real progress is what raises the site, the same as a completed build does.
+    if (arg !== "snare") {
+      const homeSt = regionState(state, world, state.player.region);
+      siteFor(homeSt, homeSt.campCell).build[arg as StructureId] = 0.001;
+    }
   }
   if (id === "walk" || id === "travel") {
     const target = walkTarget(state, world, arg ?? "")!;
@@ -1217,7 +1221,8 @@ export function setAside(state: GameState, world: World): void {
   const t = state.task;
   if (!t) return;
   if (t.id === "build" && t.arg !== "snare") {
-    const site = campSite(regionState(state, world, state.player.region));
+    const homeSt = regionState(state, world, state.player.region);
+    const site = siteFor(homeSt, homeSt.campCell);
     const sid = t.arg as StructureId;
     site.build[sid] = (site.build[sid] ?? 0) + t.progress;
   } else if (t.id === "walk" || t.id === "travel" || t.id === "explore" || t.id === "searchHome") {
@@ -2007,20 +2012,24 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "build": {
       const sid = arg as StructureId;
-      const site = campSite(st);
+      // A snare's completion never touches the camp's own record: it stands on the
+      // heath, counted in st.snares, and raises no site of its own.
       if (sid === "snare") {
         consume(invs, STRUCTURES.snare.needs);
         st.snares++;
-      } else if (sid === "seep") {
-        const here = cellOf(state, world);
-        state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
-        delete site.build[sid];
       } else {
-        site.structures[sid] = true;
-        delete site.build[sid];
-        if (sid === "dryingRack") site.racks = Math.min(MAX_RACKS, site.racks + 1);
-        if (sid === "boughBed") site.boughBedAge = 0;
-        if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") site.structureAge[sid] = 0;
+        const site = siteFor(st, st.campCell);
+        if (sid === "seep") {
+          const here = cellOf(state, world);
+          state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
+          delete site.build[sid];
+        } else {
+          site.structures[sid] = true;
+          delete site.build[sid];
+          if (sid === "dryingRack") site.racks = Math.min(MAX_RACKS, site.racks + 1);
+          if (sid === "boughBed") site.boughBedAge = 0;
+          if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") site.structureAge[sid] = 0;
+        }
       }
       state.stats.structures++;
       // Once per structure per life; the first snare set is the record's snare line.
@@ -2038,7 +2047,8 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       }
       const sid = arg as DecayingId;
       consume(invs, MEND[sid].needs);
-      campSite(st).structureAge[sid] = 0;
+      // Reachable only once needsMending has confirmed the structure stands, so the site is already there.
+      siteFor(st, st.campCell).structureAge[sid] = 0;
       record(state, { kind: "repaired", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is mended.`, "good");
       return;

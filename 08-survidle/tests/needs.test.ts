@@ -11,7 +11,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { ambientTemperature } from "../src/sim/weather";
 import { placeAt, straightKm } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
 import { check, startTask } from "../src/sim/tasks";
@@ -87,7 +87,7 @@ describe("the need order", () => {
     // No axe: an iced shore in reach would otherwise be a hole to cut, and
     // this test wants the melt path that runs when a hole is not an option.
     p.tools = p.tools.filter((t) => t.id !== "axe");
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     addItem(p.pack, "fireDrill", 1);
     takeUp(state, world, "fireDrill");
     addItem(pile(state, st.campCell), "firewood", 10);
@@ -245,7 +245,7 @@ describe("wet and cold", () => {
     const g = felling();
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
     state.weather.offset = -10;
@@ -425,7 +425,7 @@ describe("sleep by the model, not by the clock", () => {
     const { state, world, night } = septemberEvening();
     const st = regionState(state, world, state.player.region);
     st.fire.lit = false;
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 5);
     state.intent = null;

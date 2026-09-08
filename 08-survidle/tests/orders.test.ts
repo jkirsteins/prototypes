@@ -8,7 +8,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
@@ -180,7 +180,7 @@ describe("when an order is met", () => {
     expect(orderMet(state, world, cal, has, false)).toBe(true);
     const build = addOrder(state, world, { task: "build", arg: "firePit", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     expect(orderMet(state, world, cal, build, false)).toBe(false);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     expect(orderMet(state, world, cal, build, false)).toBe(true);
   });
 
@@ -238,7 +238,7 @@ function campWith(seed: number, camp: Partial<Record<"log" | "firewood" | "dried
   const g = newGame(seed);
   const { state, world } = g;
   const st = regionState(state, world, state.player.region);
-  campSite(st).structures.firePit = true;
+  siteFor(st, st.campCell).structures.firePit = true;
   state.player.tools.push({ id: "fireDrill", durability: 100 });
   placeAtSpot(state, world, state.player.region, "camp");
   const p = pile(state, st.campCell);
@@ -640,7 +640,7 @@ describe("the fire keep", () => {
   it("with no fire drill the row reads needs a fire drill", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     const o = addOrder(state, world, req("light", { until: { kind: "campHas", qty: 1 }, deliver: "camp" }), "keep");
     advance(state, world, 1);
     expect(o.skipped).toBe("needs a fire drill");
@@ -823,7 +823,7 @@ describe("the night", () => {
     // no firewood, no fire.
     const { state, world, st, night } = decemberChores();
     st.fire.lit = false;
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 5);
     addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep", 0);
@@ -880,9 +880,9 @@ describe("a keep on a structure", () => {
     const o = addOrder(state, world, n.req, n.kind);
     expect(keepTarget(o)).toBeNull();
     expect(orderMet(state, world, cal, o, false)).toBe(false);
-    campSite(st).structures.boughBed = true;
+    siteFor(st, st.campCell).structures.boughBed = true;
     expect(orderMet(state, world, cal, o, true)).toBe(true);
-    campSite(st).structures.boughBed = false;
+    siteFor(st, st.campCell).structures.boughBed = false;
     expect(orderMet(state, world, cal, o, true)).toBe(false);
     expect(orderSentence(state, world, calendar(0), o)).toContain("keep the bough bed laid");
   });

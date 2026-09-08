@@ -28,7 +28,7 @@ describe("the fire site", () => {
     expect(o.ok).toBe(true);
     expect(startTask(state, world, cal, "build", "firePit")).toBe(true);
     advance(state, world, o.duration);
-    expect(campSite(st).structures.firePit).toBe(true);
+    expect(campSite(st)!.structures.firePit).toBe(true);
     // And the fire that was gated behind it is now only a drill and a kilo of wood away.
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);

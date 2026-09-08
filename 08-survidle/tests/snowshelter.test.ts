@@ -6,7 +6,7 @@ import { roofed } from "../src/sim/fire";
 import { SNOW_MELT_DAYS, SNOW_SHELTER_CM, STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature, sheltered, SNOW_FLOOR_C } from "../src/sim/player";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { REFERENCE_ORDERS, wantOpen } from "../src/sim/reference";
 
@@ -24,7 +24,7 @@ describe("the snow shelter", () => {
     expect(check(state, world, cal, "build", "snowShelter").why).toBe("needs 40 cm of snow");
     state.weather.snowCm = 45;
     expect(check(state, world, cal, "build", "snowShelter").ok).toBe(true);
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     expect(check(state, world, cal, "build", "snowShelter").why).toBe("the hut is warmer");
   });
 
@@ -35,12 +35,12 @@ describe("the snow shelter", () => {
     const cal = calendar(0, 334);
     startTask(state, world, cal, "build", "snowShelter");
     for (let m = 0; m < 300 && state.task; m++) stepTask(state, world, cal, new Rng(m), 1);
-    expect(campSite(st).structures.snowShelter).toBe(true);
+    expect(campSite(st)!.structures.snowShelter).toBe(true);
     expect(roofed(campSite(st))).toBe(true);
     state.task = null;
     expect(sheltered(state, world)).toBe(true);
     const inside = feltTemperature(state, world, -25);
-    const openAir = (() => { campSite(st).structures.snowShelter = false; const f = feltTemperature(state, world, -25); campSite(st).structures.snowShelter = true; return f; })();
+    const openAir = (() => { siteFor(st, st.campCell).structures.snowShelter = false; const f = feltTemperature(state, world, -25); siteFor(st, st.campCell).structures.snowShelter = true; return f; })();
     expect(inside - openAir).toBeCloseTo(SNOW_FLOOR_C + 25, 6);
     expect(check(state, world, cal, "lightIndoors").why).toBe("snow does not take a fire");
   });
@@ -48,17 +48,17 @@ describe("the snow shelter", () => {
   it("slumps on the third warm day in a row and stands through a cold one between", () => {
     const { state, world } = newGame(17, 334);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.snowShelter = true;
+    siteFor(st, st.campCell).structures.snowShelter = true;
     state.weather.offset = 20;
     dailyCamp(state, world, calendar(0, 334), new Rng(1), null);
     dailyCamp(state, world, calendar(1440, 334), new Rng(2), null);
-    expect(campSite(st).structures.snowShelter).toBe(true);
+    expect(campSite(st)!.structures.snowShelter).toBe(true);
     state.weather.offset = -20;
     dailyCamp(state, world, calendar(2880, 334), new Rng(3), null);
-    expect(campSite(st).meltDays).toBe(0);
+    expect(campSite(st)!.meltDays).toBe(0);
     state.weather.offset = 20;
     for (let d = 0; d < SNOW_MELT_DAYS; d++) dailyCamp(state, world, calendar((3 + d) * 1440, 334), new Rng(d), null);
-    expect(campSite(st).structures.snowShelter).toBe(false);
+    expect(campSite(st)!.structures.snowShelter).toBe(false);
     expect(state.log.some((l) => l.text.includes("has slumped"))).toBe(true);
   });
 
@@ -68,28 +68,29 @@ describe("the snow shelter", () => {
     const { state, world } = newGame(17, 334);
     const w = REFERENCE_ORDERS[tasks.indexOf("build:snowShelter:job")];
     expect(wantOpen(state, world, w)).toBe(true);
-    campSite(regionState(state, world, state.player.region)).structures.turfHut = true;
+    const sst = regionState(state, world, state.player.region);
+    siteFor(sst, sst.campCell).structures.turfHut = true;
     expect(wantOpen(state, world, w)).toBe(false);
   });
 
   it("beside a lean-to, reads the better of the two roofs rather than colder than either", () => {
     const { state, world } = newGame(17, 334);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.snowShelter = true;
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.snowShelter = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     state.task = null;
     // Mild cold: the lean-to's open-air bonus beats the snow floor, so both together read
     // no colder than the lean-to alone.
     const bothMild = feltTemperature(state, world, -4);
-    campSite(st).structures.snowShelter = false;
+    siteFor(st, st.campCell).structures.snowShelter = false;
     const leanToOnly = feltTemperature(state, world, -4);
-    campSite(st).structures.snowShelter = true;
+    siteFor(st, st.campCell).structures.snowShelter = true;
     expect(bothMild).toBeCloseTo(leanToOnly, 6);
     // Deep cold: the snow floor beats the lean-to's fixed bonus, so both together read the floor.
     const bothCold = feltTemperature(state, world, -25);
-    campSite(st).structures.leanTo = false;
+    siteFor(st, st.campCell).structures.leanTo = false;
     const snowOnly = feltTemperature(state, world, -25);
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     expect(bothCold).toBeCloseTo(snowOnly, 6);
   });
 
@@ -98,22 +99,22 @@ describe("the snow shelter", () => {
     // still-standing one, its fire not yet lit indoors, is a reachable state.
     const { state, world } = newGame(17, 334);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.turfHut = true;
-    campSite(st).structures.snowShelter = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.snowShelter = true;
     state.task = null;
     expect(st.fire.lit).toBe(false);
     // Mild cold: the hut's +10 roof bonus beats the snow floor, so both together read
     // no colder than the hut alone.
     const bothMild = feltTemperature(state, world, -4);
-    campSite(st).structures.snowShelter = false;
+    siteFor(st, st.campCell).structures.snowShelter = false;
     const hutOnly = feltTemperature(state, world, -4);
-    campSite(st).structures.snowShelter = true;
+    siteFor(st, st.campCell).structures.snowShelter = true;
     expect(bothMild).toBeCloseTo(hutOnly, 6);
     // Deep cold: ambient + 10 is still colder than the floor, so both together read the floor.
     const bothCold = feltTemperature(state, world, -25);
-    campSite(st).structures.turfHut = false;
+    siteFor(st, st.campCell).structures.turfHut = false;
     const floorOnly = feltTemperature(state, world, -25);
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     expect(bothCold).toBeCloseTo(floorOnly, 6);
   });
 });

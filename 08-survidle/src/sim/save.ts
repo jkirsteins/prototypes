@@ -225,7 +225,8 @@ export function migrate(state: GameState): void {
       site.structures.turfHut = Boolean(old.turfHut);
       site.structures.waterStore = Boolean(old.waterStore);
       site.structures.snowShelter = Boolean(old.snowShelter);
-      site.racks = flat.racks ?? 0;
+      // A save from before racks were counted has only the flag: one rack stood if dryingRack did.
+      site.racks = flat.racks ?? (old.dryingRack ? 1 : 0);
       site.boughBedAge = flat.boughBedAge ?? 0;
       site.meltDays = flat.meltDays ?? 0;
       site.structureAge = flat.structureAge ?? {};

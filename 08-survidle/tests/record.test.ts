@@ -8,7 +8,7 @@ import { CLOTHING } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { abandon, DEATH_LINES, die } from "../src/sim/player";
 import { current, hasEvent, noteNight, record, worldDate } from "../src/sim/record";
-import { campSite, enterRegion, regionState } from "../src/sim/regionstate";
+import { enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { startTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 
@@ -65,7 +65,7 @@ describe("the record's seams", () => {
     advance(state, world, 60);
     expect(hasEvent(state, (e) => e.kind === "built" && e.structure === "firePit")).toBe(true);
     // Rebuilding the same structure later in the same life (a fallen fire pit, say) does not add a second event.
-    campSite(st).structures.firePit = false;
+    siteFor(st, st.campCell).structures.firePit = false;
     addItem(pile(state, st.campCell), "stone", 6);
     startTask(state, world, calendar(0), "build", "firePit");
     advance(state, world, 60);

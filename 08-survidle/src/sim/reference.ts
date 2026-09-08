@@ -38,7 +38,7 @@ import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
 import { cellOf, heathCell, watersideCell } from "./position";
 import { current } from "./record";
-import { campSite, regionState } from "./regionstate";
+import { campSite, regionState, siteFor } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
@@ -463,13 +463,13 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
   // The fire by method: the pit until a hut or a hearth stands, the fire indoors after.
   if (w.req.task === "light" || w.req.task === "lightIndoors") {
     const site = campSite(regionState(state, world, state.player.region));
-    const indoors = site.structures.turfHut || (site.structures.cabin && site.structures.hearth);
-    return w.req.task === "lightIndoors" ? indoors : !indoors;
+    const indoors = site?.structures.turfHut || (site?.structures.cabin && site.structures.hearth);
+    return w.req.task === "lightIndoors" ? indoors === true : !indoors;
   }
   // The snow shelter closes once a hut or a cabin stands: warmer walls, and the same cell to camp on.
   if (w.req.task === "build" && w.req.arg === "snowShelter") {
     const site = campSite(regionState(state, world, state.player.region));
-    return !(site.structures.turfHut || site.structures.cabin);
+    return !(site?.structures.turfHut || site?.structures.cabin);
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
@@ -708,7 +708,7 @@ export function kitOut(state: GameState, world: World, producers = true): void {
   const camp = pile(state, st.campCell);
   addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);
-  const site = campSite(st);
+  const site = siteFor(st, st.campCell);
   site.structures.firePit = true;
   if (producers) {
     site.structures.turfHut = true;
@@ -1253,7 +1253,7 @@ function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landC
   const oldSt = regionState(state, world, oldRegion);
   const oldSite = campSite(oldSt);
   const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSite.structures[s]);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSite?.structures[s]);
   const lc = cellAt(world, landCell);
   const cc = cellAt(world, oldSt.campCell);
   return {

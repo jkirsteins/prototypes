@@ -59,7 +59,7 @@ describe("the heir's boat", () => {
     expect(l.boat).toBe(0);
     const before = { date: { ...l.date }, gap: l.gapDays, names: l.candidates.map((c) => c.name) };
     const st = regionState(state, world, state.player.region);
-    const age = campSite(st).structureAge;
+    const age = campSite(st)?.structureAge ?? null;
     nextBoat(state, world);
     expect(l.boat).toBe(1);
     expect(l.gapDays).toBe(before.gap + 7);
@@ -69,7 +69,7 @@ describe("the heir's boat", () => {
     expect(l.candidates.map((c) => c.name)).not.toEqual(before.names);
     expect(l.chosen).toBe(0);
     expect(l.name).toEqual(l.candidates[0].name);
-    expect(campSite(st).structureAge).toBe(age);
+    expect(campSite(st)?.structureAge ?? null).toBe(age);
   });
 
   it("jumps to May when the week crosses the coast's close", () => {

@@ -50,10 +50,13 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng, who: Pr
     if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended <= SPREAD_UNATTENDED_MINUTES) continue;
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
     st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
+    // A fire only ever burns where a fire site was cleared, so a site stands here already.
     const site = campSite(st);
-    site.structures.leanTo = false;
-    delete site.structureAge.leanTo;
-    site.structures.boughBed = false;
+    if (site) {
+      site.structures.leanTo = false;
+      delete site.structureAge.leanTo;
+      site.structures.boughBed = false;
+    }
     st.fire.lit = false;
     st.fire.fuelKg = 0;
     st.fire.wetKg = 0;

@@ -66,9 +66,9 @@ export function siteFor(st: RegionState, cell: number): Site {
   return st.sites[cell];
 }
 
-/** What stands at the camp. */
-export function campSite(st: RegionState): Site {
-  return siteFor(st, st.campCell);
+/** What stands at the camp, or null with nothing built there. */
+export function campSite(st: RegionState): Site | null {
+  return siteAt(st, st.campCell);
 }
 
 /**

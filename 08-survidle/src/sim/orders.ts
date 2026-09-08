@@ -242,13 +242,13 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
       const want = o.req.until.kind === "campHas" ? o.req.until.qty : 1;
       return live ? st.snares >= want : st.snares >= want / 2;
     }
-    return campSite(st).structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.kind === "grind") return false;
   // A seep stands on a cell, not at the camp: its dig is a job done once.
   if (o.req.task === "build" && o.req.arg === "seep") return o.done >= 1;
   if (o.req.task === "build" && o.req.arg !== "snare") {
-    return campSite(st).structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return campSite(st)?.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
   const u = o.req.until;

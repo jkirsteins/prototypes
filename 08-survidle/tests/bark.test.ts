@@ -6,7 +6,7 @@ import { addItem, pile, qty } from "../src/sim/inventory";
 import { BARK_FRESH_KG_PER_HOUR, BARK_TREE_SHARE, FOODS, GUT } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { cellAt, regionAt } from "../src/world/gen";
 
@@ -36,7 +36,7 @@ describe("pine inner bark", () => {
     expect(qty(state.player.pack, "freshBark")).toBeCloseTo(BARK_FRESH_KG_PER_HOUR, 6);
     expect(wood - st.wood).toBeCloseTo(BARK_FRESH_KG_PER_HOUR * BARK_TREE_SHARE, 6);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     addItem(pile(state, st.campCell), "freshBark", 3);

@@ -139,8 +139,8 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
 }
 
 /** Raw meat the camp's racks hold together. */
-export function rackCapacity(site: Site): number {
-  return RACK_MAX_KG * Math.max(1, site.racks);
+export function rackCapacity(site: Site | null): number {
+  return RACK_MAX_KG * Math.max(1, site?.racks ?? 0);
 }
 
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
@@ -221,32 +221,36 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         }
       }
     }
-    if (site.structures.boughBed) {
-      site.boughBedAge += 1440;
-      if (site.boughBedAge >= BOUGH_BED_DAYS * 1440) {
-        site.structures.boughBed = false;
-        site.boughBedAge = 0;
-        log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
+    // Nothing decays where nothing stands: every check below is on a structure that
+    // must already be true, which cannot hold with no site raised at the camp cell.
+    if (site) {
+      if (site.structures.boughBed) {
+        site.boughBedAge += 1440;
+        if (site.boughBedAge >= BOUGH_BED_DAYS * 1440) {
+          site.structures.boughBed = false;
+          site.boughBedAge = 0;
+          log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
+        }
       }
-    }
-    if (site.structures.snowShelter) {
-      const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
-      site.meltDays = mean > 0 ? site.meltDays + 1 : 0;
-      if (site.meltDays >= SNOW_MELT_DAYS) {
-        site.structures.snowShelter = false;
-        site.meltDays = 0;
-        log(state, `The snow shelter at ${r.name} has slumped.`, "bad");
+      if (site.structures.snowShelter) {
+        const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
+        site.meltDays = mean > 0 ? site.meltDays + 1 : 0;
+        if (site.meltDays >= SNOW_MELT_DAYS) {
+          site.structures.snowShelter = false;
+          site.meltDays = 0;
+          log(state, `The snow shelter at ${r.name} has slumped.`, "bad");
+        }
       }
-    }
-    for (const sid of DECAYING) {
-      if (!site.structures[sid]) continue;
-      site.structureAge[sid] = (site.structureAge[sid] ?? 0) + 1440;
-      if (site.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
-      site.structures[sid] = false;
-      delete site.structureAge[sid];
-      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; site.racks = 0; }
-      if (sid === "turfHut") st.fire.indoors = false;
-      log(state, FALLS[sid](r.name), "bad");
+      for (const sid of DECAYING) {
+        if (!site.structures[sid]) continue;
+        site.structureAge[sid] = (site.structureAge[sid] ?? 0) + 1440;
+        if (site.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
+        site.structures[sid] = false;
+        delete site.structureAge[sid];
+        if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; site.racks = 0; }
+        if (sid === "turfHut") st.fire.indoors = false;
+        log(state, FALLS[sid](r.name), "bad");
+      }
     }
     if (st.iceHole) {
       st.iceHole = null;
@@ -261,8 +265,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
 }
 
 /** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
-export function needsMending(site: Site, id: DecayingId): boolean {
-  return site.structures[id] && (site.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
+export function needsMending(site: Site | null, id: DecayingId): boolean {
+  return site !== null && site.structures[id] && (site.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
 }
 
 /**
@@ -286,8 +290,10 @@ const STRUCTURE_WORD: Partial<Record<keyof Site["structures"], string>> = {
 export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok: false; why: string } {
   const st = regionState(state, world, state.player.region);
   const site = campSite(st);
-  for (const [key, word] of Object.entries(STRUCTURE_WORD)) {
-    if (site.structures[key as keyof typeof site.structures]) return { ok: false, why: `the ${word} stands there` };
+  if (site) {
+    for (const [key, word] of Object.entries(STRUCTURE_WORD)) {
+      if (site.structures[key as keyof typeof site.structures]) return { ok: false, why: `the ${word} stands there` };
+    }
   }
   if (st.fire.lit || fuelTotal(st.fire) > 0) return { ok: false, why: "the fire is banked there" };
   // Read only: pile() would insert an empty inventory at the camp cell, which the map

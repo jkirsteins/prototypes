@@ -68,7 +68,7 @@ export function groundDry(w: Weather, cal: Calendar): boolean {
 export function fireWarms(st: RegionState): boolean {
   if (!st.fire.lit) return false;
   const site = campSite(st);
-  if (!site.structures.cabin) return true;
+  if (!site?.structures.cabin) return true;
   return site.structures.hearth || st.fire.indoors;
 }
 
@@ -90,7 +90,7 @@ export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
   // The hut has a smoke hole; a camp with one and no cabin never fills. A
   // hut beside a cabin is not the walled shelter the smoke hole was built
   // into, so the cabin's own smoke rule still applies.
-  const filling = st.fire.lit && st.fire.indoors && !site.structures.hearth && atCamp && !(site.structures.turfHut && !site.structures.cabin);
+  const filling = st.fire.lit && st.fire.indoors && !site?.structures.hearth && atCamp && !(site?.structures.turfHut && !site?.structures.cabin);
   if (filling) {
     const rate = smoky(st.fire) ? SMOKE_RISE_PER_HOUR * 1.5 : SMOKE_RISE_PER_HOUR;
     st.smoke = Math.min(100, st.smoke + (rate / 60) * dt);
@@ -123,8 +123,8 @@ export function burnPerHour(w: Weather, ambient: number, st: RegionState): numbe
   const open = openBurnPerHour(ambient);
   const site = campSite(st);
   if (st.fire.indoors) {
-    if (site.structures.cabin && site.structures.hearth) return open * SHELTER_BURN_RATIO.cabin;
-    if (site.structures.turfHut) return open * SHELTER_BURN_RATIO.turfHut;
+    if (site?.structures.cabin && site.structures.hearth) return open * SHELTER_BURN_RATIO.cabin;
+    if (site?.structures.turfHut) return open * SHELTER_BURN_RATIO.turfHut;
   }
   if (w.precip === "none" || roofed(site)) return open;
   const snowing = ambient <= 0;
@@ -194,8 +194,8 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
     const site = campSite(st);
-    const sheltered = st.fire.lit || site.structures.cabin || site.structures.turfHut;
-    const perHour = sheltered ? 2 : site.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
+    const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut;
+    const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
     if (perHour <= 0) continue;
     const campPile = state.piles[st.campCell];
     const atThisCamp = who !== null && id === who.region && who.atCamp;

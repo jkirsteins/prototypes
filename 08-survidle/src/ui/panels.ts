@@ -338,21 +338,21 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     .join("");
   const site = campSite(st);
   const built: string[] = [];
-  if (site.structures.firePit) built.push(STRUCTURES.firePit.name);
-  if (site.structures.leanTo) built.push(needsMending(site, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
-  if (site.structures.cabin) built.push("log cabin");
-  if (site.structures.turfHut) built.push(needsMending(site, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
-  if (site.structures.dryingRack) built.push(needsMending(site, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
-  if (site.structures.boughBed) built.push("bough bed");
-  if (site.structures.waterStore) built.push("water trough");
-  if (site.structures.snowShelter) built.push("snow shelter");
+  if (site?.structures.firePit) built.push(STRUCTURES.firePit.name);
+  if (site?.structures.leanTo) built.push(needsMending(site, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
+  if (site?.structures.cabin) built.push("log cabin");
+  if (site?.structures.turfHut) built.push(needsMending(site, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
+  if (site?.structures.dryingRack) built.push(needsMending(site, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
+  if (site?.structures.boughBed) built.push("bough bed");
+  if (site?.structures.waterStore) built.push("water trough");
+  if (site?.structures.snowShelter) built.push("snow shelter");
   if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
-  const fire = site.structures.firePit
+  const unfinished = site ? (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`) : [];
+  const fire = site?.structures.firePit
     ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
     : "";
-  const rack = site.structures.dryingRack
+  const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
   const campPile = pile(state, st.campCell);

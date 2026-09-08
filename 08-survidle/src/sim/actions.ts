@@ -150,7 +150,7 @@ export function loadRack(state: GameState, world: World): number {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const site = campSite(st);
-  if (!atCamp(state, world) || !site.structures.dryingRack) return 0;
+  if (!atCamp(state, world) || !site?.structures.dryingRack) return 0;
   const invs = [p.pack, herePile(state, world)];
   const room = rackCapacity(site) - st.rack.kg;
   const kg = Math.min(room, totalQty(invs, "rawMeat"));

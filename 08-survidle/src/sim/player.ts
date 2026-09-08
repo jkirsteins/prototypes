@@ -64,6 +64,7 @@ export function shelterBonus(site: Site | null): number {
 /** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
 export function sheltered(state: GameState, world: World): boolean {
   const site = campSite(regionState(state, world, state.player.region));
+  if (!site) return false;
   return atCamp(state, world) && isCampTask(state.task) && (site.structures.cabin || site.structures.leanTo || site.structures.turfHut || site.structures.snowShelter);
 }
 
@@ -139,9 +140,9 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   // A cabin holds its room temperature only once the fire has a hearth to
   // burn on: without one the fire is at the pit outside, and the walls are a
   // roof and no more.
-  const inCabin = site.structures.cabin && site.structures.hearth;
-  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (site.structures.turfHut || inCabin);
-  const inSnow = camp && campTask && site.structures.snowShelter && !indoors;
+  const inCabin = site?.structures.cabin && site.structures.hearth;
+  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (site?.structures.turfHut || inCabin);
+  const inSnow = camp && campTask && site?.structures.snowShelter && !indoors;
   let felt: number;
   if (indoors) {
     felt = Math.max(ambient, inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) + insulation(state);
@@ -160,7 +161,7 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
   }
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
   if (bedded(state.task)) felt += beddingInsulation(state);
-  if (camp && state.task?.id === "sleep" && site.structures.boughBed) felt += BOUGH_BED_C;
+  if (camp && state.task?.id === "sleep" && site?.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;
@@ -292,7 +293,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const campTask = isCampTask(state.task);
   const roof = sheltered(state, world);
   const site = campSite(r);
-  const walled = roof && (site.structures.cabin || site.structures.turfHut || site.structures.snowShelter);
+  const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);
   const h = dt / 60;
 
   const x: Exposure = {

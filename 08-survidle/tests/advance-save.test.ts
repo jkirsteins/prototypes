@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
-import { campSite, fillPopulations } from "../src/sim/regionstate";
+import { campSite, fillPopulations, siteFor } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
@@ -80,11 +80,12 @@ describe("save", () => {
     const st = state.regions[state.player.region];
     expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 });
     expect(st.smoke).toBe(0);
-    expect(campSite(st).structures.hearth).toBe(false);
+    expect(campSite(st)?.structures.hearth ?? false).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });
     // A rack standing and a trap set, both carried whole through the round trip.
-    campSite(st).structures.dryingRack = true;
-    campSite(st).racks = 1;
+    const site = siteFor(st, st.campCell);
+    site.structures.dryingRack = true;
+    site.racks = 1;
     st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
@@ -123,9 +124,9 @@ describe("save", () => {
     expect(back.regions[state.player.region].fire.indoors).toBe(false);
     expect(back.regions[state.player.region].fire.unattended).toBe(0);
     expect(back.regions[state.player.region].smoke).toBe(0);
-    expect(campSite(back.regions[state.player.region]).structures.hearth).toBe(false);
+    expect(campSite(back.regions[state.player.region])?.structures.hearth ?? false).toBe(false);
     expect(back.regions[state.player.region].logsWet).toBe(1440);
-    expect(campSite(back.regions[state.player.region]).racks).toBe(1);
+    expect(campSite(back.regions[state.player.region])?.racks).toBe(1);
     expect(back.regions[state.player.region].trap!.age).toBe(0);
   });
 
@@ -312,7 +313,7 @@ describe("the world save", () => {
     expect(file.state.survivors[0].name.first.length).toBeGreaterThan(0);
     expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
     expect(file.state.spine).toEqual({ fired: {}, announced: {} });
-    for (const st of Object.values(file.state.regions)) expect(campSite(st).structureAge).toEqual({});
+    for (const st of Object.values(file.state.regions)) expect(campSite(st)?.structureAge ?? {}).toEqual({});
   });
 });
 
@@ -341,8 +342,8 @@ describe("the version 6 save", () => {
     expect(file).not.toBeNull();
     expect(file.state.player.known).toEqual({});
     for (const st of Object.values(file.state.regions)) {
-      expect(campSite(st).structures.turfHut).toBe(false);
-      expect(campSite(st).structures.waterStore).toBe(false);
+      expect(campSite(st)?.structures.turfHut ?? false).toBe(false);
+      expect(campSite(st)?.structures.waterStore ?? false).toBe(false);
       expect(st.trap).toBeNull();
     }
     expect(file.state.ledger[0].yield.trap).toBe(0);

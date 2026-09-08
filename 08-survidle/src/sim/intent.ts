@@ -554,7 +554,7 @@ function canFetch(state: GameState, world: World, sid: StructureId, campCell: nu
 function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome | "none" {
   const sid = it.arg as StructureId;
   const st = regionState(state, world, state.player.region);
-  if ((campSite(st).build[sid] ?? 0) > 0) return "none";
+  if ((campSite(st)?.build[sid] ?? 0) > 0) return "none";
   const p = state.player;
   const campInvs = [p.pack, pile(state, it.campCell)];
   if (canConsume(campInvs, STRUCTURES[sid].needs)) return "none";

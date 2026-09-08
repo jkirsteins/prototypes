@@ -7,7 +7,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { baseWalkSpeed } from "../src/sim/player";
 import { atCamp, campCellOf, cellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
@@ -25,9 +25,9 @@ describe("moving the camp is allowed while nothing stands at it", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     expect(canMoveCamp(state, world)).toEqual({ ok: true });
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire site stands there" });
-    campSite(st).structures.firePit = false;
+    siteFor(st, st.campCell).structures.firePit = false;
     st.fire.fuelKg = 2;
     expect(canMoveCamp(state, world)).toEqual({ ok: false, why: "the fire is banked there" });
     st.fire.fuelKg = 0;
@@ -195,11 +195,11 @@ describe("make camp here", () => {
     const next = neighbourLandCell(world, st.campCell);
     placeAt(state, world, next);
     const cal = calendar(state.minute, state.startDoy);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")).toEqual(
       expect.objectContaining({ ok: false, why: "the fire site stands there" }),
     );
-    campSite(st).structures.firePit = false;
+    siteFor(st, st.campCell).structures.firePit = false;
     addItem(pile(state, st.campCell), "stick", 30);
     expect(availableTasks(state, world, cal).find((o) => o.id === "makeCamp")!.ok).toBe(false);
     removeItem(pile(state, st.campCell), "stick", 30);

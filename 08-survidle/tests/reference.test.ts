@@ -37,7 +37,7 @@ import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { runYear } from "../src/sim/year";
 import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
@@ -793,7 +793,7 @@ describe("wants by method", () => {
     expect(indoors.kind).toBe("keep");
     expect(wantOpen(state, world, pit)).toBe(true);
     expect(wantOpen(state, world, indoors)).toBe(false);
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     expect(wantOpen(state, world, pit)).toBe(false);
     expect(wantOpen(state, world, indoors)).toBe(true);
   });

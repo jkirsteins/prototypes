@@ -12,7 +12,7 @@ import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
-import { campSite, DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
+import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
@@ -58,8 +58,8 @@ describe("the landing", () => {
   it("begins again: the pack lies where the body fell, the world has run the gap, the fog is dim, the clock is the landing's", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     addItem(pile(state, st.campCell), "firewood", 10);
     advance(state, world, 20 * 1440);
     const deathCell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x);
@@ -75,8 +75,8 @@ describe("the landing", () => {
     expect(state.minute).toBe(0);
     expect(state.startDoy).toBe(183);
     expect(state.year).toBe(1);
-    expect(campSite(st).structures.leanTo).toBe(true);
-    expect(campSite(st).structures.firePit).toBe(true);
+    expect(campSite(st)!.structures.leanTo).toBe(true);
+    expect(campSite(st)!.structures.firePit).toBe(true);
     expect(qty(pile(state, st.campCell), "firewood")).toBe(10);
     expect(qty(pile(state, deathCell), "driedMeat")).toBeCloseTo(packMeat, 3);
     for (const id of Object.keys(state.discovered)) expect(discovery(state, Number(id))).toBe(DIM);
@@ -88,7 +88,7 @@ describe("the landing", () => {
     const { state, world } = newGame(17);
     const startRegion = state.player.region;
     const st = regionState(state, world, startRegion);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.snares = 2;
     const startName = regionAt(world, startRegion).name;
     const neighbour = regionAt(world, startRegion).neighbours[0].id;
@@ -149,9 +149,9 @@ describe("what the heir is told", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     placeAtSpot(state, world, state.player.region, "shore");
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.dryingRack = true;
-    campSite(st).racks = 1;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.dryingRack = true;
+    siteFor(st, st.campCell).racks = 1;
     const rec = current(state);
     rec.events.push({ kind: "built", structure: "firePit", day: 2, date: { year: 1, doy: 91 } });
     rec.events.push({ kind: "built", structure: "dryingRack", day: 9, date: { year: 1, doy: 98 } });

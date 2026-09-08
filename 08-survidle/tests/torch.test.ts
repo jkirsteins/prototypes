@@ -7,7 +7,7 @@ import { ITEM_KG, RECIPES, TORCH_BURN_MINUTES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, firelit, stepPlayer } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -60,7 +60,7 @@ describe("lighting a torch", () => {
     expect(check(state, world, cal, "lightTorch").why).toBe("needs a torch");
     addItem(state.player.pack, "torch", 2);
     expect(check(state, world, cal, "lightTorch").why).toBe("needs a fire or a fire drill");
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 5;
     const atFire = check(state, world, cal, "lightTorch");
@@ -100,7 +100,7 @@ describe("lighting a torch", () => {
     const g = newGame(3);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 5;
     addItem(state.player.pack, "torch", 1);

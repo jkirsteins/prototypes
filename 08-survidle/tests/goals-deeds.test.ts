@@ -10,7 +10,7 @@ import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 
@@ -23,7 +23,7 @@ describe("deeds reach the ladder", () => {
     state.goals.done.firewood = true;
     placeAt(state, world, st.campCell);
     // Everything a light needs, so the deed is the only thing under test.
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     addItem(state.player.pack, "firewood", 5);
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     const o = check(state, world, cal, "light");
@@ -40,7 +40,7 @@ describe("deeds reach the ladder", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     // Rain with no roof gives a one-in-three fail chance; seed 7 rolls it.
     state.weather.precip = "light";
     addItem(state.player.pack, "firewood", 5);
@@ -115,7 +115,7 @@ describe("deeds reach the ladder", () => {
     expect(o.ok, o.why).toBe(true);
     expect(startTask(state, world, cal, "build", "boughBed")).toBe(true);
     advance(state, world, o.duration + 1);
-    expect(campSite(st).structures.boughBed).toBe(true);
+    expect(campSite(st)!.structures.boughBed).toBe(true);
     expect(state.goals.done.bed).toBe(true);
   });
 
@@ -123,7 +123,7 @@ describe("deeds reach the ladder", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 5;
     addItem(state.player.pack, "rawMeat", 2);
@@ -138,8 +138,8 @@ describe("deeds reach the ladder", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.dryingRack = true;
-    campSite(st).racks = 1;
+    siteFor(st, st.campCell).structures.dryingRack = true;
+    siteFor(st, st.campCell).racks = 1;
     addItem(pile(state, st.campCell), "rawMeat", 9);
     const o = check(state, world, cal, "hang");
     expect(o.ok, o.why).toBe(true);
@@ -153,8 +153,8 @@ describe("deeds reach the ladder", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.dryingRack = true;
-    campSite(st).racks = 1;
+    siteFor(st, st.campCell).structures.dryingRack = true;
+    siteFor(st, st.campCell).racks = 1;
     const camp = pile(state, st.campCell);
     addItem(camp, "rawMeat", 9);
     const o = check(state, world, cal, "hang");
@@ -212,7 +212,7 @@ describe("an heir inherits the world and not the ladder's credit", () => {
     const st = regionState(state, world, oldRegion);
     st.fire.lit = true;
     st.fire.fuelKg = 20;
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     addItem(pile(state, st.campCell), "firewood", 200);
     const before = activeGoals(state, calendar(state.minute, state.startDoy));
     die(state, "froze", regionAt(world, oldRegion).name);

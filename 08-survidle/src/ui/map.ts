@@ -293,7 +293,7 @@ function walkSvg(world: World, state: GameState, here: number, x0: number, y0: n
 export function mapKey(state: GameState, world: World, ui: UiState, cal: Calendar): string {
   const marks = Object.entries(state.regions).map(([id, r]) => {
     const site = campSite(r);
-    return `${id}${site.structures.cabin || site.structures.leanTo || site.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}${r.trap ? "T" : ""}`;
+    return `${id}${site?.structures.cabin || site?.structures.leanTo || site?.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : ""}${r.trap ? "T" : ""}`;
   }).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
@@ -327,7 +327,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     let m: (typeof MARKS)[keyof typeof MARKS];
     const site = campSite(st);
     if (st.fire.lit) m = MARKS.fire;
-    else if (site.structures.cabin || site.structures.leanTo || site.structures.turfHut) m = MARKS.shelter;
+    else if (site?.structures.cabin || site?.structures.leanTo || site?.structures.turfHut) m = MARKS.shelter;
     else m = MARKS.camp;
     const g = toGlyph(cell);
     if (g >= 0) markerAt.set(g, m);

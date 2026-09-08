@@ -218,7 +218,7 @@ export function standingHere(state: GameState, st: RegionState, world: World, c:
     } else if (arg === "seep") {
       const region = cellAt(world, st.campCell).region;
       if (Object.keys(state.seeps).some((cell) => cellAt(world, Number(cell)).region === region)) return true;
-    } else if (site.structures[arg as keyof Site["structures"]]) {
+    } else if (site?.structures[arg as keyof Site["structures"]]) {
       return true;
     }
   }

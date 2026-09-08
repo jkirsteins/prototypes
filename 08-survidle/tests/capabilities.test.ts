@@ -3,7 +3,7 @@ import { CAPABILITIES, type CapabilityKey, capabilityFor, NOT_TIERS, PRODUCERS, 
 import { calendar } from "../src/sim/calendar";
 import { RECIPES, STRUCTURE_IDS, STRUCTURES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { RECOMMENDED, RUNG_LEVEL } from "../src/sim/skills";
 import { doHtml } from "../src/ui/dopanel";
 import { regionHtml } from "../src/ui/panels";
@@ -97,7 +97,7 @@ describe("what a capability tells the panel", () => {
     const rack = capabilityFor("build", "dryingRack")!;
     const trap = capabilityFor("craft", "basketTrap")!;
     expect(standingHere(state, st, world, rack)).toBe(false);
-    campSite(st).structures.dryingRack = true;
+    siteFor(st, st.campCell).structures.dryingRack = true;
     expect(standingHere(state, st, world, rack)).toBe(true);
     expect(standingHere(state, st, world, trap)).toBe(false);
     st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
@@ -109,7 +109,7 @@ describe("what a capability tells the panel", () => {
     const cal = calendar(state.minute, state.startDoy);
     const st = regionState(state, world, state.player.region);
     expect(regionHtml(state, world, cal, newUiState())).not.toContain("40 kg a rack");
-    campSite(st).structures.dryingRack = true;
+    siteFor(st, st.campCell).structures.dryingRack = true;
     expect(regionHtml(state, world, cal, newUiState())).toContain("40 kg a rack");
   });
 

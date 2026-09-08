@@ -349,7 +349,7 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   // cleared anywhere; without a drill, clearing it warms nobody tonight.
   if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
   const site = campSite(st);
-  if (!site.structures.firePit) {
+  if (!site?.structures.firePit) {
     return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.

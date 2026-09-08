@@ -9,7 +9,7 @@ import { addOrder } from "../src/sim/orders";
 import { taskDrain } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
@@ -243,7 +243,7 @@ describe("the working day", () => {
     const { state, world } = felling();
     const st = regionState(state, world, state.player.region);
     st.fire.lit = false;
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 5);
     placeAt(state, world, st.campCell);

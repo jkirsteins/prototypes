@@ -8,16 +8,16 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
 import { placeAtSpot } from "../src/sim/position";
 import { hasEvent } from "../src/sim/record";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 
 function camp(seed = 8) {
   const g = newGame(seed);
   const st = regionState(g.state, g.world, g.state.player.region);
-  campSite(st).structures.firePit = true;
-  campSite(st).structures.leanTo = true;
-  campSite(st).structures.dryingRack = true;
-  campSite(st).structures.cabin = true;
+  siteFor(st, st.campCell).structures.firePit = true;
+  siteFor(st, st.campCell).structures.leanTo = true;
+  siteFor(st, st.campCell).structures.dryingRack = true;
+  siteFor(st, st.campCell).structures.cabin = true;
   return { ...g, st };
 }
 
@@ -26,31 +26,31 @@ describe("structure decay", () => {
     const { state, world, st } = camp();
     state.dead = { cause: "froze", minute: 0 };
     advance(state, world, 200 * 1440, { nobody: true });
-    expect(campSite(st).structures.leanTo).toBe(true);
-    expect(campSite(st).structures.dryingRack).toBe(true);
+    expect(campSite(st)!.structures.leanTo).toBe(true);
+    expect(campSite(st)!.structures.dryingRack).toBe(true);
     advance(state, world, 165 * 1440, { nobody: true });
-    expect(campSite(st).structures.leanTo).toBe(false);
-    expect(campSite(st).structures.dryingRack).toBe(true);
+    expect(campSite(st)!.structures.leanTo).toBe(false);
+    expect(campSite(st)!.structures.dryingRack).toBe(true);
     advance(state, world, 365 * 1440, { nobody: true });
-    expect(campSite(st).structures.dryingRack).toBe(false);
-    expect(campSite(st).racks).toBe(0);
-    expect(campSite(st).structures.cabin).toBe(true);
-    expect(campSite(st).structures.firePit).toBe(true);
+    expect(campSite(st)!.structures.dryingRack).toBe(false);
+    expect(campSite(st)!.racks).toBe(0);
+    expect(campSite(st)!.structures.cabin).toBe(true);
+    expect(campSite(st)!.structures.firePit).toBe(true);
   });
 
   it("loses what hung on the rack when it rots after two years", () => {
     const { state, world, st } = camp();
     st.rack.kg = 3;
     state.weather.precip = "heavy";
-    campSite(st).structureAge.dryingRack = 731 * 1440;
+    siteFor(st, st.campCell).structureAge.dryingRack = 731 * 1440;
     advance(state, world, 1440, { nobody: true });
-    expect(campSite(st).structures.dryingRack).toBe(false);
+    expect(campSite(st)!.structures.dryingRack).toBe(false);
     expect(st.rack.kg).toBe(0);
   });
 
   it("asks for mending past two thirds (244 days), and mending resets the age and is recorded", () => {
     const { state, world, st } = camp();
-    campSite(st).structureAge.leanTo = 244 * 1440;
+    siteFor(st, st.campCell).structureAge.leanTo = 244 * 1440;
     expect(needsMending(campSite(st), "leanTo")).toBe(true);
     addItem(pile(state, st.campCell), "stick", 2);
     const o = check(state, world, calendar(0), "mend", "leanTo");
@@ -58,14 +58,14 @@ describe("structure decay", () => {
     expect(o.duration).toBe(60);
     startTask(state, world, calendar(0), "mend", "leanTo");
     advance(state, world, 120);
-    expect(campSite(st).structureAge.leanTo).toBeLessThan(2 * 1440);
+    expect(campSite(st)!.structureAge.leanTo).toBeLessThan(2 * 1440);
     expect(needsMending(campSite(st), "leanTo")).toBe(false);
     expect(hasEvent(state, (e) => e.kind === "repaired" && e.structure === "leanTo")).toBe(true);
   });
 
   it("a mend order walks the runner to camp instead of reading skipped forever", () => {
     const { state, world, st } = camp();
-    campSite(st).structureAge.leanTo = 244 * 1440;
+    siteFor(st, st.campCell).structureAge.leanTo = 244 * 1440;
     addItem(pile(state, st.campCell), "stick", 2);
     placeAtSpot(state, world, state.player.region, "forest");
     mapRegion(state, world, state.player.region);
@@ -77,7 +77,7 @@ describe("structure decay", () => {
     expect(o.skipped).toBe("");
     expect(state.intent?.task).toBe("mend");
     advance(state, world, 600);
-    expect(campSite(st).structureAge.leanTo).toBeLessThan(2 * 1440);
+    expect(campSite(st)!.structureAge.leanTo).toBeLessThan(2 * 1440);
     expect(needsMending(campSite(st), "leanTo")).toBe(false);
     expect(hasEvent(state, (e) => e.kind === "repaired" && e.structure === "leanTo")).toBe(true);
   });

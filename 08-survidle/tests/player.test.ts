@@ -3,7 +3,7 @@ import { calendar } from "../src/sim/calendar";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { causeFrom, coldBurnFactor, feltTemperature, KCAL_PER_HOUR_FOR_TEST, LOAD_KCAL_PER_HOUR, NIGHT_WALK_FACTOR, baseWalkSpeed, stepPlayer, walkSpeed } from "../src/sim/player";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 
 describe("player physiology", () => {
   it("regenerates when fed, warm and idle", () => {
@@ -48,10 +48,11 @@ describe("player physiology", () => {
   it("a fire and a cabin at camp make the difference", () => {
     const { state, world } = newGame(1);
     const bare = feltTemperature(state, world, -20);
-    regionState(state, world, state.player.region).fire.lit = true;
-    campSite(regionState(state, world, state.player.region)).structures.cabin = true;
+    const pst = regionState(state, world, state.player.region);
+    pst.fire.lit = true;
+    siteFor(pst, pst.campCell).structures.cabin = true;
     // A cabin's own fire needs a hearth to warm anyone; without one only the roof counts.
-    campSite(regionState(state, world, state.player.region)).structures.hearth = true;
+    siteFor(pst, pst.campCell).structures.hearth = true;
     expect(feltTemperature(state, world, -20)).toBeCloseTo(bare + 30, 5);
     // Out at the forest the fire and roof do not reach you.
     placeAtSpot(state, world, state.player.region, "forest");

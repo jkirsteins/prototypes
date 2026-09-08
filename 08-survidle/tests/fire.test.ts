@@ -9,7 +9,7 @@ import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature, INDOOR_C, warmthTarget } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
-import { campSite, regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 
@@ -32,7 +32,7 @@ describe("wet wood", () => {
     expect(qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(20 - 1 / 6, 6);
     // Dries at 2 kg an hour by a lit fire, and keeps at it once it rains again:
     // the fire's own heat does the drying, not a dry sky.
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     const dryBefore = qty(state.player.pack, "wetFirewood") + qty(pile(state, st.campCell), "wetFirewood");
@@ -48,7 +48,7 @@ describe("wet wood", () => {
   it("wet wood on the fire halves its warmth and the fire is smoky", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     addItem(state.player.pack, "firewood", 5);
     addItem(state.player.pack, "wetFirewood", 20);
@@ -74,7 +74,7 @@ describe("wet wood", () => {
     expect(burnPerHour(w, 5, st)).toBe(6);
     expect(lightingInRain(w, 5, false).blocked).toBe("too wet to light");
     expect(lightingInRain(w, 5, true).blocked).toBeNull();
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 1.5;
     // Push the ambient warm so this is really heavy rain, not heavy snow.
@@ -125,7 +125,7 @@ describe("wet wood", () => {
   it("a lit fire dries the camp pile at 2 kg an hour even in heavy rain", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
+    siteFor(st, st.campCell).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     addItem(pile(state, st.campCell), "wetFirewood", 10);
@@ -146,12 +146,12 @@ describe("fuel by the cold", () => {
     expect(openBurnPerHour(-20)).toBe(9);
     expect(openBurnPerHour(-40)).toBe(15);
     expect(burnPerHour(w, -10, st)).toBe(6);
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     st.fire.indoors = true;
     expect(burnPerHour(w, -10, st)).toBeCloseTo(2.4, 6);
-    campSite(st).structures.turfHut = false;
-    campSite(st).structures.cabin = true;
-    campSite(st).structures.hearth = true;
+    siteFor(st, st.campCell).structures.turfHut = false;
+    siteFor(st, st.campCell).structures.cabin = true;
+    siteFor(st, st.campCell).structures.hearth = true;
     expect(burnPerHour(w, -10, st)).toBeCloseTo(1.62, 6);
   });
 
@@ -187,7 +187,7 @@ describe("splitting waits for dry weather", () => {
     placeAt(state, world, st.campCell);
     addItem(pile(state, st.campCell), "log", 1);
     state.weather.precip = "heavy";
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     expect(check(state, world, calendar(0), "split")).toMatchObject({ ok: true, detail: "one log into 20 kg of firewood, under the roof" });
     startTask(state, world, cal, "split");
     advance(state, world, 15);
@@ -208,7 +208,7 @@ describe("splitting waits for dry weather", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     addItem(pile(state, st.campCell), "log", 1);
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     state.weather.precip = "heavy";
     placeAtSpot(state, world, state.player.region, "shore");
     expect(check(state, world, calendar(0), "split", undefined, st.campCell)).toMatchObject({ ok: true, detail: "one log into 20 kg of firewood, under the roof" });
@@ -227,8 +227,8 @@ describe("spread and smoke", () => {
     const { state, world } = newGame(3);
     const july = calendar((200 - 91) * 1440 + 12 * 60);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     st.fire.unattended = 200;
@@ -244,14 +244,14 @@ describe("spread and smoke", () => {
     expect(st.fire.lit).toBe(false);
     expect(hours).toBeLessThan(400);
     expect(st.wood).toBeLessThan(wood0);
-    expect(campSite(st).structures.leanTo).toBe(false);
+    expect(campSite(st)!.structures.leanTo).toBe(false);
     expect(state.log.some((e) => e.text.startsWith("Smoke on the wind"))).toBe(true);
     expect(state.log.some((e) => e.text === "The ground is tinder dry.")).toBe(true);
     // Banked to six kilos, or ground that is not dry, or a fire someone sits at: no spread in 400 hours.
     for (const fix of [{ fuel: 6, dry: 4, unattended: 200 }, { fuel: 30, dry: 1, unattended: 200 }, { fuel: 30, dry: 4, unattended: 30 }]) {
       const h = newGame(3);
       const st2 = regionState(h.state, h.world, h.state.player.region);
-      campSite(st2).structures.firePit = true;
+      siteFor(st2, st2.campCell).structures.firePit = true;
       st2.fire.lit = true;
       st2.fire.fuelKg = fix.fuel;
       st2.fire.unattended = fix.unattended;
@@ -264,15 +264,15 @@ describe("spread and smoke", () => {
   it("a cabin gets no fire warmth without a hearth; a fire lit indoors warms, smokes, and kills a sleeper", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.cabin = true;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.cabin = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
     const cold = feltTemperature(state, world, 0);
-    campSite(st).structures.hearth = true;
+    siteFor(st, st.campCell).structures.hearth = true;
     expect(feltTemperature(state, world, 0) - cold).toBe(15);
-    campSite(st).structures.hearth = false;
+    siteFor(st, st.campCell).structures.hearth = false;
     st.fire.lit = false;
     state.task = null;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
@@ -315,9 +315,9 @@ describe("fuel by shelter", () => {
     const dry = { ...state.weather, precip: "none" as const };
     st.fire.lit = true;
     expect(burnPerHour(dry, 5, st)).toBe(3);
-    campSite(st).structures.leanTo = true;
+    siteFor(st, st.campCell).structures.leanTo = true;
     expect(burnPerHour(dry, 5, st)).toBe(3);
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     expect(burnPerHour(dry, 5, st)).toBe(3);
     st.fire.indoors = true;
     // 0.4 of an open fire at -20, 9 kg/h.
@@ -328,9 +328,9 @@ describe("fuel by shelter", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.cabin = true;
-    campSite(st).structures.hearth = true;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.cabin = true;
+    siteFor(st, st.campCell).structures.hearth = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 10);
     // The fire indoors is the row that lays a cabin's hearth fire; the plain light is the pit outside.
@@ -354,7 +354,7 @@ describe("fuel by shelter", () => {
     const st = regionState(state, world, state.player.region);
     const rain = { ...state.weather, precip: "heavy" as const };
     expect(burnPerHour(rain, 5, st)).toBe(6);
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     expect(burnPerHour(rain, 5, st)).toBe(3);
   });
 
@@ -362,8 +362,8 @@ describe("fuel by shelter", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 10);
     expect(check(state, world, cal, "light").detail).not.toMatch(/smoke hole/);
@@ -388,8 +388,8 @@ describe("inside is a temperature", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    campSite(st).structures.firePit = true;
-    campSite(st).structures.turfHut = true;
+    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell).structures.turfHut = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
     st.fire.indoors = true;

@@ -33,8 +33,15 @@ describe("sites", () => {
   it("campSite reads the camp cell", () => {
     const { state, world } = newGame(2);
     const st = regionState(state, world, state.player.region);
-    campSite(st).structures.leanTo = true;
-    expect(siteAt(st, st.campCell)!.structures.leanTo).toBe(true);
+    siteFor(st, st.campCell).structures.leanTo = true;
+    expect(campSite(st)!.structures.leanTo).toBe(true);
+  });
+
+  it("campSite returns null with nothing built, and does not create", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    expect(campSite(st)).toBeNull();
+    expect(Object.keys(st.sites)).toHaveLength(0);
   });
 
   it("newSite starts blank", () => {
@@ -66,6 +73,22 @@ describe("sites", () => {
     expect(site.build.turfHut).toBe(60);
     expect(live.snares).toBe(3);
     expect((live as unknown as Record<string, unknown>).structures).toBeUndefined();
+  });
+
+  it("a save from before racks were counted recovers one rack from a standing drying rack", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region) as unknown as Record<string, unknown>;
+    delete st.sites;
+    delete st.snares;
+    st.structures = { firePit: false, leanTo: false, cabin: false, dryingRack: true, snares: 0, boughBed: false, hearth: false, turfHut: false, waterStore: false, snowShelter: false };
+    // No racks field at all: the shape a save had before racks were counted separately.
+    st.boughBedAge = 0;
+    st.meltDays = 0;
+    st.structureAge = {};
+    st.build = {};
+    migrate(state);
+    const live = regionState(state, world, state.player.region);
+    expect(siteAt(live, live.campCell)!.racks).toBe(1);
   });
 
   it("a touched but unlived region migrates to no site", () => {
