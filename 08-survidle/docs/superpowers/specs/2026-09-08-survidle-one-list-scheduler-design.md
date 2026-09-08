@@ -413,3 +413,83 @@ Behavioural, one per claim this spec makes:
 - **Layout, scrolling and the Do panel** (findings 1, 2's UI half).
 - **Everything the playtest raised that is not the queue**: the fire
   chain, the food chain, carry weight, the map.
+
+## 12. What the gates read
+
+Each gate run twice: once at the merge base with main, once with the one
+list in place. Nothing was tuned to move a number.
+
+| gate | before | after |
+| --- | --- | --- |
+| April, `reference.ts` | 4 of 5 | 4 of 5 |
+| lineage trend, `reference.ts --heir` | 1 of 5 | 0 of 5 |
+| lineage year, `reference.ts --heir` | 4 of 5 | 0 of 5 |
+| year, `npm run year` | 4 of 5 | 5 of 5 |
+| December sleep clock, `npm run december` | 5 of 5 nights whole | 5 of 5 nights broken |
+| horizon rungs in band, `npm run horizon` | 5 of 25 | 6 of 25 |
+| `tests/slow/lineage.test.ts` | 1 of 1 | 1 of 1 |
+
+**April holds at 4 of 5, and the seed that fails changes.** Seed 17 now
+clears day 19 and dies on day 27 where it used to die on day 24; seed 19
+now misses the day-19 check it used to make, on the same death day of 26.
+The median run is four days longer (26 to 29). A blocked row no longer
+stopping the list is what buys those days: the survivor does the next
+thing on the list instead of standing still, so more of every day is
+worked. The seed that swapped out did not get worse - it reaches the same
+day 26 - it arrives at the checkpoint with less in hand, because the camp
+row now spends part of each morning on the fire and the snares before the
+work rows are read.
+
+**The year gate goes up, 4 of 5 to 5 of 5.** Seed 79 used to starve on day
+96 at a level-20 camp; it now reaches day 366 with the other four. A camp
+whose upkeep is its own row keeps its fire fed without the ambient reflex
+topping it up for free, and the run's attention count barely moves (13 of
+96 mornings, to 35 of 366), so the survivor is not being nursed through
+it. This is the gate that reads most directly on camp upkeep becoming a
+row, and it reads better.
+
+**The horizon rungs move toward their bands.** Fourteen rows that used to
+read "30+ d alive" now name a finite day, all of them shorter, which is
+the direction the bands want: every rung except the top two was over its
+band before and is still over, but by less. The strict count moves only 5
+to 6 because most rows are still outside. The top rung ("the same,
+stocked", band 20 to 60 days) loses two seeds from alive to 27 days
+starved and stays in band. What the survivor now does differently is
+spend minutes on the camp row that used to be spent on the ladder's own
+work, so each rung of kit buys fewer days than it did.
+
+**December keeps its clock and breaks its nights.** Sleep per day is 7.9
+hours on all five seeds before and after, the median night is 22:40 to
+06:36 on both, and no sleep begins by day on either. What changed is the
+count of sleeps: 30 over 30 days on every seed before - one per night -
+and 42 to 49 after. The camp row ranks above the body, so feeding the
+fire takes the night back from sleep and hands it over again, and a
+December night is now two or three sleeps rather than one. The body is
+paid in full either way; it is paid in pieces.
+
+**The lineage collapses, and it is a mechanism failing rather than a cost
+being paid.** Four of five seeds used to see an heir reach a year; none
+does now, and the trend gate goes 1 of 5 to 0 of 5. The cause is one
+thing, in the reference player's walk home. An heir lands 13 to 20 km
+from the old camp with an axe and nothing else. On the merge base it
+reached that camp on day 1 or day 3 of six seeds' worth of lives. It now
+never reaches it: it dies on day 2 to day 5, of thirst, having walked
+part of the way.
+
+Traced on seed 17, life 2. `ReferencePlayer.handMoveBusy` sees a body need
+open during the walk, sets the walk aside and starts `HAND_REST` - a
+forever rest with no order behind it - and holds `servingHandRest` until
+the need clears. That worked when the body was a hidden tier inside the
+runner, which would drink and sleep underneath the rest: the base run
+shows water climbing from 0 back to 2.3 litres inside exactly such a rest,
+then the walk resuming. It cannot work now. `HAND_REST` is a hand intent,
+so nothing may take it over, and the body is a row on a camp's order list
+- which an heir who has not made camp does not have. The trace reads 35 of
+48 hours in that rest, water 1.2 to 0, no sleep, no drink, dead. The walk
+home is the one place in the tree that still assumes the old hidden tier.
+It is recorded here, not fixed: the fix is a judgement about who serves a
+survivor with no camp, and that is the author's.
+
+The `tests/slow/lineage.test.ts` gate passes on both sides; it asserts the
+shape of three lives and their landings, not how long they last, so the
+collapse above does not show in it.
