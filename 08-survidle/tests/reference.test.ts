@@ -462,9 +462,11 @@ describe("the reference player", () => {
   });
 
   it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
-    // Seed 79, not 17: the bough bed keep right after the lean-to (reference.ts) moves seed 17's
-    // death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this checkpoint.
-    const r = runReference(79, 27);
+    // Seed 17, not 79: seed 79's camp now goes cold on day 7, unrelated to the
+    // reserve this branch changed - the fire keeping merged from main leaves it
+    // short of firewood at that particular start - so it never reaches this
+    // checkpoint either. Seed 17 reaches REFERENCE_TARGET_DAY alive here.
+    const r = runReference(17, 27);
     const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
     expect(c).toBeDefined();
     expect(c!.week.days).toBe(7);

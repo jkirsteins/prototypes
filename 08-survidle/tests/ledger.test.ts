@@ -7,7 +7,7 @@ import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
-import { massFactor } from "../src/sim/person";
+import { fatLandmarks, massFactor, medianPerson } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR, coldBurnFactor, feltTemperature, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
@@ -186,17 +186,32 @@ describe("burn in buckets", () => {
   });
 
   it("a walk puts everything above base in the walk bucket, and deep snow doubles it", () => {
-    const g = newGame(17);
+    // Pinned at the reference build's typical reserve, so the only mass
+    // drift through the hour is the fat this walk itself burns, not a
+    // confound from this survivor's own build. That drift is real - an
+    // hour of walking spends some of the reserve it is scaled against - so
+    // the expected bucket is accumulated minute by minute at the live
+    // massFactor, the same reserve stepPlayer reads each step.
+    const g = newGame(17, undefined, medianPerson("m"));
     const { state, world } = g;
+    state.player.fat = fatLandmarks(medianPerson("m")).typical;
     placeAt(state, world, forestCell(g));
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    let expectedDry = 0;
+    for (let m = 0; m < 60; m++) {
+      expectedDry += (WALK_KCAL_PER_HOUR * massFactor(state) - BASE_KCAL_PER_HOUR) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    }
     const dry = today(state).burn.walk;
-    expect(dry).toBeCloseTo(WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
+    expect(dry).toBeCloseTo(expectedDry, 6);
     expect(today(state).burn.activity).toBe(0);
     state.weather.snowCm = 40;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    expect(today(state).burn.walk - dry).toBeCloseTo(2 * WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
+    let expectedWet = 0;
+    for (let m = 0; m < 60; m++) {
+      expectedWet += (2 * WALK_KCAL_PER_HOUR * massFactor(state) - BASE_KCAL_PER_HOUR) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    }
+    expect(today(state).burn.walk - dry).toBeCloseTo(expectedWet, 6);
   });
 
   it("sickness adds its own bucket on top of the cold one", () => {
