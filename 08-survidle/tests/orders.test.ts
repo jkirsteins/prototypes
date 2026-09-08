@@ -1274,4 +1274,25 @@ describe("pre-emption", () => {
     judgeOrders(state, world, calendar(state.minute, state.startDoy));
     expect(walkJudged()).toBeLessThanOrEqual(2);
   });
+
+  it("a task in flight is not judged at all, not merely not acted on", () => {
+    const { state, world } = newGame(3);
+    // Ranked above the live row, so the prefix rule alone would still ask
+    // each of them the question every minute regardless of what the live
+    // row is doing - stone's ground is not yet known this early, so each one
+    // reads blocked rather than ready, and sticks is the row that runs.
+    for (let i = 0; i < 8; i++) {
+      addOrder(state, world, { task: "stone", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    }
+    const a = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 60);
+    expect(state.intent?.orderId).toBe(a.id);
+    expect(state.task).not.toBeNull();
+    resetWalkJudged();
+    advance(state, world, 1);
+    // A minute spent mid-chunk never reaches chooseOrder at all, so none of
+    // the eight rows above the live one are asked to route this minute
+    // either: the count stays at zero, not merely unacted on.
+    expect(walkJudged()).toBe(0);
+  });
 });
