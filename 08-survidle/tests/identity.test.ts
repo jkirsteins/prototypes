@@ -53,6 +53,7 @@ describe("a redraw takes nothing away", () => {
 
   it("a row present before and after is the same node", () => {
     const ui = newUiState();
+    ui.panes.purpose = "Kindling";
     draw(ui);
     const before = document.querySelector('[data-opt^="intent:deadwood"]');
     expect(before).not.toBeNull();

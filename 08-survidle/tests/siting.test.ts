@@ -1,22 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { leaveCamp, siteLine, siteReport } from "../src/sim/camp";
+import { cellPossibilities, leaveCamp } from "../src/sim/camp";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { giveOrder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { addOrder } from "../src/sim/orders";
-import { baseWalkSpeed } from "../src/sim/player";
 import { atCamp, campCellOf, cellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
 import { availableTasks, beginTask, leftBehind, walkTarget, whereIs } from "../src/sim/tasks";
-import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
+import { seepGround } from "../src/sim/seep";
 import { mapHtml } from "../src/ui/map";
 import { placesHtml } from "../src/ui/panels";
 import { tipHtml } from "../src/ui/tip";
 import { defaultChoice, newUiState, rowRequest } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
-import { findRoute, routeMinutes } from "../src/world/route";
 import { neighbourLandCell, siteCamp } from "./siting-helpers";
 import { paneHtml } from "./pane";
 
@@ -357,56 +355,28 @@ describe("make camp here", () => {
   });
 });
 
-describe("the site report", () => {
-  it("lists every spot but camp with walk minutes, and carries no terrain or ices field", () => {
+describe("cell possibilities", () => {
+  it("names seep ground and invents no other possibilities", () => {
     const { state, world } = newGame(17);
-    siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
-    const r = siteReport(state, world, st.campCell!);
-    const region = regionAt(world, state.player.region);
-    expect(r.spots.map((s) => s.id).sort()).toEqual(region.spots.filter((s) => s.id !== "camp").map((s) => s.id).sort());
-    expect(r.spots.some((s) => s.minutes !== null && s.minutes > 0)).toBe(true);
-    expect(r).not.toHaveProperty("terrain");
-    expect(r).not.toHaveProperty("ices");
+    const cells = regionAt(world, state.player.region).cells;
+    const wet = cells.find((cell) => seepGround(world, cell));
+    const dry = cells.find((cell) => !seepGround(world, cell));
+    expect(wet).toBeDefined();
+    expect(dry).toBeDefined();
+    expect(cellPossibilities(world, wet!)).toEqual(["seep possible"]);
+    expect(cellPossibilities(world, dry!)).toEqual([]);
   });
 
-  it("siteLine names each spot once with its bare minutes, one 'min' for the whole line", () => {
+  it("shows only real possibilities in the tooltip and make-camp row", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
-    const r = siteReport(state, world, st.campCell!);
-    const line = siteLine(r);
-    for (const s of r.spots) expect(line).toContain(s.id);
-    expect(line).not.toContain("ices over in winter");
-    expect(line.endsWith(" min")).toBe(true);
-    expect(line.match(/ min/g)).toHaveLength(1);
-  });
-
-  it("shows on a cell that is not the camp, and not on the camp itself", () => {
-    const { state, world } = newGame(17);
-    siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
     const cal = calendar(state.minute, state.startDoy);
-    // The report is about a cell, so it is on the cell: point at the camp
-    // and there is nothing to say, point anywhere else and there is.
-    expect(tipHtml(state, world, cal, st.campCell!)).not.toContain("as a camp");
-    const next = neighbourLandCell(world, st.campCell!);
-    expect(tipHtml(state, world, cal, next)).toContain("as a camp");
-  });
-
-  it("shows what a cell offers as a camp with a fire banked at the old one, no refusal beside it", () => {
-    const { state, world } = newGame(17);
-    siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
-    const next = neighbourLandCell(world, st.campCell!);
-    placeAt(state, world, next);
-    const cal = calendar(state.minute, state.startDoy);
-    st.fire.fuelKg = 2;
-    // What the cell would be as a camp belongs on the cell, and moving is
-    // not refused for a fire left burning at the old one: a camp may be left,
-    // and nothing it held travels with you.
-    expect(tipHtml(state, world, cal, next)).toContain("as a camp");
-    expect(paneHtml(state, world, cal, "makeCamp")).not.toContain("the fire is banked there");
+    const wet = regionAt(world, state.player.region).cells.find((cell) => seepGround(world, cell));
+    expect(wet).toBeDefined();
+    placeAt(state, world, wet!);
+    expect(tipHtml(state, world, cal, wet!)).toContain("seep possible");
+    expect(tipHtml(state, world, cal, wet!)).not.toContain("as a camp");
+    expect(paneHtml(state, world, cal, "makeCamp")).toContain("seep possible");
   });
 });
 
@@ -445,33 +415,6 @@ describe("the places list never doubles up when the camp sits on another spot's 
   });
 });
 
-describe("the site report crosses the ice the walk buttons cross", () => {
-  it("routes at walkableIce(state.weather), not a flat 'none' - seed 45's outcrop is six cells over safe ice, eight around it", () => {
-    const { state, world } = newGame(45);
-    siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
-    const region = regionAt(world, state.player.region);
-    const outcrop = region.spots.find((s) => s.id === "outcrop")!;
-
-    // The land-only route this spot would take without ice, for contrast.
-    const landRoute = findRoute(world, st.campCell!, outcrop.cell, "none");
-    expect(landRoute).not.toBeNull();
-
-    state.weather.iceCm = ICE_SAFE_CM + 1;
-    const ice = walkableIce(state.weather);
-    expect(ice).toBe("safe");
-    const iceRoute = findRoute(world, st.campCell!, outcrop.cell, ice);
-    expect(iceRoute).not.toBeNull();
-    expect(iceRoute!.length).toBeLessThan(landRoute!.length);
-
-    const cal = calendar(state.minute, state.startDoy);
-    const speed = baseWalkSpeed(state, cal, state.weather);
-    const expected = Math.round(routeMinutes(world, iceRoute!, speed, ice));
-    const r = siteReport(state, world, st.campCell!);
-    expect(r.spots.find((s) => s.id === "outcrop")!.minutes).toBe(expected);
-  });
-});
-
 describe("the map marks the camp", () => {
   it("draws x until a fire or shelter glyph takes the cell, and follows a move", () => {
     const { state, world } = newGame(17);
@@ -496,4 +439,3 @@ describe("the map marks the camp", () => {
     expect(mapHtml(world, state, ui, cal)).toContain("mk-camp");
   });
 });
-

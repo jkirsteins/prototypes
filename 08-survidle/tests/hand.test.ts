@@ -99,7 +99,7 @@ describe("work chosen by hand is the player's", () => {
     const { state, world } = spentAtCamp();
     addOrder(state, world, { task: "deadwood", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     advance(state, world, 1);
-    expect(state.intent?.mode).toBe("runner");
+    expect(state.intent?.mode).toBe("care");
     expect(state.player.bodyNeed).toBe("spent");
   });
 

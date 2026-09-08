@@ -22,7 +22,7 @@ import { campCellOf, cellOf } from "../src/sim/position";
 import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { tipHtml, tipKey } from "../src/ui/tip";
-import { regionAt } from "../src/world/gen";
+import { cellAt, regionAt } from "../src/world/gen";
 
 /** The point at the middle of the glyph holding this cell, in the board's own pixels. */
 function pointOf(world: ReturnType<typeof newGame>["world"], state: ReturnType<typeof newGame>["state"], ui: ReturnType<typeof newUiState>, cell: number) {
@@ -105,15 +105,31 @@ describe("what the tooltip says", () => {
     expect(tipHtml(state, world, cal, near)).toContain('data-act="task"');
   });
 
+  it("uses the selected route format without changing the heading", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    mapRegion(state, world, state.player.region);
+    const near = cellOf(state, world) + 2;
+    const distance = tipHtml(state, world, cal, near, "distance");
+    const time = tipHtml(state, world, cal, near, "time");
+    const both = tipHtml(state, world, cal, near, "both");
+    expect(distance).toMatch(/class="tip-route"[^>]*>\d+\.\d km<\/button>/);
+    expect(time).toMatch(/class="tip-route"[^>]*>(?:\d+ h )?\d+ min<\/button>/);
+    expect(both).toMatch(/class="tip-route"[^>]*>\d+\.\d km, (?:\d+ h )?\d+ min<\/button>/);
+    expect(distance.match(/<div class="tiphead">.*?<\/div>/)?.[0]).toBe(time.match(/<div class="tiphead">.*?<\/div>/)?.[0]);
+  });
+
   it("a cell in this region with no way to it says why instead of a button that would fail", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     // Somewhere in the home region the survivor has seen but cannot reach.
     const home = regionAt(world, state.player.region);
-    const far = home.cells.find((c) => !isKnown(state, c)) ?? home.cells[home.cells.length - 1];
-    markKnown(state, far);
-    const html = tipHtml(state, world, cal, far);
-    if (!html.includes('data-act="task"')) expect(html).toMatch(/no way|too far|cannot|do not know/i);
+    const far = home.cells.find((c) => cellAt(world, c).terrain === "water");
+    expect(far).toBeDefined();
+    markKnown(state, far!);
+    const html = tipHtml(state, world, cal, far!);
+    expect(html).not.toContain('data-id="walk"');
+    expect(html).toMatch(/no way|too far|cannot|water/i);
   });
 
   it("ground in another region offers the way in, not a walk that would stop at the border", () => {
@@ -129,11 +145,11 @@ describe("what the tooltip says", () => {
     expect(html).not.toContain('data-id="walk"');
   });
 
-  it("it carries a close, because a touch device has no way to stop hovering", () => {
+  it("a hover tooltip has no redundant close button", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     const here = cellOf(state, world);
-    expect(tipHtml(state, world, cal, here)).toContain('data-act="tip-close"');
+    expect(tipHtml(state, world, cal, here)).not.toContain('data-act="tip-close"');
   });
 
   it("what is lying there is named, since a pile is a resource until it is forgotten", () => {
@@ -146,15 +162,13 @@ describe("what the tooltip says", () => {
     expect(tipHtml(state, world, cal, camp)).toMatch(/20(\.0)? kg/);
   });
 
-  it("it says what the cell would be as a camp, which is the lever he never knew he had", () => {
+  it("it omits generated camp-to-spot estimates", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     const here = cellOf(state, world);
     const away = here + 3;
     markKnown(state, away);
-    // He took the landing camp as given, twice, and paid a 2.4 km each-way
-    // walk for sticks. Siting is a lever, and nothing ever said so.
-    expect(tipHtml(state, world, cal, away)).toMatch(/as a camp/i);
+    expect(tipHtml(state, world, cal, away)).not.toMatch(/as a camp/i);
   });
 
   it("no coordinate is in the markup", () => {

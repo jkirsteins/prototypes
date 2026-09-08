@@ -15,7 +15,7 @@
  * the map's redraw budget through the floor.
  */
 import type { Calendar } from "../sim/calendar";
-import { siteLine, siteReport } from "../sim/camp";
+import { cellPossibilities } from "../sim/camp";
 import { weight } from "../sim/inventory";
 import { isRead, readLine } from "../sim/knowledge";
 import { isKnown } from "../sim/mapped";
@@ -24,11 +24,12 @@ import { regionState } from "../sim/regionstate";
 import { check, whereIs } from "../sim/tasks";
 import type { GameState } from "../sim/types";
 import { plain } from "../sim/voice";
-import { fmtDuration, fmtKg, fmtKm } from "../units";
+import { fmtKg } from "../units";
 import { walkableIce } from "../sim/weather";
 import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
 import { wayIntoHtml } from "./panels";
 import { esc } from "./render";
+import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
 
 /** What each terrain is called in a sentence, rather than by its glyph. */
 const GROUND: Record<string, string> = {
@@ -78,17 +79,10 @@ function compactWhere(where: string): string {
   return `${match[1]} ${direction}`;
 }
 
-export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number): string {
-  // Held, the box says so and offers the way out of it. Only previewing, it
-  // says what a click would buy - which is the one place the interface has
-  // to teach itself, since a box that follows the pointer looks like one
-  // that cannot be reached.
-  // A touch has no leave to give, so the box keeps its own way out; nothing
-  // else in it is pressed.
-  const close = `<button class="mini tip-close" data-act="tip-close" title="Close">x</button>`;
+export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   const region = cellAt(world, cell).region;
   const regionName = esc(head(regionAt(world, region).name));
-  const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span>${close}</div>`;
+  const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span></div>`;
 
   // Another region first, and before the fog: ground over the border is not
   // somewhere to walk, it is somewhere to go, and an unexplored one is
@@ -96,12 +90,12 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   // have never been here" would be true and useless. This is what puts the
   // regions on the map rather than in a list of names beside it.
   if (region !== state.player.region) {
-    if (!isKnown(state, cell)) return `${heading("Unknown ground")}${wayIntoHtml(state, world, cal, region)}`;
+    if (!isKnown(state, cell)) return `${heading("Unknown ground")}${wayIntoHtml(state, world, cal, region, false, display)}`;
     const x = cell % world.w;
     const y = Math.floor(cell / world.w);
     const terrain = terrainPeek(world, x, y);
     const name = spotAt(world, cell) ?? GROUND[terrain] ?? terrain;
-    return `${heading(name)}${wayIntoHtml(state, world, cal, region)}`;
+    return `${heading(name)}${wayIntoHtml(state, world, cal, region, false, display)}`;
   }
 
   // Fog next: ground nobody has walked has nothing to report, and saying
@@ -128,11 +122,10 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   } else {
     const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
     const walk = check(state, world, cal, "walk", `cell:${cell}`);
-    const dist = km === null ? "no way there" : fmtKm(km);
-    // What it would cost to stand there, said rather than offered: the walk
-    // itself is the places box's, in the corner it has always been in.
-    const cost = walk.ok ? `, ${fmtDuration(walk.duration)} walk` : `, ${plain(walk.why)}`;
-    lines.push(`<div>${esc(dist)}${esc(cost)}</div>`);
+    const text = walk.ok && km !== null ? esc(formatTravel(km, walk.duration, display)) : esc(plain(walk.why));
+    lines.push(walk.ok
+      ? `<div><button class="tip-route" data-act="task" data-id="walk" data-arg="cell:${cell}">${text}</button></div>`
+      : `<div>${text}</div>`);
   }
 
   // What stands on it, in the words the rest of the game uses.
@@ -154,12 +147,8 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
     if (read) lines.push(`<div class="dim">${esc(plain(read))}</div>`);
   }
 
-  // What it would be as a camp. He took the landing camp as given, twice,
-  // and paid a 2.4 km each-way walk for sticks; nothing ever told him
-  // siting was a lever he held.
-  if (cell !== st.campCell) {
-    lines.push(`<div class="dim">as a camp: ${esc(siteLine(siteReport(state, world, cell)))}</div>`);
-  }
+  const possibilities = cellPossibilities(world, cell);
+  if (possibilities.length) lines.push(`<div class="dim">${esc(possibilities.join(", "))}</div>`);
 
   const where = spot ? "" : compactWhere(whereIs(state, world, cell));
   return `${heading(name, where)}${lines.join("")}`;

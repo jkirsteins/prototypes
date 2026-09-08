@@ -341,10 +341,8 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   pointer-events: none;
 }
 #maptip[hidden] { display: none; }
-#maptip .tip-close { display: none; }
 @media (hover: none), (pointer: coarse) {
   #maptip { pointer-events: auto; }
-  #maptip .tip-close { display: inline-block; }
 }
 /* A place row points out its destination without making ordinary map hover
    leave a highlight behind. main.ts adds and removes this class directly. */
@@ -371,8 +369,8 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 #maptravel .way { padding: 1px 0; }
 #maptip .tiphead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 3px; white-space: nowrap; }
 #maptip .tiphead b { color: var(--accent); }
-#maptip .tiphead button { margin-left: auto; }
 #maptip > div { padding: 1px 0; }
+#maptip .tip-route { all: unset; color: var(--text); cursor: pointer; }
 
 /* Map */
 /* min-width: 0 lets the grid track shrink below the map's natural width;
@@ -413,7 +411,6 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   font-size: var(--font);
   line-height: var(--line);
   background: #05070c;
-  width: max-content;
   /* A map is dragged across and clicked on, never read as a passage, and a
      drag that selects a row of glyphs paints the ground blue mid-gesture.
      Safari honours only the prefixed property, so the plain one alone left
@@ -1176,3 +1173,4 @@ button.act small.gives, span.act small.gives,
 .skycase-box { padding: 0; overflow: hidden; }
 .skycase figcaption { color: var(--dim); font-size: 11px; padding: 6px 2px 0; line-height: 1.5; }
 .skycase figcaption b { color: var(--text); }
+.initial-walk { display: block; }

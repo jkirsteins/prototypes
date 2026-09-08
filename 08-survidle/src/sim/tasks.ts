@@ -6,7 +6,7 @@ import { passable, routeKm, routeMinutes } from "../world/route";
 import { itemLabel, loadRack } from "./actions";
 import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
-import { leaveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./camp";
+import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
 import { cue } from "./cues";
 import { exploreRoute, survivorRoute } from "./routing";
 import {
@@ -55,6 +55,14 @@ import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walka
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
+export interface InitialWalk {
+  cell: number;
+  destination: string;
+  nearest: boolean;
+  km: number;
+  minutes: number;
+}
+
 export interface TaskOption {
   id: TaskId;
   arg?: string;
@@ -80,6 +88,8 @@ export interface TaskOption {
   resume?: number;
   /** The cell the work resolved to, when an intent chose one; absent means wherever the player stands. */
   cell?: number;
+  /** The first route this action will take before doing work. */
+  initialWalk?: InitialWalk;
   /** Mastery of this action, the share of the way to the next level, and the skill and key it is kept under. */
   mastery?: { level: number; share: number; skill: SkillId; key: string };
   /** The recommended level, whether you are under it, and by how many levels. */
@@ -935,13 +945,13 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
       const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
-      return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip, ${routeKm(route).toFixed(1)} km each way; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
+      return { ...o, duration: loaded + empty, detail: `${Math.min(body(state).packHardKg, kg).toFixed(0)} kg per trip; ${kg.toFixed(0)} kg lying here; stop anywhere and carry on later` };
     }
     case "makeCamp": {
       const o = opt({ group: "camp", label: "Make camp here", detail: "", duration: 20 });
       if (campCell !== null && at === campCell) return { ...o, ok: false, why: "this is the camp" };
       if (!passable(terrain)) return { ...o, ok: false, why: "not here" };
-      return { ...o, detail: siteLine(siteReport(state, world, at)) };
+      return { ...o, detail: cellPossibilities(world, at).join(", ") };
     }
     case "night":
       return haveCamp(opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 }));

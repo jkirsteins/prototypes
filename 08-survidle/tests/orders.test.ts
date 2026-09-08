@@ -227,7 +227,7 @@ describe("what an order says", () => {
     const k = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     expect(orderSentence(state, world, cal, k)).toBe("Split a log, keep camp at 40 kg firewood");
     const g = addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    expect(orderSentence(state, world, cal, g)).toBe("Fell a tree, forever, bringing it to camp");
+    expect(orderSentence(state, world, cal, g)).toBe("Fell any tree, forever, bringing it to camp");
     const j = addOrder(state, world, { task: "sticks", until: { kind: "times", n: 5 }, deliver: "leave", where: "forest" }, "job");
     j.done = 2;
     expect(orderSentence(state, world, cal, j)).toBe("Gather sticks, 2 of 5 done, at the forest");
@@ -1425,16 +1425,16 @@ describe("a waiting order says what it is waiting for", () => {
     // Never the bare word: the row names its cause, whether that came from
     // the scheduler's own judgement or from asking the task.
     expect(html).not.toMatch(/>waiting<\/div>/);
-    expect(html).toContain("no logs here");
+    expect(html).toContain("No logs here");
   });
 
-  it("an order that could run says it is waiting its turn, which is a different thing", () => {
+  it("an order that could run needs no redundant waiting explanation", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     const html = ordersHtml(state, world, cal);
-    expect(html).toContain("waiting its turn");
+    expect(html).not.toContain("waiting its turn");
   });
 
   it("a row held by another names the one holding it, not the bare word", () => {

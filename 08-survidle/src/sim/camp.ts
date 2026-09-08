@@ -1,6 +1,5 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, type World } from "../world/gen";
-import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
@@ -13,15 +12,14 @@ import {
 } from "./items";
 import { noteLarder } from "./ledger";
 import { log } from "./log";
-import { baseWalkSpeed } from "./player";
 import { campSite, regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, nestsFor, rootStockFor } from "./stocks";
-import { type DecayingId, type GameState, type SeepClass, type Site, type SpotId, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type Site, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
-import { seasonalMean, walkableIce } from "./weather";
+import { seasonalMean } from "./weather";
 
 /** Re-exported so every caller that wants the figure (tests included) reaches it through camp.ts, beside dailyCamp's own use of it. */
 export { rootStockFor };
@@ -360,32 +358,7 @@ export function leaveCamp(state: GameState, world: World): void {
   st.rack.dried = 0;
 }
 
-export interface SiteReport {
-  spots: { id: SpotId; minutes: number | null }[];
-  /** The ground a seep could be dug in on this cell, or null. */
-  seep: SeepClass | null;
-}
-
-/** What a cell offers as a camp: the walk to each of the region's other spots from it. */
-export function siteReport(state: GameState, world: World, cell: number): SiteReport {
-  const region = cellAt(world, cell).region;
-  const r = regionAt(world, region);
-  const cal = calendar(state.minute, state.startDoy);
-  const speed = baseWalkSpeed(state, cal, state.weather);
-  // The same ice a walk button in this Here section would cross, not a flat "none": a
-  // frozen shore is reachable here exactly when the button next to it says so.
-  const ice = walkableIce(state.weather);
-  const spots = r.spots
-    .filter((s) => s.id !== "camp")
-    .map((s) => {
-      const route = findRoute(world, cell, s.cell, ice);
-      return { id: s.id, minutes: route ? Math.round(routeMinutes(world, route, speed, ice)) : null };
-    });
-  return { spots, seep: seepGround(world, cell) };
-}
-
-/** "forest 6, outcrop 33, shore 22, heath 17 min" - the spots in the region's own order, one "min" for the lot. */
-export function siteLine(r: SiteReport): string {
-  const parts = r.spots.map((s) => (s.minutes === null ? `${s.id} no way` : `${s.id} ${s.minutes}`));
-  return `${parts.join(", ")} min${r.seep ? ", seep possible" : ""}`;
+/** Stable environmental capabilities offered by this exact cell. */
+export function cellPossibilities(world: World, cell: number): string[] {
+  return seepGround(world, cell) ? ["seep possible"] : [];
 }

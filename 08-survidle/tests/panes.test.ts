@@ -33,7 +33,7 @@ class Mem implements Storage {
 
 describe("the panes remember where the player was", () => {
   it("a fresh player lands on Do, Gather, and Gather's first purpose", () => {
-    expect(loadPanes(new Mem())).toEqual({ pane: "do", subtab: "Gather", purpose: "Fuel" });
+    expect(loadPanes(new Mem())).toEqual({ pane: "do", subtab: "Gather", purpose: "Woodcutting" });
   });
 
   it("a choice survives a reload", () => {
@@ -45,7 +45,7 @@ describe("the panes remember where the player was", () => {
   it("a purpose the subtab does not offer falls back rather than showing an empty pane", () => {
     const s = new Mem();
     s.setItem(PANES_KEY, JSON.stringify({ pane: "do", subtab: "Gather", purpose: "Clothing" }));
-    expect(loadPanes(s).purpose).toBe("Fuel");
+    expect(loadPanes(s).purpose).toBe("Woodcutting");
   });
 
   it("a subtab that no longer exists falls back too", () => {
@@ -76,7 +76,7 @@ describe("what the strips draw", () => {
     // they carry, with the take and haul buttons, so it belongs beside the
     // list of things to do rather than behind the log.
     const order = [...paneTabsHtml(panes).matchAll(/data-pane="([a-z]+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(["do", "pack", "log", "journal"]);
+    expect(order).toEqual(["do", "camp", "pack", "log", "journal"]);
   });
 
   it("one subtab is on and it is the one showing", () => {

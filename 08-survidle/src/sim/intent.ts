@@ -24,7 +24,7 @@ import { fishSpecies, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
-import { beginTask, check, huntGroundValue, isShortAtCamp, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
+import { beginTask, check, huntGroundValue, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
@@ -241,26 +241,55 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
  * intentOption and startIntent never disagree about whether the button may
  * be pressed.
  */
-function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string } {
-  if (task !== "build" || arg === "snare" || !isShortAtCamp(why)) return { ok: false, detail: "" };
+function fetchAllowance(state: GameState, world: World, task: TaskId, arg: string | undefined, why: string): { ok: boolean; detail: string; source: number | null } {
+  if (task !== "build" || arg === "snare" || !isShortAtCamp(why)) return { ok: false, detail: "", source: null };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
-  if (campCell === null || !canFetch(state, world, sid, campCell)) return { ok: false, detail: "" };
+  if (campCell === null || !canFetch(state, world, sid, campCell)) return { ok: false, detail: "", source: null };
   const { missing, sources } = fetchSources(state, world, sid, campCell, cellOf(state, world));
   const src = sources[0];
   // Name what the nearest pile actually holds, not just the first thing missing overall.
   const need = missing.find((n) => qty(src.inv, n.item) > 1e-9 || (n.alt !== undefined && qty(src.inv, n.alt) > 1e-9))!;
   const item = qty(src.inv, need.item) > 1e-9 ? need.item : need.alt!;
-  return { ok: true, detail: `fetching ${itemLabel(item, need.qty)} from ${whereIs(state, world, src.cell)} first` };
+  return { ok: true, detail: `fetching ${itemLabel(item, need.qty)} from ${whereIs(state, world, src.cell)} first`, source: src.cell };
+}
+
+function initialWalk(
+  state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined,
+  where: Where, workCell: number, fetchCell: number | null,
+): InitialWalk | undefined {
+  const here = cellOf(state, world);
+  const target = fetchCell ?? workCell;
+  if (target === here) return undefined;
+  const walk = check(state, world, cal, "walk", `cell:${target}`);
+  const km = kmBetween(state, world, here, target, walkableIce(state.weather));
+  if (!walk.ok || km === null) return undefined;
+  const campCell = regionState(state, world, state.player.region).campCell;
+  const explicit = typeof where === "string" && where !== "nearest";
+  const ground = groundOf(task, arg);
+  let destination: string;
+  let nearest = false;
+  if (fetchCell !== null) destination = whereIs(state, world, target);
+  else if (target === campCell) destination = "camp";
+  else if (explicit) destination = SPOT_WORDS[where];
+  else if (task === "chop" && (arg === "spruce" || arg === "pine" || arg === "birch")) {
+    destination = `${arg} forest`;
+    nearest = true;
+  } else if (ground) {
+    destination = SPOT_WORDS[ground].replace(/^the /, "");
+    nearest = true;
+  } else destination = whereIs(state, world, target);
+  return { cell: target, destination, nearest, km, minutes: walk.duration };
 }
 
 /** The button: legality judged where the work would be done, so ground is never the reason. */
 export function intentOption(state: GameState, world: World, cal: Calendar, task: TaskId, arg: string | undefined, where: Where): TaskOption {
   const { cell } = resolveCell(state, world, cal, task, arg, where);
   const o = { ...check(state, world, cal, task, arg, cell), cell };
-  if (o.ok) return o;
   const fa = fetchAllowance(state, world, task, arg, o.why);
-  return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail } : o;
+  const walk = initialWalk(state, world, cal, task, arg, where, cell, fa.source);
+  if (o.ok) return { ...o, initialWalk: walk };
+  return fa.ok ? { ...o, ok: true, why: "", detail: fa.detail, initialWalk: walk } : o;
 }
 
 /** Sets out. False when the work could not start at its place; the button already said why. */

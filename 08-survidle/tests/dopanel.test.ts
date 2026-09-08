@@ -15,6 +15,17 @@ import type { OrderWhen, TaskId } from "../src/sim/types";
 
 
 describe("the purposes and the filter", () => {
+  it("shows an initial walk separately from work duration in the selected format", () => {
+    const { state, world } = newGame(3);
+    placeAtSpot(state, world, state.player.region, "heath");
+    const cal = calendar(state.minute, state.startDoy);
+    const distance = paneHtml(state, world, cal, "chop", undefined, { travelDisplay: "distance" });
+    const time = paneHtml(state, world, cal, "chop", undefined, { travelDisplay: "time" });
+    expect(distance).toMatch(/will walk to nearest forest - \d+\.\d km/);
+    expect(time).toMatch(/will walk to nearest forest - (?:\d+ h )?\d+ min/);
+    expect(distance).toMatch(/Fell any tree.*\d+ min/s);
+  });
+
   it("the filter narrows by label, case-insensitive, and an empty filter keeps everything", () => {
     const rows = [{ label: "Gather sticks" }, { label: "Strip bark" }, { label: "Fell a tree" }];
     expect(filterRows(rows, "STICK").map((r) => r.label)).toEqual(["Gather sticks"]);
@@ -63,7 +74,7 @@ describe("the purposes and the filter", () => {
     expect(stone.never).toBe(true);
     expect(stone.why).toBe(`no rock in ${bare!.name}`);
     // Stone is Gather/Material, which is where a reader looking for it goes.
-    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Material" } };
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Stone" } };
     const html = doHtml(state, world, cal, ui);
     const row = html.slice(html.indexOf('data-opt="intent:stone:"'), html.indexOf('data-opt="intent:stone:"') + 300);
     expect(row).toContain("disabled");
@@ -173,7 +184,7 @@ describe("the purposes and the filter", () => {
     const cal = calendar(state.minute);
     state.skills.woodcraft.xp = levelMinutes(5);
     const html = doHtml(state, world, cal, { ...newUiState(), filter: "tree" });
-    expect(html).toContain("Fell a tree");
+    expect(html).toContain("Fell any tree");
     expect(html).not.toContain("Gather sticks");
     expect(html).not.toContain('data-act="fold"');
   });
@@ -216,7 +227,7 @@ describe("the purposes and the filter", () => {
   it("a purpose shows its own rows and no others", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    const food = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Food" } };
+    const food = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Wild food" } };
     const html = doHtml(state, world, cal, food);
     expect(html).toContain('data-opt="intent:roots:"');
     expect(html).not.toContain('data-opt="intent:deadwood:"');
@@ -262,7 +273,7 @@ describe("the purposes and the filter", () => {
   it("once is a kind button, carrying the row's own choice of deliver and where", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
-    const ui = newUiState();
+    const ui = { ...newUiState(), panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Kindling" } };
     ui.open = { id: "sticks", arg: "" };
     const html = doHtml(state, world, cal, ui);
     const open = html.slice(html.indexOf('data-opt="intent:sticks:"'));
@@ -295,7 +306,7 @@ describe("the condition fields", () => {
     const cal = calendar(state.minute, state.startDoy);
     const ui = {
       ...newUiState(),
-      panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Food" },
+      panes: { pane: "do" as const, subtab: "Gather" as const, purpose: "Wild food" },
       open: { id: "berries" as const, arg: "" },
     };
     state.skills.foraging.xp = levelMinutes(12);

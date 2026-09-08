@@ -3,11 +3,14 @@ import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
 import { DEFAULT_ZOOM } from "./map";
 import { defaultPanes, type Panes } from "./panes";
+import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
 import type { AwaySummary } from "../sim/save";
 import type { GoalId, IntentRequest, ItemId, OrderKind, OrderWhen, Rung, SpotId, TaskId, UntilChoice } from "../sim/types";
 
 /** What the screen remembers that the game does not. */
 export interface UiState {
+  /** How every route estimate is shown in this browser. */
+  travelDisplay: TravelDisplay;
   /** Which pane is showing, and where in the Do pane the player was; remembered across a reload. */
   panes: Panes;
   /** Region clicked on the map, or null for the one you stand in. */
@@ -127,7 +130,7 @@ export function defaultChoiceFor(id: TaskId): RowChoice {
 
 export function newUiState(): UiState {
   return {
-    panes: defaultPanes(), selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
+    panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, goalsDone: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false },
     hurry: newHurry(),

@@ -100,7 +100,7 @@ describe("every Do row has exactly one purpose", () => {
     // craft is Make whatever the recipe; the recipe decides which pane.
     expect(purposeOf("craft", "knife")).toBe("Tools");
     expect(purposeOf("craft", "hideCoat")).toBe("Clothing");
-    // hunt has no per-species entry: they are all food.
-    expect(purposeOf("hunt", "elk")).toBe("Food");
+    // hunt has no per-species entry: they are all game.
+    expect(purposeOf("hunt", "elk")).toBe("Game");
   });
 });

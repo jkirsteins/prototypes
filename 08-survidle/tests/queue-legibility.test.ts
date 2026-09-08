@@ -23,7 +23,7 @@ const once = (task: IntentRequest["task"], arg?: string): IntentRequest =>
   ({ task, arg, until: { kind: "once" }, deliver: "leave", where: "nearest" });
 
 describe("a waiting row names its cause", () => {
-  it("a row that could run but is not the chosen one names the order ahead of it", () => {
+  it("a row that could run but is not chosen relies on its visible rank", () => {
     const { state, world } = newGame(1000010);
     siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
@@ -34,9 +34,7 @@ describe("a waiting row names its cause", () => {
     const [, , head, second] = ordersHere(state, world);
     expect(judged.chosen?.id).toBe(head.id);
     const line = waitingLine(state, world, cal, second, judged);
-    expect(line).toContain("waiting its turn");
-    // The point of the line: it names what is ahead, rather than the bare word.
-    expect(line).not.toBe("waiting");
+    expect(line).toBe("");
   });
 
   it("a row under a once order that cannot run falls through, and pinning it is what holds the list", () => {

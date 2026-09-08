@@ -28,22 +28,23 @@ describe("the order panel", () => {
     expect(on).toContain("on block: stop");
   });
 
-  it("an ordinary row carries rank, pin and remove; the body's row carries rank alone", () => {
+  it("an ordinary row carries available rank controls, pin and remove; the body's row carries rank alone", () => {
     const { state, world } = newGame(1);
     const o = addOrder(state, world, STICKS, "grind");
     advance(state, world, 1);
     const body = bodyRowOf(state, world)!;
     const html = ordersHtml(state, world, calendar(state.minute, state.startDoy));
 
-    for (const act of ["order-up", "order-down", "order-pin", "order-remove"]) {
+    for (const act of ["order-up", "order-pin", "order-remove"]) {
       expect(html, act).toContain(`data-act="${act}" data-id="${o.id}"`);
     }
+    expect(html).not.toContain(`data-act="order-down" data-id="${o.id}"`);
     expect(html).toContain(`data-act="order-down" data-id="${body.id}"`);
     expect(html).not.toContain(`data-act="order-remove" data-id="${body.id}"`);
     expect(html).not.toContain(`data-act="order-pin" data-id="${body.id}"`);
   });
 
-  it("the body row shows the need it is serving as its step, on the row rather than loose above the list", () => {
+  it("the body row stays concise while its current need is shown in the main activity strip", () => {
     const { state, world } = newGame(3);
     addOrder(state, world, STICKS, "grind");
     const body = bodyRowOf(state, world)!;
@@ -58,7 +59,7 @@ describe("the order panel", () => {
     expect(state.intent?.orderId).toBe(body.id);
     const html = ordersHtml(state, world, calendar(state.minute, state.startDoy));
     expect(html).toContain(BODY_SENTENCE);
-    expect(html).toMatch(/drink|water/i);
+    expect(html).not.toMatch(/drink|water/i);
     // One place, not two: the loose wait line above the list is the
     // scheduler's own wait and says nothing while the body has the minute.
     expect(html).not.toContain("Waiting at camp");

@@ -37,12 +37,13 @@ import {
 import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
-import { fmtDuration, fmtKg, fmtKm, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
+import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
+import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
 
 /**
  * A mark on a bar: either a fixed share, which belongs in the markup since
@@ -294,7 +295,7 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
  * off. The tooltip answers "what is that cell"; this answers "where are
  * the places", which is a different question and the one he was asking.
  */
-export function placesHtml(state: GameState, world: World, cal: Calendar): string {
+export function placesHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   const r = regionAt(world, state.player.region);
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
@@ -318,7 +319,7 @@ export function placesHtml(state: GameState, world: World, cal: Calendar): strin
       // The whole row is the button, and what it costs is in its own label:
       // a name in a button beside a sentence saying "from here" spent two
       // thirds of the row on words that never change.
-      const cost = `${km === null ? "" : `${esc(fmtKm(km))}, `}${esc(fmtDuration(walk.duration))}`;
+      const cost = km === null ? esc(fmtDuration(walk.duration)) : esc(formatTravel(km, walk.duration, display));
       return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
     })
     .join("");
@@ -326,7 +327,7 @@ export function placesHtml(state: GameState, world: World, cal: Calendar): strin
   // that can be taken. Every neighbour listed with its own refusal was five
   // lines telling the player five times that the list held nothing for them.
   const out = regionAt(world, state.player.region).neighbours
-    .map((n) => wayIntoHtml(state, world, cal, n.id, true))
+    .map((n) => wayIntoHtml(state, world, cal, n.id, true, display))
     .join("");
   return `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
 }
@@ -340,7 +341,7 @@ export function placesHtml(state: GameState, world: World, cal: Calendar): strin
  * because a list of names in a corner is a second place to learn about
  * ground the map is already drawing.
  */
-export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number, offersOnly = false): string {
+export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number, offersOnly = false, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   const name = esc(regionAt(world, region).name);
   // Where the region lies, so hovering the row can point at it on the map.
   const at = ` data-at="${regionAt(world, region).campCell}"`;
@@ -348,8 +349,10 @@ export function wayIntoHtml(state: GameState, world: World, cal: Calendar, regio
     const go = check(state, world, cal, "travel", `region:${region}`);
     const ice = thinIceButton(state, world, cal, "travel", `region:${region}`, go);
     if (!go.ok && offersOnly) return "";
+    const km = kmBetween(state, world, cellOf(state, world), regionAt(world, region).campCell, walkableIce(state.weather));
+    const estimate = km === null ? fmtDuration(go.duration) : formatTravel(km, go.duration, display);
     return go.ok
-      ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(fmtDuration(go.duration))}</small></button>${ice}</div>`
+      ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(estimate)}</small></button>${ice}</div>`
       : `<div class="way" data-way="${region}"${at}><span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
   }
   const ex = check(state, world, cal, "explore", `region:${region}`);
@@ -363,9 +366,9 @@ export function wayIntoHtml(state: GameState, world: World, cal: Calendar, regio
  * Every way out of this region, for the tests that ask whether a thing can
  * be reached at all. The board offers these one at a time, on the map.
  */
-export function travelHtml(state: GameState, world: World, cal: Calendar): string {
+export function travelHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   return regionAt(world, state.player.region).neighbours
-    .map((n) => wayIntoHtml(state, world, cal, n.id))
+    .map((n) => wayIntoHtml(state, world, cal, n.id, false, display))
     .join("");
 }
 
@@ -761,10 +764,13 @@ function invRows(items: { item: ItemId; qty: number }[], act: "take" | "drop"): 
  * belongs with the take buttons that act on the same heap, not in a list
  * organised by what work produces.
  */
-function haulHtml(state: GameState, world: World, cal: Calendar): string {
+function haulHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay): string {
   const o = check(state, world, cal, "haul");
   if (!o.ok) return o.why ? `<div style="margin-top:4px"><span class="dim">${esc(plain(o.why))}</span></div>` : "";
-  return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}, ${fmtDuration(o.duration)}</small></button></div>`;
+  const camp = campCellOf(state, world);
+  const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, walkableIce(state.weather));
+  const estimate = km === null ? fmtDuration(o.duration) : formatTravel(km * 2, o.duration, display);
+  return `<div style="margin-top:4px"><button class="mini" data-act="task" data-id="haul">haul it all to camp <small>${esc(plain(o.detail))}; ${esc(estimate)}</small></button></div>`;
 }
 
 /**
@@ -779,7 +785,7 @@ function haulHtml(state: GameState, world: World, cal: Calendar): string {
  * the buttons that half can offer: drop from the pack, take from the
  * ground.
  */
-export function inventoryHtml(state: GameState, world: World, cal: Calendar): string {
+export function inventoryHtml(state: GameState, world: World, cal: Calendar, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
   const p = state.player;
   const kg = weight(p.pack);
   const d = body(state);
@@ -796,7 +802,7 @@ ${invRows(carried, "drop")}${dropAll}
 </div>
 <div class="invsec ground" data-inv="ground">
 <h2>On the ground, ${esc(describeWhere(state, world))} <span class="r">${fmtKg(weight(here))}</span></h2>
-${invRows(listItems(here), "take")}${haulHtml(state, world, cal)}
+${invRows(listItems(here), "take")}${haulHtml(state, world, cal, display)}
 </div>`;
 }
 

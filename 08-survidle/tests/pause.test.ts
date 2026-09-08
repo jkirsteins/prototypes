@@ -103,7 +103,7 @@ describe("set aside on screen", () => {
     resetPanels();
   });
 
-  it("lists what is set aside with a resume button when it can be resumed here", () => {
+  it("does not turn set-aside work into a second visible queue", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
@@ -113,14 +113,12 @@ describe("set aside on screen", () => {
     stopTask(state, world);
     setPanel("task", taskHtml(state, world, cal));
     const el = document.querySelector("#task")!;
-    expect(el.textContent).toContain("Set aside");
-    expect(el.textContent).toContain("Fell a tree");
-    expect(el.textContent).toContain("50%");
-    expect(el.querySelector('[data-act="task"][data-id="chop"]')).not.toBeNull();
+    expect(el.textContent).not.toContain("Set aside");
+    expect(el.querySelector('[data-act="task"][data-id="chop"]')).toBeNull();
     placeAtSpot(state, world, state.player.region, "camp");
     setPanel("task", taskHtml(state, world, cal));
     expect(document.querySelector('#task [data-act="task"][data-id="chop"]')).toBeNull();
-    expect(document.querySelector("#task")!.textContent).toContain("at the forest");
-    expect(document.querySelector("#task")!.innerHTML).toContain('data-act="finish"');
+    expect(document.querySelector("#task")!.textContent).not.toContain("at the forest");
+    expect(document.querySelector("#task")!.innerHTML).not.toContain('data-act="finish"');
   });
 });

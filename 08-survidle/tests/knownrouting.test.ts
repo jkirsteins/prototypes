@@ -6,11 +6,12 @@
  */
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { siteReport } from "../src/sim/camp";
+import { cellPossibilities } from "../src/sim/camp";
 import { isKnown, mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { discovery, SEEN } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
+import { seepGround } from "../src/sim/seep";
 import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 
@@ -50,10 +51,8 @@ describe("the survivor routes on knowledge", () => {
     const nb = regionAt(world, home).neighbours[0].id;
     const r = regionAt(world, nb);
     expect(r.spots.some((s) => !isKnown(state, s.cell))).toBe(true);
-    // Siting scores a cell the survivor has never seen, unchanged: it
-    // reads the true grid, so every spot still gets a real minutes figure.
-    const report = siteReport(state, world, r.campCell);
-    expect(report.spots.every((s) => s.minutes !== null)).toBe(true);
+    // Cell capabilities read the true ground, not the survivor's map.
+    expect(cellPossibilities(world, r.campCell)).toEqual(seepGround(world, r.campCell) ? ["seep possible"] : []);
   });
 
   it("survivorRoute refuses ground the state has not mapped, even when the true grid would allow it", () => {

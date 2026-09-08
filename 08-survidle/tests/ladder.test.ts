@@ -168,7 +168,7 @@ describe("where a row lands", () => {
     moveOrder(state, world, camp.id, 1);
     moveOrder(state, world, body.id, 1);
     giveOrder(state, world, req("stone", { kind: "once" }), "job", 0);
-    expect(ordersHere(state, world).map((o) => o.kind === "body" || o.kind === "camp" ? o.kind : o.req.task)).toEqual(["stone", "sticks", "camp", "body"]);
+    expect(ordersHere(state, world).map((o) => o.kind === "body" || o.kind === "camp" ? o.kind : o.req.task)).toEqual(["stone", "sticks", "body", "camp"]);
   });
 
   it("a haul given by hand is a row like any other: it runs, delivers, and drops off when the ground is bare", () => {

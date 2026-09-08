@@ -180,6 +180,7 @@ describe("sky in the page", () => {
     // here" was the same three words on every row and bought nothing.
     expect(text).not.toMatch(/from here/);
     const walk = document.querySelector('#maptravel [data-id="walk"][data-arg="spot:camp"]')!;
-    expect(walk.textContent).toMatch(/^camp [\d.]+ km, \d+ min/);
+    expect(walk.textContent).toMatch(/^camp [\d.]+ km/);
+    expect(walk.textContent).not.toMatch(/\d+ min/);
   });
 });

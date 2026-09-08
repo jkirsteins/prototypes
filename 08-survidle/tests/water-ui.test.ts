@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { siteLine, siteReport } from "../src/sim/camp";
+import { cellPossibilities } from "../src/sim/camp";
 import { addItem, pile } from "../src/sim/inventory";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -76,12 +76,12 @@ describe("the water line", () => {
     expect(waterList(state, world, cal)).toMatch(/snow at the fire, 1 l per 15 min and 1 kg wood/);
   });
 
-  it("the site report says when a seep is possible", () => {
+  it("the cell possibilities say when a seep is possible", () => {
     const { state, world } = newGame(17);
     siteCamp(state, world);
     const wet = wetCell(world);
-    expect(siteLine(siteReport(state, world, wet))).toMatch(/, seep possible$/);
+    expect(cellPossibilities(world, wet)).toEqual(["seep possible"]);
     const st = regionState(state, world, state.player.region);
-    expect(siteLine(siteReport(state, world, st.campCell!))).not.toMatch(/seep possible/);
+    expect(cellPossibilities(world, st.campCell!)).toEqual([]);
   });
 });

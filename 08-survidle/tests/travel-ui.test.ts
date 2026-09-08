@@ -10,10 +10,22 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { travelHtml } from "../src/ui/panels";
+import { placesHtml, travelHtml } from "../src/ui/panels";
 import { regionAt } from "../src/world/gen";
 
 describe("the ways out", () => {
+  it("uses the same distance, time, or combined format as every route", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const distance = placesHtml(state, world, cal, "distance");
+    const time = placesHtml(state, world, cal, "time");
+    const both = placesHtml(state, world, cal, "both");
+    expect(distance).toMatch(/\d+\.\d km/);
+    expect(distance).not.toMatch(/\d+ min/);
+    expect(time).toMatch(/\d+ min|\d+ h/);
+    expect(both).toMatch(/\d+\.\d km, (?:\d+ h )?\d+ min/);
+  });
+
   it("lists the neighbours, and only the neighbours", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);

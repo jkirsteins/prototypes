@@ -1,5 +1,5 @@
 import { itemLabel } from "../sim/actions";
-import { type Calendar, monthName, monthStartDoy } from "../sim/calendar";
+import { calendar, type Calendar, monthName, monthStartDoy } from "../sim/calendar";
 import { capabilityFor } from "../sim/capabilities";
 import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
@@ -8,15 +8,17 @@ import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { plain } from "../sim/voice";
-import { leftBehind, type TaskOption, withProgression } from "../sim/tasks";
+import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
-import { fmtDuration, fmtKm, fmtReal } from "../units";
+import { fmtDuration, fmtReal } from "../units";
 import { regionState } from "../sim/regionstate";
+import { walkableIce } from "../sim/weather";
 import { regionAt, type RegionDef, type World } from "../world/gen";
 import { masteryLine } from "./panels";
 import { purposesHtml } from "./panes";
 import { PURPOSES, purposeOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
+import { formatTravel } from "./travel";
 
 const TREE_TERRAINS = ["spruce", "pine", "birch"] as const;
 
@@ -325,8 +327,9 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
   const r = regionAt(world, state.player.region);
   const here = cellOf(state, world);
   const opts = r.spots.filter((s) => s.id !== "camp").map((s) => {
-    const km = kmBetween(state, world, here, s.cell);
-    const label = `${SPOT_WORDS[s.id]}${km === null ? "" : ` ${fmtKm(km)}`}`;
+    const km = kmBetween(state, world, here, s.cell, walkableIce(state.weather));
+    const walk = check(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${s.cell}`);
+    const label = `${SPOT_WORDS[s.id]}${km === null || !walk.ok ? "" : ` ${formatTravel(km, walk.duration, ui.travelDisplay)}`}`;
     return `<option value="${s.id}"${ui.choice.where === s.id ? " selected" : ""}>${esc(label)}</option>`;
   }).join("");
   return `<select data-act="row-where" data-id="${o.id}" data-arg="${esc(arg)}"><option value="nearest"${ui.choice.where === "nearest" ? " selected" : ""}>nearest</option>${opts}</select>`;
@@ -417,10 +420,11 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
     const st = regionState(state, world, state.player.region);
     // Where the camp being moved actually is. Not whereIs, which answers "camp"
     // for the camp cell and turns the whole sentence into a tautology.
-    const km = kmBetween(state, world, cellOf(state, world), st.campCell!);
-    const held = km === null
+    const km = kmBetween(state, world, cellOf(state, world), st.campCell!, walkableIce(state.weather));
+    const walk = check(state, world, calendar(state.minute, state.startDoy), "walk", `cell:${st.campCell!}`);
+    const held = km === null || !walk.ok
       ? `${esc(regionAt(world, state.player.region).name)}'s camp is somewhere {you} cannot reach from here`
-      : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(fmtKm(km))} from here`;
+      : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(formatTravel(km, walk.duration, ui.travelDisplay))} from here`;
     const left = leftBehind(state, world);
     const small = left ? `${held}. ${esc(left)}` : `${held}.`;
     return `<div class="opt${openCls}" data-opt="intent:makeCamp:"><div class="confirm"><b>Move camp here?</b> <small>${small}</small><div><button class="mini danger" data-act="camp-yes" data-id="makeCamp" data-arg="">yes, camp here</button> <button class="mini" data-act="camp-no">no</button></div></div></div>`;
@@ -430,7 +434,12 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   // it moves under `more` rather than going away: still there for whoever
   // wants it, out of the way of whoever is looking for something else.
   const line = o.duration > 0 ? `${fmtDuration(o.duration)} (${fmtReal(o.duration)})${o.resume ? `, ${Math.round(o.resume * 100)}% already done` : ""}` : "";
-  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${bar}${gives}</button>${tags}${more}${expand}</div>`;
+  const initial = o.initialWalk;
+  const walk = initial
+    ? `<small class="initial-walk">will walk to ${initial.nearest ? "nearest " : ""}${esc(initial.destination)} - ${esc(formatTravel(initial.km, initial.minutes, ui.travelDisplay))}</small>`
+    : "";
+  const possibilities = o.id === "makeCamp" && o.detail ? `<small>${esc(o.detail)}</small>` : "";
+  return `<div class="opt${openCls}" data-opt="intent:${o.id}:${esc(arg)}"><button class="act" data-act="intent" data-id="${o.id}" data-arg="${esc(arg)}">${esc(o.label)}${rec}<small>${esc(line)}</small>${walk}${possibilities}${bar}${gives}</button>${tags}${more}${expand}</div>`;
 }
 
 /** A group's rows, built at the open row's own chosen spot, so its duration and ok reflect that spot. */

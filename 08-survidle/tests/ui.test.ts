@@ -28,7 +28,7 @@ import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setP
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { tipHtml } from "../src/ui/tip";
 import { hurryClick, hurryKind, newHurry } from "../src/ui/hurry";
-import { fishSpecies, huntedLand } from "../src/sim/species";
+import { huntedLand } from "../src/sim/species";
 import { cellAt, neighbours, regionAt, speciesHere, spotOf } from "../src/world/gen";
 import { findRoute } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
@@ -73,7 +73,8 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(here.length).toBeGreaterThan(0);
     for (const s of here) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
     for (const s of huntedLand()) if (!r.capacity[s]) expect(html).not.toContain(`data-opt="intent:hunt:${s}"`);
-    for (const s of fishSpecies()) expect(html.includes(`data-opt="intent:fish:${s}"`)).toBe(Boolean(r.capacity[s]));
+    expect(html).toContain('data-opt="intent:fish:any"');
+    expect(html).toContain('data-specific="fish"');
   });
   it("every gather and camp task, in the Do list", () => {
     for (const id of ["chop", "sticks", "bark", "stone", "berries", "split", "cook", "light", "lightTorch", "sharpen", "repair", "rest", "sleep"]) {
@@ -111,7 +112,7 @@ describe("reachability: everything in the catalogue has a button", () => {
     expect(h).toContain(`data-act="intent" data-id="mend" data-arg="leanTo"`);
   });
   it("names the ground to stand on when work is greyed", () => {
-    expect(html).toMatch(/Fell a tree.*forest/s);
+    expect(html).toMatch(/Fell any tree.*forest/s);
     expect(html).toMatch(/Gather stone.*(rock|outcrop)/s);
   });
   it("every option that trains says which skill it is under and what its practice is called", () => {
@@ -293,7 +294,7 @@ describe("panels", () => {
     const camp = document.querySelectorAll<HTMLElement>("#map .mk-camp");
     expect(camp.length).toBe(1);
     expect(camp[0].textContent).toBe("x");
-    expect(camp[0].title).toContain(`camp, ${regionAt(world, state.player.region).name}`);
+    expect(camp[0].title).toBe("");
     st.fire.lit = true;
     setPanel("map", mapHtml(world, state, ui, cal));
     expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
@@ -354,13 +355,14 @@ describe("panels", () => {
     const ambient = ambientTemperature(cal, state.weather);
     setPanel("stats", statsHtml(state, world, cal, ambient, newUiState()));
     state.player.health = 42;
-    state.task = { id: "rest", progress: 30, duration: 60, repeat: false };
+    startIntent(state, world, cal, new Rng(1), { task: "rest", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    state.task!.progress = state.task!.duration / 2;
     setPanel("task", taskHtml(state, world, cal));
     updateBars(state, world);
     expect(document.querySelector<HTMLElement>("#bar-health")!.style.width).toBe("42.0%");
     expect(document.querySelector("#val-health")!.textContent).toBe("42");
-    expect(document.querySelector<HTMLElement>("#bar-task")!.style.width).toBe("50.0%");
-    expect(document.querySelector("#val-task")!.textContent).toContain("30 min left (30 s)");
+    expect(document.querySelector<HTMLElement>('[data-bar="task"]')!.style.width).toBe("50.0%");
+    expect(document.querySelector('[data-val="task"]')!.textContent).toContain("30 min left (30 s)");
   });
 
   it("region card shows the travel button for another region, and the spots and loose piles for here", () => {
@@ -456,7 +458,7 @@ describe("panels", () => {
     const y = Math.floor(cellInView! / world.w);
     const glyph = document.querySelectorAll("#map .c")[(y - y0) * l.w + (x - x0)] as HTMLElement;
     expect(glyph.classList.contains("fog")).toBe(true);
-    expect(glyph.title).toBe(nb.name);
+    expect(glyph.title).toBe("");
     expect(glyph.getAttribute("data-act")).toBe("select");
     setPanel("maptravel", travelHtml(state, world, cal));
     const btn = document.querySelector(`#maptravel [data-act="task"][data-id="explore"][data-arg="region:${nbId}"]`);
@@ -643,7 +645,8 @@ describe("the Do panel", () => {
     for (const id of STRUCTURE_IDS) expect(html).toContain(`data-opt="intent:build:${id}"`);
     const roster = regionAt(world, state.player.region);
     for (const s of huntedLand()) if (roster.capacity[s]) expect(html).toContain(`data-opt="intent:hunt:${s}"`);
-    for (const s of fishSpecies()) expect(html.includes(`data-opt="intent:fish:${s}"`)).toBe(Boolean(roster.capacity[s]));
+    expect(html).toContain('data-opt="intent:fish:any"');
+    expect(html).toContain('data-specific="fish"');
     for (const id of ["sticks", "bark", "stone", "berries", "split", "cook", "light", "sharpen", "repair", "night", "rest", "sleep"]) {
       expect(html).toContain(`data-opt="intent:${id}:`);
     }
@@ -696,7 +699,12 @@ describe("the Do panel", () => {
     addItem(herePile(g.state, g.world), "log", 3);
     const c = calendar(g.state.minute);
     expect(doHtml(g.state, g.world, c, newUiState())).not.toContain('data-id="haul"');
-    expect(inventoryHtml(g.state, g.world, c)).toContain('data-act="task" data-id="haul"');
+    const distance = inventoryHtml(g.state, g.world, c, "distance");
+    const time = inventoryHtml(g.state, g.world, c, "time");
+    expect(distance).toContain('data-act="task" data-id="haul"');
+    expect(distance).toMatch(/haul it all to camp.*\d+\.\d km/s);
+    expect(distance).not.toMatch(/haul it all to camp.*\d+ min/s);
+    expect(time).toMatch(/haul it all to camp.*(?:\d+ h )?\d+ min/s);
   });
 
   it("a build blocked only by materials elsewhere in the region is not greyed out, and names what it would fetch", () => {
@@ -737,22 +745,20 @@ describe("the Do panel", () => {
     // One row, and one fact in each place: work begun by hand has no row on
     // the list, so this row carries the whole order. Which step it is on is
     // the bar's, which bars.ts writes every frame.
-    expect(html).toContain("Fell a tree, until camp has 40 logs, bringing it to camp");
+    expect(html).toContain("Fell any tree, until camp has 40 logs, bringing it to camp");
     expect(html).not.toContain("walking to the forest");
     expect(html).toContain('data-act="stop"');
-    // A tree half felled, then the intent stopped from camp: the entry offers finish, not resume.
+    // A tree half felled and stopped does not create a second finish control.
     placeAtSpot(g.state, g.world, g.state.player.region, "forest");
     startTask(g.state, g.world, calendar(0), "chop");
     for (let i = 0; i < 30; i++) stepTask(g.state, g.world, calendar(0), rng, 1);
     stopTask(g.state, g.world);
     placeAtSpot(g.state, g.world, g.state.player.region, "camp");
     html = taskHtml(g.state, g.world, calendar(0));
-    expect(html).toContain('data-act="finish" data-id="chop"');
-    expect(html).toMatch(/data-act="finish" data-id="chop"[^>]*data-cell="\d+"/);
-    expect(html).not.toContain('>resume<');
+    expect(html).not.toContain('data-act="finish"');
   });
 
-  it("carried work's finish button names no cell, so it resolves through nearest and still reaches camp", () => {
+  it("set-aside carried work has no separate finish control", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
@@ -767,11 +773,7 @@ describe("the Do panel", () => {
     stopTask(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     const html = taskHtml(state, world, calendar(0));
-    expect(html).toContain('data-act="finish" data-id="light"');
-    expect(html).not.toMatch(/data-act="finish" data-id="light"[^>]*data-cell=/);
-    // The finish handler's own logic when the button carries no cell: where "nearest".
-    expect(startIntent(state, world, calendar(0), new Rng(1), { task: "light", until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
-    expect(state.intent?.cell).toBe(camp);
+    expect(html).not.toContain('data-act="finish"');
   });
 });
 
@@ -831,17 +833,17 @@ describe("the Orders panel", () => {
     expect(html).toContain("<h2>Activity queue <span class=\"r\">3</span></h2>");
     expect(html.indexOf(`data-id="${keep.id}"`)).toBeLessThan(html.indexOf(`data-id="${cabin.id}"`));
     expect(html).toContain("met");
-    expect(html).toContain("waiting its turn, behind");
-    expect(html).toContain("gathering sticks");
+    expect(html).not.toContain("waiting its turn");
+    expect(html).not.toContain("gathering sticks");
     // The live row keeps its hurry pulse; the job's own bar is the activity
     // row's under the map, so the ids exist once on the page.
     expect(html).not.toContain('id="bar-task"');
     expect(html).toContain('id="bar-hurry"');
-    // The camp row holds the top rank, where its own "up" is spent; the
-    // keep's is free, since a care row is a row it may be moved over.
-    expect(html).toContain(`data-act="order-up" data-id="${campRowOf(state, world)!.id}" disabled`);
+    // The camp row holds the top rank, so it has no up control. The keep's
+    // is free, since a care row is a row it may be moved over.
+    expect(html).not.toContain(`data-act="order-up" data-id="${campRowOf(state, world)!.id}"`);
     expect(html).not.toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
-    expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
+    expect(html).not.toContain(`data-act="order-down" data-id="${cabin.id}"`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
     expect(html).not.toContain('data-act="stop"');
     // Counters appear once the work has completed.
@@ -860,7 +862,7 @@ describe("the Orders panel", () => {
     advance(state, world, 1);
     const bodyId = bodyRowOf(state, world)!.id;
     let html = queueHtml(state, world, calendar(state.minute));
-    expect(html).toContain("Look after yourself");
+    expect(html).toContain("Self-care");
     expect(html).toContain(`data-act="order-down" data-id="${bodyId}"`);
     expect(html).not.toContain(`data-act="order-remove" data-id="${bodyId}"`);
     // Down, and the grind is the row over the body: the player has said to
@@ -891,7 +893,7 @@ describe("the Orders panel", () => {
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
   });
 
-  it("shows the wait, and no bar, when nothing on the list can run", () => {
+  it("shows no synthetic wait activity or bar when nothing on the list can run", () => {
     const g = newGame(3);
     siteCamp(g.state, g.world);
     const { state, world } = g;
@@ -901,7 +903,7 @@ describe("the Orders panel", () => {
     addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     advance(state, world, 2);
     const html = queueHtml(state, world, calendar(state.minute));
-    expect(html).toContain("Waiting at camp");
+    expect(html).not.toContain("Waiting at camp");
     expect(html).not.toContain('id="bar-task"');
   });
 });

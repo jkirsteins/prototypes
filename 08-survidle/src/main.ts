@@ -51,6 +51,7 @@ import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
+import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
 import { cellAt, generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
@@ -90,6 +91,7 @@ let wasDead = false;
 let state!: GameState;
 let world!: World;
 const ui = newUiState();
+ui.travelDisplay = loadTravelDisplay(localStorage);
 const SPECIFIC_KEY = "survidle.specific";
 try {
   const saved = JSON.parse(localStorage.getItem(SPECIFIC_KEY) ?? "{}") as Partial<UiState["specific"]>;
@@ -185,7 +187,7 @@ function render() {
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world, cal));
-  setPanel("maptravel", placesHtml(state, world, cal));
+  setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));
@@ -216,12 +218,12 @@ function render() {
     const tk = tipKey(state, world, ui.hover);
     if (tk !== lastTipKey) {
       lastTipKey = tk;
-      setPanel("maptip", tipHtml(state, world, cal, ui.hover));
+      setPanel("maptip", tipHtml(state, world, cal, ui.hover, ui.travelDisplay));
     }
   }
   setPanel("dopurposes", doPurposesHtml(state, world, ui));
   setPanel("doitems", doHtml(state, world, cal, ui));
-  setPanel("inventory", inventoryHtml(state, world, cal));
+  setPanel("inventory", inventoryHtml(state, world, cal, ui.travelDisplay));
   setPanel("log", logHtml(state));
   setPanel("journal", journalHtml(state, cal, ui));
   updateBars(state, world);
@@ -233,6 +235,8 @@ function render() {
   // The settings panel is static markup with its own listeners (the slider must
   // not be redrawn mid-drag), so it is shown and hidden rather than rewritten.
   document.getElementById("settings")!.hidden = !ui.settings;
+  const travelSelect = document.querySelector<HTMLSelectElement>("[data-display=travel]");
+  if (travelSelect && travelSelect.value !== ui.travelDisplay) travelSelect.value = ui.travelDisplay;
 
   const overlay = document.getElementById("overlay")!;
   if (ui.manual) {
@@ -348,7 +352,16 @@ function onClick(ev: Event) {
   switch (act) {
     case "task": {
       const id = target.dataset.id as TaskId;
-      if (id === "haul") {
+      if (id === "walk") {
+        const arg = target.dataset.arg ?? "";
+        const cell = arg.startsWith("cell:")
+          ? Number(arg.slice(5))
+          : regionAt(world, state.player.region).spots.find((spot) => `spot:${spot.id}` === arg)?.cell;
+        if (cell !== undefined && Number.isFinite(cell)) {
+          const walk = insertWalkAtTop(state, world, cell);
+          startIntent(state, world, cal, rng, walk.req, walk.id);
+        }
+      } else if (id === "haul") {
         // Carrying a pile home is work like any other, so it goes on the list
         // as the row the click makes it: without one, the body could take the
         // minute from it and nothing would bring it back.
@@ -364,9 +377,6 @@ function onClick(ev: Event) {
     }
     case "stop":
       stopTask(state, world);
-      break;
-    case "tip-close":
-      ui.hover = null;
       break;
     case "pane":
       ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
@@ -690,6 +700,16 @@ document.addEventListener("input", (ev) => {
 });
 document.addEventListener("change", (ev) => {
   const el = ev.target as HTMLInputElement;
+  if (el.matches("[data-display=travel]")) {
+    const value = el.value;
+    if (value === "distance" || value === "time" || value === "both") {
+      ui.travelDisplay = value;
+      saveTravelDisplay(value, localStorage);
+      lastTipKey = "";
+      render();
+    }
+    return;
+  }
   if (el.matches("[data-act=row-where]")) {
     ui.choice.where = el.value as RowChoice["where"];
     render();

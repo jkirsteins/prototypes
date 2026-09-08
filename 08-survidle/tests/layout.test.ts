@@ -51,7 +51,7 @@ describe("the layout", () => {
     const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
     const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
 
-    for (const id of ["goals", "stats", "camp", "gear", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    for (const id of ["goals", "stats", "gear", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
     // The clock is gone: the day and the hour are three lines in the weather
     // widget, and the row it took is map now.
     for (const id of ["map", "task", "panes"]) expect(mid).toContain(`id="${id}"`);
@@ -80,14 +80,14 @@ describe("the layout", () => {
     expect(away).toBeLessThan(gear);
   });
 
-  it("all four panes exist at once, three of them hidden", () => {
+  it("all five panes exist at once, four of them hidden", () => {
     const html = page();
-    for (const id of ["pane-do", "pane-log", "pane-pack", "pane-journal"]) {
+    for (const id of ["pane-do", "pane-camp", "pane-log", "pane-pack", "pane-journal"]) {
       expect(html).toContain(`id="${id}"`);
     }
     // Rendering a pane on demand would destroy the other three and the
     // scroll position each holds, which is the complaint this answers.
-    expect((html.match(/id="pane-[a-z]+"[^>]*hidden/g) ?? []).length).toBe(3);
+    expect((html.match(/id="pane-[a-z]+"[^>]*hidden/g) ?? []).length).toBe(4);
   });
 
   it("the Do pane's only scroll container is the item pane", () => {
@@ -128,6 +128,13 @@ describe("the layout", () => {
     const columns = html.slice(html.indexOf('id="app"'), settings);
     expect(columns).not.toContain('id="sound"');
     expect(columns).not.toContain('id="beacon"');
+  });
+
+  it("settings offers one browser-wide travel estimate format", () => {
+    const html = page();
+    const settings = html.slice(html.indexOf('id="settings"'), html.indexOf('id="overlay"'));
+    expect((settings.match(/data-display="travel"/g) ?? []).length).toBe(1);
+    for (const value of ["distance", "time", "both"]) expect(settings).toContain(`value="${value}"`);
   });
 
   it("the page ends in a footer naming the build, filled from the version the bundle was built with", () => {
