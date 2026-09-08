@@ -11,7 +11,7 @@ import { noteNight } from "./record";
 import type { GameState } from "./types";
 
 /** Rolled once per game hour. */
-export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng): void {
+export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambient: number, felt: number, rng: Rng, wolves = true): void {
   const p = state.player;
 
   // Sickness: cold and wet is how you catch it.
@@ -26,7 +26,7 @@ export function hourlyEvents(state: GameState, world: World, cal: Calendar, ambi
 
   // Wolves: the night outside, where wolves live, worse in winter. A region without wolves has quiet nights.
   let wolvesTonight = false;
-  if (cal.isNight && !sheltered(state, world) && !firelit(state, world)) {
+  if (wolves && cal.isNight && !sheltered(state, world) && !firelit(state, world)) {
     let chance = 0.02 * regionDensity(state, world, p.region, "wolf", cal);
     if (cal.season === "winter") chance *= 2;
     if (chance > 0 && rng.chance(chance)) {

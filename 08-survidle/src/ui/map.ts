@@ -20,6 +20,8 @@ import { esc, type UiState } from "./render";
 import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
 import { lighting } from "./sky";
+import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
+import type { AgentSpecies, WildlifeSubject } from "../sim/types";
 
 export const GLYPH: Record<Terrain, string> = {
   water: "~", fell: "^", rock: "n", bog: "\"", spruce: "A", pine: "T", birch: "Y", meadow: ".",
@@ -54,7 +56,10 @@ export const MARKS = {
   camp: { glyph: "x", cls: "mk-camp", label: "camp" },
   trap: { glyph: "T", cls: "mk-trap", label: "trap" },
   seep: { glyph: "s", cls: "mk-seep", label: "seep" },
+  den: { glyph: "D", cls: "mk-den", label: "known bear den" },
 } as const satisfies Record<string, { glyph: string; cls: string; label: string }>;
+
+const ANIMAL_GLYPH: Record<AgentSpecies, string> = { deer: "d", reindeer: "r", elk: "E", wolf: "w", wolverine: "v", bear: "B" };
 
 /**
  * The map's key: every terrain letter from the glyph table, then ice, then
@@ -75,8 +80,9 @@ export function legendHtml(): string {
   const marks = Object.values(MARKS)
     .map((m) => `<span><b class="${m.cls}">${m.glyph}</b> ${m.label}</span>`)
     .join("");
+  const animals = `<span><b class="mk-animal">d r E w v B</b> large wildlife</span>`;
   return (
-    `${terrain}<span><b>=</b> ice</span>${marks}` +
+    `${terrain}<span><b>=</b> ice</span>${marks}${animals}` +
     `<span class="tone-key">brighter ground stands higher; paler water is shallower</span>` +
     `<span class="pl-key">underlined: something lies there</span>` +
     `<span class="walk-key"><svg viewBox="0 0 24 6"><polyline class="walk-ahead" points="1,3 23,3"/></svg> your walk, solid ahead, dashed behind</span>` +
@@ -300,10 +306,45 @@ export function mapKey(state: GameState, world: World, ui: UiState, cal: Calenda
   const marks = Object.entries(state.regions).map(([id, r]) => `${id}${r.structures.cabin || r.structures.leanTo || r.structures.turfHut ? "H" : ""}${r.fire.lit ? (fuelTotal(r.fire) >= FIRE_LOW_KG ? "F" : "f") : hasEmbers(r.fire) ? "e" : ""}${r.trap ? "T" : ""}`).join(",");
   const route = state.route ? `${state.route.target}:${state.route.path.length}` : "";
   const piles = Object.keys(state.piles).join(",");
+  const dens = Object.keys(state.wildlife.knownDens).join(",");
   const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+  const level = levelAt(ui.zoom);
   const cell = cellOf(state, world);
   const discoveredSum = Object.values(state.discovered).reduce((a, b) => a + b, 0);
-  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}`;
+  const animals = level.cells === 1 ? visibleWildlife(state, world, cal)
+    .filter((subject) => subject.active && (subject.active.cell % world.w) >= x0 && (subject.active.cell % world.w) < x0 + level.w && Math.floor(subject.active.cell / world.w) >= y0 && Math.floor(subject.active.cell / world.w) < y0 + level.h)
+    .map((s) => `${s.id}:${s.active?.cell}:${wildlifeMembers(s)}:${state.wildlife.recognized[s.id] ? s.name ?? "" : ""}:${s.active?.intent}`).join(",") : "";
+  return `${ui.zoom}|${x0}|${y0}|${cell}|${ui.selected}|${state.weather.snowCm > SNOW_SHOWN_CM}|${state.weather.snowCm > DEEP_SNOW_CM}|${iceMode(state.weather)}|${cal.isNight}|${marks}|${route}|${piles}|${dens}|${Object.keys(state.discovered).length}|${discoveredSum}|${knowledgeGen()}|${state.player.torch.lit ? "T" : ""}|${moodOf(state)}|${cal.season}|${animals}`;
+}
+
+/**
+ * One stable inspection surface for every map glyph. Pointer users can sweep
+ * across the map, while keyboard users enter the grid and move cell by cell.
+ * Delegation keeps the listeners alive when the glyph markup is morphed.
+ */
+export function mountMapInspection(root: HTMLElement): void {
+  const show = (target: EventTarget | null): void => {
+    const cell = target instanceof Element ? target.closest<HTMLElement>("[data-map-info]") : null;
+    const output = root.querySelector<HTMLOutputElement>(".map-inspect");
+    if (cell && output) output.textContent = cell.dataset.mapInfo ?? "";
+  };
+  root.addEventListener("pointerover", (event) => show(event.target));
+  root.addEventListener("focusin", (event) => show(event.target));
+  root.addEventListener("keydown", (event) => {
+    if (!(event instanceof KeyboardEvent) || !event.key.startsWith("Arrow")) return;
+    const grid = root.querySelector<HTMLElement>(".grid");
+    if (!grid || (event.target !== grid && !(event.target instanceof Element && event.target.matches("[data-map-info]")))) return;
+    const cells = [...grid.querySelectorAll<HTMLElement>("[data-map-info]")];
+    if (!cells.length) return;
+    const current = event.target instanceof HTMLElement && event.target.matches("[data-map-info]") ? event.target : cells[0];
+    const x = Number(current.dataset.mapX);
+    const y = Number(current.dataset.mapY);
+    const dx = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    const dy = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+    const next = cells.find((cell) => Number(cell.dataset.mapX) === x + dx && Number(cell.dataset.mapY) === y + dy) ?? current;
+    event.preventDefault();
+    next.focus();
+  });
 }
 
 export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calendar): string {
@@ -326,6 +367,13 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   };
 
   const markerAt = new Map<number, (typeof MARKS)[keyof typeof MARKS]>();
+  const featuresAt = new Map<number, string[]>();
+  const addFeature = (glyph: number, feature: string): void => {
+    if (glyph < 0) return;
+    const features = featuresAt.get(glyph) ?? [];
+    if (!features.includes(feature)) features.push(feature);
+    featuresAt.set(glyph, features);
+  };
   for (const { st, cell } of visitedCamps(state)) {
     let m: (typeof MARKS)[keyof typeof MARKS];
     if (st.fire.lit) m = MARKS.fire;
@@ -333,23 +381,55 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     else if (st.structures.cabin || st.structures.leanTo || st.structures.turfHut) m = MARKS.shelter;
     else m = MARKS.camp;
     const g = toGlyph(cell);
-    if (g >= 0) markerAt.set(g, m);
+    if (g >= 0) {
+      markerAt.set(g, m);
+      addFeature(g, "camp");
+      if (st.structures.cabin) addFeature(g, "cabin shelter");
+      else if (st.structures.turfHut) addFeature(g, "turf-hut shelter");
+      else if (st.structures.leanTo) addFeature(g, "lean-to shelter");
+      if (st.fire.lit) addFeature(g, "lit campfire");
+      else if (hasEmbers(st.fire)) addFeature(g, "banked coals");
+    }
   }
   for (const r of Object.values(state.regions)) {
     if (!r.trap) continue;
     const g = toGlyph(r.trap.cell);
+    addFeature(g, "trap");
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.trap);
   }
   for (const k of Object.keys(state.seeps)) {
     const g = toGlyph(Number(k));
+    addFeature(g, "seep");
     if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.seep);
   }
+  for (const k of Object.keys(state.wildlife.knownDens)) {
+    const g = toGlyph(Number(k));
+    addFeature(g, "known bear den");
+    if (g >= 0 && !markerAt.has(g)) markerAt.set(g, MARKS.den);
+  }
   const playerGlyph = toGlyph(playerCell);
+  addFeature(playerGlyph, "you");
   markerAt.set(playerGlyph, MARKS.you);
+  const animalAt = new Map<number, WildlifeSubject>();
+  if (z === 1) {
+    for (const subject of visibleWildlife(state, world, cal)) {
+      const g = subject.active ? toGlyph(subject.active.cell) : -1;
+      if (g >= 0) {
+        if (!animalAt.has(g)) animalAt.set(g, subject);
+        const recognized = state.wildlife.recognized[subject.id];
+        const count = wildlifeMembers(subject);
+        const identity = recognized && subject.name ? subject.name : (subject.species === "wolf" ? "wolf pack" : subject.species);
+        addFeature(g, `${identity}${count > 1 ? `, ${count}` : ""}, ${subject.active?.intent ?? "moving"}`);
+      }
+    }
+  }
   const pileGlyphs = new Set<number>();
   for (const k of Object.keys(state.piles)) {
     const g = toGlyph(Number(k));
-    if (g >= 0) pileGlyphs.add(g);
+    if (g >= 0) {
+      pileGlyphs.add(g);
+      addFeature(g, "supplies");
+    }
   }
   const rings = cal.isNight ? litRings(lightSources(state, world), toGlyph, z, l) : new Map<number, number>();
 
@@ -465,7 +545,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
+  parts.push(`<div class="scroll-x"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" role="grid" tabindex="0" aria-label="Map. Use arrow keys to inspect cells." style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -476,6 +556,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     let glyph = " ";
     let title = "";
     let style = "";
+    let animalId: number | null = null;
     if (reg < 0) {
       cls.push("void");
     } else if (seen === 0) {
@@ -548,14 +629,29 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
       glyph = m.glyph;
       title = `${m.label}, ${title}`;
+    } else {
+      const animal = animalAt.get(i);
+      if (animal) {
+        animalId = animal.id;
+        const recognized = state.wildlife.recognized[animal.id];
+        cls.push("mk", "mk-animal", recognized ? `wildlife-${animal.colour}` : "wildlife-unknown");
+        glyph = ANIMAL_GLYPH[animal.species];
+        const count = wildlifeMembers(animal);
+        const identity = recognized && animal.name ? animal.name : (animal.species === "wolf" ? "wolf pack" : animal.species);
+        title = `${identity}${count > 1 ? `, ${count}` : ""}, ${animal.active?.intent ?? "moving"}, ${title}`;
+      }
     }
+    const terrain = reg < 0 ? "beyond the mapped world" : seen === 0 ? "unknown ground" : `${TERRAIN_NAME[terrains[i]]}${z > 1 ? `, ${z * 300} m block` : ""}`;
+    const place = reg >= 0 && named ? world.regions.get(reg)?.name : undefined;
+    const info = [terrain, place, ...featuresAt.get(i) ?? []].filter(Boolean).join("; ");
     // Selecting is what puts the Explore button on the panel, so a named region stays
     // clickable on the map whether or not its ground itself has been walked.
     const act = named ? ` data-act="select" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
     const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
-    parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    const wildlife = animalId === null ? "" : ` data-wildlife-id="${animalId}"`;
+    parts.push(`<span class="${cls.join(" ")}" role="gridcell" tabindex="-1" data-map-x="${gx}" data-map-y="${gy}" data-map-info="${esc(info)}"${act}${you}${wildlife}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}</div></div>${tools}`);
+  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}<output class="map-inspect" aria-live="polite">Map: point at a glyph, or focus the map and use arrow keys.</output></div></div>${tools}`);
   return parts.join("");
 }

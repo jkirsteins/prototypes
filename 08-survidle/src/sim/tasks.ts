@@ -51,6 +51,7 @@ import {
 } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
+import { AGENT_SPECIES, knownBearDen, takeWildlifeMember, unknownBearDen } from "./wildlife-agents";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -105,7 +106,7 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
 
 /** Tasks whose pace depends on the body; the rest are walks and waits. Exported so a test can hold availableTasks to covering every one of them. */
 export const WORK_TASKS = new Set<TaskId>([
-  "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "fish", "cook",
+  "chop", "sticks", "bark", "stone", "berries", "split", "deadwood", "splitWedges", "hunt", "findDen", "fish", "cook",
   "craft", "repair", "sharpen", "hone", "build", "mend", "light", "lightIndoors", "lightTorch", "fill", "iceHole", "hang", "read",
   "setTrap", "emptyTrap", "makeCamp", "crack", "eggs", "innerBark", "grindBark", "roots", "tapSap", "seaweed",
 ]);
@@ -600,17 +601,30 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const def = SPECIES_DEFS[s];
       if (!def?.hunt || isFish(s)) return { ...opt({ group: "hunt", label: "Hunt" }), ok: false, why: "no such animal" };
       const d = regionDensity(state, world, p.region, s, cal);
-      const o = ground(spotSuits(world, at, def.hunt.spot, waterOf(s)), def.hunt.spot, SPOT_WHAT[def.hunt.spot], opt({
-        group: "hunt", label: `Hunt ${def.name}`, duration: def.hunt.minutes, repeatable: true,
-        detail: huntDetail(state, s, huntOdds(state, world, cal, d, s)),
-      }));
+      const den = s === "bear" ? knownBearDen(state, cal) : null;
+      const denOdds = Math.min(0.9, 0.55 * oddsFactor(state, "bear"));
+      const base = opt({
+        group: "hunt", label: den ? `Hunt ${def.name} at den` : `Hunt ${def.name}`, duration: den ? Math.max(120, def.hunt.minutes / 2) : def.hunt.minutes, repeatable: true,
+        detail: den ? `${Math.round(denOdds * 100)}% chance; known den, twice the injury risk` : huntDetail(state, s, huntOdds(state, world, cal, d, s)),
+      });
+      const o = den ? base : ground(spotSuits(world, at, def.hunt.spot, waterOf(s)), def.hunt.spot, SPOT_WHAT[def.hunt.spot], base);
       if (!o.ok) return o;
       if (!toolNear(p, "bow", toolInvs)) return { ...o, ok: false, why: "needs a bow" };
       if (!kitInReach(state, world, "arrow", [p.pack])) return { ...o, ok: false, why: "needs arrows in the pack" };
       // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
       const gone = absence(def, cal, state.weather.iceCm);
-      if (gone) return { ...o, ok: false, why: gone };
-      if (popOf(st, s) < 1) return { ...o, ok: false, why: `no ${def.name} here now` };
+      if (gone && !den) return { ...o, ok: false, why: gone };
+      if (popOf(st, s) < 1 && !den) return { ...o, ok: false, why: `no ${def.name} here now` };
+      return o;
+    }
+    case "findDen": {
+      const bear = unknownBearDen(state, cal);
+      const o = opt({ group: "hunt", label: "Find bear den", duration: 240, repeatable: true, detail: `${Math.round(findDenOdds(state) * 100)}% chance; follow autumn or winter sign` });
+      if (skillLevel(state, "hunting") < 5) return { ...o, ok: false, why: `needs Hunting 5; {you} {are} ${skillLevel(state, "hunting")}` };
+      if (!bear) {
+        const known = state.wildlife.subjects.some((subject) => subject.species === "bear" && subject.region === p.region && subject.denCell !== null && state.wildlife.knownDens[subject.denCell]);
+        return { ...o, ok: false, why: known ? "the occupied den here is already known" : "no denning bear sign here now" };
+      }
       return o;
     }
     case "fish": {
@@ -957,6 +971,10 @@ export function bedText(state: GameState, world: World): string {
 /** A read shore's odds over an unread one: knowing where the fish lie is worth half again. */
 export const READ_ODDS = 1.5;
 
+export function findDenOdds(state: GameState): number {
+  return Math.min(0.75, 0.15 * 1.2 ** Math.max(0, skillLevel(state, "hunting") - 5));
+}
+
 export function huntOdds(state: GameState, world: World, cal: Calendar, density: number, species: Species): number {
   const def = SPECIES_DEFS[species].hunt!;
   let odds = density * def.odds * oddsFactor(state, species);
@@ -993,6 +1011,7 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const id of ["chop", "deadwood", "sticks", "bark", "stone", "berries", "eggs", "innerBark", "roots", "tapSap", "seaweed"] as TaskId[]) out.push(check(state, world, cal, id));
   out.push(check(state, world, cal, "hunt", "any"));
   for (const s of huntedLand()) if (r.capacity[s]) out.push(check(state, world, cal, "hunt", s));
+  out.push(check(state, world, cal, "findDen"));
   out.push(check(state, world, cal, "fish", "any"));
   for (const s of fishSpecies()) if (r.capacity[s]) out.push(check(state, world, cal, "fish", s));
   out.push(check(state, world, cal, "read"));
@@ -1180,7 +1199,11 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   const fresh = checkFresh(state, world, cal, id, arg);
   const fraction = key ? (state.paused[key]?.fraction ?? 0) : 0;
   if (key) delete state.paused[key];
-  state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable, ...(any ? { any: true } : {}) };
+  const wildlifeSubject = id === "hunt" && arg && AGENT_SPECIES.includes(arg as (typeof AGENT_SPECIES)[number])
+    ? (arg === "bear" ? knownBearDen(state, cal)?.id : undefined)
+      ?? state.wildlife.subjects.find((subject) => subject.species === arg && subject.region === state.player.region && subject.active)?.id
+    : undefined;
+  state.task = { id, arg, progress: fresh.duration * fraction, duration: fresh.duration, repeat: repeat && o.repeatable, ...(any ? { any: true } : {}), ...(wildlifeSubject !== undefined ? { wildlifeSubject } : {}) };
   return true;
 }
 
@@ -1306,6 +1329,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const id = t.id;
   const arg = t.arg;
   const repeat = t.repeat;
+  const wildlifeSubject = t.wildlifeSubject;
   state.task = null;
   const it = state.intent;
   if (it) {
@@ -1332,7 +1356,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       }
     }
   }
-  complete(state, world, cal, rng, id, arg);
+  complete(state, world, cal, rng, id, arg, wildlifeSubject);
   if (repeat && !state.dead) {
     // "Anything" draws afresh; state.task is already null, so beginTask sets nothing aside.
     const o = check(state, world, cal, id, wanted);
@@ -1718,12 +1742,12 @@ function marrowAnimal(state: GameState): Species {
  * below is untouched: a deed is what happened, not a special case inside
  * whatever happened.
  */
-function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
-  completeTask(state, world, cal, rng, id, arg);
+function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number): void {
+  completeTask(state, world, cal, rng, id, arg, wildlifeSubject);
   goalDeed(state, { kind: "task", id, arg });
 }
 
-function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
+function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string, wildlifeSubject?: number): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const invs = reach(state, world);
@@ -1825,6 +1849,15 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       }
       return;
     }
+    case "findDen": {
+      const bear = unknownBearDen(state, cal);
+      if (!bear?.denCell) return;
+      if (rng.chance(findDenOdds(state))) {
+        state.wildlife.knownDens[bear.denCell] = true;
+        log(state, "The tracks narrow to a hollow under stone and root: a bear den.", "good");
+      } else log(state, "The bear sign crosses itself and fades. No den found.");
+      return;
+    }
     case "hunt": {
       const s = arg as Species;
       const def = SPECIES_DEFS[s];
@@ -1837,12 +1870,16 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         log(state, "The bow snaps.", "bad");
       }
       cue("arrow");
-      if (rng.chance(huntOdds(state, world, cal, d, s))) {
+      const den = s === "bear" ? knownBearDen(state, cal) : null;
+      const odds = den ? Math.min(0.9, 0.55 * oddsFactor(state, "bear")) : huntOdds(state, world, cal, d, s);
+      if (rng.chance(odds)) {
         st.pop[s] = Math.max(0, popOf(st, s) - 1);
+        if (AGENT_SPECIES.includes(s as (typeof AGENT_SPECIES)[number])) takeWildlifeMember(state, s as (typeof AGENT_SPECIES)[number], den?.id ?? wildlifeSubject);
         state.stats.animals++;
         state.stats.kills[s] = (state.stats.kills[s] ?? 0) + 1;
         if (!hasEvent(state, (e) => e.kind === "firstKill" && e.species === s)) record(state, { kind: "firstKill", species: s });
         const x = huntExtras(state, s);
+        if (den && x.fatKg) x.fatKg *= 0.5;
         const where = produce(state, world, "rawMeat", x.meatKg);
         if (x.hideKg) produce(state, world, "hide", x.hideKg);
         if (x.furKg) produce(state, world, "fur", x.furKg);
@@ -1855,14 +1892,14 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         if (x.bone) produce(state, world, "bone", x.bone);
         if (x.sinew) produce(state, world, "sinew", x.sinew);
         log(state, `${anAnimal(s, true)}. ${x.meatKg} kg of meat${where === "pile" ? ", more than {you} can carry; it lies where it fell" : ""}.`, "good");
-        const injury = injuryChance(state, s);
+        const injury = Math.min(0.95, injuryChance(state, s) * (den ? 2 : 1));
         if (injury > 0 && rng.chance(injury)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);
           log(state, "It did not go down easily. {You} {are} hurt.", "bad");
         }
       } else {
-        const hurt = gapInjury(state, s);
+        const hurt = Math.min(0.95, gapInjury(state, s) * (den ? 2 : 1));
         if (hurt > 0 && rng.chance(hurt)) {
           p.injured = Math.max(p.injured, 24 * 60);
           p.health = Math.max(1, p.health - 15);

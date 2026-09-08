@@ -617,6 +617,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
   splitWedges: () => "splitting a log with wedges",
   deadwood: () => "gathering dead wood",
   hunt: (arg) => (arg === "any" ? "hunting" : `hunting ${SPECIES_DEFS[arg as Species]?.name ?? "game"}`),
+  findDen: () => "following bear sign",
   fish: (arg) => (arg === "any" ? "fishing" : `fishing for ${SPECIES_DEFS[arg as Species]?.name ?? "fish"}`),
   cook: (arg) => `cooking ${ITEM_NAMES[(arg ?? "rawMeat") as ItemId]}`,
   craft: (arg) => `making ${RECIPES[arg as RecipeId].name}`,

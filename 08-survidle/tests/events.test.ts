@@ -26,6 +26,26 @@ function nights(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
 }
 
 describe("wolves", () => {
+  it("skips the aggregate wolf roll while detailed agents own the encounter", () => {
+    const detailed = newGame(5);
+    const aggregate = newGame(5);
+    let region = -1;
+    for (let id = 0; id < LATTICE_W * LATTICE_H && region < 0; id++) {
+      if (regionAt(detailed.world, id).capacity.wolf) region = id;
+    }
+    for (const game of [detailed, aggregate]) {
+      placeAt(game.state, game.world, regionAt(game.world, region).campCell);
+      regionState(game.state, game.world, region).pop.wolf = regionAt(game.world, region).capacity.wolf!;
+      game.state.player.sick = 1;
+    }
+    const rng = { chance: () => true } as unknown as Rng;
+
+    hourlyEvents(detailed.state, detailed.world, NIGHT, 10, 10, rng, false);
+    hourlyEvents(aggregate.state, aggregate.world, NIGHT, 10, 10, rng, true);
+    expect(detailed.state.player.health).toBe(100);
+    expect(aggregate.state.player.health).toBeLessThan(100);
+  });
+
   it("never come where there are none, and come more where there are many", () => {
     const { state, world } = newGame(5);
     let safe = -1;

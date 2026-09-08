@@ -133,7 +133,7 @@ function canopyBlocks(world: World, x: number, y: number, distM: number): boolea
 }
 
 /** Marches from (cx, cy) toward the cell (cx + dx, cy + dy), marking every cell it crosses until the world's edge or a closed canopy. */
-function marchRay(state: GameState, world: World, cx: number, cy: number, dx: number, dy: number): void {
+function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, seen: Set<number>): void {
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
   for (let i = 1; i <= steps; i++) {
     const x = cx + Math.round((dx * i) / steps);
@@ -141,7 +141,7 @@ function marchRay(state: GameState, world: World, cx: number, cy: number, dx: nu
     if (x < 0 || y < 0 || x >= world.w || y >= world.h) return;
     const distM = Math.hypot(x - cx, y - cy) * CELL_KM * 1000;
     const blocked = canopyBlocks(world, x, y, distM);
-    markKnown(state, y * world.w + x);
+    seen.add(y * world.w + x);
     if (blocked) return;
   }
 }
@@ -152,20 +152,26 @@ function marchRay(state: GameState, world: World, cx: number, cy: number, dx: nu
  * each one marked until it runs into a canopy that closes the view.
  */
 export function seeFrom(state: GameState, world: World, cal: Calendar, cell: number): void {
-  markKnown(state, cell);
+  for (const visible of visibleCells(state, world, cal, cell)) markKnown(state, visible);
+}
+
+/** Ground in sight now, unlike mapped knowledge which survives after the eye moves on. */
+export function visibleCells(state: GameState, world: World, cal: Calendar, cell: number): Set<number> {
+  const seen = new Set<number>([cell]);
   const r = sightRangeCells(state, world, cal, cell);
-  if (r <= 0) return;
+  if (r <= 0) return seen;
   const cx = cell % world.w;
   const cy = Math.floor(cell / world.w);
   // The rays are the range's own square edge, walked as an edge: a ray to
   // every cell of the box's interior would be the same rays over again, since
   // each already marks every cell it crosses on the way out.
   for (let d = -r; d <= r; d++) {
-    marchRay(state, world, cx, cy, d, -r);
-    marchRay(state, world, cx, cy, d, r);
+    marchRay(world, cx, cy, d, -r, seen);
+    marchRay(world, cx, cy, d, r, seen);
   }
   for (let d = -r + 1; d <= r - 1; d++) {
-    marchRay(state, world, cx, cy, -r, d);
-    marchRay(state, world, cx, cy, r, d);
+    marchRay(world, cx, cy, -r, d, seen);
+    marchRay(world, cx, cy, r, d, seen);
   }
+  return seen;
 }

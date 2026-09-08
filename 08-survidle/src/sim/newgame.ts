@@ -16,6 +16,7 @@ import { newSkills } from "./skills";
 import { resetTeaching } from "./teach";
 import type { GameState, LifeRecord, Person } from "./types";
 import { seasonalMean } from "./weather";
+import { emptyWildlife, resetWildlifeKnowledge } from "./wildlife-agents";
 
 /**
  * The stomach a survivor arrives with: fed, not gorged. A share of the pool
@@ -28,6 +29,7 @@ export const ARRIVAL_DRIED_MEAT_KG = 1;
 
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
+  resetWildlifeKnowledge(state);
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   state.player = {
@@ -129,6 +131,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     spine: { fired: {}, announced: {} },
     manualSeen: false,
     goals: newGoals(calendar(0, startDoy).season),
+    wildlife: emptyWildlife(),
   } as GameState;
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);

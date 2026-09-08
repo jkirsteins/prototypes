@@ -37,7 +37,7 @@ import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
 import { doHtml, KW_PREFIX, loadFolds, saveFold } from "./ui/dopanel";
 import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
-import { LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
+import { LEVELS, legendHtml, mapHtml, mapKey, mountMapInspection } from "./ui/map";
 import {
   awayHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, regionHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml,
@@ -47,6 +47,7 @@ import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, s
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { createPortraitMotion } from "./ui/portrait-motion";
 import { updateSky } from "./ui/sky";
+import { recognitionHtml } from "./ui/wildlife-panel";
 import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
@@ -210,6 +211,9 @@ function render() {
   } else if (ui.goalsDone) {
     setPanel("overlay", goalDoneHtml(state, cal, ui.goalsDone));
     overlay.hidden = false;
+  } else if (ui.recognition !== null) {
+    setPanel("overlay", recognitionHtml(state, ui.recognition));
+    overlay.hidden = false;
   } else {
     overlay.hidden = true;
   }
@@ -220,7 +224,7 @@ let lastSave = performance.now();
 function frame(now: number) {
   const dtSec = Math.max(0, (now - lastReal) / 1000);
   lastReal = now;
-  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalsDone) {
+  if (!state.dead && !state.landing && !ui.away && !ui.teach && !ui.welcome && !ui.goalsDone && ui.recognition === null) {
     if (dtSec > 30) {
       // The tab was in the background: catch up the same way a reload does.
       setCueSink(null);
@@ -232,10 +236,10 @@ function frame(now: number) {
     } else {
       // The hurry: extra minutes for work chosen by hand, on top of the frame's own. The speed test aid does not scale it.
       const extra = hurryFrame(ui.hurry, hurryKind(state), state.intent?.orderId ?? null, dtSec);
-      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra);
+      advance(state, world, dtSec * GAME_MINUTES_PER_REAL_SECOND * speed + extra, { wildlife: "detailed" });
     }
     if ((state.minute - forecastAt.minute >= 60 && now - forecastAt.real >= 2000) || dayNumber(state.minute) !== forecastAt.day || state.player.region !== forecastAt.region) requestForecast();
-  } else if (ui.away || ui.teach || ui.welcome || ui.goalsDone) {
+  } else if (ui.away || ui.teach || ui.welcome || ui.goalsDone || ui.recognition !== null) {
     // An open moment holds the game still. Without the bump, a modal left open
     // past thirty seconds trips the catch-up branch above, and the player
     // dismisses it into an away report they never earned.
@@ -251,6 +255,9 @@ function frame(now: number) {
   // not requeue the overlay every frame.
   const reached = goalMomentToOpen(state, ui);
   if (reached) ui.goalsDone = reached;
+  if (!ui.away && !state.landing && !state.dead && !ui.welcome && !ui.teach && !ui.goalsDone && ui.recognition === null) {
+    ui.recognition = state.wildlife.recognitionQueue[0] ?? null;
+  }
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
@@ -425,6 +432,11 @@ function onClick(ev: Event) {
       state.goals.queue = [];
       // The same bump the rung moment's dismiss does: the minutes the
       // screen was open were paused, not spent away.
+      lastReal = performance.now();
+      break;
+    case "recognition-close":
+      if (ui.recognition !== null && state.wildlife.recognitionQueue[0] === ui.recognition) state.wildlife.recognitionQueue.shift();
+      ui.recognition = null;
       lastReal = performance.now();
       break;
     case "leave-world":
@@ -655,6 +667,7 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => saveGame(state));
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
+mountMapInspection(document.getElementById("mapdyn")!);
 render();
 portraitMotion.frame(document, performance.now(), document.visibilityState === "visible" && !state.dead && !state.landing && !ui.away);
 requestAnimationFrame(frame);
