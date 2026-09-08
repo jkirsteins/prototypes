@@ -64,6 +64,7 @@ describe("the epitaph", () => {
 
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
+    // A body need is the survivor's own, not the order's: exhaustion or cold from one job holds through the handover to the next.
     // What these two deaths rest on: a shore's fish capacity is biomass per hectare over mean weight, tens of
     // thousands per km2, so a trap and a spear both find fish; a hunted small-game range refills from its
     // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
@@ -89,8 +90,8 @@ describe("the epitaph", () => {
     // any ground could be walked sight unseen: a survivor who has to go and look at their
     // own valley first learns where the food is, rather than working the first spot the
     // list names.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 26. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 25. Starved at camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 24. Starved at camp, with nothing in the pack and 34 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 27. Starved at camp, with nothing in the pack and 11 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

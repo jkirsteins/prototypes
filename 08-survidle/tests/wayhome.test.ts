@@ -105,10 +105,11 @@ describe("searching for the way home", () => {
     const campCell = regionState(state, world, state.player.region).campCell;
     const it: RunnerIntent = {
       mode: "runner", task: "wait", cell: campCell, campCell, until: { kind: "forever" }, deliver: "leave",
-      done: 0, step: "", need: null, orderId: null, windDown: false,
+      done: 0, step: "", orderId: null, windDown: false,
     };
+    state.intent = it;
     const rng = new Rng(1);
-    const step = bodyStep(state, world, cal, rng, it, "sleep");
+    const step = bodyStep(state, world, cal, rng, "sleep");
     // The body settles where it stands rather than setting off over unknown ground.
     expect(step?.id).not.toBe("walk");
     expect(step?.step).toContain("no way to camp");

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { currentNeed } from "../src/sim/body";
 import { calendar } from "../src/sim/calendar";
 import { startIntent } from "../src/sim/intent";
 import { addItem } from "../src/sim/inventory";
@@ -47,7 +46,7 @@ describe("work chosen by hand is the player's", () => {
       return state.task?.id === "deadwood";
     })).toBe(true);
     expect([...steps].some((s) => s.includes("for the evening"))).toBe(false);
-    expect(state.intent?.need).toBeNull();
+    expect(state.player.bodyNeed).toBeNull();
     expect(state.player.energy).toBeLessThan(SPENT_AT);
     expect(until(g, () => state.intent?.task !== "deadwood")).toBe(true);
     // A deadwood round trip costs more energy than the ten points between the
@@ -67,7 +66,7 @@ describe("work chosen by hand is the player's", () => {
     advance(state, world, 1);
     // Not the first once: the runner is its own between orders, and the body is spent.
     expect(state.intent?.task).toBe("wait");
-    expect(state.intent?.mode === "runner" && state.intent.need).toBe("spent");
+    expect(state.intent?.mode === "runner" && state.player.bodyNeed).toBe("spent");
     expect(until(g, () => state.intent?.task === "sticks", 1500)).toBe(true);
     expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT);
     expect(until(g, () => state.intent?.task === "deadwood", 1500)).toBe(true);
@@ -91,7 +90,7 @@ describe("work chosen by hand is the player's", () => {
     addOrder(state, world, { task: "deadwood", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     advance(state, world, 1);
     expect(state.intent?.mode).toBe("runner");
-    expect(state.intent?.need).toBe("spent");
+    expect(state.player.bodyNeed).toBe("spent");
   });
 
   it("a night out is the runner's even though nobody counts it; a once started by hand is the player's", () => {
@@ -101,14 +100,5 @@ describe("work chosen by hand is the player's", () => {
     const sticks = spentAtCamp();
     expect(startIntent(sticks.state, sticks.world, cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
     expect(sticks.state.intent?.mode).toBe("hand");
-  });
-
-  it("the body tier cannot be handed an intent it has not been shown to own", () => {
-    const { state, world } = spentAtCamp();
-    startIntent(state, world, cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
-    const it = state.intent!;
-    // @ts-expect-error the body tier reads only the runner's own intent; a hand intent has no need to serve
-    expect(() => currentNeed(state, world, cal, it)).toBeDefined();
-    if (it.mode === "runner") expect(currentNeed(state, world, cal, it)).toBeDefined();
   });
 });

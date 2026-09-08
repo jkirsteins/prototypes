@@ -13,13 +13,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
-import type { GameState, RunnerIntent } from "../src/sim/types";
-/** The live intent, which these traces expect to be the runner's own. */
-function runner(state: GameState): RunnerIntent {
-  if (state.intent?.mode !== "runner") throw new Error("the live intent is not the runner's");
-  return state.intent;
-}
-
+import type { GameState } from "../src/sim/types";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
@@ -79,12 +73,22 @@ describe("the working day", () => {
     expect(p.workHours).toBeUndefined();
   });
 
+  it("a save from before the need moved off the intent reads no need and no spent cold", () => {
+    const { state } = newGame(1);
+    const raw = JSON.parse(serialize(state));
+    delete raw.state.player.bodyNeed;
+    delete raw.state.player.coldSpent;
+    const p = deserialize(JSON.stringify(raw))!.state.player;
+    expect(p.bodyNeed).toBeNull();
+    expect(p.coldSpent).toBe(false);
+  });
+
   it("a night under way survives a save and load, so a run reloaded mid-sleep goes back to bed", () => {
     const { state, world } = felling();
     const cal = calendar(state.minute, state.startDoy);
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
     state.player.water = WATER_FULL;
-    expect(currentNeed(state, world, cal, runner(state))).toBe("sleep");
+    expect(currentNeed(state, world, cal)).toBe("sleep");
     expect(state.player.sleeping).toEqual({ collapsed: false });
     const back = deserialize(serialize(state))!.state;
     expect(back.player.sleeping).toEqual({ collapsed: false });
@@ -96,7 +100,7 @@ describe("the working day", () => {
     let sawRest = false;
     for (let h = 0; h < 16; h++) {
       advance(state, world, 60);
-      if (state.intent?.need === "spent") {
+      if (state.player.bodyNeed === "spent") {
         sawSpent = true;
         if (state.task?.id === "rest") sawRest = true;
       }
@@ -116,7 +120,7 @@ describe("the working day", () => {
     let releasedAt: number | null = null;
     for (let m = 0; m < 20 * 60 && releasedAt === null; m++) {
       advance(state, world, 1);
-      if (state.intent?.need === "spent" && state.task?.id === "rest") sawRest = true;
+      if (state.player.bodyNeed === "spent" && state.task?.id === "rest") sawRest = true;
       else if (sawRest && state.player.energy >= RESTED_AT) releasedAt = state.minute;
     }
     expect(sawRest).toBe(true);
@@ -173,20 +177,18 @@ describe("the working day", () => {
 
   it("a spent body drinks its fill before it sits down for the evening", () => {
     const { state, world } = felling();
-    const it = runner(state);
     state.player.energy = SPENT_AT - 1;
     placeAtSpot(state, world, state.player.region, "shore");
     state.player.water = 1.5;
     expect(state.player.water).toBeLessThan(WATER_FULL - 0.5);
-    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("thirsty");
+    expect(currentNeed(state, world, calendar(state.minute))).toBe("thirsty");
     expect(drink(state, world)).toBe(true);
     expect(state.player.water).toBe(WATER_FULL);
-    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("spent");
+    expect(currentNeed(state, world, calendar(state.minute))).toBe("spent");
   });
 
   it("a sleepy body gets up to drink first, and lies down once it is full", () => {
     const { state, world } = felling();
-    const it = runner(state);
     placeAtSpot(state, world, state.player.region, "shore");
     state.minute = calmNight(state);
     const cal = calendar(state.minute);
@@ -194,48 +196,46 @@ describe("the working day", () => {
     state.player.energy = 100;
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 2, cal.hour);
     state.player.water = THIRSTY_L / 2;
-    expect(currentNeed(state, world, cal, it)).toBe("thirsty");
+    expect(currentNeed(state, world, cal)).toBe("thirsty");
     state.player.water = WATER_FULL;
-    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+    expect(currentNeed(state, world, cal)).toBe("sleep");
   });
 
   it("a sleep in progress lets go at the wake line, and the same reading holds by day and by night", () => {
     const { state, world } = felling();
-    const it = runner(state);
     state.player.energy = 100;
     state.player.water = WATER_FULL;
     for (const minute of [25 * 60, 14 * 60]) {
       // 09:00 on day 2, then 22:00 on day 1: the clock is asked nothing.
       state.minute = minute;
       const cal = calendar(state.minute);
-      it.need = "sleep";
+      state.player.bodyNeed = "sleep";
       state.player.sleepDebt = debtFor(SLEEP_ONSET, cal.hour);
-      expect(currentNeed(state, world, cal, it)).toBe("sleep");
-      it.need = "sleep";
+      expect(currentNeed(state, world, cal)).toBe("sleep");
+      state.player.bodyNeed = "sleep";
       state.player.sleepDebt = debtFor(0, cal.hour);
-      expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
+      expect(currentNeed(state, world, cal)).not.toBe("sleep");
       expect(sleepiness(state.player.sleepDebt, cal.hour)).toBeCloseTo(0, 6);
     }
   });
 
   it("a sleep set aside is a night interrupted, not a night over: the body goes back to bed", () => {
     const { state, world } = felling();
-    const it = runner(state);
     const cal = calendar(state.minute);
     state.player.energy = 100;
     state.player.water = WATER_FULL;
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, cal.hour);
-    expect(currentNeed(state, world, cal, it)).toBe("sleep");
+    expect(currentNeed(state, world, cal)).toBe("sleep");
     expect(beginTask(state, world, cal, "sleep")).toBe(true);
     // Whatever takes the body off the bed - a fire to feed, an order changing
     // under it - the night is the player's and only the model ends it.
     setAside(state, world);
     expect(state.task).toBeNull();
     expect(state.player.sleeping).toEqual({ collapsed: false });
-    expect(currentNeed(state, world, calendar(state.minute), it)).toBe("sleep");
+    expect(currentNeed(state, world, calendar(state.minute))).toBe("sleep");
     // Past the wake line, and only then, it is up.
     state.player.sleepDebt = debtFor(WAKE_AT - 1, cal.hour);
-    expect(currentNeed(state, world, cal, it)).not.toBe("sleep");
+    expect(currentNeed(state, world, cal)).not.toBe("sleep");
     expect(state.player.sleeping).toBeNull();
   });
 
@@ -252,7 +252,7 @@ describe("the working day", () => {
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 5, calendar(state.minute, state.startDoy).hour);
     // The fire step comes first at camp, so the sleep waits on it.
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("sleep");
     expect(["light", "lightIndoors"]).toContain(state.task?.id);
     expect(state.player.sleeping).toEqual({ collapsed: false });
     // The order the runner was serving is dropped mid-night; the night stands.
@@ -276,12 +276,12 @@ describe("checking the snares", () => {
     st.snareCatch = { count: 2, age: 0 };
     expect(snaresWaiting(state, world, calendar(state.minute))).toBe(heath);
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("snares");
+    expect(state.player.bodyNeed).toBe("snares");
     expect(state.intent?.step).toContain("check the snares");
     // Walk there: the catch comes with you and the chore is over.
     for (let m = 0; m < 600 && st.snareCatch.count > 0; m += 15) advance(state, world, 15);
     expect(st.snareCatch.count).toBe(0);
-    expect(state.intent?.need ?? null).not.toBe("snares");
+    expect(state.player.bodyNeed ?? null).not.toBe("snares");
     expect(state.log.some((e) => /hares? in the snares/.test(e.text))).toBe(true);
   });
 
@@ -297,7 +297,7 @@ describe("checking the snares", () => {
     state.player.water = 0.5;
     state.player.energy = 100;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("thirsty");
+    expect(state.player.bodyNeed).toBe("thirsty");
   });
 });
 
@@ -312,7 +312,7 @@ describe("cutting the ice hole", () => {
     const site = iceHoleSite(state, world, cal);
     expect(site).not.toBeNull();
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("thirsty");
+    expect(state.player.bodyNeed).toBe("thirsty");
     expect(state.intent?.step).toContain("ice hole");
     // The nearest waterside cell is recomputed from the runner's own moving
     // position every tick, same as shoreForWater's candidate list, so the

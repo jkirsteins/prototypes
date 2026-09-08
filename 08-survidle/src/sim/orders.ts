@@ -646,9 +646,11 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     // runner waits and the wait's body tier serves it - the walk home, the
     // fire, the night, the drink - and the order starts once the wait has
     // nothing left to serve. This is the only body turn work chosen by hand
-    // ever gets, since a once order carries no body tier of its own.
+    // ever gets, since a once order carries no body tier of its own. A wait
+    // already under way reads its own serving read, sticky and all; nothing
+    // waiting yet is a fresh ask with no memory behind it, bodyAsks's own.
     const waiting = live?.mode === "runner" && live.task === "wait" ? live : null;
-    if (waiting ? waiting.need !== null : bodyAsks(state, world, cal) !== null) {
+    if ((waiting ? state.player.bodyNeed : bodyAsks(state, world, cal)) !== null) {
       if (!waiting) startIntent(state, world, cal, rng, WAIT);
       return;
     }

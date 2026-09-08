@@ -316,7 +316,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const campCell = regionState(state, world, state.player.region).campCell;
   state.intent = {
     mode: intentMode(req.task, until), task: req.task, arg: req.arg, cell, campCell,
-    until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
+    until, deliver, done: 0, step: "setting out", orderId, windDown: false,
   };
   // A bow hunt's arrows, or a set-snares job's snares, must be in the pack before the
   // check below, which reads the pack only; food and vessels stay in the camp pile
@@ -675,16 +675,15 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
 }
 
 /** The body tier's minute: reads the need and, when one holds and has a step, takes it. True when the body has the slot. */
-function serveBody(state: GameState, world: World, cal: Calendar, rng: Rng, it: RunnerIntent): boolean {
-  const need = currentNeed(state, world, cal, it);
-  it.need = need;
+function serveBody(state: GameState, world: World, cal: Calendar, rng: Rng, _it: RunnerIntent): boolean {
+  const need = currentNeed(state, world, cal);
   // The model ends a sleep, not the task's own clock. A sleep task is as long
   // as the model expects the night to be, and the two can disagree by minutes;
   // when the body is past the wake line it gets up on that minute rather than
   // lying out the rest of an hour it no longer needs.
   if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
   if (!need) return false;
-  const s = bodyStep(state, world, cal, rng, it, need);
+  const s = bodyStep(state, world, cal, rng, need);
   if (!s) return false;
   if (!isRunning(state, s)) takeStep(state, world, cal, s);
   return true;

@@ -40,6 +40,8 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     // reserve derives from its fatigue.
     sleepDebt: 10,
     sleeping: null,
+    bodyNeed: null,
+    coldSpent: false,
     wetness: 0,
     sick: 0,
     injured: 0,

@@ -1249,7 +1249,7 @@ describe("pre-emption", () => {
     addItem(state.player.pack, "stick", 1);
     state.intent = {
       mode: "runner", task: "sticks", cell, campCell: st.campCell, until: { kind: "forever" },
-      deliver: "camp", done: 0, step: "gathering sticks", orderId: away.id, windDown: false, need: null,
+      deliver: "camp", done: 0, step: "gathering sticks", orderId: away.id, windDown: false,
     };
     expect(deliveryPending(state, world, state.intent)).toBe(true);
     const top = addOrder(state, world, { task: "stone", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");

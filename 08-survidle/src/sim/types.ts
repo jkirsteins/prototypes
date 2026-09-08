@@ -280,28 +280,26 @@ interface IntentBase {
  * by hand. It is the player's, the way a raw action under the advanced
  * toggle is: the runner walks to the work and does it, and the body never
  * takes it over or moves it anywhere. The body still speaks - the tags and
- * the log say tired, spent, sleepy, cold - and the player decides. There
- * is no need to serve, so there is no field to serve it in: the body tier
- * takes a RunnerIntent and cannot be handed this one.
+ * the log say tired, spent, sleepy, cold - and the player decides. The mode
+ * tag is what keeps the body tier off it: `serveBody` only ever runs on a
+ * `RunnerIntent`, so a `HandIntent` is never handed a step to take over.
  */
 export interface HandIntent extends IntentBase {
   mode: "hand";
-  need: null;
 }
 
 /**
  * The runner's own: a standing or counted order, the wait at camp, and the
  * night out (whose whole content is the body's sleep). The body tier
- * outranks it - sleep, storm, cold, thirst, hunger, snares, spent, home -
- * and these are that tier's fields.
+ * outranks it - sleep, storm, cold, thirst, hunger, snares, spent, home.
+ * Which need holds and whether cold has already spent a rest live on the
+ * player rather than here: this intent comes and goes with every order the
+ * scheduler swaps in, and a need's stickiness has to outlast that.
  */
 export interface RunnerIntent extends IntentBase {
   mode: "runner";
-  need: BodyNeed | null;
   /** Warmth when the current rest step began, so its gain can be judged when it completes. Unset outside a rest step. */
   restFromWarmth?: number;
-  /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
-  coldSpent?: boolean;
 }
 
 export type Intent = HandIntent | RunnerIntent;
@@ -377,6 +375,10 @@ export interface Player {
    * fatigue line, which holds until fatigue is back at RESTED_AT.
    */
   sleeping: { collapsed: boolean } | null;
+  /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */
+  bodyNeed: BodyNeed | null;
+  /** A rest has already failed to raise warmth: cold does not hold again until warmth recovers on its own. */
+  coldSpent: boolean;
   wetness: number;
   /** Minutes remaining. */
   sick: number;

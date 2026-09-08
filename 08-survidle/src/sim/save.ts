@@ -114,10 +114,9 @@ function fillDefaults(state: GameState): void {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;
     // Whose the intent is was read off what it was asked to do; a save from
-    // before that reads the same way, and a hand intent carries no need.
+    // before that reads the same way.
     const it = state.intent as Partial<Intent> & { task: TaskId; until: Until };
     it.mode ??= intentMode(it.task, it.until);
-    if (it.mode === "hand") it.need = null;
   }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
@@ -176,6 +175,10 @@ function fillDefaults(state: GameState): void {
   // any of them drops them here and round-trips clean.
   p.sleepDebt ??= 100 - p.energy;
   p.sleeping ??= null;
+  // A save with no sticky need reads its need fresh on the next free minute,
+  // which costs one minute of stickiness and nothing else.
+  p.bodyNeed ??= null;
+  p.coldSpent ??= false;
   delete (p as { restUntil?: number }).restUntil;
   delete (p as { sleptTonight?: boolean }).sleptTonight;
   delete (p as { workHours?: number }).workHours;
