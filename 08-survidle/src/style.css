@@ -44,10 +44,11 @@ body { display: flex; flex-direction: column; height: 100vh; }
   min-height: 0;
 }
 
-/* A panel with nothing in it yet takes no room and draws no border, so a
-   camp with nothing built and an empty queue read as empty rather than as
-   something that failed to load. */
-#camp:empty, #orders:empty { display: none; }
+/* A panel with nothing in it yet takes no room and draws no border. The
+   queue is not one of them: an idle game is its queue, and a column that
+   appeared only once an order existed would teach nobody that orders are a
+   thing. It keeps its column and says it is empty. */
+#camp:empty { display: none; }
 
 /* The forecast and the dial that sets it are one thing: the control sits
    under what it changes, with no border between them. The slider stays
@@ -60,7 +61,12 @@ body { display: flex; flex-direction: column; height: 100vh; }
    It claims a floor of the middle column's height, and the map gives way:
    a Do pane showing its tabs and no rows is a promise of a check-in rather
    than one, and the rows are what a player came to the panel for. */
-#panes { display: flex; flex-direction: column; min-height: 300px; flex: 1 1 auto; }
+/* The map asks for exactly its grid: every zoom draws 504px tall, so
+   growing past that buys empty space around the glyphs. It gives way when
+   the window is short - to a floor, never to a strip - and the room above
+   that goes to the list, which can always use more. */
+#map { flex: 0 1 auto; min-height: 320px; }
+#panes { display: flex; flex-direction: column; flex: 1 1 0; min-height: 190px; }
 .pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 /* A display rule beats the user agent's [hidden] { display: none }, so the
    three panes that are hidden would paint on top of the one that is not.
@@ -101,6 +107,7 @@ body { display: flex; flex-direction: column; height: 100vh; }
 }
 #dopurposes .grp.on { color: var(--accent); background: rgba(230, 194, 41, 0.1); }
 #doitems { flex: 1; min-width: 0; overflow-y: auto; padding-left: 8px; }
+#pane-do > [data-do="filter"] { margin: 2px 0 4px; padding: 2px 6px; }
 /* What the row's face stopped saying, under the row that was opened. */
 .opt .detail { padding: 2px 0 4px; }
 
@@ -220,7 +227,7 @@ small, .dim { color: var(--dim); }
 }
 .bar.fat .lbl { font-size: 10px; line-height: 12px; }
 .bar.fat .fill { background: var(--kcal); opacity: .5; }
-.bar.mastery { height: 10px; margin: 4px 0 0; }
+.bar.mastery { height: 8px; margin: 2px 0 0; }
 .bar.mastery .fill { background: #4b6a8f; }
 .bar.mastery .lbl { font-size: 9px; line-height: 8px; }
 .skill { margin: 6px 0 10px; }
@@ -300,6 +307,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   position: absolute;
   top: 6px;
   right: 6px;
+  /* Bounded by the map it hangs off, and scrolling inside itself: a short
+     map used to let this spill over the panels underneath. */
+  max-height: calc(100% - 12px);
+  overflow-y: auto;
   z-index: 4;
   max-width: 240px;
   padding: 4px 7px;
@@ -324,7 +335,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    not off the page: absolute children look for the nearest positioned
    ancestor, and without this they found the viewport and sat over the
    queue column. */
-#map { padding: 8px; min-width: 0; position: relative; min-height: 0; display: flex; flex-direction: column; }
+#map { padding: 8px; min-width: 0; position: relative; display: flex; flex-direction: column; }
 /* The map's own corner: the zoom controls float over the bottom left of the
    grid rather than taking a row above it. */
 /* The chain of min-height: 0 that lets the board give way to the panels
@@ -664,7 +675,10 @@ button.act, span.act {
 }
 button.act:hover { border-color: var(--accent); }
 button.act small, span.act small { display: block; color: var(--dim); }
-.opt { display: flex; gap: 4px; margin: 4px 0; align-items: stretch; }
+/* Rows carry four lines now - the name, how long, the skill it practises
+   and the bar toward what that practice buys - so the space between them is
+   what a pane can afford to give back. */
+.opt { display: flex; gap: 4px; margin: 2px 0; align-items: stretch; }
 .opt.off span.act { color: var(--dim); cursor: default; background: transparent; }
 .opt.off span.act small { color: #5d6570; }
 .opt.off button.act { color: var(--dim); background: transparent; }
@@ -738,31 +752,35 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .invsec h2 { margin-top: 0; }
 .invact { margin-top: 4px; }
 
-/* The clock reads as a line and a square beside it: what day and hour it
-   is on the left, the weather as its own tile on the right. The ground's
-   depths and the warnings are small print under the weather rather than
-   headline text - three centimetres of snow read as loudly as the hour. */
-#clock .clockrow { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
-#clock .when { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+#clock .when { display: flex; flex-direction: column; gap: 2px; }
 #clock .when .big { font-size: 16px; color: #fff; }
 #clock .when .hour { margin-left: 8px; }
-#clock .weather {
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas: "sky temp" "sky word" "ground ground";
-  gap: 0 8px;
-  align-items: center;
-  text-align: right;
-  padding: 4px 6px;
-  border: 1px solid var(--line);
-  min-width: 150px;
-}
-#clock .weather .sky { grid-area: sky; }
-#clock .weather .temp { grid-area: temp; font-size: 16px; color: #fff; align-self: end; }
-#clock .weather .sky-word { grid-area: word; color: var(--dim); align-self: start; }
-#clock .weather .ground { grid-area: ground; color: var(--dim); font-size: 11px; text-align: right; margin-top: 2px; }
-#clock .weather .ground .bad { color: var(--bad); }
+
+/* The weather, built the way a phone's widget is: the sky behind, the day's
+   ends in the corner, the temperature large enough to read without looking
+   for it, then the pairs a reader scans rather than reads. What the ground
+   is doing is one of those pairs and not a headline. */
+#weather { padding: 0; overflow: hidden; }
+.wx { padding: 10px 12px 12px; background: linear-gradient(160deg, #1b2740 0%, #141a26 62%, #12161d 100%); }
+.wx-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.wx-sky { line-height: 0; }
+.wx-sky .sky { width: 96px; height: auto; }
+.wx-sun { text-align: right; color: var(--dim); font-size: 11px; line-height: 1.35; }
+.wx-temp { font-size: 34px; line-height: 1.1; color: #fff; margin-top: 6px; }
+.wx-temp .deg { font-size: 16px; color: var(--dim); margin-left: 3px; }
+.wx-temp.bad { color: var(--bad); }
+.wx-word { color: var(--dim); margin-bottom: 8px; }
+.wx-rows { display: grid; grid-template-columns: max-content 1fr; gap: 1px 10px; font-size: 12px; }
+.wx-k { color: var(--dim); }
+.wx-v.bad { color: var(--bad); }
+.wx-warn { color: var(--bad); font-size: 12px; margin-top: 4px; }
+.wx-where { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--dim); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+/* A place is one button, and what it costs is inside it: a name in a button
+   beside a sentence saying "from here" spent two thirds of the row on words
+   that never changed. */
+#maptravel .way .go { display: block; width: 100%; text-align: left; }
+#maptravel .way .go small { color: var(--dim); margin-left: 6px; }
 
 .inv .n { white-space: nowrap; }
 .inv .ctl { white-space: nowrap; }
@@ -882,17 +900,19 @@ button.act small.gives, span.act small.gives,
   body { height: auto; min-height: 100vh; }
   #app { grid-template-columns: 1fr; flex: none; }
   .col { display: contents; }
+  #goals { order: 0; }
   #task { order: 1; }
   #stats { order: 2; }
-  #forecast { order: 3; }
-  #away { order: 4; }
-  #orders { order: 5; }
-  #map { order: 6; }
-  #panes { order: 7; }
-  #camp { order: 8; }
-  #gear { order: 9; }
-  #skills { order: 10; }
-  #clock { order: 11; }
+  #weather { order: 3; }
+  #forecast { order: 4; }
+  #away { order: 5; }
+  #orders { order: 6; }
+  #map { order: 7; }
+  #panes { order: 8; }
+  #camp { order: 9; }
+  #gear { order: 10; }
+  #skills { order: 11; }
+  #clock { order: 12; }
 
   /* The split stacks: the purposes become a strip above the items, since
      120px of names beside a 250px phone leaves no room for either. */

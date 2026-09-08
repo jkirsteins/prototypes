@@ -5,7 +5,7 @@ import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import type { Weather } from "../src/sim/types";
 import { ambientTemperature } from "../src/sim/weather";
-import { clockHtml, placesHtml } from "../src/ui/panels";
+import { clockHtml, placesHtml, weatherHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, skyHtml, updateSky } from "../src/ui/sky";
@@ -96,7 +96,7 @@ describe("lighting", () => {
 
 describe("sky in the page", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<div id="clock"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div>`;
+    document.body.innerHTML = `<div id="clock"></div><div id="weather"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div>`;
     resetPanels();
   });
 
@@ -104,6 +104,8 @@ describe("sky in the page", () => {
     const { state, world } = newGame(21);
     const cal = at(13);
     setPanel("clock", clockHtml(state, world, cal, 5));
+    // The sky is drawn in the weather widget now, not the clock line.
+    setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));
     setPanel("map", mapHtml(world, state, newUiState(), cal));
     updateSky(state, cal, ambientTemperature(cal, state.weather));
     const sun = document.querySelector("#sky-sun")!;
@@ -132,11 +134,10 @@ describe("sky in the page", () => {
     // Standing at the forest: the forest is where you are, and everywhere
     // else is measured from there rather than from camp.
     expect(text).toContain("the forest you are here");
-    expect(text).toMatch(/from here/);
-    // The button names the place, since that is what a reader is looking
-    // for; the distance and the minutes sit beside it.
+    // The whole row is the button and what it costs is inside it: "from
+    // here" was the same three words on every row and bought nothing.
+    expect(text).not.toMatch(/from here/);
     const walk = document.querySelector('#maptravel [data-id="walk"][data-arg="spot:camp"]')!;
-    expect(walk.textContent).toBe("camp");
-    expect(text).toMatch(/camp [\d.]+ km \d+ min from here/);
+    expect(walk.textContent).toMatch(/^camp [\d.]+ km, \d+ min/);
   });
 });

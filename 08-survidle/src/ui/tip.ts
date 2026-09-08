@@ -26,7 +26,8 @@ import type { GameState } from "../sim/types";
 import { plain } from "../sim/voice";
 import { fmtDuration, fmtKg, fmtKm, fmtReal } from "../units";
 import { walkableIce } from "../sim/weather";
-import { regionAt, terrainPeek, type World } from "../world/gen";
+import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
+import { wayIntoHtml } from "./panels";
 import { esc } from "./render";
 
 /** What each terrain is called in a sentence, rather than by its glyph. */
@@ -67,7 +68,18 @@ function spotAt(state: GameState, world: World, cell: number): string | null {
 export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number): string {
   const close = `<button class="mini" data-act="tip-close" title="Close">x</button>`;
 
-  // Fog first: ground nobody has walked has nothing to report, and saying
+  // Another region first, and before the fog: ground over the border is not
+  // somewhere to walk, it is somewhere to go, and an unexplored one is
+  // exactly the region worth offering to explore. Answering that with "you
+  // have never been here" would be true and useless. This is what puts the
+  // regions on the map rather than in a list of names beside it.
+  const region = cellAt(world, cell).region;
+  if (region !== state.player.region) {
+    const name = esc(regionAt(world, region).name);
+    return `<div class="tiphead"><b>${name}</b>${close}</div>${wayIntoHtml(state, world, cal, region)}`;
+  }
+
+  // Fog next: ground nobody has walked has nothing to report, and saying
   // so is the honest answer rather than describing land out of a survivor's
   // reach who has never seen it.
   if (!isKnown(state, cell)) {
@@ -76,6 +88,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
 
   const here = cellOf(state, world);
   const st = regionState(state, world, state.player.region);
+
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   const terrain = terrainPeek(world, x, y);

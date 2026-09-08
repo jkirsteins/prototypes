@@ -43,7 +43,7 @@ import { cellFromPoint, LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
 import { tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, clockHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
-  manualHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml,
+  manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
@@ -145,12 +145,26 @@ function boot() {
   }
 }
 
-/** Scrolls the map's horizontal box so the survivor's glyph sits centred, after a rebuild moves it. */
-function scrollMapToSurvivor() {
+/**
+ * Puts the survivor's glyph in the middle of the map's box, on both axes.
+ *
+ * viewOrigin already centres the player in the grid it draws, but the grid
+ * is a fixed 792 by 504 and the box around it is whatever the column can
+ * spare, so the box scrolls - and a box scrolled to its top left shows a
+ * survivor somewhere off the middle. This is what makes the map a view
+ * centred on the person rather than a picture with them somewhere in it.
+ *
+ * Called when the map is rebuilt and whenever the box changes size, which
+ * is what a shorter window or a newly opened panel does to it. Between
+ * those a hand may scroll it wherever it likes; the next redraw, which is
+ * every time the survivor moves, brings them back to the middle.
+ */
+function centreMapOnSurvivor() {
   const wrap = document.querySelector<HTMLElement>("#mapdyn .scroll-x");
   const you = wrap?.querySelector<HTMLElement>("[data-you]");
   if (!wrap || !you) return;
   wrap.scrollLeft = you.offsetLeft + you.offsetWidth / 2 - wrap.clientWidth / 2;
+  wrap.scrollTop = you.offsetTop + you.offsetHeight / 2 - wrap.clientHeight / 2;
 }
 
 let lastTipKey = "";
@@ -162,17 +176,19 @@ function render() {
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world));
-  setPanel("maptravel", `${placesHtml(state, world, cal)}${travelHtml(state, world, cal)}`);
+  setPanel("maptravel", placesHtml(state, world, cal));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));
   setPanel("clock", clockHtml(state, world, cal, ambient, ui.hurry.rate));
+  setPanel("weather", weatherHtml(state, world, cal, ambient));
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
-    if (setPanel("mapdyn", mapHtml(world, state, ui, cal))) scrollMapToSurvivor();
+    if (setPanel("mapdyn", mapHtml(world, state, ui, cal))) centreMapOnSurvivor();
   }
   setPanel("task", taskHtml(state, world, cal));
+  setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("panetabs", paneTabsHtml(ui.panes));
   setPanel("dosubs", subtabsHtml(ui.panes));
@@ -680,6 +696,18 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => saveGame(state));
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
+
+// The map's box takes what the column can spare, so it changes size when the
+// window does or when a panel above it grows. Its markup does not change with
+// it, so the redraw that would have re-centred the survivor never happens:
+// watch the box itself.
+{
+  const board = document.getElementById("mapdyn");
+  if (board && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => centreMapOnSurvivor()).observe(board);
+  }
+  window.addEventListener("resize", () => centreMapOnSurvivor());
+}
 
 // The map's tooltip. pointermove covers mouse, pen and a touch drag with one
 // listener; a tap fires it too, which is what gives a touch device the

@@ -19,7 +19,7 @@ import { updateBars, updateHurryBar } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
-import { campHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, placesHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml } from "../src/ui/panels";
+import { campHtml, clockHtml, forecastHtml, instantHtml, inventoryHtml, placesHtml, queueHtml, skillsHtml, statsHtml, taskHtml, tombstoneHtml, travelHtml } from "../src/ui/panels";
 import { commitChoiceN, defaultChoice, newUiState, resetPanels, rowRequest, setPanel } from "../src/ui/render";
 import { allPanesHtml, paneFor, paneHtml } from "./pane";
 import { tipHtml } from "../src/ui/tip";
@@ -135,7 +135,7 @@ describe("reachability: everything in the catalogue has a button", () => {
 
 describe("panels", () => {
   beforeEach(() => {
-    document.body.innerHTML = `<div id="stats"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div><div id="task"></div><div id="inventory"></div><div id="overlay"></div>`;
+    document.body.innerHTML = `<div id="stats"></div><div id="weather"></div><div id="map"></div><div id="camp"></div><div id="maptravel"></div><div id="task"></div><div id="orders"></div><div id="inventory"></div><div id="overlay"></div>`;
     resetPanels();
   });
 
@@ -297,9 +297,9 @@ describe("panels", () => {
     addOrder(state, world, { task: "sticks", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).not.toBeNull();
-    setPanel("task", taskHtml(state, world, cal));
-    expect(document.querySelectorAll('#task .order.live .head[data-act="hurry"]').length).toBe(1);
-    expect(document.querySelectorAll("#task .order.live .bar.hurry #bar-hurry").length).toBe(1);
+    setPanel("orders", queueHtml(state, world, cal));
+    expect(document.querySelectorAll('#orders .order.live .head[data-act="hurry"]').length).toBe(1);
+    expect(document.querySelectorAll("#orders .order.live .bar.hurry #bar-hurry").length).toBe(1);
     const h = newHurry();
     hurryClick(h, hurryKind(state), state.intent!.orderId);
     updateHurryBar(h);
@@ -307,10 +307,10 @@ describe("panels", () => {
     const once = newGame(3);
     addOrder(once.state, once.world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(once.state, once.world, 1);
-    setPanel("task", taskHtml(once.state, once.world, cal));
-    expect(document.querySelectorAll("#task .order.live").length).toBe(1);
-    expect(document.querySelectorAll('#task [data-act="hurry"]').length).toBe(0);
-    expect(document.querySelectorAll("#task .bar.hurry").length).toBe(0);
+    setPanel("orders", queueHtml(once.state, once.world, cal));
+    expect(document.querySelectorAll("#orders .order.live").length).toBe(1);
+    expect(document.querySelectorAll('#orders [data-act="hurry"]').length).toBe(0);
+    expect(document.querySelectorAll("#orders .bar.hurry").length).toBe(0);
   });
 
   it("the clock line reads the hurry's rate", () => {
@@ -736,7 +736,7 @@ describe("the Orders panel", () => {
     addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
     expect(state.intent?.task).toBe("wait");
-    let html = taskHtml(state, world, calendar(state.minute));
+    let html = queueHtml(state, world, calendar(state.minute));
     expect(html).toContain("Waiting at camp");
     expect(html).not.toContain("Waiting at camp: waiting at camp");
     expect(html).not.toContain('id="bar-task"');
@@ -746,7 +746,7 @@ describe("the Orders panel", () => {
     addItem(pile(state, st.campCell), "firewood", 5);
     for (let i = 0; i < 120 && state.task?.id === "rest"; i++) advance(state, world, 1);
     expect(state.task?.id).not.toBe("rest");
-    html = taskHtml(state, world, calendar(state.minute));
+    html = queueHtml(state, world, calendar(state.minute));
     expect(html).toContain("Waiting at camp: ");
     expect(html).toContain('id="bar-task"');
   });
@@ -769,8 +769,10 @@ describe("the Orders panel", () => {
     const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
     const cal = calendar(state.minute);
-    let html = taskHtml(state, world, cal);
-    expect(html).toContain("<h2>Orders</h2>");
+    let html = queueHtml(state, world, cal);
+    // The heading counts what is standing, which is the first thing a
+    // reader wants from a queue.
+    expect(html).toContain("<h2>Orders <span class=\"r\">3</span></h2>");
     expect(html.indexOf(`data-id="${keep.id}"`)).toBeLessThan(html.indexOf(`data-id="${cabin.id}"`));
     expect(html).toContain("met");
     expect(html).toMatch(/short .* at camp/);
@@ -783,11 +785,11 @@ describe("the Orders panel", () => {
     expect(html).not.toContain('data-act="stop"');
     // Counters appear once the work has completed.
     for (let i = 0; i < 400 && grind.done === 0; i++) advance(state, world, 1);
-    html = taskHtml(state, world, calendar(state.minute));
+    html = queueHtml(state, world, calendar(state.minute));
     expect(html).toMatch(new RegExp(`${grind.done} bundle`));
     // Moving the cabin up shows in the next render.
     moveOrder(state, world, cabin.id, -1);
-    html = taskHtml(state, world, calendar(state.minute));
+    html = queueHtml(state, world, calendar(state.minute));
     expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${grind.id}"`));
   });
 
@@ -802,7 +804,7 @@ describe("the Orders panel", () => {
     const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
-    const html = taskHtml(state, world, calendar(state.minute));
+    const html = queueHtml(state, world, calendar(state.minute));
     expect(html).toMatch(/<div class="step">short .* at camp<\/div>/);
     expect(html).not.toContain('<div class="step">waiting</div>');
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
@@ -816,7 +818,7 @@ describe("the Orders panel", () => {
     addItem(pile(state, st.campCell), "firewood", 60);
     addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     advance(state, world, 2);
-    const html = taskHtml(state, world, calendar(state.minute));
+    const html = queueHtml(state, world, calendar(state.minute));
     expect(html).toContain("Waiting at camp");
     expect(html).not.toContain('id="bar-task"');
   });

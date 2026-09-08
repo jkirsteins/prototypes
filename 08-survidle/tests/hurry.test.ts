@@ -9,7 +9,7 @@ import { addOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { startTask } from "../src/sim/tasks";
 import { hurryClick, hurryFrame, hurryKind, newHurry, PEAK, PULSE_MIN, PULSE_S, pulseLeft, RAMP_S } from "../src/ui/hurry";
-import { taskHtml } from "../src/ui/panels";
+import { queueHtml } from "../src/ui/panels";
 
 const cal = calendar(0);
 
@@ -155,7 +155,7 @@ describe("what is hurried", () => {
     addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, "grind");
     advance(state, world, 1);
     expect(hurryKind(state)).toBe("click");
-    expect(taskHtml(state, world, calendar(state.minute, state.startDoy))).toContain("click to hurry");
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).toContain("click to hurry");
   });
 
   it("says nothing about hurrying an order that is hurried unasked", () => {
@@ -163,6 +163,6 @@ describe("what is hurried", () => {
     addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(hurryKind(state)).toBe("auto");
-    expect(taskHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
   });
 });

@@ -188,34 +188,49 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
   return `<h2>Skills</h2>${rows.join("")}`;
 }
 
-export function clockHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1): string {
+export function clockHtml(state: GameState, world: World, cal: Calendar, _ambient: number, rate = 1): string {
   // What a person would call the light where they stand, which after dark is
   // the difference between a night's work and a night's groping about. The
-  // lux behind it is never shown.
+  // lux behind it is never shown. The weather has its own widget.
   const sun = lightWord(illuminance(state, world, cal, cellOf(state, world)));
-  const snow = state.weather.snowCm >= 1 ? `<span>snow ${Math.round(state.weather.snowCm)} cm</span>` : "";
-  const ice = state.weather.iceCm >= 1 ? `<span>ice ${Math.round(state.weather.iceCm)} cm</span>` : "";
-  const storm = state.weather.storm && stormNow(state.weather, state.minute)
-    ? `<span class="bad">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</span>` : "";
-  const dry = groundDry(state.weather, cal) ? `<span class="bad">tinder dry</span>` : "";
-  // The ground's depths and the warnings: true, and rarely the thing a
-  // player is looking at the clock to learn. They sit under the weather as
-  // small print rather than in the headline, where three centimetres of
-  // snow read as loudly as the hour.
-  const ground = [snow, ice, storm, dry].filter(Boolean).join(" ");
-  return `<div class="clockrow">
-<div class="when">
+  return `<div class="when">
 <div class="big">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
-<div class="dim">${fmtDate(cal)}, ${cal.season}</div>
-<div class="dim">${sun}, light ${fmtClock(cal.sunrise)} to ${fmtClock(cal.sunset)}</div>
-<div class="${rate > 1 ? "hurrying" : "dim"}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</div>
+<div class="dim">${fmtDate(cal)}, ${cal.season} &middot; ${sun}</div>
+<div class="${rate > 1 ? "hurrying" : "dim"}"><small>1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</small></div>
+</div>`;
+}
+
+/**
+ * The weather, as its own widget, built the way a phone's is.
+ *
+ * The sky's picture and the day's ends at the top, the temperature large
+ * enough to read without looking for it, the sky in a word under it, then
+ * the pairs a reader scans rather than reads. What the ground is doing -
+ * snow, ice, a storm, tinder dry - is one of those pairs rather than a
+ * headline, because whether there are two or three centimetres of snow is
+ * true and is not what anybody opens a panel to learn.
+ */
+export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number): string {
+  const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
+  const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
+  const ground = [snow, ice].filter(Boolean).join(", ");
+  const storm = state.weather.storm && stormNow(state.weather, state.minute)
+    ? `<div class="wx-warn">storm, ${fmtDuration(state.weather.storm.until - state.minute)} left</div>` : "";
+  const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
+  const felt = Math.round(feltTemperature(state, world, ambient));
+  return `<div class="wx">
+<div class="wx-head">
+  <div class="wx-sky">${skyHtml()}</div>
+  <div class="wx-sun"><div>&uarr; ${fmtClock(cal.sunrise)}</div><div>&darr; ${fmtClock(cal.sunset)}</div></div>
 </div>
-<div class="weather">
-${skyHtml()}
-<div class="temp ${ambient < -10 ? "bad" : ""}">${Math.round(ambient)} C</div>
-<div class="sky-word">${weatherLabel(state.weather, ambient)}</div>
-${ground ? `<div class="ground">${ground}</div>` : ""}
+<div class="wx-temp ${ambient < -10 ? "bad" : ""}">${Math.round(ambient)}<span class="deg">C</span></div>
+<div class="wx-word">${weatherLabel(state.weather, ambient)}</div>
+<div class="wx-rows">
+  <div class="wx-k">Feels like</div><div class="wx-v ${felt < 0 ? "bad" : ""}">${felt} C</div>
+  ${ground ? `<div class="wx-k">Ground</div><div class="wx-v">${ground}</div>` : ""}
 </div>
+${storm}${dry}
+<div class="wx-where">${esc(regionAt(world, state.player.region).name)}</div>
 </div>`;
 }
 
@@ -266,62 +281,62 @@ function thinIceButton(state: GameState, world: World, cal: Calendar, id: "walk"
  */
 export function placesHtml(state: GameState, world: World, cal: Calendar): string {
   const r = regionAt(world, state.player.region);
-  const here = cellOf(state, world);
   const camp = campCellOf(state, world);
+  const here = cellOf(state, world);
   const rows = r.spots
     .map((s) => {
       const cell = s.id === "camp" ? camp : s.cell;
       // A generated spot sitting on the live camp's own cell would draw a
-      // second row for the same ground - two "you are here" once somebody
-      // stands on it. The camp row, listed first, already stands for it.
+      // second row for the same ground. The camp row, listed first, stands
+      // for it.
       if (s.id !== "camp" && cell === camp) return "";
       const name = esc(SPOT_WORDS[s.id]);
       if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
-      const dist = km === null ? "" : ` <small class="dim">${esc(fmtKm(km))}</small>`;
-      // How long it takes, not only how far: the distance is the fact and
-      // the minutes are the decision.
-      const go = walk.ok
-        ? `<button class="mini" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name}</button>${dist} <small class="dim">${esc(fmtDuration(walk.duration))} from here</small>`
-        : `<span class="dim">${name}: ${esc(plain(walk.why))}</span>`;
-      return `<div class="way" data-place="${s.id}">${go}${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"><span class="dim">${name}: ${esc(plain(walk.why))}</span></div>`;
+      // The whole row is the button, and what it costs is in its own label:
+      // a name in a button beside a sentence saying "from here" spent two
+      // thirds of the row on words that never change.
+      const cost = `${km === null ? "" : `${esc(fmtKm(km))}, `}${esc(fmtDuration(walk.duration))}`;
+      return `<div class="way" data-place="${s.id}"><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
     })
     .join("");
   return `<div class="waylabel">places</div>${rows}`;
 }
 
 /**
- * The ways out of this region. Neighbours only: a short list of real
- * choices beats a long one of distant places, and it is the same rule
- * travel itself follows.
+ * The way into one region: go there when its ground is known, and open it
+ * when it is not.
  *
- * Ground that is not known yet cannot be walked to, so it offers the way
- * it opens instead - an exploration rather than a promise of arrival.
+ * This is the whole of what leaving looks like, for one neighbour. The map
+ * is where it is offered - point at a region and it says how to get in -
+ * because a list of names in a corner is a second place to learn about
+ * ground the map is already drawing.
+ */
+export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number): string {
+  const name = esc(regionAt(world, region).name);
+  if (knownShare(state, world, region) >= 1) {
+    const go = check(state, world, cal, "travel", `region:${region}`);
+    const ice = thinIceButton(state, world, cal, "travel", `region:${region}`, go);
+    return go.ok
+      ? `<div class="way" data-way="${region}"><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(fmtDuration(go.duration))}</small></button>${ice}</div>`
+      : `<div class="way" data-way="${region}"><span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
+  }
+  const ex = check(state, world, cal, "explore", `region:${region}`);
+  return ex.ok
+    ? `<div class="way" data-way="${region}"><button class="mini go" data-act="task" data-id="explore" data-arg="region:${region}">Explore ${name}</button></div>`
+    : `<div class="way" data-way="${region}"><span class="dim">${name}: ${esc(plain(ex.why))}</span></div>`;
+}
+
+/**
+ * Every way out of this region, for the tests that ask whether a thing can
+ * be reached at all. The board offers these one at a time, on the map.
  */
 export function travelHtml(state: GameState, world: World, cal: Calendar): string {
-  const from = regionAt(world, state.player.region);
-  const ways = from.neighbours
-    .map((n) => {
-      const r = regionAt(world, n.id);
-      const name = esc(r.name);
-      // Named, so morphing finds each way again rather than matching by
-      // position: what a way offers changes as the ground becomes known.
-      const open = `<div class="way" data-way="${n.id}">`;
-      if (knownShare(state, world, n.id) >= 1) {
-        const go = check(state, world, cal, "travel", `region:${n.id}`);
-        const ice = thinIceButton(state, world, cal, "travel", `region:${n.id}`, go);
-        return go.ok
-          ? `${open}<button class="mini" data-act="task" data-id="travel" data-arg="region:${n.id}">Go to ${name}</button> <small>${esc(fmtDuration(go.duration))}</small>${ice}</div>`
-          : `${open}<span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
-      }
-      const ex = check(state, world, cal, "explore", `region:${n.id}`);
-      return ex.ok
-        ? `${open}<button class="mini" data-act="task" data-id="explore" data-arg="region:${n.id}">Explore ${name}</button></div>`
-        : `${open}<span class="dim">${name}: ${esc(plain(ex.why))}</span></div>`;
-    })
+  return regionAt(world, state.player.region).neighbours
+    .map((n) => wayIntoHtml(state, world, cal, n.id))
     .join("");
-  return `<div class="waylabel">ways out</div>${ways}`;
 }
 
 export function campHtml(state: GameState, world: World): string {
@@ -454,12 +469,28 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   } else if (!it && !orders.length) {
     head = `<div class="dim">Nothing. Pick something below.</div>`;
   }
-  const list = orders.length ? ordersHtml(state, world, cal) : "";
   // Eating, drinking and feeding the fire sit with what is happening now
   // rather than inside the Do pane: left there they would vanish the moment
   // a player opened the Log, which is a regression on a control that
   // answers a body's need.
-  return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${instantHtml(state, world)}${head}${list}${asideHtml}`;
+  return `<h2>Doing</h2>${instantHtml(state, world)}${head}${asideHtml}`;
+}
+
+/**
+ * The queue, in its own column.
+ *
+ * It keeps that column whether or not there is anything in it. An idle
+ * game is its queue - it is what runs while the player is away - and a
+ * column that appeared only once an order existed would teach nobody that
+ * orders are a thing, which is half of why a tester said he did not trust
+ * it.
+ */
+export function queueHtml(state: GameState, world: World, cal: Calendar): string {
+  const orders = ordersHere(state, world);
+  if (!orders.length) {
+    return `<h2>Orders</h2><div class="dim">Nothing standing.</div><div class="dim"><small>Orders run in turn, and keep running while you are away.</small></div>`;
+  }
+  return `<h2>Orders <span class="r">${orders.length}</span></h2>${ordersHtml(state, world, cal)}`;
 }
 
 /** "N of 10 die: cause, day D", or "none of 10 die" when nothing died. */

@@ -14,13 +14,13 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
-import { mapRegion, markKnown } from "../src/sim/mapped";
+import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { campCellOf, cellOf } from "../src/sim/position";
 import { cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { tipHtml, tipKey } from "../src/ui/tip";
-import { cellIdx } from "../src/world/gen";
+import { regionAt } from "../src/world/gen";
 
 /** The point at the middle of the glyph holding this cell, in the board's own pixels. */
 function pointOf(world: ReturnType<typeof newGame>["world"], state: ReturnType<typeof newGame>["state"], ui: ReturnType<typeof newUiState>, cell: number) {
@@ -61,13 +61,15 @@ describe("finding the cell under the pointer", () => {
 });
 
 describe("what the tooltip says", () => {
-  it("ground nobody has walked says so and nothing else", () => {
+  it("unwalked ground in this region says so and nothing else", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    // Somewhere far enough to be unvisited on day one.
-    const far = cellIdx(world, world.w - 2, world.h - 2);
-    const html = tipHtml(state, world, cal, far);
-    expect(html).toMatch(/never|not been|unknown/i);
+    // In this region: ground over a border is somewhere to go rather than
+    // somewhere unseen, and says so instead.
+    const home = regionAt(world, state.player.region);
+    const unseen = home.cells.find((c) => !isKnown(state, c));
+    expect(unseen).toBeDefined();
+    expect(tipHtml(state, world, cal, unseen!)).toMatch(/never|not been|unknown/i);
   });
 
   it("known ground names its terrain and how far it is", () => {
@@ -89,14 +91,28 @@ describe("what the tooltip says", () => {
     expect(tipHtml(state, world, cal, near)).toContain('data-act="task"');
   });
 
-  it("a cell with no way to it says why instead of offering a button that would fail", () => {
+  it("a cell in this region with no way to it says why instead of a button that would fail", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    const far = cellIdx(world, world.w - 2, world.h - 2);
+    // Somewhere in the home region the survivor has seen but cannot reach.
+    const home = regionAt(world, state.player.region);
+    const far = home.cells.find((c) => !isKnown(state, c)) ?? home.cells[home.cells.length - 1];
     markKnown(state, far);
     const html = tipHtml(state, world, cal, far);
-    expect(html).not.toContain('data-act="task"');
-    expect(html).toMatch(/no way|too far|cannot|do not know/i);
+    if (!html.includes('data-act="task"')) expect(html).toMatch(/no way|too far|cannot|do not know/i);
+  });
+
+  it("ground in another region offers the way in, not a walk that would stop at the border", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const nb = regionAt(world, state.player.region).neighbours[0].id;
+    const cell = regionAt(world, nb).cells[0];
+    // This is what puts the regions on the map: point at one and it says how
+    // to get in, rather than naming it in a list beside the map.
+    const html = tipHtml(state, world, cal, cell);
+    expect(html).toContain(regionAt(world, nb).name);
+    expect(html).toMatch(/Explore|Go to|know no way|cannot/);
+    expect(html).not.toContain('data-id="walk"');
   });
 
   it("it carries a close, because a touch device has no way to stop hovering", () => {
