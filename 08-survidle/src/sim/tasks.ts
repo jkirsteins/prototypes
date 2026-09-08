@@ -1742,7 +1742,9 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "deadwood": {
       st.wood -= DEADWOOD_TREE_SHARE;
-      produce(state, world, splitIsWet(state, world) ? "wetFirewood" : "firewood", DEADWOOD_KG);
+      const item = splitIsWet(state, world) ? "wetFirewood" : "firewood";
+      produce(state, world, item, DEADWOOD_KG);
+      goalDeed(state, { kind: "gathered", item, kg: DEADWOOD_KG });
       return;
     }
     case "sticks": produce(state, world, "stick", 6); return;
@@ -1803,13 +1805,17 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
-      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      const item = wet ? "wetFirewood" : "firewood";
+      produce(state, world, item, ITEM_KG.log);
+      goalDeed(state, { kind: "gathered", item, kg: ITEM_KG.log });
       return;
     }
     case "splitWedges": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
-      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      const item = wet ? "wetFirewood" : "firewood";
+      produce(state, world, item, ITEM_KG.log);
+      goalDeed(state, { kind: "gathered", item, kg: ITEM_KG.log });
       if (rng.chance(WEDGE_BREAK)) {
         consume(invs, [{ item: "wedge", qty: 1 }]);
         log(state, "A wedge splits along the grain.", "bad");

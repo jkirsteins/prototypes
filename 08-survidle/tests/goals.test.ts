@@ -117,8 +117,8 @@ describe("goal guards", () => {
         ...SEASON_ORDER.map((s) => ({ kind: "season", season: s as Season }) as const),
         { kind: "lit" } as const,
         { kind: "stored" } as const,
-        { kind: "delivered", item: "firewood", kg: 99 } as const,
-        { kind: "delivered", item: "wetFirewood", kg: 99 } as const,
+        { kind: "gathered", item: "firewood", kg: 99 } as const,
+        { kind: "gathered", item: "wetFirewood", kg: 99 } as const,
         { kind: "keptNight" } as const,
         { kind: "keptFor", minutes: 999999 } as const,
         { kind: "keptRain", minutes: 999999 } as const,
@@ -154,11 +154,11 @@ describe("goals are the world's, not a life's", () => {
     expect(state.goals.done.fire).toBe(true);
   });
 
-  it("counts the kilos this survivor carried in, so an inherited pile moves nothing", () => {
+  it("counts the kilos this survivor actually gathered, wet or dry alike", () => {
     const { state } = newGame(3);
-    expect(goalDeed(state, { kind: "delivered", item: "firewood", kg: 4 })).toEqual([]);
+    expect(goalDeed(state, { kind: "gathered", item: "firewood", kg: 4 })).toEqual([]);
     expect(state.goals.progress.firewood).toBeCloseTo(4);
-    expect(goalDeed(state, { kind: "delivered", item: "wetFirewood", kg: 6 })).toEqual(["firewood"]);
+    expect(goalDeed(state, { kind: "gathered", item: "wetFirewood", kg: 6 })).toEqual(["firewood"]);
     expect(state.goals.done.firewood).toBe(true);
   });
 
@@ -170,7 +170,7 @@ describe("goals are the world's, not a life's", () => {
 
   it("queues each completion for its congratulation", () => {
     const { state } = newGame(3);
-    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
     expect(state.goals.queue).toEqual(["firewood"]);
   });
 

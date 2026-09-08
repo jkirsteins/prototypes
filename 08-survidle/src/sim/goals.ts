@@ -15,7 +15,8 @@ export type { GoalId } from "./types";
 /** Something this survivor did. The only thing that moves a goal. */
 export type Deed =
   | { kind: "task"; id: TaskId; arg?: string }
-  | { kind: "delivered"; item: ItemId; kg: number }
+  /** Firewood as it leaves the ground or the block: the one moment that cannot be replayed by moving a pile's contents around. */
+  | { kind: "gathered"; item: ItemId; kg: number }
   | { kind: "built"; structure: StructureId }
   /** The tinder caught. A light that failed is not a fire lit. */
   | { kind: "lit" }
@@ -45,8 +46,8 @@ const task = (...ids: TaskId[]) => (d: Deed) => (d.kind === "task" && ids.includ
 const built = (...ids: StructureId[]) => (d: Deed) => (d.kind === "built" && ids.includes(d.structure) ? 1 : 0);
 const season = (s: Season) => (d: Deed) => (d.kind === "season" && d.season === s ? 1 : 0);
 
-/** The kilos of firewood in a delivery, wet or dry: the goal is the carrying. */
-const firewoodKg = (d: Deed) => (d.kind === "delivered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
+/** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
+const firewoodKg = (d: Deed) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
 
 /** The firewood goal's target, in kilos: named once so the title can never drift from the number the bar checks. */
 const FIREWOOD_KG = 10;
@@ -55,7 +56,7 @@ const FIREWOOD_KG = 10;
 export const KEPT_DAYS = 3;
 
 export const GOALS: GoalDef[] = [
-  { id: "firewood", title: `Bring ${FIREWOOD_KG} kg of firewood back to camp`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
+  { id: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
   { id: "fire", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
   { id: "cook", title: "Cook something over it", target: 1, credit: task("cook") },
   { id: "keptNight", title: "Keep a fire alive overnight", target: 1, credit: (d) => (d.kind === "keptNight" ? 1 : 0) },
