@@ -9,6 +9,7 @@ import { cellAt, neighbours, regionOf, type World } from "../world/cells";
 import { regionAt } from "../world/gen";
 import { passable } from "../world/route";
 import { advance } from "./advance";
+import { ensureCareRows } from "./bodyorder";
 import { calendar, coastOpen, fmtDate, START_DOY } from "./calendar";
 import { fmtWorldDate } from "./epitaph";
 import { addItem, pile } from "./inventory";
@@ -170,9 +171,17 @@ export function beginAgain(state: GameState, world: World): void {
   // is not a list at the runner's level, and none of the leftover work is counted as
   // attention. The live intent and the task go with the person, since `land` calls
   // `newPerson` and that nulls both, so the region lists are all a plan leaves behind.
+  // What the plan never owned is the care rows. Looking after yourself and keeping the
+  // camp are not work anybody chose: they are what having a body and a fire in the world
+  // means, and the heir has both from the hour it steps off the boat. A region the dead
+  // survivor never touched has no state yet and is born with its two rows through
+  // regionState, so emptying a list the dead did touch and leaving it bare would give the
+  // heir a home country in which nothing answers its thirst - the one country it is
+  // certain to walk. The rows go back on every list the wipe reaches.
   for (const st of Object.values(state.regions)) {
     st.iceHole = null;
     st.orders = [];
+    ensureCareRows(st);
   }
   // The dead survivor's log against the new clock would confuse the landing phase; the heir starts with a clean page.
   state.log = [];

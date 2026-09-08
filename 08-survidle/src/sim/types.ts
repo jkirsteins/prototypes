@@ -193,12 +193,18 @@ export interface IntentRequest {
 
 /**
  * A standing order keeps a stock (keep) or grinds forever (grind); a job
- * finishes and drops off the list. All three rank together.
+ * finishes and drops off the list. All three rank together, and the two
+ * care rows rank with them under kinds of their own: the body (sleep, food,
+ * water, warmth, shelter and coming home before dark) and the camp (the
+ * fire fed, the snares checked), a row each rather than a tier hidden under
+ * the list. They are two rows and not one because they are two jobs: a
+ * player who drops the camp down the list to travel hard is saying nothing
+ * about sleep or thirst.
  */
-export type OrderKind = "keep" | "grind" | "job";
+export type OrderKind = "keep" | "grind" | "job" | "body" | "camp";
 
-/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
-export type Rung = OrderKind | "condition" | "pace";
+/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. Neither care kind is ever given, so neither is a rung to earn. */
+export type Rung = Exclude<OrderKind, "body" | "camp"> | "condition" | "pace";
 
 export interface Order {
   /** Stable within the run; the live intent names its order by it. */
@@ -224,10 +230,38 @@ export interface Order {
    * were gone" is the same subtraction for a daily order as for any other.
    */
   dayBase?: number;
+  /** The player has said this row holds the list until it is met. */
+  pinned?: boolean;
 }
 
+/**
+ * What the scheduler makes of one row this minute. `met` and `shut` are
+ * silent pass-overs the row was always allowed: nothing is wrong, or the
+ * row's own conditions are not open yet. `blocked` is a row that wants to
+ * run and cannot - no tool, no route, no legal cell - and passes over too,
+ * unless the row is pinned, since a request that cannot be met is not
+ * grounds for holding up everything under it. `later` is a row whose
+ * readiness the scheduler has not read this minute at all: it is not a
+ * verdict any row earns today, but the judgement still has to carry it
+ * without ever letting such a row become chosen or the blocking one, since
+ * "not yet read" and "read and found wanting" must never be confused with
+ * each other.
+ */
+export type Verdict =
+  | { v: "met" }
+  | { v: "shut"; why: string }
+  | { v: "blocked"; why: string }
+  | { v: "ready" }
+  | { v: "later" };
+
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
-export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "snares" | "spent" | "home";
+export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "spent" | "home";
+
+/** What the camp around the body asks for: fuel on the fire, a catch out of the snares. */
+export type CampNeed = "fire" | "snares";
+
+/** Either kind of want the scheduler serves from the need model, which is what the three phrase tables and bodyStep are keyed on. */
+export type CareNeed = BodyNeed | CampNeed;
 
 /**
  * What the player set out to do. The runner re-reads the world every minute
@@ -258,28 +292,29 @@ interface IntentBase {
  * by hand. It is the player's, the way a raw action under the advanced
  * toggle is: the runner walks to the work and does it, and the body never
  * takes it over or moves it anywhere. The body still speaks - the tags and
- * the log say tired, spent, sleepy, cold - and the player decides. There
- * is no need to serve, so there is no field to serve it in: the body tier
- * takes a RunnerIntent and cannot be handed this one.
+ * the log say tired, spent, sleepy, cold - and the player decides. What
+ * keeps the body off it is where the click lands on the list, above the
+ * care rows, and not this tag: the tag says whose the work is, and the
+ * collapse floor in `runIntent` reads it.
  */
 export interface HandIntent extends IntentBase {
   mode: "hand";
-  need: null;
 }
 
 /**
  * The runner's own: a standing or counted order, the wait at camp, and the
- * night out (whose whole content is the body's sleep). The body tier
- * outranks it - sleep, storm, cold, thirst, hunger, snares, spent, home -
- * and these are that tier's fields.
+ * night out (whose whole content is the body's sleep). A care row outranks
+ * it wherever the player has left that row above the work - the body's
+ * sleep, storm, cold, thirst, hunger, spent and home, the camp's fire and
+ * snares.
+ * Which need holds and whether cold has already spent a rest live on the
+ * player rather than here: this intent comes and goes with every order the
+ * scheduler swaps in, and a need's stickiness has to outlast that.
  */
 export interface RunnerIntent extends IntentBase {
   mode: "runner";
-  need: BodyNeed | null;
   /** Warmth when the current rest step began, so its gain can be judged when it completes. Unset outside a rest step. */
   restFromWarmth?: number;
-  /** A rest has already been tried and failed to raise warmth: the cold need does not hold again until warmth recovers on its own. */
-  coldSpent?: boolean;
 }
 
 export type Intent = HandIntent | RunnerIntent;
@@ -375,6 +410,10 @@ export interface Player {
    * fatigue line, which holds until fatigue is back at RESTED_AT.
    */
   sleeping: { collapsed: boolean } | null;
+  /** The body need being served, or null. Sticky: a need's exit line is not its entry line. */
+  bodyNeed: BodyNeed | null;
+  /** A rest has already failed to raise warmth: cold does not hold again until warmth recovers on its own. */
+  coldSpent: boolean;
   wetness: number;
   /** Minutes remaining. */
   sick: number;
@@ -384,11 +423,8 @@ export interface Player {
   /** A torch in hand: lit, and the minutes of burn left. */
   torch: { lit: boolean; minutes: number };
   pack: Inventory;
-  autoEat: boolean;
-  autoFeed: boolean;
   /** Litres of water in the body, 0..3. */
   water: number;
-  autoDrink: boolean;
   /** Minutes spent frostbitten in each extremity. */
   frostbite: { feet: number; hands: number };
   /** Lost to frostbite for good. */

@@ -8,7 +8,7 @@ import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
 import { goalDeed, KEPT_DAYS } from "./goals";
 import {
-  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { noteLarder } from "./ledger";
@@ -51,9 +51,6 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         const share = st.fire.wetKg / total;
         st.fire.wetKg = Math.max(0, st.fire.wetKg - perMin * dt * share);
         st.fire.fuelKg = Math.max(0, st.fire.fuelKg - perMin * dt * (1 - share));
-      }
-      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere && state.player.autoFeed) {
-        feedFire(state, world, id, FIRE_MAX_KG - fuelTotal(st.fire));
       }
       const outOfFuel = fuelTotal(st.fire) <= 0;
       const drownedLow = state.weather.precip === "heavy" && ambient > 0 && !roof && fuelTotal(st.fire) < 2;

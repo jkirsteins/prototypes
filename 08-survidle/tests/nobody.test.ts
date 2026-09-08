@@ -23,7 +23,6 @@ describe("nobody home", () => {
     st.rack.kg = 3;
     st.snareCatch.count = 2;
     st.snares = 2;
-    state.player.autoFeed = true;
     state.dead = { cause: "froze", minute: state.minute };
     forbidPlayer(state);
     advance(state, world, 90 * 1440, { nobody: true });

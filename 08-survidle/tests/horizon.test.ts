@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HORIZON_STAGES, runStage, setSkillLevel, setUpStage } from "../src/sim/horizon";
 import { pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { isCareRow } from "../src/sim/bodyorder";
 import { ordersHere } from "../src/sim/orders";
 import { REFERENCE_ORDERS } from "../src/sim/reference";
 import { campSite, regionState } from "../src/sim/regionstate";
@@ -30,7 +31,8 @@ describe("the horizon stages", () => {
 
   it("the manual stage is every open want as a once job on a stocked camp", () => {
     const { state, world } = setUpStage(17, stage("manual"));
-    const list = ordersHere(state, world);
+    // Neither care row is one of the stage's own wants.
+    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
     // A stage gives the list once, so what shuts a want here is the runner's own rules and
     // nothing else: the three named hunts (elk, reindeer, deer) gate above level 1, the two
     // ice-hole fetches and the two melts wait for the shore to ice over, the fire indoors for

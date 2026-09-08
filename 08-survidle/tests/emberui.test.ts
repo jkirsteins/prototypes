@@ -22,7 +22,6 @@ function litCamp(seed = 3, fuelKg = 1) {
   st.fire.fuelKg = fuelKg;
   st.fire.wetKg = 0;
   st.fire.litSince = state.minute;
-  state.player.autoFeed = false;
   return { state, world, st };
 }
 

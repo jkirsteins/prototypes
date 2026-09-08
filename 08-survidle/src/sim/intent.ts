@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
+import { campNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
@@ -22,11 +22,11 @@ import { nearestSeep, seepGround } from "./seep";
 import { rootCellFullKg, rootCellKg } from "./stocks";
 import { type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
-import { isRunning, type Step, takeStep, walkStep } from "./steps";
+import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { beginTask, check, huntGroundValue, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, RunnerIntent, SpotId, StructureId, TaskId, Until, UntilChoice, Where,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where,
 } from "./types";
 
 /**
@@ -292,7 +292,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 }
 
 /** Sets out. False when the work could not start at its place; the button already said why. */
-export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null): boolean {
+export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null, runNow = true): boolean {
   if (state.dead || req.task === "walk" || req.task === "travel") return false;
   const { cell, note } = resolveCell(state, world, cal, req.task, req.arg, req.where);
   const item = yieldItem(req.task, req.arg);
@@ -318,7 +318,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   const campCell = regionState(state, world, state.player.region).campCell;
   state.intent = {
     mode: intentMode(req.task, until), task: req.task, arg: req.arg, cell, campCell,
-    until, deliver, done: 0, step: "setting out", need: null, orderId, windDown: false,
+    until, deliver, done: 0, step: "setting out", orderId, windDown: false,
   };
   // A bow hunt's arrows, or a set-snares job's snares, must be in the pack before the
   // check below, which reads the pack only; food and vessels stay in the camp pile
@@ -337,7 +337,11 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   }
   // Whatever was under way, by hand or by intent, is set aside with its share kept.
   setAside(state, world);
-  runIntent(state, world, cal, rng);
+  // The first minute is the new intent's, unless the caller has a step of its
+  // own to take on it: a care row spends its minute on the want that won
+  // it, and a wait that walked home first would have taken the minute and
+  // named the walk something other than what the survivor is walking for.
+  if (runNow) runIntent(state, world, cal, rng);
   // The note (a chosen spot that did not suit) belongs on the first step, not "setting out".
   if (note && state.intent) state.intent.step = `${note}; ${state.intent.step}`;
   return true;
@@ -386,15 +390,29 @@ function untilMet(state: GameState, it: Intent): boolean {
   }
 }
 
+/**
+ * What "owed to camp" is judged against: the work, where it is done, and
+ * the camp it owes. A live intent is one of these; so is a row on the list,
+ * once its cell is resolved, which is how a row can ask whether its own
+ * load has landed without an intent to ask through.
+ */
+export interface Delivery {
+  task: TaskId;
+  arg?: string;
+  deliver: "leave" | "camp";
+  cell: number;
+  campCell: number | null;
+}
+
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
-function packCarries(state: GameState, world: World, it: Intent): boolean {
-  if (it.task === "fill" || it.task === "melt") {
-    const room = campWaterRoom(pileAt(state, it.campCell), campSite(regionState(state, world, state.player.region)));
+function packCarries(state: GameState, world: World, d: Delivery): boolean {
+  if (d.task === "fill" || d.task === "melt") {
+    const room = campWaterRoom(pileAt(state, d.campCell), campSite(regionState(state, world, state.player.region)));
     return vesselLitres(state.player) > 0 && room > 0;
   }
   const pack = state.player.pack;
   if (weight(pack) >= body(state).packHardKg - 1e-9) return true;
-  const items = yieldItems(it.task, it.arg);
+  const items = yieldItems(d.task, d.arg);
   if (items === "all") return !isEmpty(pack);
   return items.some((i) => qty(pack, i) > 1e-9);
 }
@@ -405,11 +423,11 @@ function packCarries(state: GameState, world: World, it: Intent): boolean {
  * in the camp pile - but the pack can still hold something unrelated that
  * arrived with the player and is still owed a drop.
  */
-export function deliveryPending(state: GameState, world: World, it: Intent): boolean {
-  // Nowhere to deliver to: an intent with no camp owes nothing to one.
-  if (it.deliver !== "camp" || it.campCell === null) return false;
-  if (it.cell === it.campCell) return packCarries(state, world, it);
-  return !isEmpty(pile(state, it.cell)) || packCarries(state, world, it);
+export function deliveryPending(state: GameState, world: World, d: Delivery): boolean {
+  // Nowhere to deliver to: work with no camp owes nothing to one.
+  if (d.deliver !== "camp" || d.campCell === null) return false;
+  if (d.cell === d.campCell) return packCarries(state, world, d);
+  return !isEmpty(pile(state, d.cell)) || packCarries(state, world, d);
 }
 
 function loadFull(state: GameState, it: Intent): boolean {
@@ -667,9 +685,9 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
   if (it.task === "night") return undefined;
-  // A wait rests and never lies down of its own accord: sleep is the body's
-  // need now, and the body tier takes the rest over the moment the onset line
-  // is crossed, whatever the hour.
+  // A wait rests and never lies down of its own accord: sleep is a need of
+  // the body's, and the body's row takes the rest over the moment the onset
+  // line is crossed, whatever the hour.
   // A runner waiting at camp keeps its fire, the way a spent one does
   // (campStep in body.ts): every camp chore the dark allows works by
   // firelight, so a wait that let the fire burn out would be a wait with no
@@ -686,36 +704,48 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   return undefined;
 }
 
-/** The body tier's minute: reads the need and, when one holds and has a step, takes it. True when the body has the slot. */
-function serveBody(state: GameState, world: World, cal: Calendar, rng: Rng, it: RunnerIntent): boolean {
-  const need = currentNeed(state, world, cal, it);
-  it.need = need;
-  // The model ends a sleep, not the task's own clock. A sleep task is as long
-  // as the model expects the night to be, and the two can disagree by minutes;
-  // when the body is past the wake line it gets up on that minute rather than
-  // lying out the rest of an hour it no longer needs.
-  if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
-  if (!need) return false;
-  const s = bodyStep(state, world, cal, rng, it, need);
-  if (!s) return false;
-  if (!isRunning(state, s)) takeStep(state, world, cal, s);
-  return true;
+/**
+ * Which care row the live intent belongs to, or null when it belongs to
+ * neither, read off the list rather than off the intent, which carries only
+ * the row's number.
+ */
+function careRowIntent(state: GameState, world: World, it: Intent): "body" | "camp" | null {
+  if (it.orderId === null) return null;
+  const row = regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId);
+  return row?.kind === "body" || row?.kind === "camp" ? row.kind : null;
 }
 
 /**
- * Called once a minute by advance, after stepTask. The body tier may take
- * over a running task of the runner's own; work chosen by hand has no body
- * tier, the way a raw action has none. The work tier runs only when the
- * slot is free. At most eight instant actions chain in one call, as the
- * old haul plan did.
+ * Called once a minute by advance, after stepTask. The runner takes the
+ * minute the scheduler already gave it and nothing more: which row holds
+ * it, either care row included, was decided on the list before this ever
+ * runs, and nothing here revisits that choice. The collapse clause below
+ * is the one thing beneath it - the floor under work the player chose by
+ * hand, which nothing else is allowed to interrupt once it outranks the
+ * body's row. Instant actions that cost the clock nothing - loading up,
+ * unloading at camp, laying out materials for a build - chain in one
+ * call, up to eight of them, for as long as nothing has claimed the
+ * minute as a task of its own.
  */
 export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (!state.intent || state.dead) return;
   const it = state.intent;
-  // Work chosen by hand has no body tier, so nothing thirsty, cold or dark
-  // interrupts it. The body giving out is the one exception and the only
-  // one: at the collapse line the order ends where it stands and the
-  // survivor sleeps there, the same sleep a runner too far from camp gets.
+  // A minute a care row has already spent is spent. The scheduler serves
+  // those rows itself - the drink, the mouthful, the log on the fire, the
+  // walk home - and some of what it serves takes no time at all, so a work
+  // tier still owed the rest of the minute would set a body that had just
+  // eaten walking for a camp it has no reason to go to. With nothing left to
+  // want, the row's intent is the wait it is shaped like, and rests and
+  // comes home under it the same as any other wait.
+  const care = careRowIntent(state, world, it);
+  if (care === "body" && state.player.bodyNeed !== null) return;
+  if (care === "camp" && campNeed(state, world, cal) !== null) return;
+  // The floor under work the player chose in the moment. Ranked over the
+  // body's row, nothing thirsty, cold or dark takes the minute back off it,
+  // however long it runs and however far past spent the body is. The body
+  // giving out is the one thing that does not wait to be ranked: at the
+  // collapse line the order ends where it stands and the survivor sleeps
+  // there, the same sleep a runner too far from camp gets.
   if (it.mode === "hand" && state.player.energy <= SLEEP_AT) {
     state.player.sleeping = { collapsed: true };
     setAside(state, world);
@@ -723,7 +753,6 @@ export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rn
     beginTask(state, world, cal, "sleep");
     return;
   }
-  if (it.mode === "runner" && serveBody(state, world, cal, rng, it)) return;
   for (let guard = 0; guard < 8 && state.intent && !state.task; guard++) {
     if (workStep(state, world, cal, rng) !== "again") return;
   }

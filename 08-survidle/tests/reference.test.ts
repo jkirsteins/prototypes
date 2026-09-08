@@ -1,6 +1,7 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { calendar, coastOpen, START_DOY } from "../src/sim/calendar";
+import { isCareRow } from "../src/sim/bodyorder";
+import { calendar, START_DOY } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
@@ -34,7 +35,6 @@ import {
   WOOD_DUE_DOY,
 } from "../src/sim/reference";
 import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
-import { runYear } from "../src/sim/year";
 import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
 import { regionState, siteFor } from "../src/sim/regionstate";
@@ -60,19 +60,19 @@ function findBirchCell(world: World): number {
 }
 
 describe("the reference player", () => {
-  it("takes the one order that is stalling the list off it, and puts it back when it can run", () => {
-    // A once order stops every order under it, and under the ladder's rungs
-    // every want is a once job. The opening list's first row is the thaw, and
-    // in a summer with nothing frozen it can never start: a player reads that
-    // row and strikes it off rather than leaving the list standing all day.
+  it("a job that cannot run is passed over, and the rows under it run without it being struck off", () => {
+    // Under the ladder's rungs every want is a once job. The opening list's
+    // first row is the thaw, and in a summer with nothing frozen it can
+    // never run: nothing pins it, so the list does not wait on it, and it
+    // stays on the list rather than being withdrawn to make way.
     const ref = setUpReference(17, true);
     ref.player.tick(ref.state, ref.world);
-    expect(ordersHere(ref.state, ref.world)[0].req.task).toBe("thaw");
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(ref.state, ref.world)[2].req.task).toBe("thaw");
     stepReference(ref, 60);
     const list = ordersHere(ref.state, ref.world);
-    expect(list.some((o) => o.req.task === "thaw")).toBe(false);
-    // The rows under it run, and only the stalling row came off: a row waiting
-    // on the work of the rows above it holds nothing up and stays.
+    expect(list.some((o) => o.req.task === "thaw")).toBe(true);
+    // The rows under it run just the same: a row passed over holds nothing up.
     expect(list.length).toBeGreaterThan(20);
     stepReference(ref, 5 * 60);
     expect(ref.state.dead).toBeNull();
@@ -84,9 +84,10 @@ describe("the reference player", () => {
     const { state, world, player } = setUpReference(17);
     // The opening act is making camp; this is about the list that follows it.
     siteCamp(state, world);
-    expect(ordersHere(state, world)).toEqual([]);
+    expect(ordersHere(state, world).every(isCareRow)).toBe(true);
     player.tick(state, world);
-    const list = ordersHere(state, world);
+    // Neither care row is one of the reference's own wants.
+    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
     // Two readings shut a want on the opening morning. The runner's own rules shut the three
     // named hunts (the species' recommended level), the two ice-hole fetches and the two melts
     // (the shore is open), the fire indoors (no hut), the hide coat, trousers and boots
@@ -206,7 +207,7 @@ describe("the reference player", () => {
       { req: { task: "craft", until: { kind: "once" }, arg: "cordage", deliver: "camp", where: "nearest" }, kind: "job" },
     ]);
     player.tick(state, world);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["bark", "craft"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "bark", "craft"]);
     // The stand-ins run to completion and drop off.
     stepReference({ state, world, player }, 6 * 60);
     // The bark keep is unmet while camp has under half of 10, so it is standing again; the cordage job finished and is not.
@@ -349,14 +350,15 @@ describe("the reference player", () => {
     ]);
     player3.tick(at3.state, at3.world);
     const first = ordersHere(at3.state, at3.world);
-    expect(first.length).toBe(1);
-    expect(first[0].kind).toBe("job");
-    expect(first[0].req.until).toEqual({ kind: "times", n: 2 });
+    // The two care rows plus the one real order.
+    expect(first.length).toBe(3);
+    expect(first[2].kind).toBe("job");
+    expect(first[2].req.until).toEqual({ kind: "times", n: 2 });
     for (let h = 0; h < 6; h++) {
       player3.tick(at3.state, at3.world);
       advance(at3.state, at3.world, 60);
     }
-    expect(ordersHere(at3.state, at3.world).length).toBe(0);
+    expect(ordersHere(at3.state, at3.world).every(isCareRow)).toBe(true);
   });
 
   it("a times want that reaches its rung mid-count keeps only its remainder, not a fresh n", () => {
@@ -391,8 +393,8 @@ describe("the reference player", () => {
     ]);
     player.tick(state, world);
     const list = ordersHere(state, world);
-    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["fill", "job"], ["split", "keep"]]);
-    expect(list[0].req.until.kind).toBe("once");
+    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["wait", "camp"], ["wait", "body"], ["fill", "job"], ["split", "keep"]]);
+    expect(list[2].req.until.kind).toBe("once");
   });
 
   it("the fill keep, given at the shore with a bucket in hand, stocks the camp within six hours", () => {
@@ -473,11 +475,10 @@ describe("the reference player", () => {
   });
 
   it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
-    // Seed 1, not 17 or 79: the bough bed keep right after the lean-to (reference.ts) moves
-    // seed 17's death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this
-    // checkpoint; seed 79 now ranges to a farther spot once the landing region is known whole
-    // (Task 6) and freezes on day 16, working past dark, before it reaches the checkpoint either.
-    const r = runReference(1, 27);
+    // Any seed still alive well past the gate day will do, and seed 42 is one: a run that
+    // dies before REFERENCE_TARGET_DAY never reaches this checkpoint at all, and what is
+    // being read here is what the checkpoint says, not whether a given seed survives.
+    const r = runReference(42, 27);
     const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
     expect(c).toBeDefined();
     expect(c!.week.days).toBe(7);
@@ -511,13 +512,15 @@ describe("the reference player", () => {
 
   it("a capped run does not double the checkpoint", () => {
     // calendar()'s day is dayIndex + 1, so a run of REFERENCE_TARGET_DAY - 1 full days
-    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 17
-    // is alive there, so the day cap and the REFERENCE_TARGET_DAY checkpoint land on the
-    // same day, without hunting for a seed that dies there instead - this does not cover
-    // the death-landing-on-a-checkpoint variant of the same branch. Seed 79 used to be the
-    // one standing here and now dies of thirst on the target day, which is the gate's
-    // reading to report rather than this test's business.
-    const r = runReference(17, REFERENCE_TARGET_DAY - 1);
+    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops, so the day
+    // cap and the REFERENCE_TARGET_DAY checkpoint land on the same day. This does not cover
+    // the death-landing-on-a-checkpoint variant of the same branch.
+    //
+    // Which seed stands here is incidental: the subject is the cap, and any run still alive
+    // at it will do. A seed that starts dying before the cap is a reading for the gate to
+    // report, not a reason to change what this test is about - swap in another living seed
+    // and leave the death where the gate can see it.
+    const r = runReference(42, REFERENCE_TARGET_DAY - 1);
     expect(r.outcome).toEqual({ kind: "reached", day: REFERENCE_TARGET_DAY });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);
@@ -533,36 +536,10 @@ describe("the reference player", () => {
   });
 });
 
+// An heir actually raised - two lives lived out, the gap, the walk home to the
+// old camp - lives in tests/slow/heir.test.ts (`npm run test:slow`); what stays
+// here is the end of runHeir that costs nothing to reach.
 describe("the heir", () => {
-  it("runs two lives on seed 17 and lands the heir in the open season near the old camp", () => {
-    const r = runHeir(17, 70);
-    expect(r.first.outcome.kind).toBe("died");
-    expect(r.gapDays).toBeGreaterThanOrEqual(90);
-    expect(coastOpen(r.landed.doy)).toBe(true);
-    expect(r.found.kmToOldCamp).toBeGreaterThanOrEqual(3);
-    expect(r.found.kmToOldCamp).toBeLessThanOrEqual(20);
-    expect(r.heir.record.index).toBe(2);
-    expect(r.heir.checkpoints.length).toBeGreaterThan(0);
-  }, 30000);
-
-  // Two lives of ninety days is seconds of simulation, so the two readings
-  // taken off the same run share it rather than raising the heir twice. Ninety,
-  // because the first life on seed 17 starves on day 61 with the camp on the shore.
-  let sixty: ReturnType<typeof runHeir>;
-  beforeAll(() => {
-    sixty = runHeir(17, 90);
-  }, 30000);
-
-  it("walks to the old camp before it gives an order, and reaches it inside three days", () => {
-    expect(sixty.found.reachedCampDay).not.toBeNull();
-    expect(sixty.found.reachedCampDay!).toBeLessThanOrEqual(3);
-  });
-
-  it("reports the trap's kilos and the new structures in the found line", () => {
-    expect(sixty.found).toHaveProperty("trapKg");
-    expect(sixty.found.trapKg === null || sixty.found.trapKg >= 0).toBe(true);
-  });
-
   it("a first life still alive at the day cap has no heir to raise, and stands in for both", () => {
     const r = runHeir(17, 1);
     expect(r.first.outcome.kind).toBe("reached");
@@ -571,16 +548,10 @@ describe("the heir", () => {
   });
 });
 
-// The three-life run over a quarter of a year lives in tests/slow/lineage.test.ts
-// (`npm run test:slow`); what stays here is the shape of a lineage, cheaply.
+// Any lineage that actually raises an heir - the two-life run and the three-life
+// run over a quarter of a year - lives in tests/slow/lineage.test.ts (`npm run
+// test:slow`); what stays here is the shape of a lineage that never has to.
 describe("the lineage", () => {
-  it("raises an heir after the first life dies, landing it in the open coast with the old camp to find", () => {
-    const r = runLineage(17, 90, 2);
-    expect(r.lives.length).toBe(2);
-    expect(r.lives[1].found).not.toBeNull();
-    expect(coastOpen(r.lives[1].landed.doy)).toBe(true);
-  }, 30000);
-
   it("stops early when a life reaches the day cap alive", () => {
     const r = runLineage(17, 5, 3);
     expect(r.lives.length).toBe(1);
@@ -833,17 +804,5 @@ describe("the lineage gate", () => {
   });
 });
 
-describe("the year report's attention", () => {
-  it("carries the whole run's attention and each month line its own, both mornings of days shapes", () => {
-    const r = runYear(17, { level: 20, days: 40 });
-    expect(r.attention.days).toBe(r.outcome.day);
-    expect(r.attention.mornings).toBeGreaterThanOrEqual(0);
-    expect(r.attention.mornings).toBeLessThanOrEqual(r.attention.days);
-    expect(r.months.length).toBeGreaterThan(0);
-    for (const m of r.months) {
-      expect(m.attention.days).toBeGreaterThan(0);
-      expect(m.attention.mornings).toBeGreaterThanOrEqual(0);
-      expect(m.attention.mornings).toBeLessThanOrEqual(m.attention.days);
-    }
-  });
-});
+// The attention count off a real forty-day year run lives in
+// tests/slow/year-attention.test.ts (`npm run test:slow`).

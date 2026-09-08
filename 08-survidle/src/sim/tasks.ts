@@ -1355,15 +1355,18 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
       if (order) order.done++;
     }
     // The sleep this need asked for is done; whether the body lies down again
-    // is the model's to say next minute, off the player's own night.
-    if (id === "sleep" && it.need === "sleep") it.need = null;
+    // is the model's to say next minute, off the player's own night. A sleep
+    // clicked by hand carries no need of its own to close out, whatever the
+    // sticky reading happens to be.
+    if (it.mode === "runner" && id === "sleep" && state.player.bodyNeed === "sleep") state.player.bodyNeed = null;
     // A rest that barely warmed anyone is not worth repeating: give the need up until warmth
     // recovers some other way, rather than resting here forever for less than a point of gain.
-    if (id === "rest" && it.need === "cold") {
+    // Only the runner's own rest carries a warmth-at-start to judge the gain against.
+    if (it.mode === "runner" && id === "rest" && state.player.bodyNeed === "cold") {
       const gained = state.player.warmth - (it.restFromWarmth ?? state.player.warmth);
       if (gained < 1) {
-        it.coldSpent = true;
-        it.need = null;
+        state.player.coldSpent = true;
+        state.player.bodyNeed = null;
       }
     }
   }

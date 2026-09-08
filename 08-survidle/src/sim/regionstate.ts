@@ -5,6 +5,7 @@
  * by not simulating them.
  */
 import { regionAt, speciesHere, type World } from "../world/gen";
+import { ensureCareRows } from "./bodyorder";
 import { log } from "./log";
 import { readShore } from "./knowledge";
 import { body, hasQuirk } from "./person";
@@ -23,7 +24,7 @@ export function startingPop(world: World, id: number): Partial<Record<Species, n
 
 export function newRegionState(world: World, id: number): RegionState {
   const r = regionAt(world, id);
-  return {
+  const st: RegionState = {
     wood: r.wood0,
     pop: startingPop(world, id),
     campCell: null,
@@ -42,6 +43,12 @@ export function newRegionState(world: World, id: number): RegionState {
     rootCells: {},
     sapTaps: { day: 0, n: 0 },
   };
+  // Every list a region ever has starts with the two care rows already on
+  // it, at the top: a survivor who has been given nothing still looks after
+  // himself and still keeps his camp, and the ranks he does either at are
+  // things the player changes rather than things they have to grant.
+  ensureCareRows(st);
+  return st;
 }
 
 export function newSite(): Site {

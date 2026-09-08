@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
@@ -805,8 +806,9 @@ describe("the Orders panel", () => {
     addItem(pile(state, st.campCell!), "firewood", 60);
     const keep = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
-    // Ranked under the grind: a once order that cannot run stops every order
-    // beneath it, so a cabin above the grind would leave nothing to draw.
+    // Ranked under the grind: below the live row, so it reads "waiting its
+    // turn" rather than its own reason - the row itself still draws, which is
+    // the panel behaviour this test is really after.
     const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
     const cal = calendar(state.minute);
@@ -814,11 +816,14 @@ describe("the Orders panel", () => {
     expect(html).toContain("<h2>Orders</h2>");
     expect(html.indexOf(`data-id="${keep.id}"`)).toBeLessThan(html.indexOf(`data-id="${cabin.id}"`));
     expect(html).toContain("met");
-    expect(html).toContain("missing materials at camp");
+    expect(html).toContain("waiting its turn, behind");
     expect(html).toContain("gathering sticks");
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
-    expect(html).toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
+    // The camp row holds the top rank, where its own "up" is spent; the
+    // keep's is free, since a care row is a row it may be moved over.
+    expect(html).toContain(`data-act="order-up" data-id="${campRowOf(state, world)!.id}" disabled`);
+    expect(html).not.toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
     expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
     expect(html).not.toContain('data-act="stop"');
@@ -832,7 +837,23 @@ describe("the Orders panel", () => {
     expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${grind.id}"`));
   });
 
-  it("a blocked order below the live one shows its own reason, not \"waiting\"", () => {
+  it("the body row draws up and down like any other row, and no x: it cannot be struck off", () => {
+    const { state, world } = newGame(1);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 1);
+    const bodyId = bodyRowOf(state, world)!.id;
+    let html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toContain("Look after yourself");
+    expect(html).toContain(`data-act="order-down" data-id="${bodyId}"`);
+    expect(html).not.toContain(`data-act="order-remove" data-id="${bodyId}"`);
+    // Down, and the grind is the row over the body: the player has said to
+    // keep at the sticks whatever the body wants.
+    moveOrder(state, world, bodyId, 1);
+    html = taskHtml(state, world, calendar(state.minute));
+    expect(html.indexOf(`data-id="${grind.id}"`)).toBeLessThan(html.indexOf(`data-id="${bodyId}"`));
+  });
+
+  it("a blocked order below the live one names the row it is waiting behind, not its own reason", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -844,9 +865,13 @@ describe("the Orders panel", () => {
     const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
+    // Cabin sits below the live grind, which cannot be pre-empted from there:
+    // asking whether cabin could run is not this minute's question, so the
+    // panel reads the one thing that is true regardless - it is waiting its
+    // turn - rather than a "missing materials" reason nothing asked it for.
     const html = taskHtml(state, world, calendar(state.minute));
-    expect(html).toContain('<div class="step">missing materials at camp</div>');
-    expect(html).not.toContain('<div class="step">waiting</div>');
+    expect(html).toContain('<div class="step">waiting its turn, behind');
+    expect(html).not.toContain('<div class="step">missing materials at camp</div>');
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
   });
 

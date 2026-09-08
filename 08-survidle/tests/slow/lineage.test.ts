@@ -27,4 +27,11 @@ describe("the lineage", () => {
       expect(life.report.surplus.hang === null || life.report.surplus.hang >= 1).toBe(true);
     }
   }, 60000);
+
+  it("stops at the life count it is given, two lives over ninety days", () => {
+    const r = runLineage(17, 90, 2);
+    expect(r.lives.length).toBe(2);
+    expect(r.lives[1].found).not.toBeNull();
+    expect(coastOpen(r.lives[1].landed.doy)).toBe(true);
+  }, 60000);
 });

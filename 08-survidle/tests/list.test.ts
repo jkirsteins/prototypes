@@ -227,7 +227,7 @@ describe("the list after the axe", () => {
     for (const w of [hunt, fish]) expect(wantOpen(state, world, w)).toBe(true);
   });
 
-  it("the runner gives the plain shape under the rung and counts the morning as a returning player", () => {
+  it("the runner gives the plain shape under the rung and costs no morning on a job the list passes over", () => {
     // A month into the wood window, so the reserve's target has risen off the nothing it
     // starts its season at, and high summer, so no shore ices over and none of the named
     // rules flips in the three days.
@@ -239,10 +239,10 @@ describe("the list after the axe", () => {
     const paced = ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.logs);
     expect(paced?.req.when?.by).toBe(WOOD_DUE_DOY);
     expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
-    // One morning, and not this order's: the lean-to, a once job whose materials
-    // are not at camp yet, stops the list under it until it is taken off, and
-    // that is the morning counted. The reserve itself stands untouched.
-    expect(player.attention(1, 3).mornings).toBe(1);
+    // No morning at all: the lean-to, a once job whose materials are not at
+    // camp yet, is passed over on its own and never has to be taken off the
+    // list for the reserve or anything else under it to run.
+    expect(player.attention(1, 3).mornings).toBe(0);
   });
 
   it("a level-5 heir gets jobs and grinds only, and its list changes every morning the plant band re-opens", () => {

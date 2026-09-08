@@ -5,7 +5,7 @@ import { calendar } from "../src/sim/calendar";
 import { rackCapacity } from "../src/sim/camp";
 import { yieldItem, yieldItems } from "../src/sim/intent";
 import { addItem, pile, qty } from "../src/sim/inventory";
-import { RACK_MAX_KG } from "../src/sim/items";
+import { KCAL_FULL, RACK_MAX_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, orderMet } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
@@ -84,10 +84,8 @@ describe("a real rack", () => {
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     // A bare arrival kit has no water; stock camp so four idle days are about
-    // the rack, not a thirst death cutting the run short. Auto-eat would
-    // nibble the driedMeat this test measures once the rack drops it.
+    // the rack, not a thirst death cutting the run short.
     addItem(pile(state, st.campCell!), "water", 20);
-    state.player.autoEat = false;
     expect(rackCapacity(campSite(st))).toBe(40);
     addItem(pile(state, st.campCell!), "rawMeat", 100);
     expect(loadRack(state, world)).toBe(40);
@@ -102,11 +100,23 @@ describe("a real rack", () => {
     expect(rackCapacity(campSite(st))).toBe(80);
     expect(check(state, world, cal, "build", "dryingRack")).toMatchObject({ ok: false, why: "two racks stand here already" });
     expect(loadRack(state, world)).toBe(40);
+    // Nobody looking after himself off this rack: an empty list carries no
+    // body row. The reserve is held full by hand through the four days,
+    // because a body eats whatever is within reach and the pile under the
+    // rack is within reach - what comes off the rack is then still there to
+    // count.
+    st.orders.length = 0;
+    const fed = (hours: number) => {
+      for (let h = 0; h < hours; h++) {
+        state.player.kcal = KCAL_FULL;
+        advance(state, world, 60);
+      }
+    };
     // Rain halves the drying: 48 dry hours, 96 wet.
     state.weather.precip = "light";
-    advance(state, world, 48 * 60);
+    fed(48);
     expect(st.rack.kg).toBe(80);
-    advance(state, world, 48 * 60);
+    fed(48);
     expect(st.rack.kg).toBe(0);
     expect(qty(pile(state, st.campCell!), "driedMeat")).toBeCloseTo(80 / 3, 6);
   });

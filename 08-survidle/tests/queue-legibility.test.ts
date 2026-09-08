@@ -30,7 +30,8 @@ describe("a waiting row names its cause", () => {
     addOrder(state, world, { ...once("sticks"), until: { kind: "forever" } }, "grind");
     addOrder(state, world, { ...once("stone"), until: { kind: "forever" } }, "grind");
     const judged = judgeOrders(state, world, cal);
-    const [head, second] = ordersHere(state, world);
+    // Indexes 0 and 1 are the care rows; the two real orders follow them.
+    const [, , head, second] = ordersHere(state, world);
     expect(judged.chosen?.id).toBe(head.id);
     const line = waitingLine(state, world, cal, second, judged);
     expect(line).toContain("waiting its turn");
@@ -38,18 +39,21 @@ describe("a waiting row names its cause", () => {
     expect(line).not.toBe("waiting");
   });
 
-  it("a row under a once order that cannot run says it is held up, and by what", () => {
+  it("a row under a once order that cannot run falls through, and pinning it is what holds the list", () => {
     const { state, world } = newGame(1000010);
     siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
-    // Cooking with nothing to cook cannot run, and a once order stops the list under it.
-    addOrder(state, world, once("cook", "rawMeat"), "job");
-    addOrder(state, world, { ...once("sticks"), until: { kind: "forever" } }, "grind");
-    const judged = judgeOrders(state, world, cal);
-    expect(judged.stalling).not.toBeNull();
+    // Cooking with nothing to cook cannot run, and it is passed over unless pinned.
+    const blocked = addOrder(state, world, once("cook", "rawMeat"), "job");
+    const sticks = addOrder(state, world, { ...once("sticks"), until: { kind: "forever" } }, "grind");
+    let judged = judgeOrders(state, world, cal);
+    expect(judged.blockedBy).toBeNull();
+    expect(judged.chosen?.id).toBe(sticks.id);
+    blocked.pinned = true;
+    judged = judgeOrders(state, world, cal);
+    expect(judged.blockedBy?.id).toBe(blocked.id);
     expect(judged.chosen).toBeNull();
-    const second = ordersHere(state, world)[1];
-    expect(waitingLine(state, world, cal, second, judged)).toContain("held up by");
+    expect(waitingLine(state, world, cal, sticks, judged)).toContain("held up by");
   });
 
   it("a row the scheduler refused keeps its own reason", () => {
