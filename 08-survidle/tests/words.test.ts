@@ -35,10 +35,13 @@ describe("the log reads the way a story is told", () => {
     const { state, world } = newGame(21);
     advance(state, world, 600);
     expect(state.log.length).toBeGreaterThan(1);
-    const html = logHtml(state);
-    const first = state.log[0].text;
-    const last = state.log[state.log.length - 1].text;
-    if (first !== last) expect(html.indexOf(first)).toBeLessThan(html.indexOf(last));
+    // The stamps, in the order they are drawn. Comparing the entries' own
+    // text would not do: voice() substitutes {You} and the rest before any
+    // of it reaches the page, so the raw string never appears verbatim.
+    const stamps = [...logHtml(state).matchAll(/<time>d(\d+) (\d+):(\d+)<\/time>/g)]
+      .map((m) => Number(m[1]) * 1440 + Number(m[2]) * 60 + Number(m[3]));
+    expect(stamps.length).toBeGreaterThan(1);
+    for (let i = 1; i < stamps.length; i++) expect(stamps[i]).toBeGreaterThanOrEqual(stamps[i - 1]);
   });
 });
 

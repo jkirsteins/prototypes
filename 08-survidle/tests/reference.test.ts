@@ -397,7 +397,7 @@ describe("the reference player", () => {
     const reserve = FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
-    expect(REFERENCE_TARGET_DAY).toBe(20);
+    expect(REFERENCE_TARGET_DAY).toBe(19);
     expect(KITTED_TARGET_DAY).toBe(30);
   });
 
@@ -494,13 +494,13 @@ describe("the reference player", () => {
 
   it("a capped run does not double the checkpoint", () => {
     // calendar()'s day is dayIndex + 1, so a run of REFERENCE_TARGET_DAY - 1 full days
-    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 79
-    // is alive there (it passes the April gate; seed 17 no longer does, since the bough
-    // bed keep right after the lean-to moves its death to day 19), so the day cap and the
-    // REFERENCE_TARGET_DAY checkpoint land on the same day, without hunting for a seed that
-    // dies there instead - this does not cover the death-landing-on-a-checkpoint variant of
-    // the same branch.
-    const r = runReference(79, REFERENCE_TARGET_DAY - 1);
+    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 17
+    // is alive there, so the day cap and the REFERENCE_TARGET_DAY checkpoint land on the
+    // same day, without hunting for a seed that dies there instead - this does not cover
+    // the death-landing-on-a-checkpoint variant of the same branch. Seed 79 used to be the
+    // one standing here and now dies of thirst on the target day, which is the gate's
+    // reading to report rather than this test's business.
+    const r = runReference(17, REFERENCE_TARGET_DAY - 1);
     expect(r.outcome).toEqual({ kind: "reached", day: REFERENCE_TARGET_DAY });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);

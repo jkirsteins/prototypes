@@ -70,14 +70,15 @@ describe("the body says what it ate", () => {
     expect(said[0].text).toContain("dried meat");
   });
 
-  it("says nothing when there was nothing to eat", () => {
+  it("claims no meal when there was nothing to eat", () => {
     const { state, world } = newGame(21);
     state.player.autoEat = true;
     state.player.kcal = 0;
     state.player.pack.items = {};
-    const before = state.log.length;
     autoEat(state, world, new Rng(1));
-    expect(state.log.length).toBe(before);
+    // No meal line. A body with nothing left says so in its own words,
+    // which is a different thing and worth saying.
+    expect(state.log.some((e) => e.text.includes("{eat}"))).toBe(false);
   });
 
   it("a fire going out says so, since losing what you built must be louder than silence", () => {

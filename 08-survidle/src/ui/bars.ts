@@ -1,6 +1,9 @@
 import { calendar } from "../sim/calendar";
 import { burnPerHour, fuelTotal } from "../sim/fire";
+import { HUNGRY_LINE } from "../sim/actions";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
+import { body } from "../sim/person";
+import { FAT_KCAL_PER_KG } from "../sim/player";
 import { regionState } from "../sim/regionstate";
 import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
 import { garmentWet } from "../sim/clothing";
@@ -21,11 +24,37 @@ function setBar(id: string, frac: number, text?: string, root: ParentNode = docu
   }
 }
 
+/**
+ * Last frame's reserve, for spotting a meal. The sim does not announce one
+ * to the frame loop and does not need to: a reserve that rose since the last
+ * frame is a meal, whoever ordered it.
+ */
+let lastKcal = Number.NaN;
+
+/** Restarts the flash on a bar, even if one is already running on it. */
+function flash(el: HTMLElement | null | undefined): void {
+  if (!el) return;
+  el.classList.remove("fed");
+  void el.offsetWidth;
+  el.classList.add("fed");
+}
+
 /** Every frame: the moving parts that the keyed panels leave alone. */
 export function updateBars(state: GameState, world: World, root: ParentNode = document): void {
   const p = state.player;
   setBar("health", p.health / 100, `${Math.round(p.health)}`, root);
   setBar("kcal", p.kcal / KCAL_FULL, `${Math.round(p.kcal)} kcal`, root);
+  // Under the meal line the bar reads as harm: the meal was due and did not
+  // happen, and the fat bar under it is what is paying for the difference.
+  const kcalBar = root.querySelector<HTMLElement>("#bar-kcal")?.parentElement;
+  kcalBar?.classList.toggle("low", p.kcal < HUNGRY_LINE);
+  // A meal is over in one simulated minute, and a bar that refills silently
+  // is the whole of what the player could not see. The fill is left to flash
+  // for a moment wherever the reserve rose.
+  if (p.kcal > lastKcal + 1) flash(kcalBar);
+  lastKcal = p.kcal;
+  const fatFull = body(state).fatFull;
+  setBar("fat", p.fat / fatFull, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
   setBar("warmth", p.warmth / 100, `${Math.round(p.warmth)}`, root);
   setBar("energy", p.energy / 100, `${Math.round(p.energy)}`, root);
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);

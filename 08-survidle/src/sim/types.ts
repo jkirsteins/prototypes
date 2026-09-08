@@ -505,6 +505,19 @@ export interface SkillState {
   carried?: number;
 }
 
+export type GoalId =
+  | "firewood" | "fire" | "cook" | "bed" | "roof" | "water" | "snare" | "store"
+  | "spring" | "summer" | "autumn" | "winter";
+
+export interface GoalState {
+  done: Partial<Record<GoalId, true>>;
+  progress: Partial<Record<GoalId, number>>;
+  /** Completions not yet shown, drained by the overlay one batch at a time. */
+  queue: GoalId[];
+  /** The season the last daily roll stood in: a turnover is this differing from now. */
+  lastSeason: Season;
+}
+
 export interface GameState {
   seed: number;
   /** Day of year the run began on, 0-based; 1 April unless the harness or the browser says otherwise. */
@@ -549,6 +562,14 @@ export interface GameState {
   spine: { fired: Partial<Record<ThresholdId, number>>; announced: Partial<Record<ThresholdId, number>> };
   /** The manual has been opened unasked once in this world. */
   manualSeen: boolean;
+  /**
+   * The world's goals: what has been reached here, how far the counted ones
+   * have got, and which completions are waiting to be congratulated. The
+   * world's rather than a survivor's - an heir inherits the ladder's
+   * position the way they inherit the camp - so newPerson and resetTeaching
+   * leave it alone.
+   */
+  goals: GoalState;
   /**
    * The rungs this survivor has been shown a moment for, and the ones
    * earned but not yet shown. Per survivor rather than per world: a moment

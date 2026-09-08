@@ -1,4 +1,4 @@
-import { edible, itemLabel, refusalReason } from "../sim/actions";
+import { edible, HUNGRY_LINE, itemLabel, refusalReason } from "../sim/actions";
 import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { needsMending, rackCapacity } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
@@ -7,7 +7,7 @@ import { groundDry, smoky } from "../sim/fire";
 import { herePile, listItems, pile, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, ITEM_KG, KCAL_FULL, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -20,7 +20,7 @@ import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
-import { FAT_KCAL_PER_KG, feltTemperature, insulation, starvation } from "../sim/player";
+import { feltTemperature, insulation, starvation } from "../sim/player";
 import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
@@ -41,8 +41,12 @@ import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
 import { skyHtml } from "./sky";
 
-function bar(id: string, cls: string, label: string): string {
-  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div><span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
+function bar(id: string, cls: string, label: string, markAt?: number): string {
+  // A mark is a fixed share of the bar, so it belongs in the markup: it is
+  // the one part of a bar that does not move, and the thing a falling fill
+  // is falling toward.
+  const mark = markAt === undefined ? "" : `<div class="mark" style="left:${(markAt * 100).toFixed(1)}%" title="eats here"></div>`;
+  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${mark}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
 }
 
 /**
@@ -104,7 +108,11 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.frostbite.feet > 0) tags.push(`<span class="tag bad">frostbitten feet, ${fmtDuration(p.frostbite.feet)}</span>`);
   if (p.frostbite.hands > 0) tags.push(`<span class="tag bad">frostbitten hands, ${fmtDuration(p.frostbite.hands)}</span>`);
   if (p.torch.lit) tags.push(`<span class="tag">torch lit, ${fmtDuration(p.torch.minutes)}</span>`);
-  if (p.kcal <= 1200) tags.push(`<span class="tag bad">starving</span>`);
+  // Under the meal line means the meal did not happen - auto-eat off, or
+  // nothing left it would take. Either way the fat behind it is paying, and
+  // that is the state worth a word. Starving is what the fat running out is.
+  if (p.kcal < HUNGRY_LINE) tags.push(`<span class="tag bad">hungry</span>`);
+  if (starvation(state) >= 0.5) tags.push(`<span class="tag bad">starving</span>`);
   if (starvation(state) >= 0.75) tags.push(`<span class="tag bad">wasting</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
@@ -113,8 +121,8 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
-${bar("kcal", "kcal", "Food")}
-<div class="dim">fat: ${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg</div>
+${bar("kcal", "kcal", "Food", HUNGRY_LINE / KCAL_FULL)}
+${bar("fat", "fat", "Fat")}
 ${bar("water", "water", "Water")}
 ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}
@@ -122,7 +130,7 @@ ${bar("wet", "wet", "Wet")}
 <div class="statuses">${tags.join("")}</div>
 <div class="autos">
   <span class="dim">auto</span>
-  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under 1800 kcal">eat</button>
+  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under ${HUNGRY_LINE} kcal">eat</button>
   <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">drink</button>
   <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">feed fire</button>
 </div>
