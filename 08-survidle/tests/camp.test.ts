@@ -24,7 +24,8 @@ describe("camp", () => {
     expect(st.fire.lit).toBe(true);
     // 6 kg minus 3 kg burnt, then topped up from the pile when it dropped to 3 kg.
     expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
-    state.player.autoFeed = false;
+    // Nothing left at camp to feed it with, which is the only way a tended fire goes out.
+    pile(state, st.campCell).items.firewood = 0;
     for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     expect(st.fire.lit).toBe(false);
     expect(state.log.some((e) => e.text.includes("gone out"))).toBe(true);

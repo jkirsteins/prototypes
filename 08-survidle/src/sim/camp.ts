@@ -44,7 +44,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
         st.fire.wetKg = Math.max(0, st.fire.wetKg - perMin * dt * share);
         st.fire.fuelKg = Math.max(0, st.fire.fuelKg - perMin * dt * (1 - share));
       }
-      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere && state.player.autoFeed) {
+      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere) {
         feedFire(state, world, id, FIRE_MAX_KG - fuelTotal(st.fire));
       }
       const outOfFuel = fuelTotal(st.fire) <= 0;

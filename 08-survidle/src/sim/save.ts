@@ -162,7 +162,6 @@ function fillDefaults(state: GameState): void {
   p.torch ??= { lit: false, minutes: 0 };
   p.fat ??= FAT_FULL;
   p.water ??= 2.5;
-  p.autoDrink ??= true;
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
   p.fingers ??= false;

@@ -393,11 +393,8 @@ export interface Player {
   /** A torch in hand: lit, and the minutes of burn left. */
   torch: { lit: boolean; minutes: number };
   pack: Inventory;
-  autoEat: boolean;
-  autoFeed: boolean;
   /** Litres of water in the body, 0..3. */
   water: number;
-  autoDrink: boolean;
   /** Minutes spent frostbitten in each extremity. */
   frostbite: { feet: number; hands: number };
   /** Lost to frostbite for good. */

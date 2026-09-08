@@ -333,15 +333,6 @@ function onClick(ev: Event) {
     case "drop-all":
       dropAll(state, world);
       break;
-    case "toggle-eat":
-      state.player.autoEat = !state.player.autoEat;
-      break;
-    case "toggle-feed":
-      state.player.autoFeed = !state.player.autoFeed;
-      break;
-    case "toggle-drink":
-      state.player.autoDrink = !state.player.autoDrink;
-      break;
     case "abandon":
       ui.confirmAbandon = true;
       break;
@@ -546,7 +537,7 @@ forecaster.onRow = (row) => { noteMonthRow(state, row); };
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
   "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "order-pin", "dismiss",
-  "eat", "feed", "drink", "fill", "take", "drop", "drop-all", "toggle-eat", "toggle-feed", "toggle-drink",
+  "eat", "feed", "drink", "fill", "take", "drop", "drop-all",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
 function requestForecast(): void {

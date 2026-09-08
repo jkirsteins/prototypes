@@ -234,6 +234,6 @@ export function fillVessels(state: GameState, world: World): number {
 /** Drinks at the thirsty line when a vessel or the shore allows, like auto-eat. */
 export function autoDrink(state: GameState, world: World): void {
   const p = state.player;
-  if (!p.autoDrink || p.water >= THIRSTY_L) return;
+  if (p.water >= THIRSTY_L) return;
   drink(state, world);
 }

@@ -33,9 +33,8 @@ describe("advance", () => {
     expect(b.state.minute).toBeCloseTo(60, 6);
   });
 
-  it("kills an idle character who never eats, and names the cause", () => {
+  it("kills an idle character who runs out, and names the cause", () => {
     const { state, world } = newGame(8);
-    state.player.autoEat = false;
     advance(state, world, 1440 * 12);
     expect(state.dead).not.toBeNull();
     // Never drinks either: away from any shore or vessel, thirst can win the race.
@@ -87,7 +86,6 @@ describe("save", () => {
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
     const { state } = newGame(8);
     expect(state.player.water).toBe(2.5);
-    expect(state.player.autoDrink).toBe(true);
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(state.weather.iceCm).toBe(0);
     expect(state.weather.storm).toBeNull();
@@ -103,7 +101,6 @@ describe("save", () => {
     st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
-    delete raw.state.player.autoDrink;
     delete raw.state.player.frostbite;
     delete raw.state.player.toes;
     delete raw.state.player.fingers;
@@ -124,7 +121,6 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].trap.age;
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.player.water).toBe(2.5);
-    expect(back.player.autoDrink).toBe(true);
     expect(back.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(back.player.toes).toBe(false);
     expect(back.player.fingers).toBe(false);

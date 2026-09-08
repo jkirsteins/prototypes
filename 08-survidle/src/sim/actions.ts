@@ -88,10 +88,12 @@ export const HUNGRY_LINE = 1800;
  * food past the ceiling) is skipped, not a stop, so a body at the lean wall
  * with fat at hand eats the fat rather than starving beside it, and a body
  * with room under the ceiling eats the lean food and keeps the fat.
+ *
+ * Whether the survivor stops to eat at all is the body row's question, asked
+ * where the player ranks that row against the work.
  */
-export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
+export function autoEat(state: GameState, world: World, rng: Rng): void {
   const p = state.player;
-  if (!force && !p.autoEat) return;
   let guard = 0;
   while (p.kcal < HUNGRY_LINE && guard++ < 200) {
     let ate = false;

@@ -40,7 +40,6 @@ describe("water", () => {
 
   it("thirst slows the work, then drains health at 4 an hour, and names the death", () => {
     const { state, world } = newGame(1);
-    state.player.autoDrink = false;
     state.player.water = THIRSTY_L - 0.01;
     expect(workSpeed(state, world)).toBeCloseTo(0.8, 6);
     state.player.water = 0;
@@ -95,10 +94,12 @@ describe("water", () => {
   it("a working day without drinking ends thirsty and, left alone, dead of thirst before starvation", () => {
     const { state, world } = newGame(17);
     // Nobody looking after him: an empty list carries no body row, so no
-    // thirst walks him to the water and the two clocks race each other.
+    // thirst walks him to the water and the two clocks race each other. He
+    // stands in the forest with no vessel, which is what "without drinking"
+    // means once the body drinks whatever is within reach; the meat in the
+    // pack is what keeps starvation out of the race.
     regionState(state, world, state.player.region).orders.length = 0;
-    state.player.autoDrink = false;
-    state.player.autoEat = false;
+    placeAtSpot(state, world, state.player.region, "forest");
     state.player.pack.items.driedMeat = 5;
     advance(state, world, 1440 * 4);
     expect(state.dead?.cause).toBe("thirst");

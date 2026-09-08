@@ -561,15 +561,14 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
 
 /**
  * Eat what is in reach, walking the order until the hungry line is passed or
- * nothing is left to take; else go where the food is; else nothing. Force is
- * set: the runner eats regardless of the player's auto-eat toggle. A dry
+ * nothing is left to take; else go where the food is; else nothing. A dry
  * read never eats; canFeed already asks exactly the question autoEat would
  * spend a meal answering, so a dry read asks that instead.
  */
 function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, dry: boolean): Step | null {
   if (dry) return canFeed(state, world, cal) ? DRY_READY : null;
   const before = state.player.kcal;
-  autoEat(state, world, rng, true);
+  autoEat(state, world, rng);
   if (state.player.kcal > before) return null;
   const campCell = regionState(state, world, state.player.region).campCell;
   if (cellOf(state, world) === campCell) return null;

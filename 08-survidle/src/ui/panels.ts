@@ -125,11 +125,6 @@ ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}
 ${bar("wet", "wet", "Wet")}
 <div class="statuses">${tags.join("")}</div>
-<div>
-  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under 1800 kcal">auto-eat: ${p.autoEat ? "on" : "off"}</button>
-  <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">auto-feed fire: ${p.autoFeed ? "on" : "off"}</button>
-  <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">auto-drink: ${p.autoDrink ? "on" : "off"}</button>
-</div>
 <div style="margin-top:8px">
   ${ui.confirmAbandon
     ? `<button class="mini danger" data-act="abandon-yes">Really abandon this run? Yes, it is over</button> <button class="mini" data-act="abandon-no">no</button>`

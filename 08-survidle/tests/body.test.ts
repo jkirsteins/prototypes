@@ -220,7 +220,6 @@ describe("the body's row against the work", () => {
   it("hungry, it eats from the pack and keeps working; with food only at camp it goes there", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.player.autoEat = false;
     state.player.kcal = 1700;
     advance(state, world, 1);
     expect(state.player.kcal).toBeGreaterThan(1700);
