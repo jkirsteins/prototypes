@@ -7,6 +7,7 @@
  */
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
+import { isBodyRow } from "./bodyorder";
 import type { Calendar } from "./calendar";
 import { intentOption, startIntent, yieldItem } from "./intent";
 import { log } from "./log";
@@ -53,7 +54,10 @@ export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: Inte
 /** The rungs an order asks for: its kind, and past the keep, each condition it carries. */
 export function rungsNeeded(req: IntentRequest, kind: OrderKind): Rung[] {
   const n = normalizeOrder(req, kind);
-  const out: Rung[] = [n.kind];
+  // normalizeOrder never turns anything into the body kind, nor is it ever
+  // called with one: nothing is ever given as a body row, so a rung list is
+  // never asked of one either.
+  const out: Rung[] = [n.kind as Rung];
   const w = n.req.when;
   if (w?.season || w?.stock || w?.restart !== undefined || n.req.until.kind === "daily") out.push("condition");
   // Both pace words ask for the same rung: "spent by the season's close" is what
@@ -117,7 +121,12 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
 export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): Order {
   if (normalizeOrder(req, kind).req.until.kind !== "once") return giveOrder(state, world, req, kind);
   const live = state.intent;
-  const liveHand = live?.mode === "hand" && live.orderId !== null ? ordersHere(state, world).findIndex((o) => o.id === live.orderId) : -1;
+  // A rank among the real work, matching what addOrder itself expects: the
+  // body row would otherwise count as a place in the list and shift every
+  // hand order given after the first one a rank too low.
+  const liveHand = live?.mode === "hand" && live.orderId !== null
+    ? ordersHere(state, world).filter((o) => !isBodyRow(o)).findIndex((o) => o.id === live.orderId)
+    : -1;
   const o = giveOrder(state, world, req, kind, liveHand + 1);
   // A click that starts nothing says so. startIntent refuses when the check at
   // the target cell fails, and its false was thrown away here: the order was

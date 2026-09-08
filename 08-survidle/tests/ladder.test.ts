@@ -106,7 +106,8 @@ describe("giving an order", () => {
   it("a shut gate throws with the reason and adds nothing", () => {
     const { state, world } = newGame(3);
     expect(() => giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep")).toThrow("keeps at Woodcraft 10, {you} {are} 1");
-    expect(ordersHere(state, world)).toEqual([]);
+    // Nothing added beyond the body row every list already carries.
+    expect(ordersHere(state, world).map((o) => o.kind)).toEqual(["body"]);
   });
 
   it("an open gate adds the order at the rank given", () => {
@@ -115,7 +116,8 @@ describe("giving an order", () => {
     setLevel(state, "woodcraft", 10);
     const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
     expect(o.kind).toBe("keep");
-    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["split", "sticks"]);
+    // Rank 0 is the top of the real work, one place behind the body row.
+    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["wait", "split", "sticks"]);
   });
 });
 

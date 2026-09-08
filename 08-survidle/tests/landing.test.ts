@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { isBodyRow } from "../src/sim/bodyorder";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty } from "../src/sim/inventory";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -184,12 +185,16 @@ describe("what the heir is told", () => {
     addItem(pile(state, camp), "firewood", 40);
     giveOrder(state, world, { task: "roots", until: { kind: "daily", n: 2 }, deliver: "camp", where: "nearest", when: { season: { from: 90, to: 304 } } }, "job");
     giveOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(ordersHere(state, world).length).toBe(2);
+    // The body row plus the two given.
+    expect(ordersHere(state, world).length).toBe(3);
     advance(state, world, 1440);
     die(state, "starved");
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });
-    for (const st of Object.values(state.regions)) expect(st.orders).toEqual([]);
+    // Every old camp is wiped clean; a landing cell in ground never touched
+    // before is a fresh region and carries only the body row every fresh
+    // region does. Neither carries a real order of the dead's.
+    for (const st of Object.values(state.regions)) expect(st.orders.every(isBodyRow)).toBe(true);
     // The world is still there: the wood the ancestor split is at the old camp for the heir to find.
     expect(qty(pile(state, camp), "firewood")).toBeGreaterThan(0);
     // The heir's own orders are the only ones the list ever holds again.

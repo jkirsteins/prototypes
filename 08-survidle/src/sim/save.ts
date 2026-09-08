@@ -1,6 +1,7 @@
 import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
+import { addBodyRow, isBodyRow } from "./bodyorder";
 import { calendar, START_DOY } from "./calendar";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
@@ -226,6 +227,10 @@ function fillDefaults(state: GameState): void {
     st.orders ??= [];
     st.nextOrderId ??= 1;
     st.iceHole ??= null;
+    // A save from before the row existed has none: it is unshifted on, the
+    // same rank the always-pre-empting tier already held over the list it
+    // could not be seen on.
+    if (!st.orders.some(isBodyRow)) addBodyRow(st);
   }
 }
 
@@ -276,7 +281,9 @@ export function catchUp(state: GameState, world: World, realSecondsElapsed: numb
   const cal = calendar(state.minute, state.startDoy);
   // The whole order is copied: a job that finishes while away is removed with
   // its counters, and its "until" is what says how many completions that took.
-  const snap = ordersHere(state, world).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
+  // The body row never finishes anything for the report to count, so it is
+  // left off the same way it is left off every other tally of the list's work.
+  const snap = ordersHere(state, world).filter((o) => !isBodyRow(o)).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
   advance(state, world, minutes);
   // Written while nobody watched: the panels render these by name.
   for (const e of state.log.slice(before)) if (e.minute > firstMinute) e.away = true;

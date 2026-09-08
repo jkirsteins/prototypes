@@ -193,12 +193,15 @@ export interface IntentRequest {
 
 /**
  * A standing order keeps a stock (keep) or grinds forever (grind); a job
- * finishes and drops off the list. All three rank together.
+ * finishes and drops off the list. All three rank together, and the body
+ * ranks with them under its own kind: sleep, food, water, warmth, shelter
+ * and coming home before dark, one row rather than a tier hidden under the
+ * list.
  */
-export type OrderKind = "keep" | "grind" | "job";
+export type OrderKind = "keep" | "grind" | "job" | "body";
 
-/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. */
-export type Rung = OrderKind | "condition" | "pace";
+/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. The body kind is never given, so it is never a rung to earn. */
+export type Rung = Exclude<OrderKind, "body"> | "condition" | "pace";
 
 export interface Order {
   /** Stable within the run; the live intent names its order by it. */

@@ -39,7 +39,8 @@ describe("work chosen by hand is the player's", () => {
     // Started on the click, spent or not, and at the top of the list.
     expect(state.intent?.task).toBe("deadwood");
     expect(state.intent?.mode).toBe("hand");
-    expect(state.intent?.orderId).toBe(1);
+    // The body row holds id 1; this is the first real order.
+    expect(state.intent?.orderId).toBe(2);
     const steps = new Set<string>();
     expect(until(g, () => {
       if (state.intent) steps.add(state.intent.step);
@@ -79,10 +80,11 @@ describe("work chosen by hand is the player's", () => {
     expect(until(g, () => state.task?.id === "sticks", 200)).toBe(true);
     orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     expect(state.intent?.task).toBe("deadwood");
-    expect(state.intent?.orderId).toBe(2);
+    // Body row is 1, the standing sticks grind given first is 2, so deadwood is 3.
+    expect(state.intent?.orderId).toBe(3);
     const second = orderByHand(state, world, cal, new Rng(1), { task: "stone", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    expect(state.intent?.orderId).toBe(2);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([2, second.id, 1]);
+    expect(state.intent?.orderId).toBe(3);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, second.id, 2]);
   });
 
   it("the same work as a standing order is the runner's, and the spent body goes home first", () => {

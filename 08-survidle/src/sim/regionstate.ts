@@ -5,6 +5,7 @@
  * by not simulating them.
  */
 import { regionAt, speciesHere, type World } from "../world/gen";
+import { addBodyRow } from "./bodyorder";
 import { log } from "./log";
 import { readShore } from "./knowledge";
 import { body, hasQuirk } from "./person";
@@ -23,7 +24,7 @@ export function startingPop(world: World, id: number): Partial<Record<Species, n
 
 export function newRegionState(world: World, id: number): RegionState {
   const r = regionAt(world, id);
-  return {
+  const st: RegionState = {
     wood: r.wood0,
     pop: startingPop(world, id),
     campCell: r.campCell,
@@ -46,6 +47,11 @@ export function newRegionState(world: World, id: number): RegionState {
     rootCells: {},
     sapTaps: { day: 0, n: 0 },
   };
+  // Every list a region ever has starts with the body row already on it, top
+  // rank, the way the always-pre-empting body tier already stood over
+  // whatever the survivor was doing before there was a list to put it on.
+  addBodyRow(st);
+  return st;
 }
 
 /**

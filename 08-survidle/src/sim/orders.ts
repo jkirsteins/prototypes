@@ -5,10 +5,11 @@
  * runner does everything else, exactly as when the player clicks an intent
  * by hand.
  */
-import type { Rng } from "../rng";
+import { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { bodyAsks, KIT_ITEMS } from "./body";
+import { BODY_SENTENCE, isBodyRow, judgeBodyRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
@@ -39,21 +40,36 @@ export function addOrder(state: GameState, world: World, req: IntentRequest, kin
   const n = normalizeOrder(req, kind);
   // The day it was given is the rise's start for a paced keep that names no season.
   const o: Order = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "", givenDoy: calendar(state.minute, state.startDoy).dayOfYear };
-  st.orders.splice(rank === undefined ? st.orders.length : Math.min(rank, st.orders.length), 0, o);
+  // A rank counts places among the real work, not places in the array: the
+  // body row sits ahead of every list this ever runs on, so rank 0 - the
+  // top of the real orders - is one place past it, and every other rank
+  // shifts the same one place behind it. The one list this ever hands out
+  // with no body row at all (a landed heir's wiped camps, before the first
+  // order of the new life) has nothing to shift past, and reads that off
+  // the list itself rather than assuming the row is there to ask.
+  const offset = st.orders.length > 0 && isBodyRow(st.orders[0]) ? 1 : 0;
+  st.orders.splice(rank === undefined ? st.orders.length : Math.min(rank + offset, st.orders.length), 0, o);
   return o;
 }
 
+/** The body row is never struck off: it is filtered out of removal the same way it is filtered out of every "given" path, since nothing ever gives it and nothing ever takes it away. */
 export function removeOrder(state: GameState, world: World, id: number): void {
   const st = regionState(state, world, state.player.region);
-  st.orders = st.orders.filter((o) => o.id !== id);
+  st.orders = st.orders.filter((o) => o.id !== id || isBodyRow(o));
 }
 
-/** Moves one rank up (-1) or down (1); a move off either end does nothing. */
+/**
+ * Moves one rank up (-1) or down (1); a move off either end does nothing,
+ * and neither does a move that would touch the body row - up out of the
+ * second place, or down out of the first - since swapping with it is the
+ * one way this would otherwise dislodge it from the top.
+ */
 export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 1): void {
   const list = ordersHere(state, world);
   const i = list.findIndex((o) => o.id === id);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= list.length) return;
+  if (isBodyRow(list[i]) || isBodyRow(list[j])) return;
   [list[i], list[j]] = [list[j], list[i]];
 }
 
@@ -263,6 +279,7 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
 
 /** "Split a log, keep camp at 40 kg firewood"; "Fell a tree, forever, bringing it to camp". */
 export function orderSentence(state: GameState, world: World, cal: Calendar, o: Order): string {
+  if (isBodyRow(o)) return BODY_SENTENCE;
   const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
   const parts = [check(state, world, cal, o.req.task, o.req.arg, cell).label];
   const keep = keepTarget(o);
@@ -437,6 +454,11 @@ export type Judgement = { chosen: Order | null; blockedBy: Order | null };
 export function judgeOrders(state: GameState, world: World, cal: Calendar): Judgement {
   const liveId = state.intent?.orderId ?? null;
   const rows = ordersHere(state, world);
+  // A throwaway stream: the body row's own reading needs an Rng the way its
+  // real service does, but a judgement is not a minute and must not be able
+  // to nudge the run's randomness by however often the list happens to be
+  // read. Nothing here ever writes state.rng back.
+  const rng = new Rng(state.rng);
   // A row at or above the live one could take the minute from it; a row
   // below cannot pre-empt something already running, and does not need to
   // be asked whether it is ready to. With no live row every row is a
@@ -452,9 +474,9 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): Judg
   // the minute the list exists to fill: the one its own answer stops being
   // yes. A camp with many keeps cycles through several such rows a day, and
   // each one has to let go before the row under it is ever asked anything.
-  const liveVerdict = liveIndex >= 0 ? judgeRow(state, world, cal, rows[liveIndex], liveId, true) : null;
+  const liveVerdict = liveIndex >= 0 ? judgeRow(state, world, cal, rng, rows[liveIndex], liveId, true) : null;
   const liveOpen = liveIndex < 0 || liveVerdict!.v !== "ready";
-  const verdicts = rows.map((o, i) => (i === liveIndex ? liveVerdict! : judgeRow(state, world, cal, o, liveId, liveOpen || i <= liveIndex)));
+  const verdicts = rows.map((o, i) => (i === liveIndex ? liveVerdict! : judgeRow(state, world, cal, rng, o, liveId, liveOpen || i <= liveIndex)));
   // The chosen and blocking rows are found first, over every row's verdict,
   // before any row is marked: a row passed over above the chosen one has to
   // say what is running in its place, and that is only known once the whole
@@ -463,9 +485,21 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): Judg
   // row quietly out of season. A "later" verdict never wins the list and
   // never holds it: it is not a row that failed to run, it is a row that was
   // never asked, so it can be neither the choice nor the reason for one.
+  //
+  // The body row is skipped here on purpose: its own reading still comes
+  // back correct above, for the row to show, but it never competes for the
+  // choice. The body's own turn between orders is a separate, lighter
+  // question runOrders already asks on its own account (bodyAsks, the
+  // player's own memory-less probe), and a live real order that is still
+  // the right one to run is this loop's to hand straight back as chosen
+  // again - swapping it out for a wait merely because the body also wants
+  // something this minute would trade serveBody's in-place answer, which
+  // costs nothing and loses nothing, for a real order-switch that does
+  // neither for free.
   let chosen: Order | null = null;
   let blockedBy: Order | null = null;
   for (let i = 0; i < rows.length; i++) {
+    if (isBodyRow(rows[i])) continue;
     const v = verdicts[i];
     if (v.v === "ready" && !chosen && !blockedBy) chosen = rows[i];
     if ((v.v === "shut" || v.v === "blocked") && rows[i].pinned && !chosen && !blockedBy) blockedBy = rows[i];
@@ -488,13 +522,19 @@ export function walkJudged(): number { return walked; }
 export function resetWalkJudged(): void { walked = 0; }
 
 /**
- * One row's reading. The delivery, condition, met, capacity, legality, night
- * and walk checks, in the order they bite. `canTakeIt` says whether this row
- * could take the minute from whatever is live at all; a row that could not
- * skips the expensive half below, since asking a row to route across the map
- * when it has no way to act on the answer is A* spent for nothing.
+ * One row's reading. The body row reads off the need model rather than any
+ * of the checks below, and is asked first: a row that is never given and
+ * never removed has no delivery, no condition, no walk to judge, and asking
+ * it any of those questions would be asking them of a request nothing ever
+ * made. The delivery, condition, met, capacity, legality, night and walk
+ * checks, in the order they bite, are what is left for every other kind of
+ * row. `canTakeIt` says whether this row could take the minute from whatever
+ * is live at all; a row that could not skips the expensive half below, since
+ * asking a row to route across the map when it has no way to act on the
+ * answer is A* spent for nothing.
  */
-function judgeRow(state: GameState, world: World, cal: Calendar, o: Order, liveId: number | null, canTakeIt: boolean): Verdict {
+function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order, liveId: number | null, canTakeIt: boolean): Verdict {
+  if (isBodyRow(o)) return judgeBodyRow(state, world, cal, rng);
   const live = state.intent;
   // A live order carrying a load home is still able to run: judged afresh at
   // the work cell it would read "the vessels are full" every trip, though
@@ -586,6 +626,10 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   const st = regionState(state, world, state.player.region);
   const live = state.intent;
   for (const o of [...st.orders]) {
+    // The body row is never a job and never drops off; the kind check below
+    // would already pass over it, but naming the skip is what keeps a body
+    // row from ever looking like an oversight in a sweep built for jobs.
+    if (isBodyRow(o)) continue;
     // A daily count is today's alone, and the order stays on the list, since
     // the promise is the count every day rather than once. The day roll moves
     // the base the count is read from rather than zeroing `done`, which stays
@@ -602,9 +646,17 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
       removeOrder(state, world, o.id);
     }
   }
-  // A region with no orders has no intent (spec 2.3), whether the list was already
-  // empty when this ran (an order removed by hand) or the loop above just emptied
-  // it. A manual intent (no orderId) is not this scheduler's to clear, but wait is:
+  // A region with no order to arbitrate among has no intent of its own
+  // (spec 2.3): the body row does not count for this, since it is never a
+  // real order and the scheduler's own choosing is exactly what this
+  // guards against running with nothing under it to choose. Every list this
+  // scheduler ranks a real order onto already carries the body row from the
+  // moment regionState first builds it, so this reads true for a brand new
+  // region and a loaded one alike, and stays true until the first real
+  // order is given; it also covers the one list the game still wipes to
+  // truly nothing (beginAgain, landing an heir on the old camps rather than
+  // handing them a plan the level that gated it never earned). A manual
+  // intent (no orderId) is not this scheduler's to clear, but wait is:
   // startIntent gives it no orderId either, yet it is only ever started by this
   // scheduler and belongs to it just the same. A met job that still owes camp its
   // load winds down instead, so the last order on the list does not leave its
@@ -613,7 +665,7 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   // intent's own rest or sleep is still that intent's to run to its model's own
   // exit, and reading this every minute must not cut it off mid-step the way
   // it would if this ran only once and happened to land mid-chunk anyway.
-  if (!st.orders.length) {
+  if (st.orders.every(isBodyRow)) {
     if (live && live.orderId !== null && deliveryPending(state, world, live)) live.windDown = true;
     else if (state.task) return;
     else if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;

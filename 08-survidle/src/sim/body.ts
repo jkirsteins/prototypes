@@ -165,6 +165,23 @@ export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNee
   return needFrom(state, world, cal, { need: null, coldSpent: false, night: false });
 }
 
+/**
+ * The serving read's own answer, off the same sticky memory currentNeed
+ * reads from, but never written back onto it. A row's judgement runs far
+ * oftener than a minute turns over - every render, every reorder, every
+ * pass of the scheduler's own list before it acts on anything - and
+ * `bodyNeed` is not only a cache: a sleep or a rest finishing its estimated
+ * span clears it for the one minute between that finish and serveBody's own
+ * next reading, so the scheduler gets a clean look at the real list before
+ * serveBody decides whether the need is still there and puts the body back
+ * under it. A judgement that wrote the answer back would close that minute
+ * before the scheduler ever saw it open, waking nobody up on schedule.
+ */
+export function peekNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
+  const p = state.player;
+  return needFrom(state, world, cal, { need: p.bodyNeed, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 });
+}
+
 /** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */
 export function canFeed(state: GameState, world: World, cal: Calendar): boolean {
   const p = state.player;
@@ -204,18 +221,44 @@ function homeBeforeDark(state: GameState, world: World, cal: Calendar, need: Bod
   return (cal.sunset - cal.hour) * 60 <= minutes + 15;
 }
 
-/** The step a need calls for, or null when there is nothing to start for it. */
-export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, need: BodyNeed): Step | null {
+/** What the row says when a need holds and nothing here can answer it. */
+export const NEED_WORDS: Record<BodyNeed, string> = {
+  sleep: "needs sleep; nowhere to lie down",
+  storm: "the storm is coming; no shelter within reach",
+  cold: "cold; no fire and nowhere to warm up",
+  thirsty: "thirsty; no water within reach",
+  hungry: "hungry; nothing safe to eat",
+  snares: "the snares want checking; no way there",
+  spent: "worked out; nowhere to sit down",
+  home: "should be home before dark; no way there",
+};
+
+/** Stands in for a step a dry read finds ready without ever taking it: only whether bodyStep returned something is read back, never what it was. */
+const DRY_READY: Step = { id: "wait", step: "" };
+
+/**
+ * The step a need calls for, or null when there is nothing to start for it.
+ * `dry` asks the same question without doing anything about it: a row's own
+ * reading of the body must never itself drink, eat or feed the fire on the
+ * body's behalf the way the real service does, since a read runs far oftener
+ * than a minute ever turns over - every render, every reorder - and each of
+ * those three folds an instant action into what would otherwise be a step
+ * description. Dry skips exactly those three actions and asks in their
+ * place only whether one would have gone through; every other need was
+ * never able to act on its own read to begin with, so dry changes nothing
+ * for them.
+ */
+export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, need: BodyNeed, dry = false): Step | null {
   switch (need) {
-    case "hungry": return hungryStep(state, world, cal, rng);
-    case "thirsty": return thirstyStep(state, world, cal);
-    case "storm": return stormStep(state, world, cal);
+    case "hungry": return hungryStep(state, world, cal, rng, dry);
+    case "thirsty": return thirstyStep(state, world, cal, dry);
+    case "storm": return stormStep(state, world, cal, dry);
     case "home": return homeStep(state, world, cal);
     case "snares": {
       const cell = snaresWaiting(state, world, cal);
       return cell === null ? null : walkStep(state, world, cell, " to check the snares");
     }
-    default: return campStep(state, world, cal, need);
+    default: return campStep(state, world, cal, need, dry);
   }
 }
 
@@ -305,14 +348,25 @@ function canQuench(state: GameState, world: World, cal: Calendar): boolean {
     || Object.keys(state.seeps).some((k) => cellAt(world, Number(k)).region === state.player.region);
 }
 
+/** Whether drink() would find water without a step: a vessel in hand, open water underfoot, or the camp pile underfoot. What a dry read asks in drink's place, since drinking is the only proof a dry read is not allowed to take. */
+function canDrinkOnTheSpot(state: GameState, world: World): boolean {
+  if (vesselLitres(state.player) > 0 || waterSource(state, world)) return true;
+  const st = regionState(state, world, state.player.region);
+  return cellOf(state, world) === st.campCell && qty(pile(state, st.campCell), "water") > 1e-9;
+}
+
 /**
  * Drink in reach; else the nearest source that would put the reserve back over
  * the thirsty line; else cut an ice hole; else wait at the fullest seep,
  * drinking as it fills; else melt snow at the fire, last because it burns the
  * woodpile. The body's own choice among sources, which an order never makes.
+ * A dry read never drinks; every branch under the drink is already a step
+ * description rather than an action, so only the drink itself needs a
+ * stand-in.
  */
-function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null {
-  if (drink(state, world)) return null;
+function thirstyStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
+  if (dry) { if (canDrinkOnTheSpot(state, world)) return DRY_READY; }
+  else if (drink(state, world)) return null;
   const p = state.player;
   const here = cellOf(state, world);
   const need = Math.max(0.1, THIRSTY_L - p.water);
@@ -345,8 +399,15 @@ function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null
   return null;
 }
 
-/** Walk to this region's camp, light a fire there if a cold pit allows it, keep it fed against the wind with dry wood, then wait the storm out. */
-function stormStep(state: GameState, world: World, cal: Calendar): Step | null {
+/**
+ * Walk to this region's camp, light a fire there if a cold pit allows it, keep
+ * it fed against the wind with dry wood, then wait the storm out. A dry read
+ * never feeds the fire, since that is fuel spent on the strength of a read
+ * rather than a minute; the fire steps above it are already only
+ * descriptions and need no guard, and the walk or the wait it falls back to
+ * is the same answer either way.
+ */
+function stormStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
   const st = regionState(state, world, state.player.region);
   const here = cellOf(state, world);
   if (here !== st.campCell) {
@@ -354,7 +415,7 @@ function stormStep(state: GameState, world: World, cal: Calendar): Step | null {
   }
   const fs = fireStep(state, world, cal, st.campCell);
   if (fs) return fs;
-  if (st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
+  if (!dry && st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
   return { id: "rest", step: "waiting out the storm" };
 }
 
@@ -408,8 +469,15 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
   return fireStep(state, world, cal, st.campCell) !== null;
 }
 
-/** Walk to this region's camp, make a fire if the means are here, then sleep or rest. */
-function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" | "cold" | "spent"): Step {
+/**
+ * Walk to this region's camp, make a fire if the means are here, then sleep
+ * or rest. A dry read never logs: both lines below are written the first
+ * minute a step actually begins, off `state.intent`, which is the live
+ * runner's own and is not there to read at all while a read is only asking
+ * whether the need has a step, not living inside the minute that step would
+ * run in.
+ */
+function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" | "cold" | "spent", dry: boolean): Step {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const here = cellOf(state, world);
@@ -422,7 +490,7 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
       : need === "cold"
         ? { id: "rest", step: "resting to warm up; no way to camp" }
         : { id: "rest", step: "resting after the day's work; no way to camp" };
-    if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
+    if (!dry && !isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
     return s;
   }
   const fs = fireStep(state, world, cal, st.campCell);
@@ -433,22 +501,29 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     // afternoon is telling the truth. The wording is set when the task
     // starts, so a doze that runs into the night keeps its word for it.
     const s: Step = { id: "sleep", step: cal.isNight ? "sleeping" : "dozing by the fire" };
-    // campStep only ever runs inside the live RunnerIntent's own minute, so
-    // state.intent is that intent, and its campCell is the home this need set
-    // out to serve, fixed when the intent began. st.campCell is wherever the
-    // survivor has actually settled just now. The two agree unless a night or
-    // a wait begun in one region ran on into another and put the body down at
-    // that region's own camp instead, which is exactly the crossing this line
-    // announces by name.
-    if (!isRunning(state, s) && st.campCell !== state.intent!.campCell) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
+    // campStep only ever runs inside the live RunnerIntent's own minute when
+    // it is not a dry read, so state.intent is that intent, and its campCell
+    // is the home this need set out to serve, fixed when the intent began.
+    // st.campCell is wherever the survivor has actually settled just now.
+    // The two agree unless a night or a wait begun in one region ran on into
+    // another and put the body down at that region's own camp instead, which
+    // is exactly the crossing this line announces by name.
+    if (!dry && !isRunning(state, s) && st.campCell !== state.intent!.campCell) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
     return s;
   }
   if (need === "cold") return { id: "rest", step: st.fire.lit ? "warming up by the fire" : "resting to warm up" };
   return { id: "rest", step: st.fire.lit ? "resting by the fire after the day's work" : "resting after the day's work" };
 }
 
-/** Eat what is in reach, walking the order until the hungry line is passed or nothing is left to take; else go where the food is; else nothing. Force is set: the runner eats regardless of the player's auto-eat toggle. */
-function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng): Step | null {
+/**
+ * Eat what is in reach, walking the order until the hungry line is passed or
+ * nothing is left to take; else go where the food is; else nothing. Force is
+ * set: the runner eats regardless of the player's auto-eat toggle. A dry
+ * read never eats; canFeed already asks exactly the question autoEat would
+ * spend a meal answering, so a dry read asks that instead.
+ */
+function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, dry: boolean): Step | null {
+  if (dry) return canFeed(state, world, cal) ? DRY_READY : null;
   const before = state.player.kcal;
   autoEat(state, world, rng, true);
   if (state.player.kcal > before) return null;
