@@ -5,6 +5,7 @@ import { dailyAnimals } from "./animals";
 import { calendar } from "./calendar";
 import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
+import { goalDeed } from "./goals";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
 import { log } from "./log";
@@ -110,6 +111,13 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     dailyAnimals(state, world, cal, rng, who);
     dailyCamp(state, world, cal, rng, who);
     stepSpine(state, cal, who);
+    // A season is reached by living into it. Landing inside one is not
+    // reaching it, which is why the turnover and not the reading is the deed.
+    const season = cal.season;
+    if (season !== state.goals.lastSeason) {
+      state.goals.lastSeason = season;
+      if (!nobody) goalDeed(state, { kind: "season", season });
+    }
     if (!nobody) current(state).forecast.push(null);
   }
 

@@ -1,6 +1,7 @@
 import { derive, Rng } from "../rng";
 import { generateWorld, regionAt, type World } from "../world/gen";
 import { calendar, fmtDate, START_DOY } from "./calendar";
+import { newGoals } from "./goals";
 import { AWAY_HOURS_DEFAULT } from "../units";
 import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
@@ -128,6 +129,7 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
     landing: null,
     spine: { fired: {}, announced: {} },
     manualSeen: false,
+    goals: newGoals(calendar(0, startDoy).season),
   } as GameState;
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);
