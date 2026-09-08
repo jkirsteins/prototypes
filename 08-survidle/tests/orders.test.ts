@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar, START_DOY } from "../src/sim/calendar";
-import { startIntent, type IntentRequest } from "../src/sim/intent";
+import { deliveryPending, resolveCell, startIntent, type IntentRequest } from "../src/sim/intent";
 import { normalizeOrder } from "../src/sim/ladder";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -13,7 +13,7 @@ import { catchUp, deserialize, serialize } from "../src/sim/save";
 import { beginTask, check, startTask, stopTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 import {
-  addOrder, blockingOrder, chooseOrder, conditionOpen, inSeason, judgeOrders, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, removeOrder, removeOrderByHand, runOrders, countWord, NIGHT_SKIP,
+  addOrder, blockingOrder, chooseOrder, conditionOpen, inSeason, judgeOrders, keepBand, keepStock, keepTarget, keepTargetToday, moveOrder, moveOrderByHand, orderMet, orderSentence, ordersHere, removeOrder, removeOrderByHand, resetWalkJudged, runOrders, countWord, NIGHT_SKIP, walkJudged,
 } from "../src/sim/orders";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { BARK_DRY_RATIO } from "../src/sim/items";
@@ -280,21 +280,24 @@ describe("the scheduler", () => {
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
   });
 
-  it("a blocked order below the live one is judged too, not left with a stale reason", () => {
+  it("a row below the live one is spared the question and its stale reason clears", () => {
     const g = campWith(3, { log: 6 });
     const { state, world } = g;
     const grind = addOrder(state, world, req("split", { until: { kind: "forever" } }), "grind");
     const cabin = addOrder(state, world, req("build", { arg: "cabin", until: { kind: "once" } }), "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
+    // Before anything is live every row is asked, so the first minute still
+    // reads cabin's own reason and logs it, once, against what ran instead.
     expect(cabin.skipped).toBe("missing materials at camp");
-    // It is passed over rather than stopping the list, and the line the
-    // player's own once request earns says what ran in its place.
     const line = "log cabin: missing materials at camp. Split a log, forever instead.";
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
-    // Judged again every free minute while the grind stays live, but logged only the once.
+    // With the grind live and ranked above it, cabin can never pre-empt it, so
+    // asking whether it could run is a question the prefix rule no longer
+    // puts to it. Its stale "missing materials" mark clears rather than being
+    // kept alive by a check that is not run, and nothing further is logged.
     advance(state, world, 5);
-    expect(cabin.skipped).toBe("missing materials at camp");
+    expect(cabin.skipped).toBe("");
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
   });
 
@@ -499,7 +502,7 @@ describe("the scheduler", () => {
     expect(state.log.length).toBe(before);
   });
 
-  it("a manual intent is left alone while the region has no orders, and a raw task overrides the list until it ends", () => {
+  it("a manual intent is left alone while the region has no orders, and a raw task with no intent behind it is left alone too", () => {
     const g = campWith(3, { log: 6 });
     const { state, world } = g;
     startIntent(state, world, cal, new Rng(1), req("sticks", { until: { kind: "forever" } }));
@@ -510,6 +513,10 @@ describe("the scheduler", () => {
     expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
     stopTask(state, world);
     beginTask(state, world, cal, "rest");
+    // A raw task begun with no intent wrapping it - the advanced panel's own
+    // door - is not a row the list ever judged, so it is not the list's to
+    // take back either: it runs to its own end the same as before every row
+    // was read every minute, and only work the list started is now read live.
     advance(state, world, 30);
     expect(state.intent).toBeNull();
     expect(state.task?.id).toBe("rest");
@@ -1200,5 +1207,62 @@ describe("fall-through", () => {
     const before = state.log.length;
     judgeOrders(state, world, cal);
     expect(state.log.slice(before).some((e) => e.text.includes("instead"))).toBe(false);
+  });
+});
+
+describe("pre-emption", () => {
+  it("a rank change is judged at once, but the chunk in hand keeps the minute until it ends on its own", () => {
+    const { state, world } = newGame(3);
+    const a = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    const b = addOrder(state, world, { task: "deadwood", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 30);
+    expect(state.intent?.orderId).toBe(a.id);
+    expect(state.task).not.toBeNull();
+    moveOrder(state, world, b.id, -1);
+    // The list is read afresh at once: chooseOrder already answers b, which is
+    // what the panel and waitingLine draw from every minute regardless of
+    // whether anything is running to act on it.
+    expect(chooseOrder(state, world, calendar(state.minute, state.startDoy))?.id).toBe(b.id);
+    // Acting on it waits for the chunk already in hand to end on its own, the
+    // way it always did: a bare rank change is not the player asking for an
+    // interruption, so none happens mid-step.
+    advance(state, world, 5);
+    expect(state.intent?.orderId).toBe(a.id);
+  });
+
+  it("a load being carried home is delivered before a higher row takes over", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const away = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    const { cell } = resolveCell(state, world, cal, "sticks", undefined, "nearest");
+    // The shape deliveryPending reads - a live order away from camp with sticks
+    // already in the pack - built directly rather than run out from a click and
+    // hoped into the walk home, which a fast gather on a lucky cell can finish
+    // inside the same minute it started and never leave this state to catch.
+    addItem(state.player.pack, "stick", 1);
+    state.intent = {
+      mode: "runner", task: "sticks", cell, campCell: st.campCell, until: { kind: "forever" },
+      deliver: "camp", done: 0, step: "gathering sticks", orderId: away.id, windDown: false, need: null,
+    };
+    expect(deliveryPending(state, world, state.intent)).toBe(true);
+    const top = addOrder(state, world, { task: "stone", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    moveOrder(state, world, top.id, -1);
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(away.id);
+  });
+
+  it("readiness is not computed for rows below the live row", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    for (let i = 0; i < 8; i++) {
+      addOrder(state, world, { task: "stone", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    }
+    advance(state, world, 60);
+    resetWalkJudged();
+    advance(state, world, 1);
+    // The live row is the top one, so at most it is asked to route; the eight
+    // rows below it read "later" without ever reaching the walk check, no
+    // matter how many of them the list holds.
+    expect(walkJudged()).toBeLessThanOrEqual(2);
   });
 });

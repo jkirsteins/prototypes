@@ -437,13 +437,32 @@ export type Judgement = { chosen: Order | null; blockedBy: Order | null };
 export function judgeOrders(state: GameState, world: World, cal: Calendar): Judgement {
   const liveId = state.intent?.orderId ?? null;
   const rows = ordersHere(state, world);
-  const verdicts = rows.map((o) => judgeRow(state, world, cal, o, liveId));
+  // A row at or above the live one could take the minute from it; a row
+  // below cannot pre-empt something already running, and does not need to
+  // be asked whether it is ready to. With no live row every row is a
+  // candidate, the same as an empty camp with nobody yet doing anything.
+  const liveIndex = liveId === null ? -1 : rows.findIndex((o) => o.id === liveId);
+  // The live row's own verdict decides whether it still guards the rows under
+  // it: gating the rest of the list only makes sense while the live row would
+  // win the choice outright again this minute. The moment its own reading
+  // stops being "ready" - its promise is met, its season has shut, or it is
+  // blocked on something missing - there is no work in progress left to
+  // pre-empt, and holding the rest of the list behind a row that could not
+  // itself be chosen this minute would strand every row under it exactly on
+  // the minute the list exists to fill: the one its own answer stops being
+  // yes. A camp with many keeps cycles through several such rows a day, and
+  // each one has to let go before the row under it is ever asked anything.
+  const liveVerdict = liveIndex >= 0 ? judgeRow(state, world, cal, rows[liveIndex], liveId, true) : null;
+  const liveOpen = liveIndex < 0 || liveVerdict!.v !== "ready";
+  const verdicts = rows.map((o, i) => (i === liveIndex ? liveVerdict! : judgeRow(state, world, cal, o, liveId, liveOpen || i <= liveIndex)));
   // The chosen and blocking rows are found first, over every row's verdict,
   // before any row is marked: a row passed over above the chosen one has to
   // say what is running in its place, and that is only known once the whole
   // list has been read. A pin reaches past "blocked" to "shut" too, since a
   // pinned row waiting on a season is still the row holding the list, not a
-  // row quietly out of season.
+  // row quietly out of season. A "later" verdict never wins the list and
+  // never holds it: it is not a row that failed to run, it is a row that was
+  // never asked, so it can be neither the choice nor the reason for one.
   let chosen: Order | null = null;
   let blockedBy: Order | null = null;
   for (let i = 0; i < rows.length; i++) {
@@ -452,6 +471,9 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): Judg
     if ((v.v === "shut" || v.v === "blocked") && rows[i].pinned && !chosen && !blockedBy) blockedBy = rows[i];
   }
   if (blockedBy) chosen = null;
+  // "later" clears a row's skip mark exactly as "met" does: the row was not
+  // refused, it was simply not its turn, and waitingLine already reads that
+  // as "waiting its turn, behind" the chosen row off the judgement below.
   for (let i = 0; i < rows.length; i++) {
     const v = verdicts[i];
     if (v.v === "shut" || v.v === "blocked") markSkipped(state, world, cal, rows[i], v.why, chosen);
@@ -460,8 +482,19 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): Judg
   return { chosen, blockedBy };
 }
 
-/** One row's reading. The delivery, condition, met, capacity, legality, night and walk checks, in the order they bite. */
-function judgeRow(state: GameState, world: World, cal: Calendar, o: Order, liveId: number | null): Verdict {
+/** Rows whose walk has been judged since the counter was last reset. The prefix rule's test reads it; nothing in the game does. */
+let walked = 0;
+export function walkJudged(): number { return walked; }
+export function resetWalkJudged(): void { walked = 0; }
+
+/**
+ * One row's reading. The delivery, condition, met, capacity, legality, night
+ * and walk checks, in the order they bite. `canTakeIt` says whether this row
+ * could take the minute from whatever is live at all; a row that could not
+ * skips the expensive half below, since asking a row to route across the map
+ * when it has no way to act on the answer is A* spent for nothing.
+ */
+function judgeRow(state: GameState, world: World, cal: Calendar, o: Order, liveId: number | null, canTakeIt: boolean): Verdict {
   const live = state.intent;
   // A live order carrying a load home is still able to run: judged afresh at
   // the work cell it would read "the vessels are full" every trip, though
@@ -480,12 +513,22 @@ function judgeRow(state: GameState, world: World, cal: Calendar, o: Order, liveI
       return { v: "shut", why: `camp holds ${cap % 1 === 0 ? cap : cap.toFixed(1)} litres; more vessels at camp would hold more` };
     }
   }
+  // Everything below this line is what a row below the live one is spared:
+  // intentOption and resolveCell can search the region for a site, and the
+  // walk check routes across it, so asking it of every row every minute
+  // would put A* in the inner loop of a run that covers hundreds of days.
+  // A row here keeps its cheap reads above - the season, the stock, whether
+  // its target is met - which is what the panel draws it from; only whether
+  // it could actually go to work this minute is a question deferred to the
+  // minute it might matter, which is the minute it reaches the prefix.
+  if (!canTakeIt) return { v: "later" };
   const opt = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
   if (!opt.ok) return { v: "blocked", why: opt.why };
   const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
   const night = nightSkip(state, world, cal, o.req.task, cell);
   if (night) return { v: "shut", why: night };
   if (cell !== cellOf(state, world)) {
+    walked++;
     const w = check(state, world, cal, "walk", `cell:${cell}`);
     if (!w.ok) return { v: "blocked", why: w.why };
   }
@@ -525,13 +568,19 @@ export function blockingOrder(state: GameState, world: World, cal: Calendar): Or
 const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
 /**
- * Runs each minute with a free task slot. Met jobs drop off. Then the
- * chosen order becomes the live intent: at once when nothing is owed to
- * camp, after the delivery when something is. With orders but nothing to
- * do, the runner waits at camp, where the nights are safe.
+ * Runs every minute, task slot free or not: the list is judged afresh each
+ * minute so the panel and waitingLine never draw a stale verdict, and a rank
+ * or a row the player just changed through the hand doors is read on the
+ * very next reading rather than at the end of whatever chunk was already
+ * under way. Met jobs drop off on every reading too. But judging is not
+ * acting: a chunk of work already in hand keeps the minute until it ends on
+ * its own, the way it always did, and only then does the chosen order
+ * become the live intent - at once when nothing is owed to camp, after the
+ * delivery when something is. With orders but nothing to do, the runner
+ * waits at camp, where the nights are safe.
  */
 export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rng): void {
-  if (state.dead || state.task) return;
+  if (state.dead) return;
   const st = regionState(state, world, state.player.region);
   const live = state.intent;
   for (const o of [...st.orders]) {
@@ -558,8 +607,13 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   // scheduler and belongs to it just the same. A met job that still owes camp its
   // load winds down instead, so the last order on the list does not leave its
   // bark in the pack at the forest the way one with a neighbour below it never did.
+  // Clearing the intent itself waits for the chunk under way to end: a wait
+  // intent's own rest or sleep is still that intent's to run to its model's own
+  // exit, and reading this every minute must not cut it off mid-step the way
+  // it would if this ran only once and happened to land mid-chunk anyway.
   if (!st.orders.length) {
     if (live && live.orderId !== null && deliveryPending(state, world, live)) live.windDown = true;
+    else if (state.task) return;
     else if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;
     return;
   }
@@ -571,6 +625,18 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     return;
   }
   if (chosen) {
+    // The chosen row does not take the minute away from a chunk already in
+    // hand: it waits for that chunk to end on its own, the way the whole
+    // list did before every row was read every minute, and this same
+    // judgement is read again the next minute with nothing left to
+    // interrupt. A rank or a row change made through moveOrderByHand or
+    // removeOrderByHand is the one thing that crosses this line today,
+    // because it is the player asking on the spot rather than this reading
+    // noticing something on its own - decideAgain is that door, not this
+    // one. The body row is the other thing that gets to cross it, once the
+    // body is a row, because a body need cannot wait for a tree to come
+    // down; that exception belongs here and is not this task's to add.
+    if (state.task) return;
     // Between orders the runner is its own, and the body speaks first. An
     // order starts only when the body asks for nothing; while it does, the
     // runner waits and the wait's body tier serves it - the walk home, the
@@ -586,6 +652,9 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     startIntent(state, world, cal, rng, chosen.req, chosen.id);
     return;
   }
+  // Nothing is ready, and a chunk of work is already in hand: it keeps the
+  // minute rather than being bumped for a wait nothing asked for.
+  if (state.task) return;
   startIntent(state, world, cal, rng, WAIT);
   log(state, "Nothing to do. {You} {wait} at camp.");
 }
