@@ -3,7 +3,7 @@ import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
 import { needsMending, rackCapacity } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
-import { groundDry, smoky } from "../sim/fire";
+import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pile, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
@@ -350,11 +350,17 @@ export function campHtml(state: GameState, world: World): string {
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
   const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
 
-  // The fuel figure moves with every minute the fire burns, so the bar names
-  // what it draws and bars.ts writes the width; the markup never says it.
-  const fire = st.structures.firePit
-    ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${bar("fire", "fire", "Fuel")}`
-    : "";
+  // A third word between burning and cold: coals are live but not fed, the
+  // routine state after every tended night rather than an exception. How
+  // long they last is the fuel bar's job, and the figure moves with every
+  // minute the fire burns, so the bar names what it draws and bars.ts writes
+  // the width; saying it in the markup would break the churn budget.
+  const fireWord = st.fire.lit
+    ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>`
+    : hasEmbers(st.fire)
+      ? '<span class="ember">coals</span>'
+      : '<span class="dim">cold</span>';
+  const fire = st.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel")}` : "";
   const rack = st.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
     : "";

@@ -8,6 +8,8 @@ export const START_MINUTE_OF_DAY = 8 * 60;
 export function dayNumber(minute: number): number {
   return Math.floor((minute + START_MINUTE_OF_DAY) / 1440) + 1;
 }
+/** The hour the once-a-day rolls (camp decay, animals, and now the fire-keeping tally) happen at. */
+export const DAILY_HOUR = 4;
 export const LATITUDE_DEG = 62;
 export const SYNODIC_DAYS = 29.530588;
 /** Day index of a new moon, chosen so the run's first full moon is 3 April. */
@@ -152,4 +154,17 @@ export function minutesUntilDawn(minute: number, startDoy = START_DOY): number {
   if (today > 0) return today;
   const tomorrow = calendar(minute + 1440, startDoy);
   return (24 - cal.hour) * 60 + tomorrow.sunrise * 60;
+}
+
+/**
+ * The run's own minute of the most recent sunset at or before `minute`:
+ * what "since dusk" means for a goal that has to read a Norwegian April
+ * night and a December one as the different spans they are, rather than
+ * count backward by a fixed number of hours.
+ */
+export function lastDusk(minute: number, startDoy = START_DOY): number {
+  const cal = calendar(minute, startDoy);
+  if (cal.hour >= cal.sunset) return minute - (cal.hour - cal.sunset) * 60;
+  const yesterday = calendar(minute - 1440, startDoy);
+  return minute - 1440 - (yesterday.hour - yesterday.sunset) * 60;
 }

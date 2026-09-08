@@ -146,6 +146,8 @@ small, .dim { color: var(--dim); }
 .good { color: var(--good); }
 .bad { color: var(--bad); }
 .accent { color: var(--accent); }
+/* Between .good's fed fire and .dim's dead one: still holding a live coal, not asking for wood. */
+.ember { color: #c08355; }
 
 /* A label on the left, a value on the right; the forecast panel's four horizons. */
 #forecast .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
@@ -545,11 +547,16 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
  * close rungs already put its cell above the sheet (.grid.night .c.lit-0
  * below), and burying its marker at the coarse rungs would have one fire lit
  * and the same fire dark depending only on how far the map is zoomed out.
+ * Banked coals are the same exception at a lower wattage: still a light
+ * (EMBER_LUX), so they carry the same z-index and get their own, fainter
+ * glow below rather than fog with the shelter and the trap.
  */
 .grid .c.mk { font-weight: bold; position: relative; }
-.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire { z-index: 1; }
+.grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals { z-index: 1; }
 .grid .c.mk-player { color: #fff; background: #b8860b; }
 .grid .c.mk-fire { color: #fff; background: #b8431a; }
+/* Dimmer than mk-fire's #b8431a: the same fire, banked. */
+.grid .c.mk-coals { color: #fff; background: #7a3d1a; }
 .grid .c.mk-shelter { color: #fff; background: #4a5a78; }
 /* The camp mark's own colour, not shelter and trap's grey; a plain lighter background
    rather than opacity, so it does not also wash out the underline or the current-cell
@@ -562,6 +569,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
    background colour each mark uses on the map instead. */
 #map .legend b.mk-player { color: #b8860b; }
 #map .legend b.mk-fire { color: #b8431a; }
+#map .legend b.mk-coals { color: #7a3d1a; }
 #map .legend b.mk-shelter { color: #4a5a78; }
 #map .legend b.mk-camp { color: #6fcf6f; }
 #map .legend b.mk-trap { color: #4a5a78; }
@@ -618,6 +626,21 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
   position: relative; z-index: 2;
   --f0: #ff7a1a; --f1: #ffb84d;
   animation: flicker 1.1s ease-in-out infinite alternate;
+  animation-delay: var(--fd, 0s);
+}
+/*
+ * Banked coals over both rules above: a slower breath, not a flicker, and
+ * darker at both ends of it, so the strongest reaction of the whole playtest
+ * (the night fire) stays a fed fire's alone. Two classes beat .mk-fire's and
+ * .lit-0's one apiece on specificity, so these win without needing source order.
+ */
+.grid.night .c.mk-coals {
+  --f0: #5c2c14; --f1: #8a4520;
+  animation: flicker 2.6s ease-in-out infinite alternate;
+}
+.grid.night .c.lit-0.mk-coals {
+  --f0: #6b3218; --f1: #9c4f24;
+  animation: flicker 2.6s ease-in-out infinite alternate;
   animation-delay: var(--fd, 0s);
 }
 .grid.night .c.lit-1, .grid.night .c.lit-2 { position: relative; }

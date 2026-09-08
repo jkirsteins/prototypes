@@ -158,11 +158,12 @@ describe("the layout", () => {
 });
 
 describe("what survives the night sheet", () => {
-  it("lifts you, camp and the fire over it, and leaves every other mark under it", () => {
+  it("lifts you, camp, the fire and its banked coals over it, and leaves every other mark under it", () => {
     // Where you are, where camp is and the line of your walk are what you would
     // know in the dark without looking. The fire is over it because it is the
-    // light, and its own cell already rises at the close rungs.
-    const lifted = rule(".grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire");
+    // light, and its own cell already rises at the close rungs; banked coals
+    // are the same light at a lower wattage.
+    const lifted = rule(".grid .c.mk-player, .grid .c.mk-camp, .grid .c.mk-fire, .grid .c.mk-coals");
     expect(lifted).toContain("z-index: 1");
     // The blanket lift on every mark is what put a shore at full daylight
     // brightness at midnight.
@@ -172,7 +173,7 @@ describe("what survives the night sheet", () => {
   it("marks only what the survivor built or found, never ground the world always had", () => {
     // A named place is not clickable, the HERE panel lists every one of them
     // with a walk button, and an order walks there on its own.
-    expect(Object.values(MARKS).map((m) => m.label).sort()).toEqual(["camp", "fire", "seep", "shelter", "trap", "you"]);
+    expect(Object.values(MARKS).map((m) => m.label).sort()).toEqual(["camp", "coals", "fire", "seep", "shelter", "trap", "you"]);
     for (const gone of ["forest", "outcrop", "shore", "heath"]) {
       expect(legendHtml()).not.toContain(`> ${gone}<`);
     }

@@ -81,7 +81,7 @@ describe("the body says what it ate", () => {
     expect(state.log.some((e) => e.text.includes("{eat}"))).toBe(false);
   });
 
-  it("a fire going out says so, since losing what you built must be louder than silence", () => {
+  it("a fire falling to coals says so, since losing what you built must be louder than silence", () => {
     const { state, world } = newGame(21);
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
@@ -89,6 +89,8 @@ describe("the body says what it ate", () => {
     st.fire.fuelKg = 0.01;
     state.player.autoFeed = false;
     advance(state, world, 30);
-    expect(state.log.some((e) => /fire.*gone out/i.test(e.text))).toBe(true);
+    // A fire that eats its wood banks rather than dies, so the line that
+    // matters is the one saying the flames are gone - not that the fire is.
+    expect(state.log.some((e) => /down to coals/i.test(e.text))).toBe(true);
   });
 });

@@ -35,7 +35,7 @@ import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
@@ -822,18 +822,19 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "light": {
+      const rekindle = hasEmbers(st.fire);
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       const o = needCamp(opt({
         group: "camp", label: "Light the fire at the site",
-        detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
-        duration: lr.minutes,
+        detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
+        duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
       }));
       if (!o.ok) return o;
       if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
-      if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
+      if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
     }
     case "lightTorch": {
@@ -937,16 +938,17 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "lightIndoors": {
+      const rekindle = hasEmbers(st.fire);
       const o = needCamp(opt({
         group: "camp", label: "Light a fire indoors",
         detail: st.structures.cabin && st.structures.hearth ? "at the hearth" : st.structures.turfHut && !st.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
-        duration: 10,
+        duration: rekindle ? EMBER_RELIGHT_MINUTES : 10,
       }));
       if (!o.ok) return o;
       if (st.structures.snowShelter && !st.structures.turfHut && !st.structures.cabin) return { ...o, ok: false, why: "snow does not take a fire" };
       if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }
@@ -1771,7 +1773,9 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "deadwood": {
       st.wood -= DEADWOOD_TREE_SHARE;
-      produce(state, world, splitIsWet(state, world) ? "wetFirewood" : "firewood", DEADWOOD_KG);
+      const item = splitIsWet(state, world) ? "wetFirewood" : "firewood";
+      produce(state, world, item, DEADWOOD_KG);
+      goalDeed(state, { kind: "gathered", item, kg: DEADWOOD_KG });
       return;
     }
     case "sticks": produce(state, world, "stick", 6); return;
@@ -1832,13 +1836,17 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "split": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
-      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      const item = wet ? "wetFirewood" : "firewood";
+      produce(state, world, item, ITEM_KG.log);
+      goalDeed(state, { kind: "gathered", item, kg: ITEM_KG.log });
       return;
     }
     case "splitWedges": {
       consume(invs, [{ item: "log", qty: 1 }]);
       const wet = !splitSheltered(state, world, cellOf(state, world)) && splitIsWet(state, world);
-      produce(state, world, wet ? "wetFirewood" : "firewood", ITEM_KG.log);
+      const item = wet ? "wetFirewood" : "firewood";
+      produce(state, world, item, ITEM_KG.log);
+      goalDeed(state, { kind: "gathered", item, kg: ITEM_KG.log });
       if (rng.chance(WEDGE_BREAK)) {
         consume(invs, [{ item: "wedge", qty: 1 }]);
         log(state, "A wedge splits along the grain.", "bad");
@@ -2070,14 +2078,18 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "light":
     case "lightIndoors": {
+      const rekindle = hasEmbers(st.fire);
       consume(invs, [{ item: "firewood", qty: 1 }]);
-      if (wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
+      if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
-      if (lr.failChance > 0 && rng.chance(lr.failChance)) {
+      if (!rekindle && lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
         return;
       }
       st.fire.lit = true;
+      st.fire.embers = 0;
+      // A run of keeping survives the coals; only a fire lit from cold starts a new one.
+      if (st.fire.litSince === null) st.fire.litSince = state.minute;
       goalDeed(state, { kind: "lit" });
       cue("fireCatches");
       st.fire.fuelKg += 1;

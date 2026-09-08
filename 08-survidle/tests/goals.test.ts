@@ -50,21 +50,33 @@ describe("the goal ladder", () => {
     expect(activeGoals(state, cal)).toEqual(["firewood"]);
   });
 
+  it("stays one goal at a time through the whole opening chain, fire-keeping included", () => {
+    const { state } = newGame(3);
+    // firewood is covered by the case above; walk the rest of the chain the
+    // same way, since a width bug widens silently rather than crashing.
+    for (const id of ["firewood", "fire"] as const) {
+      state.goals.done[id] = true;
+      expect(activeGoals(state, cal).length).toBe(1);
+    }
+    state.goals.done.cook = true;
+    expect(activeGoals(state, cal)).toEqual(["keptNight"]);
+  });
+
   it("widens to two once the fire and food chain is behind it", () => {
     const { state } = newGame(3);
-    for (const id of ["firewood", "fire", "cook"] as const) state.goals.done[id] = true;
-    expect(activeGoals(state, cal)).toEqual(["bed", "roof"]);
+    for (const id of ["firewood", "fire", "cook", "keptNight"] as const) state.goals.done[id] = true;
+    expect(activeGoals(state, cal)).toEqual(["bed", "keptDays"]);
   });
 
   it("widens to three once the camp jobs run in parallel", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 5)) state.goals.done[g.id] = true;
+    for (const g of GOALS.slice(0, 8)) state.goals.done[g.id] = true;
     expect(activeGoals(state, cal)).toEqual(["water", "snare", "store"]);
   });
 
   it("never shows more than the seasons can fill, and never narrows", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 7)) state.goals.done[g.id] = true;
+    for (const g of GOALS.slice(0, 10)) state.goals.done[g.id] = true;
     const active = activeGoals(state, cal);
     // One worked goal left and the whole tail behind it, which is one slot.
     expect(active[0]).toBe("store");
@@ -105,8 +117,11 @@ describe("goal guards", () => {
         ...SEASON_ORDER.map((s) => ({ kind: "season", season: s as Season }) as const),
         { kind: "lit" } as const,
         { kind: "stored" } as const,
-        { kind: "delivered", item: "firewood", kg: 99 } as const,
-        { kind: "delivered", item: "wetFirewood", kg: 99 } as const,
+        { kind: "gathered", item: "firewood", kg: 99 } as const,
+        { kind: "gathered", item: "wetFirewood", kg: 99 } as const,
+        { kind: "keptNight" } as const,
+        { kind: "keptFor", minutes: 999999 } as const,
+        { kind: "keptRain", minutes: 999999 } as const,
       ];
       expect(emitted.some((d) => g.credit(d) > 0), `${g.id} is unreachable`).toBe(true);
     }
@@ -139,11 +154,11 @@ describe("goals are the world's, not a life's", () => {
     expect(state.goals.done.fire).toBe(true);
   });
 
-  it("counts the kilos this survivor carried in, so an inherited pile moves nothing", () => {
+  it("counts the kilos this survivor actually gathered, wet or dry alike", () => {
     const { state } = newGame(3);
-    expect(goalDeed(state, { kind: "delivered", item: "firewood", kg: 4 })).toEqual([]);
+    expect(goalDeed(state, { kind: "gathered", item: "firewood", kg: 4 })).toEqual([]);
     expect(state.goals.progress.firewood).toBeCloseTo(4);
-    expect(goalDeed(state, { kind: "delivered", item: "wetFirewood", kg: 6 })).toEqual(["firewood"]);
+    expect(goalDeed(state, { kind: "gathered", item: "wetFirewood", kg: 6 })).toEqual(["firewood"]);
     expect(state.goals.done.firewood).toBe(true);
   });
 
@@ -155,7 +170,7 @@ describe("goals are the world's, not a life's", () => {
 
   it("queues each completion for its congratulation", () => {
     const { state } = newGame(3);
-    goalDeed(state, { kind: "delivered", item: "firewood", kg: 20 });
+    goalDeed(state, { kind: "gathered", item: "firewood", kg: 20 });
     expect(state.goals.queue).toEqual(["firewood"]);
   });
 

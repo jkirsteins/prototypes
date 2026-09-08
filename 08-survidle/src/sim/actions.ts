@@ -6,7 +6,6 @@ import type { Rng } from "../rng";
 import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
-import { goalDeed } from "./goals";
 import { creditGut, creditLean, gutEatenToday, gutRefused, leanEatenToday, leanRefused } from "./gut";
 import { herePile, qty, removeItem, totalQty, transfer, weight } from "./inventory";
 import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, itemLabel, KCAL_FULL } from "./items";
@@ -195,23 +194,16 @@ export function take(state: GameState, world: World, item: ItemId, n: number): n
 
 export function drop(state: GameState, world: World, item: ItemId, n: number): number {
   const p = state.player;
-  const kg = transfer(p.pack, herePile(state, world), item, Math.min(n, qty(p.pack, item)));
-  // Only a drop at the home camp cell is a delivery a goal counts; the same rule
-  // the standing-order haul uses (dropEverything, in intent.ts), and the same
-  // accepted over-crediting that comment explains.
-  if (kg > 1e-9 && atCamp(state, world)) goalDeed(state, { kind: "delivered", item, kg });
-  return kg;
+  return transfer(p.pack, herePile(state, world), item, Math.min(n, qty(p.pack, item)));
 }
 
 export function dropAll(state: GameState, world: World): void {
   const p = state.player;
   const to = herePile(state, world);
-  const home = atCamp(state, world);
   for (const k of Object.keys(ITEM_KG) as ItemId[]) {
     const q = qty(p.pack, k);
     if (q <= 0) continue;
-    const kg = transfer(p.pack, to, k, q);
-    if (home && kg > 1e-9) goalDeed(state, { kind: "delivered", item: k, kg });
+    transfer(p.pack, to, k, q);
   }
 }
 
