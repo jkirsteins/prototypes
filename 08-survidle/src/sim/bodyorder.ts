@@ -15,8 +15,11 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { bodyStep, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
+import { bodyStep, currentNeed, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
+import { startIntent } from "./intent";
 import { regionState } from "./regionstate";
+import { isRunning, takeStep } from "./steps";
+import { setAside } from "./tasks";
 import type { GameState, IntentRequest, Order, RegionState, Verdict } from "./types";
 
 /**
@@ -74,4 +77,39 @@ export function judgeBodyRow(state: GameState, world: World, cal: Calendar, rng:
 export function bodyLogLine(state: GameState, world: World, cal: Calendar): string | null {
   const need = peekNeed(state, world, cal);
   return need ? NEED_LOG_LINES[need] : null;
+}
+
+/**
+ * The row's minute. The need is read the serving way - sticky memory and
+ * all, so a body halfway through answering one goes on answering it - and
+ * whatever step that need calls for is taken. The sleep is the one step
+ * the model rather than the clock ends: a sleep task runs as long as the
+ * night is expected to be, and the two can disagree by minutes, so a body
+ * past the wake line gets up on that minute instead of lying out an hour
+ * it no longer needs.
+ *
+ * A need answered where the body stands - a mouthful from the pack, a pull
+ * on the waterskin, a log onto the fire - costs the minute nothing and is
+ * taken without disturbing anything: bodyStep does it and hands back no
+ * step, and whatever was under way is still under way. Only a need that
+ * wants the survivor's hands or feet claims the row's own intent, the
+ * runner-shaped wait, which is there so that everything reading "what is
+ * he doing" finds the body's row by name the way it finds any other row
+ * that has the minute. Nothing is ever begun from BODY_REQ itself: the
+ * step below is the whole of the minute, which is why the intent starts
+ * without taking one of its own.
+ */
+export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+  const need = currentNeed(state, world, cal);
+  if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
+  if (!need) return;
+  const s = bodyStep(state, world, cal, rng, need);
+  if (!s || isRunning(state, s)) return;
+  // A night out is the body's own errand under an order's name: the whole of
+  // it is the sleep this row would take anyway, so the step goes under that
+  // order rather than taking the night away from it.
+  if (state.intent?.task !== "night" && (!state.intent || state.intent.orderId !== o.id)) {
+    startIntent(state, world, cal, rng, BODY_REQ, o.id, false);
+  }
+  takeStep(state, world, cal, s);
 }

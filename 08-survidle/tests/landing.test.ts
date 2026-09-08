@@ -69,12 +69,13 @@ describe("the landing", () => {
     beginAgain(state, world);
     expect(state.landing).not.toBeNull();
     expect(state.landing!.gapDays).toBe(90);
-    // An idle body with no orders dies well inside 20 days (the camp is by the
-    // water, so it drinks, and starves instead), so the explicit die() call above
-    // never fires; the gap still runs the 90 days from whenever it fell.
-    expect(state.landing!.date).toEqual({ year: 1, doy: 183 });
+    // An idle body has its own row on the list and looks after itself on it -
+    // the water, the food at camp, the fire, the sleep - so it is still alive
+    // at 20 days and the explicit die() above is what ends it. The gap runs
+    // its 90 days from there.
+    expect(state.landing!.date).toEqual({ year: 1, doy: 200 });
     expect(state.minute).toBe(0);
-    expect(state.startDoy).toBe(183);
+    expect(state.startDoy).toBe(200);
     expect(state.year).toBe(1);
     expect(st.structures.leanTo).toBe(true);
     expect(st.structures.firePit).toBe(true);

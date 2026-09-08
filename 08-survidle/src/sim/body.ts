@@ -152,14 +152,13 @@ export function currentNeed(state: GameState, world: World, cal: Calendar): Body
 }
 
 /**
- * What the body asks for when the runner is its own with nothing sticky
- * behind it: the reading the wait would take on its first minute. The
- * scheduler asks this between orders, so an order starts only when the
- * body has nothing to say, and work chosen by hand, which has no body tier
- * of its own, is still followed by the night, the drink or the fire the
- * body was owed. The memory handed in is blank and thrown away after: this
- * is a question, not a service, and asking it twice must never make the
- * second ask stickier than the first.
+ * What a body with no history at all would make of this minute: the
+ * reading a fresh wait would take on its first minute, with nothing sticky
+ * behind it. The reference player asks it of itself, to know whether the
+ * survivor is owed something before it spends the minute on a move of its
+ * own. The memory handed in is blank and thrown away after: this is a
+ * question, not a service, and asking it twice must never make the second
+ * ask stickier than the first.
  */
 export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   return needFrom(state, world, cal, { need: null, coldSpent: false, night: false });
@@ -171,9 +170,9 @@ export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNee
  * oftener than a minute turns over - every render, every reorder, every
  * pass of the scheduler's own list before it acts on anything - and
  * `bodyNeed` is not only a cache: a sleep or a rest finishing its estimated
- * span clears it for the one minute between that finish and serveBody's own
- * next reading, so the scheduler gets a clean look at the real list before
- * serveBody decides whether the need is still there and puts the body back
+ * span clears it for the one minute between that finish and the row's own
+ * next serving, so the scheduler gets a clean look at the real list before
+ * the row decides whether the need is still there and puts the body back
  * under it. A judgement that wrote the answer back would close that minute
  * before the scheduler ever saw it open, waking nobody up on schedule.
  */
@@ -527,14 +526,15 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     // afternoon is telling the truth. The wording is set when the task
     // starts, so a doze that runs into the night keeps its word for it.
     const s: Step = { id: "sleep", step: cal.isNight ? "sleeping" : "dozing by the fire" };
-    // campStep only ever runs inside the live RunnerIntent's own minute when
-    // it is not a dry read, so state.intent is that intent, and its campCell
-    // is the home this need set out to serve, fixed when the intent began.
-    // st.campCell is wherever the survivor has actually settled just now.
-    // The two agree unless a night or a wait begun in one region ran on into
-    // another and put the body down at that region's own camp instead, which
-    // is exactly the crossing this line announces by name.
-    if (!dry && !isRunning(state, s) && st.campCell !== state.intent!.campCell) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
+    // A live intent's campCell is the home the minute set out for, fixed
+    // when that intent began; st.campCell is wherever the survivor has
+    // actually settled just now. The two agree unless a night or a wait
+    // begun in one region ran on into another and put the body down at that
+    // region's own camp instead, which is exactly the crossing this line
+    // announces by name. With no intent at all there is no journey to have
+    // ended somewhere else, and nothing to announce.
+    const from = state.intent?.campCell ?? st.campCell;
+    if (!dry && !isRunning(state, s) && st.campCell !== from) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
     return s;
   }
   if (need === "cold") return { id: "rest", step: st.fire.lit ? "warming up by the fire" : "resting to warm up" };

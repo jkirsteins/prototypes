@@ -283,9 +283,10 @@ interface IntentBase {
  * by hand. It is the player's, the way a raw action under the advanced
  * toggle is: the runner walks to the work and does it, and the body never
  * takes it over or moves it anywhere. The body still speaks - the tags and
- * the log say tired, spent, sleepy, cold - and the player decides. The mode
- * tag is what keeps the body tier off it: `serveBody` only ever runs on a
- * `RunnerIntent`, so a `HandIntent` is never handed a step to take over.
+ * the log say tired, spent, sleepy, cold - and the player decides. What
+ * keeps the body off it is where the click lands on the list, above the
+ * body's own row, and not this tag: the tag says whose the work is, and the
+ * collapse floor in `runIntent` reads it.
  */
 export interface HandIntent extends IntentBase {
   mode: "hand";
@@ -293,8 +294,9 @@ export interface HandIntent extends IntentBase {
 
 /**
  * The runner's own: a standing or counted order, the wait at camp, and the
- * night out (whose whole content is the body's sleep). The body tier
- * outranks it - sleep, storm, cold, thirst, hunger, snares, spent, home.
+ * night out (whose whole content is the body's sleep). The body's own row
+ * outranks it wherever the player has left it above the work - sleep,
+ * storm, cold, thirst, hunger, snares, spent, home.
  * Which need holds and whether cold has already spent a rest live on the
  * player rather than here: this intent comes and goes with every order the
  * scheduler swaps in, and a need's stickiness has to outlast that.

@@ -100,6 +100,9 @@ describe("a real rack", () => {
     expect(rackCapacity(st)).toBe(80);
     expect(check(state, world, cal, "build", "dryingRack")).toMatchObject({ ok: false, why: "two racks stand here already" });
     expect(loadRack(state, world)).toBe(40);
+    // Nobody looking after himself off this rack: an empty list carries no
+    // body row, so the four days that follow are the drying's alone.
+    st.orders.length = 0;
     // Rain halves the drying: 48 dry hours, 96 wet.
     state.weather.precip = "light";
     advance(state, world, 48 * 60);

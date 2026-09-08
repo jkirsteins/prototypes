@@ -12,9 +12,11 @@ import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { addOrder, ordersHere } from "../src/sim/orders";
 import { check } from "../src/sim/tasks";
+import type { GameState, Order } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG } from "../src/units";
-import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
+import { cellAt, hasSpot, neighbours, regionAt, type World } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 
 type G = ReturnType<typeof newGame>;
@@ -27,17 +29,37 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   }
   return pred();
 }
-/** A forever felling from camp, with the camp cell to hand. Seed 39: meadow camp, forest 0.6 km away. */
+/**
+ * A forever felling from camp, with the camp cell to hand. Seed 39: meadow
+ * camp, forest 0.6 km away. The felling is a row on the list, under the
+ * body's own row, which is where standing work lives: the runner works
+ * what the list gives it, and a body that wants something outranks a row
+ * ranked below it and takes the minute back.
+ */
 function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
   const g = newGame(seed);
   const { state, world } = g;
   const camp = regionState(state, world, state.player.region).campCell;
   addItem(state.player.pack, "driedMeat", 2);
-  startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" });
+  addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" }, "grind");
+  advance(state, world, 1);
   return { g, state, world, camp };
 }
 
-describe("the body tier", () => {
+/**
+ * A row ranked over the body's own, which is where work the player chose in
+ * the moment sits. No panel control moves a row past the body row, so the
+ * list is arranged here directly: what these tests are about is what the
+ * scheduler does with a rank, not the door the rank is asked for through.
+ */
+function over(state: GameState, world: World, o: Order): Order {
+  const list = ordersHere(state, world);
+  list.splice(list.indexOf(o), 1);
+  list.unshift(o);
+  return o;
+}
+
+describe("the body's row against the work", () => {
   it("collapsing, it sets the tree aside, walks to camp and dozes there until it is rested", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -306,7 +328,12 @@ describe("the body tier", () => {
     // The camp is a shore cell and may itself be forest, so the felling is counted wherever it happens.
     const chopMin = (seen.get("chop@away") ?? 0) + (seen.get("chop@camp") ?? 0);
     expect(chopMin).toBeGreaterThan(300);
-    expect(state.intent?.task).toBe("chop");
+    // The felling is still the standing work and the minute still belongs to
+    // a row on the list. Which row it is at the sampling minute is not the
+    // point: a body resting off a day's work holds it as often as the axe
+    // does, and that is the felling waiting its turn rather than stopping.
+    expect(ordersHere(state, world).some((o) => o.id === state.intent?.orderId)).toBe(true);
+    expect(ordersHere(state, world).some((o) => o.req.task === "chop")).toBe(true);
     expect(sawThirsty).toBe(true);
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the
     // minute a tree comes down is counted by train and not by the trace: one minute per tree of slack.
@@ -343,7 +370,7 @@ describe("the body tier", () => {
     expect(sawThirsty).toBe(true);
   });
 
-  it("a once cabin build is the player's: the night does not claim it, and a build set aside by hand is picked up with its minutes kept", () => {
+  it("a once cabin build ranked over the body is the player's: the night does not claim it, and a build set aside by hand is picked up with its minutes kept", () => {
     const g = newGame(3);
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
@@ -354,11 +381,13 @@ describe("the body tier", () => {
     addItem(pile(state, camp), "cordage", 8);
     addItem(state.player.pack, "driedMeat", 2);
     state.player.energy = 40;
-    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
-    expect(state.task?.id).toBe("build");
-    // Past the spent line the build goes on: work chosen by hand has no body
-    // tier, and nothing thirsty, cold or dark takes the slot back from it. The
-    // body giving out is the one thing that does, and then it sleeps on the spot.
+    const cabin = { task: "build" as const, arg: "cabin", until: { kind: "once" as const }, deliver: "leave" as const, where: "nearest" as const };
+    over(state, world, addOrder(state, world, cabin, "job"));
+    expect(until(g, () => state.task?.id === "build", 10)).toBe(true);
+    // Past the spent line the build goes on: it is ranked over the body's own
+    // row, and a body that has to wait its turn takes nothing back from the
+    // work. The body giving out is the one thing that does not wait to be
+    // ranked, and then it sleeps on the spot.
     let pastSpent = false;
     for (let m = 0; m < 3000 && state.intent?.mode === "hand"; m++) {
       advance(state, world, 1);
@@ -371,13 +400,14 @@ describe("the body tier", () => {
     expect(state.task?.id).toBe("sleep");
     expect(state.player.sleeping?.collapsed).toBe(true);
     // Awake again, the player picks the build back up where the collapse left it.
-    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    over(state, world, addOrder(state, world, cabin, "job"));
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
-    startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    over(state, world, addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job"));
+    advance(state, world, 1);
     const banked = st.build.cabin ?? 0;
     expect(banked).toBeGreaterThan(10);
     expect(until(g, () => state.intent?.task !== "sticks", 1500)).toBe(true);
-    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    over(state, world, addOrder(state, world, cabin, "job"));
     expect(until(g, () => state.task?.id === "build", 200)).toBe(true);
     expect(state.task!.duration).toBeCloseTo(3600 - banked, 0);
   });
@@ -391,7 +421,7 @@ describe("the runner in the elements", () => {
     const { state, world } = g;
     mapRegion(state, world, state.player.region);
     addItem(state.player.pack, "driedMeat", 2);
-    startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" });
+    addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" }, "grind");
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.water = 0.8;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 2 });

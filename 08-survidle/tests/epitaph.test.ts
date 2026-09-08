@@ -80,18 +80,14 @@ describe("the epitaph", () => {
     // of the wood-first grind order, so it empties where the ledger above finds it. Seed 19
     // is the shape a level-1 opening holds: the larder gives out weeks before the woodpile
     // does, and it starves at its own fire with wood to spare. Seed 17 is the other end of
-    // it - a far ring where the food never comes in at all, so the woodpile is being spent
-    // faster than the felling fills it, and a storm that puts the trees out of reach for a
-    // day catches it with the pile at nothing. A body that works a once order until it drops
-    // stops where it drops, which is why it lies short of camp rather than beside the fire.
+    // it - a far ring, where a storm on the fourth day shuts the survivor in at camp with
+    // nothing stored to drink. A body sitting a storm out has one need and it is shelter,
+    // so it sits there parched: the storm is what kills it and thirst is what it dies of.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
-    // body lies, what it carried and what it left. Seed 19 lasts longer than it did when
-    // any ground could be walked sight unseen: a survivor who has to go and look at their
-    // own valley first learns where the food is, rather than working the first spot the
-    // list names.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 24. Starved at camp, with nothing in the pack and 34 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 27. Starved at camp, with nothing in the pack and 11 kg of firewood at camp."`);
+    // body lies, what it carried and what it left.
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 6. Died of thirst at camp, with nothing in the pack and no firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 29. Starved at camp, with nothing in the pack and 39 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

@@ -1018,8 +1018,8 @@ export class ReferencePlayer {
    * pause: runOrders claims any bare wait intent (no order behind it) as
    * its own and tears it down the moment its own order list is empty
    * (spec 2.3) - exactly the heir's list, every hour, which would undo the
-   * serving before it ever drank. `HAND_REST` carries the same runner body
-   * tier under a task runOrders has no claim on. `servingHandRest` is what
+   * serving before it ever drank. `HAND_REST` is a task runOrders has no
+   * claim on, left running while the body's row does the serving. `servingHandRest` is what
    * tells that rest apart from a hand move still under way, so an ordinary
    * "nothing to do" is never read as one. True whenever a hand move, or
    * the rest serving one, is why nothing else happened this tick.
@@ -1055,7 +1055,7 @@ function handsFree(state: GameState): boolean {
   return !state.task || state.task.id === "rest";
 }
 
-/** The runner body tier without an order behind it, read as `handMoveBusy` serving a hand move rather than the list's own wait. */
+/** A rest with no order behind it, read as `handMoveBusy` serving a hand move rather than the list's own wait. */
 const HAND_REST: IntentRequest = { task: "rest", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
 export function setUpReference(seed: number, kitted = false, startDoy = START_DOY): { state: GameState; world: World; player: ReferencePlayer } {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { isBodyRow } from "../src/sim/bodyorder";
+import { bodyRowOf, isBodyRow } from "../src/sim/bodyorder";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
-import { fillPopulations } from "../src/sim/regionstate";
+import { fillPopulations, regionState } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
@@ -43,8 +43,21 @@ describe("advance", () => {
     expect(state.task).toBeNull();
   });
 
-  it("falls asleep on its own when idle and spent", () => {
+  it("falls asleep on its own when idle and spent: the body's own row puts it down", () => {
     const { state, world } = newGame(8);
+    state.player.energy = 9;
+    advance(state, world, 5);
+    expect(state.task?.id).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("sleep");
+    expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
+  });
+
+  it("falls asleep on its own when idle and spent, with no list at all to put it down", () => {
+    const { state, world } = newGame(8);
+    // The one list the game wipes to nothing, an heir's before their first
+    // order: no body row on it, and a body at the end of itself still lies
+    // down where it stands rather than standing there until it dies.
+    regionState(state, world, state.player.region).orders.length = 0;
     state.player.energy = 9;
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");

@@ -10,6 +10,8 @@ import { addOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RESTED_AT, SPENT_AT } from "../src/sim/sleep";
+import type { GameState, Order } from "../src/sim/types";
+import type { World } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -32,11 +34,25 @@ function spentAtCamp() {
   return { g, state, world, camp };
 }
 
+/**
+ * A row ranked over the body's own, which is where work the player chose in
+ * the moment belongs. No panel control moves a row past the body row, so the
+ * list is arranged here directly: these tests are about what the scheduler
+ * does with a rank, not about the door the rank is asked for through.
+ */
+function over(state: GameState, world: World, o: Order): Order {
+  const list = ordersHere(state, world);
+  list.splice(list.indexOf(o), 1);
+  list.unshift(o);
+  return o;
+}
+
 describe("work chosen by hand is the player's", () => {
   it("a once order past the spent line walks to the wood and gathers; it turns for camp for nothing short of the collapse", () => {
     const { g, state, world, camp } = spentAtCamp();
-    orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    // Started on the click, spent or not, and at the top of the list.
+    over(state, world, orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job"));
+    // Started on the click, spent or not, and ranked over the body's row,
+    // which is what keeps a body past the spent line from taking it back.
     expect(state.intent?.task).toBe("deadwood");
     expect(state.intent?.mode).toBe("hand");
     // The body row holds id 1; this is the first real order.

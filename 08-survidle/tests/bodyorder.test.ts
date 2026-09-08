@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { NEED_LOG_LINES, NEED_WORDS } from "../src/sim/body";
+import { advance } from "../src/sim/advance";
 import { newGame } from "../src/sim/newgame";
-import { removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
+import { SPENT_AT } from "../src/sim/sleep";
+import { addOrder, removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
 import { bodyRowOf, isBodyRow, judgeBodyRow, BODY_SENTENCE } from "../src/sim/bodyorder";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
@@ -117,5 +119,50 @@ describe("the body row", () => {
     // this is the one the fix guards, since a wrong lookup here would still
     // pass a test that checked the row's own text instead.
     expect(state.log.at(-1)?.text).toBe(NEED_LOG_LINES.storm);
+  });
+});
+
+describe("the body row takes its turn by rank", () => {
+  it("under the work, the survivor works on past spent", () => {
+    const { state, world } = newGame(3);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    // No panel control ranks a row above the body row, so the list is
+    // arranged here directly: what is under test is the scheduler's rule
+    // about rank, not the door a rank is changed through.
+    const list = ordersHere(state, world);
+    list.reverse();
+    expect(list[0].id).toBe(grind.id);
+    state.player.energy = SPENT_AT - 1;
+    advance(state, world, 5);
+    expect(state.intent?.orderId).toBe(grind.id);
+  });
+
+  it("above the work, it takes the minute mid-chunk and the work keeps its minutes", () => {
+    const { state, world } = newGame(3);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 30);
+    expect(state.intent?.orderId).toBe(grind.id);
+    const minutes = grind.minutes;
+    // Thirsty with nothing to drink from on the belt, so the need wants his
+    // feet: a mouthful he could take where he stands would cost the sticks
+    // nothing and the row would never need the minute at all.
+    state.player.water = 0;
+    advance(state, world, 2);
+    expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
+    expect(grind.minutes).toBeGreaterThanOrEqual(minutes);
+  });
+
+  it("striking the last order off does not stop a sleep already under way", () => {
+    const { state, world } = newGame(3);
+    const chore = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    state.player.energy = 15;
+    state.player.sleepDebt = 1000;
+    advance(state, world, 5);
+    expect(state.task?.id).toBe("sleep");
+    const slept = state.task!.progress;
+    removeOrder(state, world, chore.id);
+    advance(state, world, 1);
+    expect(state.task?.id).toBe("sleep");
+    expect(state.task!.progress).toBeGreaterThanOrEqual(slept);
   });
 });

@@ -47,9 +47,10 @@ export function newRegionState(world: World, id: number): RegionState {
     rootCells: {},
     sapTaps: { day: 0, n: 0 },
   };
-  // Every list a region ever has starts with the body row already on it, top
-  // rank, the way the always-pre-empting body tier already stood over
-  // whatever the survivor was doing before there was a list to put it on.
+  // Every list a region ever has starts with the body row already on it, at
+  // the top: a survivor who has been given nothing still looks after himself,
+  // and the rank he does it at is a thing the player changes rather than a
+  // thing they have to grant.
   addBodyRow(st);
   return st;
 }

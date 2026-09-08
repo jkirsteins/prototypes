@@ -66,7 +66,10 @@ describe("water", () => {
     expect(state.player.water).toBe(WATER_FULL);
     state.player.water = 0.9;
     advance(state, world, 1);
-    expect(state.player.water).toBe(WATER_FULL);
+    // Full, less the minute's own loss after it: standing at the water the
+    // body drinks its fill the moment it is thirsty, and then goes on losing
+    // it at the rate the rest of the minute charges.
+    expect(state.player.water).toBeCloseTo(WATER_FULL, 2);
   });
 
   it("a shore under two centimetres of ice still gives water; thicker is iced over", () => {
@@ -91,6 +94,9 @@ describe("water", () => {
 
   it("a working day without drinking ends thirsty and, left alone, dead of thirst before starvation", () => {
     const { state, world } = newGame(17);
+    // Nobody looking after him: an empty list carries no body row, so no
+    // thirst walks him to the water and the two clocks race each other.
+    regionState(state, world, state.player.region).orders.length = 0;
     state.player.autoDrink = false;
     state.player.autoEat = false;
     state.player.pack.items.driedMeat = 5;

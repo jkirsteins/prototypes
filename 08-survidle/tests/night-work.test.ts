@@ -5,6 +5,7 @@ import { SLEEP_AT } from "../src/sim/body";
 import { calendar } from "../src/sim/calendar";
 import { startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
+import { orderByHand } from "../src/sim/ladder";
 import { addOrder, chooseOrder, NIGHT_SKIP, ordersHere } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
@@ -40,13 +41,15 @@ function camp(minute: number) {
 function minutesForOne(minute: number, task: "sticks" | "rest", cap: number, seed = 1): number {
   const c = camp(minute);
   c.state.rng = seed;
+  // An empty list, so this measures the light and nothing else: with no body
+  // row on it nothing walks him home before dark or lays him down halfway
+  // through the count, and the minutes that come back are the work's own.
+  c.st.orders.length = 0;
   expect(startIntent(c.state, c.world, c.cal, new Rng(1), { task, until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
   const start = c.state.minute;
   // A once intent ends itself the moment its one piece of work is done, so a
   // live intent at the cap is work that never came in.
   for (let m = 0; m < cap && c.state.intent; m++) {
-    // The body is held up, so this measures the light and nothing else: a
-    // hand intent has no body tier and would otherwise collapse mid-count.
     c.state.player.energy = 100;
     advance(c.state, c.world, 1);
   }
@@ -107,7 +110,15 @@ describe("the runner keeps its night gate", () => {
 describe("the collapse", () => {
   it("is the one thing that stops work chosen by hand, and it sleeps where it stands", () => {
     const c = camp(MIDNIGHT);
-    startIntent(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    // Ranked over the body's row, the way work the player chose in the moment
+    // is: nothing tired, thirsty or cold takes the minute back off it, and the
+    // collapse is the one thing left that ends it. The click starts the work
+    // itself, which is how a once order runs at an hour the list would refuse
+    // to send anyone out at.
+    const o = orderByHand(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    const list = ordersHere(c.state, c.world);
+    list.splice(list.indexOf(o), 1);
+    list.unshift(o);
     expect(c.state.intent?.mode).toBe("hand");
     c.state.player.energy = SLEEP_AT;
     advance(c.state, c.world, 1);
@@ -118,7 +129,10 @@ describe("the collapse", () => {
 
   it("does not fire while there is anything left in the body", () => {
     const c = camp(MIDNIGHT);
-    startIntent(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    const o = orderByHand(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    const list = ordersHere(c.state, c.world);
+    list.splice(list.indexOf(o), 1);
+    list.unshift(o);
     c.state.player.energy = SLEEP_AT + 5;
     advance(c.state, c.world, 1);
     expect(c.state.intent).not.toBeNull();

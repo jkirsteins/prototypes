@@ -437,7 +437,7 @@ describe("the scheduler", () => {
     // The body is served before the moved order starts: the drink comes first,
     // and the split it displaced never resumes, because b outranks a now.
     expect(until(g, () => state.player.water > 1)).toBe(true);
-    expect(state.intent?.orderId).not.toBe(a.id);
+    expect(state.task?.id).not.toBe("split");
     // And once the body has nothing to ask for, the new top order is the one that runs.
     expect(until(g, () => state.intent?.orderId === b.id)).toBe(true);
     expect(state.intent?.task).toBe("sticks");
@@ -558,9 +558,11 @@ describe("waiting at camp", () => {
     expect(until(g, () => state.task?.id === "sleep", 200)).toBe(true);
     expect(cellOf(state, world)).toBe(st.campCell);
     expect(st.fire.lit).toBe(true);
-    // The wait is not an order and the list still has the body row and the one keep.
+    // The wait was not an order, and the sleep that took it over is the body's
+    // own row: the list still has that row and the one met keep, and nothing
+    // the runner did between them added a third.
     expect(ordersHere(state, world).length).toBe(2);
-    expect(state.intent?.orderId).toBeNull();
+    expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
   });
 
   it("a keep that becomes unmet takes over from the wait at once", () => {
