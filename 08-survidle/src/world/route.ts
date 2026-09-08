@@ -118,15 +118,23 @@ function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: 
   const local = (x: number, y: number) => (y - y0) * bw + (x - x0);
   const start = local(fx, fy);
   const goal = local(tx, ty);
+  // Reading one cell's speed costs a chunk lookup, and on a known-only route a
+  // knowledge lookup on top. The box is sized off the margin rather than off
+  // the route, so a step to the next cell over still spans thousands of cells
+  // the search will never look at: measure a cell when the frontier reaches it,
+  // not all of them up front.
   const speed = new Float32Array(n);
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const li = local(x, y);
-      // The standing cell stays enterable-from even when unmapped; every
-      // other cell also needs `known` on top of its terrain speed.
-      speed[li] = known && li !== start && !known(y * W + x) ? 0 : sp(terrainOf(world, x, y));
-    }
-  }
+  const measured = new Uint8Array(n);
+  const speedAt = (li: number): number => {
+    if (measured[li]) return speed[li];
+    measured[li] = 1;
+    const x = (li % bw) + x0;
+    const y = Math.floor(li / bw) + y0;
+    // The standing cell stays enterable-from even when unmapped; every
+    // other cell also needs `known` on top of its terrain speed.
+    speed[li] = known && li !== start && !known(y * W + x) ? 0 : sp(terrainOf(world, x, y));
+    return speed[li];
+  };
 
   const g = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
   const f = new Float64Array(n).fill(Number.POSITIVE_INFINITY);
@@ -180,8 +188,8 @@ function astar(world: World, from: number, to: number, ice: IceMode, avoidFell: 
     const cy = Math.floor(cur / bw);
     const nbs = [cx > 0 ? cur - 1 : -1, cx < bw - 1 ? cur + 1 : -1, cy > 0 ? cur - bw : -1, cy < bh - 1 ? cur + bw : -1];
     for (const nb of nbs) {
-      if (nb < 0 || closed[nb] || speed[nb] <= 0) continue;
-      const ng = g[cur] + 1 / ((speed[nb] + speed[cur]) / 2);
+      if (nb < 0 || closed[nb] || speedAt(nb) <= 0) continue;
+      const ng = g[cur] + 1 / ((speedAt(nb) + speedAt(cur)) / 2);
       if (ng < g[nb]) {
         g[nb] = ng;
         parent[nb] = cur;
