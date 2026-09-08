@@ -5,7 +5,7 @@ import { newGame } from "../src/sim/newgame";
 import { FAT_FULL } from "../src/sim/player";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
-import type { World } from "../src/world/gen";
+import { regionAt, type World } from "../src/world/gen";
 
 /**
  * These goals credit on real deeds emitted from stepCamp over real advance()
@@ -125,6 +125,14 @@ describe("keeping a fire for three days", () => {
     // The dip never broke the run: litSince is still the original light.
     expect(st.fire.litSince).toBe(0);
   });
+
+  it("credits the tick it reaches seventy-two hours, rather than waiting for the next day's roll", () => {
+    const { state, world } = litCamp();
+    run(state, world, 3 * 24 * 60 - 1);
+    expect(state.goals.done.keptDays).toBeUndefined();
+    run(state, world, 1);
+    expect(state.goals.done.keptDays).toBe(true);
+  });
 });
 
 describe("keeping a fire through a day of rain", () => {
@@ -158,5 +166,42 @@ describe("keeping a fire through a day of rain", () => {
     st.fire.embers = 0;
     run(state, world, 14 * 60); // the rest of the storm and past it
     expect(state.goals.done.keptRain).toBe(true);
+  });
+});
+
+describe("the fire goals credit only the player's own region", () => {
+  it("gives no credit for a fire kept, rained on and burning overnight in a region the player has left", () => {
+    const { state, world, st } = litCamp();
+    // The player's own fire goes cold at once, so any credit below can only
+    // have leaked in from the other region's fire, not this one.
+    st.fire.lit = false;
+    st.fire.fuelKg = 0;
+    st.fire.embers = 0;
+    st.fire.litSince = null;
+
+    const otherId = regionAt(world, state.player.region).neighbours[0].id;
+    const otherSt = regionState(state, world, otherId);
+    otherSt.fire.lit = true;
+    otherSt.fire.fuelKg = 1e7;
+    otherSt.fire.wetKg = 0;
+    otherSt.fire.litSince = state.minute;
+    state.weather.storm = { from: state.minute, until: state.minute + 5 * 24 * 60, warned: true };
+
+    run(state, world, 5 * 24 * 60);
+    expect(state.goals.done.keptNight).toBeUndefined();
+    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.goals.done.keptRain).toBeUndefined();
+  });
+});
+
+describe("a catch-up with nobody home", () => {
+  it("credits none of the three fire goals, however long the camp's fire burns on unattended", () => {
+    const { state, world, st } = litCamp();
+    state.weather.storm = { from: state.minute, until: state.minute + 5 * 24 * 60, warned: true };
+    advance(state, world, 5 * 24 * 60, { nobody: true });
+    expect(st.fire.lit).toBe(true); // 1e7 kg of fuel never runs out, so nothing here ends the run early
+    expect(state.goals.done.keptNight).toBeUndefined();
+    expect(state.goals.done.keptDays).toBeUndefined();
+    expect(state.goals.done.keptRain).toBeUndefined();
   });
 });

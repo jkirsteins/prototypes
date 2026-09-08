@@ -6,7 +6,7 @@ import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
 import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
-import { goalDeed } from "./goals";
+import { goalDeed, KEPT_DAYS } from "./goals";
 import {
   BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
   RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
@@ -105,8 +105,16 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     // is exactly the case these goals are meant to reward, not punish.
     if (mine) {
       if (rainingOnIt) goalDeed(state, { kind: "keptRain", minutes: st.fire.rainHeld });
-      if (daily && fireAlive && st.fire.litSince !== null) {
-        goalDeed(state, { kind: "keptFor", minutes: state.minute - st.fire.litSince });
+      if (fireAlive && st.fire.litSince !== null) {
+        const elapsed = state.minute - st.fire.litSince;
+        // The daily roll alone can sit up to a day short of the target, since it only
+        // ever samples DAILY_HOUR: a fire lit mid-morning reaches three days mid-morning
+        // too, a span the roll does not visit until the next one. Emitting again the
+        // instant elapsed crosses KEPT_DAYS lands the credit on the day it is earned;
+        // goalDeed already ignores a goal once done, so the daily roll's own emission
+        // afterwards costs nothing.
+        const crossedKeptDays = elapsed >= KEPT_DAYS * 24 * 60 && elapsed - dt < KEPT_DAYS * 24 * 60;
+        if (daily || crossedKeptDays) goalDeed(state, { kind: "keptFor", minutes: elapsed });
       }
       if (dawnThisTick && fireAlive && st.fire.litSince !== null && st.fire.litSince <= lastDusk(state.minute, state.startDoy)) {
         goalDeed(state, { kind: "keptNight" });
