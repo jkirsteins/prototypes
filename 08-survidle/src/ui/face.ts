@@ -92,7 +92,9 @@ function renderFace(person: Person, px: number, expression: FaceExpression): str
       eyebrowsVariant: expression.eyebrows,
       mouthVariant: expression.mouth,
     }).toString();
-    return avatar.replace("<svg ", '<svg class="face" aria-hidden="true" ');
+    return avatar
+      .replace(/<metadata[\s\S]*?<\/metadata>/, "")
+      .replace("<svg ", '<svg class="face" ');
   } catch {
     return fallbackFace(px, identity);
   }
