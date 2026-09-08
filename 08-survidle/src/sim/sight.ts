@@ -157,10 +157,15 @@ export function seeFrom(state: GameState, world: World, cal: Calendar, cell: num
   if (r <= 0) return;
   const cx = cell % world.w;
   const cy = Math.floor(cell / world.w);
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-      marchRay(state, world, cx, cy, dx, dy);
-    }
+  // The rays are the range's own square edge, walked as an edge: a ray to
+  // every cell of the box's interior would be the same rays over again, since
+  // each already marks every cell it crosses on the way out.
+  for (let d = -r; d <= r; d++) {
+    marchRay(state, world, cx, cy, d, -r);
+    marchRay(state, world, cx, cy, d, r);
+  }
+  for (let d = -r + 1; d <= r - 1; d++) {
+    marchRay(state, world, cx, cy, -r, d);
+    marchRay(state, world, cx, cy, r, d);
   }
 }
