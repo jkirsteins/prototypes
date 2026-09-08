@@ -307,7 +307,15 @@ export interface RegionState {
   structureAge: Partial<Record<DecayingId, number>>;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
-  fire: { lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number };
+  fire: {
+    lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number;
+    /** Minutes of ember life left once the flame is gone. Embers are not lit. */
+    embers: number;
+    /** Minute this fire was last lit from cold; null once the embers die. A run of keeping is measured from it. */
+    litSince: number | null;
+    /** Minutes of rain this fire has come through without dying. */
+    rainHeld: number;
+  };
   /** Raw meat on the rack and how many dry minutes it has had. */
   rack: { kg: number; dried: number };
   /** Hares hanging in snares, and the age of the oldest. */
@@ -506,8 +514,8 @@ export interface SkillState {
 }
 
 export type GoalId =
-  | "firewood" | "fire" | "cook" | "bed" | "roof" | "water" | "snare" | "store"
-  | "spring" | "summer" | "autumn" | "winter";
+  | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
+  | "water" | "snare" | "store" | "spring" | "summer" | "autumn" | "winter";
 
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;

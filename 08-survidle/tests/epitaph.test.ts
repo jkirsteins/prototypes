@@ -82,17 +82,16 @@ describe("the epitaph", () => {
     // Neither freezes, because fat is insulation as well as fuel and the reserve a body
     // lands with carries it that far - a body that eats well early is warm later on the
     // same food.
-    // What these snapshots hold: Ausra Zukauskaite (seed 17) starves at camp on day 39, pack
-    // empty, 95 kg of firewood still stacked beside her - appetite that argues hard for food
-    // while the reserve is being spent empties the larder sooner and leaves more of the
-    // woodpile unburned when it does. Sigrid Lund (seed 19) starves at camp on day 35, pack
-    // empty, 69 kg of firewood beside her; her larder collapses from a fixed shortage rather
-    // than from where the eat line sits, so appetite's shape does not move her day.
+    // What these snapshots hold: Ausra Zukauskaite (seed 17) starves at camp on day 41, pack
+    // empty, 54 kg of firewood still stacked beside her. Sigrid Lund (seed 19) starves at
+    // camp on day 54, pack empty, 37 kg beside her. Both live well past the point a body
+    // that could not bank a reserve reaches, and both leave wood behind: a fire that keeps
+    // itself costs the woodpile less, and the food is what runs out.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 39. Starved at camp, with nothing in the pack and 95 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 35. Starved at camp, with nothing in the pack and 69 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 41. Starved at camp, with nothing in the pack and 54 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 54. Starved at camp, with nothing in the pack and 37 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {
