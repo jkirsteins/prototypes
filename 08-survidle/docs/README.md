@@ -305,9 +305,11 @@ waiting, and everything done while you are away run at the one scale.
   cohort; the parameter is dropped from the address after one open, and the
   mark survives a new world. The settings strip shows the beacon id and the
   cohort. See docs/testing.md.
-- `?faces=1` opens the face self-test page (`faces.html`): forty-eight
-  generated portraits at 8x8 and 12x12, captioned with what the seed and
-  the grades picked, for judging by eye. Not a game feature.
+- `?faces=1` opens the face self-test page (`faces.html`): locally generated
+  Toon Head identities at 64px and 24px, the full expression set, layered
+  focused, hot, cold and firelit states, plus blink, glance and flavor motion.
+  It is the review surface for portrait variety and legibility, not a game
+  feature.
 
 ## Development
 

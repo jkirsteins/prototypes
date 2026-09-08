@@ -483,12 +483,14 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .portrait.is-flavor [data-portrait-frame="flavor"] { opacity: 1; }
 
 @keyframes portrait-focus { from { transform: translateY(0) scale(1); } to { transform: translateY(1px) scale(1.025); } }
+@keyframes portrait-cold { 0%, 100% { transform: translateX(0); } 35% { transform: translateX(-.5px); } 70% { transform: translateX(.5px); } }
 .stat-face.mood-walk { animation: mood-step 1.2s ease-in-out infinite alternate; }
 .stat-face.mood-work { animation: mood-breathe 3.4s ease-in-out infinite alternate; }
 .stat-face.mood-rest { animation: mood-breathe 4.6s ease-in-out infinite alternate; }
 .stat-face.mood-sleep { opacity: 0.65; animation: mood-breathe 5.6s ease-in-out infinite alternate; }
 .stat-face.mood-idle { animation: none; }
 .portrait.is-focused { animation: portrait-focus 2.8s ease-in-out infinite alternate; }
+.portrait.is-cold { animation: portrait-cold .42s ease-in-out infinite; }
 .portrait.is-cold [data-portrait-frame] .face { filter: saturate(.7) brightness(.88) hue-rotate(8deg); }
 .portrait.is-hot [data-portrait-frame] .face { filter: saturate(1.18) brightness(1.06); }
 .portrait.is-hurt [data-portrait-frame] .face,
@@ -520,7 +522,7 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 @media (prefers-reduced-motion: reduce) {
   .grid .c.mk-player.mood-walk, .grid .c.mk-player.mood-work,
   .stat-face.mood-walk, .stat-face.mood-work, .stat-face.mood-rest, .stat-face.mood-sleep,
-  .portrait.is-focused, .portrait.is-firelit::before, .portrait.is-firelit::after {
+  .portrait.is-focused, .portrait.is-cold, .portrait.is-firelit::before, .portrait.is-firelit::after {
     animation: none;
   }
   .portrait.is-firelit::before { opacity: .32; transform: none; }

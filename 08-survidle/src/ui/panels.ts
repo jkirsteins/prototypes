@@ -708,6 +708,7 @@ export function manualHtml(): string {
 ${sections}
 <h2>More</h2>
 <ul>${links}</ul>
+<p class="dim">Portraits use <a href="https://www.figma.com/community/file/1589627891082866389" target="_blank" rel="noopener">ToonHead by Johan Melin</a>, licensed CC BY 4.0.</p>
 <button class="act" data-act="manual-close">Close</button>
 </div>`;
 }
