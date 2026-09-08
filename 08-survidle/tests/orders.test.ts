@@ -292,11 +292,18 @@ describe("the scheduler", () => {
     expect(cabin.skipped).toBe("missing materials at camp");
     const line = "log cabin: missing materials at camp. Split a log, forever instead.";
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
-    // With the grind live and ranked above it, cabin can never pre-empt it, so
-    // asking whether it could run is a question the prefix rule no longer
-    // puts to it. Its stale "missing materials" mark clears rather than being
-    // kept alive by a check that is not run, and nothing further is logged.
+    // With the grind live and mid-chunk, runOrders asks the list nothing
+    // more - judging costs nothing there is anything to act on the answer
+    // with - so cabin's mark sits exactly where the first minute left it.
     advance(state, world, 5);
+    expect(cabin.skipped).toBe("missing materials at camp");
+    // The panel and waitingLine do not read it this way: they judge the list
+    // fresh on every render, the same call this makes directly. With the
+    // grind live and ranked above it, cabin can never pre-empt it, so asking
+    // whether it could run is a question the prefix rule no longer puts to
+    // it. Its stale mark clears rather than being kept alive by a check that
+    // is not run, and nothing further is logged over it.
+    judgeOrders(state, world, cal);
     expect(cabin.skipped).toBe("");
     expect(state.log.filter((e) => e.text === line).length).toBe(1);
   });
@@ -1259,10 +1266,12 @@ describe("pre-emption", () => {
     }
     advance(state, world, 60);
     resetWalkJudged();
-    advance(state, world, 1);
-    // The live row is the top one, so at most it is asked to route; the eight
-    // rows below it read "later" without ever reaching the walk check, no
-    // matter how many of them the list holds.
+    // A direct judgement, the one the panel and waitingLine make on every
+    // render regardless of whether the sim loop is mid-chunk: the live row
+    // is the top one, so at most it is asked to route; the eight rows below
+    // it read "later" without ever reaching the walk check, no matter how
+    // many of them the list holds.
+    judgeOrders(state, world, calendar(state.minute, state.startDoy));
     expect(walkJudged()).toBeLessThanOrEqual(2);
   });
 });

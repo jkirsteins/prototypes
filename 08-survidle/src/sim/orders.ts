@@ -568,16 +568,18 @@ export function blockingOrder(state: GameState, world: World, cal: Calendar): Or
 const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
 /**
- * Runs every minute, task slot free or not: the list is judged afresh each
- * minute so the panel and waitingLine never draw a stale verdict, and a rank
- * or a row the player just changed through the hand doors is read on the
- * very next reading rather than at the end of whatever chunk was already
- * under way. Met jobs drop off on every reading too. But judging is not
- * acting: a chunk of work already in hand keeps the minute until it ends on
- * its own, the way it always did, and only then does the chosen order
- * become the live intent - at once when nothing is owed to camp, after the
- * delivery when something is. With orders but nothing to do, the runner
- * waits at camp, where the nights are safe.
+ * Runs every minute, but only judges the list, and only acts on the answer,
+ * while nothing else is under way: a chunk of work already in hand keeps
+ * the minute until it ends on its own, the way it always did, and this
+ * scheduler asks the list nothing in the meantime, since there would be
+ * nothing to do with the answer anyway. That is not the same as the list
+ * going stale - the panel and waitingLine each judge it fresh on their own
+ * reading, whatever this is doing. Met jobs drop off every minute
+ * regardless, since that bookkeeping is the list's own and touches nothing
+ * live. Once a chunk does end, the chosen order becomes the live intent: at
+ * once when nothing is owed to camp, after the delivery when something is.
+ * With orders but nothing to do, the runner waits at camp, where the
+ * nights are safe.
  */
 export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (state.dead) return;
@@ -617,6 +619,20 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     else if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;
     return;
   }
+  // A chunk of work already in hand keeps the minute: judging the list costs
+  // nothing when there is nothing to act on the answer with, and the chunk
+  // ends on its own, the way it always did, rather than being interrupted by
+  // a row that has just become the topmost runnable one. The panel and
+  // waitingLine judge the list for themselves on every render, so a row
+  // still reads fresh even on the minutes this returns before asking. A rank
+  // or a row change made through moveOrderByHand or removeOrderByHand is the
+  // one thing that crosses this line today, because it is the player asking
+  // on the spot rather than this reading noticing something on its own -
+  // decideAgain is that door, not this one. The body row is the other thing
+  // that gets to cross it, once the body is a row, because a body need
+  // cannot wait for a tree to come down; that exception belongs here and is
+  // not this task's to add.
+  if (state.task) return;
   const chosen = chooseOrder(state, world, cal);
   if (chosen && live?.orderId === chosen.id) return;
   if (!chosen && live?.task === "wait") return;
@@ -625,18 +641,6 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     return;
   }
   if (chosen) {
-    // The chosen row does not take the minute away from a chunk already in
-    // hand: it waits for that chunk to end on its own, the way the whole
-    // list did before every row was read every minute, and this same
-    // judgement is read again the next minute with nothing left to
-    // interrupt. A rank or a row change made through moveOrderByHand or
-    // removeOrderByHand is the one thing that crosses this line today,
-    // because it is the player asking on the spot rather than this reading
-    // noticing something on its own - decideAgain is that door, not this
-    // one. The body row is the other thing that gets to cross it, once the
-    // body is a row, because a body need cannot wait for a tree to come
-    // down; that exception belongs here and is not this task's to add.
-    if (state.task) return;
     // Between orders the runner is its own, and the body speaks first. An
     // order starts only when the body asks for nothing; while it does, the
     // runner waits and the wait's body tier serves it - the walk home, the
@@ -652,9 +656,6 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
     startIntent(state, world, cal, rng, chosen.req, chosen.id);
     return;
   }
-  // Nothing is ready, and a chunk of work is already in hand: it keeps the
-  // minute rather than being bumped for a wait nothing asked for.
-  if (state.task) return;
   startIntent(state, world, cal, rng, WAIT);
   log(state, "Nothing to do. {You} {wait} at camp.");
 }
