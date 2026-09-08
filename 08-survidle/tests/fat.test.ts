@@ -242,3 +242,25 @@ describe("starvation", () => {
     expect(starvation(state)).toBeGreaterThan(s);
   });
 });
+
+describe("the floor", () => {
+  it("starts the body dying at essential fat, not at nothing", () => {
+    const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.kcal = 0;
+    state.player.fat = l.floor - 1;
+    const h0 = state.player.health;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    expect(state.player.health).toBeLessThan(h0);
+  });
+
+  it("does not start it dying while the reserve is still above the floor", () => {
+    const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.kcal = 0;
+    state.player.fat = l.floor + 20000;
+    const h0 = state.player.health;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    expect(state.player.health).toBeCloseTo(h0, 1);
+  });
+});

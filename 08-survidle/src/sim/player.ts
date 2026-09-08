@@ -411,7 +411,9 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
 
   // Health.
   const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst, smoke: 0 };
-  if (p.kcal <= 0 && p.fat <= 0) drains.starve = 2 * h;
+  // The floor is essential fat: structure, not fuel. A body at it is dying,
+  // however much weight is still on it.
+  if (p.kcal <= 0 && p.fat <= fatLandmarks(current(state).person).floor) drains.starve = 2 * h;
   if (p.warmth < 20) drains.cold = 6 * h;
   if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
   const smoking = camp && state.task?.id === "sleep" && r.smoke > SMOKE_DEADLY;
