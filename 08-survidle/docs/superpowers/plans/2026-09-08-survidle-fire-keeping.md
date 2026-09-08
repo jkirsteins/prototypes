@@ -465,3 +465,82 @@ Run `npm run year` and `npm run december`. The pre-change baseline is at `/tmp/f
 - [ ] **Step 4: Browser pass**
 
 Drive the real page and confirm a fire falling to coals reads as coals rather than as out, and that relighting from coals is quick. See the memory note on planting a save: the app overwrites `localStorage` on `pagehide`, so plant from a non-app URL on the same origin, and stamp `savedAt` to now or the away report will be the overlay on top.
+
+---
+
+### Task 6: Embers on screen
+
+Added after the plan was first written. A tended fire passes through coals every
+night, so this is the routine state and not an exception - and shown nowhere, a
+banked fire is pixel-identical to a dead one. Run this AFTER Task 2.
+
+**Files:**
+- Modify: `src/ui/panels.ts` (the HERE panel's fire line, around line 352)
+- Modify: `src/ui/map.ts` (`lightSources`, `MARKS`, the marker choice)
+- Modify: `src/ui/bars.ts` (the fuel bar's text at embers)
+- Modify: `src/style.css` (a coals mark, a banked glow)
+- Test: `tests/emberui.test.ts`
+
+**Interfaces:**
+- Consumes: `hasEmbers`, `EMBER_MINUTES` from Task 1.
+- Produces: nothing other tasks read.
+
+- [ ] **Step 1: Read first**
+
+`src/ui/panels.ts` around line 352 - the fire line is a two-way choice today,
+`burning` (with `smoky` as a modifier) or `cold`. `src/ui/map.ts`:
+`lightSources` returns `{cell, reach}` with reach 2 when fuel is at or above
+`FIRE_LOW_KG` and 1 below it; `litRings` turns that into `.lit-0/-1/-2` classes,
+and `.grid.night .c.lit-0` in `src/style.css` carries the pulse. `MARKS.fire` is
+the `F` glyph.
+
+- [ ] **Step 2: Write the failing test**
+
+Create `tests/emberui.test.ts` asserting, against a real state driven to embers
+by `advance()` rather than a hand-built literal:
+
+- the HERE panel's fire line reads a third word for coals - not `burning`, not `cold`
+- `lightSources` still includes an ember camp, at reach 0, so the cell itself is
+  lit and the rings are not
+- a dead fire (no embers) is in neither: no mark, no light source
+- the fuel bar's text at embers does not read `0.0 kg`, which is what a dead fire reads
+
+Write the assertions against what the functions return, not against a
+reimplementation of them.
+
+- [ ] **Step 3: The panel word**
+
+The fire line becomes a three-way choice. `burning` and `cold` keep their exact
+current words and classes; coals sit between them with the dim-but-not-dead
+treatment. Say how long the coals have left if it reads naturally in the line's
+existing shape - `fmtDuration` is already imported in that file's neighbourhood -
+but do not restructure the line to fit it in.
+
+- [ ] **Step 4: The map**
+
+`lightSources` gains ember camps at `reach: 0`. Add a `coals` entry to `MARKS`
+with its own glyph and label, and pick it where `MARKS.fire` is picked when the
+fire has embers instead. Keep `F` for a lit fire; the coals glyph should read as
+the same thing banked rather than as an unrelated symbol.
+
+- [ ] **Step 5: The bar and the style**
+
+In `src/ui/bars.ts`, the fuel text at embers says what the state is rather than
+`0.0 kg`. Remember the churn budget (`tests/churn.test.ts`): a value that moves
+every tick belongs in the per-frame text, which is where this already is, not in
+panel markup.
+
+In `src/style.css`, give the coals mark a colour dimmer than `.mk-fire`'s
+`#b8431a`, and let a reach-0 ember source pulse slower and fainter than a lit
+fire's `.lit-0`. The night fire drew the strongest reaction of the whole
+playtest - bank it, do not kill it.
+
+- [ ] **Step 6: Tests, both gates, commit**
+
+`npm test -- emberui`, then `npm test && npm run build`. `tests/churn.test.ts`
+and the map tests both exercise this code.
+
+```bash
+git add src/ui/panels.ts src/ui/map.ts src/ui/bars.ts src/style.css tests/emberui.test.ts
+git commit -m "feat(survidle): a banked fire looks banked, not dead"
+```
