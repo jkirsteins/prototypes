@@ -16,7 +16,7 @@ import {
   vesselLitres, WATER_FULL, waterLossPerHour, waterSource,
 } from "../src/sim/water";
 import { ambientTemperature } from "../src/sim/weather";
-import { taskHtml } from "../src/ui/panels";
+import { inventoryHtml } from "../src/ui/panels";
 import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
@@ -91,9 +91,9 @@ describe("water", () => {
     advance(state, world, 1);
     const lines = state.log.filter((e) => e.text === "The shore is iced over.");
     expect(lines).toHaveLength(1);
-    // The drink button sits with what is happening now, so the reason it is
-    // refused sits there too.
-    const html = taskHtml(state, world, calendar(state.minute));
+    // The drink button stands over the stores it draws on, in Inventory, so
+    // the reason it is refused stands there too.
+    const html = inventoryHtml(state, world, calendar(state.minute));
     expect(html).toContain("iced over");
   });
 

@@ -66,7 +66,13 @@ body { display: flex; flex-direction: column; height: 100vh; }
    the window is short - to a floor, never to a strip - and the room above
    that goes to the list, which can always use more. */
 #map { flex: 0 1 auto; min-height: 320px; }
-#panes { display: flex; flex-direction: column; flex: 1 1 0; min-height: 190px; }
+/* The middle column does not scroll: the map would slide up out of the
+   window and the list's last purpose would be cut off at the foot, which
+   is what a column of three things each asking for its own height does.
+   The map gives way to its floor, the strip is a line, and what is left is
+   the list's - which scrolls inside itself, where the scrolling belongs. */
+#center { overflow: hidden; }
+#panes { display: flex; flex-direction: column; flex: 1 1 0; min-height: 160px; overflow: hidden; }
 .pane { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 /* A display rule beats the user agent's [hidden] { display: none }, so the
    three panes that are hidden would paint on top of the one that is not.
@@ -752,6 +758,21 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .mini.off { color: #5d6570; cursor: default; }
 .mini.off:hover { border-color: var(--line); }
 
+/* What the survivor is doing: one row under the map, the same height
+   whether anything is happening or not, so the page does not jump as a job
+   ends. A panel with a heading, a row of buttons and a sentence telling the
+   player to pick something below read as a queue with something already in
+   it, on a survivor who had never been given an order. */
+#task {
+  background: none;
+  border: none;
+  border-top: 1px solid var(--line);
+  padding: 6px 2px 0;
+  flex: none;
+}
+#task .now { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+#task .now .bar { flex: 1; margin: 0; }
+#task .now .what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #task .head, #orders .head { display: flex; justify-content: space-between; align-items: baseline; }
 #task .aside { margin-top: 8px; border-top: 1px dotted var(--line); padding-top: 6px; }
 #task .paused { padding: 2px 0; }

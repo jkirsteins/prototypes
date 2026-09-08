@@ -76,14 +76,13 @@ describe("the order panel", () => {
     const cal = calendar(state.minute, state.startDoy);
 
     // Unpinned, the cabin is passed over and the sticks run: nothing is held.
-    expect(ordersHtml(state, world, cal)).not.toContain("The list is held up by");
+    expect(ordersHtml(state, world, cal)).not.toContain("Held up by");
     expect(judgeOrders(state, world, cal).work?.id).toBe(sticks.id);
 
     blocked.pinned = true;
     const held = ordersHtml(state, world, cal);
     expect(judgeOrders(state, world, cal).blockedBy?.id).toBe(blocked.id);
-    expect(held).toContain("The list is held up by");
-    expect(held).toContain("Unpin it");
+    expect(held).toContain("Held up by");
     // The reason the row itself gives is the reason the banner gives.
     expect(held).toContain(blocked.skipped);
     expect(blocked.skipped.length).toBeGreaterThan(0);
@@ -98,11 +97,11 @@ describe("the order panel", () => {
 
     pinOrderByHand(state, world, cal, new Rng(state.rng), blocked.id);
     expect(blocked.pinned).toBe(true);
-    expect(ordersHtml(state, world, cal)).toContain("The list is held up by");
+    expect(ordersHtml(state, world, cal)).toContain("Held up by");
 
     pinOrderByHand(state, world, cal, new Rng(state.rng), blocked.id);
     expect(blocked.pinned).toBe(false);
-    expect(ordersHtml(state, world, cal)).not.toContain("The list is held up by");
+    expect(ordersHtml(state, world, cal)).not.toContain("Held up by");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(sticks.id);
   });
@@ -115,24 +114,23 @@ describe("the order panel", () => {
     expect(body.pinned).toBeUndefined();
   });
 
-  it("the landing rule heads the list, and the heading says orders only when orders were given", () => {
+  it("is named once and counts only what was ordered, and explains nothing about itself", () => {
     const { state, world } = newGame(1);
     advance(state, world, 1);
     const cal = calendar(state.minute, state.startDoy);
 
     // The body's row is on every list, so counting rows cannot tell a list of
-    // orders from a camp nobody has ordered anything at.
+    // orders from a camp nobody has ordered anything at: no count until one
+    // is given.
     const html = queueHtml(state, world, cal);
-    expect(html).toContain("<h2>Doing</h2>");
+    expect(html).toContain("<h2>Activity queue</h2>");
     expect(html).toContain(BODY_SENTENCE);
-    expect(html).toContain("A click goes to the top. A standing order goes to the bottom.");
-    // The rule sits above every row, which is where a player looks for a row
-    // they have just given and cannot find.
-    expect(html.indexOf("A click goes to the top")).toBeLessThan(html.indexOf('class="order'));
+    // Nothing in the UI explains the UI. A sentence saying how the list runs
+    // is the interface talking about itself instead of about the run.
+    expect(html).not.toMatch(/goes to the top|run in turn|while you are away/);
 
     addOrder(state, world, STICKS, "grind");
-    // One order given, and the heading says so with its count.
-    expect(queueHtml(state, world, cal)).toContain('<h2>Orders <span class="r">1</span></h2>');
+    expect(queueHtml(state, world, cal)).toContain('<h2>Activity queue <span class="r">1</span></h2>');
   });
 
   it("the care rows and the held banner have their own marks in the stylesheet, in the column that draws them", () => {

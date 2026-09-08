@@ -430,14 +430,6 @@ const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><s
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
 const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
-/**
- * The one sentence that answers "is this a queue or a stack": both, and
- * which one a row landed by is the difference between the two ends of the
- * list. It sits at the head of the list because that is where a player
- * looks after clicking something and not finding it where they expected.
- */
-const LANDING_RULE = `<div class="rule"><small>A click goes to the top. A standing order goes to the bottom.</small></div>`;
-
 /** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
 export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
@@ -460,7 +452,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   // in two places at once, neither of them the rank the player set them at.
   const loose = it?.task === "wait" && it.orderId === null;
   const waiting = loose
-    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it!.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
+    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it!.step))}`}</div>`
     : "";
   // One judgement for the whole list: waitingLine reads it per row, and running
   // it per row would judge a ten-row list ten times a frame.
@@ -469,7 +461,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   // is stopped is the one moment it owes the player a banner: the row, why it
   // cannot run, and the one click that lets the rest of the list go on.
   const held = judged.blockedBy
-    ? `<div class="held bad">The list is held up by <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}. Unpin it - its "doing this first" button - to let the rest of the list run.</div>`
+    ? `<div class="held bad">Held up by <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}</div>`
     : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
@@ -479,7 +471,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // waitingLine is the plain reading and writes nothing; the scheduler's own read
     // is what moves a restart band's mark, so drawing a row never advances the list.
     const second = live
-      ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
+      ? `<div class="step">${esc(plain(it!.step))}</div>${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(plain(waitingLine(state, world, cal, o, judged)))}</div>`;
     // A care row ranks like any other row and draws the same up and down,
     // since where it sits against the work is the whole of what the player
@@ -502,14 +494,23 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
     return `<div class="order${isCareRow(o) ? " care" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
   }).join("");
-  return `${waiting}${held}${LANDING_RULE}${rows}`;
+  return `${waiting}${held}${rows}`;
 }
 
+/**
+ * What the survivor is doing, right now, under the map.
+ *
+ * A strip and not a panel: one line saying idle, or the work in hand with
+ * its bar. It had a heading, a row of buttons and a sentence telling the
+ * player to pick something below, and all of that read as a queue with
+ * something already in it on a survivor who had not been given an order in
+ * their life. The bar is here rather than on the live order row because
+ * one running job wants one bar.
+ */
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
   const it = state.intent;
   const orders = ordersHere(state, world);
-  const work = orders.some((o) => !isCareRow(o));
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
@@ -527,28 +528,69 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
         })
         .join("")}</div>`
     : "";
-  // A scheduled intent is drawn as its row; a manual one, or a raw task, as a head of its own.
+  // A row's own work is stopped from its row; work started by hand is
+  // stopped here, since there is no row to stop it from.
   const scheduled = it !== null && (it.task === "wait" || orders.some((o) => o.id === it.orderId));
-  let head = "";
-  if (it && !scheduled) {
-    head = `<div class="head"><b>${esc(intentSentence(state, world, cal, it))}</b><button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button></div>
-<div class="step">${esc(plain(it.step))}</div>${t ? TASK_BAR : ""}`;
-  } else if (!it && t) {
+  const stop = scheduled || (!it && !state.task) ? "" : `<button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button>`;
+
+  // One row, and one place for each fact: the row says what is happening,
+  // the bar beside it says how far along and how long is left. A label
+  // over a step line over a bar that repeated the step said the same thing
+  // three times and spent three rows doing it.
+  //
+  // Work started by hand has no row on the list, so this says the whole
+  // order; work the list started has its sentence on its own row up there,
+  // so this says the step it is on rather than repeating it.
+  let what = idleLine(state, cal);
+  if (it) what = scheduled ? plain(it.step) : intentSentence(state, world, cal, it);
+  else if (t) {
     const opts = availableTasks(state, world, cal);
-    let label = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
-    // Started as "anything": the species is what it turned out to be, so the head says both.
-    if (t.any) label = `${label} (whatever was about)`;
-    if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
-    head = `<div class="head"><b>${esc(label)}${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>${TASK_BAR}`;
-  } else if (!it && !work) {
-    head = `<div class="dim">Nothing. Pick something below.</div>`;
+    what = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+    // Started as "anything": the species is what it turned out to be, so it says both.
+    if (t.any) what = `${what} (whatever was about)`;
+    if ((t.id === "walk" || t.id === "travel") && state.route) what = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
+    if (t.repeat) what = `${what}, on repeat`;
   }
-  // Eating, drinking and feeding the fire sit with what is happening now
-  // rather than inside the Do pane: left there they would vanish the moment
-  // a player opened the Log, which is a regression on a control that
-  // answers a body's need.
-  return `<h2>Doing</h2>${instantHtml(state, world)}${head}${asideHtml}`;
+  const idle = !it && !t;
+  return `<div class="now"><span class="what${idle ? " dim" : ""}">${esc(what)}</span>${t ? TASK_BAR : ""}${stop}</div>${asideHtml}`;
 }
+
+/**
+ * What a survivor with nothing in hand is doing, which is never nothing.
+ *
+ * The row is the same height idle or working, so the page does not jump
+ * as a job ends, and it says something rather than "Idle": a body standing
+ * in a wood at noon is looking at something. It turns over with the hour
+ * rather than the minute - a line that changed every frame would be
+ * movement where the eye expects none, and would redraw the strip sixty
+ * times for every time it had something new to say.
+ */
+export function idleLine(state: GameState, cal: Calendar): string {
+  const lines = cal.isNight ? IDLE_NIGHT : IDLE_DAY;
+  return lines[Math.floor(state.minute / 60) % lines.length];
+}
+
+const IDLE_DAY = [
+  "Counting birds in the sky...",
+  "Looking for funny shaped clouds...",
+  "Watching the light move...",
+  "Listening to the wood...",
+  "Turning a stone over with a boot...",
+  "Picking at a splinter...",
+  "Whistling something half remembered...",
+  "Working out which way is north again...",
+  "Scratching a mark into the bark...",
+  "Waiting for something to happen...",
+];
+
+const IDLE_NIGHT = [
+  "Looking at the stars...",
+  "Listening to the dark...",
+  "Turning over, and over again...",
+  "Naming the shapes in the trees...",
+  "Thinking about the morning...",
+  "Counting the hours till light...",
+];
 
 /**
  * The queue, in its own column.
@@ -564,10 +606,8 @@ export function queueHtml(state: GameState, world: World, cal: Calendar): string
   // moment a region exists, so counting the rows would tell a player who has
   // given nothing that five things are standing.
   const given = ordersHere(state, world).filter((o) => !isCareRow(o)).length;
-  if (!given) {
-    return `<h2>Doing</h2>${ordersHtml(state, world, cal)}<div class="dim"><small>Orders run in turn, and keep running while you are away.</small></div>`;
-  }
-  return `<h2>Orders <span class="r">${given}</span></h2>${ordersHtml(state, world, cal)}`;
+  const count = given ? ` <span class="r">${given}</span>` : "";
+  return `<h2>Activity queue${count}</h2>${ordersHtml(state, world, cal)}`;
 }
 
 /** "N of 10 die: cause, day D", or "none of 10 die" when nothing died. */
@@ -690,7 +730,10 @@ export function inventoryHtml(state: GameState, world: World, cal: Calendar): st
   const carried = listItems(p.pack);
   const here = herePile(state, world);
   const dropAll = carried.length ? `<div class="invact"><button class="mini" data-act="drop-all">drop everything here</button></div>` : "";
-  return `<div class="invsec carry" data-inv="carry">
+  // Eating, drinking and feeding the fire stand over what they are done
+  // with. Under the map they read as a queue with something already in it,
+  // on a survivor who had never been given an order.
+  return `${instantHtml(state, world)}<div class="invsec carry" data-inv="carry">
 <h2>Carried <span class="r ${over}">${fmtKg(kg)} of ${d.packComfortableKg} kg comfortable, ${d.packHardKg} kg max</span></h2>
 ${invRows(carried, "drop")}${dropAll}
 </div>

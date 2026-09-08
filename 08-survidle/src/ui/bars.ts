@@ -8,7 +8,6 @@ import { regionState } from "../sim/regionstate";
 import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
 import { garmentWet } from "../sim/clothing";
 import type { GameState, SkillId } from "../sim/types";
-import { plain } from "../sim/voice";
 import { WATER_FULL } from "../sim/water";
 import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
@@ -88,12 +87,11 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   if (t) {
     const frac = Math.min(1, t.progress / t.duration);
     const left = Math.max(0, t.duration - t.progress);
-    // The bar names the step it is filling, not just the time left in it.
-    // One order runs several steps - walk there, work, walk back - and a
-    // bar that said only "12 min left" was read as the order's own, so
-    // reaching the end of it looked like the order was done.
-    const step = state.intent ? plain(state.intent.step) : "";
-    setBar("task", frac, `${step ? `${step}, ` : ""}${fmtDuration(left)} left (${fmtReal(left)})`, root);
+    // The time in the step, and nothing else. The bar used to name the step
+    // as well, because "12 min left" beside nothing was read as the whole
+    // order's - but the row it sits in names the step now, an inch to its
+    // left, so saying it twice only made the row too long to read.
+    setBar("task", frac, `${fmtDuration(left)} left (${fmtReal(left)})`, root);
     const pct = root.querySelector<HTMLElement>("#task-pct");
     if (pct) pct.textContent = `${Math.floor(frac * 100)}%`;
   }

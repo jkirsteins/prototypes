@@ -630,10 +630,12 @@ describe("the Do panel", () => {
     // a handful of rows, and what a survivor cannot do yet still shows and
     // says why.
     const html = allPanesHtml(state, world, cal);
-    // Eating lives with what is happening now, not in the Do pane: inside a
-    // pane it would vanish the moment somebody opened the Log.
+    // Eating and drinking stand over the stores they draw on, in Inventory,
+    // rather than in the Do pane beside the work or under the map, where
+    // they read as a queue with something already in it.
     expect(html).not.toContain('data-act="eat"');
-    expect(taskHtml(state, world, cal)).toContain('data-act="eat"');
+    expect(taskHtml(state, world, cal)).not.toContain('data-act="eat"');
+    expect(inventoryHtml(state, world, cal)).toContain('data-act="eat"');
     // Felling is legal from camp because the intent walks to the forest itself.
     expect(html).toContain('data-act="intent" data-id="chop" data-arg=""');
     expect(html).not.toContain('class="opt off" data-opt="intent:chop:"');
@@ -723,7 +725,7 @@ describe("the Do panel", () => {
     expect(html).toContain('class="opt off" data-opt="intent:build:leanTo"');
   });
 
-  it("the Doing panel reads the intent as a sentence with its step, and set-aside work can be finished from anywhere", () => {
+  it("the activity row names work started by hand as its whole order, and set-aside work can be finished from anywhere", () => {
     const g = newGame(21);
     siteCamp(g.state, g.world);
     const rng = new Rng(1);
@@ -732,8 +734,11 @@ describe("the Do panel", () => {
     mapRegion(g.state, g.world, g.state.player.region);
     startIntent(g.state, g.world, calendar(0), rng, { task: "chop", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" });
     let html = taskHtml(g.state, g.world, calendar(0));
+    // One row, and one fact in each place: work begun by hand has no row on
+    // the list, so this row carries the whole order. Which step it is on is
+    // the bar's, which bars.ts writes every frame.
     expect(html).toContain("Fell a tree, until camp has 40 logs, bringing it to camp");
-    expect(html).toContain("walking to the forest");
+    expect(html).not.toContain("walking to the forest");
     expect(html).toContain('data-act="stop"');
     // A tree half felled, then the intent stopped from camp: the entry offers finish, not resume.
     placeAtSpot(g.state, g.world, g.state.player.region, "forest");
@@ -789,7 +794,7 @@ describe("the Orders panel", () => {
     expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep camp at 40 kg firewood");
   });
 
-  it("a wait with nothing to do says so once and shows no bar; a wait doing something names it and shows one", () => {
+  it("a wait with nothing to do says so once; a wait doing something names what it is doing, and the bar for it is under the map", () => {
     // The wait's own hour of rest is not a thing the player is waiting for: it
     // ends when an order can run, not when the hour is up.
     const { state, world } = newGame(1);
@@ -811,7 +816,11 @@ describe("the Orders panel", () => {
     expect(state.task?.id).not.toBe("rest");
     html = queueHtml(state, world, calendar(state.minute));
     expect(html).toContain("Waiting at camp: ");
-    expect(html).toContain('id="bar-task"');
+    // One running job, one bar: it is in the activity row under the map, so
+    // the list never draws a second one with the same ids for bars.ts to
+    // pick between.
+    expect(html).not.toContain('id="bar-task"');
+    expect(taskHtml(state, world, calendar(state.minute))).toContain('id="bar-task"');
   });
 
   it("lists the orders in rank order with their state, counters and buttons", () => {
@@ -837,13 +846,15 @@ describe("the Orders panel", () => {
     let html = queueHtml(state, world, cal);
     // The heading counts what is standing, which is the first thing a
     // reader wants from a queue.
-    expect(html).toContain("<h2>Orders <span class=\"r\">3</span></h2>");
+    expect(html).toContain("<h2>Activity queue <span class=\"r\">3</span></h2>");
     expect(html.indexOf(`data-id="${keep.id}"`)).toBeLessThan(html.indexOf(`data-id="${cabin.id}"`));
     expect(html).toContain("met");
     expect(html).toContain("waiting its turn, behind");
     expect(html).toContain("gathering sticks");
-    expect(html).toContain('id="bar-task"');
-    expect(html.split('id="bar-task"').length).toBe(2);
+    // The live row keeps its hurry pulse; the job's own bar is the activity
+    // row's under the map, so the ids exist once on the page.
+    expect(html).not.toContain('id="bar-task"');
+    expect(html).toContain('id="bar-hurry"');
     // The camp row holds the top rank, where its own "up" is spent; the
     // keep's is free, since a care row is a row it may be moved over.
     expect(html).toContain(`data-act="order-up" data-id="${campRowOf(state, world)!.id}" disabled`);
