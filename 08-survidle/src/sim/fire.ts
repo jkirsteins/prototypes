@@ -36,13 +36,13 @@ export function fireWarmth(fire: RegionState["fire"], campTask: boolean): number
  * over the fire deliberately.
  */
 export const EMBER_MINUTES = 8 * 60;
-/** Rain with nothing over the pit eats coals at this multiple. */
+/** Rain with nothing over the pit eats coals at burnPerHour's heavy-rain multiple: coals do not get the lighter rate a fire's own burn gives light rain. */
 export const EMBER_RAIN_RATE = 2;
-/** What coals are worth to a body beside them, against a lit fire's 7. */
+/** What coals are worth to a body beside them, against a lit fire's 7 away from a task, 15 at one. */
 export const EMBER_WARMTH = 2;
 /** The glow off coals, against a lit fire's 20: under every tier of NIGHT_WORK. */
 export const EMBER_LUX = 2;
-/** A light on live coals is tinder and breath, not a drill: minutes, not the lightingInRain durations. */
+/** A design choice, not a sourced figure: enough that rekindling reads as an action with a cost, not an instant free relight. */
 export const EMBER_RELIGHT_MINUTES = 5;
 
 export function hasEmbers(fire: RegionState["fire"]): boolean {
@@ -84,9 +84,14 @@ export function groundDry(w: Weather, cal: Calendar): boolean {
   return fireSeason(cal) && w.dryDays >= DRY_DAYS;
 }
 
-/** True when the fire at this camp warms the people at it: any fire outdoors, indoors only with a hearth or lit indoors. */
+/**
+ * True when the fire at this camp warms the people at it: any fire or bed
+ * of embers outdoors, indoors only with a hearth or lit indoors. Coals have
+ * not moved from where the fire burned, so a rekindled-from-coals fire is
+ * judged by the same structural rule as the flame it fell from.
+ */
 export function fireWarms(st: RegionState): boolean {
-  if (!st.fire.lit) return false;
+  if (!st.fire.lit && !hasEmbers(st.fire)) return false;
   if (!st.structures.cabin) return true;
   return st.structures.hearth || st.fire.indoors;
 }

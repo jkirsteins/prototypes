@@ -4,6 +4,7 @@ import { calendar } from "../src/sim/calendar";
 import { EMBER_MINUTES, hasEmbers } from "../src/sim/fire";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
+import { feltTemperature } from "../src/sim/player";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
@@ -87,6 +88,26 @@ describe("embers against a lit fire", () => {
     const { EMBER_LUX } = await import("../src/sim/fire");
     const { NIGHT_WORK } = await import("../src/sim/light");
     expect(EMBER_LUX).toBeLessThan(NIGHT_WORK.deadwood!.needLux);
+  });
+
+  it("reach the body: a survivor beside coals is warmer than beside a dead pit and colder than beside flame", () => {
+    const litFire = litCamp();
+    const lit = feltTemperature(litFire.state, litFire.world, -10);
+
+    const embers = litCamp();
+    embers.st.fire.lit = false;
+    embers.st.fire.fuelKg = 0;
+    embers.st.fire.embers = EMBER_MINUTES;
+    const banked = feltTemperature(embers.state, embers.world, -10);
+
+    const dead = litCamp();
+    dead.st.fire.lit = false;
+    dead.st.fire.fuelKg = 0;
+    dead.st.fire.embers = 0;
+    const cold = feltTemperature(dead.state, dead.world, -10);
+
+    expect(banked).toBeGreaterThan(cold);
+    expect(banked).toBeLessThan(lit);
   });
 });
 
