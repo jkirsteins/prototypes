@@ -5,6 +5,7 @@ import { advance } from "../src/sim/advance";
 import { addItem } from "../src/sim/inventory";
 import { KCAL_FULL } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { BASE_KCAL_PER_HOUR } from "../src/sim/player";
 
 /**
  * The meal line and what the body does at it. The pool's size is not free:
@@ -109,10 +110,34 @@ describe("hunger and satiety", () => {
     const { state, world } = newGame(1);
     const fat0 = state.player.fat;
     // A season of plenty: the pack never empties and the body never goes without.
+    // Every gain eat() credits lands in fat in full, not only the sliver a
+    // portion happens to overshoot the stomach's cap by, so a body that eats
+    // more than it burns - even by a little, even for a few days before
+    // something else in the world catches up with it - has to show it.
     for (let m = 0; m < 30 * 1440; m++) {
       for (const f of ["driedMeat", "cookedOilyFish", "cookedRoots", "fat"] as const) addItem(state.player.pack, f, 1);
       advance(state, world, 1);
     }
     expect(state.player.fat).toBeGreaterThan(fat0);
+  });
+
+  it("loses fat at close to the burn rate through a stretch with nothing to eat", () => {
+    const { state, world } = newGame(1);
+    state.player.pack.items = {};
+    const fat0 = state.player.fat;
+    const days = 3;
+    for (let m = 0; m < days * 1440; m++) advance(state, world, 1);
+    expect(state.dead).toBeNull();
+    const lost = fat0 - state.player.fat;
+    // p.fat -= kcalBurn runs every minute regardless of what the stomach
+    // holds, and nothing credits it back with an empty pack and no food on
+    // the ground here, so the loss has to equal the ledger's own record of
+    // what was burned over the same stretch - not just approach it.
+    const burned = state.ledger.reduce((sum, d) => sum + d.burn.base + d.burn.activity + d.burn.walk + d.burn.cold + d.burn.sick, 0);
+    expect(lost).toBeCloseTo(burned, 6);
+    // And that burn is a real one, in the range a resting body's day costs,
+    // not a rounding error masquerading as starvation.
+    expect(lost / days).toBeGreaterThan(BASE_KCAL_PER_HOUR * 24 * 0.5);
+    expect(lost / days).toBeLessThan(BASE_KCAL_PER_HOUR * 24 * 3);
   });
 });

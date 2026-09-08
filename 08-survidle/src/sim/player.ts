@@ -328,11 +328,13 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
     sick: (afterSick - afterCold) * h,
   });
   creditTime(state, a === "sleep" ? "sleep" : state.task && !IDLE_TASKS.has(state.task.id) ? "work" : "idle", dt);
-  // Below zero, the shortfall comes out of the fat reserve instead of health.
+  // The energy store pays every minute's burn regardless of what the
+  // stomach shows; fullness is drained the same amount, separately, and
+  // simply has nowhere to go once it hits empty. The two agree only on a
+  // day when eating exactly kept pace with burning.
   const kcalBurn = afterSick * h;
-  const shortfall = Math.max(0, kcalBurn - p.kcal);
+  p.fat -= kcalBurn;
   p.kcal = clamp(p.kcal - kcalBurn, 0, KCAL_FULL);
-  if (shortfall > 0) p.fat = Math.max(0, p.fat - shortfall);
 
   const thirst = stepWater(state, felt, dt);
 

@@ -27,15 +27,17 @@ describe("the fat reserve", () => {
     expect(state.player.health).toBeCloseTo(health0, 1);
   });
 
-  it("raises fat past a full stomach", () => {
+  it("fills the stomach to its cap and banks the whole portion as fat, not just what overflowed it", () => {
     const { state, world } = newGame(1);
     state.player.kcal = KCAL_FULL - 100;
     state.player.fat = 0;
     addItem(state.player.pack, "driedMeat", 1);
-    // driedMeat: 3,300 kcal/kg (three kilos to one rack kilo), 0.15 kg portion = 495 kcal; 100 fills the stomach, 395 goes to fat.
+    // driedMeat: 3,300 kcal/kg (three kilos to one rack kilo), 0.15 kg portion = 495 kcal.
+    // The stomach has 100 kcal of room and clamps there; fat is a separate
+    // book that gets the full 495, whether or not it fit in the stomach too.
     eat(state, world, "driedMeat", new Rng(1));
     expect(state.player.kcal).toBe(KCAL_FULL);
-    expect(state.player.fat).toBeCloseTo(395, 5);
+    expect(state.player.fat).toBeCloseTo(495, 5);
   });
 
   it("work speed at the midpoint of the failing range is three quarters of a non-starving body", () => {

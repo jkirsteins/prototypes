@@ -62,16 +62,11 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     if (left <= 1e-9) break;
     left -= removeItem(inv, food, left);
   }
-  // Past a full stomach the surplus is stored as fat.
-  const room = KCAL_FULL - p.kcal;
-  if (gain <= room) {
-    p.kcal += gain;
-  } else {
-    p.kcal = KCAL_FULL;
-    // No ceiling: what the stomach cannot hold is put on as fat, and a body
-    // has nowhere it stops accepting it. Appetite is what argues, not a wall.
-    p.fat += gain - room;
-  }
+  // The stomach fills to its cap; the energy eaten goes to fat in full,
+  // whether or not it fit. Fullness and the energy store are two separate
+  // books, so a portion too small to reach the cap still banks its own gain.
+  p.kcal = Math.min(KCAL_FULL, p.kcal + gain);
+  p.fat += gain;
   creditEaten(state, gain, leanPart);
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {
     p.sick = 48 * 60;
@@ -92,18 +87,11 @@ export const HUNGRY_LINE = 1800;
 /**
  * The reserve a meal is eaten up to, once it has started. HUNGRY_LINE
  * answers when eating begins; this answers when it stops, and holding the
- * two apart is what a meal is - the gap between them is the surplus a good
- * day can bank as fat, which is why a single shared number left the body
- * unable to gain fat at all no matter how full the larder was.
- *
- * It sits close enough to KCAL_FULL that the portion which carries a body
- * across this line often carries it into the stomach's own cap as well:
- * cooked roots, the cheapest food that never runs dry, are 255 kcal a
- * portion against the 100 kcal left here. So an ordinary meal routinely
- * banks a little fat on top of feeding the body, the same rule a kill's
- * surplus already follows in `eat`.
+ * two apart is what a meal is. What a meal should feel like: filled well
+ * past the hunger line at 1800, short of a stomach stuffed to the 3000 cap
+ * - the reserve someone eating to satisfaction, not to bursting, stops at.
  */
-export const SATIETY_BASE = 2900;
+export const SATIETY_BASE = 2600;
 
 /**
  * Eats when the reserve runs low: the order is least valuable first and fat

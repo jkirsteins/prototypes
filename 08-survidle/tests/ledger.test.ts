@@ -131,11 +131,18 @@ describe("burn in buckets", () => {
   it("an hour asleep in the warm is base and nothing else", () => {
     const { state, world } = newGame(1);
     state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    // A fresh survivor lands at exactly the typical reserve, so the first
+    // minute's base burn reads exactly BASE_KCAL_PER_HOUR/60 - but the
+    // reserve massFactor reads is what that very burn is spending, minute by
+    // minute, so the hour is accumulated at the live reserve each step
+    // actually sees rather than asserted as a flat BASE_KCAL_PER_HOUR.
+    let expectedBase = 0;
+    for (let m = 0; m < 60; m++) {
+      expectedBase += (BASE_KCAL_PER_HOUR * massFactor(state)) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    }
     const b = today(state).burn;
-    // A fresh survivor lands at exactly the typical reserve, so the live base
-    // burn reads exactly BASE_KCAL_PER_HOUR.
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(expectedBase, 6);
     expect(b.activity).toBeCloseTo(0, 6);
     expect(b.walk).toBe(0);
     expect(b.cold).toBe(0);
@@ -149,21 +156,25 @@ describe("burn in buckets", () => {
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k0 = state.player.kcal;
     // Sixty one-minute steps, the way advance() actually calls stepPlayer
-    // (its own dt is at most one minute). Clothing wears while worn outdoors,
-    // so the felt cold nudges down across the hour; the expected cold bucket
-    // is accumulated minute by minute at the felt each step actually used,
-    // not read back once from the state the loop leaves behind.
-    // Heavy work totals base plus the 430 above it; base reads BASE_KCAL_PER_HOUR
-    // exactly, since a fresh survivor lands at the typical reserve.
-    const heavyBurn = BASE_KCAL_PER_HOUR * massFactor(state) + 430;
+    // (its own dt is at most one minute). Clothing wears while worn outdoors
+    // and the reserve massFactor reads is spent minute by minute, so both
+    // the felt cold and the base burn it scales nudge down across the hour;
+    // the expected base and cold buckets are accumulated minute by minute at
+    // the live reserve and felt each step actually used, not read back once
+    // from the state the loop leaves behind. The 430 above base is a fixed
+    // rate off the person's build, not the reserve, so it alone stays flat.
+    let expectedBase = 0;
     let expectedCold = 0;
     for (let m = 0; m < 60; m++) {
+      const base = BASE_KCAL_PER_HOUR * massFactor(state);
+      const heavyBurn = base + 430;
       const felt = feltTemperature(state, world, -30);
+      expectedBase += base / 60;
       expectedCold += (heavyBurn * (coldBurnFactor(felt) - 1)) / 60;
       stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(expectedBase, 6);
     // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
     expect(b.activity).toBeCloseTo(430, 6);
     expect(b.walk).toBe(0);
@@ -194,35 +205,42 @@ describe("burn in buckets", () => {
     state.task = null;
     // Sixty one-minute steps, for the same reason as the heavy-work case
     // above: the felt cold drifts across the hour as outdoor clothing wears,
-    // so the expected cold and sick buckets are accumulated minute by minute
-    // at the felt each step actually used.
-    // Rest totals base plus the 30 above it; base reads BASE_KCAL_PER_HOUR
-    // exactly, since a fresh survivor lands at the typical reserve.
-    const restBurn = BASE_KCAL_PER_HOUR * massFactor(state) + 30;
+    // and the reserve massFactor reads is spent minute by minute, so the
+    // expected base, cold and sick buckets are all accumulated minute by
+    // minute at the live reserve and felt each step actually used. The 30
+    // above base is a fixed rate off the person's build, so it stays flat.
+    let expectedBase = 0;
     let expectedCold = 0;
     let expectedSick = 0;
     for (let m = 0; m < 60; m++) {
+      const base = BASE_KCAL_PER_HOUR * massFactor(state);
+      const restBurn = base + 30;
       const felt = feltTemperature(state, world, -30);
       const factor = coldBurnFactor(felt);
+      expectedBase += base / 60;
       expectedCold += (restBurn * (factor - 1)) / 60;
       expectedSick += (restBurn * factor * 0.2) / 60;
       stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(expectedBase, 6);
     expect(b.activity).toBeCloseTo(30, 6);
     // The cold burn grows with the felt cold rather than sitting at a flat factor.
     expect(b.cold).toBeCloseTo(expectedCold, 6);
     expect(b.sick).toBeCloseTo(expectedSick, 6);
   });
 
-  it("over two hours of the real loop the buckets sum to what the stomach and the fat lost", () => {
+  it("over two hours of the real loop the buckets sum to what the fat reserve lost, net of what was eaten", () => {
     const { state, world } = newGame(17);
-    const k0 = state.player.kcal + state.player.fat;
+    const fat0 = state.player.fat;
     advance(state, world, 120);
     const d = today(state);
     const burned = d.burn.base + d.burn.activity + d.burn.walk + d.burn.cold + d.burn.sick;
-    expect(burned).toBeCloseTo(k0 - (state.player.kcal + state.player.fat) + d.eaten, 3);
+    // The stomach's fullness is a separate, clamped book now; fat is the one
+    // that answers to the ledger with no clamp in the way, falling by every
+    // burned kcal and rising by every eaten one, so it is what the buckets
+    // and the day's eaten total have to reconcile against exactly.
+    expect(burned).toBeCloseTo(fat0 - state.player.fat + d.eaten, 3);
   });
 
   it("an idle hour is neither sleep nor work", () => {
