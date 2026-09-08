@@ -79,7 +79,7 @@ const MEDIAN_TOTAL_KG: Record<Sex, number> = { m: MEDIAN_MASS_KG, f: 62 };
  * thing here taken from physiology as a shape rather than a value.
  */
 const FAT_SHARES: Record<Sex, { floor: number; lower: number; typical: number; upper: number }> = {
-  m: { floor: 0.04, lower: 0.08, typical: 0.14, upper: 0.2 },
+  m: { floor: 0.04, lower: 0.1, typical: 0.16, upper: 0.22 },
   f: { floor: 0.11, lower: 0.15, typical: 0.24, upper: 0.33 },
 };
 
