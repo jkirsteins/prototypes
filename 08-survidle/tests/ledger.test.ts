@@ -7,6 +7,7 @@ import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
+import { fatLandmarks, massFactor, medianPerson } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR, coldBurnFactor, feltTemperature, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
@@ -14,6 +15,7 @@ import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { beginTask } from "../src/sim/tasks";
 import { cellAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("the day number", () => {
   it("is 1 at the start, 2 from midnight of the first night", () => {
@@ -129,10 +131,20 @@ function forestCell(g: ReturnType<typeof newGame>): number {
 describe("burn in buckets", () => {
   it("an hour asleep in the warm is base and nothing else", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    // A fresh survivor lands at exactly the typical reserve, so the first
+    // minute's base burn reads exactly BASE_KCAL_PER_HOUR/60 - but the
+    // reserve massFactor reads is what that very burn is spending, minute by
+    // minute, so the hour is accumulated at the live reserve each step
+    // actually sees rather than asserted as a flat BASE_KCAL_PER_HOUR.
+    let expectedBase = 0;
+    for (let m = 0; m < 60; m++) {
+      expectedBase += (BASE_KCAL_PER_HOUR * massFactor(state)) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(BASE_KCAL_PER_HOUR, 6);
+    expect(b.base).toBeCloseTo(expectedBase, 6);
     expect(b.activity).toBeCloseTo(0, 6);
     expect(b.walk).toBe(0);
     expect(b.cold).toBe(0);
@@ -143,21 +155,29 @@ describe("burn in buckets", () => {
 
   it("an hour of heavy work at minus thirty is base, the rate above base, and the cold share of both", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k0 = state.player.kcal;
     // Sixty one-minute steps, the way advance() actually calls stepPlayer
-    // (its own dt is at most one minute). Clothing wears while worn outdoors,
-    // so the felt cold nudges down across the hour; the expected cold bucket
-    // is accumulated minute by minute at the felt each step actually used,
-    // not read back once from the state the loop leaves behind.
+    // (its own dt is at most one minute). Clothing wears while worn outdoors
+    // and the reserve massFactor reads is spent minute by minute, so both
+    // the felt cold and the base burn it scales nudge down across the hour;
+    // the expected base and cold buckets are accumulated minute by minute at
+    // the live reserve and felt each step actually used, not read back once
+    // from the state the loop leaves behind. The 430 above base is a fixed
+    // rate off the person's build, not the reserve, so it alone stays flat.
+    let expectedBase = 0;
     let expectedCold = 0;
     for (let m = 0; m < 60; m++) {
+      const base = BASE_KCAL_PER_HOUR * massFactor(state);
+      const heavyBurn = base + 430;
       const felt = feltTemperature(state, world, -30);
-      expectedCold += (500 * (coldBurnFactor(felt) - 1)) / 60;
+      expectedBase += base / 60;
+      expectedCold += (heavyBurn * (coldBurnFactor(felt) - 1)) / 60;
       stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(expectedBase, 6);
     // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
     expect(b.activity).toBeCloseTo(430, 6);
     expect(b.walk).toBe(0);
@@ -169,55 +189,84 @@ describe("burn in buckets", () => {
   });
 
   it("a walk puts everything above base in the walk bucket, and deep snow doubles it", () => {
-    const g = newGame(17);
+    // Pinned at the reference build's typical reserve, so the only mass
+    // drift through the hour is the fat this walk itself burns, not a
+    // confound from this survivor's own build. That drift is real - an
+    // hour of walking spends some of the reserve it is scaled against - so
+    // the expected bucket is accumulated minute by minute at the live
+    // massFactor, the same reserve stepPlayer reads each step.
+    const g = newGame(17, undefined, medianPerson("m"));
+    siteCamp(g.state, g.world);
     const { state, world } = g;
+    state.player.fat = fatLandmarks(medianPerson("m")).typical;
     placeAt(state, world, forestCell(g));
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    let expectedDry = 0;
+    for (let m = 0; m < 60; m++) {
+      expectedDry += (WALK_KCAL_PER_HOUR * massFactor(state) - BASE_KCAL_PER_HOUR) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    }
     const dry = today(state).burn.walk;
-    expect(dry).toBeCloseTo(WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
+    expect(dry).toBeCloseTo(expectedDry, 6);
     expect(today(state).burn.activity).toBe(0);
     state.weather.snowCm = 40;
-    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    expect(today(state).burn.walk - dry).toBeCloseTo(2 * WALK_KCAL_PER_HOUR - BASE_KCAL_PER_HOUR, 6);
+    let expectedWet = 0;
+    for (let m = 0; m < 60; m++) {
+      expectedWet += (2 * WALK_KCAL_PER_HOUR * massFactor(state) - BASE_KCAL_PER_HOUR) / 60;
+      stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    }
+    expect(today(state).burn.walk - dry).toBeCloseTo(expectedWet, 6);
   });
 
   it("sickness adds its own bucket on top of the cold one", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.player.sick = 600;
     state.task = null;
     // Sixty one-minute steps, for the same reason as the heavy-work case
     // above: the felt cold drifts across the hour as outdoor clothing wears,
-    // so the expected cold and sick buckets are accumulated minute by minute
-    // at the felt each step actually used.
+    // and the reserve massFactor reads is spent minute by minute, so the
+    // expected base, cold and sick buckets are all accumulated minute by
+    // minute at the live reserve and felt each step actually used. The 30
+    // above base is a fixed rate off the person's build, so it stays flat.
+    let expectedBase = 0;
     let expectedCold = 0;
     let expectedSick = 0;
     for (let m = 0; m < 60; m++) {
+      const base = BASE_KCAL_PER_HOUR * massFactor(state);
+      const restBurn = base + 30;
       const felt = feltTemperature(state, world, -30);
       const factor = coldBurnFactor(felt);
-      expectedCold += (100 * (factor - 1)) / 60;
-      expectedSick += (100 * factor * 0.2) / 60;
+      expectedBase += base / 60;
+      expectedCold += (restBurn * (factor - 1)) / 60;
+      expectedSick += (restBurn * factor * 0.2) / 60;
       stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(expectedBase, 6);
     expect(b.activity).toBeCloseTo(30, 6);
     // The cold burn grows with the felt cold rather than sitting at a flat factor.
     expect(b.cold).toBeCloseTo(expectedCold, 6);
     expect(b.sick).toBeCloseTo(expectedSick, 6);
   });
 
-  it("over two hours of the real loop the buckets sum to what the stomach and the fat lost", () => {
+  it("over two hours of the real loop the buckets sum to what the fat reserve lost, net of what was eaten", () => {
     const { state, world } = newGame(17);
-    const k0 = state.player.kcal + state.player.fat;
+    siteCamp(state, world);
+    const fat0 = state.player.fat;
     advance(state, world, 120);
     const d = today(state);
     const burned = d.burn.base + d.burn.activity + d.burn.walk + d.burn.cold + d.burn.sick;
-    expect(burned).toBeCloseTo(k0 - (state.player.kcal + state.player.fat) + d.eaten, 3);
+    // The stomach's fullness is a separate, clamped book now; fat is the one
+    // that answers to the ledger with no clamp in the way, falling by every
+    // burned kcal and rising by every eaten one, so it is what the buckets
+    // and the day's eaten total have to reconcile against exactly.
+    expect(burned).toBeCloseTo(fat0 - state.player.fat + d.eaten, 3);
   });
 
   it("an idle hour is neither sleep nor work", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = null;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).sleepMin).toBe(0);
@@ -231,6 +280,7 @@ describe("burn in buckets", () => {
 describe("yield and intake", () => {
   it("the arrival kit is a kilo of dried meat, credited on day 1; the kitted camp adds five more", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     expect(state.ledger[0].yield.kit).toBe(FOODS.driedMeat.kcalPerKg);
     kitOut(state, world);
     expect(state.ledger[0].yield.kit).toBe(6 * FOODS.driedMeat.kcalPerKg);
@@ -238,6 +288,7 @@ describe("yield and intake", () => {
 
   it("eating credits the kcal the stomach and the fat received", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     addItem(state.player.pack, "driedMeat", 1);
     eat(state, world, "driedMeat", new Rng(1));
     expect(today(state).eaten).toBeCloseTo(0.15 * FOODS.driedMeat.kcalPerKg, 6);
@@ -245,6 +296,7 @@ describe("yield and intake", () => {
 
   it("a berry pick credits the kilos picked at the berry's kcal", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     // 120 days on from 1 April is the end of July, in season.
     state.minute = 120 * 1440;
     const cal = calendar(state.minute);
@@ -259,8 +311,9 @@ describe("yield and intake", () => {
 
   it("a day whose lean intake hit the ceiling with lean food at camp and nothing else eaten is a lean-wall day", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "cookedMeat", 10);
+    addItem(pile(state, st.campCell!), "cookedMeat", 10);
     state.player.kcal = 100;
     const rng = new Rng(1);
     let n = 0;

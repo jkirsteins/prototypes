@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { ARROWS_TO_CARRY, minutesToCamp, SLEEP_AT } from "../src/sim/body";
+import { ARROWS_TO_CARRY, currentNeed, minutesToCamp, SLEEP_AT } from "../src/sim/body";
 import { alertness, minutesToWake, RESTED_AT, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT } from "../src/sim/sleep";
 import { calendar, minutesUntilDawn, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { bankFire } from "../src/sim/fire";
@@ -9,23 +9,20 @@ import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { KCAL_FULL } from "../src/sim/items";
 import { mapRegion } from "../src/sim/mapped";
+import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState, siteFor } from "../src/sim/regionstate";
+import { addOrder, ordersHere } from "../src/sim/orders";
 import { check } from "../src/sim/tasks";
-import type { RunnerIntent } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG } from "../src/units";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
-/** The live intent, which these traces expect to be the runner's own. */
-function runner(state: G["state"]): RunnerIntent {
-  if (state.intent?.mode !== "runner") throw new Error("the live intent is not the runner's");
-  return state.intent;
-}
 const rng = () => new Rng(1);
 function until(g: G, pred: () => boolean, max = 3000): boolean {
   for (let i = 0; i < max; i++) {
@@ -34,17 +31,25 @@ function until(g: G, pred: () => boolean, max = 3000): boolean {
   }
   return pred();
 }
-/** A forever felling from camp, with the camp cell to hand. Seed 39: meadow camp, forest 0.6 km away. */
+/**
+ * A forever felling from camp, with the camp cell to hand. Seed 39: meadow
+ * camp, forest 0.6 km away. The felling is a row on the list, under the
+ * body's own row, which is where standing work lives: the runner works
+ * what the list gives it, and a body that wants something outranks a row
+ * ranked below it and takes the minute back.
+ */
 function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
   const g = newGame(seed);
+  siteCamp(g.state, g.world);
   const { state, world } = g;
-  const camp = regionState(state, world, state.player.region).campCell;
+  const camp = regionState(state, world, state.player.region).campCell!;
   addItem(state.player.pack, "driedMeat", 2);
-  startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" });
+  addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" }, "grind");
+  advance(state, world, 1);
   return { g, state, world, camp };
 }
 
-describe("the body tier", () => {
+describe("the body's row against the work", () => {
   it("collapsing, it sets the tree aside, walks to camp and dozes there until it is rested", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -53,7 +58,7 @@ describe("the body tier", () => {
     advance(state, world, 1);
     expect(state.task?.id).toBe("walk");
     expect(state.intent?.step).toBe("walking to camp to doze");
-    expect(state.intent?.need).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("sleep");
     expect(Object.keys(state.paused)).toHaveLength(1);
     expect(until(g, () => state.task?.id === "sleep")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
@@ -61,7 +66,7 @@ describe("the body tier", () => {
     // in the dark reads as sleeping.
     expect(state.intent?.step).toBe("dozing by the fire");
     expect(until(g, () => state.task?.id !== "sleep", 700)).toBe(true);
-    expect(state.intent?.need).toBeNull();
+    expect(state.player.bodyNeed).toBeNull();
     // It lay there until the fatigue an evening by the fire would have restored.
     expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT);
     // Back to the tree it left, and on with the same intent.
@@ -78,14 +83,14 @@ describe("the body tier", () => {
     state.player.energy = 100;
     state.player.sleepDebt = SLEEP_ONSET + 1 + alertness(hour);
     advance(state, g.world, 1);
-    expect(state.intent?.need).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("sleep");
     const other = felling();
     expect(until(other.g, () => other.state.task?.id === "chop")).toBe(true);
     other.state.minute = 13 * 60;
     other.state.player.energy = 40;
     other.state.player.sleepDebt = SLEEP_ONSET - 5 + alertness(hour);
     advance(other.state, other.world, 1);
-    expect(other.state.intent?.need).toBeNull();
+    expect(other.state.player.bodyNeed).toBeNull();
     expect(other.state.task?.id).toBe("chop");
   });
 
@@ -127,29 +132,47 @@ describe("the body tier", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("cold");
+    expect(state.player.bodyNeed).toBe("cold");
     expect(state.intent?.step).toBe("walking to camp to warm up");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
     // The fire actually raises warmth: the rest runs to completion and gains real ground, so it is not "spent".
     expect(until(g, () => state.task?.id !== "rest", 200)).toBe(true);
     expect(state.player.warmth).toBeGreaterThan(45);
-    expect(runner(state).coldSpent).toBeFalsy();
+    expect(state.player.coldSpent).toBeFalsy();
     // Cold again: the need re-enters normally, not stuck spent from the rest that worked.
     state.player.warmth = 29;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("cold");
+    expect(state.player.bodyNeed).toBe("cold");
     // Between the entry and the exit the need still holds; at the exit it lets go.
     state.player.warmth = 40;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("cold");
+    expect(state.player.bodyNeed).toBe("cold");
     state.player.warmth = 80;
     advance(state, world, 1);
-    expect(state.intent?.need).toBeNull();
+    expect(state.player.bodyNeed).toBeNull();
     state.player.warmth = 20;
     state.player.energy = 15;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("sleep");
+  });
+
+  it("a cold need holds until warm, across a fresh intent", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    const p = state.player;
+    p.warmth = 20;
+    const first = currentNeed(state, world, cal);
+    expect(first).toBe("cold");
+    // The intent the need was read under is gone; the stickiness is the body's.
+    state.intent = null;
+    p.warmth = 40; // above COLD_UNDER, below WARM_AT
+    expect(currentNeed(state, world, cal)).toBe("cold");
+    p.warmth = 50;
+    expect(currentNeed(state, world, cal)).not.toBe("cold");
   });
 
   it("cold with a bare camp (no pit, no drill, no shelter) keeps working: the camp cannot warm anyone", () => {
@@ -157,57 +180,60 @@ describe("the body tier", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
-    expect(state.intent?.need).toBeNull();
+    expect(state.player.bodyNeed).toBeNull();
     expect(state.task?.id).toBe("chop");
   });
 
   it("cold with a lean-to at camp and no fire still goes to camp: shelter alone counts", () => {
     const { g, state, world } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.leanTo = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("cold");
+    expect(state.player.bodyNeed).toBe("cold");
     expect(state.intent?.step).toBe("walking to camp to warm up");
   });
 
   it("cold with a lean-to and no fire in deep cold: a rest that cannot help gives the need up", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.leanTo = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
     // Far below any target the shelter alone can reach, so the rest that follows cannot gain a point.
     state.weather.offset = -25;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("cold");
+    expect(state.player.bodyNeed).toBe("cold");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
     expect(until(g, () => state.task?.id !== "rest", 200)).toBe(true);
-    expect(state.intent?.need).toBeNull();
-    expect(runner(state).coldSpent).toBe(true);
+    expect(state.player.bodyNeed).toBeNull();
+    expect(state.player.coldSpent).toBe(true);
     // Spent, not stuck: the chop resumes rather than resting forever for nothing.
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     // Warm again some other way (not by resting here): coldSpent lets go once warmth clears WARM_AT.
     state.player.warmth = 80;
     advance(state, world, 1);
-    expect(runner(state).coldSpent).toBe(false);
+    expect(state.player.coldSpent).toBe(false);
     state.player.warmth = 29;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("cold");
+    expect(state.player.bodyNeed).toBe("cold");
   });
 
   it("hungry, it eats from the pack and keeps working; with food only at camp it goes there", () => {
     const { g, state, world, camp } = felling();
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
-    state.player.autoEat = false;
     state.player.kcal = 1700;
     advance(state, world, 1);
     expect(state.player.kcal).toBeGreaterThan(1700);
     expect(state.task?.id).toBe("chop");
     state.player.pack.items.driedMeat = 0;
     addItem(pile(state, camp), "driedMeat", 1);
+    // Fully lean, and the first meal above already spent most of today's lean
+    // ceiling filling to the satiety target; a little fat alongside it is what
+    // carries the body past the wall dried meat alone now hits before the line.
+    addItem(pile(state, camp), "fat", 0.5);
     state.player.kcal = 1700;
     advance(state, world, 1);
     expect(state.intent?.step).toBe("walking to camp to eat");
@@ -219,8 +245,9 @@ describe("the body tier", () => {
     // Seed 3's camp sits on forest, so a "sticks" intent never leaves camp and provision()
     // (fired from walkTo) never runs. Seed 39's camp is meadow; the forest is 0.6 km off.
     const g = newGame(39);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     state.player.pack.items.driedMeat = 0;
     addItem(pile(state, camp), "driedMeat", 5);
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
@@ -236,8 +263,9 @@ describe("the body tier", () => {
   // out at the shore - was never once served on any gate seed.
   it("the quiver is filled whenever the bow leaves camp, whatever the errand", () => {
     const g = newGame(39);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     state.player.tools.push({ id: "bow", durability: 100, litres: 0 });
     addItem(pile(state, camp), "arrow", 12);
     expect(qty(state.player.pack, "arrow")).toBe(0);
@@ -248,8 +276,9 @@ describe("the body tier", () => {
 
   it("no bow, no arrows: an unarmed survivor leaves the quiver where it is", () => {
     const g = newGame(39);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     addItem(pile(state, camp), "arrow", 12);
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(qty(state.player.pack, "arrow")).toBe(0);
@@ -263,11 +292,12 @@ describe("the body tier", () => {
     // The waterside cell also needs a real route to the forest spot: not every
     // waterside cell in a region connects to it.
     const g = newGame(42);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
     const r = regionAt(world, state.player.region);
     const forestCell = r.spots.find((s) => s.id === "forest")!.cell;
-    const waterside = r.cells.find((c) => c !== st.campCell && watersideCell(world, c) && findRoute(world, c, forestCell))!;
+    const waterside = r.cells.find((c) => c !== st.campCell! && watersideCell(world, c) && findRoute(world, c, forestCell))!;
     st.campCell = waterside;
     placeAt(state, world, waterside);
     mapRegion(state, world, state.player.region);
@@ -284,9 +314,13 @@ describe("the body tier", () => {
     const { state, world, camp } = felling(10);
     const seen = new Map<string, number>();
     let sawThirsty = false;
+    let sleptAtCamp = false;
+    let choppedAfterTheNight = 0;
     for (let m = 0; m < 1440 * 1.5; m++) {
       advance(state, world, 1);
-      if (state.intent?.need === "thirsty") sawThirsty = true;
+      if (state.player.bodyNeed === "thirsty") sawThirsty = true;
+      if (state.task?.id === "sleep" && cellOf(state, world) === camp) sleptAtCamp = true;
+      if (sleptAtCamp && state.task?.id === "chop") choppedAfterTheNight++;
       const k = `${state.task?.id ?? "idle"}@${cellOf(state, world) === camp ? "camp" : "away"}`;
       seen.set(k, (seen.get(k) ?? 0) + 1);
     }
@@ -296,7 +330,12 @@ describe("the body tier", () => {
     // The camp is a shore cell and may itself be forest, so the felling is counted wherever it happens.
     const chopMin = (seen.get("chop@away") ?? 0) + (seen.get("chop@camp") ?? 0);
     expect(chopMin).toBeGreaterThan(300);
-    expect(state.intent?.task).toBe("chop");
+    // The work goes on at dawn: a felling the body took the night off from is
+    // picked up again the next morning, in quantity, which is the half of
+    // this trace that a body row holding the minute could quietly break. The
+    // row it is picked up from is still on the list at the end.
+    expect(choppedAfterTheNight).toBeGreaterThan(120);
+    expect(ordersHere(state, world).some((o) => o.req.task === "chop")).toBe(true);
     expect(sawThirsty).toBe(true);
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the
     // minute a tree comes down is counted by train and not by the trace: one minute per tree of slack.
@@ -309,7 +348,7 @@ describe("the body tier", () => {
     // for the rest of this longer, heavier-laden trace.
     const { state, world, camp } = felling(10, "camp");
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     addItem(pile(state, camp), "firewood", 40);
@@ -319,7 +358,7 @@ describe("the body tier", () => {
     let lastCampLogs = qty(pile(state, camp), "log");
     for (let m = 0; m < 1440 * 1.5; m++) {
       advance(state, world, 1);
-      if (state.intent?.need === "thirsty") sawThirsty = true;
+      if (state.player.bodyNeed === "thirsty") sawThirsty = true;
       const campLogs = qty(pile(state, camp), "log");
       // Whenever the camp pile just grew, the load that grew it should already be off the back.
       if (campLogs > lastCampLogs && qty(state.player.pack, "log") === 0) clearedAfterDelivery = true;
@@ -333,22 +372,25 @@ describe("the body tier", () => {
     expect(sawThirsty).toBe(true);
   });
 
-  it("a once cabin build is the player's: the night does not claim it, and a build set aside by hand is picked up with its minutes kept", () => {
+  it("a once cabin build ranked over the body is the player's: the night does not claim it, and a build set aside by hand is picked up with its minutes kept", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
-    const camp = regionState(state, world, state.player.region).campCell;
+    const camp = regionState(state, world, state.player.region).campCell!;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     addItem(pile(state, camp), "log", 40);
     addItem(pile(state, camp), "stone", 12);
     addItem(pile(state, camp), "cordage", 8);
     addItem(state.player.pack, "driedMeat", 2);
     state.player.energy = 40;
-    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
-    expect(state.task?.id).toBe("build");
-    // Past the spent line the build goes on: work chosen by hand has no body
-    // tier, and nothing thirsty, cold or dark takes the slot back from it. The
-    // body giving out is the one thing that does, and then it sleeps on the spot.
+    const cabin = { task: "build" as const, arg: "cabin", until: { kind: "once" as const }, deliver: "leave" as const, where: "nearest" as const };
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
+    expect(until(g, () => state.task?.id === "build", 10)).toBe(true);
+    // Past the spent line the build goes on: it is ranked over the body's own
+    // row, and a body that has to wait its turn takes nothing back from the
+    // work. The body giving out is the one thing that does not wait to be
+    // ranked, and then it sleeps on the spot.
     let pastSpent = false;
     for (let m = 0; m < 3000 && state.intent?.mode === "hand"; m++) {
       advance(state, world, 1);
@@ -361,13 +403,14 @@ describe("the body tier", () => {
     expect(state.task?.id).toBe("sleep");
     expect(state.player.sleeping?.collapsed).toBe(true);
     // Awake again, the player picks the build back up where the collapse left it.
-    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
-    startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
-    const banked = st.build.cabin ?? 0;
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
+    advance(state, world, 1);
+    const banked = campSite(st)?.build.cabin ?? 0;
     expect(banked).toBeGreaterThan(10);
     expect(until(g, () => state.intent?.task !== "sticks", 1500)).toBe(true);
-    startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
     expect(until(g, () => state.task?.id === "build", 200)).toBe(true);
     expect(state.task!.duration).toBeCloseTo(3600 - banked, 0);
   });
@@ -378,10 +421,11 @@ describe("the runner in the elements", () => {
     // Seed 10: the camp is a shore cell, so the felling is sent to the forest spot,
     // 0.9 km off the water, and both fallbacks in this test actually walk somewhere.
     const g = newGame(10);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     mapRegion(state, world, state.player.region);
     addItem(state.player.pack, "driedMeat", 2);
-    startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" });
+    addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "leave", where: "forest" }, "grind");
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.water = 0.8;
     state.player.tools.push({ id: "barkBucket", durability: 100, litres: 2 });
@@ -391,7 +435,7 @@ describe("the runner in the elements", () => {
     state.player.tools = state.player.tools.filter((t) => t.id !== "barkBucket");
     state.player.water = 0.8;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("thirsty");
+    expect(state.player.bodyNeed).toBe("thirsty");
     // The nearest waterside cell to where the chop left off, not necessarily the named shore spot.
     expect(state.intent?.step).toMatch(/^walking to .+ for water$/);
     // Drink fills to WATER_FULL, but the same minute's own loss still applies after it,
@@ -404,7 +448,7 @@ describe("the runner in the elements", () => {
     state.weather.iceCm = 4;
     state.weather.snowCm = 5;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -423,15 +467,15 @@ describe("the runner in the elements", () => {
   it("a storm sends it home, keeps the fire fed, and it waits under the roof until the storm passes", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
-    st.structures.leanTo = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
     st.fire.lit = true;
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.weather.storm = { from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("storm");
+    expect(state.player.bodyNeed).toBe("storm");
     expect(state.intent?.step).toBe("walking to camp before the storm");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
@@ -439,7 +483,7 @@ describe("the runner in the elements", () => {
     // nibbles a little off again before this reads it back.
     expect(st.fire.fuelKg).toBeGreaterThanOrEqual(11.9);
     expect(state.intent?.step).toBe("waiting out the storm");
-    expect(until(g, () => state.intent?.need !== "storm", 600)).toBe(true);
+    expect(until(g, () => state.player.bodyNeed !== "storm", 600)).toBe(true);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
   });
 
@@ -480,7 +524,7 @@ describe("the runner in the elements", () => {
     }, 900);
     expect(arrivedAt).toBeGreaterThan(0);
     expect(arrivedAt).toBeLessThanOrEqual(calendar(state.minute).sunset + 0.05);
-    expect(state.intent?.need).toBe("home");
+    expect(state.player.bodyNeed).toBe("home");
   });
 
   it("the home need holds sticky from the minute it first fires until night, without flickering the runner back out to work", () => {
@@ -497,7 +541,7 @@ describe("the runner in the elements", () => {
       advance(state, world, 1);
       const c = calendar(state.minute);
       if (c.isNight) break;
-      if (state.intent?.need === "home") {
+      if (state.player.bodyNeed === "home") {
         homeStarted = true;
         if (cellOf(state, world) === camp) expect(state.intent?.step).toBe("in before dark");
         expect(state.intent?.step).not.toBe("walking to the forest");
@@ -511,19 +555,21 @@ describe("the runner in the elements", () => {
 
   it("banks a big fire before walking off camp", () => {
     const g = newGame(39);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     expect(state.task?.id).toBe("walk");
     expect(st.fire.fuelKg).toBeCloseTo(6, 6);
-    expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(24, 6);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBeCloseTo(24, 6);
   });
 
   it("splits a banked mixed pile's surplus back in the ratio it was held", () => {
     const g = newGame(39);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = state.player.region;
     const st = regionState(state, world, region);
@@ -534,21 +580,21 @@ describe("the runner in the elements", () => {
     expect(banked).toBeCloseTo(24, 6);
     expect(st.fire.fuelKg).toBeCloseTo(4, 6);
     expect(st.fire.wetKg).toBeCloseTo(2, 6);
-    expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(16, 6);
-    expect(qty(pile(state, st.campCell), "wetFirewood")).toBeCloseTo(8, 6);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBeCloseTo(16, 6);
+    expect(qty(pile(state, st.campCell!), "wetFirewood")).toBeCloseTo(8, 6);
   });
 
   it("a storm with no roof still sends the runner to camp to feed the fire and wait it out", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.weather.storm = { from: state.minute + 60, until: state.minute + 60 + 4 * 60, warned: false };
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("storm");
+    expect(state.player.bodyNeed).toBe("storm");
     expect(until(g, () => state.task?.id === "rest")).toBe(true);
     expect(cellOf(state, world)).toBe(camp);
     // Fed the same as with a roof: no-roof only changes cold's shelter check, not storm's.
@@ -571,12 +617,13 @@ describe("the runner in the elements", () => {
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
     addItem(state.player.pack, "axe", 1);
     advance(state, world, 1);
-    expect(state.intent?.need).not.toBe("thirsty");
-    expect(state.intent?.need).toBe("home");
+    expect(state.player.bodyNeed).not.toBe("thirsty");
+    expect(state.player.bodyNeed).toBe("home");
   });
 
   it("times a route to camp with the same ice mode it was found under", () => {
     const g = newGame(10);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     // A water cell bridges two land cells in this region; crossing it under safe
     // ice is far shorter than any route around, so that is the route found.
@@ -606,12 +653,12 @@ describe("the runner in the elements", () => {
     state.weather.iceCm = 4;
     state.weather.snowCm = 5;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     state.player.water = 0.8;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("thirsty");
+    expect(state.player.bodyNeed).toBe("thirsty");
     expect(state.intent?.step).toBe("melting snow");
   });
 
@@ -634,7 +681,7 @@ describe("the runner in the elements", () => {
 
     // Thirst: the shore is iced shut at this thickness, so this forces the melt-at-camp fallback.
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     state.weather.snowCm = 5;
@@ -663,6 +710,7 @@ describe("the runner in the elements", () => {
     // at placeSpots' 2% floor for naming a "shore" spot (share <= 0.02 gets none),
     // though it still borders water.
     const g = newGame(2);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const r = regionAt(world, 94);
     expect(hasSpot(r, "shore")).toBe(false);
@@ -675,7 +723,7 @@ describe("the runner in the elements", () => {
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.water = 0.8;
     advance(state, world, 1);
-    expect(state.intent?.need).toBe("thirsty");
+    expect(state.player.bodyNeed).toBe("thirsty");
     expect(state.intent?.step).toMatch(/^walking to .+ for water$/);
   });
 });
@@ -683,6 +731,7 @@ describe("the runner in the elements", () => {
 describe("how long a sleep runs", () => {
   it("a body with a day's debt behind it sleeps the model's hours, with no dawn under them", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     // 13:00 on 1 April, with dawn seventeen hours off: nothing in the sleep's
     // length reads the sun.
     state.minute = 5 * 60;
@@ -698,6 +747,7 @@ describe("how long a sleep runs", () => {
 
   it("a body with its debt paid lies down for the floor's hour and no more", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     // Nothing owing: under an hour nothing is recovered, so an hour is the
     // floor even for a body already past the wake line.
     state.minute = 14 * 60;
@@ -707,6 +757,7 @@ describe("how long a sleep runs", () => {
 
   it("an hour on a task costs seven energy; an hour of camp work four", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const e0 = state.player.energy;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);

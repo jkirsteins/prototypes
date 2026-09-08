@@ -10,7 +10,7 @@ import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { intentOption, startIntent, yieldItem } from "./intent";
 import { log } from "./log";
-import { addOrder, orderSentence, ordersHere } from "./orders";
+import { addOrder, type Landing, orderSentence } from "./orders";
 import { RUNG_LEVEL, RUNG_WORD, type Rung, SKILL_NAMES, skillLevel, skillOf } from "./skills";
 import { plain } from "./voice";
 import type { GameState, IntentRequest, Order, OrderKind, SkillId, TaskId } from "./types";
@@ -53,7 +53,10 @@ export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: Inte
 /** The rungs an order asks for: its kind, and past the keep, each condition it carries. */
 export function rungsNeeded(req: IntentRequest, kind: OrderKind): Rung[] {
   const n = normalizeOrder(req, kind);
-  const out: Rung[] = [n.kind];
+  // normalizeOrder never turns anything into a care kind, nor is it ever
+  // called with one: nothing is ever given as a care row, so a rung list is
+  // never asked of one either.
+  const out: Rung[] = [n.kind as Rung];
   const w = n.req.when;
   if (w?.season || w?.stock || w?.restart !== undefined || n.req.until.kind === "daily") out.push("condition");
   // Both pace words ask for the same rung: "spent by the season's close" is what
@@ -100,30 +103,29 @@ function stripUnearned(state: GameState, req: IntentRequest): IntentRequest {
 }
 
 /** The door the Do panel and the player script use: the gate, then addOrder. */
-export function giveOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: number): Order {
+export function giveOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): Order {
   const gate = orderGate(state, req, kind);
   if (!gate.ok) throw new Error(gate.why);
   return addOrder(state, world, req, kind, rank);
 }
 
 /**
- * An order given by hand at the panel. A standing or counted order joins
- * the bottom of the list and is the runner's to serve. A once order is the
- * player's own choice in the moment: it goes to the top of the list and
- * starts now, whatever the body says and whatever the runner was doing,
- * which is set aside with its minutes kept. A second once given while one
- * of the player's is live queues behind it rather than cutting in.
+ * An order given by hand at the panel. A standing or counted order is a
+ * policy: it joins the bottom of the list and is the runner's to serve. A
+ * once order is the player's own choice in the moment: it goes to the top
+ * of the whole list, above both care rows, and starts now, whatever
+ * the body says and whatever the runner was doing, which is set aside with
+ * its minutes kept. A second click displaces the first, because that is
+ * what clicking a thing means.
  */
 export function orderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, kind: OrderKind): Order {
   if (normalizeOrder(req, kind).req.until.kind !== "once") return giveOrder(state, world, req, kind);
-  const live = state.intent;
-  const liveHand = live?.mode === "hand" && live.orderId !== null ? ordersHere(state, world).findIndex((o) => o.id === live.orderId) : -1;
-  const o = giveOrder(state, world, req, kind, liveHand + 1);
+  const o = giveOrder(state, world, req, kind, "top");
   // A click that starts nothing says so. startIntent refuses when the check at
   // the target cell fails, and its false was thrown away here: the order was
   // left on the list reading "waiting" with nothing anywhere saying the click
   // had not taken, which is a click the player has no reason to think failed.
-  if (liveHand < 0 && !startIntent(state, world, cal, rng, o.req, o.id)) {
+  if (!startIntent(state, world, cal, rng, o.req, o.id)) {
     const why = intentOption(state, world, cal, o.req.task, o.req.arg, o.req.where);
     log(state, `${orderSentence(state, world, cal, o)}: cannot start now${why.ok ? "" : `, ${plain(why.why)}`}. It stays on the list.`, "bad");
   }

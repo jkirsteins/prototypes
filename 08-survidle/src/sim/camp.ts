@@ -4,22 +4,22 @@ import { findRoute, routeMinutes } from "../world/route";
 import type { Presence } from "./advance";
 import { absence, popOf, regionDensity } from "./animals";
 import { calendar, DAILY_HOUR, lastDusk, minutesUntilDawn, type Calendar } from "./calendar";
-import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty, weight } from "./inventory";
+import { addItem, ageStacks, pile, qty, removeItem, tidyPiles, totalQty } from "./inventory";
 import { burnPerHour, dryWood, EMBER_MINUTES, EMBER_RAIN_RATE, fuelTotal, hasEmbers, roofed, stepSmoke } from "./fire";
 import { goalDeed, KEPT_DAYS } from "./goals";
 import {
-  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
-  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURES, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
+  BOUGH_BED_DAYS, DECAYING, EGG_FROM_DOY, EGG_TO_DOY, FIRE_MAX_KG, FOODS, type FoodId, ITEM_NAMES, MEAT_DRY_RATIO, RACK_DRY_MINUTES, RACK_DRY_RAIN_MINUTES,
+  RACK_MAX_KG, SNARE_CATCH_MAX_AGE, SNARE_ODDS_PER_NIGHT, SNOW_MELT_DAYS, STRUCTURE_LIFE_DAYS, TRAP_HOLD_KG, TRAP_ODDS,
 } from "./items";
 import { noteLarder } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
-import { regionState, touchedRegions } from "./regionstate";
+import { campSite, regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, nestsFor, rootStockFor } from "./stocks";
-import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type SeepClass, type Site, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean, walkableIce } from "./weather";
 
@@ -44,16 +44,13 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     st.logsWet = state.weather.precip !== "none" ? 0 : st.logsWet + dt;
 
     if (st.fire.lit) {
-      const roof = roofed(st);
+      const roof = roofed(campSite(st));
       const perMin = burnPerHour(state.weather, ambient, st) / 60;
       const total = fuelTotal(st.fire);
       if (total > 0) {
         const share = st.fire.wetKg / total;
         st.fire.wetKg = Math.max(0, st.fire.wetKg - perMin * dt * share);
         st.fire.fuelKg = Math.max(0, st.fire.fuelKg - perMin * dt * (1 - share));
-      }
-      if (fuelTotal(st.fire) <= FIRE_LOW_KG && atCampHere && state.player.autoFeed) {
-        feedFire(state, world, id, FIRE_MAX_KG - fuelTotal(st.fire));
       }
       const outOfFuel = fuelTotal(st.fire) <= 0;
       const drownedLow = state.weather.precip === "heavy" && ambient > 0 && !roof && fuelTotal(st.fire) < 2;
@@ -76,7 +73,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
     if (!st.fire.lit && st.fire.embers > 0) {
-      const wet = state.weather.precip !== "none" && !roofed(st) ? EMBER_RAIN_RATE : 1;
+      const wet = state.weather.precip !== "none" && !roofed(campSite(st)) ? EMBER_RAIN_RATE : 1;
       st.fire.embers = Math.max(0, st.fire.embers - dt * wet);
       if (st.fire.embers === 0) {
         st.fire.litSince = null;
@@ -124,7 +121,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     if (st.rack.kg > 0) {
       // Dry air dries; rain dries at half the rate, so two dry days become four wet ones.
       st.rack.dried += state.weather.precip === "none" ? dt : dt * (RACK_DRY_MINUTES / RACK_DRY_RAIN_MINUTES);
-      if (st.rack.dried >= RACK_DRY_MINUTES) {
+      if (st.rack.dried >= RACK_DRY_MINUTES && st.campCell !== null) {
         const dried = st.rack.kg / MEAT_DRY_RATIO;
         addItem(pile(state, st.campCell), "driedMeat", dried);
         log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${name()}.`, "good");
@@ -134,7 +131,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
     // A bucket of ice by a fed fire thaws itself; nobody has to tend it.
-    if (st.fire.lit && st.fire.fuelKg > 0) {
+    if (st.fire.lit && st.fire.fuelKg > 0 && st.campCell !== null) {
       const campPile = state.piles[st.campCell];
       const ice = campPile ? qty(campPile, "ice") : 0;
       if (campPile && ice > 1e-9) {
@@ -175,7 +172,7 @@ export function feedFire(state: GameState, world: World, region: number, wantKg:
   const st = regionState(state, world, region);
   const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - fuelTotal(st.fire)));
   let added = 0;
-  const invs = [state.player.pack, pile(state, st.campCell)];
+  const invs = st.campCell === null ? [state.player.pack] : [state.player.pack, pile(state, st.campCell)];
   for (const inv of invs) {
     if (added >= room - 1e-9) break;
     const took = removeItem(inv, "firewood", room - added);
@@ -194,12 +191,13 @@ export function feedFire(state: GameState, world: World, region: number, wantKg:
 
 /** Dry firewood only: what wet wood in reach cannot count toward a fresh light. */
 export function firewoodAt(state: GameState, world: World, region: number): number {
-  return qty(state.player.pack, "firewood") + qty(pile(state, regionState(state, world, region).campCell), "firewood");
+  const camp = regionState(state, world, region).campCell;
+  return qty(state.player.pack, "firewood") + (camp === null ? 0 : qty(pile(state, camp), "firewood"));
 }
 
 /** Raw meat the camp's racks hold together. */
-export function rackCapacity(st: RegionState): number {
-  return RACK_MAX_KG * Math.max(1, st.racks);
+export function rackCapacity(site: Site | null): number {
+  return RACK_MAX_KG * Math.max(1, site?.racks ?? 0);
 }
 
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
@@ -228,7 +226,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     const r = regionAt(world, id);
     const st = state.regions[id];
     if (who && id === who.region) {
-      const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty([state.player.pack, pile(state, st.campCell)], f) > 1e-9);
+      const campInvs = st.campCell === null ? [state.player.pack] : [state.player.pack, pile(state, st.campCell)];
+      const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty(campInvs, f) > 1e-9);
       noteLarder(state, leanAtCamp);
     }
     if (st.snareCatch.count > 0) {
@@ -239,9 +238,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         st.snareCatch.age = 0;
       }
     }
-    if (st.structures.snares > 0) {
+    if (st.snares > 0) {
       const d = regionDensity(state, world, id, "hare", cal);
-      for (let i = 0; i < st.structures.snares; i++) {
+      for (let i = 0; i < st.snares; i++) {
         if (popOf(st, "hare") >= 1 && rng.chance(SNARE_ODDS_PER_NIGHT * d)) {
           st.pop.hare = popOf(st, "hare") - 1;
           st.snareCatch.count += 1;
@@ -279,32 +278,39 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         }
       }
     }
-    if (st.structures.boughBed) {
-      st.boughBedAge += 1440;
-      if (st.boughBedAge >= BOUGH_BED_DAYS * 1440) {
-        st.structures.boughBed = false;
-        st.boughBedAge = 0;
-        log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
+    // Nothing decays where nothing stands: every check below is on a structure that
+    // must already be true, which cannot hold at a cell with no site raised on it.
+    for (const [cell, site] of Object.entries(st.sites)) {
+      if (site.structures.boughBed) {
+        site.boughBedAge += 1440;
+        if (site.boughBedAge >= BOUGH_BED_DAYS * 1440) {
+          site.structures.boughBed = false;
+          site.boughBedAge = 0;
+          log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
+        }
       }
-    }
-    if (st.structures.snowShelter) {
-      const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
-      st.meltDays = mean > 0 ? st.meltDays + 1 : 0;
-      if (st.meltDays >= SNOW_MELT_DAYS) {
-        st.structures.snowShelter = false;
-        st.meltDays = 0;
-        log(state, `The snow shelter at ${r.name} has slumped.`, "bad");
+      if (site.structures.snowShelter) {
+        const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
+        site.meltDays = mean > 0 ? site.meltDays + 1 : 0;
+        if (site.meltDays >= SNOW_MELT_DAYS) {
+          site.structures.snowShelter = false;
+          site.meltDays = 0;
+          log(state, `The snow shelter at ${r.name} has slumped.`, "bad");
+        }
       }
-    }
-    for (const sid of DECAYING) {
-      if (!st.structures[sid]) continue;
-      st.structureAge[sid] = (st.structureAge[sid] ?? 0) + 1440;
-      if (st.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
-      st.structures[sid] = false;
-      delete st.structureAge[sid];
-      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; st.racks = 0; }
-      if (sid === "turfHut") st.fire.indoors = false;
-      log(state, FALLS[sid](r.name), "bad");
+      for (const sid of DECAYING) {
+        if (!site.structures[sid]) continue;
+        site.structureAge[sid] = (site.structureAge[sid] ?? 0) + 1440;
+        if (site.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
+        site.structures[sid] = false;
+        delete site.structureAge[sid];
+        if (sid === "dryingRack") {
+          if (Number(cell) === st.campCell) { st.rack.kg = 0; st.rack.dried = 0; }
+          site.racks = 0;
+        }
+        if (sid === "turfHut" && Number(cell) === st.campCell) st.fire.indoors = false;
+        log(state, FALLS[sid](r.name), "bad");
+      }
     }
     if (st.iceHole) {
       st.iceHole = null;
@@ -319,40 +325,39 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
 }
 
 /** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
-export function needsMending(st: RegionState, id: DecayingId): boolean {
-  return st.structures[id] && (st.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
+export function needsMending(site: Site | null, id: DecayingId): boolean {
+  return site !== null && site.structures[id] && (site.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
 }
 
 /**
- * The word canMoveCamp names for each structure flag that can hold a camp in place, in the order
- * RegionState.structures declares them, snares excepted since they stand on the heath, not the camp cell.
- * Names come from STRUCTURES where a structure is built there; a hearth has no build entry of its own.
+ * What a camp leaves when the survivor moves on. Nothing travels: the fuel comes off
+ * the fire and the meat off the rack into the pile at the cell they stood on, and the
+ * survivor may walk back for them. The fire itself does not survive the move either -
+ * it dies exactly as it would running out of fuel, coals and all, so a camp left
+ * behind and a camp burnt out come to the same state.
  */
-const STRUCTURE_WORD: Partial<Record<keyof RegionState["structures"], string>> = {
-  firePit: STRUCTURES.firePit.name,
-  leanTo: STRUCTURES.leanTo.name,
-  cabin: STRUCTURES.cabin.name,
-  dryingRack: STRUCTURES.dryingRack.name,
-  boughBed: STRUCTURES.boughBed.name,
-  hearth: "hearth",
-  turfHut: STRUCTURES.turfHut.name,
-  waterStore: STRUCTURES.waterStore.name,
-  snowShelter: STRUCTURES.snowShelter.name,
-};
-
-/** Whether the camp may be moved: nothing built at it, no fire banked, nothing lying in its pile. */
-export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok: false; why: string } {
+export function leaveCamp(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
-  for (const [key, word] of Object.entries(STRUCTURE_WORD)) {
-    if (st.structures[key as keyof typeof st.structures]) return { ok: false, why: `the ${word} stands there` };
-  }
-  if (st.fire.lit || fuelTotal(st.fire) > 0) return { ok: false, why: "the fire is banked there" };
-  // Read only: pile() would insert an empty inventory at the camp cell, which the map
-  // then underlines as though something lay there.
-  const p = state.piles[st.campCell];
-  const kg = p ? weight(p) : 0;
-  if (kg > 1e-9) return { ok: false, why: `${Math.round(kg * 10) / 10} kg lie at the old camp, carry them first` };
-  return { ok: true };
+  // A first siting leaves nothing behind: there is no old cell to tip a fire into.
+  if (st.campCell === null) return;
+  const old = pile(state, st.campCell);
+  const dry = st.fire.fuelKg;
+  const wet = st.fire.wetKg;
+  const meat = st.rack.kg;
+  if (dry > 1e-9) addItem(old, "firewood", dry);
+  if (wet > 1e-9) addItem(old, "wetFirewood", wet);
+  if (meat > 1e-9) addItem(old, "rawMeat", meat);
+  st.fire.lit = false;
+  st.fire.fuelKg = 0;
+  st.fire.wetKg = 0;
+  st.fire.indoors = false;
+  st.fire.unattended = 0;
+  st.fire.embers = 0;
+  st.fire.litSince = null;
+  st.fire.rainHeld = 0;
+  st.smoke = 0;
+  st.rack.kg = 0;
+  st.rack.dried = 0;
 }
 
 export interface SiteReport {

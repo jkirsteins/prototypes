@@ -9,6 +9,7 @@ import { placesHtml, weatherHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { bodyPosition, lighting, phaseName, skyHtml, updateSky } from "../src/ui/sky";
+import { siteCamp } from "./siting-helpers";
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
 /** Minutes since the run start for a clock hour on day one. */
@@ -158,6 +159,7 @@ describe("sky in the page", () => {
 
   it("spot distances are from where you stand, with the walking time on the button", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "forest");
     mapRegion(state, world, state.player.region);
     const cal = at(13);

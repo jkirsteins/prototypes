@@ -14,6 +14,7 @@ import {
 } from "../src/sim/reference";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { MIDSUMMER_DOY, PLANT_HOURS_PER_DAY } from "../src/sim/tables";
+import { siteCamp } from "./siting-helpers";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
 const want = (t: string) => REFERENCE_ORDERS.find((x) => key(x) === t)!;
@@ -50,6 +51,7 @@ describe("the list after the axe", () => {
 
   it("opens the axe split with an axe in reach and the wedges and dead wood without one", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     expect(wantOpen(state, world, want("split::keep"))).toBe(true);
     expect(wantOpen(state, world, want("splitWedges::keep"))).toBe(false);
     expect(wantOpen(state, world, want("deadwood::keep"))).toBe(false);
@@ -61,6 +63,7 @@ describe("the list after the axe", () => {
 
   it("wants the celt from Crafting 5 and the flaked axe under it, only with no axe to hand", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     expect(wantOpen(state, world, want("craft:stoneAxe:keep"))).toBe(false);
     expect(wantOpen(state, world, want("craft:flakedAxe:keep"))).toBe(false);
     state.player.tools = [];
@@ -72,6 +75,7 @@ describe("the list after the axe", () => {
 
   it("says the winter pile's window on all three methods, and leaves the method itself to the axe", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     // Read off WINTER_STOCK.firewoodKg rather than a literal: the stock was
     // sized from the measured hut winter, and the three methods move with it.
     const winterPile = REFERENCE_ORDERS.filter((w) => w.req.until.kind === "campHas" && w.req.until.qty === WINTER_STOCK.firewoodKg);
@@ -130,6 +134,7 @@ describe("the list after the axe", () => {
     // The winter dig is the one gather the runner still holds a rule for: an ice hole is
     // what reaches the rhizomes under frozen ground, and an axe is what keeps one open.
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     expect(wantOpen(state, world, digs[0])).toBe(true);
     expect(wantOpen(state, world, digs[1])).toBe(true);
     state.player.tools = [];
@@ -217,11 +222,12 @@ describe("the list after the axe", () => {
     // A winter's dried meat at camp is the two food rows' own business, read off their
     // band and their stock line by whoever holds the order, and no rule in the runner.
     const { state, world } = newGame(17);
-    addItem(pile(state, regionState(state, world, state.player.region).campCell), "driedMeat", WINTER_STOCK.driedMeatKg);
+    siteCamp(state, world);
+    addItem(pile(state, regionState(state, world, state.player.region).campCell!), "driedMeat", WINTER_STOCK.driedMeatKg);
     for (const w of [hunt, fish]) expect(wantOpen(state, world, w)).toBe(true);
   });
 
-  it("the runner gives the plain shape under the rung and counts the morning as a returning player", () => {
+  it("the runner gives the plain shape under the rung and costs no morning on a job the list passes over", () => {
     // A month into the wood window, so the reserve's target has risen off the nothing it
     // starts its season at, and high summer, so no shore ices over and none of the named
     // rules flips in the three days.
@@ -233,10 +239,10 @@ describe("the list after the axe", () => {
     const paced = ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.logs);
     expect(paced?.req.when?.by).toBe(WOOD_DUE_DOY);
     expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
-    // One morning, and not this order's: the lean-to, a once job whose materials
-    // are not at camp yet, stops the list under it until it is taken off, and
-    // that is the morning counted. The reserve itself stands untouched.
-    expect(player.attention(1, 3).mornings).toBe(1);
+    // No morning at all: the lean-to, a once job whose materials are not at
+    // camp yet, is passed over on its own and never has to be taken off the
+    // list for the reserve or anything else under it to run.
+    expect(player.attention(1, 3).mornings).toBe(0);
   });
 
   it("a level-5 heir gets jobs and grinds only, and its list changes every morning the plant band re-opens", () => {
@@ -293,7 +299,7 @@ describe("the list after the axe", () => {
   it("makes another bucket within a day of the camp's last one bursting", () => {
     const { state, world, player } = setUpReference(17, true);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
-    const camp = pile(state, regionState(state, world, state.player.region).campCell);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell!);
     // The bucket's materials at camp, so the day measures the re-giving rather
     // than a walk to the birches for bark.
     addItem(camp, "bark", 40);

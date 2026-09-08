@@ -20,9 +20,9 @@ import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
 import { newWorld } from "./sim/newgame";
-import { moveOrderByHand, removeOrderByHand } from "./sim/orders";
+import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
-import { cellOf } from "./sim/position";
+import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
@@ -175,7 +175,7 @@ function render() {
   const cal = calendar(state.minute, state.startDoy);
   const ambient = ambientTemperature(cal, state.weather);
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
-  setPanel("camp", campHtml(state, world));
+  setPanel("camp", campHtml(state, world, cal));
   setPanel("maptravel", placesHtml(state, world, cal));
   setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
@@ -339,7 +339,14 @@ function onClick(ev: Event) {
   switch (act) {
     case "task": {
       const id = target.dataset.id as TaskId;
-      if (id === "haul" || id === "night") {
+      if (id === "haul") {
+        // Carrying a pile home is work like any other, so it goes on the list
+        // as the row the click makes it: without one, the body could take the
+        // minute from it and nothing would bring it back.
+        orderByHand(state, world, cal, rng, { task: id, until: { kind: "once" }, deliver: "camp", where: { cell: cellOf(state, world) } }, "job");
+      } else if (id === "night") {
+        // A night out is the body's own sleep under a name, and the body's row
+        // serves it where it stands. It never becomes a row of its own.
         startIntent(state, world, cal, rng, { task: id, until: { kind: "once" }, deliver: "camp", where: { cell: cellOf(state, world) } });
       } else {
         startTask(state, world, cal, id, target.dataset.arg || undefined, target.dataset.repeat === "1", rng);
@@ -394,15 +401,6 @@ function onClick(ev: Event) {
     }
     case "drop-all":
       dropAll(state, world);
-      break;
-    case "toggle-eat":
-      state.player.autoEat = !state.player.autoEat;
-      break;
-    case "toggle-feed":
-      state.player.autoFeed = !state.player.autoFeed;
-      break;
-    case "toggle-drink":
-      state.player.autoDrink = !state.player.autoDrink;
       break;
     case "abandon":
       ui.confirmAbandon = true;
@@ -502,9 +500,10 @@ function onClick(ev: Event) {
     case "intent":
     case "camp-yes": {
       const id = target.dataset.id as TaskId;
-      // Binding a camp asks first: the row swaps to its question, and only the
-      // yes acts. Every other row acts on the click, as it always has.
-      if (id === "makeCamp" && act === "intent") {
+      // Moving a camp asks first: the row swaps to its question, and only the
+      // yes acts. A first siting moves nothing and leaves nothing, so it acts on
+      // the click, as every other row does.
+      if (id === "makeCamp" && act === "intent" && campCellOf(state, world) !== null) {
         ui.confirmCamp = true;
         break;
       }
@@ -574,6 +573,9 @@ function onClick(ev: Event) {
     case "order-remove":
       removeOrderByHand(state, world, cal, rng, Number(target.dataset.id));
       break;
+    case "order-pin":
+      pinOrderByHand(state, world, cal, rng, Number(target.dataset.id));
+      break;
   }
   state.rng = rng.s;
   // After the rng write-back, so the request the click triggers reads the committed rng.
@@ -598,8 +600,8 @@ const forecaster = createForecaster(
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
-  "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "dismiss",
-  "eat", "feed", "drink", "fill", "take", "drop", "drop-all", "toggle-eat", "toggle-feed", "toggle-drink",
+  "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "order-pin", "dismiss",
+  "eat", "feed", "drink", "fill", "take", "drop", "drop-all",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */
 function requestForecast(): void {

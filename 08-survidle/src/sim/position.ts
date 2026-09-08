@@ -26,12 +26,13 @@ export function cellOf(state: GameState, world: World): number {
 }
 
 /**
- * The camp as the run has it: the region state's cell, which a chosen camp moves, never
- * the generated default. Read only: an untouched region has no state, and asking after
- * its camp must not be what gives it one - regionState(...) would.
+ * The camp as the run has it, or null where nobody has made one. A region owns a camp
+ * only once somebody sites it; the generated cell is a suggestion, never a camp. Read
+ * only: an untouched region has no state, and asking after its camp must not be what
+ * gives it one - regionState(...) would.
  */
-export function campCellOf(state: GameState, world: World, region = state.player.region): number {
-  return state.regions[region]?.campCell ?? regionAt(world, region).campCell;
+export function campCellOf(state: GameState, _world: World, region = state.player.region): number | null {
+  return state.regions[region]?.campCell ?? null;
 }
 
 export function cellCenter(world: World, idx: number): { x: number; y: number } {
@@ -72,13 +73,14 @@ export function hereTerrain(state: GameState, world: World): Terrain {
 /** The named spot whose cell the player stands on, if any: the live camp cell first, then the region's other spots. */
 export function spotHere(state: GameState, world: World): SpotId | null {
   const idx = cellOf(state, world);
-  if (idx === campCellOf(state, world)) return "camp";
+  if (campCellOf(state, world) !== null && idx === campCellOf(state, world)) return "camp";
   const r = regionAt(world, state.player.region);
   return r.spots.find((s) => s.id !== "camp" && s.cell === idx)?.id ?? null;
 }
 
 export function atCamp(state: GameState, world: World): boolean {
-  return cellOf(state, world) === campCellOf(state, world);
+  const camp = campCellOf(state, world);
+  return camp !== null && cellOf(state, world) === camp;
 }
 
 export function forestCell(world: World, idx: number): boolean {
@@ -149,7 +151,8 @@ export function describeWhere(state: GameState, world: World): string {
   const spot = spotHere(state, world);
   if (spot === "camp") return "at camp";
   const ice = walkableIce(state.weather);
-  const km = kmBetween(state, world, cellOf(state, world), campCellOf(state, world), ice);
+  const camp = campCellOf(state, world);
+  const km = camp === null ? null : kmBetween(state, world, cellOf(state, world), camp, ice);
   const dist = km === null ? "" : `, ${km.toFixed(1)} km from camp`;
   if (spot) return `at ${SPOT_WORDS[spot]}${dist}`;
   return `${GROUND[hereTerrain(state, world)]}${dist}`;

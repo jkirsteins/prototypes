@@ -5,11 +5,13 @@ import { beginAgain, land, nextBoat, nextBoatDate, pickCandidate } from "../src/
 import { newGame, newWorld } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { current } from "../src/sim/record";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 function dead(seed = 17, days = 5) {
   const g = newGame(seed);
+  siteCamp(g.state, g.world);
   advance(g.state, g.world, days * 1440);
   if (!g.state.dead) die(g.state, "froze", regionAt(g.world, g.state.player.region).name);
   return g;
@@ -59,7 +61,7 @@ describe("the heir's boat", () => {
     expect(l.boat).toBe(0);
     const before = { date: { ...l.date }, gap: l.gapDays, names: l.candidates.map((c) => c.name) };
     const st = regionState(state, world, state.player.region);
-    const age = st.structureAge;
+    const age = campSite(st)?.structureAge ?? null;
     nextBoat(state, world);
     expect(l.boat).toBe(1);
     expect(l.gapDays).toBe(before.gap + 7);
@@ -69,13 +71,14 @@ describe("the heir's boat", () => {
     expect(l.candidates.map((c) => c.name)).not.toEqual(before.names);
     expect(l.chosen).toBe(0);
     expect(l.name).toEqual(l.candidates[0].name);
-    expect(st.structureAge).toBe(age);
+    expect(campSite(st)?.structureAge ?? null).toBe(age);
   });
 
   it("jumps to May when the week crosses the coast's close", () => {
     expect(nextBoatDate({ year: 1, doy: 290 })).toEqual({ date: { year: 1, doy: 297 }, added: 7 });
     expect(nextBoatDate({ year: 1, doy: 300 })).toEqual({ date: { year: 2, doy: 125 }, added: 190 });
     const { state, world } = newGame(17, 200);
+    siteCamp(state, world);
     advance(state, world, 1440);
     die(state, "froze", regionAt(world, state.player.region).name);
     beginAgain(state, world);

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { leaveCamp } from "../src/sim/camp";
 import { EMBER_MINUTES } from "../src/sim/fire";
 import { newGame } from "../src/sim/newgame";
-import { FAT_FULL } from "../src/sim/player";
+import { fatLandmarks, personOf } from "../src/sim/person";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { regionAt, type World } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 /**
  * These goals credit on real deeds emitted from stepCamp over real advance()
@@ -18,7 +20,7 @@ import { regionAt, type World } from "../src/world/gen";
  */
 function feed(state: ReturnType<typeof newGame>["state"]): void {
   state.player.kcal = 6000;
-  state.player.fat = FAT_FULL;
+  state.player.fat = fatLandmarks(personOf(state)).typical;
   state.player.water = 3;
   state.player.health = 100;
   state.player.energy = 100;
@@ -39,9 +41,9 @@ function run(state: ReturnType<typeof newGame>["state"], world: World, minutes: 
 /** A camp with a huge fuel stock so the fire's own burn math never ends a test early; only the deliberate mutations in each test do. */
 function litCamp(startDoy?: number) {
   const { state, world } = startDoy === undefined ? newGame(3) : newGame(3, startDoy);
+  siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
-  placeAt(state, world, st.campCell);
-  state.player.autoFeed = false;
+  placeAt(state, world, st.campCell!);
   st.fire.lit = true;
   st.fire.fuelKg = 1e7;
   st.fire.wetKg = 0;
@@ -191,6 +193,19 @@ describe("the fire goals credit only the player's own region", () => {
     expect(state.goals.done.keptNight).toBeUndefined();
     expect(state.goals.done.keptDays).toBeUndefined();
     expect(state.goals.done.keptRain).toBeUndefined();
+  });
+});
+
+describe("leaving a camp kills its fire outright", () => {
+  it("does not keep crediting a fire-keeping goal once the camp is left behind", () => {
+    const { state, world, st } = litCamp();
+    run(state, world, 2 * 24 * 60); // short of the three days keptDays asks for
+    leaveCamp(state, world);
+    expect(st.fire.lit).toBe(false);
+    expect(st.fire.embers).toBe(0);
+    expect(st.fire.litSince).toBeNull();
+    run(state, world, 3 * 24 * 60); // long enough to cross keptDays had the run survived
+    expect(state.goals.done.keptDays).toBeUndefined();
   });
 });
 

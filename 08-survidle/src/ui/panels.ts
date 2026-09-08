@@ -1,13 +1,16 @@
-import { edible, HUNGRY_LINE, itemLabel, refusalReason } from "../sim/actions";
-import { type Calendar, fmtClock, fmtDate } from "../sim/calendar";
+import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
+import { absence, densityLabel, regionDensity } from "../sim/animals";
+import { isCareRow } from "../sim/bodyorder";
+import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
+import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { needsMending, rackCapacity } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
-import { herePile, listItems, pile, qty, weight } from "../sim/inventory";
-import { body } from "../sim/person";
+import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
+import { body, fatLandmarks } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, ITEM_KG, KCAL_FULL, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -20,10 +23,10 @@ import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
-import { feltTemperature, insulation, starvation } from "../sim/player";
+import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
-import { regionState } from "../sim/regionstate";
+import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
@@ -34,18 +37,25 @@ import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../s
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
-import { regionAt, type World } from "../world/gen";
+import { regionAt, speciesHere, type World } from "../world/gen";
 import { hurryKind, PULSE_MIN } from "./hurry";
 import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 
-function bar(id: string, cls: string, label: string, markAt?: number): string {
-  // A mark is a fixed share of the bar, so it belongs in the markup: it is
-  // the one part of a bar that does not move, and the thing a falling fill
-  // is falling toward.
-  const mark = markAt === undefined ? "" : `<div class="mark" style="left:${(markAt * 100).toFixed(1)}%" title="eats here"></div>`;
-  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${mark}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
+/**
+ * A mark on a bar: either a fixed share, which belongs in the markup since
+ * it never moves, or the name of a moving one, written each frame by
+ * updateBars onto this element rather than into the panel's diffed markup
+ * (tests/churn.test.ts).
+ */
+function bar(id: string, cls: string, label: string, mark?: number | { name: string; title: string }): string {
+  const m = mark === undefined
+    ? ""
+    : typeof mark === "number"
+      ? `<div class="mark" style="left:${(mark * 100).toFixed(1)}%" title="dies here"></div>`
+      : `<div class="mark" data-mark="${mark.name}" title="${esc(mark.title)}"></div>`;
+  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
 }
 
 /**
@@ -100,6 +110,7 @@ function poolPerks(share: number, skill: SkillId): string[] {
 export function statsHtml(state: GameState, world: World, cal: Calendar, ambient: number, ui: UiState): string {
   const p = state.player;
   const felt = feltTemperature(state, world, ambient);
+  const marks = fatLandmarks(current(state).person);
   const tags: string[] = [];
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
@@ -107,12 +118,13 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.frostbite.feet > 0) tags.push(`<span class="tag bad">frostbitten feet, ${fmtDuration(p.frostbite.feet)}</span>`);
   if (p.frostbite.hands > 0) tags.push(`<span class="tag bad">frostbitten hands, ${fmtDuration(p.frostbite.hands)}</span>`);
   if (p.torch.lit) tags.push(`<span class="tag">torch lit, ${fmtDuration(p.torch.minutes)}</span>`);
-  // Under the meal line means the meal did not happen - auto-eat off, or
-  // nothing left it would take. Either way the fat behind it is paying, and
-  // that is the state worth a word. Starving is what the fat running out is.
-  if (p.kcal < HUNGRY_LINE) tags.push(`<span class="tag bad">hungry</span>`);
-  if (starvation(state) >= 0.5) tags.push(`<span class="tag bad">starving</span>`);
-  if (starvation(state) >= 0.75) tags.push(`<span class="tag bad">wasting</span>`);
+  // Under the meal line means the meal did not happen: nothing left worth
+  // taking, or the body's row waiting its turn behind the work. Either way
+  // the fat behind it is paying, and that is the state worth a word.
+  // Starving is what the fat running out is.
+  if (p.kcal < hungerLine(state)) tags.push(`<span class="tag bad">hungry</span>`);
+  if (starvation(state) >= FAT_RIBS) tags.push(`<span class="tag bad">starving</span>`);
+  if (starvation(state) >= FAT_WASTING) tags.push(`<span class="tag bad">wasting</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
@@ -120,19 +132,13 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
-${bar("kcal", "kcal", "Food", HUNGRY_LINE / KCAL_FULL)}
-${bar("fat", "fat", "Fat")}
+${bar("kcal", "kcal", "Food", { name: "hunger", title: "eats here" })}
+${bar("fat", "fat", "Fat", marks.floor / marks.upper)}
 ${bar("water", "water", "Water")}
 ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}
 ${bar("wet", "wet", "Wet")}
 <div class="statuses">${tags.join("")}</div>
-<div class="autos">
-  <span class="dim">auto</span>
-  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under ${HUNGRY_LINE} kcal">eat</button>
-  <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">drink</button>
-  <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">feed fire</button>
-</div>
 <div style="margin-top:8px">
   ${ui.confirmAbandon
     ? `<button class="mini danger" data-act="abandon-yes">Really abandon this run? Yes, it is over</button> <button class="mini" data-act="abandon-no">no</button>`
@@ -278,7 +284,11 @@ export function placesHtml(state: GameState, world: World, cal: Calendar): strin
   const here = cellOf(state, world);
   const rows = r.spots
     .map((s) => {
-      const cell = s.id === "camp" ? camp : s.cell;
+      // A region has no camp until somebody makes one, and the generated
+      // "camp" spot is ground rather than a camp: no row for it until there
+      // is one to walk to.
+      if (s.id === "camp" && camp === null) return "";
+      const cell = s.id === "camp" ? camp! : s.cell;
       // A generated spot sitting on the live camp's own cell would draw a
       // second row for the same ground. The camp row, listed first, stands
       // for it.
@@ -332,24 +342,54 @@ export function travelHtml(state: GameState, world: World, cal: Calendar): strin
     .join("");
 }
 
-export function campHtml(state: GameState, world: World): string {
+/** "mallard gone until April" for a species that cannot be met at all now, otherwise the density in words. */
+function rosterEntry(state: GameState, world: World, id: number, s: Species, cal: Calendar): string {
+  const def = SPECIES_DEFS[s];
+  // The same predicate the hunt and fish rows use, so the card and the row cannot disagree.
+  const gone = absence(def, cal, state.weather.iceCm);
+  if (gone) {
+    if (!isVoiceOnly(s)) return `${def.name} ${gone}`;
+    return def.season.kind === "migrant" ? `${def.name} (from ${monthName(def.season.arrive)})` : `${def.name} (${gone})`;
+  }
+  if (isVoiceOnly(s)) return def.name;
+  return `${def.name} <b>${densityLabel(regionDensity(state, world, id, s, cal))}</b>`;
+}
+
+/** Four lines, each only the species that live here: Game, Birds, Fish, Heard. Empty lines are left out. */
+export function rosterHtml(state: GameState, world: World, id: number, cal: Calendar): string {
+  const here = speciesHere(regionAt(world, id));
+  const groups: [string, (s: Species) => boolean][] = [
+    ["Game", (s) => SPECIES_DEFS[s].kind === "mammal"],
+    ["Birds", (s) => SPECIES_DEFS[s].kind === "bird" && !isVoiceOnly(s)],
+    ["Fish", (s) => isFish(s)],
+    ["Heard", (s) => isVoiceOnly(s)],
+  ];
+  const lines = groups
+    .map(([label, pick]) => {
+      const list = here.filter(pick).map((s) => rosterEntry(state, world, id, s, cal));
+      return list.length ? `<div>${label}: ${list.join(", ")}</div>` : "";
+    })
+    .join("");
+  return lines;
+}
+
+export function campHtml(state: GameState, world: World, cal: Calendar): string {
   const id = state.player.region;
   const r = regionAt(world, id);
   const st = regionState(state, world, id);
-
+  const site = campSite(st);
   const built: string[] = [];
-  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
-  if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
-  if (st.structures.cabin) built.push("log cabin");
-  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
-  if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
-  if (st.structures.boughBed) built.push("bough bed");
-  if (st.structures.waterStore) built.push("water trough");
-  if (st.structures.snowShelter) built.push("snow shelter");
-  if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
+  if (site?.structures.firePit) built.push(STRUCTURES.firePit.name);
+  if (site?.structures.leanTo) built.push(needsMending(site, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
+  if (site?.structures.cabin) built.push("log cabin");
+  if (site?.structures.turfHut) built.push(needsMending(site, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
+  if (site?.structures.dryingRack) built.push(needsMending(site, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
+  if (site?.structures.boughBed) built.push("bough bed");
+  if (site?.structures.waterStore) built.push("water trough");
+  if (site?.structures.snowShelter) built.push("snow shelter");
+  if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
-
+  const unfinished = site ? (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`) : [];
   // A third word between burning and cold: coals are live but not fed, the
   // routine state after every tended night rather than an exception. How
   // long they last is the fuel bar's job, and the figure moves with every
@@ -360,12 +400,12 @@ export function campHtml(state: GameState, world: World): string {
     : hasEmbers(st.fire)
       ? '<span class="ember">coals</span>'
       : '<span class="dim">cold</span>';
-  const fire = st.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel")}` : "";
-  const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
+  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel")}` : "";
+  const rack = site?.structures.dryingRack
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
-  const campPile = pile(state, st.campCell);
-  const cap = campWaterCapacity(campPile, st);
+  const campPile = pileAt(state, st.campCell);
+  const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";
@@ -378,7 +418,11 @@ export function campHtml(state: GameState, world: World): string {
   const stands = built.length || unfinished.length
     ? `<div>${[...built, ...unfinished].join(", ")}</div>`
     : `<div class="dim">nothing built</div>`;
-  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}`;
+  // What lives here is a region's reading, not a cell's, so the map's hover
+  // has no place for it and the camp box does: the survivor knows what is
+  // about without walking anywhere to look.
+  const about = `<div class="roster">${rosterHtml(state, world, id, cal)}</div>`;
+  return `<h2>Camp <span class="r">${esc(r.name)}</span></h2>${fire}${stands}${rack}${water}${heap}${limits}${about}`;
 }
 
 
@@ -386,6 +430,13 @@ const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><s
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
 const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
+/**
+ * The one sentence that answers "is this a queue or a stack": both, and
+ * which one a row landed by is the difference between the two ends of the
+ * list. It sits at the head of the list because that is where a player
+ * looks after clicking something and not finding it where they expected.
+ */
+const LANDING_RULE = `<div class="rule"><small>A click goes to the top. A standing order goes to the bottom.</small></div>`;
 
 /** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
 export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
@@ -403,12 +454,23 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   const waitWhere = it?.task === "wait" && cellOf(state, world) !== regionState(state, world, state.player.region).campCell
     ? `Waiting, ${describeWhere(state, world)}`
     : "Waiting at camp";
-  const waiting = it?.task === "wait"
-    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
+  // Only the scheduler's own wait, the one belonging to no row, is drawn
+  // loose above the list. The wait a care row starts is that row's
+  // minute, and drawing it here as well would put the survivor's own doings
+  // in two places at once, neither of them the rank the player set them at.
+  const loose = it?.task === "wait" && it.orderId === null;
+  const waiting = loose
+    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it!.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
     : "";
   // One judgement for the whole list: waitingLine reads it per row, and running
   // it per row would judge a ten-row list ten times a frame.
   const judged = judgeOrders(state, world, cal);
+  // A pin is the only thing that stops the list, so the one moment the list
+  // is stopped is the one moment it owes the player a banner: the row, why it
+  // cannot run, and the one click that lets the rest of the list go on.
+  const held = judged.blockedBy
+    ? `<div class="held bad">The list is held up by <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}. Unpin it - its "doing this first" button - to let the rest of the list run.</div>`
+    : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
     // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
@@ -419,22 +481,35 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(plain(waitingLine(state, world, cal, o, judged)))}</div>`;
-    const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
+    // A care row ranks like any other row and draws the same up and down,
+    // since where it sits against the work is the whole of what the player
+    // says to it. It draws no x: it cannot be struck off, and a button that
+    // does nothing when clicked is worse than none.
+    const move = `<button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button>`;
+    // A row that can be passed over and a row that stops the list are two
+    // behaviours of the same row, so the button says which one is switched on
+    // and what the switched-on one costs. A pin on a care row would mean
+    // nothing: the list never goes past those rows, so they have none.
+    const pin = `<button class="mini${o.pinned ? " on" : ""}" data-act="order-pin" data-id="${o.id}" title="${o.pinned ? "Nothing under this runs until it is done" : "Hold the list here until this is done"}">${o.pinned ? "doing this first - holds the list" : "do this first"}</button>`;
+    const btns = isCareRow(o)
+      ? `<span class="ctl">${move}</span>`
+      : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
       : `<div class="head">`;
     // Words and not only the title: a touch device has no hover to show one, and
     // a mouse never rests on a row long enough to find it.
     const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
-    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
+    return `<div class="order${isCareRow(o) ? " care" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
   }).join("");
-  return `${waiting}${rows}`;
+  return `${waiting}${held}${LANDING_RULE}${rows}`;
 }
 
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
   const it = state.intent;
   const orders = ordersHere(state, world);
+  const work = orders.some((o) => !isCareRow(o));
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
@@ -465,7 +540,7 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
     if (t.any) label = `${label} (whatever was about)`;
     if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
     head = `<div class="head"><b>${esc(label)}${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>${TASK_BAR}`;
-  } else if (!it && !orders.length) {
+  } else if (!it && !work) {
     head = `<div class="dim">Nothing. Pick something below.</div>`;
   }
   // Eating, drinking and feeding the fire sit with what is happening now
@@ -485,11 +560,14 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
  * it.
  */
 export function queueHtml(state: GameState, world: World, cal: Calendar): string {
-  const orders = ordersHere(state, world);
-  if (!orders.length) {
-    return `<h2>Orders</h2><div class="dim">Nothing standing.</div><div class="dim"><small>Orders run in turn, and keep running while you are away.</small></div>`;
+  // The count is of orders given. Both care rows are on every list from the
+  // moment a region exists, so counting the rows would tell a player who has
+  // given nothing that five things are standing.
+  const given = ordersHere(state, world).filter((o) => !isCareRow(o)).length;
+  if (!given) {
+    return `<h2>Doing</h2>${ordersHtml(state, world, cal)}<div class="dim"><small>Orders run in turn, and keep running while you are away.</small></div>`;
   }
-  return `<h2>Orders <span class="r">${orders.length}</span></h2>${ordersHtml(state, world, cal)}`;
+  return `<h2>Orders <span class="r">${given}</span></h2>${ordersHtml(state, world, cal)}`;
 }
 
 /** "N of 10 die: cause, day D", or "none of 10 die" when nothing died. */

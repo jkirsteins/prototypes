@@ -169,12 +169,12 @@ export const BERRY_PICK_KG = 0.7;
 export const BERRY_WINTER_SHARE = 0.2;
 
 /**
- * The short-term reserve, in kilocalories: gut contents and glycogen, the
- * pool between the last meal and the fat behind it. Liver glycogen is about
- * 400 kcal, muscle glycogen 1,600, and a very large meal still in the
- * stomach around 1,500, so a body that has just gorged holds roughly three
- * thousand. What a kill offers past that is not held here; it goes to fat,
- * which is where gorging after a kill actually ends up.
+ * The cap on stomach fullness, in kilocalories: gut contents and glycogen,
+ * read here as a single fullness signal rather than an energy account.
+ * Liver glycogen is about 400 kcal, muscle glycogen 1,600, and a very large
+ * meal still in the stomach around 1,500, so a body that has just gorged
+ * reads roughly three thousand full. Every kcal eaten still lands in the
+ * energy store behind this, in full, whether or not it fit here too.
  */
 export const KCAL_FULL = 3000;
 

@@ -16,6 +16,8 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
+import { seeFrom } from "../src/sim/sight";
+import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf } from "../src/sim/position";
 import { cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
@@ -64,9 +66,14 @@ describe("what the tooltip says", () => {
   it("unwalked ground in this region says so and nothing else", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
+    // A survivor lands on ground they can read, so the whole home region
+    // starts known: the map is wound back to what an eye at the landing
+    // takes in, which is what leaves any of it unwalked to point at.
+    const home = regionAt(world, state.player.region);
+    for (const k of Object.keys(state.mapped)) delete state.mapped[Number(k)];
+    seeFrom(state, world, cal, cellOf(state, world));
     // In this region: ground over a border is somewhere to go rather than
     // somewhere unseen, and says so instead.
-    const home = regionAt(world, state.player.region);
     const unseen = home.cells.find((c) => !isKnown(state, c));
     expect(unseen).toBeDefined();
     expect(tipHtml(state, world, cal, unseen!)).toMatch(/never|not been|unknown/i);
@@ -75,7 +82,8 @@ describe("what the tooltip says", () => {
   it("known ground names its terrain and how far it is", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    const camp = campCellOf(state, world);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
     markKnown(state, camp);
     const html = tipHtml(state, world, cal, camp);
     expect(html).toMatch(/km|\bm\b|here/);
@@ -125,7 +133,8 @@ describe("what the tooltip says", () => {
   it("what is lying there is named, since a pile is a resource until it is forgotten", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
-    const camp = campCellOf(state, world);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
     markKnown(state, camp);
     addItem(pile(state, camp), "firewood", 20);
     expect(tipHtml(state, world, cal, camp)).toMatch(/20(\.0)? kg/);
@@ -169,7 +178,8 @@ describe("the tooltip's key", () => {
 
   it("changes when the pile under it changes, so a heap picked up stops being advertised", () => {
     const { state, world } = newGame(21);
-    const camp = campCellOf(state, world);
+    siteCamp(state, world);
+    const camp = campCellOf(state, world)!;
     const before = tipKey(state, world, camp);
     addItem(pile(state, camp), "firewood", 5);
     expect(tipKey(state, world, camp)).not.toBe(before);

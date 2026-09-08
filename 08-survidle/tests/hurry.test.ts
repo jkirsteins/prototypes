@@ -142,9 +142,9 @@ describe("what is hurried", () => {
     startIntent(state, world, cal, new Rng(1), { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
     const it = state.intent!;
     if (it.mode !== "runner") throw new Error("a forever intent is the runner's");
-    it.need = "sleep";
+    state.player.bodyNeed = "sleep";
     expect(hurryKind(state)).toBe("none");
-    it.need = null;
+    state.player.bodyNeed = null;
     expect(hurryKind(state)).toBe("auto");
     die(state, "froze");
     expect(hurryKind(state)).toBe("none");

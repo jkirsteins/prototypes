@@ -21,8 +21,8 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { bodyAsks } from "./body";
 import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
-import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
-import { intentOption, nearestCell, resolveCell, startIntent } from "./intent";
+import { addItem, AXES, axeInHand, freshTool, listItems, pile, pileAt, qty, TRACE_KG } from "./inventory";
+import { nearestCell, startIntent } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
@@ -33,12 +33,11 @@ import { giveOrder, withinLadder } from "./ladder";
 import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOURCES } from "./ledger";
 import { knownShare, mapRegion } from "./mapped";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
-import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder, stallingOrder } from "./orders";
-import { FAT_FULL } from "./player";
-import { medianPerson } from "./person";
-import { cellOf, heathCell, watersideCell } from "./position";
+import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
+import { fatLandmarks, medianPerson } from "./person";
+import { heathCell, watersideCell } from "./position";
 import { current } from "./record";
-import { regionState } from "./regionstate";
+import { campSite, regionState, siteFor } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
@@ -151,8 +150,7 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * far down beside the axe it feeds, where topping up under four is what a
  * restock should do: arrows take three stone per five and a stone axe
  * three, and the once job alone ran out and left every year seed with no
- * arrows, no axe and a felling grind for company. Auto-eat, auto-feed
- * and auto-drink stay on, as they are for every player. Two kilos of
+ * arrows, no axe and a felling grind for company. Two kilos of
  * berries at camp sit under the fish keep, at the foot of the food block:
  * in season they are the cheapest kcal there is, and out of it the keep
  * blocks harmlessly on nothing ripe. Once food, the roof and water are running, the sticks and
@@ -437,7 +435,7 @@ function shoreIced(state: GameState): boolean {
 function axeInReach(state: GameState, world: World): boolean {
   if (axeInHand(state.player)) return true;
   const st = regionState(state, world, state.player.region);
-  return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pile(state, st.campCell), id) >= 1);
+  return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pileAt(state, st.campCell), id) >= 1);
 }
 
 /**
@@ -462,14 +460,14 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
   if (w.req.task === "melt") return shoreIced(state) && !axeInReach(state, world);
   // The fire by method: the pit until a hut or a hearth stands, the fire indoors after.
   if (w.req.task === "light" || w.req.task === "lightIndoors") {
-    const st = regionState(state, world, state.player.region);
-    const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
-    return w.req.task === "lightIndoors" ? indoors : !indoors;
+    const site = campSite(regionState(state, world, state.player.region));
+    const indoors = site?.structures.turfHut || (site?.structures.cabin && site.structures.hearth);
+    return w.req.task === "lightIndoors" ? indoors === true : !indoors;
   }
   // The snow shelter closes once a hut or a cabin stands: warmer walls, and the same cell to camp on.
   if (w.req.task === "build" && w.req.arg === "snowShelter") {
-    const st = regionState(state, world, state.player.region);
-    return !(st.structures.turfHut || st.structures.cabin);
+    const site = campSite(regionState(state, world, state.player.region));
+    return !(site?.structures.turfHut || site?.structures.cabin);
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
@@ -511,12 +509,17 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
  */
 export const REFERENCE_SEEDS = [17, 19, 42, 79, 45];
 /**
- * The April gate (spec 7.1): the day a beginner who eats the least the
- * tables allow and burns the most runs out of fat. Derived, so it moves
- * when the burn band, the reserve or the kit moves and not otherwise.
+ * The April gate (spec 7.1): the day a beginner who eats the least the tables
+ * allow and burns the most reaches essential fat. Derived, so it moves when
+ * the burn band, the reserve or the kit moves and not otherwise. Only the
+ * reserve above the floor is fuel - the floor itself is structure, and a body
+ * is dying by the time it reaches it.
  */
 export const REFERENCE_TARGET_DAY = Math.floor(
-  (FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg) / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
+  (() => {
+    const l = fatLandmarks(medianPerson("m"));
+    return l.typical - l.floor + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
+  })() / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
 );
 /** The kitted camp's gate: a month, until C's trap moves it to December. */
 export const KITTED_TARGET_DAY = 30;
@@ -542,7 +545,7 @@ export function campFoodKcalAt(inv: Inventory): number {
 
 /** kcal of food lying at this region's camp. */
 export function campFoodKcal(state: GameState, world: World): number {
-  return campFoodKcalAt(pile(state, regionState(state, world, state.player.region).campCell));
+  return campFoodKcalAt(pileAt(state, regionState(state, world, state.player.region).campCell));
 }
 
 /** The food clause at a checkpoint: a beginner's day of food eaten on average over the week before it, so a body in deficit that eats what it catches reads fed and one living on its fat does not. */
@@ -574,7 +577,7 @@ export function unexploited(state: GameState, world: World): UnexploitedItem[] {
   const cal = calendar(state.minute, state.startDoy);
   const region = state.player.region;
   const st = regionState(state, world, region);
-  const camp = pile(state, st.campCell);
+  const camp = pileAt(state, st.campCell);
   const pack = state.player.pack;
 
   const day = state.dead ? dayNumber(state.dead.minute) : dayNumber(state.minute);
@@ -697,6 +700,11 @@ export function kitTrap(state: GameState, world: World): void {
 export function kitOut(state: GameState, world: World, producers = true): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
+  // The kit stands somewhere: a camp on the region's own generated cell, the ground a
+  // from-scratch run would most likely have sited one on. Every structure below is put
+  // up there, so the camp has to exist before any of it does.
+  const campCell = st.campCell ?? regionAt(world, p.region).campCell;
+  st.campCell = campCell;
   for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
   // One bucket in hand, empty: the fill task needs a vessel in hand, judged
   // at the shore where the camp pile is out of reach (spec 2.2). The second
@@ -705,13 +713,14 @@ export function kitOut(state: GameState, world: World, producers = true): void {
   addItem(p.pack, "arrow", 10);
   addItem(p.pack, "driedMeat", 5);
   creditYield(state, "kit", 5 * FOODS.driedMeat.kcalPerKg);
-  const camp = pile(state, st.campCell);
+  const camp = pile(state, campCell);
   addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);
-  st.structures.firePit = true;
+  const site = siteFor(st, campCell);
+  site.structures.firePit = true;
   if (producers) {
-    st.structures.turfHut = true;
-    st.structures.waterStore = true;
+    site.structures.turfHut = true;
+    site.structures.waterStore = true;
     kitTrap(state, world);
   }
   // A camp this built is one somebody has lived at, so its own country is
@@ -808,9 +817,6 @@ export class ReferencePlayer {
    * burn and nights on the way, and no order is given until the region is
    * reached. The first survivor has no home and starts on the list at once.
    */
-  /** Wants taken off the list for stalling it: given again only once they can run. */
-  private readonly stalled = new Set<number>();
-
   constructor(readonly wants: Want[] = REFERENCE_ORDERS, private home: number | null = null) {}
 
   /** The mornings between two days, inclusive, on which the list changed, and how many days were asked about. */
@@ -872,23 +878,6 @@ export class ReferencePlayer {
     this.note(cal);
   }
 
-  /**
-   * Whether this is work the player could set going now. A once order stops
-   * every order under it while it cannot run, and under the ladder's rungs
-   * every want is a once job, so a player who queued the list regardless
-   * would stop the whole list on the first row that has to wait for a
-   * season, a material or a tool. They queue what can be done and come back
-   * to the rest, which is what the give loop and the withdrawal below do.
-   *
-   * The dark is not asked about: night holds an order without stalling the
-   * list, so a row put off until first light is still the row to hold.
-   */
-  private canStart(state: GameState, world: World, cal: Calendar, req: IntentRequest): boolean {
-    if (!intentOption(state, world, cal, req.task, req.arg, req.where).ok) return false;
-    const { cell } = resolveCell(state, world, cal, req.task, req.arg, req.where);
-    return cell === cellOf(state, world) || check(state, world, cal, "walk", `cell:${cell}`).ok;
-  }
-
   private give(state: GameState, world: World, cal: Calendar, i: number, best: Want): void {
     const w = this.wants[i];
     const standIn = best.kind !== w.kind || best.req.until.kind !== w.req.until.kind;
@@ -931,6 +920,17 @@ export class ReferencePlayer {
     // body asks for something - the same order the runner already gives a
     // chosen order between the two, since exploring is watched the same way.
     if (this.handMoveBusy(state, world, cal)) return;
+    // Nothing on the list can be done in a region with no camp: the fire site, the
+    // deliveries and the night all address one. Siting it is the opening act.
+    if (regionState(state, world, state.player.region).campCell === null) {
+      // A refusal here is not a slow day, it is a run that can never begin: every
+      // want below addresses a camp. Fail loudly rather than idle for the whole span.
+      if (handsFree(state)) {
+        const why = check(state, world, cal, "makeCamp").why;
+        if (!startTask(state, world, cal, "makeCamp")) throw new Error(`the reference run cannot make camp: ${why}`);
+      }
+      return;
+    }
     this.openingDay ??= cal.day;
     // Each morning a daily want starts over: yesterday's spent count is not this
     // morning's, and the finished mark that stopped it yesterday comes off. Both
@@ -941,24 +941,6 @@ export class ReferencePlayer {
       this.dayOpened.set(i, cal.day);
       this.finished.delete(i);
       this.completed.delete(i);
-    }
-    // A once order that cannot run holds up every order under it. A player
-    // reading that row takes it off rather than leaving the list standing all
-    // day; it goes back on when it can run. Only rows that are actually
-    // stalling come off - a row waiting on the work of the rows above it is
-    // below one that can run, and holds nothing up.
-    //
-    // The whole stall clears in one reading, not one row an hour. Striking off
-    // the top row and then standing idle until the next look is not what a
-    // player does, and the opening list - where every row waits on a knife, a
-    // fire or a vessel - would cost a working day per row it has to shed.
-    for (let guard = this.given.size; guard > 0; guard--) {
-      const stalling = stallingOrder(state, world, cal);
-      if (!stalling) break;
-      const held = [...this.given].find(([, g]) => g.id === stalling.id);
-      if (!held) break;
-      this.stalled.add(held[0]);
-      this.withdraw(state, world, cal, held[0], held[1].id);
     }
     const list = ordersHere(state, world);
     for (const [i, g] of [...this.given]) {
@@ -1002,11 +984,8 @@ export class ReferencePlayer {
       const best = withinLadder(state, w.req, w.kind);
       if (!this.byHand(state, world, cal, i, best)) continue;
       if (orderMet(state, world, cal, this.probe(i, this.completed.get(i) ?? 0), false)) continue;
-      // A want taken off for stalling the list goes back on only when it can
-      // run; every other want is given whether or not it can start, since the
-      // list is a plan and a row's materials are cut by the rows above it.
-      if (this.stalled.has(i) && !this.canStart(state, world, cal, best.req)) continue;
-      this.stalled.delete(i);
+      // A want is given whether or not it can start: the list is a plan, and
+      // a row's materials are cut by the rows above it.
       this.give(state, world, cal, i, best);
     }
     // A want the scheduler skipped with this exact reading is not short of
@@ -1036,8 +1015,8 @@ export class ReferencePlayer {
    * pause: runOrders claims any bare wait intent (no order behind it) as
    * its own and tears it down the moment its own order list is empty
    * (spec 2.3) - exactly the heir's list, every hour, which would undo the
-   * serving before it ever drank. `HAND_REST` carries the same runner body
-   * tier under a task runOrders has no claim on. `servingHandRest` is what
+   * serving before it ever drank. `HAND_REST` is a task runOrders has no
+   * claim on, left running while the body's row does the serving. `servingHandRest` is what
    * tells that rest apart from a hand move still under way, so an ordinary
    * "nothing to do" is never read as one. True whenever a hand move, or
    * the rest serving one, is why nothing else happened this tick.
@@ -1073,7 +1052,7 @@ function handsFree(state: GameState): boolean {
   return !state.task || state.task.id === "rest";
 }
 
-/** The runner body tier without an order behind it, read as `handMoveBusy` serving a hand move rather than the list's own wait. */
+/** A rest with no order behind it, read as `handMoveBusy` serving a hand move rather than the list's own wait. */
 const HAND_REST: IntentRequest = { task: "rest", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
 export function setUpReference(seed: number, kitted = false, startDoy = START_DOY): { state: GameState; world: World; player: ReferencePlayer } {
@@ -1130,7 +1109,7 @@ export interface ReferenceReport {
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
   const p = state.player;
-  const camp = pile(state, regionState(state, world, p.region).campCell);
+  const camp = pileAt(state, regionState(state, world, p.region).campCell);
   const stocks: Record<string, number> = {};
   for (const { item, qty } of listItems(camp)) stocks[item] = Math.round(qty * 10) / 10;
   const food = campFoodKcal(state, world);
@@ -1250,16 +1229,18 @@ export interface LineageReport {
 /** What the heir finds at the old camp, read after the gap has run and before the heir moves. */
 function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landCell: number, trapKg: number | null): Found {
   const oldSt = regionState(state, world, oldRegion);
-  const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSt.structures[s]);
+  const oldSite = campSite(oldSt);
+  const camp = pileAt(state, oldSt.campCell);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSite?.structures[s]);
   const lc = cellAt(world, landCell);
-  const cc = cellAt(world, oldSt.campCell);
+  // Nobody made camp in the life before: there is no old camp to be any distance from.
+  const cc = oldSt.campCell === null ? lc : cellAt(world, oldSt.campCell);
   return {
     structures: [...structures],
     campFoodKcal: Math.round(campFoodKcalAt(camp)),
     campFirewoodKg: Math.round(qty(camp, "firewood")),
     logs: Math.round(qty(camp, "log")),
-    snares: oldSt.structures.snares,
+    snares: oldSt.snares,
     kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
     trapKg,
   };

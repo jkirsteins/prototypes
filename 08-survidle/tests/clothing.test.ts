@@ -7,8 +7,9 @@ import { CLOTHING } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, insulation, stepPlayer } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { craftSuccess, oddsFactor } from "../src/sim/skills";
+import { siteCamp } from "./siting-helpers";
 
 const dry = { raining: false, heavy: false, snowing: false, roof: false, walled: false, fireAtCamp: false, bedded: false, storm: false };
 
@@ -51,6 +52,7 @@ describe("wet clothing", () => {
 
   it("the skin stays dry under a dry coat, and wet gear wears half again as fast", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     expect(skinExposure(state)).toBe(0);
     state.weather.precip = "light";
     for (let m = 0; m < 30; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 10, 1);
@@ -61,6 +63,7 @@ describe("wet clothing", () => {
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 10, 1);
     const wetWear = d0 - state.player.clothing[0].durability;
     const { state: s2, world: w2 } = newGame(1);
+    siteCamp(state, world);
     const e0 = s2.player.clothing[0].durability;
     for (let m = 0; m < 60; m++) stepPlayer(s2, w2, calendar(s2.minute, s2.startDoy), 10, 1);
     expect(wetWear).toBeCloseTo((e0 - s2.player.clothing[0].durability) * 1.5, 3);
@@ -70,6 +73,7 @@ describe("wet clothing", () => {
 describe("frostbite", () => {
   it("bare hands in deep cold freeze through the hourly roll, no mittens needed to test it", () => {
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     expect(coldHands(state, -20)).toBe(true);
     const rng = new Rng(5);
     let hours = 0;
@@ -83,6 +87,7 @@ describe("frostbite", () => {
 
   it("wet boots in frost freeze the feet within a night; a fire under a roof heals them; a second time costs toes", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const boots = state.player.clothing.find((g) => CLOTHING[g.id].slot === "boots")!;
     boots.wet = 80;
     expect(coldFeet(state, -8)).toBe(true);
@@ -104,8 +109,8 @@ describe("frostbite", () => {
     expect(state.player.frostbite.feet).toBe(3 * 1440);
     // Under a roof by a fire it counts down.
     const st = regionState(state, world, state.player.region);
-    st.structures.leanTo = true;
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     placeAtSpot(state, world, state.player.region, "camp");
@@ -125,6 +130,7 @@ describe("frostbite", () => {
 
   it("the numb warning fires once, on the fresh bite; a repeat strike while it holds costs the toes instead, logged once", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const boots = state.player.clothing.find((g) => CLOTHING[g.id].slot === "boots")!;
     boots.wet = 80;
     const rng = new Rng(2);

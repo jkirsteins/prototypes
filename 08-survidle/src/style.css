@@ -193,10 +193,10 @@ small, .dim { color: var(--dim); }
 /* The pulse draining on a row hurried by clicking; the head is the click target. */
 .bar.hurry { height: 4px; margin: 2px 0 0; }
 .bar.hurry .fill { background: var(--accent); transition: none; }
-#task .order .head.hurry { cursor: pointer; }
-#task .order .head.hurry:hover b { color: var(--accent); }
-#task .order .head .hint { color: var(--dim); white-space: nowrap; }
-#task .order .head.hurry:hover .hint { color: var(--accent); }
+#task .order .head.hurry, #orders .order .head.hurry { cursor: pointer; }
+#task .order .head.hurry:hover b, #orders .order .head.hurry:hover b { color: var(--accent); }
+#task .order .head .hint, #orders .order .head .hint { color: var(--dim); white-space: nowrap; }
+#task .order .head.hurry:hover .hint, #orders .order .head.hurry:hover .hint { color: var(--accent); }
 .clockrow .hurrying { color: var(--accent); }
 .bar.dur { height: 8px; margin: 2px 0 6px; }
 .bar.dur .fill { background: #6a7a8f; }
@@ -686,7 +686,7 @@ input[data-do="filter"] {
   font: inherit; margin-bottom: 6px;
 }
 #actions .rows { max-height: 50vh; overflow-y: auto; }
-#task .step { color: var(--dim); margin: 4px 0; }
+#task .step, #orders .step { color: var(--dim); margin: 4px 0; }
 
 button.act, span.act {
   display: block; width: 100%;
@@ -752,14 +752,21 @@ button.act small, span.act small { display: block; color: var(--dim); }
 .mini.off { color: #5d6570; cursor: default; }
 .mini.off:hover { border-color: var(--line); }
 
-#task .head { display: flex; justify-content: space-between; align-items: baseline; }
+#task .head, #orders .head { display: flex; justify-content: space-between; align-items: baseline; }
 #task .aside { margin-top: 8px; border-top: 1px dotted var(--line); padding-top: 6px; }
 #task .paused { padding: 2px 0; }
-#task .order { padding: 4px 0; border-top: 1px dotted var(--line); }
-#task .order:first-of-type { border-top: 0; }
-#task .order.live { border-left: 2px solid var(--accent); padding-left: 6px; }
-#task .order .head { gap: 6px; }
-#task .order .ctl { white-space: nowrap; }
+#task .order, #orders .order { padding: 4px 0; border-top: 1px dotted var(--line); }
+#task .order:first-of-type, #orders .order:first-of-type { border-top: 0; }
+/* The landing rule stands where the first row's own top rule would, so the row under it draws none. */
+#task .rule, #orders .rule { color: var(--dim); padding: 2px 0; }
+#task .rule + .order, #orders .rule + .order { border-top: 0; }
+/* The banner takes its colour from the shared bad class, the one a bad log line wears; only its spacing is its own. */
+#task .held, #orders .held { padding: 4px 0; }
+/* A care row is one of the ranks and draws as one, marked only enough to be found at a glance. Before .live, so the row with the minute reads as live wherever it is. */
+#task .order.care, #orders .order.care { border-left: 2px solid var(--line); padding-left: 6px; }
+#task .order.live, #orders .order.live { border-left: 2px solid var(--accent); padding-left: 6px; }
+#task .order .head, #orders .order .head { gap: 6px; }
+#task .order .ctl, #orders .order .ctl { white-space: nowrap; }
 
 /* Inventory */
 .inv { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; }

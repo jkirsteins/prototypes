@@ -7,9 +7,10 @@ import { addItem, emptyInventory } from "./inventory";
 import { FOODS, KCAL_FULL } from "./items";
 import { creditYield } from "./ledger";
 import { log } from "./log";
+import { mapRegion } from "./mapped";
 import { newRecord } from "./record";
 import { rollName } from "./names";
-import { derived, medianPerson, personOf, rollCandidates } from "./person";
+import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { enterRegion } from "./regionstate";
 import { seeFrom } from "./sight";
 import { newSkills } from "./skills";
@@ -28,7 +29,6 @@ export const ARRIVAL_DRIED_MEAT_KG = 1;
 
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
-  const d = derived(personOf(state));
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   state.player = {
@@ -37,7 +37,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     region,
     health: 100,
     kcal: START_KCAL,
-    fat: d.fatFull,
+    fat: fatLandmarks(personOf(state)).typical,
     warmth: 80,
     energy: 90,
     // The debt a body carries off a full night and two hours up, which is
@@ -45,6 +45,8 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     // reserve derives from its fatigue.
     sleepDebt: 10,
     sleeping: null,
+    bodyNeed: null,
+    coldSpent: false,
     wetness: 0,
     sick: 0,
     injured: 0,
@@ -57,10 +59,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     tools: [{ id: "axe", durability: 100 }],
     torch: { lit: false, minutes: 0 },
     pack,
-    autoEat: true,
-    autoFeed: true,
     water: 2.5,
-    autoDrink: true,
     frostbite: { feet: 0, hands: 0 },
     toes: false,
     fingers: false,
@@ -136,6 +135,8 @@ export function newGame(seed: number, startDoy = START_DOY, person?: Person): { 
   resetTeaching(state);
   newPerson(state, world, start.campCell, world.start);
   enterRegion(state, world, world.start);
+  // A camp is chosen, and a choice needs the ground in front of you.
+  mapRegion(state, world, world.start);
   if (startDoy === START_DOY) log(state, `1 April. Snow still lies in the shade at ${start.name}. {You} {have} an axe, wool on {your} back and a kilo of dried meat.`);
   else log(state, `${fmtDate(calendar(0, startDoy))}. {You} {wake} at ${start.name} with an axe, wool on {your} back and a kilo of dried meat.`);
   return { state, world };

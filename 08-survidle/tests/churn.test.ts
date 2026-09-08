@@ -79,7 +79,7 @@ function panels(state: ReturnType<typeof newGame>["state"], world: ReturnType<ty
     stats: statsHtml(state, world, cal, ambient, ui),
     gear: gearHtml(state, feltTemperature(state, world, ambient)),
     skills: skillsHtml(state),
-    camp: campHtml(state, world),
+    camp: campHtml(state, world, cal),
     weather: weatherHtml(state, world, cal, ambient),
     maptravel: travelHtml(state, world, cal),
     task: taskHtml(state, world, cal),

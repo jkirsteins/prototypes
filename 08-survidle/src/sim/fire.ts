@@ -8,8 +8,8 @@ import type { Presence } from "./advance";
 import type { Calendar } from "./calendar";
 import { addItem, pile, qty, removeItem } from "./inventory";
 import { BARK_DRY_RATIO, STRUCTURES } from "./items";
-import { regionState, touchedRegions } from "./regionstate";
-import type { GameState, Inventory, ItemId, RegionState, Terrain, Weather } from "./types";
+import { campSite, regionState, touchedRegions } from "./regionstate";
+import type { GameState, Inventory, ItemId, RegionState, Site, Terrain, Weather } from "./types";
 
 export const WET_AFTER_RAIN_MINUTES = 6 * 60;
 
@@ -54,7 +54,7 @@ export const BANKED_KG = 6;
 /** Lets a lit fire down to a few kilos before you leave it; the surplus goes back on the pile. */
 export function bankFire(state: GameState, world: World, region: number): number {
   const st = regionState(state, world, region);
-  if (!st.fire.lit) return 0;
+  if (!st.fire.lit || st.campCell === null) return 0;
   const total = fuelTotal(st.fire);
   if (total <= BANKED_KG) return 0;
   const surplus = total - BANKED_KG;
@@ -92,13 +92,15 @@ export function groundDry(w: Weather, cal: Calendar): boolean {
  */
 export function fireWarms(st: RegionState): boolean {
   if (!st.fire.lit && !hasEmbers(st.fire)) return false;
-  if (!st.structures.cabin) return true;
-  return st.structures.hearth || st.fire.indoors;
+  const site = campSite(st);
+  if (!site?.structures.cabin) return true;
+  return site.structures.hearth || st.fire.indoors;
 }
 
-/** True when the camp has a roof over it: a lean-to, a turf hut, a cabin, or a snow shelter. */
-export function roofed(st: RegionState): boolean {
-  return st.structures.leanTo || st.structures.cabin || st.structures.turfHut || st.structures.snowShelter;
+/** True when the site has a roof over it: a lean-to, a turf hut, a cabin, or a snow shelter. */
+export function roofed(site: Site | null): boolean {
+  if (!site) return false;
+  return site.structures.leanTo || site.structures.cabin || site.structures.turfHut || site.structures.snowShelter;
 }
 
 export const SMOKE_COUGH = 40;
@@ -109,10 +111,11 @@ export const SMOKE_DRAIN_PER_HOUR = 25;
 
 /** Smoke in a closed cabin: rises with an indoor fire and no hearth while someone is there to fill the room for, clears otherwise. */
 export function stepSmoke(st: RegionState, atCamp: boolean, dt: number): void {
+  const site = campSite(st);
   // The hut has a smoke hole; a camp with one and no cabin never fills. A
   // hut beside a cabin is not the walled shelter the smoke hole was built
   // into, so the cabin's own smoke rule still applies.
-  const filling = st.fire.lit && st.fire.indoors && !st.structures.hearth && atCamp && !(st.structures.turfHut && !st.structures.cabin);
+  const filling = st.fire.lit && st.fire.indoors && !site?.structures.hearth && atCamp && !(site?.structures.turfHut && !site?.structures.cabin);
   if (filling) {
     const rate = smoky(st.fire) ? SMOKE_RISE_PER_HOUR * 1.5 : SMOKE_RISE_PER_HOUR;
     st.smoke = Math.min(100, st.smoke + (rate / 60) * dt);
@@ -143,11 +146,12 @@ export function openBurnPerHour(ambient: number): number {
 /** Fuel the fire eats per hour in this weather and cold; a roof over the pit keeps the rain off. */
 export function burnPerHour(w: Weather, ambient: number, st: RegionState): number {
   const open = openBurnPerHour(ambient);
+  const site = campSite(st);
   if (st.fire.indoors) {
-    if (st.structures.cabin && st.structures.hearth) return open * SHELTER_BURN_RATIO.cabin;
-    if (st.structures.turfHut) return open * SHELTER_BURN_RATIO.turfHut;
+    if (site?.structures.cabin && site.structures.hearth) return open * SHELTER_BURN_RATIO.cabin;
+    if (site?.structures.turfHut) return open * SHELTER_BURN_RATIO.turfHut;
   }
-  if (w.precip === "none" || roofed(st)) return open;
+  if (w.precip === "none" || roofed(site)) return open;
   const snowing = ambient <= 0;
   if (w.precip === "heavy" && !snowing) return open * 2;
   return open * 1.5;
@@ -178,7 +182,7 @@ export function splitIsWet(state: GameState, world: World): boolean {
  */
 export function splitSheltered(state: GameState, world: World, at: number): boolean {
   const st = regionState(state, world, cellAt(world, at).region);
-  return at === st.campCell && roofed(st);
+  return at === st.campCell && roofed(campSite(st));
 }
 
 /**
@@ -214,9 +218,10 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
   const dry = w.precip === "none";
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    const sheltered = st.fire.lit || st.structures.cabin || st.structures.turfHut;
-    const perHour = sheltered ? 2 : st.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
-    if (perHour <= 0) continue;
+    const site = campSite(st);
+    const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut;
+    const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
+    if (perHour <= 0 || st.campCell === null) continue;
     const campPile = state.piles[st.campCell];
     const atThisCamp = who !== null && id === who.region && who.atCamp;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);

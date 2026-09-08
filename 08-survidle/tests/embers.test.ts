@@ -6,20 +6,21 @@ import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { feltTemperature } from "../src/sim/player";
 import { placeAt } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 /** A lit fire at camp with a known fuel load and nobody to auto-feed it. */
 function litCamp(seed = 3, fuelKg = 1) {
   const { state, world } = newGame(seed);
+  siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
-  placeAt(state, world, st.campCell);
-  st.structures.firePit = true;
+  placeAt(state, world, st.campCell!);
+  siteFor(st, st.campCell!).structures.firePit = true;
   st.fire.lit = true;
   st.fire.fuelKg = fuelKg;
   st.fire.wetKg = 0;
   st.fire.litSince = state.minute;
-  state.player.autoFeed = false;
   return { state, world, st };
 }
 
@@ -140,7 +141,7 @@ describe("rekindling", () => {
 
   it("takes no drill indoors either, whoever is short one beside a turf hut's coals", () => {
     const { state, world, st } = litCamp();
-    st.structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     st.fire.indoors = true;
     advance(state, world, 120);
     expect(hasEmbers(st.fire)).toBe(true);
@@ -154,7 +155,7 @@ describe("rekindling", () => {
 
   it("still needs the drill indoors once the hut's coals are dead", () => {
     const { state, world, st } = litCamp();
-    st.structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     st.fire.indoors = true;
     advance(state, world, 120 + EMBER_MINUTES + 60);
     expect(hasEmbers(st.fire)).toBe(false);

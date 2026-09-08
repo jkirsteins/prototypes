@@ -19,6 +19,7 @@ import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
 import { passable } from "../src/world/route";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 
@@ -58,6 +59,7 @@ function roughFooting(world: World, region: number): { cell: number; next: numbe
 describe("wayfinding", () => {
   it("practises by exploring and not by walking", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
 
     startTask(state, world, calendar(state.minute), "walk", "spot:forest");
@@ -82,6 +84,7 @@ describe("wayfinding", () => {
     expect(opensOrders("woodcraft")).toBe(true);
 
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = partlyKnownNeighbour(g);
     expect(startTask(state, world, calendar(state.minute), "explore", `region:${region}`)).toBe(true);
@@ -110,6 +113,7 @@ describe("wayfinding", () => {
 
   it("reads farther with practice, capped at the sharp-eyed 1.5x by level 20", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const cal = calendar(state.minute);
     const cell = openFooting(world, state.player.region);
@@ -141,6 +145,7 @@ describe("wayfinding", () => {
 
   it("hurts a novice on bad ground and rarely a master", () => {
     const g = newGame(19);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = partlyKnownNeighbour(g);
     const { cell, next } = roughFooting(world, region);

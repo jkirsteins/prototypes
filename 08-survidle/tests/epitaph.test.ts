@@ -64,6 +64,7 @@ describe("the epitaph", () => {
 
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
+    // A body need is the survivor's own, not the order's: exhaustion or cold from one job holds through the handover to the next.
     // What these two deaths rest on: a shore's fish capacity is biomass per hectare over mean weight, tens of
     // thousands per km2, so a trap and a spear both find fish; a hunted small-game range refills from its
     // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
@@ -77,16 +78,23 @@ describe("the epitaph", () => {
     // The larder these seeds empty is meat, berries, roots, eggs and bark flour together;
     // frozen lingon under the snow open a berries row through the April start itself, ahead
     // of the wood-first grind order, so it empties where the ledger above finds it. Both
-    // seeds now die the same way, which is the shape a level-1 opening holds: the larder
-    // gives out weeks before the woodpile does, and the body starves at its own fire with
-    // wood still stacked beside it. Neither freezes, because the short-term reserve is
-    // small enough that what a meal cannot hold goes to fat, and fat is insulation as well
-    // as fuel - a body that eats well early is warm later on the same food.
+    // seeds' larders give out weeks before the woodpile does, which is the shape a level-1
+    // opening holds: both seeds starve with wood still stacked at their own fire.
+    // Neither freezes, because fat is insulation as well as fuel and the reserve a body
+    // lands with carries it that far - a body that eats well early is warm later on the
+    // same food.
+    // What these snapshots hold: Ausra Zukauskaite (seed 17) starves a kilometre from camp on
+    // day 31, pack empty, 93 kg of firewood still stacked at it. Elsa Sjoberg (seed 79) starves
+    // at camp on day 51, pack empty, 69 kg beside her. Both live well past the point a body
+    // that could not bank a reserve reaches, and both leave wood behind: a fire that keeps
+    // itself costs the woodpile less, and the food is what runs out.
+    // Seed 79 rather than seed 19: an epitaph needs a body, and seed 19's survivor is still
+    // alive at the end of her reference span, so she has no death to be read for.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 22. Starved at camp, with nothing in the pack and 47 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 28. Starved at camp, with nothing in the pack and 12 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 31. Starved 1.2 km from camp, with nothing in the pack and 93 kg of firewood at camp."`);
+    expect(epitaph(runReference(79, 60).record)).toMatchInlineSnapshot(`"Elsa Sjoberg. Day 51. Starved at camp, with nothing in the pack and 69 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

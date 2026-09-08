@@ -10,9 +10,11 @@ import { current } from "../src/sim/record";
 import { cemeteryHtml, journalHtml, landingHtml, tombstoneHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 function dead() {
   const g = newGame(17);
+  siteCamp(g.state, g.world);
   advance(g.state, g.world, 3 * 1440);
   die(g.state, "froze", regionAt(g.world, g.state.player.region).name);
   return g;

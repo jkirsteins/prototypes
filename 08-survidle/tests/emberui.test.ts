@@ -1,25 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { calendar } from "../src/sim/calendar";
 import { EMBER_MINUTES, hasEmbers } from "../src/sim/fire";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { updateBars } from "../src/ui/bars";
 import { lightSources } from "../src/ui/map";
 import { campHtml } from "../src/ui/panels";
 import { setPanel } from "../src/ui/render";
+import { siteCamp } from "./siting-helpers";
 
 /** A lit fire at camp with a small fuel load and nobody tending it, so it burns down on its own. */
 function litCamp(seed = 3, fuelKg = 1) {
   const { state, world } = newGame(seed);
+  siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
-  placeAt(state, world, st.campCell);
-  st.structures.firePit = true;
+  placeAt(state, world, st.campCell!);
+  siteFor(st, st.campCell!).structures.firePit = true;
   st.fire.lit = true;
   st.fire.fuelKg = fuelKg;
   st.fire.wetKg = 0;
   st.fire.litSince = state.minute;
-  state.player.autoFeed = false;
   return { state, world, st };
 }
 
@@ -28,7 +30,7 @@ describe("the camp box's fire line", () => {
     const { state, world, st } = litCamp();
     advance(state, world, 120);
     expect(hasEmbers(st.fire)).toBe(true);
-    const html = campHtml(state, world);
+    const html = campHtml(state, world, calendar(state.minute, state.startDoy));
     expect(html).toMatch(/coals/);
     expect(html).not.toMatch(/>burning/);
     expect(html).not.toMatch(/>cold</);
@@ -36,14 +38,14 @@ describe("the camp box's fire line", () => {
 
   it("still reads burning while fed, and reads cold again once the coals are spent", () => {
     const { state: litState, world: litWorld } = litCamp(3, 30);
-    const litHtml = campHtml(litState, litWorld);
+    const litHtml = campHtml(litState, litWorld, calendar(litState.minute, litState.startDoy));
     expect(litHtml).toMatch(/burning/);
 
     const { state, world, st } = litCamp();
     advance(state, world, 120 + EMBER_MINUTES + 60);
     expect(hasEmbers(st.fire)).toBe(false);
     expect(st.fire.lit).toBe(false);
-    const coldHtml = campHtml(state, world);
+    const coldHtml = campHtml(state, world, calendar(state.minute, state.startDoy));
     expect(coldHtml).toMatch(/cold/);
     expect(coldHtml).not.toMatch(/coals/);
   });
@@ -55,7 +57,7 @@ describe("the map's ember light", () => {
     advance(state, world, 120);
     expect(hasEmbers(st.fire)).toBe(true);
     const sources = lightSources(state, world);
-    const mine = sources.find((s) => s.cell === st.campCell);
+    const mine = sources.find((s) => s.cell === st.campCell!);
     expect(mine).toBeTruthy();
     expect(mine!.reach).toBe(0);
   });
@@ -65,7 +67,7 @@ describe("the map's ember light", () => {
     advance(state, world, 120 + EMBER_MINUTES + 60);
     expect(hasEmbers(st.fire)).toBe(false);
     const sources = lightSources(state, world);
-    expect(sources.find((s) => s.cell === st.campCell)).toBeUndefined();
+    expect(sources.find((s) => s.cell === st.campCell!)).toBeUndefined();
   });
 });
 
@@ -75,7 +77,7 @@ describe("the fuel bar's text at embers", () => {
     advance(state, world, 120);
     expect(hasEmbers(st.fire)).toBe(true);
     document.body.insertAdjacentHTML("beforeend", `<div id="camp"></div>`);
-    setPanel("camp", campHtml(state, world));
+    setPanel("camp", campHtml(state, world, calendar(state.minute, state.startDoy)));
     updateBars(state, world);
     const text = document.querySelector("#val-fire")!.textContent;
     expect(text).not.toMatch(/0\.0 kg/);
@@ -87,7 +89,7 @@ describe("the fuel bar's text at embers", () => {
     advance(state, world, 120 + EMBER_MINUTES + 60);
     expect(hasEmbers(st.fire)).toBe(false);
     document.body.insertAdjacentHTML("beforeend", `<div id="camp"></div>`);
-    setPanel("camp", campHtml(state, world));
+    setPanel("camp", campHtml(state, world, calendar(state.minute, state.startDoy)));
     updateBars(state, world);
     const text = document.querySelector("#val-fire")!.textContent;
     expect(text).toMatch(/0\.0 kg/);

@@ -12,6 +12,7 @@ import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
 import { routeMinutes } from "../src/world/route";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 
@@ -57,6 +58,7 @@ function driveExplore(g: G, maxMinutes = 40000): { minutes: number; expected: nu
 describe("explore", () => {
   it("maps a region by walking it, and the minutes are the ground's", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = partlyKnownNeighbour(g);
     const before = knownShare(state, world, region);
@@ -77,6 +79,7 @@ describe("explore", () => {
 
   it("leaves a crossable corridor when it is stopped halfway", () => {
     const g = newGame(4);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const region = partlyKnownNeighbour(g);
     const r = regionAt(world, region);

@@ -6,10 +6,11 @@ import { advance } from "../src/sim/advance";
 import { hourlyEvents } from "../src/sim/events";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { regionState } from "../src/sim/regionstate";
+import { regionState, siteFor } from "../src/sim/regionstate";
 import { regionAt } from "../src/world/gen";
 import { LATTICE_H, LATTICE_W } from "../src/world/terrain";
 import { placeAt } from "../src/sim/position";
+import { siteCamp } from "./siting-helpers";
 
 /** Midnight in June, unsheltered, no fire: the wolf roll's conditions. */
 const NIGHT = calendar(1440 * 70 + 16 * 60);   // 00:00 on day 71
@@ -55,10 +56,9 @@ describe("wolves", () => {
 describe("the body says what it ate", () => {
   it("one line for the sitting, naming what went and how much", () => {
     const { state, world } = newGame(21);
-    // "auto-eat: on" was legible on screen the whole time he could not tell
-    // whether his survivor was eating: state was shown and the event was not.
-    // Then it ate his whole meat stock while he slept, silently.
-    state.player.autoEat = true;
+    // The eating itself was legible on screen the whole time he could not
+    // tell whether his survivor was eating: state was shown and the event
+    // was not. Then it ate his whole meat stock while he slept, silently.
     state.player.kcal = 0;
     addItem(state.player.pack, "driedMeat", 3);
     autoEat(state, world, new Rng(1));
@@ -72,7 +72,6 @@ describe("the body says what it ate", () => {
 
   it("claims no meal when there was nothing to eat", () => {
     const { state, world } = newGame(21);
-    state.player.autoEat = true;
     state.player.kcal = 0;
     state.player.pack.items = {};
     autoEat(state, world, new Rng(1));
@@ -83,11 +82,11 @@ describe("the body says what it ate", () => {
 
   it("a fire falling to coals says so, since losing what you built must be louder than silence", () => {
     const { state, world } = newGame(21);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 0.01;
-    state.player.autoFeed = false;
     advance(state, world, 30);
     // A fire that eats its wood banks rather than dies, so the line that
     // matters is the one saying the flames are gone - not that the fire is.

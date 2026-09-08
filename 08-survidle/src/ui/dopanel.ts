@@ -8,7 +8,7 @@ import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { plain } from "../sim/voice";
-import { type TaskOption, withProgression } from "../sim/tasks";
+import { leftBehind, type TaskOption, withProgression } from "../sim/tasks";
 import type { GameState, ItemId, OrderWhen, TaskId } from "../sim/types";
 import { fmtDuration, fmtKm, fmtReal } from "../units";
 import { regionState } from "../sim/regionstate";
@@ -405,16 +405,19 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   // makes afterwards. It was done by accident, immediately after learning that
   // siting is worth 5 km of walking, and the survivor ended up with a camp in
   // each of two regions and no way to tell which was which. So the click asks,
-  // and the question says what camp this region already holds.
-  if (o.id === "makeCamp" && ui.confirmCamp) {
+  // and the question says what camp this region already holds and what moving
+  // it leaves behind, since neither is undone by the click.
+  if (o.id === "makeCamp" && ui.confirmCamp && regionState(state, world, state.player.region).campCell !== null) {
     const st = regionState(state, world, state.player.region);
     // Where the camp being moved actually is. Not whereIs, which answers "camp"
     // for the camp cell and turns the whole sentence into a tautology.
-    const km = kmBetween(state, world, cellOf(state, world), st.campCell);
+    const km = kmBetween(state, world, cellOf(state, world), st.campCell!);
     const held = km === null
       ? `${esc(regionAt(world, state.player.region).name)}'s camp is somewhere {you} cannot reach from here`
       : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(fmtKm(km))} from here`;
-    return `<div class="opt${openCls}" data-opt="intent:makeCamp:"><div class="confirm"><b>Move camp here?</b> <small>${held}. One camp to a region: this moves it rather than adding a second.</small><div><button class="mini danger" data-act="camp-yes" data-id="makeCamp" data-arg="">yes, camp here</button> <button class="mini" data-act="camp-no">no</button></div></div></div>`;
+    const left = leftBehind(state, world);
+    const small = left ? `${held}. ${esc(left)}` : `${held}.`;
+    return `<div class="opt${openCls}" data-opt="intent:makeCamp:"><div class="confirm"><b>Move camp here?</b> <small>${small}</small><div><button class="mini danger" data-act="camp-yes" data-id="makeCamp" data-arg="">yes, camp here</button> <button class="mini" data-act="camp-no">no</button></div></div></div>`;
   }
   // A row you can do says its name and how long. Its detail is a sentence a
   // reader has to parse mid-scan, and the scan is what this panel is for, so

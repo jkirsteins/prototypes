@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { bodyRowOf, campRowOf, isBodyRow, isCampRow, isCareRow } from "../src/sim/bodyorder";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty } from "../src/sim/inventory";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -12,7 +13,7 @@ import { ordersHere } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAtSpot } from "../src/sim/position";
 import { current } from "../src/sim/record";
-import { DIM, discovery, enterRegion, regionState } from "../src/sim/regionstate";
+import { campSite, DIM, discovery, enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { SKILL_IDS } from "../src/sim/skills";
 import { seasonalMean } from "../src/sim/weather";
 import { mapHtml } from "../src/ui/map";
@@ -20,6 +21,7 @@ import { tombstoneHtml } from "../src/ui/panels";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
 import { CELL_KM } from "../src/units";
 import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("the gap", () => {
   it("opens the coast a month after the mean crosses zero in spring and closes when it crosses in autumn", () => {
@@ -42,7 +44,8 @@ describe("the landing", () => {
   it("picks a shore cell 3 to 20 km from the old camp, the same one every time", () => {
     for (const seed of [17, 19, 42, 79]) {
       const { state, world } = newGame(seed);
-      const camp = regionState(state, world, state.player.region).campCell;
+      siteCamp(state, world);
+      const camp = regionState(state, world, state.player.region).campCell!;
       const a = landingCell(world, camp, seed, 2);
       expect(landingCell(world, camp, seed, 2)).toBe(a);
       const c = cellAt(world, a);
@@ -57,10 +60,11 @@ describe("the landing", () => {
 
   it("begins again: the pack lies where the body fell, the world has run the gap, the fog is dim, the clock is the landing's", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
-    st.structures.leanTo = true;
-    addItem(pile(state, st.campCell), "firewood", 10);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
+    addItem(pile(state, st.campCell!), "firewood", 10);
     advance(state, world, 20 * 1440);
     const deathCell = Math.floor(state.player.y) * world.w + Math.floor(state.player.x);
     die(state, "froze", regionAt(world, state.player.region).name);
@@ -68,16 +72,17 @@ describe("the landing", () => {
     beginAgain(state, world);
     expect(state.landing).not.toBeNull();
     expect(state.landing!.gapDays).toBe(90);
-    // An idle body with no orders dies well inside 20 days (the camp is by the
-    // water, so it drinks, and starves instead), so the explicit die() call above
-    // never fires; the gap still runs the 90 days from whenever it fell.
-    expect(state.landing!.date).toEqual({ year: 1, doy: 183 });
+    // An idle body has its own row on the list and looks after itself on it -
+    // the water, the food at camp, the fire, the sleep - so it is still alive
+    // at 20 days and the explicit die() above is what ends it. The gap runs
+    // its 90 days from there.
+    expect(state.landing!.date).toEqual({ year: 1, doy: 200 });
     expect(state.minute).toBe(0);
-    expect(state.startDoy).toBe(183);
+    expect(state.startDoy).toBe(200);
     expect(state.year).toBe(1);
-    expect(st.structures.leanTo).toBe(true);
-    expect(st.structures.firePit).toBe(true);
-    expect(qty(pile(state, st.campCell), "firewood")).toBe(10);
+    expect(campSite(st)!.structures.leanTo).toBe(true);
+    expect(campSite(st)!.structures.firePit).toBe(true);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBe(10);
     expect(qty(pile(state, deathCell), "driedMeat")).toBeCloseTo(packMeat, 3);
     for (const id of Object.keys(state.discovered)) expect(discovery(state, Number(id))).toBe(DIM);
     expect(state.survivors).toHaveLength(1);
@@ -86,23 +91,25 @@ describe("the landing", () => {
 
   it("reads the old camp from where the survivor built, not from wherever they died", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const startRegion = state.player.region;
     const st = regionState(state, world, startRegion);
-    st.structures.firePit = true;
-    st.structures.snares = 2;
+    siteFor(st, st.campCell!).structures.firePit = true;
+    st.snares = 2;
     const startName = regionAt(world, startRegion).name;
     const neighbour = regionAt(world, startRegion).neighbours[0].id;
     placeAtSpot(state, world, neighbour, "camp");
     die(state, "froze", regionAt(world, neighbour).name);
     beginAgain(state, world);
     const oldCamp = state.landing!.oldCamp;
-    expect(oldCamp).toBe(st.campCell);
+    expect(oldCamp).toBe(st.campCell!);
     land(state, world, { first: "Ilze", last: "Berg" });
     expect(state.log[0].text).toContain(`The old camp at ${startName}`);
   });
 
   it("lands: a second survivor with a fresh body, the first log line pointing at the old camp", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     advance(state, world, 5 * 1440);
     die(state, "froze", regionAt(world, state.player.region).name);
     beginAgain(state, world);
@@ -123,6 +130,7 @@ describe("the dim map", () => {
     document.body.innerHTML = `<div id="map"></div>`;
     resetPanels();
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const cal = calendar(0);
     const ui = newUiState();
     addItem(herePile(state, world), "stone", 2);
@@ -147,11 +155,12 @@ describe("the dim map", () => {
 describe("what the heir is told", () => {
   it("quotes the ancestor's journal for what was built, and the tombstone the ancestor's day", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     placeAtSpot(state, world, state.player.region, "shore");
-    st.structures.firePit = true;
-    st.structures.dryingRack = true;
-    st.racks = 1;
+    siteFor(st, st.campCell!).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.dryingRack = true;
+    siteFor(st, st.campCell!).racks = 1;
     const rec = current(state);
     rec.events.push({ kind: "built", structure: "firePit", day: 2, date: { year: 1, doy: 91 } });
     rec.events.push({ kind: "built", structure: "dryingRack", day: 9, date: { year: 1, doy: 98 } });
@@ -178,27 +187,61 @@ describe("what the heir is told", () => {
   // and none of that work would be counted as a morning of its own attention.
   it("leaves the heir the world and not the dead's orders", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
     const region = state.player.region;
-    const camp = regionState(state, world, region).campCell;
+    const camp = regionState(state, world, region).campCell!;
     addItem(pile(state, camp), "firewood", 40);
     giveOrder(state, world, { task: "roots", until: { kind: "daily", n: 2 }, deliver: "camp", where: "nearest", when: { season: { from: 90, to: 304 } } }, "job");
     giveOrder(state, world, { task: "chop", until: { kind: "campHas", qty: 300 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(ordersHere(state, world).length).toBe(2);
+    // The two care rows plus the two given.
+    expect(ordersHere(state, world).length).toBe(4);
     advance(state, world, 1440);
     die(state, "starved");
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });
-    for (const st of Object.values(state.regions)) expect(st.orders).toEqual([]);
+    // Every old camp is wiped clean; a landing cell in ground never touched
+    // before is a fresh region and carries only the two care rows every
+    // fresh region does. Neither carries a real order of the dead's.
+    for (const st of Object.values(state.regions)) expect(st.orders.every(isCareRow)).toBe(true);
     // The world is still there: the wood the ancestor split is at the old camp for the heir to find.
     expect(qty(pile(state, camp), "firewood")).toBeGreaterThan(0);
-    // The heir's own orders are the only ones the list ever holds again.
+    // The heir's own orders are the only work the list ever holds again.
     giveOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(regionState(state, world, region).orders.map((o) => o.req.task)).toEqual(state.player.region === region ? ["sticks"] : []);
+    const work = regionState(state, world, region)
+      .orders.filter((o) => !isCareRow(o))
+      .map((o) => o.req.task);
+    expect(work).toEqual(state.player.region === region ? ["sticks"] : []);
+  });
+
+  // A body is not a plan. The heir has thirst, hunger, cold and sleep from the
+  // hour it lands, and the two rows that answer them are the only thing on a
+  // region's list that no survivor ever chose to put there - so the wipe that
+  // takes the dead's work must hand them back, on every region the dead had
+  // touched as well as on the fresh ground the boat comes to.
+  it("leaves the heir a body row and a camp row in every region", () => {
+    const { state, world } = newGame(17);
+    const home = state.player.region;
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    giveOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest" }, "keep");
+    advance(state, world, 1440);
+    die(state, "starved");
+    beginAgain(state, world);
+    land(state, world, { first: "Aino", last: "Berzins" });
+    const regions = [...new Set([home, state.player.region, ...Object.keys(state.regions).map(Number)])];
+    for (const id of regions) {
+      const st = regionState(state, world, id);
+      expect(st.orders.filter(isBodyRow).length).toBe(1);
+      expect(st.orders.filter(isCampRow).length).toBe(1);
+    }
+    // And they are where a fresh list puts them: the care rows above the work.
+    expect(bodyRowOf(state, world)).not.toBe(null);
+    expect(campRowOf(state, world)).not.toBe(null);
   });
 
   it("says nothing about the journal when nothing was built, and the first tombstone has no comparison", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
     advance(state, world, 2 * 1440);
     die(state, "starved");

@@ -11,6 +11,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { addItem } from "../src/sim/inventory";
 import { beginAgain } from "../src/sim/landing";
+import { isCareRow } from "../src/sim/bodyorder";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { addOrder, ordersHere } from "../src/sim/orders";
@@ -50,7 +51,9 @@ describe("a queued row is an act, not a thing", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     addOrder(state, world, { task: "craft", arg: "snare", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    expect(ordersHere(state, world).length).toBe(1);
+    // The care rows are on every list from the moment a region exists, so
+    // the one order given is the one row that is not one of those.
+    expect(ordersHere(state, world).filter((o) => !isCareRow(o)).length).toBe(1);
     expect(ordersHtml(state, world, cal)).toContain("Make snare");
   });
 
