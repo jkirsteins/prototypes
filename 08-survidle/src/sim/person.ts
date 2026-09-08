@@ -84,13 +84,13 @@ const FAT_SHARES: Record<Sex, { floor: number; lower: number; typical: number; u
 };
 
 export interface FatLandmarks {
-  /** Death: essential fat, in kcal. */
+  /** The essential-fat floor: the reserve that is structure rather than fuel, in kcal. */
   floor: number;
-  /** The level starvation is read against, in kcal. */
+  /** The lower intervention point: the reserve below which the body begins to fail, in kcal. */
   lower: number;
   /** Where a survivor lands, in kcal. */
   typical: number;
-  /** Where appetite begins to argue back, in kcal. */
+  /** The upper point: the top of the zone a well-provisioned body settles in, in kcal. */
   upper: number;
 }
 
