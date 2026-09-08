@@ -43,3 +43,27 @@ Once those are settled the drawing is small: a `scorched` class carrying a step
 for age, excluded from marked cells the way every other conditional ground rule
 in `style.css` is, plus a row in `scripts/map-shots.mjs` so the look is checked
 with the rest.
+
+## Seep: a low-effort water source read off the ground
+
+**Raised** 2026-09-08, during the body-fat calibration pass.
+
+A long walk with no vessel and no known water on the way is currently all or
+nothing: the body drinks nothing until it reaches a real source, however
+close the ground it is crossing gets to actually having some. The author's
+ruling on a heir landing far from the old camp -
+that a competent player routes around it, by camping anew or by drinking
+along the way - assumes "drinking along the way" is actually available to
+whoever or whatever is walking. Right now it is not; a walk crosses ground
+that may well hold damp moss, a seep, a snow patch, without ever reading it
+as water.
+
+Seep would be that: a low-yield, low-effort water source read off the ground
+itself rather than fetched from a mapped source or carried in a vessel -
+enough to blunt a dry stretch, not enough to make carrying water pointless.
+It would want its own small spec: what ground qualifies (damp/marsh cells,
+snow in winter, a stream crossing not otherwise mapped), how much it gives
+per minute spent at it, and whether the reference runner and the intent
+runner reach for it automatically the way `autoDrink` already does for a
+mapped source, since an heir walking home is exactly the case with no
+standing order to reach for it by hand.

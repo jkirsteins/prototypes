@@ -23,7 +23,9 @@ Pass count holds at 4/5 through both branch readings. Seed 17 flips from fail
 day inside the old window and about three past the new one - a genuine near
 miss both ways, and the branch's larger reserve pushes it clear. Seed 79 flips
 the other way, fail on the branch where it passed on main - see the finding
-below, this is not the reserve.
+below, this is not the reserve. (Both readings above are the standalone
+branch, before it merged into main; the postscript at the end of this
+document explains why the merged tree reads **5 of 5** instead.)
 
 ## Year gate (`npm run year`, kitted level-20 camp, from 1 April)
 
@@ -168,7 +170,39 @@ such judgment, so it dying here says more about the runner's lack of
 discretion than about the heir mechanism. The concrete lever named for this:
 SEEP (a low-effort, low-yield water source read off the ground rather than a
 dedicated fetch) would let a walk like this drink from what it is passing
-rather than needing the old camp's water to survive the trip. Not a gap to
-close in this task - it is a water/routing question, does not move with
-`FAT_SHARES`, and is now a candidate for the water or reference-runner work
-rather than something the heir/walk-home mechanism itself must prevent.
+rather than needing the old camp's water to survive the trip. Recorded in
+`docs/roadmap-additions.md`, since it is a water/routing question that does
+not move with `FAT_SHARES`.
+
+## Postscript: both findings above were this branch's own bug, not main's
+
+Merging this branch into main surfaced the actual cause of both. `canFeed`
+and the need probe around it had diverged: this branch threaded a
+`RunnerIntent` through and read camp location off `it.campCell`, a value
+cached on the intent at whatever moment it was built; main, independently,
+had already replaced that whole path (`needFrom`/`peekNeed`, a `NeedMemory`
+for sleep and cold, `canFeed` reading `regionState(state, world,
+p.region).campCell` fresh) and split camp-level needs like snares into their
+own `campNeed`, no longer part of `BodyNeed` at all. The merge conflict in
+`src/sim/body.ts` was resolved by taking main's structure and dropping the
+stale `it`-threaded reads.
+
+That fix alone (no landmark or mechanism change) takes the April gate to
+**5 of 5** - seed 79 now starves on day 44 rather than freezing on day 7 -
+and `tests/slow/heir.test.ts` runs seed 17's heir to a clean landing and a
+walk home inside three days, exactly as it did before this branch started
+diverging from main's own need-probe work. Neither finding above was a fat
+model or landmark problem; both were this branch quietly running on a stale
+copy of a function main had already moved on from.
+
+That does not erase the sibling session's root-cause work on seed 79 above -
+`starvation()` reading 0 across its whole settling zone, where the old shape
+still throttled `workSpeed`, is a real, confirmed behaviour change from the
+redesign, and the bisection that pinned it stands. It just was not, on its
+own, what killed seed 79: something about the stale `canFeed` path made that
+particular seed's opening week land in the one spot where the missing
+throttle mattered enough to cost the fire. The throttle's removal is worth
+someone's deliberate look regardless of whether a seed currently walks into
+it - a settling zone that no longer slows work at all near its own edges is a
+one-line rule to restore if a later change ever exposes it on a seed that
+still starts from a fresh `canFeed`.
