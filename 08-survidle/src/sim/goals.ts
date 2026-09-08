@@ -15,10 +15,17 @@ export type { GoalId } from "./types";
 /** Something this survivor did. The only thing that moves a goal. */
 export type Deed =
   | { kind: "task"; id: TaskId; arg?: string }
-  | { kind: "delivered"; item: ItemId; kg: number }
+  /** Firewood as it leaves the ground or the block: the one moment that cannot be replayed by moving a pile's contents around. */
+  | { kind: "gathered"; item: ItemId; kg: number }
   | { kind: "built"; structure: StructureId }
   /** The tinder caught. A light that failed is not a fire lit. */
   | { kind: "lit" }
+  /** A fire alive at dusk, lit or embers, is still alive at the dawn roll. */
+  | { kind: "keptNight" }
+  /** How long, in minutes, the current run of keeping has lasted: the span since the fire was last lit from cold. */
+  | { kind: "keptFor"; minutes: number }
+  /** Minutes of rain the fire has been alive through, added up over its whole run and reset only when it dies: separate showers on the same fire all count. */
+  | { kind: "keptRain"; minutes: number }
   /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
   | { kind: "stored" }
   | { kind: "season"; season: Season };
@@ -39,18 +46,34 @@ const task = (...ids: TaskId[]) => (d: Deed) => (d.kind === "task" && ids.includ
 const built = (...ids: StructureId[]) => (d: Deed) => (d.kind === "built" && ids.includes(d.structure) ? 1 : 0);
 const season = (s: Season) => (d: Deed) => (d.kind === "season" && d.season === s ? 1 : 0);
 
-/** The kilos of firewood in a delivery, wet or dry: the goal is the carrying. */
-const firewoodKg = (d: Deed) => (d.kind === "delivered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
+/** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
+const firewoodKg = (d: Deed) => (d.kind === "gathered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
 
 /** The firewood goal's target, in kilos: named once so the title can never drift from the number the bar checks. */
 const FIREWOOD_KG = 10;
 
+/** The keeping goal's target, in days: named once so the title can never drift from the number the credit checks. */
+export const KEPT_DAYS = 3;
+
 export const GOALS: GoalDef[] = [
-  { id: "firewood", title: `Bring ${FIREWOOD_KG} kg of firewood back to camp`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
+  { id: "firewood", title: `Gather ${FIREWOOD_KG} kg of firewood`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
   { id: "fire", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
   { id: "cook", title: "Cook something over it", target: 1, credit: task("cook") },
+  { id: "keptNight", title: "Keep a fire alive overnight", target: 1, credit: (d) => (d.kind === "keptNight" ? 1 : 0) },
   { id: "bed", title: "Get off the cold ground", target: 1, credit: built("boughBed") },
+  {
+    id: "keptDays",
+    title: "Keep a fire burning for three days without letting it go out",
+    target: 1,
+    credit: (d) => (d.kind === "keptFor" && d.minutes >= KEPT_DAYS * 24 * 60 ? 1 : 0),
+  },
   { id: "roof", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter") },
+  {
+    id: "keptRain",
+    title: "Keep a fire through a day of rain",
+    target: 1,
+    credit: (d) => (d.kind === "keptRain" && d.minutes >= 24 * 60 ? 1 : 0),
+  },
   { id: "water", title: "Keep water at camp", target: 1, credit: built("waterStore", "seep") },
   { id: "snare", title: "Set a snare", target: 1, credit: built("snare") },
   { id: "store", title: "Put food by for later", target: 1, credit: (d) => (d.kind === "stored" ? 1 : 0) },
@@ -76,14 +99,27 @@ export function newGoals(s: Season): GoalState {
 }
 
 /**
- * How many goals are held out at once. One through the fire and food
- * chain, where the player has the fewest tools and the least idea what
- * matters; two from the point the goals stop being a chain, three once
- * they are wholly parallel jobs competing for the same materials.
+ * The first goal past the opening chain: everything up to and including
+ * keeping a fire overnight is still one path with the fewest tools and
+ * the least idea what matters, so it stays single-file. Named by id, not
+ * by index, so inserting a goal ahead of "bed" widens the chain with it
+ * instead of silently shifting a number that used to mean "bed".
+ */
+const WIDENS_TO_2: GoalId = "bed";
+/**
+ * The first goal where camp jobs stop being a chain and start competing
+ * for the same materials in parallel. Same reasoning as WIDENS_TO_2.
+ */
+const WIDENS_TO_3: GoalId = "water";
+
+/**
+ * How many goals are held out at once, re-derived from the ladder itself
+ * on every call rather than cached, since GOALS is a short constant array
+ * and a stale cache is a worse risk than the lookup.
  */
 function width(firstOpen: number): number {
-  if (firstOpen >= 5) return 3;
-  if (firstOpen >= 3) return 2;
+  if (firstOpen >= GOALS.findIndex((g) => g.id === WIDENS_TO_3)) return 3;
+  if (firstOpen >= GOALS.findIndex((g) => g.id === WIDENS_TO_2)) return 2;
   return 1;
 }
 

@@ -4,7 +4,7 @@ import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
-import { groundDry, smoky } from "../sim/fire";
+import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
@@ -348,9 +348,17 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
   const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
-  const fire = st.structures.firePit
-    ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
-    : "";
+  // A third word between burning and cold: coals are live but not fed, the
+  // routine state after every tended night rather than an exception. The
+  // fuel bar below (shown only "here") already ticks off how long they last;
+  // duplicating that count into this line would put a per-minute value into
+  // markup the region panel's churn budget does not allow.
+  const fireWord = st.fire.lit
+    ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>`
+    : hasEmbers(st.fire)
+      ? '<span class="ember">coals</span>'
+      : '<span class="dim">cold</span>';
+  const fire = st.structures.firePit ? `<div>fire: ${fireWord}</div>${here ? bar("fire", "fire", "Fuel") : ""}` : "";
   const rack = st.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
     : "";
