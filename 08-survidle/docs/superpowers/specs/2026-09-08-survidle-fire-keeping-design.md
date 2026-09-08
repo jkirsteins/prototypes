@@ -60,8 +60,10 @@ it was put out, not banked.
 coals every night while the survivor sleeps and is rekindled in the morning. A
 state the player meets daily has to be legible, so embers are shown wherever the
 fire is already shown: the HERE panel gains a third word between "burning" and
-"cold"; the map keeps a dimmed marker with one ring rather than dropping to
-nothing; the night fire banks down rather than going dark. Without that a banked
+"cold"; the map keeps a dimmed marker with no ring rather than dropping to
+nothing - `EMBER_LUX` sits under the 5-lux firelit band, so a glow that finds
+nothing by is a glow that reaches no cell beyond its own; the night fire banks
+down rather than going dark. Without that a banked
 fire is pixel-identical to a dead one, and the playtest is explicit about what an
 interface that hides its state does - the player concludes the fault is theirs.
 

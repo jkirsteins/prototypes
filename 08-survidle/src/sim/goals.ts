@@ -24,7 +24,7 @@ export type Deed =
   | { kind: "keptNight" }
   /** How long, in minutes, the current run of keeping has lasted: the span since the fire was last lit from cold. */
   | { kind: "keptFor"; minutes: number }
-  /** How long, in minutes, the fire has stayed alive through rain without a break. */
+  /** Minutes of rain the fire has been alive through, added up over its whole run and reset only when it dies: separate showers on the same fire all count. */
   | { kind: "keptRain"; minutes: number }
   /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
   | { kind: "stored" }
