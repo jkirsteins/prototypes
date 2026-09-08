@@ -438,6 +438,12 @@ function dropEverything(state: GameState, world: World): boolean {
     if (kg > 1e-9) {
       moved = true;
       // What this survivor carried in, which is the only thing a goal counts.
+      // This over-credits one way round: fetch wood the camp pile already
+      // holds into the pack on an order, walk it away and back, and this
+      // counts it delivered again, because nothing here remembers where an
+      // item in the pack came from. Accepted - building that memory costs
+      // more than the walk-out-and-back it would prevent, which already
+      // costs more clicks than gathering the wood for real.
       if (atHome) goalDeed(state, { kind: "delivered", item, kg });
     }
   }

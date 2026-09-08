@@ -2099,7 +2099,12 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "hang": {
       const kg = loadRack(state, world);
-      if (kg > 0) log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
+      // Raw meat auto-eaten while the task ran leaves loadRack nothing to move: the
+      // task still finishes, but a hang that hung nothing is not food put by.
+      if (kg > 0) {
+        log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
+        goalDeed(state, { kind: "stored" });
+      }
       return;
     }
     case "iceHole": {

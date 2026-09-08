@@ -36,6 +36,15 @@ describe("the goal panel", () => {
     expect(document.querySelector<HTMLElement>("#bar-goal-firewood")!.style.width).toBe("40.0%");
   });
 
+  it("floors the figure rather than rounding it up to a target not yet reached", () => {
+    const { state } = newGame(3);
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 9.6 });
+    document.body.innerHTML = `<div id="goals">${goalsHtml(state, cal)}</div>`;
+    updateGoalBars(state, cal);
+    expect(document.querySelector<HTMLElement>("#val-goal-firewood")!.textContent).toBe("9 / 10 kg");
+    expect(state.goals.done.firewood).toBeUndefined();
+  });
+
   it("draws no bar on a goal that is simply done or not done", () => {
     const { state } = newGame(3);
     state.goals.done.firewood = true;

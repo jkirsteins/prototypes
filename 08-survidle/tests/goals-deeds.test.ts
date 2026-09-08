@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
+import { drop, dropAll } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { addItem, pile } from "../src/sim/inventory";
+import { activeGoals, goalDeed } from "../src/sim/goals";
+import { startIntent } from "../src/sim/intent";
+import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
+import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
-import { placeAt } from "../src/sim/position";
+import { die } from "../src/sim/player";
+import { placeAt, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
+import { regionAt } from "../src/world/gen";
 
 const cal = calendar(0);
 
@@ -65,6 +71,31 @@ describe("deeds reach the ladder", () => {
     expect(state.goals.progress.firewood ?? 0).toBe(0);
   });
 
+  it("credits the firewood a standing order actually drops onto the camp pile", () => {
+    const { state, world } = newGame(17);
+    const camp = regionState(state, world, state.player.region).campCell;
+    // deadwood is the one gathering task whose yield is firewood itself.
+    expect(startIntent(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "forever" }, deliver: "camp", where: "nearest" })).toBe(true);
+    // Standing at camp already, with a load on the back and nowhere else the
+    // intent needs to send it first: the exact shape dropEverything handles.
+    state.task = null;
+    placeAt(state, world, camp);
+    addItem(state.player.pack, "firewood", 4);
+    advance(state, world, 1);
+    expect(qty(pile(state, camp), "firewood")).toBe(4);
+    expect(state.goals.progress.firewood).toBeCloseTo(4);
+  });
+
+  it("credits a season goal when the calendar actually turns the corner", () => {
+    const { state, world } = newGame(3);
+    // Backdating lastSeason forces the very next day roll to see a turnover,
+    // without simulating the months a real one would take.
+    state.goals.lastSeason = "winter";
+    advance(state, world, 1440);
+    expect(state.goals.lastSeason).toBe("spring");
+    expect(state.goals.done.spring).toBe(true);
+  });
+
   it("credits a season only when the calendar turns over into it", () => {
     const { state, world } = newGame(3);
     for (const id of ["firewood", "fire", "cook", "bed", "roof", "water", "snare", "store"] as const) {
@@ -74,5 +105,133 @@ describe("deeds reach the ladder", () => {
     // A landing does not credit the season it lands in.
     advance(state, world, 60);
     expect(state.goals.done[before as "winter"]).toBeUndefined();
+  });
+
+  it("credits the bed goal when the survivor actually builds one", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    addItem(state.player.pack, "stick", 12);
+    const o = check(state, world, cal, "build", "boughBed");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "build", "boughBed")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(st.structures.boughBed).toBe(true);
+    expect(state.goals.done.bed).toBe(true);
+  });
+
+  it("credits the cook goal when the survivor actually cooks over the fire", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 5;
+    addItem(state.player.pack, "rawMeat", 2);
+    const o = check(state, world, cal, "cook", "rawMeat");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "cook", "rawMeat")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(state.goals.done.cook).toBe(true);
+  });
+
+  it("credits the store goal when meat actually goes onto the rack", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.dryingRack = true;
+    st.racks = 1;
+    addItem(pile(state, st.campCell), "rawMeat", 9);
+    const o = check(state, world, cal, "hang");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "hang")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(st.rack.kg).toBeGreaterThan(0);
+    expect(state.goals.done.store).toBe(true);
+  });
+
+  it("credits nothing when the meat is gone before the hang finishes", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, st.campCell);
+    st.structures.dryingRack = true;
+    st.racks = 1;
+    const camp = pile(state, st.campCell);
+    addItem(camp, "rawMeat", 9);
+    const o = check(state, world, cal, "hang");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, cal, "hang")).toBe(true);
+    // The same failure shape the fire deed exists for: the task still runs
+    // to completion, but loadRack has nothing left to move onto the rack.
+    removeItem(camp, "rawMeat", qty(camp, "rawMeat"));
+    advance(state, world, o.duration + 1);
+    expect(st.rack.kg).toBe(0);
+    expect(state.goals.done.store).toBeUndefined();
+  });
+});
+
+describe("a hand-played drop credits a delivery only at the home camp cell", () => {
+  it("drop() at camp credits what transfer actually moved", () => {
+    const { state, world } = newGame(17);
+    const camp = regionState(state, world, state.player.region).campCell;
+    placeAt(state, world, camp);
+    addItem(state.player.pack, "firewood", 6);
+    expect(drop(state, world, "firewood", 6)).toBe(6);
+    expect(state.goals.progress.firewood).toBeCloseTo(6);
+  });
+
+  it("drop() away from camp is repacking, not a delivery: it credits nothing", () => {
+    const { state, world } = newGame(17);
+    placeAtSpot(state, world, state.player.region, "forest");
+    addItem(state.player.pack, "firewood", 6);
+    drop(state, world, "firewood", 6);
+    expect(state.goals.progress.firewood ?? 0).toBe(0);
+  });
+
+  it("dropAll() at camp credits every item that actually lands", () => {
+    const { state, world } = newGame(17);
+    const camp = regionState(state, world, state.player.region).campCell;
+    placeAt(state, world, camp);
+    addItem(state.player.pack, "firewood", 3);
+    dropAll(state, world);
+    expect(state.goals.progress.firewood).toBeCloseTo(3);
+  });
+
+  it("dropAll() away from camp credits nothing", () => {
+    const { state, world } = newGame(17);
+    placeAtSpot(state, world, state.player.region, "forest");
+    addItem(state.player.pack, "firewood", 3);
+    dropAll(state, world);
+    expect(state.goals.progress.firewood ?? 0).toBe(0);
+  });
+});
+
+describe("an heir inherits the world and not the ladder's credit", () => {
+  it("lands to a lit fire, a full camp and a standing hut, and advances nothing", () => {
+    const { state, world } = newGame(17);
+    const oldRegion = state.player.region;
+    const st = regionState(state, world, oldRegion);
+    st.fire.lit = true;
+    st.fire.fuelKg = 20;
+    st.structures.turfHut = true;
+    addItem(pile(state, st.campCell), "firewood", 200);
+    const before = activeGoals(state, calendar(state.minute, state.startDoy));
+    die(state, "froze", regionAt(world, oldRegion).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+    expect(activeGoals(state, calendar(state.minute, state.startDoy))).toEqual(before);
+    expect(state.goals.done.fire).toBeUndefined();
+    expect(state.goals.done.roof).toBeUndefined();
+    expect(state.goals.progress.firewood ?? 0).toBe(0);
+  });
+
+  it("carries an incomplete goal's progress across a real death", () => {
+    const { state, world } = newGame(17);
+    const region = state.player.region;
+    goalDeed(state, { kind: "delivered", item: "firewood", kg: 6 });
+    die(state, "froze", regionAt(world, region).name);
+    beginAgain(state, world);
+    land(state, world, { first: "Ilze", last: "Berg" });
+    expect(state.goals.progress.firewood).toBeCloseTo(6);
+    expect(state.goals.done.firewood).toBeUndefined();
   });
 });

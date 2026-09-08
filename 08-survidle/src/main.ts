@@ -243,11 +243,12 @@ function frame(now: number) {
   // crossed inside an offline catch-up waits behind that catch-up's own away
   // report; momentToOpen owns the whole rule.
   if (momentToOpen(state, ui)) ui.teach = state.teachQueue.shift()!;
+  // The queue itself stays put until the overlay is dismissed: it is what
+  // makes the congratulation survive a reload. goalMomentToOpen already
+  // refuses to reopen while ui.goalsDone is set, so leaving it be here does
+  // not requeue the overlay every frame.
   const reached = goalMomentToOpen(state, ui);
-  if (reached) {
-    ui.goalsDone = reached;
-    state.goals.queue = [];
-  }
+  if (reached) ui.goalsDone = reached;
   if (deathTransition(wasDead, Boolean(state.dead))) beacon.died(state, Date.now());
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
@@ -420,6 +421,7 @@ function onClick(ev: Event) {
       break;
     case "goal-close":
       ui.goalsDone = null;
+      state.goals.queue = [];
       // The same bump the rung moment's dismiss does: the minutes the
       // screen was open were paused, not spent away.
       lastReal = performance.now();

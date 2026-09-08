@@ -19,6 +19,8 @@ export type Deed =
   | { kind: "built"; structure: StructureId }
   /** The tinder caught. A light that failed is not a fire lit. */
   | { kind: "lit" }
+  /** Meat actually went on the rack. A hang that racked nothing put nothing by. */
+  | { kind: "stored" }
   | { kind: "season"; season: Season };
 
 export interface GoalDef {
@@ -40,15 +42,18 @@ const season = (s: Season) => (d: Deed) => (d.kind === "season" && d.season === 
 /** The kilos of firewood in a delivery, wet or dry: the goal is the carrying. */
 const firewoodKg = (d: Deed) => (d.kind === "delivered" && (d.item === "firewood" || d.item === "wetFirewood") ? d.kg : 0);
 
+/** The firewood goal's target, in kilos: named once so the title can never drift from the number the bar checks. */
+const FIREWOOD_KG = 10;
+
 export const GOALS: GoalDef[] = [
-  { id: "firewood", title: "Bring 10 kg of firewood back to camp", target: 10, unit: "kg", credit: firewoodKg },
+  { id: "firewood", title: `Bring ${FIREWOOD_KG} kg of firewood back to camp`, target: FIREWOOD_KG, unit: "kg", credit: firewoodKg },
   { id: "fire", title: "Light a fire", target: 1, credit: (d) => (d.kind === "lit" ? 1 : 0) },
   { id: "cook", title: "Cook something over it", target: 1, credit: task("cook") },
   { id: "bed", title: "Get off the cold ground", target: 1, credit: built("boughBed") },
   { id: "roof", title: "Put a roof over your head", target: 1, credit: built("leanTo", "turfHut", "snowShelter") },
   { id: "water", title: "Keep water at camp", target: 1, credit: built("waterStore", "seep") },
   { id: "snare", title: "Set a snare", target: 1, credit: built("snare") },
-  { id: "store", title: "Put food by for later", target: 1, credit: task("hang") },
+  { id: "store", title: "Put food by for later", target: 1, credit: (d) => (d.kind === "stored" ? 1 : 0) },
   { id: "spring", title: "Live to see the spring", target: 1, credit: season("spring") },
   { id: "summer", title: "Live to see the summer", target: 1, credit: season("summer") },
   { id: "autumn", title: "Live to see the autumn", target: 1, credit: season("autumn") },

@@ -49,7 +49,9 @@ export function updateGoalBars(state: GameState, cal: Calendar, root: ParentNode
     const fill = root.querySelector<HTMLElement>(`#bar-${b}`);
     if (fill) fill.style.width = `${Math.max(0, Math.min(100, (at / g.target) * 100)).toFixed(1)}%`;
     const val = root.querySelector<HTMLElement>(`#val-${b}`);
-    const text = `${Math.round(at)} / ${g.target}${g.unit ? ` ${g.unit}` : ""}`;
+    // Floored, not rounded: 9.6 of 10 kg reads "9 / 10", not a "10 / 10" that
+    // says the goal is done a kilo before it actually is.
+    const text = `${Math.floor(at + 1e-9)} / ${g.target}${g.unit ? ` ${g.unit}` : ""}`;
     if (val && val.textContent !== text) val.textContent = text;
   }
 }
