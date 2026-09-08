@@ -888,6 +888,10 @@ describe("the night", () => {
     expect(ordersHere(state, world)[1].skipped).toBe("");
     expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.noFire);
     st.fire.lit = true;
+    // Wood on it as well as a flame: a fire at the low mark with a woodpile
+    // beside it is the body's own row, and that row would take the minute
+    // before any chore the list holds.
+    st.fire.fuelKg = 10;
     today(state).workMin = 0;
     expect(chooseOrder(state, world, night)?.req.task).toBe("split");
   });

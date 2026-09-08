@@ -1,7 +1,7 @@
 /**
  * The body's own tier, read off the player rather than off whatever is
- * running: sleep, storm, cold, thirst, hunger, snares, spent, home, in that
- * order, and what to do about each. Every step is an ordinary task; the fire
+ * running: sleep, storm, cold, thirst, hunger, the fire, snares, spent,
+ * home, in that order, and what to do about each. Every step is an ordinary task; the fire
  * steps are guarded by check, so a missing drill or an under-level pit is
  * skipped, never an error.
  */
@@ -14,7 +14,7 @@ import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
 import { AXES, axeInHand, hasTool, pile, qty, takeUp, toolNear, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
-import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
+import { AUTO_EAT_ORDER, FIRE_LOW_KG, FIRE_MAX_KG, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } from "./items";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
@@ -121,6 +121,12 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (thirsty) return "thirsty";
   if (p.kcal < HUNGRY_LINE && canFeed(state, world, cal)) return "hungry";
+  // Housekeeping the evening depends on, and so above the snares: a fire
+  // burnt down to the low mark is minutes from out, and out costs a drill, a
+  // split log and the warmth of whatever is left of the night, where a catch
+  // in a snare keeps until the body walks past it. Under thirst and hunger,
+  // which are the body itself rather than the camp around it.
+  if (fireWantsWood(state, world)) return "fire";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
   // Worked out: the evening by the fire, held until the fire has given the
   // fatigue back rather than until a clock says dawn. It also holds while the
@@ -234,13 +240,14 @@ export const NEED_WORDS: Record<BodyNeed, string> = {
   cold: "cold; no fire and nowhere to warm up",
   thirsty: "thirsty; no water within reach",
   hungry: "hungry; nothing safe to eat",
+  fire: "the fire is burning low; no firewood to hand",
   snares: "the snares want checking; no way there",
   spent: "worked out; nowhere to sit down",
   home: "should be home before dark; no way there",
 };
 
 /**
- * The same eight needs, said the way the rest of the log already speaks:
+ * The same needs, said the way the rest of the log already speaks:
  * a full sentence in the game's own person templating, resolved by name or
  * by "you" whenever the log is drawn - the same {You}/{are} voice as
  * "{You} {are} thirsty." elsewhere. This is the log's own table, not the
@@ -253,6 +260,7 @@ export const NEED_LOG_LINES: Record<BodyNeed, string> = {
   cold: "{You} {are} cold, with no fire and nowhere to warm up.",
   thirsty: "{You} {are} thirsty, and there is no water within reach.",
   hungry: "{You} {are} hungry, and there is nothing safe to eat.",
+  fire: "The fire is burning low, and {you} {have} no firewood to hand.",
   snares: "The snares want checking, and {you} {know} no way there.",
   spent: "{You} {are} worked out, and there is nowhere to sit down.",
   home: "{You} {have} no way home before dark.",
@@ -271,6 +279,7 @@ export const NEED_ASIDE: Record<BodyNeed, string> = {
   cold: "{you} {are} cold",
   thirsty: "{you} {are} thirsty",
   hungry: "{you} {are} hungry",
+  fire: "the fire is burning low",
   snares: "the snares want checking",
   spent: "{you} {are} worked out",
   home: "{you} {have} to be home before dark",
@@ -296,6 +305,7 @@ export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng
     case "hungry": return hungryStep(state, world, cal, rng, dry);
     case "thirsty": return thirstyStep(state, world, cal, dry);
     case "storm": return stormStep(state, world, cal, dry);
+    case "fire": return fireNeedStep(state, world, cal, dry);
     case "home": return homeStep(state, world, cal);
     case "snares": {
       const cell = snaresWaiting(state, world, cal);
@@ -497,6 +507,41 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   if (firewood < 1 && check(state, world, cal, "split", undefined, at).ok) {
     return { id: "split", step: "splitting a log for the fire" };
   }
+  return null;
+}
+
+/**
+ * Whether the fire wants wood and the body is standing where it can give it
+ * any: lit, burnt down to the low mark, camp under foot, and firewood in the
+ * pack or the pile. Minding the fire is what somebody at camp does rather
+ * than an errand to walk home for - a fire warming nobody is allowed to go
+ * out, and the cold, the storm and the evening each have their own way of
+ * bringing the body back to it. A fire nothing here can feed is no more a
+ * need than a hunger with nothing safe to eat.
+ */
+function fireWantsWood(state: GameState, world: World): boolean {
+  const st = regionState(state, world, state.player.region);
+  if (!st.fire.lit || fuelTotal(st.fire) > FIRE_LOW_KG) return false;
+  if (cellOf(state, world) !== st.campCell) return false;
+  return [state.player.pack, pile(state, st.campCell)]
+    .reduce((a, inv) => a + qty(inv, "firewood") + qty(inv, "wetFirewood"), 0) > 1e-9;
+}
+
+/**
+ * Put wood on the fire the body is standing at. The wood goes on where it
+ * stands, so the need is answered inside the minute and hands back no step,
+ * the way a mouthful from the pack or a pull on the waterskin is. A dry read
+ * never feeds: it asks in the fuel's place only whether the wood would have
+ * gone on. A pit that has gone out between the reading and the minute wants
+ * lighting rather than wood, and fireStep is what answers that.
+ */
+function fireNeedStep(state: GameState, world: World, cal: Calendar, dry: boolean): Step | null {
+  const st = regionState(state, world, state.player.region);
+  if (cellOf(state, world) !== st.campCell) return null;
+  const fs = fireStep(state, world, cal, st.campCell);
+  if (fs || !st.fire.lit) return fs;
+  if (dry) return DRY_READY;
+  feedFire(state, world, state.player.region, FIRE_MAX_KG - fuelTotal(st.fire));
   return null;
 }
 

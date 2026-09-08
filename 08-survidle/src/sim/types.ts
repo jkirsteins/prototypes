@@ -252,7 +252,7 @@ export type Verdict =
   | { v: "later" };
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
-export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "snares" | "spent" | "home";
+export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "fire" | "snares" | "spent" | "home";
 
 /**
  * What the player set out to do. The runner re-reads the world every minute

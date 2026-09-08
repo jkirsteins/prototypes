@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { canFeed, currentNeed, SLEEP_AT, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
+import { bodyStep, canFeed, currentNeed, SLEEP_AT, snaresWaiting, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
 import { alertness, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { calendar } from "../src/sim/calendar";
 import { WATER_FULL } from "../src/sim/water";
+import { fuelTotal } from "../src/sim/fire";
+import { FIRE_LOW_KG } from "../src/sim/items";
 import { startIntent } from "../src/sim/intent";
 import { addItem, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -232,6 +234,61 @@ describe("a kit at camp counts only while standing there", () => {
     placeAt(state, world, heath);
     expect(heath).not.toBe(st.campCell);
     expect(check(state, world, cal, "build", "snare").why).toBe("needs a snare");
+  });
+});
+
+describe("the fire", () => {
+  /** A felling run at camp with a lit fire burnt down to the low mark and firewood in the pile. */
+  function lowFire(pileKg = 10) {
+    const f = felling();
+    const { state, st } = f;
+    st.structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = FIRE_LOW_KG;
+    addItem(pile(state, st.campCell), "firewood", pileKg);
+    // Warm, watered and fed, so nothing above the fire in the order holds.
+    state.player.warmth = 100;
+    state.player.water = WATER_FULL;
+    state.player.kcal = 3000;
+    return f;
+  }
+
+  it("wants wood at the low mark, and putting it on takes no step and no minute", () => {
+    const { state, world, st } = lowFire();
+    expect(currentNeed(state, world, cal)).toBe("fire");
+    expect(bodyStep(state, world, cal, new Rng(1), "fire")).toBeNull();
+    expect(fuelTotal(st.fire)).toBeGreaterThan(FIRE_LOW_KG);
+    expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
+    expect(currentNeed(state, world, cal)).not.toBe("fire");
+  });
+
+  it("a dry read finds the step ready and burns none of the woodpile", () => {
+    const { state, world, st } = lowFire();
+    expect(bodyStep(state, world, cal, new Rng(1), "fire", true)).not.toBeNull();
+    expect(fuelTotal(st.fire)).toBe(FIRE_LOW_KG);
+    expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(10);
+  });
+
+  it("does not hold with nothing to feed it, the way a hunger with nothing to eat does not", () => {
+    const { state, world } = lowFire(0);
+    expect(currentNeed(state, world, cal)).toBeNull();
+  });
+
+  it("holds under a thirst that can be quenched and over a catch in the snares", () => {
+    const { state, world, st } = lowFire();
+    st.snareCatch = { count: 1, age: 0 };
+    expect(snaresWaiting(state, world, cal)).not.toBeNull();
+    expect(currentNeed(state, world, cal)).toBe("fire");
+    // Fed, the fire has nothing more to ask, and the chore below it gets the day.
+    expect(bodyStep(state, world, cal, new Rng(1), "fire")).toBeNull();
+    expect(currentNeed(state, world, cal)).toBe("snares");
+    // Thirst is the body itself and outranks the housekeeping either way.
+    st.fire.fuelKg = FIRE_LOW_KG;
+    state.player.water = 0.2;
+    addItem(state.player.pack, "barkBucket", 1);
+    takeUp(state, world, "barkBucket");
+    state.player.tools.find((t) => t.id === "barkBucket")!.litres = 2;
+    expect(currentNeed(state, world, cal)).toBe("thirsty");
   });
 });
 
