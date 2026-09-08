@@ -123,7 +123,8 @@ creates a site.
 - **Building** writes to `siteFor(st, cellOf(player))`, not to the region.
   A build is legal on the camp cell as today; whether a structure may be
   raised away from camp is unchanged from today's legality checks, which
-  all require the camp cell. This spec does not open building elsewhere.
+  all require the camp cell. This spec does not open building elsewhere, so
+  every site but the current camp is a camp the survivor moved away from.
 - **Warmth** reads `siteAt(st, cellOf(player))`. No site, no roof.
 - **`stepCamp` and `dailyCamp`** iterate `touchedRegions`, then each
   region's sites for the per-site clocks (`structureAge`, `boughBedAge`,
@@ -133,6 +134,10 @@ creates a site.
 - **`campScore` and `oldCampRegion`** (`src/sim/landing.ts`) score the camp
   site rather than the region.
 - **`canMoveCamp`** is deleted along with `STRUCTURE_WORD`.
+- **The goals ladder** gains a first rung, "Choose where to live", which
+  needs a deed `makeCamp` does not emit today. `goalDeed(state, { kind:
+  "sited" })` in the task's completion, credited by the new goal. The life
+  record still gets no event, as the siting spec decided.
 
 ## Migration
 
