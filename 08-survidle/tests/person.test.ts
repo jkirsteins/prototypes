@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { newGame } from "../src/sim/newgame";
 import { derived, grades, medianPerson, QUIRKS, quirkFear, quirkLine, rollCandidates } from "../src/sim/person";
-import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, COMFORT_C } from "../src/sim/player";
 import { deserialize, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../src/units";
@@ -36,22 +36,27 @@ describe("the person", () => {
     for (const [i, share] of [1 / 9, 2 / 9, 3 / 9, 2 / 9, 1 / 9].entries()) expect(Math.abs(counts[i] / n - share)).toBeLessThan(0.02);
   });
 
-  it("derives today's numbers from the median for either sex", () => {
+  it("derives today's numbers from the median for either sex, mass included", () => {
+    // Everything but mass is sex-blind; mass carries the reference body (72 kg, BASE_KCAL_PER_HOUR)
+    // for a man and a lighter body of the woman's own median (62 kg) scaled the same way for the other sex.
     for (const sex of ["f", "m"] as const) {
       const d = derived(medianPerson(sex));
       expect(d.packComfortableKg).toBe(PACK_COMFORTABLE_KG);
       expect(d.packHardKg).toBe(PACK_HARD_KG);
       expect(d.workHours).toBe(WORK_HOURS_DEFAULT);
       expect(d.workBurn).toBe(1);
-      expect(d.massKg).toBe(72);
-      expect(d.fatFull).toBe(FAT_FULL);
-      expect(d.baseBurn).toBe(BASE_KCAL_PER_HOUR);
       expect(d.comfortC).toBe(COMFORT_C);
       expect(d.spoilFactor).toBe(1);
       expect(d.wearFactor).toBe(1);
       expect(d.sightReach).toBe(1);
       expect(d.dayOdds).toBe(1);
     }
+    const m = derived(medianPerson("m"));
+    expect(m.massKg).toBe(72);
+    expect(m.baseBurn).toBe(BASE_KCAL_PER_HOUR);
+    const f = derived(medianPerson("f"));
+    expect(f.massKg).toBe(62);
+    expect(f.baseBurn).toBe(60.27777777777778);
   });
 
   it("derives the table's ends", () => {
@@ -62,7 +67,6 @@ describe("the person", () => {
     expect(top.workHours).toBe(12);
     expect(top.workBurn).toBeCloseTo(1.1);
     expect(top.massKg).toBe(84);
-    expect(top.fatFull).toBeCloseTo(93333.33, 1);
     expect(top.baseBurn).toBeCloseTo(81.67, 1);
     expect(top.comfortC).toBe(3);
     expect(top.spoilFactor).toBeCloseTo(0.6);
@@ -75,7 +79,6 @@ describe("the person", () => {
     expect(low.workHours).toBe(8);
     expect(low.workBurn).toBeCloseTo(0.9);
     expect(low.massKg).toBe(60);
-    expect(low.fatFull).toBeCloseTo(66666.67, 1);
     expect(low.baseBurn).toBeCloseTo(58.33, 1);
     expect(low.comfortC).toBe(7);
     expect(low.spoilFactor).toBeCloseTo(1.4);
@@ -88,19 +91,21 @@ describe("the person", () => {
 
   it("shows grades as the word first and the quantity behind it", () => {
     const p = medianPerson("f");
+    // A woman's own median (62 kg) scales by build the same way a man's does, so
+    // her card shows her own mass at each build, rounded to a tenth off the median.
     expect(grades({ ...p, axes: { strength: 2, build: 2, hands: 2, eyes: 2 } })).toEqual([
       { word: "Mighty and unflagging.", evidence: "carries 30 kg, 42 kg at a push; works 12 hours" },
-      { word: "Heavy, sleeps warm.", evidence: "84 kg" },
+      { word: "Heavy, sleeps warm.", evidence: "72.3 kg" },
       { word: "Steady hands, an eagle's eye.", evidence: "" },
     ]);
     expect(grades({ ...p, axes: { strength: -1, build: -2, hands: -2, eyes: -1 } })).toEqual([
       { word: "Slight and short-winded.", evidence: "carries 22.5 kg, 31.5 kg at a push; works 9 hours" },
-      { word: "Spare, sleeps cold.", evidence: "60 kg" },
+      { word: "Spare, sleeps cold.", evidence: "51.7 kg" },
       { word: "Clumsy hands, short sight.", evidence: "" },
     ]);
     expect(grades(p)).toEqual([
       { word: "Ordinary and steady.", evidence: "carries 25 kg, 35 kg at a push; works 10 hours" },
-      { word: "Ordinary.", evidence: "72 kg" },
+      { word: "Ordinary.", evidence: "62 kg" },
       { word: "Ordinary hands, ordinary sight.", evidence: "" },
     ]);
     expect(quirkFear("coastBorn")).toBe("the fell in cloud");

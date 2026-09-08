@@ -9,7 +9,7 @@ import { derive, Rng } from "../rng";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { WORK_HOURS_DEFAULT } from "./body";
 import { rollName, type Sex } from "./names";
-import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL } from "./player";
+import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_KCAL_PER_KG } from "./player";
 import { current } from "./record";
 import type { Candidate, GameState, Grade, Person, QuirkId } from "./types";
 
@@ -53,15 +53,70 @@ export function rollCandidates(seed: number, index: number, boat: number, taken:
   return out;
 }
 
+/**
+ * Median total mass at the typical reserve, in kilos, by sex. The male
+ * figure is MEDIAN_MASS_KG, so a median man at his typical reserve weighs
+ * what the burn equations have always been scaled against. The female figure
+ * is a game parameter like FAT_SHARES below, not a measured population
+ * median, settled by the same balance runs.
+ */
+const MEDIAN_TOTAL_KG: Record<Sex, number> = { m: MEDIAN_MASS_KG, f: 62 };
+
+/**
+ * The four levels the fat reserve is read against, as shares of total body
+ * mass. Game parameters, not measured human constants: where a real body's
+ * intervention points sit varies too much between individuals to assert, so
+ * these are placed to give the play the design wants and are settled by the
+ * balance runs. Ordered floor < lower < typical < upper.
+ *
+ * floor is essential fat, the reserve that is structure rather than fuel,
+ * and the boundary a body dies at. lower is where starvation begins to
+ * tell. typical is where a survivor lands and the middle of the range fat
+ * drifts in. upper is where appetite starts to argue back - no ceiling
+ * follows it.
+ *
+ * A woman's floor is a much larger share than a man's, which is the one
+ * thing here taken from physiology as a shape rather than a value.
+ */
+const FAT_SHARES: Record<Sex, { floor: number; lower: number; typical: number; upper: number }> = {
+  m: { floor: 0.04, lower: 0.1, typical: 0.16, upper: 0.22 },
+  f: { floor: 0.11, lower: 0.15, typical: 0.24, upper: 0.33 },
+};
+
+export interface FatLandmarks {
+  /** The essential-fat floor: the reserve that is structure rather than fuel, in kcal. */
+  floor: number;
+  /** The lower intervention point: the reserve below which the body begins to fail, in kcal. */
+  lower: number;
+  /** Where a survivor lands, in kcal. */
+  typical: number;
+  /** The upper point: the top of the zone a well-provisioned body settles in, in kcal. */
+  upper: number;
+}
+
+/** Fat in kcal at a share of total mass, given lean mass: a share f of the total means f/(1-f) of the lean. */
+function fatAt(leanKg: number, share: number): number {
+  return leanKg * (share / (1 - share)) * FAT_KCAL_PER_KG;
+}
+
+/** The four levels this body's reserve is read against. */
+export function fatLandmarks(p: Person): FatLandmarks {
+  const lean = derived(p).leanKg;
+  const s = FAT_SHARES[p.sex];
+  return { floor: fatAt(lean, s.floor), lower: fatAt(lean, s.lower), typical: fatAt(lean, s.typical), upper: fatAt(lean, s.upper) };
+}
+
 export interface Derived {
   packComfortableKg: number;
   packHardKg: number;
   workHours: number;
   /** The activity and walk buckets above base, as a multiple. */
   workBurn: number;
+  /** Total mass at this body's typical reserve, in kilos: leanKg plus the fat FAT_SHARES puts at typical. */
   massKg: number;
-  fatFull: number;
-  /** The base bucket per hour. */
+  /** Frame and muscle, in kilos, without the fat reserve. */
+  leanKg: number;
+  /** Base burn at this body's typical reserve, in kcal per hour: a reference value, read only by tests. stepPlayer's live base tracks the actual reserve through massFactor() instead. */
   baseBurn: number;
   comfortC: number;
   /** The chance a craft spoils, as a multiple of the level's. */
@@ -75,14 +130,17 @@ export interface Derived {
 
 export function derived(p: Person): Derived {
   const { strength: s, build: b, hands: h, eyes: e } = p.axes;
-  const massKg = MEDIAN_MASS_KG + 6 * b;
+  // Build scales the sex's own median the way it has always scaled MEDIAN_MASS_KG,
+  // so a median man is MEDIAN_MASS_KG exactly.
+  const massKg = MEDIAN_TOTAL_KG[p.sex] * (1 + (6 / MEDIAN_MASS_KG) * b);
+  const leanKg = massKg * (1 - FAT_SHARES[p.sex].typical);
   return {
     packComfortableKg: PACK_COMFORTABLE_KG + 2.5 * s,
     packHardKg: PACK_HARD_KG + 3.5 * s,
     workHours: WORK_HOURS_DEFAULT + s,
     workBurn: 1 + 0.05 * s,
     massKg,
-    fatFull: (FAT_FULL * massKg) / MEDIAN_MASS_KG,
+    leanKg,
     baseBurn: (BASE_KCAL_PER_HOUR * massKg) / MEDIAN_MASS_KG,
     comfortC: COMFORT_C - b,
     spoilFactor: 1 - 0.2 * h,
@@ -99,6 +157,20 @@ export function personOf(state: GameState): Person {
 /** The living survivor's numbers. */
 export function body(state: GameState): Derived {
   return derived(personOf(state));
+}
+
+/** What the body weighs right now: its frame and muscle, plus the reserve it is carrying. */
+export function bodyMassKg(state: GameState): number {
+  return body(state).leanKg + state.player.fat / FAT_KCAL_PER_KG;
+}
+
+/**
+ * Total mass against the reference body, the multiplier every mass-scaled
+ * burn uses. Resting costs more for a heavier body, and so does work that
+ * moves it.
+ */
+export function massFactor(state: GameState): number {
+  return bodyMassKg(state) / MEDIAN_MASS_KG;
 }
 
 /** A big eater's pace on work, and its burn on everything. */
@@ -142,7 +214,7 @@ export function grades(p: Person): GradeLine[] {
     },
     {
       word: `${BUILD_WORDS[b + 2]}${b > 0 ? ", sleeps warm" : b < 0 ? ", sleeps cold" : ""}.`,
-      evidence: `${d.massKg} kg`,
+      evidence: `${kg(d.massKg)}`,
     },
     { word: `${HANDS_WORDS[p.axes.hands + 2]}, ${EYES_WORDS[p.axes.eyes + 2]}.`, evidence: "" },
   ];

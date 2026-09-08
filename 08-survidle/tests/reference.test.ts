@@ -7,7 +7,7 @@ import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { conditionOpen, inSeason, ordersHere } from "../src/sim/orders";
-import { FAT_FULL } from "../src/sim/player";
+import { fatLandmarks, medianPerson } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
@@ -395,11 +395,14 @@ describe("the reference player", () => {
     expect(OPENING_TICK_MINUTES).toBe(60);
   });
 
-  it("the April target is the day a beginner eating the least and burning the most runs out of fat", () => {
-    const reserve = FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
+  it("the April target is the day a beginner eating the least and burning the most reaches the floor", () => {
+    const median = medianPerson("m");
+    const l = fatLandmarks(median);
+    // Only the reserve above essential fat is fuel; the floor is structure.
+    const reserve = (l.typical - l.floor) + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
+    expect(REFERENCE_TARGET_DAY).toBe(20);
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
-    expect(REFERENCE_TARGET_DAY).toBe(19);
     expect(KITTED_TARGET_DAY).toBe(30);
   });
 
@@ -460,9 +463,13 @@ describe("the reference player", () => {
   });
 
   it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
-    // Seed 79, not 17: the bough bed keep right after the lean-to (reference.ts) moves seed 17's
-    // death to day 19, a day short of REFERENCE_TARGET_DAY, so it never reaches this checkpoint.
-    const r = runReference(79, 27);
+    // Seed 17, not 79: seed 79's body sits in its settling zone, where
+    // starvation() correctly reads 0 and no longer throttles workSpeed the
+    // way the old 1 - fat/typical did. Her day reshuffles, the fire goes
+    // unlit from day 4, warmth falls, and with p.kcal at 0 the health-regen
+    // gate never opens, so cold damage kills her by day 7 - never reaching
+    // this checkpoint. Seed 17 reaches REFERENCE_TARGET_DAY alive here.
+    const r = runReference(17, 27);
     const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
     expect(c).toBeDefined();
     expect(c!.week.days).toBe(7);

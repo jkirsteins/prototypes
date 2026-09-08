@@ -1,8 +1,8 @@
 import { calendar } from "../sim/calendar";
 import { burnPerHour, fuelTotal, hasEmbers } from "../sim/fire";
-import { HUNGRY_LINE } from "../sim/actions";
+import { hungerLine } from "../sim/actions";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
-import { body } from "../sim/person";
+import { fatLandmarks, personOf } from "../sim/person";
 import { FAT_KCAL_PER_KG } from "../sim/player";
 import { regionState } from "../sim/regionstate";
 import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
@@ -46,14 +46,23 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // Under the meal line the bar reads as harm: the meal was due and did not
   // happen, and the fat bar under it is what is paying for the difference.
   const kcalBar = root.querySelector<HTMLElement>("#bar-kcal")?.parentElement;
-  kcalBar?.classList.toggle("low", p.kcal < HUNGRY_LINE);
+  const line = hungerLine(state);
+  kcalBar?.classList.toggle("low", p.kcal < line);
+  // The mark itself moves with the same line - a lean reserve eats sooner,
+  // a well-provisioned one later - so it is written here every frame rather
+  // than baked into the markup (tests/churn.test.ts).
+  const hungerMark = kcalBar?.querySelector<HTMLElement>('[data-mark="hunger"]');
+  if (hungerMark) hungerMark.style.left = `${((line / KCAL_FULL) * 100).toFixed(1)}%`;
   // A meal is over in one simulated minute, and a bar that refills silently
   // is the whole of what the player could not see. The fill is left to flash
   // for a moment wherever the reserve rose.
   if (p.kcal > lastKcal + 1) flash(kcalBar);
   lastKcal = p.kcal;
-  const fatFull = body(state).fatFull;
-  setBar("fat", p.fat / fatFull, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
+  // No ceiling on the reserve itself, so the bar's full mark is the upper
+  // landmark - the top of the well-provisioned zone - and a body past it
+  // simply shows a full bar rather than an overflowing one.
+  const fatUpper = fatLandmarks(personOf(state)).upper;
+  setBar("fat", p.fat / fatUpper, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
   setBar("warmth", p.warmth / 100, `${Math.round(p.warmth)}`, root);
   setBar("energy", p.energy / 100, `${Math.round(p.energy)}`, root);
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);

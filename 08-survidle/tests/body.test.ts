@@ -227,6 +227,10 @@ describe("the body's row against the work", () => {
     expect(state.task?.id).toBe("chop");
     state.player.pack.items.driedMeat = 0;
     addItem(pile(state, camp), "driedMeat", 1);
+    // Fully lean, and the first meal above already spent most of today's lean
+    // ceiling filling to the satiety target; a little fat alongside it is what
+    // carries the body past the wall dried meat alone now hits before the line.
+    addItem(pile(state, camp), "fat", 0.5);
     state.player.kcal = 1700;
     advance(state, world, 1);
     expect(state.intent?.step).toBe("walking to camp to eat");
