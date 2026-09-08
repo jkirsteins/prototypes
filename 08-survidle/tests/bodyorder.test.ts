@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { NEED_LOG_LINES, NEED_WORDS } from "../src/sim/body";
+import { campNeed, currentNeed, NEED_LOG_LINES, NEED_WORDS, SLEEP_AT } from "../src/sim/body";
 import { FIRE_LOW_KG } from "../src/sim/items";
 import { advance } from "../src/sim/advance";
 import { intentSentence, startIntent } from "../src/sim/intent";
@@ -12,6 +12,7 @@ import { addItem, pile, qty } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { Rng } from "../src/rng";
+import { hurryKind } from "../src/ui/hurry";
 import { deserialize, serialize } from "../src/sim/save";
 
 const cal = calendar(0);
@@ -109,6 +110,20 @@ describe("the body row", () => {
     expect(qty(pile(state, st.campCell), "firewood")).toBe(5);
   });
 
+  it("a dry read never lays the body down: the sleep latch is the serving read's to move", () => {
+    const { state, world } = newGame(3);
+    const p = state.player;
+    expect(p.sleeping).toBeNull();
+    // Under the collapse line, which is the one sleep clause no clock and no
+    // stickiness has a say in: the next serving read puts this body down.
+    p.energy = SLEEP_AT;
+    for (let i = 0; i < 20; i++) expect(judgeBodyRow(state, world, cal, new Rng(1)).v).not.toBe("met");
+    expect(p.sleeping).toBeNull();
+    // The minute, and only the minute, moves it.
+    expect(currentNeed(state, world, cal)).toBe("sleep");
+    expect(p.sleeping).toEqual({ collapsed: true });
+  });
+
   it("a dry read never writes bodyNeed: the one minute a finished sleep or rest opens for the scheduler stays open", () => {
     const { state, world } = newGame(3);
     const p = state.player;
@@ -185,6 +200,26 @@ describe("the body row takes its turn by rank", () => {
     expect(state.intent?.orderId).toBe(grind.id);
   });
 
+  it("under the work, the body's memory is still kept current: a want that ends is seen to end, and the hurry is not left answering for it", () => {
+    const { state, world } = newGame(17);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    // Both care rows under the work, which is the rank this list exists to
+    // allow: "keep at it, tired or not".
+    const list = ordersHere(state, world);
+    list.reverse();
+    expect(list[0].id).toBe(grind.id);
+    advance(state, world, 60);
+    expect(state.intent?.orderId).toBe(grind.id);
+    // A want the row answered while it still had the minute, long over by
+    // now: a fresh body is neither spent nor near sleepy.
+    state.player.bodyNeed = "spent";
+    advance(state, world, 2);
+    expect(state.player.bodyNeed).not.toBe("spent");
+    // A body reading a want it no longer has is a body nothing else can
+    // speak for: the hurry reads the same memory and goes quiet on it.
+    expect(hurryKind(state)).toBe("click");
+  });
+
   it("above the work, it takes the minute mid-chunk and the work keeps its minutes", () => {
     const { state, world } = newGame(3);
     const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
@@ -212,6 +247,24 @@ describe("the body row takes its turn by rank", () => {
     advance(state, world, 1);
     expect(state.task?.id).toBe("sleep");
     expect(state.task!.progress).toBeGreaterThanOrEqual(slept);
+  });
+});
+
+describe("the camp row and a chunk in hand", () => {
+  it("the walk to the snares still waits for the work in hand to end", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    const grind = addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 60);
+    expect(state.intent?.orderId).toBe(grind.id);
+    expect(state.task).not.toBeNull();
+    // A catch hanging in the snares, which is the camp's other want: it asks
+    // for his feet, so it is work like any other and takes its turn.
+    st.snareCatch = { count: 1, age: 0 };
+    expect(campNeed(state, world, calendar(state.minute, state.startDoy))).toBe("snares");
+    advance(state, world, 1);
+    expect(state.intent?.orderId).toBe(grind.id);
+    expect(state.task).not.toBeNull();
   });
 });
 

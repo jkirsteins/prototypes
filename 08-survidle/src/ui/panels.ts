@@ -113,9 +113,10 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.frostbite.feet > 0) tags.push(`<span class="tag bad">frostbitten feet, ${fmtDuration(p.frostbite.feet)}</span>`);
   if (p.frostbite.hands > 0) tags.push(`<span class="tag bad">frostbitten hands, ${fmtDuration(p.frostbite.hands)}</span>`);
   if (p.torch.lit) tags.push(`<span class="tag">torch lit, ${fmtDuration(p.torch.minutes)}</span>`);
-  // Under the meal line means the meal did not happen - auto-eat off, or
-  // nothing left it would take. Either way the fat behind it is paying, and
-  // that is the state worth a word. Starving is what the fat running out is.
+  // Under the meal line means the meal did not happen: nothing left worth
+  // taking, or the body's row waiting its turn behind the work. Either way
+  // the fat behind it is paying, and that is the state worth a word.
+  // Starving is what the fat running out is.
   if (p.kcal < HUNGRY_LINE) tags.push(`<span class="tag bad">hungry</span>`);
   if (starvation(state) >= 0.5) tags.push(`<span class="tag bad">starving</span>`);
   if (starvation(state) >= 0.75) tags.push(`<span class="tag bad">wasting</span>`);

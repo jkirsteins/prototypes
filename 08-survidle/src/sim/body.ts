@@ -69,15 +69,22 @@ export function snaresWaiting(state: GameState, world: World, cal: Calendar): nu
 
 /**
  * The memory a need reading takes its stickiness from: the need already
- * held, whether a rest has already failed to warm this body, and whether a
- * night is under way with nothing slept yet. `currentNeed` passes the
- * player's own memory and keeps whatever this returns; `bodyAsks` passes a
- * blank one and keeps nothing, which is the whole difference between asking
- * what the body is owed right now and asking what a body with no history at
- * all would make of this same minute.
+ * held, whether the body is down, whether a rest has already failed to warm
+ * it, and whether a night is under way with nothing slept yet. `currentNeed`
+ * passes the player's own memory and keeps whatever comes back; `bodyAsks`
+ * passes a blank one and keeps nothing, which is the whole difference
+ * between asking what the body is owed right now and asking what a body with
+ * no history at all would make of this same minute.
+ *
+ * `need`, `sleeping` and `coldSpent` are read on the way in and written on
+ * the way out: the reading is the same either way, and whether the body
+ * carries it afterwards is the caller's to say. That is what keeps a read
+ * that runs on every render out of the survivor's own state - a need is
+ * read as often as anyone likes, and the body moves on it once a minute.
  */
 interface NeedMemory {
   need: BodyNeed | null;
+  sleeping: { collapsed: boolean } | null;
   coldSpent: boolean;
   night: boolean;
 }
@@ -108,13 +115,13 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   // it: a sleep broken to feed the fire, or by an order changing under the
   // sleeper, is a night interrupted rather than a night over, and the body
   // goes back to bed on the next free minute.
-  if (p.energy <= SLEEP_AT) p.sleeping = { collapsed: true };
-  else if (p.sleeping) {
-    if (!(sleepy > WAKE_AT || (p.sleeping.collapsed && p.energy < RESTED_AT))) p.sleeping = null;
+  if (p.energy <= SLEEP_AT) mem.sleeping = { collapsed: true };
+  else if (mem.sleeping) {
+    if (!(sleepy > WAKE_AT || (mem.sleeping.collapsed && p.energy < RESTED_AT))) mem.sleeping = null;
   } else if (sleepy >= SLEEP_ONSET && !drinkFirst) {
-    p.sleeping = { collapsed: false };
+    mem.sleeping = { collapsed: false };
   }
-  if (p.sleeping || mem.night) return "sleep";
+  if (mem.sleeping || mem.night) return "sleep";
   if (storming) return "storm";
   // Warm again: whatever a spent rest gave up on is worth trying afresh next time it turns cold.
   if (p.warmth >= WARM_AT) mem.coldSpent = false;
@@ -164,9 +171,10 @@ export function campNeed(state: GameState, world: World, cal: Calendar): CampNee
  */
 export function currentNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const p = state.player;
-  const mem: NeedMemory = { need: p.bodyNeed, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 };
+  const mem: NeedMemory = { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 };
   const need = needFrom(state, world, cal, mem);
   p.bodyNeed = need;
+  p.sleeping = mem.sleeping;
   p.coldSpent = mem.coldSpent;
   return need;
 }
@@ -179,9 +187,13 @@ export function currentNeed(state: GameState, world: World, cal: Calendar): Body
  * own. The memory handed in is blank and thrown away after: this is a
  * question, not a service, and asking it twice must never make the second
  * ask stickier than the first.
+ *
+ * Whether the body is down is not history, so it goes in: a sleeper is
+ * asleep whoever asks, and a probe that read a sleeping body as awake would
+ * answer about somebody else. It comes back unkept like the rest.
  */
 export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNeed | null {
-  return needFrom(state, world, cal, { need: null, coldSpent: false, night: false });
+  return needFrom(state, world, cal, { need: null, sleeping: state.player.sleeping, coldSpent: false, night: false });
 }
 
 /**
@@ -198,7 +210,7 @@ export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNee
  */
 export function peekNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const p = state.player;
-  return needFrom(state, world, cal, { need: p.bodyNeed, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 });
+  return needFrom(state, world, cal, { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 });
 }
 
 /** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */
@@ -337,6 +349,17 @@ export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng
     }
     default: return campStep(state, world, cal, need, dry);
   }
+}
+
+/**
+ * Whether this want would be answered where the survivor stands, inside the
+ * minute and without taking it: a log onto the fire, a mouthful from the
+ * pack, a pull on the waterskin. A dry read that hands back a step instead
+ * is a want that asks for feet or hands, and that one waits for the work in
+ * hand to end.
+ */
+export function answeredOnTheSpot(state: GameState, world: World, cal: Calendar, rng: Rng, need: CareNeed): boolean {
+  return bodyStep(state, world, cal, rng, need, true) === DRY_READY;
 }
 
 /** The nearest waterside cell in this region open to fetch water from - the cut ice hole when the shore is iced over, else the nearest open shore - not this cell, and a walk there can start. Null otherwise. */

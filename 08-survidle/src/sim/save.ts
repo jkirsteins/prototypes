@@ -187,6 +187,11 @@ function fillDefaults(state: GameState): void {
   delete (p as { restUntil?: number }).restUntil;
   delete (p as { sleptTonight?: boolean }).sleptTonight;
   delete (p as { workHours?: number }).workHours;
+  // Hunger, thirst and the fire are the care rows' now, so the three
+  // switches a save may still carry for them mean nothing and go the same way.
+  delete (p as { autoEat?: boolean }).autoEat;
+  delete (p as { autoFeed?: boolean }).autoFeed;
+  delete (p as { autoDrink?: boolean }).autoDrink;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;

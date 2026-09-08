@@ -48,7 +48,10 @@ describe("work chosen by hand is the player's", () => {
       return state.task?.id === "deadwood";
     })).toBe(true);
     expect([...steps].some((s) => s.includes("for the evening"))).toBe(false);
-    expect(state.player.bodyNeed).toBeNull();
+    // The body's memory says what it wants, not what it is getting: under
+    // the work, the want is read every minute and served on none of them.
+    expect(state.player.bodyNeed).not.toBeNull();
+    expect(state.intent?.mode).toBe("hand");
     expect(state.player.energy).toBeLessThan(SPENT_AT);
     expect(until(g, () => state.intent?.task !== "deadwood")).toBe(true);
     // A deadwood round trip costs more energy than the ten points between the

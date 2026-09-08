@@ -1318,7 +1318,25 @@ describe("pre-emption", () => {
     // it read "later" without ever reaching the walk check, no matter how
     // many of them the list holds.
     judgeOrders(state, world, calendar(state.minute, state.startDoy));
-    expect(walkJudged()).toBeLessThanOrEqual(2);
+    // The two care rows sit above the live row and pay for their own
+    // readings, which route to camp, to the water and to the snares; the
+    // live row is asked to route once; the eight rows below it are not.
+    expect(walkJudged()).toBeLessThanOrEqual(4);
+  });
+
+  it("the care rows obey the prefix rule too", () => {
+    const { state, world } = newGame(3);
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    // Both care rows under the work, so neither can take the minute from it
+    // and neither has any use for the answer it would route for.
+    const list = ordersHere(state, world);
+    list.reverse();
+    advance(state, world, 60);
+    resetWalkJudged();
+    judgeOrders(state, world, calendar(state.minute, state.startDoy));
+    // The live row is the only row at or above itself: one reading, and the
+    // two care rows under it are asked nothing at all.
+    expect(walkJudged()).toBeLessThanOrEqual(1);
   });
 
   it("a task in flight is not judged at all, not merely not acted on", () => {

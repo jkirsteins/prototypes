@@ -46,10 +46,15 @@ and why that is expected rather than a regression.
   with the body row as the one thing that may interrupt it. Section 2.1
   says why an earlier draft's "every minute, including mid-work" had to
   go, and what it cost when it was measured.
-- **The body is one row now, not seven.** "Look after yourself" covers
-  sleep, food, water, warmth, shelter and coming home. Splitting it into a
-  row per need is a later change, and the design keeps it a data change
-  rather than a rewrite.
+- **The body is one row, not seven.** "Look after yourself" covers sleep,
+  food, water, warmth, shelter and coming home. Splitting it into a row per
+  need is a later change, and the design keeps it a data change rather than
+  a rewrite.
+- **The camp is a second row above it, not part of it.** "Keep the camp"
+  covers the fire fed and the snares checked. They are not the body, and
+  one row would have made a player who ranks the camp down say something
+  about his own sleep at the same time. Section 3.0 has the rank and what
+  the row may do while work is in hand.
 - **The body row cannot be removed, only ranked.** Ranking it to the
   bottom already means "never look after yourself"; a delete button adds
   only a way to do that by accident.
@@ -162,17 +167,18 @@ for a tree to come down - which is what the old body tier was doing when it
 pre-empted the live intent every minute, and the only part of that behaviour
 worth keeping.
 
-## 3. The body row
+## 3. The care rows
 
-`OrderKind` gains a fourth member:
+`OrderKind` gains two members, and the two rows they name are the care
+rows:
 
 ```ts
-export type OrderKind = "keep" | "grind" | "job" | "body";
+export type OrderKind = "keep" | "grind" | "job" | "body" | "camp";
 ```
 
-There is exactly one `body` row per region list. It is created with the
-region's camp (`newgame.ts`, and the migration in section 8), it cannot be
-removed, and `removeOrder` refuses it.
+There is exactly one `body` row and one `camp` row per region list. Both
+are created with the region's camp (`newgame.ts`, and the migration in
+section 8), neither can be removed, and `removeOrder` refuses both.
 
 Its sentence is fixed:
 
@@ -187,9 +193,40 @@ Its verdicts come from the need model rather than from a target:
   need's own word, so the row reads "thirsty; no water within reach"
   rather than going quiet at the moment it matters most.
 
-`met`/`shut`/`blocked` for the body row are all cheap: `currentNeed` reads
-the player and the weather. `bodyStep` can route (the walk to the shore),
-so it obeys section 2's prefix rule like any other row.
+The body row's reading can route - the food at camp, the walk home before
+dark, the water within reach - so it obeys section 2's prefix rule like any
+other row: a body the player has ranked under the work is asked nothing
+until it could act on the answer.
+
+### 3.0 The camp row
+
+The camp is a second row, not part of the body's:
+
+> Keep the camp - the fire fed, the snares checked.
+
+It holds the upkeep the camp asks for rather than the upkeep the body
+does: fuel on the fire while it is burning down, and a catch collected out
+of the snares. Neither is the body. A survivor who drops the camp down the
+list to travel hard is saying nothing about his own sleep or thirst, and
+one row would have made him say both at once - which is the whole reason
+there are two ranks here and not one.
+
+Its verdicts come from `campNeed` the way the body's come from
+`currentNeed`, and nothing on it is sticky: the fire's own fuel and the
+snares' own catch each say plainly whether they still want anything.
+
+It defaults above the body row, and `ensureCareRows` puts it there. The
+camp is what the body rests and sleeps in: the evening by the fire and the
+night are both spent at a fire somebody has to feed, and a body ranked
+over the camp would hold the minute from dusk to dawn resting by a fire it
+never fed. Feeding it costs no minute at all, so the camp taking its turn
+first costs the body nothing, and a player who wants it the other way
+round says so with the row's own up button.
+
+**Only the body row may interrupt a chunk of work in hand.** A body cannot
+wait for a tree to come down; a camp can, and a keep or a grind pre-empting
+work mid-chunk was measured on this branch and starved the survivor
+outright. The camp row takes its turn on a free minute like the work does.
 
 ### 3.1 `serveBody` comes out of `runIntent`
 
@@ -404,9 +441,12 @@ Behavioural, one per claim this spec makes:
 
 ## 11. Out of scope
 
-- **The `autoEat` reflex** (`advance.ts:95`) is a third layer, below both
-  the body row and the needs, and design question 3 in the playtest is
-  about it. Not touched here.
+- **The `autoEat` and `autoDrink` reflexes** (`advance.ts`) are a third
+  layer, below both the care rows and the needs. The three toggles that
+  used to switch them are gone with the rest of the runner's own settings,
+  so nothing in the game turns them off any more; whether a survivor should
+  eat and drink outside his row's minutes at all is a design question, and
+  it is the author's. The reflexes stay for now.
 - **A row per need.** The decision is one row now. The body row's verdict
   already comes from `currentNeed` per need, so splitting it later is a
   list of rows each naming a need, not a new mechanism.
@@ -422,8 +462,8 @@ list in place. Nothing was tuned to move a number.
 | gate | before | after |
 | --- | --- | --- |
 | April, `reference.ts` | 4 of 5 | 4 of 5 |
-| lineage trend, `reference.ts --heir` | 1 of 5 | 0 of 5 |
-| lineage year, `reference.ts --heir` | 4 of 5 | 0 of 5 |
+| lineage trend, `reference.ts --heir` | 1 of 5 | 1 of 5 |
+| lineage year, `reference.ts --heir` | 4 of 5 | 2 of 5 |
 | year, `npm run year` | 4 of 5 | 5 of 5 |
 | December sleep clock, `npm run december` | 5 of 5 nights whole | 5 of 5 nights broken |
 | horizon rungs in band, `npm run horizon` | 5 of 25 | 6 of 25 |
@@ -467,28 +507,23 @@ fire takes the night back from sleep and hands it over again, and a
 December night is now two or three sleeps rather than one. The body is
 paid in full either way; it is paid in pieces.
 
-**The lineage collapses, and it is a mechanism failing rather than a cost
-being paid.** Four of five seeds used to see an heir reach a year; none
-does now, and the trend gate goes 1 of 5 to 0 of 5. The cause is one
-thing, in the reference player's walk home. An heir lands 13 to 20 km
-from the old camp with an axe and nothing else. On the merge base it
-reached that camp on day 1 or day 3 of six seeds' worth of lives. It now
-never reaches it: it dies on day 2 to day 5, of thirst, having walked
-part of the way.
+**The lineage year gate is two seeds down against the base, and the trend
+gate is level with it.** The heir's walk home was the mechanism failing
+here: an heir lands 13 to 20 km from the old camp with an axe and nothing
+else, and `ReferencePlayer.handMoveBusy` set that walk aside for a
+`HAND_REST` - a forever rest with no order behind it - whenever a body need
+opened during it. That worked while the body was a hidden tier inside the
+runner, which would drink and sleep underneath the rest. It cannot work
+with the body as a row on a camp's order list, which an heir who has not
+made camp does not have: the trace on seed 17, life 2 read 35 of 48 hours
+in that rest, water 1.2 to 0, no sleep, no drink, dead on day 2 to day 5 of
+thirst, part of the way home.
 
-Traced on seed 17, life 2. `ReferencePlayer.handMoveBusy` sees a body need
-open during the walk, sets the walk aside and starts `HAND_REST` - a
-forever rest with no order behind it - and holds `servingHandRest` until
-the need clears. That worked when the body was a hidden tier inside the
-runner, which would drink and sleep underneath the rest: the base run
-shows water climbing from 0 back to 2.3 litres inside exactly such a rest,
-then the walk resuming. It cannot work now. `HAND_REST` is a hand intent,
-so nothing may take it over, and the body is a row on a camp's order list
-- which an heir who has not made camp does not have. The trace reads 35 of
-48 hours in that rest, water 1.2 to 0, no sleep, no drink, dead. The walk
-home is the one place in the tree that still assumes the old hidden tier.
-It is recorded here, not fixed: the fix is a judgement about who serves a
-survivor with no camp, and that is the author's.
+An heir now lands with a body that the care rows serve wherever it is, and
+the walk home completes again. What is left is a gate two seeds under the
+base rather than a mechanism that cannot work: the lives are shorter across
+the six-life runs, and the trend gate reads the same 1 of 5 it read at the
+base.
 
 The `tests/slow/lineage.test.ts` gate passes on both sides; it asserts the
 shape of three lives and their landings, not how long they last, so the

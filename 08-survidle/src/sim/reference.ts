@@ -22,7 +22,7 @@ import { advance } from "./advance";
 import { bodyAsks } from "./body";
 import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
-import { intentOption, nearestCell, resolveCell, startIntent } from "./intent";
+import { nearestCell, startIntent } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
@@ -36,14 +36,14 @@ import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
 import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
-import { cellOf, heathCell, watersideCell } from "./position";
+import { heathCell, watersideCell } from "./position";
 import { current } from "./record";
 import { regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import { check, seaweedAvailable, setAside, startTask } from "./tasks";
+import { seaweedAvailable, setAside, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, OrderWhen, RecipeId, WorldDate } from "./types";
 
@@ -151,8 +151,7 @@ export const PLANT_HOURS_ROOTS = PLANT_HOURS_PER_DAY - PLANT_HOURS_WINDOW_ROW;
  * far down beside the axe it feeds, where topping up under four is what a
  * restock should do: arrows take three stone per five and a stone axe
  * three, and the once job alone ran out and left every year seed with no
- * arrows, no axe and a felling grind for company. Auto-eat, auto-feed
- * and auto-drink stay on, as they are for every player. Two kilos of
+ * arrows, no axe and a felling grind for company. Two kilos of
  * berries at camp sit under the fish keep, at the foot of the food block:
  * in season they are the cheapest kcal there is, and out of it the keep
  * blocks harmlessly on nothing ripe. Once food, the roof and water are running, the sticks and
@@ -808,9 +807,6 @@ export class ReferencePlayer {
    * burn and nights on the way, and no order is given until the region is
    * reached. The first survivor has no home and starts on the list at once.
    */
-  /** Wants taken off the list for stalling it: given again only once they can run. */
-  private readonly stalled = new Set<number>();
-
   constructor(readonly wants: Want[] = REFERENCE_ORDERS, private home: number | null = null) {}
 
   /** The mornings between two days, inclusive, on which the list changed, and how many days were asked about. */
@@ -870,23 +866,6 @@ export class ReferencePlayer {
     this.given.delete(i);
     this.trueKind.delete(i);
     this.note(cal);
-  }
-
-  /**
-   * Whether this is work the player could set going now. A once order stops
-   * every order under it while it cannot run, and under the ladder's rungs
-   * every want is a once job, so a player who queued the list regardless
-   * would stop the whole list on the first row that has to wait for a
-   * season, a material or a tool. They queue what can be done and come back
-   * to the rest, which is what the give loop and the withdrawal below do.
-   *
-   * The dark is not asked about: night holds an order without stalling the
-   * list, so a row put off until first light is still the row to hold.
-   */
-  private canStart(state: GameState, world: World, cal: Calendar, req: IntentRequest): boolean {
-    if (!intentOption(state, world, cal, req.task, req.arg, req.where).ok) return false;
-    const { cell } = resolveCell(state, world, cal, req.task, req.arg, req.where);
-    return cell === cellOf(state, world) || check(state, world, cal, "walk", `cell:${cell}`).ok;
   }
 
   private give(state: GameState, world: World, cal: Calendar, i: number, best: Want): void {
@@ -984,11 +963,8 @@ export class ReferencePlayer {
       const best = withinLadder(state, w.req, w.kind);
       if (!this.byHand(state, world, cal, i, best)) continue;
       if (orderMet(state, world, cal, this.probe(i, this.completed.get(i) ?? 0), false)) continue;
-      // A want taken off for stalling the list goes back on only when it can
-      // run; every other want is given whether or not it can start, since the
-      // list is a plan and a row's materials are cut by the rows above it.
-      if (this.stalled.has(i) && !this.canStart(state, world, cal, best.req)) continue;
-      this.stalled.delete(i);
+      // A want is given whether or not it can start: the list is a plan, and
+      // a row's materials are cut by the rows above it.
       this.give(state, world, cal, i, best);
     }
     // A want the scheduler skipped with this exact reading is not short of
