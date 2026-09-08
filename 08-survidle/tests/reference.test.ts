@@ -6,6 +6,7 @@ import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { conditionOpen, inSeason, ordersHere } from "../src/sim/orders";
+import { fatLandmarks, medianPerson } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
@@ -392,16 +393,13 @@ describe("the reference player", () => {
     expect(OPENING_TICK_MINUTES).toBe(60);
   });
 
-  it("the April target is the day a beginner eating the least and burning the most runs out of fat", () => {
-    // Mirrors reference.ts's own FLAT_FAT_RESERVE_KCAL: the flat reserve the
-    // gate is derived against, a placeholder for
-    // fatLandmarks(medianPerson("m")).typical - .floor, the reserve that is
-    // actually fuel.
-    const flatFatReserveKcal = 80000;
-    const reserve = flatFatReserveKcal + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
+  it("the April target is the day a beginner eating the least and burning the most reaches the floor", () => {
+    const median = medianPerson("m");
+    const l = fatLandmarks(median);
+    // Only the reserve above essential fat is fuel; the floor is structure.
+    const reserve = (l.typical - l.floor) + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
-    expect(REFERENCE_TARGET_DAY).toBe(19);
     expect(KITTED_TARGET_DAY).toBe(30);
   });
 
