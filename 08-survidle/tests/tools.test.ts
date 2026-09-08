@@ -96,7 +96,10 @@ describe("tools as items", () => {
 
   it("a count item at 1 kg apiece is still counted, not weighed", () => {
     expect(ITEM_KG.fishingSpear).toBe(1.0);
-    expect(itemLabel("fishingSpear", 1)).toBe("1 fishing spears");
+    expect(itemLabel("fishingSpear", 1)).toBe("1 fishing spear");
+    expect(itemLabel("torch", 1)).toBe("1 torch");
+    expect(itemLabel("knife", 1)).toBe("1 knife");
+    expect(itemLabel("fishingSpear", 2)).toBe("2 fishing spears");
   });
 
   it("saves are version 7 and a version 3 file still loads", () => {

@@ -12,7 +12,6 @@ import { WATER_FULL } from "../sim/water";
 import { ambientTemperature } from "../sim/weather";
 import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
-import { type HurryState, pulseLeft } from "./hurry";
 
 /**
  * The named bar, wherever it is drawn.
@@ -105,11 +104,6 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
       if (pct.textContent !== share) pct.textContent = share;
     }
   }
-}
-
-/** Every frame: the pulse's bar on the live row, so the list's markup does not churn while it drains. */
-export function updateHurryBar(h: HurryState, root: ParentNode = document): void {
-  setBar("hurry", pulseLeft(h), undefined, root);
 }
 
 /**

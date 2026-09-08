@@ -209,7 +209,7 @@ export function isShortAtCamp(why: string): boolean {
 
 function needsList(needs: { item: string; qty: number; alt?: string }[]): string {
   return needs
-    .map((n) => `${n.qty} ${ITEM_NAMES[n.item as keyof typeof ITEM_NAMES]}${n.alt ? ` (or ${ITEM_NAMES[n.alt as keyof typeof ITEM_NAMES]})` : ""}`)
+    .map((n) => `${itemLabel(n.item as ItemId, n.qty)}${n.alt ? ` (or ${itemLabel(n.alt as ItemId, n.qty)})` : ""}`)
     .join(", ");
 }
 

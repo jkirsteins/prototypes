@@ -5,7 +5,7 @@ import { groundOf, intentOption, yieldItem } from "../sim/intent";
 import { DECAYING, ITEM_NAMES, RECIPE_IDS, STRUCTURE_IDS } from "../sim/items";
 import { gateSkill, NOT_ORDERS, orderGate, type Gate } from "../sim/ladder";
 import { cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
-import { levelMinutes, RUNG_LEVEL, skillLevel } from "../sim/skills";
+import { RUNG_LEVEL, skillLevel } from "../sim/skills";
 import { fishSpecies, huntedLand } from "../sim/species";
 import { plain } from "../sim/voice";
 import { check, leftBehind, type TaskOption, withProgression } from "../sim/tasks";
@@ -234,24 +234,20 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
  */
 function kindLabel(id: TaskId, arg: string | undefined, until: RowChoice["until"], n: number): string {
   const item = yieldItem(id, arg);
-  if (until === "times") return `${n} times`;
-  if (until === "daily") return `${n} a day`;
-  if (until === "campHas") return item ? `until camp has ${itemLabel(item, n)}` : "once";
-  if (until === "keep") return item ? `keep camp at ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep it lit" : "once";
+  if (until === "times") return `${n}x`;
+  if (until === "daily") return `${n}/day`;
+  if (until === "campHas") return item ? `camp: ${itemLabel(item, n)}` : "once";
+  if (until === "keep") return item ? `keep: ${itemLabel(item, n)}` : id === "light" || id === "lightIndoors" ? "keep lit" : "once";
   if (until === "forever") return "forever";
   return "once";
 }
 
 /**
- * The small print under a kind or a condition the row's skill has not
- * earned: the rung the gate stopped at, in the gate's own words, and about
- * how long to it.
+ * A single reason for every skill-gated control. The ladder's internal rung
+ * names and training estimates do not belong in an action picker.
  */
-function kindNeeds(state: GameState, gate: Gate): string {
-  if (gate.ok) return "";
-  const xp = state.skills[gate.skill].xp;
-  const hours = Math.max(1, Math.round((levelMinutes(gate.at) - xp) / 60));
-  return `${plain(gate.why)}, about ${hours} h`;
+function kindNeeds(gate: Gate): string {
+  return gate.ok ? "" : "insufficient skill";
 }
 
 /**
@@ -297,7 +293,7 @@ function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): st
   const keep = yieldItem(o.id, arg || undefined) !== null;
   const parts: string[] = [];
   if (level < RUNG_LEVEL.condition) {
-    parts.push(`<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "condition")))}</small>`);
+    parts.push(`<small>${esc(kindNeeds(rungGate(state, o.id, arg, "condition")))}</small>`);
   } else {
     parts.push(`<span>from <select data-row-season-from>${monthOptions(w.season?.from)}</select> to <select data-row-season-to>${monthOptions(w.season?.to)}</select></span>`);
     const items = (Object.keys(ITEM_NAMES) as ItemId[]).map((i) => `<option value="${i}"${w.stock?.item === i ? " selected" : ""}>${esc(ITEM_NAMES[i])}</option>`).join("");
@@ -313,7 +309,7 @@ function whenHtml(o: TaskOption, arg: string, ui: UiState, state: GameState): st
     const spendBox = w.by === undefined ? "" : ` <label><input type="checkbox" data-row-spend${w.spend ? " checked" : ""}> spent by the season's close</label>`;
     parts.push(level >= RUNG_LEVEL.pace
       ? `<span>due by <select data-row-by>${monthOptions(w.by)}</select>${spendBox}</span>`
-      : `<small>${esc(kindNeeds(state, rungGate(state, o.id, arg, "pace")))}</small>`);
+      : `<small>${esc(kindNeeds(rungGate(state, o.id, arg, "pace")))}</small>`);
   }
   return `<div class="when">${parts.join("")}</div>`;
 }
@@ -336,9 +332,8 @@ function rowWhereHtml(o: TaskOption, arg: string, ui: UiState, state: GameState,
 }
 
 /**
- * The open row's expansion: the six kinds as buttons (greyed with the rung
- * and about how many hours to it when the row's skill has not earned
- * them), the count, the deliver toggle, for a gather or a hunt the
+ * The open row's expansion: the six kinds as compact buttons, the count,
+ * the deliver toggle, for a gather or a hunt the
  * where select, and under them the conditions the row's rungs have opened.
  * "once" leads them so a plain click's deliver and where can
  * be chosen deliberately too, through the same row-kind path every other
@@ -350,13 +345,10 @@ function rowExpandHtml(o: TaskOption, arg: string, ui: UiState, state: GameState
     const { req, kind } = rowRequest({ ...ui.choice, until: k }, o.id, arg);
     const gate = orderGate(state, req, kind);
     const label = esc(kindLabel(o.id, arg, k, ui.choice.n));
-    const needs = gate.ok ? "" : `<small>${esc(kindNeeds(state, gate))}</small>`;
-    return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${label}">${label}</button>${needs}</span>`;
+    const title = gate.ok ? label : "insufficient skill";
+    return `<span class="kind"><button data-act="row-kind" data-id="${o.id}" data-arg="${esc(arg)}" data-until="${k}" class="mini${gate.ok ? "" : " off"}" title="${title}">${label}</button></span>`;
   };
-  // A once order is the player's own: it goes to the top of the list and starts
-  // on the click. Every other kind is handed to the runner, which serves it in
-  // its own time and around the body's needs.
-  const buttons = `${button(kinds[0])}<small class="handoff">starts now; the rest are the runner's</small>${kinds.slice(1).map(button).join("")}`;
+  const buttons = kinds.map(button).join("");
   const n = `<input type="number" min="1" data-row-n value="${ui.choice.n}">`;
   const deliver = `<button class="mini" data-act="row-deliver" data-id="${o.id}" data-arg="${esc(arg)}">${ui.choice.deliver === "camp" ? "bring to camp" : "leave where it is"}</button>`;
   const where = rowHasWhere(o) ? rowWhereHtml(o, arg, ui, state, world) : "";
@@ -397,7 +389,7 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   const gives = cap?.producer ? `<small class="gives">${esc(cap.gives)}</small>` : "";
   const canOpen = !NOT_ORDERS.includes(o.id);
   const open = canOpen && ui.open !== null && ui.open.id === o.id && ui.open.arg === arg;
-  const more = canOpen ? `<button class="mini" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}">${open ? "less" : "more"}</button>` : "";
+  const more = canOpen ? `<button class="mini row-more${open ? " on" : ""}" data-act="row-more" data-id="${o.id}" data-arg="${esc(arg)}" aria-expanded="${open}">more</button>` : "";
   const expand = open ? rowExpandHtml(o, arg, ui, state, world) : "";
   const openCls = open ? " open" : "";
   if (!o.ok) {

@@ -53,6 +53,15 @@ describe("the auto ramp", () => {
 });
 
 describe("the pulse", () => {
+  it("keeps a manual speed-up running for ten old pulse lengths and eases in gently", () => {
+    const h = newHurry();
+    expect(hurryClick(h, "click", 3)).toBe(true);
+    hurryFrame(h, "click", 3, 2 / 3);
+    expect(pulseLeft(h)).toBeCloseTo(0.9, 9);
+    expect(h.rate).toBeGreaterThan(1);
+    expect(h.rate).toBeLessThan(1.5);
+  });
+
   it("starts on a click, refuses a second while it runs, and sums to its minutes however the frames fall", () => {
     const h = newHurry();
     expect(hurryClick(h, "click", 3)).toBe(true);
@@ -69,15 +78,15 @@ describe("the pulse", () => {
     expect(fine).toBeCloseTo(PULSE_MIN, 9);
   });
 
-  it("clicking as fast as the pulse allows averages the auto rate", () => {
-    expect(PULSE_MIN / PULSE_S).toBeCloseTo(PEAK - 1, 9);
+  it("the smooth pulse averages half its peak boost", () => {
+    expect(PULSE_MIN / PULSE_S).toBeCloseTo((PEAK - 1) / 2, 9);
   });
 
   it("peaks in the middle and reads 1 at the ends", () => {
     const h = newHurry();
     hurryClick(h, "click", 3);
     hurryFrame(h, "click", 3, PULSE_S / 2);
-    expect(h.rate).toBeCloseTo(1 + (2 * PULSE_MIN) / PULSE_S, 9);
+    expect(h.rate).toBeCloseTo(PEAK, 9);
   });
 
   it("is dropped, minutes forfeited, when its order stops being the one served", () => {
@@ -150,12 +159,21 @@ describe("what is hurried", () => {
     expect(hurryKind(state)).toBe("none");
   });
 
-  it("says on the row that clicking hurries it, where a tooltip cannot be read", () => {
+  it("finite care can be hurried with an explicit click", () => {
+    const { state } = newGame(3);
+    state.intent = { mode: "care", care: "body", need: "sleep", orderId: 7, step: "sleeping" };
+    state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
+    expect(hurryKind(state)).toBe("click");
+    expect(hurryClick(newHurry(), hurryKind(state), state.intent.orderId)).toBe(true);
+  });
+
+  it("keeps the hurry control out of the queue row", () => {
     const { state, world } = newGame(3);
     addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "leave", where: "nearest" }, "grind");
     advance(state, world, 1);
     expect(hurryKind(state)).toBe("click");
-    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).toContain("click to hurry");
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain('data-act="hurry"');
+    expect(queueHtml(state, world, calendar(state.minute, state.startDoy))).not.toContain("click to hurry");
   });
 
   it("says nothing about hurrying an order that is hurried unasked", () => {

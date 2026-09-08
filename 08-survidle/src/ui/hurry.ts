@@ -3,9 +3,9 @@
  * the hurry says how many extra game minutes the frame carries, and the
  * frame loop adds them to its own. An immediate action (a raw task, a
  * hand-started intent, a once order) runs at up to PEAK on its own; a
- * standing or counted order goes ahead a pulse at a time when its row is
- * clicked, with the pulse as the cooldown. Body needs, the runner's
- * care and everything done while away run at the one scale.
+ * standing, counted, or care activity goes ahead a pulse at a time when
+ * the central speed button is clicked, with the pulse as the cooldown.
+ * Everything done while away runs at the one scale.
  *
  * Spec: docs/superpowers/specs/2026-09-05-survidle-hurry-design.md.
  */
@@ -18,9 +18,9 @@ export const PEAK = 6;
 /** Real seconds the climb takes. */
 export const RAMP_S = 2;
 /** Real seconds one pulse lasts; the next click waits for it. */
-export const PULSE_S = 1 / 1.5;
-/** Extra game minutes one pulse carries: clicking as often as the pulse allows averages PEAK. */
-export const PULSE_MIN = (PEAK - 1) * PULSE_S;
+export const PULSE_S = 10 / 1.5;
+/** Extra game minutes carried by the smooth 1x -> PEAK -> 1x pulse. */
+export const PULSE_MIN = (PEAK - 1) * PULSE_S / 2;
 
 export interface HurryState {
   /** Real seconds the kind has been "auto" without a break. */
@@ -40,7 +40,8 @@ export function hurryKind(state: GameState): HurryKind {
   if (state.dead || state.landing) return "none";
   const it = state.intent;
   if (!it) return state.task ? "auto" : "none";
-  if (!isWorkIntent(it) || (it.mode === "runner" && state.player.bodyNeed !== null)) return "none";
+  if (!isWorkIntent(it)) return state.task && state.task.duration > 0 ? "click" : "none";
+  if (it.mode === "runner" && state.player.bodyNeed !== null) return "none";
   if (it.orderId === null || it.until.kind === "once") return "auto";
   return "click";
 }
@@ -50,10 +51,10 @@ function rampArea(u: number): number {
   return u <= 1 ? (u - Math.sin(Math.PI * u) / Math.PI) / 2 : 0.5 + (u - 1);
 }
 
-/** Integral of the pulse's raised cosine from 0 to u, u clamped to the pulse. */
+/** Integral of the pulse's smooth sine-squared curve, in pulse-length units. */
 function pulseArea(u: number): number {
   const v = Math.max(0, Math.min(1, u));
-  return v - Math.sin(2 * Math.PI * v) / (2 * Math.PI);
+  return v / 2 - Math.sin(2 * Math.PI * v) / (4 * Math.PI);
 }
 
 function autoRate(held: number): number {
@@ -65,7 +66,7 @@ function autoRate(held: number): number {
 function pulseRate(at: number): number {
   const u = at / PULSE_S;
   if (u < 0 || u >= 1) return 1;
-  return 1 + (PULSE_MIN / PULSE_S) * (1 - Math.cos(2 * Math.PI * u));
+  return 1 + (PEAK - 1) * Math.sin(Math.PI * u) ** 2;
 }
 
 /**
@@ -87,21 +88,21 @@ export function hurryFrame(h: HurryState, kind: HurryKind, liveOrderId: number |
   if (h.pulse) {
     const a0 = h.pulse.at;
     const a1 = a0 + dtSec;
-    extra += PULSE_MIN * (pulseArea(a1 / PULSE_S) - pulseArea(a0 / PULSE_S));
+    extra += (PEAK - 1) * PULSE_S * (pulseArea(a1 / PULSE_S) - pulseArea(a0 / PULSE_S));
     h.pulse = a1 >= PULSE_S ? null : { orderId: h.pulse.orderId, at: a1 };
   }
   h.rate = kind === "auto" ? autoRate(h.held) : h.pulse ? pulseRate(h.pulse.at) : 1;
   return extra;
 }
 
-/** A click on the live row: starts a pulse unless one is running or the row is not hurried by clicking. */
+/** A click on the central speed button starts a pulse unless one is already running. */
 export function hurryClick(h: HurryState, kind: HurryKind, liveOrderId: number | null): boolean {
   if (kind !== "click" || liveOrderId === null || h.pulse) return false;
   h.pulse = { orderId: liveOrderId, at: 0 };
   return true;
 }
 
-/** How much of the running pulse is left, 0 to 1, for the row's bar. */
+/** How much of the running pulse is left, 0 to 1. */
 export function pulseLeft(h: HurryState): number {
   return h.pulse ? 1 - h.pulse.at / PULSE_S : 0;
 }

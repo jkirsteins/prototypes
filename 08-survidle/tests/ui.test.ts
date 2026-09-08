@@ -19,7 +19,7 @@ import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
 import { applyRow, beginRequest, emptyView } from "../src/sim/forecaster";
-import { updateBars, updateHurryBar } from "../src/ui/bars";
+import { updateBars } from "../src/ui/bars";
 import { DEFAULT_ZOOM, LEVELS, mapHtml, mapKey, viewOrigin, ZOOMS } from "../src/ui/map";
 import { lighting } from "../src/ui/sky";
 import { doHtml } from "../src/ui/dopanel";
@@ -305,27 +305,61 @@ describe("panels", () => {
     expect(document.querySelectorAll("#map .mk-camp").length).toBe(0);
   });
 
-  it("the live row of a counted order is a click target with a pulse bar, a once order's row is not", () => {
+  it("the middle strip shows speed up for counted work and shows when automatic work is already sped up", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const cal = calendar(0);
     addOrder(state, world, { task: "sticks", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).not.toBeNull();
-    setPanel("orders", queueHtml(state, world, cal));
-    expect(document.querySelectorAll('#orders .order.live .head[data-act="hurry"]').length).toBe(1);
-    expect(document.querySelectorAll("#orders .order.live .bar.hurry #bar-hurry").length).toBe(1);
     const h = newHurry();
+    setPanel("task", taskHtml(state, world, cal, h));
+    expect(document.querySelector('#task button[data-act="hurry"]')?.textContent).toBe("speed up");
+    expect(queueHtml(state, world, cal)).not.toContain('data-act="hurry"');
     hurryClick(h, hurryKind(state), state.intent!.orderId);
-    updateHurryBar(h);
-    expect(document.querySelector<HTMLElement>("#bar-hurry")!.style.width).toBe("100.0%");
+    setPanel("task", taskHtml(state, world, cal, h));
+    expect(document.querySelector<HTMLButtonElement>('#task button[data-act="hurry"]')?.disabled).toBe(true);
     const once = newGame(3);
     addOrder(once.state, once.world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(once.state, once.world, 1);
-    setPanel("orders", queueHtml(once.state, once.world, cal));
-    expect(document.querySelectorAll("#orders .order.live").length).toBe(1);
-    expect(document.querySelectorAll('#orders [data-act="hurry"]').length).toBe(0);
-    expect(document.querySelectorAll("#orders .bar.hurry").length).toBe(0);
+    const automatic = taskHtml(once.state, once.world, cal, newHurry());
+    expect(automatic).toContain('class="mini speed-up on"');
+    expect(automatic).toContain('data-act="hurry" disabled');
+  });
+
+  it("keeps care activity copy short and offers its speed control", () => {
+    const { state, world } = newGame(3);
+    const here = cellOf(state, world);
+    const next = neighbours(world, here).find((cell) => cellAt(world, cell).terrain !== "water")!;
+    state.intent = { mode: "care", care: "body", need: "thirsty", orderId: 7, step: "walking to the shore for water" };
+    state.route = { target: next, path: [next], walked: [here], lastLand: here, label: "the shore", ice: "none" };
+    state.task = { id: "walk", progress: 0, duration: 10, repeat: false };
+    let html = taskHtml(state, world, calendar(0), newHurry());
+    expect(html).toContain("going 0.3 km for water");
+    expect(html).toContain('data-act="hurry"');
+    expect(html).not.toContain("walking to the shore");
+
+    state.intent = { mode: "care", care: "body", need: "sleep", orderId: 7, step: "sleeping where {you} {stand}; no way to camp" };
+    state.route = null;
+    state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
+    html = taskHtml(state, world, calendar(0), newHurry());
+    expect(html).toContain("sleeping");
+    expect(html).not.toContain("no way to camp");
+  });
+
+  it("shows a work action once, without a zero-distance location or scheduling clauses", () => {
+    const { state, world } = newGame(3);
+    const here = cellOf(state, world);
+    state.intent = {
+      mode: "hand", task: "sleep", cell: here, campCell: null,
+      until: { kind: "once" }, deliver: "leave", done: 0, windDown: false,
+      orderId: null, step: "sleeping at a spot 0.0 km north",
+    };
+    state.task = { id: "sleep", progress: 1, duration: 60, repeat: false };
+    const html = taskHtml(state, world, calendar(0), newHurry());
+    expect(html).toContain("<b>Sleep</b>");
+    expect(html).not.toContain("sleeping at");
+    expect(html).not.toContain("0.0 km");
   });
 
   it("the weather widget reads the hurry's rate", () => {
@@ -745,8 +779,9 @@ describe("the Do panel", () => {
     // One row, and one fact in each place: work begun by hand has no row on
     // the list, so this row carries the whole order. Which step it is on is
     // the bar's, which bars.ts writes every frame.
-    expect(html).toContain("Fell any tree, until camp has 40 logs, bringing it to camp");
-    expect(html).not.toContain("walking to the forest");
+    expect(html).toContain("<b>Fell any tree</b>");
+    expect(html).not.toContain("until camp has");
+    expect(html).toMatch(/going [0-9.]+ km to forest/);
     expect(html).toContain('data-act="stop"');
     // A tree half felled and stopped does not create a second finish control.
     placeAtSpot(g.state, g.world, g.state.player.region, "forest");
@@ -793,7 +828,7 @@ describe("the Orders panel", () => {
       choice: { ...defaultChoice(), until: "keep", n: 40 },
     });
     html = doHtml(state, world, cal, ui);
-    expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep camp at 40 kg firewood");
+    expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep: 40 kg firewood");
   });
 
   it("genuine idleness has flavor text but no activity progress bar", () => {
@@ -835,10 +870,9 @@ describe("the Orders panel", () => {
     expect(html).toContain("met");
     expect(html).not.toContain("waiting its turn");
     expect(html).not.toContain("gathering sticks");
-    // The live row keeps its hurry pulse; the job's own bar is the activity
-    // row's under the map, so the ids exist once on the page.
+    // Progress and speed controls live in the activity strip, not in the queue.
     expect(html).not.toContain('id="bar-task"');
-    expect(html).toContain('id="bar-hurry"');
+    expect(html).not.toContain('data-act="hurry"');
     // The camp row holds the top rank, so it has no up control. The keep's
     // is free, since a care row is a row it may be moved over.
     expect(html).not.toContain(`data-act="order-up" data-id="${campRowOf(state, world)!.id}"`);
@@ -949,9 +983,11 @@ describe("the kind per row", () => {
     const open = html.slice(html.indexOf('data-opt="intent:fish:any"'));
     expect(open).toContain('data-act="row-kind"');
     for (const k of ["once", "times", "daily", "campHas", "keep", "forever"]) expect(open).toContain(`data-until="${k}"`);
-    // Fishing at level 1 has not earned a keep: the keep is greyed and says what it needs.
+    // Fishing at level 1 has not earned a keep: the keep is greyed with a concise reason.
     expect(open).toMatch(/data-until="keep"[^>]*class="[^"]*off[^"]*"/);
-    expect(open).toContain("keeps at Fishing 10, you are 1");
+    expect(open).toContain('title="insufficient skill"');
+    expect(open).not.toContain("you are");
+    expect(open).not.toContain("about ");
     expect(open).toContain('data-row-n');
     expect(open).toContain('data-act="row-deliver"');
     // A row nobody opened, in its own pane: no expansion, but a way in.
@@ -959,6 +995,8 @@ describe("the kind per row", () => {
     const closed = sticks.slice(sticks.indexOf('data-opt="intent:sticks:"'), sticks.indexOf('data-opt="intent:sticks:"') + 600);
     expect(closed).not.toContain('data-act="row-kind"');
     expect(closed).toContain('data-act="row-more"');
+    expect(closed).toContain('aria-expanded="false">more</button>');
+    expect(open).toContain('aria-expanded="true">more</button>');
     // rest is a NOT_ORDERS task: rowRequest always collapses its choice to a once job, so it gets
     // no more button and no expansion at all, even when ui.open somehow names it.
     const restHtml = paneHtml(state, world, cal, "rest", undefined, { open: { id: "rest", arg: "" } });

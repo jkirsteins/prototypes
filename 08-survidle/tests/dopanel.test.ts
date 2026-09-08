@@ -313,28 +313,28 @@ describe("the condition fields", () => {
     const under = rowHtml(doHtml(state, world, cal, ui), "intent:berries:");
     expect(under).not.toContain("data-row-season-from");
     expect(under).not.toContain("data-row-stock-item");
-    expect(under).toContain("conditions at Foraging 15");
+    expect(under).toContain("insufficient skill");
 
     state.skills.foraging.xp = levelMinutes(15);
     const at = rowHtml(doHtml(state, world, cal, ui), "intent:berries:");
     for (const f of ["data-row-season-from", "data-row-season-to", "data-row-stock-item", "data-row-stock-mode", "data-row-stock-n"]) expect(at, f).toContain(f);
     expect(at).toContain('data-until="daily"');
-    expect(at).not.toContain("conditions at Foraging 15");
+    // The later pace control is still locked, but no internal rung wording leaks out.
+    expect(at).toContain("insufficient skill");
+    expect(at).not.toContain("pace at");
   });
 
-  it("marks where the player's own orders end and the runner's begin, on an open row", () => {
+  it("keeps scheduling prose out of an open row", () => {
     const { state, world } = newGame(17);
     const cal = calendar(state.minute, state.startDoy);
     const shut = rowHtml(doHtml(state, world, cal, newUiState()), "intent:chop:");
-    // A shut row has no kinds to divide, so it says nothing about the runner.
     expect(shut).not.toContain("the rest are the runner's");
     const ui = { ...newUiState(), open: { id: "chop" as const, arg: "" } };
     const open = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
-    expect(open).toContain("starts now");
-    expect(open).toContain("the rest are the runner's");
-    // The divider falls after "once" and before the kinds handed over.
-    expect(open.indexOf('data-until="once"')).toBeLessThan(open.indexOf("the rest are the runner's"));
-    expect(open.indexOf("the rest are the runner's")).toBeLessThan(open.indexOf('data-until="times"'));
+    expect(open).not.toContain("starts now");
+    expect(open).not.toContain("the rest are the runner's");
+    expect(open).not.toContain("about ");
+    expect(open).not.toContain("you are");
   });
 
   it("the restart line shows at the condition rung and the due date at the pace rung, and only a keep carries them", () => {
@@ -347,12 +347,12 @@ describe("the condition fields", () => {
     expect(at15).not.toContain("data-row-by");
     // The spending box is the date's other half and comes with it, not before it.
     expect(at15).not.toContain("data-row-spend");
-    expect(at15).toContain("pace at Woodcraft 20");
+    expect(at15).toContain("insufficient skill");
 
     state.skills.woodcraft.xp = levelMinutes(20);
     const at20 = rowHtml(doHtml(state, world, cal, ui), "intent:chop:");
     expect(at20).toContain("data-row-by");
-    expect(at20).not.toContain("pace at Woodcraft 20");
+    expect(at20).not.toContain("insufficient skill");
     // The spending box comes with a date and not before it, so the row that has
     // one shows it; the row still on "any" is the case below.
     const dated = { ...ui, choice: { ...ui.choice, when: { by: 334 } } };

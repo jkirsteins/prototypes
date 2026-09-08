@@ -33,7 +33,7 @@ import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
-import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
+import { updateBars, updateFills } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
@@ -176,7 +176,7 @@ function render() {
     lastMapKey = key;
     setPanel("mapdyn", mapHtml(world, state, ui, cal));
   }
-  setPanel("task", taskHtml(state, world, cal));
+  setPanel("task", taskHtml(state, world, cal, ui.hurry));
   setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("panetabs", paneTabsHtml(ui.panes));
@@ -208,7 +208,6 @@ function render() {
   updateBars(state, world);
   updateFills(state);
   updateGoalBars(state, cal);
-  updateHurryBar(ui.hurry);
   updateSky(state, cal, ambient);
 
   // The settings panel is static markup with its own listeners (the slider must

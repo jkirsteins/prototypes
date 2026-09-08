@@ -31,6 +31,18 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   fireDrill: "fire drills", needle: "bone needles", barkBucket: "bark buckets", waterskin: "waterskins",
 };
 
+/** Singular words for whole items whose plural name changes. Unlisted names do not inflect. */
+const ITEM_SINGULAR_NAMES: Partial<Record<ItemId, string>> = {
+  log: "log", stick: "stick", snare: "snare", arrow: "arrow", torch: "torch", basketTrap: "basket trap", wedge: "wedge",
+  axe: "iron axe", stoneAxe: "stone axe", flakedAxe: "flaked axe", whetstone: "whetstone", knife: "knife", bow: "bow", fishingSpear: "fishing spear",
+  fireDrill: "fire drill", needle: "bone needle", barkBucket: "bark bucket", waterskin: "waterskin",
+};
+
+/** The quantity-aware name of an item, without its number or unit. */
+export function itemName(item: ItemId, q: number): string {
+  return Math.abs(q - 1) < 1e-9 ? ITEM_SINGULAR_NAMES[item] ?? ITEM_NAMES[item] : ITEM_NAMES[item];
+}
+
 export type FoodId = "rawMeat" | "cookedMeat" | "driedMeat" | "cookedFish" | "cookedOilyFish" | "roe" | "berries" | "eggs" | "barkFlour" | "fat" | "cookedRoots" | "seaweed";
 /**
  * Every food: its kcal, its portion, its sick chance, and its lean share -
@@ -340,5 +352,5 @@ export const TORCH_BURN_MINUTES = 60;
 export function itemLabel(item: ItemId, q: number): string {
   if (item === "water" || item === "ice") return `${q.toFixed(1)} l ${ITEM_NAMES[item]}`;
   if (KG_ITEMS.has(item)) return `${q >= 10 ? Math.round(q) : q.toFixed(1)} kg ${ITEM_NAMES[item]}`;
-  return `${Math.round(q)} ${ITEM_NAMES[item]}`;
+  return `${Math.round(q)} ${itemName(item, Math.round(q))}`;
 }

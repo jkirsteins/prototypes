@@ -10,7 +10,7 @@ import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
-import { intentSentence } from "../sim/intent";
+import { groundOf } from "../sim/intent";
 import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
@@ -39,7 +39,8 @@ import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, w
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
 import { regionAt, speciesHere, type World } from "../world/gen";
-import { hurryKind, PULSE_MIN } from "./hurry";
+import { routeKm } from "../world/route";
+import { hurryKind, type HurryState } from "./hurry";
 import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
@@ -457,9 +458,6 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
 
 
 const TASK_BAR = `<div class="bar readout task"><div class="fill" data-bar="task"></div><span class="lbl"><span data-val="task"></span><span data-pct="task"></span></span></div>`;
-/** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
-const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry" data-bar="hurry"></div></div>`;
-
 /** The ranked list: each row its sentence, counters, state and buttons; progress lives only in the central activity strip. */
 export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
@@ -478,8 +476,6 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const care = isCareRow(o);
     const blocked = blockedAt >= 0 && i >= blockedAt;
     const live = it?.orderId === o.id;
-    // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
-    const clicks = live && hurryKind(state) === "click";
     const counts = !care && o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
     // Once or standing, on the row. The two are not the same promise - a
     // once order is done and gone, a standing one is kept - and the list
@@ -495,7 +491,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // queue row already names its purpose, so repeating either here would
     // create two competing places to read the same activity.
     const second = live
-      ? (clicks ? HURRY_BAR : "")
+      ? ""
       : blocked && o !== judged.blockedBy
         ? ""
         : ((line) => line ? `<div class="step">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
@@ -527,13 +523,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const btns = care
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
-    const head = clicks
-      ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
-      : `<div class="head">`;
-    // Words and not only the title: a touch device has no hover to show one, and
-    // a mouse never rests on a row long enough to find it.
-    const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
-    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}">${head}<span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}</span>${counts}${hint}</span>${btns}</div>${second}</div>`;
+    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}"><div class="head"><span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}</span>${counts}</span>${btns}</div>${second}</div>`;
   }).join("");
   return `${held}${rows}`;
 }
@@ -564,13 +554,52 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
  */
 export interface Activity { title: string; step: string; progress: boolean }
 
+const CARE_ROUTE_PURPOSE = {
+  sleep: "to sleep", storm: "for shelter", cold: "for warmth", hungry: "for food",
+  thirsty: "for water", spent: "to rest", home: "to camp", fire: "for the fire", snares: "for the snares",
+} as const;
+
+function activityStep(state: GameState): string {
+  const it = state.intent;
+  if (!it) return "";
+  if (it.mode === "care") {
+    if (state.task?.id === "walk" && state.route) {
+      return `going ${routeKm(state.route.path).toFixed(1)} km ${CARE_ROUTE_PURPOSE[it.need]}`;
+    }
+    if (state.task?.id === "sleep") return it.step.includes("dozing") ? "dozing" : "sleeping";
+    if (state.task?.id === "rest") {
+      if (it.need === "cold") return "warming up";
+      if (it.need === "storm") return "waiting out storm";
+      if (it.need === "thirsty") return "waiting for water";
+      if (it.need === "home") return "at camp";
+      return "resting";
+    }
+    return plain(it.step)
+      .replace("clearing the fire site", "preparing fire")
+      .replace("lighting the fire indoors", "lighting fire")
+      .replace("lighting the fire", "lighting fire")
+      .replace("splitting a log for the fire", "splitting firewood");
+  }
+  if (state.task?.id === "walk" && state.route) {
+    const km = routeKm(state.route.path).toFixed(1);
+    const atCamp = it.campCell !== null && state.route.target === it.campCell;
+    const ground = groundOf(it.task, it.arg);
+    const destination = atCamp ? "camp" : ground ? SPOT_WORDS[ground].replace(/^the /, "") : "";
+    return `going ${km} km${destination ? ` to ${destination}` : ""}`;
+  }
+  if (state.task?.id === it.task) return "";
+  return plain(it.step)
+    .replace("loading up", "loading")
+    .replace("unloading at camp", "unloading")
+    .replace("laying out materials at camp", "laying out materials");
+}
+
 export function activity(state: GameState, world: World, cal: Calendar): Activity | null {
   const it = state.intent;
   if (it) {
-    const row = ordersHere(state, world).find((o) => o.id === it.orderId);
     return {
-      title: row ? orderSentence(state, world, cal, row) : isWorkIntent(it) ? intentSentence(state, world, cal, it) : it.care === "camp" ? "Camp maintenance" : "Self-care",
-      step: plain(it.step),
+      title: isWorkIntent(it) ? plain(check(state, world, cal, it.task, it.arg, it.cell).label) : it.care === "camp" ? "Camp maintenance" : "Self-care",
+      step: activityStep(state),
       progress: !!state.task && state.task.duration > 0,
     };
   }
@@ -580,10 +609,11 @@ export function activity(state: GameState, world: World, cal: Calendar): Activit
   // title and there is no step under it to name.
   const opts = availableTasks(state, world, cal);
   let title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
-  // Started as "anything": the species is what it turned out to be, so it says both.
-  if (t.any) title = `${title} (whatever was about)`;
-  if ((t.id === "walk" || t.id === "travel") && state.route) title = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
-  if (t.repeat) title = `${title}, on repeat`;
+  if ((t.id === "walk" || t.id === "travel") && state.route) {
+    const km = routeKm(state.route.path).toFixed(1);
+    const named = state.route.label.startsWith("a spot ") ? "" : ` to ${state.route.label.replace(/^the /, "")}`;
+    return { title: t.id === "travel" ? "Travel" : "Walk", step: `going ${km} km${named}`, progress: t.duration > 0 };
+  }
   return { title, step: "", progress: t.duration > 0 };
 }
 
@@ -592,7 +622,7 @@ export function cap(s: string): string {
   return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 
-export function taskHtml(state: GameState, world: World, cal: Calendar): string {
+export function taskHtml(state: GameState, world: World, cal: Calendar, hurryState?: HurryState): string {
   const it = state.intent;
   const orders = ordersHere(state, world);
   // A row's own work is stopped from its row; work started by hand is
@@ -612,7 +642,11 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   const what = now
     ? `<b>${esc(cap(now.title))}</b>${now.step ? `<span class="sub">${esc(now.step)}</span>` : ""}`
     : `<span class="dim">${esc(idleLine(state, cal))}</span>`;
-  return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${stop}</div>`;
+  const speedKind = hurryState ? hurryKind(state) : "none";
+  const canHurry = speedKind !== "none";
+  const speeding = speedKind === "auto" || !!hurryState?.pulse;
+  const speed = canHurry ? `<button class="mini speed-up${speeding ? " on" : ""}" data-act="hurry"${speeding ? " disabled" : ""}>speed up</button>` : "";
+  return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${speed}${stop}</div>`;
 }
 
 /**
