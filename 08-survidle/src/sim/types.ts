@@ -393,9 +393,9 @@ export interface Player {
   /** The region of the cell under foot, kept current by every move. */
   region: number;
   health: number;
-  /** Kilocalorie reserve, 0..6000. */
+  /** The stomach's fullness, 0..KCAL_FULL: the signal that drives hunger, satiety and the Food bar. Eating fills it, time empties it; it holds no energy of its own. */
   kcal: number;
-  /** Body fat reserve in kilocalories, 0..FAT_FULL: what an empty stomach draws on before health does. */
+  /** The body's energy store, in kcal, no upper bound and no floor clamp: it rises by what is eaten and falls by what is burned, every minute, whether that leaves it above or below the essential-fat floor fatLandmarks() sets. A run that dies is read against that floor, not against zero. */
   fat: number;
   warmth: number;
   /** Fatigue from work, 0..100: what the day's tasks drain and rest and sleep restore. */

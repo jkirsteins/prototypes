@@ -43,3 +43,24 @@ Once those are settled the drawing is small: a `scorched` class carrying a step
 for age, excluded from marked cells the way every other conditional ground rule
 in `style.css` is, plus a row in `scripts/map-shots.mjs` so the look is checked
 with the rest.
+
+## The reference runner and a walking heir never reach for a seep
+
+**Raised** 2026-09-08, during the body-fat calibration pass. Corrected the
+same day: this is not a new mechanic. `src/sim/seep.ts` already exists - a
+knee-deep hole dug on wet ground (`build:seep`), holding a pool that refills
+from the water table (bog 3 l/h, damp 1 l/h), fetched from with `fill:seep`,
+freezing without a fire on its cell, drying out after two weeks with no rain,
+silting up after a year. It is real, built, and on the map (`MARKS.seep`).
+
+The author's ruling on a heir landing far from the old camp - that a
+competent player routes around it, by camping anew or by drinking along the
+way - names a real tool the game already has. The gap is narrower than "build
+seep": it is that nothing simulated ever reaches for it under its own
+judgment. `REFERENCE_ORDERS` never mentions `seep`, so the reference runner's
+whole gate suite never digs or drinks from one; a raised heir's walk-home
+order comes from the same runner and carries the same blind spot. A human
+player already has the tool a competent one would use here - the open
+question is only whether the reference runner (and so the gates it drives)
+should carry a seep want, given digging one is itself an hour-plus action
+that assumes the walker can afford to stop, not a sip taken in passing.

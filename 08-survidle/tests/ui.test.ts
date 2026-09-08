@@ -10,7 +10,9 @@ import { isKnown, knownShare, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, moveOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
+import { fatLandmarks } from "../src/sim/person";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { current } from "../src/sim/record";
 import { discovery, regionState, SEEN, siteFor } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
@@ -1015,5 +1017,36 @@ describe("the forecast panel", () => {
     applyRow(v2, 1, { id: "away", runs: 10, died: 0, cause: null, day: null });
     expect(forecastHtml(v2, state)).toContain("none of 10 die");
     expect(forecastHtml(null, state)).toContain("<h2>Ahead</h2>");
+  });
+});
+
+describe("the body's bars", () => {
+  it("draws the Fat bar against the upper landmark and marks the floor", () => {
+    const { state, world } = newGame(1);
+    document.body.innerHTML = statsHtml(state, world, calendar(state.minute, state.startDoy), 5, newUiState());
+    const fat = document.querySelector("#bar-fat")!.parentElement!;
+    const mark = fat.querySelector(".mark") as HTMLElement | null;
+    expect(mark).not.toBeNull();
+    const l = fatLandmarks(current(state).person);
+    expect(Number.parseFloat(mark!.style.left)).toBeCloseTo((l.floor / l.upper) * 100, 0);
+  });
+
+  it("moves the Food bar's mark with the hunger line", () => {
+    const { state, world } = newGame(1);
+    const cal = calendar(state.minute, state.startDoy);
+    const l = fatLandmarks(current(state).person);
+    // The mark is written by updateBars onto a named element, not into the
+    // markup - statsHtml alone leaves it blank, the same way every other
+    // per-frame value in the panel does (tests/churn.test.ts).
+    const markAt = () => {
+      document.body.innerHTML = statsHtml(state, world, cal, 5, newUiState());
+      updateBars(state, world, document);
+      const m = document.querySelector("#bar-kcal")!.parentElement!.querySelector(".mark") as HTMLElement;
+      return Number.parseFloat(m.style.left);
+    };
+    state.player.fat = l.typical;
+    const normal = markAt();
+    state.player.fat = l.floor + (l.lower - l.floor) * 0.2;
+    expect(markAt()).toBeGreaterThan(normal);
   });
 });

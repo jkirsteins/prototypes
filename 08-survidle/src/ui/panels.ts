@@ -1,4 +1,4 @@
-import { edible, HUNGRY_LINE, itemLabel, refusalReason } from "../sim/actions";
+import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { isCareRow } from "../sim/bodyorder";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
@@ -7,9 +7,9 @@ import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pileAt, pilesIn, qty, weight } from "../sim/inventory";
-import { body } from "../sim/person";
+import { body, fatLandmarks } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, KCAL_FULL, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { CLOTHING, FOODS, type FoodId, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { fishLie, readCells } from "../sim/knowledge";
 import { knownShare } from "../sim/mapped";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
@@ -24,7 +24,7 @@ import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
 import { sleepiness, SLEEPY_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
-import { feltTemperature, insulation, starvation } from "../sim/player";
+import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation } from "../sim/player";
 import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
@@ -46,12 +46,19 @@ import { plain, voice } from "../sim/voice";
 import { waterLine, waterList } from "./water";
 import { skyHtml } from "./sky";
 
-function bar(id: string, cls: string, label: string, markAt?: number): string {
-  // A mark is a fixed share of the bar, so it belongs in the markup: it is
-  // the one part of a bar that does not move, and the thing a falling fill
-  // is falling toward.
-  const mark = markAt === undefined ? "" : `<div class="mark" style="left:${(markAt * 100).toFixed(1)}%" title="eats here"></div>`;
-  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${mark}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
+/**
+ * A mark on a bar: either a fixed share, which belongs in the markup since
+ * it never moves, or the name of a moving one, written each frame by
+ * updateBars onto this element rather than into the panel's diffed markup
+ * (tests/churn.test.ts).
+ */
+function bar(id: string, cls: string, label: string, mark?: number | { name: string; title: string }): string {
+  const m = mark === undefined
+    ? ""
+    : typeof mark === "number"
+      ? `<div class="mark" style="left:${(mark * 100).toFixed(1)}%" title="dies here"></div>`
+      : `<div class="mark" data-mark="${mark.name}" title="${esc(mark.title)}"></div>`;
+  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
 }
 
 /**
@@ -106,6 +113,7 @@ function poolPerks(share: number, skill: SkillId): string[] {
 export function statsHtml(state: GameState, world: World, cal: Calendar, ambient: number, ui: UiState): string {
   const p = state.player;
   const felt = feltTemperature(state, world, ambient);
+  const marks = fatLandmarks(current(state).person);
   const tags: string[] = [];
   tags.push(`<span class="tag">feels like ${Math.round(felt)} C</span>`);
   if (p.sick > 0) tags.push(`<span class="tag bad">sick, ${fmtDuration(p.sick)} to go</span>`);
@@ -117,9 +125,9 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   // taking, or the body's row waiting its turn behind the work. Either way
   // the fat behind it is paying, and that is the state worth a word.
   // Starving is what the fat running out is.
-  if (p.kcal < HUNGRY_LINE) tags.push(`<span class="tag bad">hungry</span>`);
-  if (starvation(state) >= 0.5) tags.push(`<span class="tag bad">starving</span>`);
-  if (starvation(state) >= 0.75) tags.push(`<span class="tag bad">wasting</span>`);
+  if (p.kcal < hungerLine(state)) tags.push(`<span class="tag bad">hungry</span>`);
+  if (starvation(state) >= FAT_RIBS) tags.push(`<span class="tag bad">starving</span>`);
+  if (starvation(state) >= FAT_WASTING) tags.push(`<span class="tag bad">wasting</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
   else if (p.warmth < 40) tags.push(`<span class="tag bad">cold</span>`);
   if (p.energy < 20) tags.push(`<span class="tag bad">exhausted</span>`);
@@ -127,8 +135,8 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
-${bar("kcal", "kcal", "Food", HUNGRY_LINE / KCAL_FULL)}
-${bar("fat", "fat", "Fat")}
+${bar("kcal", "kcal", "Food", { name: "hunger", title: "eats here" })}
+${bar("fat", "fat", "Fat", marks.floor / marks.upper)}
 ${bar("water", "water", "Water")}
 ${bar("warmth", "warmth", "Warmth")}
 ${bar("energy", "energy", "Energy")}

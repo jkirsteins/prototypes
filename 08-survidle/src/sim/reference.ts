@@ -34,8 +34,7 @@ import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOUR
 import { knownShare, mapRegion } from "./mapped";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder } from "./orders";
-import { FAT_FULL } from "./player";
-import { medianPerson } from "./person";
+import { fatLandmarks, medianPerson } from "./person";
 import { heathCell, watersideCell } from "./position";
 import { current } from "./record";
 import { campSite, regionState, siteFor } from "./regionstate";
@@ -510,12 +509,17 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
  */
 export const REFERENCE_SEEDS = [17, 19, 42, 79, 45];
 /**
- * The April gate (spec 7.1): the day a beginner who eats the least the
- * tables allow and burns the most runs out of fat. Derived, so it moves
- * when the burn band, the reserve or the kit moves and not otherwise.
+ * The April gate (spec 7.1): the day a beginner who eats the least the tables
+ * allow and burns the most reaches essential fat. Derived, so it moves when
+ * the burn band, the reserve or the kit moves and not otherwise. Only the
+ * reserve above the floor is fuel - the floor itself is structure, and a body
+ * is dying by the time it reaches it.
  */
 export const REFERENCE_TARGET_DAY = Math.floor(
-  (FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg) / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
+  (() => {
+    const l = fatLandmarks(medianPerson("m"));
+    return l.typical - l.floor + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
+  })() / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
 );
 /** The kitted camp's gate: a month, until C's trap moves it to December. */
 export const KITTED_TARGET_DAY = 30;

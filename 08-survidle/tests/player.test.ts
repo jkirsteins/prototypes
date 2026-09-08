@@ -20,12 +20,14 @@ describe("player physiology", () => {
     siteCamp(state, world);
     const k0 = state.player.kcal;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    expect(k0 - state.player.kcal).toBeCloseTo(100, 0);
+    // A fresh survivor lands at exactly the typical reserve, so the base
+    // bucket - and so the idle hour - reads exactly 100.
+    expect(k0 - state.player.kcal).toBeCloseTo(100, 1);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k1 = state.player.kcal;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
-    expect(k1 - state.player.kcal).toBeCloseTo(500, 0);
+    expect(k1 - state.player.kcal).toBeCloseTo(500, 1);
   });
 
   it("starves at 2 health per hour with kcal and fat both empty", () => {

@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { leaveCamp } from "../src/sim/camp";
 import { EMBER_MINUTES } from "../src/sim/fire";
 import { newGame } from "../src/sim/newgame";
-import { FAT_FULL } from "../src/sim/player";
+import { fatLandmarks, personOf } from "../src/sim/person";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { regionAt, type World } from "../src/world/gen";
@@ -20,7 +20,7 @@ import { siteCamp } from "./siting-helpers";
  */
 function feed(state: ReturnType<typeof newGame>["state"]): void {
   state.player.kcal = 6000;
-  state.player.fat = FAT_FULL;
+  state.player.fat = fatLandmarks(personOf(state)).typical;
   state.player.water = 3;
   state.player.health = 100;
   state.player.energy = 100;

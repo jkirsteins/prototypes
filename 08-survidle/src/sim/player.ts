@@ -9,7 +9,7 @@ import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { lightFactor, skyLux, TORCH_LUX, WALK_LUX } from "./light";
 import { log, warn } from "./log";
-import { BIG_EATER_BURN, body, hasQuirk } from "./person";
+import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { campSite, regionState, siteAt } from "./regionstate";
@@ -99,23 +99,20 @@ export const BOUGH_BED_C = 4;
 /** Kilocalories in a kilogram of body fat, 9 kcal a gram: the unit the fat reserve is weighed in. */
 export const FAT_KCAL_PER_KG = 9000;
 
+/** How far into the failing range - lower landmark down to the floor - each word waits for. */
+const FAT_THIN = 0.25;
+export const FAT_RIBS = 0.5;
+export const FAT_WASTING = 0.75;
+
 /**
- * A fit adult's fat, in kilocalories: about nine kilos at 9 kcal a gram.
- * At a total fast of 3,000 kcal a day that is 27 days before it is gone,
- * the reserve behind the kilocalorie stomach that lets a fed, sheltered
- * beginner last weeks rather than days.
+ * How far the body has fallen into its failing range: nothing at the lower
+ * landmark and above, total at the floor it dies on. A naturally lean body
+ * sitting in its settling zone is not starving and reads zero, which is what
+ * makes this safe to feed to warmth, work speed and the body's own words.
  */
-export const FAT_FULL = 80000;
-
-/** The fat warnings' thresholds, as shares of FAT_FULL. */
-const FAT_THIN = 0.75;
-const FAT_RIBS = 0.5;
-const FAT_WASTING = 0.25;
-
-/** Share of the fat reserve gone, 0 (full) to 1 (empty), against this body's own reserve: what a thin body costs elsewhere. */
 export function starvation(state: GameState): number {
-  const full = body(state).fatFull;
-  return 1 - clamp(state.player.fat, 0, full) / full;
+  const l = fatLandmarks(personOf(state));
+  return clamp((l.lower - state.player.fat) / (l.lower - l.floor), 0, 1);
 }
 
 /**
@@ -215,6 +212,26 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 }
 
 /**
+ * The share of a task's work above base that is the body being moved, and so
+ * scales with total mass. A task absent from this table does not scale with
+ * mass at all - work done standing in one place costs what it costs whoever
+ * is doing it, and a heavier body pays for its reserve through the resting
+ * burn instead.
+ *
+ * The walk activity itself (walk, travel, haul, explore, searchHome, by
+ * activityOf) is charged separately, in stepPlayer's walk branch, where
+ * `burn *= massFactor(state)` already scales all of it - this table covers
+ * only work done on the feet that is not the walk itself, so a walk-class
+ * task must not carry a row here.
+ *
+ * Same convention as NIGHT_WORK in light.ts: absence means the effect does
+ * not apply.
+ */
+export const ON_THE_FEET: Partial<Record<TaskId, number>> = {
+  hunt: 0.6, berries: 0.4, roots: 0.4, sticks: 0.4, deadwood: 0.4, seaweed: 0.4, stone: 0.4,
+};
+
+/**
  * Flat kcal/h for activities that do not depend on the ground. Heavy is axe
  * work by the MET tables (6 to 7 MET at 72 kg), under the Swedish
  * handbook's 700 for a hard march or heavy work.
@@ -290,6 +307,7 @@ export function taskDrain(workHours: number): number {
 export function stepPlayer(state: GameState, world: World, cal: Calendar, ambient: number, dt: number): Drains {
   const p = state.player;
   const d = body(state);
+  const l = fatLandmarks(personOf(state));
   const r = regionState(state, world, p.region);
   const w = state.weather;
   const felt = feltTemperature(state, world, ambient);
@@ -319,6 +337,10 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   if (a === "walk") {
     burn = WALK_KCAL_PER_HOUR / Math.max(0.25, speedOf(hereTerrain(state, world), state.route?.ice ?? "none"));
     if (w.snowCm > DEEP_SNOW_CM) burn *= 2;
+    // Moving the body costs what the body weighs. The load below is charged
+    // separately and more steeply: a pack on the back is carried far less
+    // efficiently than the body carrying it.
+    burn *= massFactor(state);
     if (carried(p) > d.packHardKg) burn += LOAD_KCAL_PER_HOUR.hard;
     else if (carried(p) > d.packComfortableKg) burn += LOAD_KCAL_PER_HOUR.comfortable;
   } else {
@@ -326,8 +348,11 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   }
   // The base is this body's resting burn and the work above it is scaled by its strength.
   const eats = hasQuirk(state, "bigEater") ? BIG_EATER_BURN : 1;
-  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats;
-  const base = d.baseBurn * eats;
+  // Work that moves the body scales with what the body weighs; the rest is effort, and strength is the axis for that.
+  const feet = a === "walk" ? 0 : (state.task && ON_THE_FEET[state.task.id]) || 0;
+  const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats * (1 + (massFactor(state) - 1) * feet);
+  // The reserve is mass the body carries everywhere, so resting costs more for a body that has one.
+  const base = BASE_KCAL_PER_HOUR * massFactor(state) * eats;
   burn = base + above;
   const afterCold = burn * coldBurnFactor(felt);
   const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;
@@ -339,11 +364,13 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
     sick: (afterSick - afterCold) * h,
   });
   creditTime(state, a === "sleep" ? "sleep" : state.task && !IDLE_TASKS.has(state.task.id) ? "work" : "idle", dt);
-  // Below zero, the shortfall comes out of the fat reserve instead of health.
+  // The energy store pays every minute's burn regardless of what the
+  // stomach shows; fullness is drained the same amount, separately, and
+  // simply has nowhere to go once it hits empty. The two agree only on a
+  // day when eating exactly kept pace with burning.
   const kcalBurn = afterSick * h;
-  const shortfall = Math.max(0, kcalBurn - p.kcal);
+  p.fat -= kcalBurn;
   p.kcal = clamp(p.kcal - kcalBurn, 0, KCAL_FULL);
-  if (shortfall > 0) p.fat = clamp(p.fat - shortfall, 0, d.fatFull);
 
   const thirst = stepWater(state, felt, dt);
 
@@ -415,7 +442,9 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
 
   // Health.
   const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst, smoke: 0 };
-  if (p.kcal <= 0 && p.fat <= 0) drains.starve = 2 * h;
+  // The floor is essential fat: structure, not fuel. A body at it is dying,
+  // however much weight is still on it.
+  if (p.kcal <= 0 && p.fat <= l.floor) drains.starve = 2 * h;
   if (p.warmth < 20) drains.cold = 6 * h;
   if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
   const smoking = camp && state.task?.id === "sleep" && r.smoke > SMOKE_DEADLY;
@@ -430,10 +459,13 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   // Milestone warnings, once per crossing.
   // Starving is the fat reserve going, not the stomach: the stomach empties
   // whenever the food runs out, and autoEat says so at the meal line.
-  warn(state, "kcal", starvation(state) >= 0.5, "{You} {are} starving.");
-  warn(state, "thin", p.fat < FAT_THIN * d.fatFull, "{You} {are} getting thin.");
-  warn(state, "ribs", p.fat < FAT_RIBS * d.fatFull, "{Your} ribs show.");
-  warn(state, "wasting", p.fat < FAT_WASTING * d.fatFull, "{You} {are} wasting away.");
+  // The words track the failing range, so a lean body in its settling zone is
+  // not told its ribs show.
+  const failing = starvation(state);
+  warn(state, "kcal", failing >= 0.5, "{You} {are} starving.");
+  warn(state, "thin", failing > FAT_THIN, "{You} {are} getting thin.");
+  warn(state, "ribs", failing > FAT_RIBS, "{Your} ribs show.");
+  warn(state, "wasting", failing > FAT_WASTING, "{You} {are} wasting away.");
   warn(state, "warm", p.warmth < 30, "{You} {are} shivering hard. Find warmth.");
   warn(state, "wet", p.wetness >= 60, "{You} {are} soaked through.");
   warn(state, "tired", p.energy < 20, "{You} can barely lift {your} arms. Sleep.");

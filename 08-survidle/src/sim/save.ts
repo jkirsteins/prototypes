@@ -7,10 +7,9 @@ import { newGoals } from "./goals";
 import { addItem } from "./inventory";
 import { TOOLS } from "./items";
 import { ordersHere, orderSentence } from "./orders";
-import { FAT_FULL } from "./player";
 import { firstRecord } from "./newgame";
 import { sexOfName } from "./names";
-import { medianPerson, rollCandidates } from "./person";
+import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { newSite, regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
@@ -161,7 +160,7 @@ export function migrate(state: GameState): void {
   }
   const p = state.player;
   p.torch ??= { lit: false, minutes: 0 };
-  p.fat ??= FAT_FULL;
+  p.fat ??= fatLandmarks(personOf(state)).typical;
   p.water ??= 2.5;
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
