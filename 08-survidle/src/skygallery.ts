@@ -48,6 +48,7 @@ export const SKY_CASES: SkyCase[] = [
   { name: "dusk", note: "the sun going down: the pink hour", hour: { of: "sunset", plus: -0.05 }, doy: 172, weather: { clear: true, precip: "none" } },
   { name: "golden", note: "the last light before the sun is gone", hour: { of: "sunset", plus: -0.9 }, doy: 200, weather: { clear: true, precip: "none" } },
   { name: "night-clear", note: "the moon up and the stars out", hour: 1, doy: 172, weather: { clear: true, precip: "none" } },
+  { name: "perseids", note: "a clear night near the Perseid peak", hour: 1, doy: 223, weather: { clear: true, precip: "none" } },
   { name: "night-cloudy", note: "the same night with the stars shut out", hour: 1, doy: 172, weather: { clear: false, precip: "none" } },
   { name: "rain-light", note: "rain, falling straight", hour: 14, doy: 200, weather: { clear: false, precip: "light" } },
   { name: "rain-heavy", note: "heavier rain, thicker cloud", hour: 14, doy: 200, weather: { clear: false, precip: "heavy" } },

@@ -8,7 +8,7 @@ import { ambientTemperature } from "../src/sim/weather";
 import { placesHtml, weatherHtml } from "../src/ui/panels";
 import { mapHtml } from "../src/ui/map";
 import { newUiState, resetPanels, setPanel } from "../src/ui/render";
-import { bodyPosition, lighting, phaseName, skyHtml, updateSky } from "../src/ui/sky";
+import { bodyPosition, lighting, phaseName, skyHtml, updateSky, WALL } from "../src/ui/sky";
 import { siteCamp } from "./siting-helpers";
 
 const clear: Weather = { precip: "none", clear: true, offset: 0, snowCm: 0, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 };
@@ -163,6 +163,104 @@ describe("sky in the page", () => {
     expect(viewport.classList.contains("snowing")).toBe(true);
     // And under a sky that thick there is no disc left to see.
     expect(opacity("#sky-moon")).toBeLessThan(0.1);
+  });
+
+  it("keeps one varied constellation star pattern through a clear night and hides it by day or cloud", () => {
+    const { state } = newGame(21);
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml(WALL);
+    const visibleConstellation = () => root.querySelector<SVGElement>('[data-constellation][opacity="1"]')?.id;
+    const opacity = (id: string) => root.querySelector(id)?.getAttribute("opacity");
+
+    const evening = at(22);
+    updateSky(state, evening, -3, root);
+    const first = visibleConstellation();
+    expect(first).toBeTruthy();
+    expect(root.querySelector(".sky-constellation polyline")).toBeNull();
+    expect(root.querySelector("#sky-milky-way")).not.toBeNull();
+    expect(opacity("#sky-milky-way")).not.toBe("0");
+    expect(opacity("#sky-stars")).not.toBe("0");
+
+    updateSky(state, at(28), -3, root);
+    expect(visibleConstellation()).toBe(first);
+
+    const nights = new Set<string>();
+    for (let day = 0; day < 8; day++) {
+      updateSky(state, calendar((22 - 8) * 60 + day * 1440), -3, root);
+      const constellation = visibleConstellation();
+      if (constellation) nights.add(constellation);
+    }
+    expect(nights.size).toBeGreaterThan(2);
+
+    const { state: otherState } = newGame(22);
+    updateSky(otherState, evening, -3, root);
+    expect(visibleConstellation()).not.toBe(first);
+
+    updateSky(state, at(13), 10, root);
+    expect(visibleConstellation()).toBeUndefined();
+    expect(opacity("#sky-stars")).toBe("0");
+    expect(opacity("#sky-milky-way")).toBe("0");
+
+    state.weather.clear = false;
+    updateSky(state, evening, -3, root);
+    expect(visibleConstellation()).toBeUndefined();
+    expect(opacity("#sky-stars")).toBe("0");
+
+    state.weather.clear = true;
+    state.weather.precip = "light";
+    updateSky(state, evening, -3, root);
+    expect(visibleConstellation()).toBeUndefined();
+    expect(opacity("#sky-stars")).toBe("0");
+  });
+
+  it("draws the terrain as one opaque colourless silhouette", () => {
+    const { state } = newGame(21, 172);
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml(WALL);
+    const fills = () => ["#sky-far", "#sky-mid", "#sky-near"]
+      .map((id) => root.querySelector(id)?.getAttribute("fill"));
+    const summer = calendar((13 - 8) * 60, 172);
+
+    updateSky(state, summer, 14, root);
+    const summerFills = fills();
+    expect(new Set(summerFills)).toEqual(new Set(["#050505"]));
+    expect(root.querySelector("#sky-trees")).toBeNull();
+    for (const id of ["#sky-far", "#sky-mid", "#sky-near"]) {
+      const opacity = root.querySelector(id)?.getAttribute("opacity");
+      expect(opacity === null || opacity === "1").toBe(true);
+    }
+
+    state.weather.clear = false;
+    updateSky(state, summer, 14, root);
+    expect(fills()).toEqual(summerFills);
+
+    state.weather.clear = true;
+    const winter = calendar((13 - 8) * 60, 350);
+    updateSky(state, winter, -5, root);
+    expect(fills()).toEqual(summerFills);
+
+    state.weather.snowCm = 20;
+    updateSky(state, winter, -5, root);
+    expect(fills()).toEqual(summerFills);
+  });
+
+  it("shows Perseid streaks only on clear nights in their late-summer window", () => {
+    const { state } = newGame(21, 223);
+    const root = document.createElement("div");
+    root.innerHTML = skyHtml(WALL);
+    const opacity = () => root.querySelector("#sky-perseids")?.getAttribute("opacity");
+
+    updateSky(state, calendar((22 - 8) * 60, 223), 12, root);
+    expect(root.querySelectorAll("#sky-perseids .sky-meteor").length).toBeGreaterThan(2);
+    expect(opacity()).toBe("1");
+
+    state.weather.clear = false;
+    updateSky(state, calendar((22 - 8) * 60, 223), 12, root);
+    expect(opacity()).toBe("0");
+
+    state.weather.clear = true;
+    updateSky(state, calendar((22 - 8) * 60, 250), 12, root);
+    expect(opacity()).toBe("0");
   });
 
   it("spot distances are from where you stand, with the walking time on the button", () => {

@@ -27,6 +27,10 @@ them; `npm run sky -- --check` says which ones a change has altered.
 
   ![night-clear](night-clear.png)
 
+- **perseids** - perseidsa clear night near the Perseid peak
+
+  ![perseids](perseids.png)
+
 - **night-cloudy** - night-cloudythe same night with the stars shut out
 
   ![night-cloudy](night-cloudy.png)

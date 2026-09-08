@@ -253,8 +253,54 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
   const u = uid ? `-${uid}` : "";
   const arc = `M ${g.cx - g.arcR} ${g.groundY} A ${g.arcR} ${g.arcR} 0 0 1 ${g.cx + g.arcR} ${g.groundY}`;
   const rand = (n: number, seed: number) => ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
-  const stars = Array.from({ length: 14 }, (_, i) =>
-    `<circle cx="${(rand(g.w, i + 1)).toFixed(1)}" cy="${(rand(g.groundY * 0.8, i + 31)).toFixed(1)}" r="${(0.5 + rand(0.6, i + 61)).toFixed(2)}" fill="#fff"/>`).join("");
+  const stars = Array.from({ length: 650 }, (_, i) => {
+    const bright = i % 47 === 0;
+    const middle = !bright && i % 9 === 0;
+    const r = bright ? 0.40 + rand(0.30, i + 61) : middle ? 0.18 + rand(0.20, i + 61) : 0.05 + rand(0.13, i + 61);
+    const opacity = bright ? 0.65 + rand(0.30, i + 81) : middle ? 0.35 + rand(0.35, i + 81) : 0.12 + rand(0.30, i + 81);
+    const colour = i % 29 === 0 ? "#d9e5ff" : i % 37 === 0 ? "#fff0dc" : "#fff";
+    return `<circle cx="${rand(g.w, i + 1).toFixed(1)}" cy="${rand(g.groundY * 0.82, i + 31).toFixed(1)}" r="${r.toFixed(2)}" fill="${colour}" opacity="${opacity.toFixed(2)}"/>`;
+  }).join("");
+  // A clean-edged river of light with a scatter of bright dust. The
+  // translucent strokes give the Milky Way breadth while the dust and
+  // procedural texture keep it crisp at widget scale.
+  const milkyPath = `M ${(g.w * 0.50).toFixed(1)} ${(-g.groundY * 0.08).toFixed(1)} C ${(g.w * 0.49).toFixed(1)} ${(g.groundY * 0.20).toFixed(1)}, ${(g.w * 0.60).toFixed(1)} ${(g.groundY * 0.36).toFixed(1)}, ${(g.w * 0.61).toFixed(1)} ${(g.groundY * 0.53).toFixed(1)} C ${(g.w * 0.62).toFixed(1)} ${(g.groundY * 0.70).toFixed(1)}, ${(g.w * 0.75).toFixed(1)} ${(g.groundY * 0.80).toFixed(1)}, ${(g.w * 0.795).toFixed(1)} ${(g.groundY * 0.96).toFixed(1)}`;
+  const milkyShape = `M ${g.w * 0.45} ${-g.groundY * 0.06} C ${g.w * 0.47} ${g.groundY * 0.18}, ${g.w * 0.50} ${g.groundY * 0.30}, ${g.w * 0.50} ${g.groundY * 0.43} C ${g.w * 0.50} ${g.groundY * 0.60}, ${g.w * 0.66} ${g.groundY * 0.78}, ${g.w * 0.75} ${g.groundY * 0.97} L ${g.w * 0.84} ${g.groundY * 0.97} C ${g.w * 0.77} ${g.groundY * 0.72}, ${g.w * 0.72} ${g.groundY * 0.60}, ${g.w * 0.73} ${g.groundY * 0.43} C ${g.w * 0.72} ${g.groundY * 0.28}, ${g.w * 0.57} ${g.groundY * 0.12}, ${g.w * 0.54} ${-g.groundY * 0.06} Z`;
+  const milkyDust = Array.from({ length: 650 }, (_, i) => {
+    const t = rand(1, i + 401);
+    const centre = g.w * (0.50 + 0.295 * t + Math.sin(t * Math.PI * 3) * 0.020);
+    const x = centre + (rand(1, i + 431) - 0.5) * g.w * (0.030 + Math.sin(t * Math.PI) * 0.140);
+    const y = g.groundY * (0.02 + 0.90 * t) + (rand(1, i + 461) - 0.5) * g.groundY * 0.045;
+    const bright = i % 23 === 0;
+    const middle = !bright && i % 5 === 0;
+    const r = bright ? 0.34 + rand(g === WALL ? 0.30 : 0.20, i + 491) : middle ? 0.18 + rand(0.22, i + 491) : 0.10 + rand(0.15, i + 491);
+    const colour = i % 7 === 0 ? "#dfc7ed" : i % 5 === 0 ? "#aec5f2" : "#f4f2ff";
+    const opacity = bright ? 0.65 + rand(0.30, i + 521) : middle ? 0.45 + rand(0.35, i + 521) : 0.22 + rand(0.36, i + 521);
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(2)}" fill="${colour}" opacity="${opacity.toFixed(2)}"/>`;
+  }).join("");
+  const milkyFilaments = [
+    [`M ${g.w * 0.47} ${-g.groundY * 0.04} C ${g.w * 0.53} ${g.groundY * 0.18}, ${g.w * 0.54} ${g.groundY * 0.36}, ${g.w * 0.59} ${g.groundY * 0.56} C ${g.w * 0.65} ${g.groundY * 0.69}, ${g.w * 0.70} ${g.groundY * 0.82}, ${g.w * 0.80} ${g.groundY * 0.95}`, "#d9c4e9", 1.6],
+    [`M ${g.w * 0.52} ${-g.groundY * 0.04} C ${g.w * 0.48} ${g.groundY * 0.22}, ${g.w * 0.64} ${g.groundY * 0.39}, ${g.w * 0.59} ${g.groundY * 0.58} C ${g.w * 0.58} ${g.groundY * 0.72}, ${g.w * 0.78} ${g.groundY * 0.83}, ${g.w * 0.77} ${g.groundY * 0.96}`, "#91afe4", 1.1],
+    [`M ${g.w * 0.49} ${-g.groundY * 0.02} C ${g.w * 0.59} ${g.groundY * 0.20}, ${g.w * 0.51} ${g.groundY * 0.42}, ${g.w * 0.63} ${g.groundY * 0.61} C ${g.w * 0.72} ${g.groundY * 0.74}, ${g.w * 0.69} ${g.groundY * 0.86}, ${g.w * 0.82} ${g.groundY * 0.96}`, "#eef0ff", 0.7],
+  ].map(([d, stroke, width]) => [
+    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${Number(width) * 6}" opacity="0.010"/>`,
+    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${Number(width) * 3}" opacity="0.016"/>`,
+    `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${Number(width) * 1.2}" opacity="0.024"/>`,
+  ].join("")).join("");
+  const constellations: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
+    [[0.08, 0.31], [0.13, 0.27], [0.19, 0.31], [0.24, 0.26], [0.29, 0.29], [0.33, 0.24], [0.38, 0.21]],
+    [[0.12, 0.27], [0.18, 0.36], [0.24, 0.28], [0.30, 0.37], [0.36, 0.27]],
+    [[0.25, 0.25], [0.21, 0.37], [0.26, 0.44], [0.32, 0.38], [0.30, 0.52], [0.26, 0.52], [0.23, 0.61]],
+    [[0.08, 0.24], [0.14, 0.35], [0.20, 0.43], [0.27, 0.51], [0.20, 0.43], [0.24, 0.28], [0.20, 0.43], [0.13, 0.52]],
+  ];
+  const constellationHtml = constellations.map((points, index) => {
+    const dots = points.map(([x, y]) => `<circle cx="${(x * g.w).toFixed(1)}" cy="${(y * g.groundY).toFixed(1)}" r="${g === WALL ? 1.0 : 0.65}"/>`).join("");
+    return `<g id="sky-constellation-${index}" class="sky-constellation" data-constellation="${index}" fill="#edf2ff" opacity="0">${dots}</g>`;
+  }).join("");
+  const meteors = [
+    [0.95, 0.35, 0.81, 0.49, 0.08], [0.80, 0.20, 0.69, 0.32, 0.34],
+    [0.91, 0.12, 0.77, 0.26, 0.61], [0.72, 0.08, 0.62, 0.19, 0.84],
+  ].map(([x1, y1, x2, y2, delay]) => `<line class="sky-meteor" x1="${g.w * x1}" y1="${g.groundY * y1}" x2="${g.w * x2}" y2="${g.groundY * y2}" style="--meteor-delay:${(-delay * 12).toFixed(1)}s"/>`).join("");
   // Cloud is a noise field, not a row of ellipses. feTurbulence gives a
   // fractal the browser generates itself: the shape has detail at every
   // scale the way weather does, and lobes drawn by hand never will. The
@@ -285,13 +331,16 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
   }).join("");
   return `<svg class="sky" id="sky" viewBox="0 0 ${g.w} ${g.h}" width="${g.w}" height="${g.h}" preserveAspectRatio="xMidYMax slice" aria-label="sky"
  data-sky-w="${g.w}" data-sky-h="${g.h}" data-sky-ground="${g.groundY}" data-sky-arc="${g.arcR}" data-sky-cx="${g.cx}">
-<defs>${cloudField}<radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
+<defs>${cloudField}<filter id="sky-milkytexture${u}" x="-40%" y="-10%" width="180%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.035 0.018" numOctaves="4" seed="43" result="grain"/><feComposite in="grain" in2="SourceAlpha" operator="in" result="clipped"/><feColorMatrix in="clipped" values="0 0 0 0 0.55 0 0 0 0 0.48 0 0 0 0 0.82 0 0 0 1 0" result="coloured"/><feBlend in="SourceGraphic" in2="coloured" mode="screen"/></filter><filter id="sky-milkyedge${u}" x="-35%" y="-20%" width="170%" height="140%"><feGaussianBlur stdDeviation="3.5"/></filter><mask id="sky-milkymask${u}" maskUnits="userSpaceOnUse" x="0" y="-10" width="${g.w}" height="${g.groundY + 20}"><path d="${milkyShape}" fill="#fff" filter="url(#sky-milkyedge${u})"/></mask><linearGradient id="sky-milkygrad${u}" gradientUnits="userSpaceOnUse" x1="${g.w * 0.43}" y1="0" x2="${g.w * 0.88}" y2="0"><stop offset="0" stop-color="#849bd7" stop-opacity="0"/><stop offset="0.34" stop-color="#a3add9" stop-opacity="0.18"/><stop offset="0.48" stop-color="#c7bee4" stop-opacity="0.58"/><stop offset="0.62" stop-color="#b1b5df" stop-opacity="0.30"/><stop offset="1" stop-color="#8299d4" stop-opacity="0"/></linearGradient><radialGradient id="sky-glowgrad${u}" class="glowgrad" gradientUnits="userSpaceOnUse" cx="${g.cx}" cy="${g.groundY}" r="${g.arcR * 1.15}">
 <stop id="sky-glow-in" offset="0" stop-color="#ff8a5c" stop-opacity="0.95"/>
 <stop id="sky-glow-mid" offset="0.4" stop-color="#ff8a5c" stop-opacity="0.4"/>
 <stop id="sky-glow-out" offset="1" stop-color="#ff8a5c" stop-opacity="0"/>
 </radialGradient><linearGradient id="skygrad${u}" x1="0" y1="0" x2="0" y2="1"><stop id="sky-top" offset="0" stop-color="#4682d2"/><stop id="sky-bottom" offset="1" stop-color="#96c3f0"/></linearGradient></defs>
 <rect width="${g.w}" height="${g.h}" fill="url(#skygrad${u})"/>
+<g id="sky-milky-way" opacity="0"><path d="${milkyShape}" fill="url(#sky-milkygrad${u})" opacity="0.30" filter="url(#sky-milkytexture${u})" mask="url(#sky-milkymask${u})" style="mix-blend-mode:screen"/><path d="${milkyPath}" fill="none" stroke="#071027" stroke-width="${(g.w * 0.014).toFixed(1)}" opacity="0.16"/>${milkyFilaments}${milkyDust}</g>
 <g id="sky-stars" opacity="0">${stars}</g>
+${constellationHtml}
+<g id="sky-perseids" opacity="0">${meteors}</g>
 <rect id="sky-glow" width="${g.w}" height="${g.h}" fill="url(#sky-glowgrad${u})" opacity="0"/>
 <path d="${arc}" fill="none" stroke="rgba(255,255,255,0.18)" stroke-dasharray="2 3"/>
 <circle id="sky-sun" cx="${g.cx - g.arcR}" cy="${g.groundY}" r="6" fill="#ffd66b" stroke="#fff3c0" stroke-width="1"/>
@@ -306,7 +355,7 @@ export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string 
 <g class="sky-cloud" style="--drift:88s"><rect x="0" y="0" width="${g.w * 2}" height="${g.groundY * 0.72}" filter="url(#sky-cloudnoise-hi${u})"/></g>
 </g>
 <g id="sky-fall" opacity="0">${fall}</g>
-<path id="sky-far" d="${ridgePath(g, 7, g.groundY * 0.30, 30)}" fill="#141c24" opacity="0.75"/>
+<path id="sky-far" d="${ridgePath(g, 7, g.groundY * 0.30, 30)}" fill="#354d45"/>
 <path id="sky-mid" d="${ridgePath(g, 23, g.groundY * 0.20, 34)}" fill="#0f161c"/>
 <path id="sky-near" d="${ridgePath(g, 51, g.groundY * 0.12, 40)}" fill="#0b1210"/>
 ${showPhase ? `<text id="sky-label" x="${g.w - 4}" y="${g.h - 3}" text-anchor="end" font-size="8" fill="rgba(255,255,255,0.6)"></text>` : ""}
@@ -368,7 +417,20 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   setAttr(root, "sky-moon-lit", "cy", f(pos.y));
   setAttr(root, "sky-moon-dark", "cx", f(pos.x + offset));
   setAttr(root, "sky-moon-dark", "cy", f(pos.y));
-  setAttr(root, "sky-stars", "opacity", pos.body === "moon" && state.weather.precip === "none" && state.weather.clear ? "0.9" : "0");
+  const clearNight = pos.body === "moon" && state.weather.precip === "none" && state.weather.clear;
+  setAttr(root, "sky-stars", "opacity", clearNight ? "0.9" : "0");
+  const deepSky = state.weather.precip === "none" && state.weather.clear
+    ? clamp((0.80 - phaseFor(cal.hour, cal.sunrise, cal.sunset).brightness) / 0.25, 0, 1)
+    : 0;
+  setAttr(root, "sky-milky-way", "opacity", (deepSky * 0.82).toFixed(2));
+  // The evening after midnight still belongs to the night that began at
+  // sunset. This keeps the figure stable until dawn, then chooses another
+  // from both the run seed and the next night's date.
+  const nightIndex = cal.dayIndex - (cal.hour < cal.sunrise ? 1 : 0);
+  const constellation = ((Math.imul(state.seed, 1103515245) + Math.imul(nightIndex, 12345)) >>> 0) % 4;
+  for (let i = 0; i < 4; i++) setAttr(root, `sky-constellation-${i}`, "opacity", clearNight && i === constellation ? "1" : "0");
+  const perseids = clearNight && cal.dayOfYear >= 197 && cal.dayOfYear <= 235;
+  setAttr(root, "sky-perseids", "opacity", perseids ? "1" : "0");
   setAttr(root, "sky-top", "stop-color", light.skyTop);
   setAttr(root, "sky-bottom", "stop-color", light.skyBottom);
   // The sun goes down behind the hills, so for the whole of the pink hour
@@ -417,18 +479,12 @@ function dressSky(svg: SVGElement, state: GameState, cal: Calendar, ambient: num
   setAttr(root, "sky-cloudflood-hi", "flood-color", light.cloudHigh);
   setAttr(root, "sky-haze", "fill", light.cloudLow);
 
-  // Snow on the ground is white ground. Black hills under a card reading
-  // "snow 40 cm" said one thing in words and another in the picture.
-  const lying = w.snowCm >= 1;
-  for (const [id, bare, snowy] of RIDGES) setAttr(root, id, "fill", lying ? snowy : bare);
+  // Terrain is a deliberately colourless, fully opaque silhouette. Weather
+  // remains visible in the sky and precipitation instead of tinting the land.
+  for (const ridge of RIDGES) setAttr(root, ridge, "fill", "#050505");
 }
 
-/** The three ridges, as they are bare and as they are under snow. */
-const RIDGES: ReadonlyArray<readonly [string, string, string]> = [
-  ["sky-far", "#141c24", "#8695ab"],
-  ["sky-mid", "#0f161c", "#61708a"],
-  ["sky-near", "#0b1210", "#3c4859"],
-];
+const RIDGES = ["sky-far", "sky-mid", "sky-near"] as const;
 
 export function phaseName(cal: Calendar): string {
   const h = cal.hour;
