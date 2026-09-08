@@ -56,6 +56,15 @@ At zero they are out. Rain with no roof eats them at double rate; a roof
 preserves them. A fire drowned by heavy rain (`drownedLow`) leaves no embers -
 it was put out, not banked.
 
+**Embers are the nightly cycle, not an edge case.** A tended fire burns down to
+coals every night while the survivor sleeps and is rekindled in the morning. A
+state the player meets daily has to be legible, so embers are shown wherever the
+fire is already shown: the HERE panel gains a third word between "burning" and
+"cold"; the map keeps a dimmed marker with one ring rather than dropping to
+nothing; the night fire banks down rather than going dark. Without that a banked
+fire is pixel-identical to a dead one, and the playtest is explicit about what an
+interface that hides its state does - the player concludes the fault is theirs.
+
 **2. Warmth and light (`fire.ts`, `light.ts`).** Embers give a small warmth
 bonus, `EMBER_WARMTH`, well under a lit fire's 7, and a faint `EMBER_LUX` well
 under a lit fire's 20.
@@ -95,6 +104,20 @@ ladder rather than forming a group.
 | after "Cook something over it" | Keep a fire alive overnight | a fire lit at dusk still lit or in embers at dawn |
 | after "Get off the cold ground" | Keep a fire burning for three days without letting it go out | seventy-two hours with the fire never reaching `out` |
 | after "Put a roof over your head" | Keep a fire through a day of rain | twenty-four hours of rain with the fire never reaching `out` |
+
+**Why the overnight goal comes before any shelter.** Kochanski opens his fire
+chapter by calling fire the most useful and important skill in bush living,
+particularly in the cold, and the axe is only the most important *tool* once
+fire is set aside as the exception. This is the source the project already takes
+its fuel-per-shelter ratios and bough-bed life from, so the ladder follows it:
+fire, then held fire, then the ground, then the roof. The Swedish handbook does
+not disagree.
+
+That handbook also supplies the argument for embers in a line: it calls the
+belief that fire comes easily from rubbing two sticks together a misconception.
+If starting fire is genuinely hard, keeping it is what people did, and a game
+that makes the player start it afresh every errand has the difficulty in the
+wrong place.
 
 None of them says bank it, cover it, or feed it. The third sits deliberately
 after the roof exists: it is reachable then, and the player discovers that the
