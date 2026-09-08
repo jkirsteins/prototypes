@@ -142,4 +142,22 @@ describe("rekindling", () => {
     expect(o.ok).toBe(false);
     expect(o.why).toMatch(/drill/i);
   });
+
+  it("does not claim a drill is needed to relight from live coals", () => {
+    const { state, world, st } = litCamp();
+    advance(state, world, 120);
+    expect(hasEmbers(st.fire)).toBe(true);
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, calendar(state.minute, state.startDoy), "light");
+    expect(o.detail).not.toMatch(/drill/i);
+  });
+
+  it("does claim a drill is needed to light from cold", () => {
+    const { state, world, st } = litCamp();
+    advance(state, world, 120 + EMBER_MINUTES + 60);
+    expect(hasEmbers(st.fire)).toBe(false);
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, calendar(state.minute, state.startDoy), "light");
+    expect(o.detail).toMatch(/drill/i);
+  });
 });

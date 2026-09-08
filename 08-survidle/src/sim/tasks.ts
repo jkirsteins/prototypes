@@ -795,7 +795,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       const o = needCamp(opt({
         group: "camp", label: "Light the fire at the site",
-        detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
+        detail: rekindle ? "1 kg firewood" : `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
         duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
       }));
       if (!o.ok) return o;
