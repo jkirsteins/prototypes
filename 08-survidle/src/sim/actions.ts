@@ -3,7 +3,6 @@
  * putting down. Tasks with a duration live in tasks.ts.
  */
 import type { Rng } from "../rng";
-import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
 import { goalDeed } from "./goals";
@@ -63,13 +62,15 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
     if (left <= 1e-9) break;
     left -= removeItem(inv, food, left);
   }
-  // Past a full stomach the surplus is stored as fat, up to its own cap.
+  // Past a full stomach the surplus is stored as fat.
   const room = KCAL_FULL - p.kcal;
   if (gain <= room) {
     p.kcal += gain;
   } else {
     p.kcal = KCAL_FULL;
-    p.fat = clamp(p.fat + (gain - room), 0, body(state).fatFull);
+    // No ceiling: what the stomach cannot hold is put on as fat, and a body
+    // has nowhere it stops accepting it. Appetite is what argues, not a wall.
+    p.fat += gain - room;
   }
   creditEaten(state, gain, leanPart);
   if (def.sickChance && p.sick === 0 && rng.chance(def.sickChance)) {

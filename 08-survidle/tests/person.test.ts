@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { newGame } from "../src/sim/newgame";
 import { derived, grades, medianPerson, QUIRKS, quirkFear, quirkLine, rollCandidates } from "../src/sim/person";
-import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL } from "../src/sim/player";
+import { BASE_KCAL_PER_HOUR, COMFORT_C } from "../src/sim/player";
 import { deserialize, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../src/units";
@@ -37,7 +37,7 @@ describe("the person", () => {
   });
 
   it("derives today's numbers from the median for either sex, mass included", () => {
-    // Everything but mass is sex-blind; mass carries the reference body (72 kg, FAT_FULL, BASE_KCAL_PER_HOUR)
+    // Everything but mass is sex-blind; mass carries the reference body (72 kg, BASE_KCAL_PER_HOUR)
     // for a man and a lighter body of the woman's own median (62 kg) scaled the same way for the other sex.
     for (const sex of ["f", "m"] as const) {
       const d = derived(medianPerson(sex));
@@ -53,11 +53,9 @@ describe("the person", () => {
     }
     const m = derived(medianPerson("m"));
     expect(m.massKg).toBe(72);
-    expect(m.fatFull).toBe(FAT_FULL);
     expect(m.baseBurn).toBe(BASE_KCAL_PER_HOUR);
     const f = derived(medianPerson("f"));
     expect(f.massKg).toBe(62);
-    expect(f.fatFull).toBe(68888.88888888889);
     expect(f.baseBurn).toBe(60.27777777777778);
   });
 
@@ -69,7 +67,6 @@ describe("the person", () => {
     expect(top.workHours).toBe(12);
     expect(top.workBurn).toBeCloseTo(1.1);
     expect(top.massKg).toBe(84);
-    expect(top.fatFull).toBeCloseTo(93333.33, 1);
     expect(top.baseBurn).toBeCloseTo(81.67, 1);
     expect(top.comfortC).toBe(3);
     expect(top.spoilFactor).toBeCloseTo(0.6);
@@ -82,7 +79,6 @@ describe("the person", () => {
     expect(low.workHours).toBe(8);
     expect(low.workBurn).toBeCloseTo(0.9);
     expect(low.massKg).toBe(60);
-    expect(low.fatFull).toBeCloseTo(66666.67, 1);
     expect(low.baseBurn).toBeCloseTo(58.33, 1);
     expect(low.comfortC).toBe(7);
     expect(low.spoilFactor).toBeCloseTo(1.4);

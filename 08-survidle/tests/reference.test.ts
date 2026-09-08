@@ -6,7 +6,6 @@ import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { ARRIVAL_DRIED_MEAT_KG, newGame, START_KCAL } from "../src/sim/newgame";
 import { conditionOpen, inSeason, ordersHere } from "../src/sim/orders";
-import { FAT_FULL } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import {
   campFoodKcal,
@@ -394,7 +393,11 @@ describe("the reference player", () => {
   });
 
   it("the April target is the day a beginner eating the least and burning the most runs out of fat", () => {
-    const reserve = FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
+    // Mirrors reference.ts's own OLD_FAT_FULL: the flat reserve the gate was
+    // derived against before the body carried landmarks. Task 11 moves both
+    // this test and the gate onto fatLandmarks(medianPerson("m")).typical - .floor.
+    const oldFatFull = 80000;
+    const reserve = oldFatFull + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
     expect(REFERENCE_TARGET_DAY).toBe(19);

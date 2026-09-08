@@ -96,14 +96,6 @@ export const BOUGH_BED_C = 4;
 /** Kilocalories in a kilogram of body fat, 9 kcal a gram: the unit the fat reserve is weighed in. */
 export const FAT_KCAL_PER_KG = 9000;
 
-/**
- * A fit adult's fat, in kilocalories: about nine kilos at 9 kcal a gram.
- * At a total fast of 3,000 kcal a day that is 27 days before it is gone,
- * the reserve behind the kilocalorie stomach that lets a fed, sheltered
- * beginner last weeks rather than days.
- */
-export const FAT_FULL = 80000;
-
 /** How far into the failing range - lower landmark down to the floor - each word waits for. */
 const FAT_THIN = 0.25;
 const FAT_RIBS = 0.5;
@@ -339,7 +331,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const kcalBurn = afterSick * h;
   const shortfall = Math.max(0, kcalBurn - p.kcal);
   p.kcal = clamp(p.kcal - kcalBurn, 0, KCAL_FULL);
-  if (shortfall > 0) p.fat = clamp(p.fat - shortfall, 0, d.fatFull);
+  if (shortfall > 0) p.fat = Math.max(0, p.fat - shortfall);
 
   const thirst = stepWater(state, felt, dt);
 

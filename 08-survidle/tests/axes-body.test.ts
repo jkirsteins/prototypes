@@ -32,8 +32,8 @@ describe("the grades at their seams", () => {
     // Held to withAxes' own median (sex "m"), not the bare newGame(17) roll: mass, and so
     // fat and base burn, now vary by sex too, and this seam is about build alone.
     const heavy = withAxes(17, { build: 2 });
-    expect(heavy.state.player.fat).toBeCloseTo(93333.33, 1);
-    expect(withAxes(17, {}).state.player.fat).toBe(80000);
+    expect(heavy.state.player.fat).toBeCloseTo(105840, 1);
+    expect(withAxes(17, {}).state.player.fat).toBeCloseTo(90720, 1);
     // A day asleep at 0 C ambient: the base bucket is the only burn, scaled by mass over 72.
     expect(BASE_KCAL_PER_HOUR).toBe(70);
     expect(warmthTarget(COMFORT_C)).toBe(50);

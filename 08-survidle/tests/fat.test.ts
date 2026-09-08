@@ -8,7 +8,7 @@ import { GUT, KCAL_FULL } from "../src/sim/items";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { body, bodyMassKg, derived, fatLandmarks, MEDIAN_MASS_KG } from "../src/sim/person";
-import { FAT_FULL, FAT_KCAL_PER_KG, starvation, stepPlayer, workSpeed } from "../src/sim/player";
+import { FAT_KCAL_PER_KG, starvation, stepPlayer, workSpeed } from "../src/sim/player";
 import { current } from "../src/sim/record";
 import type { Person } from "../src/sim/types";
 import { waterLossPerHour } from "../src/sim/water";
@@ -20,14 +20,14 @@ describe("the fat reserve", () => {
     const fat0 = state.player.fat;
     const health0 = state.player.health;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    // A new survivor starts at FAT_FULL, a reserve a touch under this body's
-    // typical share, so the base bucket reads a touch under BASE_KCAL_PER_HOUR
-    // and the hour (base plus the rest activity's 30 above it) comes in under 100.
-    expect(fat0 - state.player.fat).toBeCloseTo(98.84, 1);
+    // A new survivor lands at exactly the typical reserve, so the base bucket
+    // reads exactly BASE_KCAL_PER_HOUR and the hour (base plus the rest
+    // activity's 30 above it) comes in at 100.
+    expect(fat0 - state.player.fat).toBeCloseTo(100, 1);
     expect(state.player.health).toBeCloseTo(health0, 1);
   });
 
-  it("raises fat past a full stomach, capped at FAT_FULL", () => {
+  it("raises fat past a full stomach", () => {
     const { state, world } = newGame(1);
     state.player.kcal = KCAL_FULL - 100;
     state.player.fat = 0;
@@ -36,12 +36,6 @@ describe("the fat reserve", () => {
     eat(state, world, "driedMeat", new Rng(1));
     expect(state.player.kcal).toBe(KCAL_FULL);
     expect(state.player.fat).toBeCloseTo(395, 5);
-
-    state.player.kcal = KCAL_FULL;
-    state.player.fat = FAT_FULL - 10;
-    addItem(state.player.pack, "driedMeat", 1);
-    eat(state, world, "driedMeat", new Rng(1));
-    expect(state.player.fat).toBe(FAT_FULL);
   });
 
   it("work speed at the midpoint of the failing range is three quarters of a non-starving body", () => {
@@ -56,7 +50,8 @@ describe("the fat reserve", () => {
 
   it("logs each fat warning once as the reserve crosses its threshold", () => {
     const { state, world } = newGame(1);
-    state.player.fat = FAT_FULL * 0.25 - 1;
+    const l = fatLandmarks(current(state).person);
+    state.player.fat = l.floor - 1;
     for (let m = 0; m < 5; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     const texts = state.log.map((e) => e.text);
     for (const line of ["{You} {are} getting thin.", "{Your} ribs show.", "{You} {are} wasting away."]) {
@@ -291,5 +286,22 @@ describe("the body's words about its reserve", () => {
     expect(seen.some((t) => /thin/i.test(t))).toBe(true);
     expect(seen.some((t) => /ribs/i.test(t))).toBe(true);
     expect(seen.some((t) => /wasting/i.test(t))).toBe(true);
+  });
+});
+
+describe("no ceiling", () => {
+  it("lets a body eat past its upper landmark and keep going", () => {
+    const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.fat = l.upper;
+    state.player.kcal = KCAL_FULL;
+    addItem(state.player.pack, "fat", 20);
+    for (let i = 0; i < 40; i++) eat(state, world, "fat", new Rng(1));
+    expect(state.player.fat).toBeGreaterThan(l.upper * 1.2);
+  });
+
+  it("lands a new survivor at the typical reserve", () => {
+    const { state } = newGame(1);
+    expect(state.player.fat).toBeCloseTo(fatLandmarks(current(state).person).typical, 6);
   });
 });

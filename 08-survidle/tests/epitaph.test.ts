@@ -78,16 +78,15 @@ describe("the epitaph", () => {
     // frozen lingon under the snow open a berries row through the April start itself, ahead
     // of the wood-first grind order, so it empties where the ledger above finds it. Both
     // seeds' larders give out weeks before the woodpile does, which is the shape a level-1
-    // opening holds: seed 19 starves at its own fire with wood still stacked beside it,
-    // while seed 17 falls short of camp on the way back, 0.2 km out. Neither freezes,
-    // because the short-term reserve is small enough that what a meal cannot hold goes to
-    // fat, and fat is insulation as well as fuel - a body that eats well early is warm
-    // later on the same food.
+    // opening holds: both seeds starve at their own fire with wood still stacked beside it.
+    // Neither freezes, because fat is insulation as well as fuel and the reserve a body
+    // lands with carries it that far - a body that eats well early is warm later on the
+    // same food.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 23. Starved 0.2 km from camp, with nothing in the pack and 67 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 25. Starved at camp, with nothing in the pack and 31 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 43. Starved at camp, with nothing in the pack and 47 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 33. Starved at camp, with nothing in the pack and 59 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

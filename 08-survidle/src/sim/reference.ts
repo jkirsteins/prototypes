@@ -34,7 +34,6 @@ import { creditYield, type WeekAverage, weekBefore, type YieldSource, YIELD_SOUR
 import { knownShare, mapRegion } from "./mapped";
 import { newGame, ARRIVAL_DRIED_MEAT_KG, START_KCAL } from "./newgame";
 import { conditionOpen, keepBand, keepStock, keepTargetToday, orderMet, ordersHere, removeOrder, stallingOrder } from "./orders";
-import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
 import { cellOf, heathCell, watersideCell } from "./position";
 import { current } from "./record";
@@ -511,12 +510,20 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
  */
 export const REFERENCE_SEEDS = [17, 19, 42, 79, 45];
 /**
+ * The reserve the April gate was derived against before the body carried
+ * landmarks of its own: the old flat FAT_FULL, kept here unchanged so this
+ * gate does not move out from under Tasks 3-6. Task 11 replaces it with
+ * fatLandmarks(medianPerson("m")).typical - .floor, the reserve that is
+ * actually fuel, and REFERENCE_TARGET_DAY moves when it does.
+ */
+const OLD_FAT_FULL = 80000;
+/**
  * The April gate (spec 7.1): the day a beginner who eats the least the
  * tables allow and burns the most runs out of fat. Derived, so it moves
  * when the burn band, the reserve or the kit moves and not otherwise.
  */
 export const REFERENCE_TARGET_DAY = Math.floor(
-  (FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg) / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
+  (OLD_FAT_FULL + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg) / (BURN.day.hi - APRIL.rows.total!.beginner.lo),
 );
 /** The kitted camp's gate: a month, until C's trap moves it to December. */
 export const KITTED_TARGET_DAY = 30;

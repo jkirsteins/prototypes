@@ -9,7 +9,7 @@ import { creditYield } from "./ledger";
 import { log } from "./log";
 import { newRecord } from "./record";
 import { rollName } from "./names";
-import { derived, medianPerson, personOf, rollCandidates } from "./person";
+import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { enterRegion } from "./regionstate";
 import { seeFrom } from "./sight";
 import { newSkills } from "./skills";
@@ -28,7 +28,6 @@ export const ARRIVAL_DRIED_MEAT_KG = 1;
 
 /** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
 export function newPerson(state: GameState, world: World, cell: number, region: number): void {
-  const d = derived(personOf(state));
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
   state.player = {
@@ -37,7 +36,7 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     region,
     health: 100,
     kcal: START_KCAL,
-    fat: d.fatFull,
+    fat: fatLandmarks(personOf(state)).typical,
     warmth: 80,
     energy: 90,
     // The debt a body carries off a full night and two hours up, which is

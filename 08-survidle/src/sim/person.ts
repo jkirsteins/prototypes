@@ -9,7 +9,7 @@ import { derive, Rng } from "../rng";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../units";
 import { WORK_HOURS_DEFAULT } from "./body";
 import { rollName, type Sex } from "./names";
-import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL, FAT_KCAL_PER_KG } from "./player";
+import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_KCAL_PER_KG } from "./player";
 import { current } from "./record";
 import type { Candidate, GameState, Grade, Person, QuirkId } from "./types";
 
@@ -116,8 +116,7 @@ export interface Derived {
   massKg: number;
   /** Frame and muscle, in kilos, without the fat reserve. */
   leanKg: number;
-  fatFull: number;
-  /** The base bucket per hour. */
+  /** Base burn at this body's typical reserve, in kcal per hour: a reference value, read only by tests. stepPlayer's live base tracks the actual reserve through massFactor() instead. */
   baseBurn: number;
   comfortC: number;
   /** The chance a craft spoils, as a multiple of the level's. */
@@ -142,7 +141,6 @@ export function derived(p: Person): Derived {
     workBurn: 1 + 0.05 * s,
     massKg,
     leanKg,
-    fatFull: (FAT_FULL * massKg) / MEDIAN_MASS_KG,
     baseBurn: (BASE_KCAL_PER_HOUR * massKg) / MEDIAN_MASS_KG,
     comfortC: COMFORT_C - b,
     spoilFactor: 1 - 0.2 * h,

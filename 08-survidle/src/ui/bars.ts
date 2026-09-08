@@ -2,7 +2,7 @@ import { calendar } from "../sim/calendar";
 import { burnPerHour, fuelTotal } from "../sim/fire";
 import { HUNGRY_LINE } from "../sim/actions";
 import { FIRE_MAX_KG, KCAL_FULL } from "../sim/items";
-import { body } from "../sim/person";
+import { fatLandmarks, personOf } from "../sim/person";
 import { FAT_KCAL_PER_KG } from "../sim/player";
 import { regionState } from "../sim/regionstate";
 import { levelShare, masteryMilestone, poolShare } from "../sim/skills";
@@ -52,8 +52,11 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   // for a moment wherever the reserve rose.
   if (p.kcal > lastKcal + 1) flash(kcalBar);
   lastKcal = p.kcal;
-  const fatFull = body(state).fatFull;
-  setBar("fat", p.fat / fatFull, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
+  // No ceiling on the reserve itself, so the bar's full mark is the upper
+  // landmark - the top of the well-provisioned zone - and a body past it
+  // simply shows a full bar rather than an overflowing one.
+  const fatUpper = fatLandmarks(personOf(state)).upper;
+  setBar("fat", p.fat / fatUpper, `${(p.fat / FAT_KCAL_PER_KG).toFixed(1)} kg`, root);
   setBar("warmth", p.warmth / 100, `${Math.round(p.warmth)}`, root);
   setBar("energy", p.energy / 100, `${Math.round(p.energy)}`, root);
   setBar("wet", p.wetness / 100, `${Math.round(p.wetness)}`, root);

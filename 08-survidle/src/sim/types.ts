@@ -340,7 +340,7 @@ export interface Player {
   health: number;
   /** Kilocalorie reserve, 0..6000. */
   kcal: number;
-  /** Body fat reserve in kilocalories, 0..FAT_FULL: what an empty stomach draws on before health does. */
+  /** Body fat reserve in kilocalories, no upper bound: what an empty stomach draws on before health does, down to the essential-fat floor fatLandmarks() sets. */
   fat: number;
   warmth: number;
   /** Fatigue from work, 0..100: what the day's tasks drain and rest and sleep restore. */
