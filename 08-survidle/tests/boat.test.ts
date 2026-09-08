@@ -7,9 +7,11 @@ import { die } from "../src/sim/player";
 import { current } from "../src/sim/record";
 import { campSite, regionState } from "../src/sim/regionstate";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 function dead(seed = 17, days = 5) {
   const g = newGame(seed);
+  siteCamp(g.state, g.world);
   advance(g.state, g.world, days * 1440);
   if (!g.state.dead) die(g.state, "froze", regionAt(g.world, g.state.player.region).name);
   return g;
@@ -76,6 +78,7 @@ describe("the heir's boat", () => {
     expect(nextBoatDate({ year: 1, doy: 290 })).toEqual({ date: { year: 1, doy: 297 }, added: 7 });
     expect(nextBoatDate({ year: 1, doy: 300 })).toEqual({ date: { year: 2, doy: 125 }, added: 190 });
     const { state, world } = newGame(17, 200);
+    siteCamp(state, world);
     advance(state, world, 1440);
     die(state, "froze", regionAt(world, state.player.region).name);
     beginAgain(state, world);

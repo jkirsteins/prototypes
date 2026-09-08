@@ -85,8 +85,8 @@ describe("the epitaph", () => {
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 22. Starved at camp, with nothing in the pack and 47 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 28. Starved at camp, with nothing in the pack and 12 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 23. Starved at camp, with nothing in the pack and 27 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 26. Starved at camp, with nothing in the pack and 16 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

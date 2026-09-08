@@ -6,6 +6,7 @@ import { newGame } from "../src/sim/newgame";
 import { current } from "../src/sim/record";
 import { regionState } from "../src/sim/regionstate";
 import { expectedDoy, nextThreshold, stepSpine, THRESHOLDS } from "../src/sim/spine";
+import { siteCamp } from "./siting-helpers";
 
 describe("the season spine", () => {
   it("expects the thresholds in year order from the curve", () => {
@@ -20,6 +21,7 @@ describe("the season spine", () => {
 
   it("fires each threshold once, in order, over a year with nobody home", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.dead = { cause: "froze", minute: 0 };
     advance(state, world, 430 * 1440, { nobody: true });
     const fired = THRESHOLDS.filter((id) => state.spine.fired[id] !== undefined);
@@ -58,10 +60,11 @@ describe("the season spine", () => {
 
   it("pushes one forecast slot per day of a life", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     // A bare arrival kit has no water; stock camp so three idle days are
     // about the forecast field, not a thirst death cutting the run short.
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "water", 20);
+    addItem(pile(state, st.campCell!), "water", 20);
     advance(state, world, 3 * 1440);
     expect(state.dead).toBeFalsy();
     expect(current(state).forecast).toEqual([null, null, null]);

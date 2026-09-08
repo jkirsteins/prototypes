@@ -17,6 +17,7 @@ import { Rng } from "../src/rng";
 import { regionAt } from "../src/world/gen";
 import { body } from "../src/sim/person";
 import type { IntentRequest } from "../src/sim/types";
+import { siteCamp } from "./siting-helpers";
 
 const once = (task: IntentRequest["task"], arg?: string): IntentRequest =>
   ({ task, arg, until: { kind: "once" }, deliver: "leave", where: "nearest" });
@@ -24,6 +25,7 @@ const once = (task: IntentRequest["task"], arg?: string): IntentRequest =>
 describe("a waiting row names its cause", () => {
   it("a row that could run but is not the chosen one names the order ahead of it", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     addOrder(state, world, { ...once("sticks"), until: { kind: "forever" } }, "grind");
     addOrder(state, world, { ...once("stone"), until: { kind: "forever" } }, "grind");
@@ -38,6 +40,7 @@ describe("a waiting row names its cause", () => {
 
   it("a row under a once order that cannot run says it is held up, and by what", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     // Cooking with nothing to cook cannot run, and a once order stops the list under it.
     addOrder(state, world, once("cook", "rawMeat"), "job");
@@ -51,6 +54,7 @@ describe("a waiting row names its cause", () => {
 
   it("a row the scheduler refused keeps its own reason", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const o = addOrder(state, world, once("cook", "rawMeat"), "job");
     const judged = judgeOrders(state, world, cal);
@@ -62,9 +66,10 @@ describe("a waiting row names its cause", () => {
 describe("a yield that lands on the ground says so", () => {
   it("a yield diverted away from camp is logged, naming what lies where it fell", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     // Stand at the forest - a real work cell in this region, not the camp.
-    const forest = regionAt(world, state.player.region).spots.find((s) => s.cell !== st.campCell)!;
+    const forest = regionAt(world, state.player.region).spots.find((s) => s.cell !== st.campCell!)!;
     placeAt(state, world, forest.cell);
     addItem(state.player.pack, "stone", Math.ceil(body(state).packComfortableKg / 1) + 5);
     expect(weight(state.player.pack)).toBeGreaterThan(body(state).packComfortableKg);
@@ -76,8 +81,9 @@ describe("a yield that lands on the ground says so", () => {
 
   it("a yield landing in the camp pile is not logged: the camp pile is the store", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     addItem(state.player.pack, "stone", Math.ceil(body(state).packComfortableKg / 1) + 5);
     const before = state.log.length;
     expect(produce(state, world, "stick", 6)).toBe("pile");
@@ -123,6 +129,7 @@ describe("the concepts a row answers to are visible and exactly filterable", () 
 
   it("every concept a row reports is one the Do panel could filter back to", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const rows = intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items);
     for (const { id, arg } of rows) {
       for (const c of conceptsFor(id, arg)) {
@@ -136,6 +143,7 @@ describe("the concepts a row answers to are visible and exactly filterable", () 
 describe("a click that starts nothing says so", () => {
   it("a once order whose work cannot start logs why, and stays on the list", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const rng = new Rng(state.rng);
     const before = state.log.length;
@@ -148,6 +156,7 @@ describe("a click that starts nothing says so", () => {
 
   it("a once order that can start still starts, and logs no refusal", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const cal = calendar(state.minute, state.startDoy);
     const rng = new Rng(state.rng);
     const before = state.log.length;
@@ -160,10 +169,11 @@ describe("a click that starts nothing says so", () => {
 describe("make camp asks before it binds", () => {
   it("the confirm step is a screen state, and the camp cell is the one the region already held", () => {
     const { state, world } = newGame(1000010);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    const was = st.campCell;
+    const was = st.campCell!;
     // Standing at camp, Make camp is refused before any confirm; move off it.
-    placeAt(state, world, regionAt(world, state.player.region).spots.find((s) => s.cell !== st.campCell)!.cell);
+    placeAt(state, world, regionAt(world, state.player.region).spots.find((s) => s.cell !== st.campCell!)!.cell);
     const ui = newUiState();
     expect(ui.confirmCamp).toBe(false);
     // The confirm row replaces the plain one and offers camp-yes, not intent.
@@ -173,6 +183,6 @@ describe("make camp asks before it binds", () => {
     expect(html).toContain("Move camp here?");
     expect(html).toContain("camp-yes");
     // Drawing the question moves no camp.
-    expect(regionState(state, world, state.player.region).campCell).toBe(was);
+    expect(regionState(state, world, state.player.region).campCell!).toBe(was);
   });
 });

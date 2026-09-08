@@ -10,14 +10,16 @@ import { placeAtSpot } from "../src/sim/position";
 import { hasEvent } from "../src/sim/record";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 function camp(seed = 8) {
   const g = newGame(seed);
+  siteCamp(g.state, g.world);
   const st = regionState(g.state, g.world, g.state.player.region);
-  siteFor(st, st.campCell).structures.firePit = true;
-  siteFor(st, st.campCell).structures.leanTo = true;
-  siteFor(st, st.campCell).structures.dryingRack = true;
-  siteFor(st, st.campCell).structures.cabin = true;
+  siteFor(st, st.campCell!).structures.firePit = true;
+  siteFor(st, st.campCell!).structures.leanTo = true;
+  siteFor(st, st.campCell!).structures.dryingRack = true;
+  siteFor(st, st.campCell!).structures.cabin = true;
   return { ...g, st };
 }
 
@@ -42,7 +44,7 @@ describe("structure decay", () => {
     const { state, world, st } = camp();
     st.rack.kg = 3;
     state.weather.precip = "heavy";
-    siteFor(st, st.campCell).structureAge.dryingRack = 731 * 1440;
+    siteFor(st, st.campCell!).structureAge.dryingRack = 731 * 1440;
     advance(state, world, 1440, { nobody: true });
     expect(campSite(st)!.structures.dryingRack).toBe(false);
     expect(st.rack.kg).toBe(0);
@@ -50,9 +52,9 @@ describe("structure decay", () => {
 
   it("asks for mending past two thirds (244 days), and mending resets the age and is recorded", () => {
     const { state, world, st } = camp();
-    siteFor(st, st.campCell).structureAge.leanTo = 244 * 1440;
+    siteFor(st, st.campCell!).structureAge.leanTo = 244 * 1440;
     expect(needsMending(campSite(st), "leanTo")).toBe(true);
-    addItem(pile(state, st.campCell), "stick", 2);
+    addItem(pile(state, st.campCell!), "stick", 2);
     const o = check(state, world, calendar(0), "mend", "leanTo");
     expect(o.ok).toBe(true);
     expect(o.duration).toBe(60);
@@ -65,8 +67,8 @@ describe("structure decay", () => {
 
   it("a mend order walks the runner to camp instead of reading skipped forever", () => {
     const { state, world, st } = camp();
-    siteFor(st, st.campCell).structureAge.leanTo = 244 * 1440;
-    addItem(pile(state, st.campCell), "stick", 2);
+    siteFor(st, st.campCell!).structureAge.leanTo = 244 * 1440;
+    addItem(pile(state, st.campCell!), "stick", 2);
     placeAtSpot(state, world, state.player.region, "forest");
     mapRegion(state, world, state.player.region);
     const o = addOrder(state, world, { task: "mend", arg: "leanTo", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");

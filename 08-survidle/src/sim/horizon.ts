@@ -53,14 +53,16 @@ export function setUpStage(seed: number, stage: HorizonStage, startDoy = START_D
   const g = newGame(seed, startDoy);
   kitOut(g.state, g.world, false);
   const st = regionState(g.state, g.world, g.state.player.region);
-  const site = siteFor(st, st.campCell);
+  // kitOut has sited the camp, so this region has one.
+  const campCell = st.campCell!;
+  const site = siteFor(st, campCell);
   for (const b of stage.built ?? []) {
     if (b === "turfHut") site.structures.turfHut = true;
     else if (b === "waterStore") site.structures.waterStore = true;
     else if (b === "trap") kitTrap(g.state, g.world);
   }
   if (stage.stocks) {
-    const camp = pile(g.state, st.campCell);
+    const camp = pile(g.state, campCell);
     for (const [item, n] of Object.entries(stage.stocks)) addItem(camp, item as ItemId, n!);
   }
   for (const s of SKILL_IDS) setSkillLevel(g.state, s, stage.levels[s] ?? 1);

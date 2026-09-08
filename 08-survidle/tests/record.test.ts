@@ -11,6 +11,7 @@ import { current, hasEvent, noteNight, record, worldDate } from "../src/sim/reco
 import { enterRegion, regionState, siteFor } from "../src/sim/regionstate";
 import { startTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("the life record", () => {
   it("starts a new game with one survivor, landed on the start day of year 1", () => {
@@ -50,6 +51,7 @@ describe("the record's seams", () => {
 
   it("records a region entered once and a build finished", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     // Past minute 0, the same as the log line's own guard: minute 0 is the landing, never recorded.
     state.minute = 60;
     const r = regionAt(world, state.player.region);
@@ -60,13 +62,13 @@ describe("the record's seams", () => {
     expect(current(state).events.filter((e) => e.kind === "entered").length).toBe(1);
     // A build finished: the fire pit, from stone laid at camp.
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "stone", 6);
+    addItem(pile(state, st.campCell!), "stone", 6);
     startTask(state, world, calendar(0), "build", "firePit");
     advance(state, world, 60);
     expect(hasEvent(state, (e) => e.kind === "built" && e.structure === "firePit")).toBe(true);
     // Rebuilding the same structure later in the same life (a fallen fire pit, say) does not add a second event.
-    siteFor(st, st.campCell).structures.firePit = false;
-    addItem(pile(state, st.campCell), "stone", 6);
+    siteFor(st, st.campCell!).structures.firePit = false;
+    addItem(pile(state, st.campCell!), "stone", 6);
     startTask(state, world, calendar(0), "build", "firePit");
     advance(state, world, 60);
     expect(current(state).events.filter((e) => e.kind === "built" && e.structure === "firePit").length).toBe(1);
@@ -82,9 +84,10 @@ describe("the record's seams", () => {
 
   it("fills the died block at death with what was in hand", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "firewood", 6);
-    addItem(pile(state, st.campCell), "driedMeat", 0.4);
+    addItem(pile(state, st.campCell!), "firewood", 6);
+    addItem(pile(state, st.campCell!), "driedMeat", 0.4);
     die(state, "froze", regionAt(world, state.player.region).name);
     const d = current(state).died!;
     expect(d.cause).toBe("froze");
@@ -106,6 +109,7 @@ describe("the record's seams", () => {
 
   it("records a tool worn where its durability reaches 0, at a seam beyond chop, hunt, fish and light", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     state.player.tools.push({ id: "needle", durability: 1 });
     addItem(state.player.pack, "hide", 0.5);
     state.player.clothing[0].durability = 50;
@@ -116,6 +120,7 @@ describe("the record's seams", () => {
 
   it("records frostbite the moment a second bite over an already-numb extremity takes the toes", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const boots = state.player.clothing.find((g) => CLOTHING[g.id].slot === "boots")!;
     boots.wet = 80;
     state.player.frostbite.feet = 100;

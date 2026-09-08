@@ -8,6 +8,7 @@ import { placeAt } from "../src/sim/position";
 import { campSite, regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import { cellAt, type World } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
@@ -15,14 +16,15 @@ const cal = calendar(0);
 function stripStone(state: ReturnType<typeof newGame>["state"], world: World): void {
   const st = regionState(state, world, state.player.region);
   removeItem(state.player.pack, "stone", 999);
-  removeItem(pile(state, st.campCell), "stone", 999);
+  removeItem(pile(state, st.campCell!), "stone", 999);
 }
 
 describe("the fire site", () => {
   it("is cleared ground, so a camp with no stone within reach can still make one and light a fire", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     stripStone(state, world);
     const o = check(state, world, cal, "build", "firePit");
     expect(o.ok).toBe(true);
@@ -49,9 +51,10 @@ describe("the fire site", () => {
 
   it("charges the ground's own minutes at the camp cell, snow and all", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
-    const terrain = cellAt(world, st.campCell).terrain;
+    placeAt(state, world, st.campCell!);
+    const terrain = cellAt(world, st.campCell!).terrain;
     state.weather.snowCm = 0;
     expect(check(state, world, cal, "build", "firePit").duration).toBe(fireSiteMinutes(terrain, 0));
     state.weather.snowCm = 40;

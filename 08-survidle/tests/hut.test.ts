@@ -9,14 +9,16 @@ import { newGame } from "../src/sim/newgame";
 import { shelterBonus, sheltered } from "../src/sim/player";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, startTask, stepTask } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
 function campWithPit(seed = 8, startDoy?: number) {
   const g = newGame(seed, startDoy);
+  siteCamp(g.state, g.world);
   const st = regionState(g.state, g.world, g.state.player.region);
-  siteFor(st, st.campCell).structures.firePit = true;
-  const camp = pile(g.state, st.campCell);
+  siteFor(st, st.campCell!).structures.firePit = true;
+  const camp = pile(g.state, st.campCell!);
   addItem(camp, "log", 4); addItem(camp, "stick", 20); addItem(camp, "bark", 40); addItem(camp, "cordage", 4);
   return { ...g, st, camp };
 }
@@ -24,9 +26,9 @@ function campWithPit(seed = 8, startDoy?: number) {
 describe("the turf hut", () => {
   it("builds at camp after the fire site, twenty hours, and stands as a roof", () => {
     const { state, world, st } = campWithPit();
-    siteFor(st, st.campCell).structures.firePit = false;
+    siteFor(st, st.campCell!).structures.firePit = false;
     expect(check(state, world, cal, "build", "turfHut")).toMatchObject({ ok: false, why: "clear the fire site first" });
-    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     expect(check(state, world, cal, "build", "turfHut")).toMatchObject({ ok: true, duration: 1200 });
     expect(startTask(state, world, cal, "build", "turfHut")).toBe(true);
     // Stepped by the task clock alone, not advance(): a raw, unattended
@@ -40,24 +42,24 @@ describe("the turf hut", () => {
     expect(campSite(st)!.structures.turfHut).toBe(true);
     expect(campSite(st)!.structureAge.turfHut).toBeGreaterThanOrEqual(0);
     expect(roofed(campSite(st))).toBe(true);
-    expect(splitSheltered(state, world, st.campCell)).toBe(true);
+    expect(splitSheltered(state, world, st.campCell!)).toBe(true);
     expect(sheltered(state, world)).toBe(true);
   });
 
   it("is ten degrees of shelter, between the lean-to and the cabin", () => {
     const { st } = campWithPit();
     expect(shelterBonus(campSite(st))).toBe(0);
-    siteFor(st, st.campCell).structures.leanTo = true;
+    siteFor(st, st.campCell!).structures.leanTo = true;
     expect(shelterBonus(campSite(st))).toBe(5);
-    siteFor(st, st.campCell).structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     expect(shelterBonus(campSite(st))).toBe(10);
-    siteFor(st, st.campCell).structures.cabin = true;
+    siteFor(st, st.campCell!).structures.cabin = true;
     expect(shelterBonus(campSite(st))).toBe(15);
   });
 
   it("allows a fire indoors that warms and never fills the hut with smoke", () => {
     const { state, world, st } = campWithPit();
-    siteFor(st, st.campCell).structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(state.player.pack, "firewood", 5);
     const o = check(state, world, cal, "lightIndoors");
@@ -72,8 +74,8 @@ describe("the turf hut", () => {
 
   it("beside a cabin is not the walled shelter the smoke hole was built into: the cabin's own smoke rule still applies", () => {
     const { state, world, st } = campWithPit();
-    siteFor(st, st.campCell).structures.turfHut = true;
-    siteFor(st, st.campCell).structures.cabin = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.cabin = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(state.player.pack, "firewood", 5);
     const o = check(state, world, cal, "lightIndoors");
@@ -87,7 +89,7 @@ describe("the turf hut", () => {
 
   it("keeps the rain off like a cabin", () => {
     const { state, world, st } = campWithPit();
-    siteFor(st, st.campCell).structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     state.weather.precip = "heavy";
     state.player.wetness = 0;
     advance(state, world, 120);
@@ -96,14 +98,14 @@ describe("the turf hut", () => {
 
   it("burns fuel at the sheltered rate in heavy rain, the same as a lean-to", () => {
     const hut = campWithPit(8, 200);
-    siteFor(hut.st, hut.st.campCell).structures.turfHut = true;
+    siteFor(hut.st, hut.st.campCell!).structures.turfHut = true;
     hut.st.fire.lit = true;
     hut.st.fire.fuelKg = 10;
     hut.state.weather.precip = "heavy";
     advance(hut.state, hut.world, 60);
 
     const lean = campWithPit(8, 200);
-    siteFor(lean.st, lean.st.campCell).structures.leanTo = true;
+    siteFor(lean.st, lean.st.campCell!).structures.leanTo = true;
     lean.st.fire.lit = true;
     lean.st.fire.fuelKg = 10;
     lean.state.weather.precip = "heavy";
@@ -114,7 +116,7 @@ describe("the turf hut", () => {
 
   it("is not drowned by heavy rain under 2 kg, the way an unroofed fire is", () => {
     const { state, world, st } = campWithPit(8, 200);
-    siteFor(st, st.campCell).structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     st.fire.lit = true;
     st.fire.fuelKg = 1;
     state.weather.precip = "heavy";
@@ -124,10 +126,10 @@ describe("the turf hut", () => {
 
   it("needs re-roofing past a year, comes down after a year and a half, and a mend resets it", () => {
     const { state, world, st, camp } = campWithPit();
-    siteFor(st, st.campCell).structures.turfHut = true;
-    siteFor(st, st.campCell).structureAge.turfHut = 0;
+    siteFor(st, st.campCell!).structures.turfHut = true;
+    siteFor(st, st.campCell!).structureAge.turfHut = 0;
     expect(needsMending(campSite(st), "turfHut")).toBe(false);
-    siteFor(st, st.campCell).structureAge.turfHut = 361 * 1440;
+    siteFor(st, st.campCell!).structureAge.turfHut = 361 * 1440;
     expect(needsMending(campSite(st), "turfHut")).toBe(true);
     const m = check(state, world, cal, "mend", "turfHut");
     expect(m).toMatchObject({ ok: true, label: "Re-roof the hut", duration: 120 });
@@ -135,7 +137,7 @@ describe("the turf hut", () => {
     expect(startTask(state, world, cal, "mend", "turfHut")).toBe(true);
     advance(state, world, 120 * 2);
     expect(campSite(st)!.structureAge.turfHut).toBeLessThan(10 * 1440);
-    siteFor(st, st.campCell).structureAge.turfHut = 541 * 1440;
+    siteFor(st, st.campCell!).structureAge.turfHut = 541 * 1440;
     st.fire.indoors = true;
     state.dead = { cause: "starved", minute: state.minute };
     advance(state, world, 1440, { nobody: true });

@@ -21,7 +21,7 @@ import { regionAt, spotOf, type World } from "../world/gen";
 import { advance } from "./advance";
 import { bodyAsks } from "./body";
 import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
-import { addItem, AXES, axeInHand, freshTool, listItems, pile, qty, TRACE_KG } from "./inventory";
+import { addItem, AXES, axeInHand, freshTool, listItems, pile, pileAt, qty, TRACE_KG } from "./inventory";
 import { intentOption, nearestCell, resolveCell, startIntent } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
@@ -437,7 +437,7 @@ function shoreIced(state: GameState): boolean {
 function axeInReach(state: GameState, world: World): boolean {
   if (axeInHand(state.player)) return true;
   const st = regionState(state, world, state.player.region);
-  return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pile(state, st.campCell), id) >= 1);
+  return AXES.some((id) => qty(state.player.pack, id) >= 1 || qty(pileAt(state, st.campCell), id) >= 1);
 }
 
 /**
@@ -542,7 +542,7 @@ export function campFoodKcalAt(inv: Inventory): number {
 
 /** kcal of food lying at this region's camp. */
 export function campFoodKcal(state: GameState, world: World): number {
-  return campFoodKcalAt(pile(state, regionState(state, world, state.player.region).campCell));
+  return campFoodKcalAt(pileAt(state, regionState(state, world, state.player.region).campCell));
 }
 
 /** The food clause at a checkpoint: a beginner's day of food eaten on average over the week before it, so a body in deficit that eats what it catches reads fed and one living on its fat does not. */
@@ -574,7 +574,7 @@ export function unexploited(state: GameState, world: World): UnexploitedItem[] {
   const cal = calendar(state.minute, state.startDoy);
   const region = state.player.region;
   const st = regionState(state, world, region);
-  const camp = pile(state, st.campCell);
+  const camp = pileAt(state, st.campCell);
   const pack = state.player.pack;
 
   const day = state.dead ? dayNumber(state.dead.minute) : dayNumber(state.minute);
@@ -697,6 +697,11 @@ export function kitTrap(state: GameState, world: World): void {
 export function kitOut(state: GameState, world: World, producers = true): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
+  // The kit stands somewhere: a camp on the region's own generated cell, the ground a
+  // from-scratch run would most likely have sited one on. Every structure below is put
+  // up there, so the camp has to exist before any of it does.
+  const campCell = st.campCell ?? regionAt(world, p.region).campCell;
+  st.campCell = campCell;
   for (const id of ["knife", "fireDrill", "fishingSpear", "bow"] as const) p.tools.push(freshTool(id));
   // One bucket in hand, empty: the fill task needs a vessel in hand, judged
   // at the shore where the camp pile is out of reach (spec 2.2). The second
@@ -705,10 +710,10 @@ export function kitOut(state: GameState, world: World, producers = true): void {
   addItem(p.pack, "arrow", 10);
   addItem(p.pack, "driedMeat", 5);
   creditYield(state, "kit", 5 * FOODS.driedMeat.kcalPerKg);
-  const camp = pile(state, st.campCell);
+  const camp = pile(state, campCell);
   addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);
-  const site = siteFor(st, st.campCell);
+  const site = siteFor(st, campCell);
   site.structures.firePit = true;
   if (producers) {
     site.structures.turfHut = true;
@@ -932,6 +937,12 @@ export class ReferencePlayer {
     // body asks for something - the same order the runner already gives a
     // chosen order between the two, since exploring is watched the same way.
     if (this.handMoveBusy(state, world, cal)) return;
+    // Nothing on the list can be done in a region with no camp: the fire site, the
+    // deliveries and the night all address one. Siting it is the opening act.
+    if (regionState(state, world, state.player.region).campCell === null) {
+      if (handsFree(state)) startTask(state, world, cal, "makeCamp");
+      return;
+    }
     this.openingDay ??= cal.day;
     // Each morning a daily want starts over: yesterday's spent count is not this
     // morning's, and the finished mark that stopped it yesterday comes off. Both
@@ -1131,7 +1142,7 @@ export interface ReferenceReport {
 
 function checkpoint(state: GameState, world: World, day: number): ReferenceReport["checkpoints"][number] {
   const p = state.player;
-  const camp = pile(state, regionState(state, world, p.region).campCell);
+  const camp = pileAt(state, regionState(state, world, p.region).campCell);
   const stocks: Record<string, number> = {};
   for (const { item, qty } of listItems(camp)) stocks[item] = Math.round(qty * 10) / 10;
   const food = campFoodKcal(state, world);
@@ -1252,10 +1263,11 @@ export interface LineageReport {
 function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landCell: number, trapKg: number | null): Found {
   const oldSt = regionState(state, world, oldRegion);
   const oldSite = campSite(oldSt);
-  const camp = pile(state, oldSt.campCell);
+  const camp = pileAt(state, oldSt.campCell);
   const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSite?.structures[s]);
   const lc = cellAt(world, landCell);
-  const cc = cellAt(world, oldSt.campCell);
+  // Nobody made camp in the life before: there is no old camp to be any distance from.
+  const cc = oldSt.campCell === null ? lc : cellAt(world, oldSt.campCell);
   return {
     structures: [...structures],
     campFoodKcal: Math.round(campFoodKcalAt(camp)),

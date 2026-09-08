@@ -4,6 +4,7 @@ import { CAMP_FIRE_LUX, DARK_LUX, illuminance, lightWord, moonAltitude, skyLux, 
 import { newGame } from "../src/sim/newgame";
 import { regionState } from "../src/sim/regionstate";
 import { placeAt } from "../src/sim/position";
+import { siteCamp } from "./siting-helpers";
 
 /** Day of year for a date in a 365-day year, 0-based, the way the calendar counts. */
 const DOY = { equinox: 79, june: 171, december: 354 };
@@ -76,20 +77,22 @@ describe("the sky's light", () => {
 describe("flame", () => {
   it("lights the camp cell and not the next one over", () => {
     const { state, world } = newGame(3, DOY.december);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     state.minute = at(24 + 1);
     const cal = calendar(state.minute, state.startDoy);
     st.fire.lit = true;
-    expect(illuminance(state, world, cal, st.campCell)).toBeGreaterThan(CAMP_FIRE_LUX * 0.9);
-    expect(illuminance(state, world, cal, st.campCell + 1)).toBeLessThan(1);
+    expect(illuminance(state, world, cal, st.campCell!)).toBeGreaterThan(CAMP_FIRE_LUX * 0.9);
+    expect(illuminance(state, world, cal, st.campCell! + 1)).toBeLessThan(1);
   });
 
   it("goes where the torch goes", () => {
     const { state, world } = newGame(3, DOY.december);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     state.minute = at(24 + 1);
     const cal = calendar(state.minute, state.startDoy);
-    const away = st.campCell + world.w * 3;
+    const away = st.campCell! + world.w * 3;
     placeAt(state, world, away);
     expect(illuminance(state, world, cal, away)).toBeLessThan(1);
     state.player.torch = { lit: true, minutes: 30 };

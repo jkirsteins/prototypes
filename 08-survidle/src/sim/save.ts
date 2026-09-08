@@ -235,7 +235,8 @@ export function migrate(state: GameState): void {
       st.sites = {};
       // A region touched but never lived in gets no site, the same as one raised today.
       const lived = Object.values(site.structures).some(Boolean) || Object.keys(site.build).length > 0;
-      if (lived) st.sites[st.campCell] = site;
+      // A save from before a camp could be missing always has one: only a fresh region starts with none.
+      if (lived && st.campCell !== null) st.sites[st.campCell] = site;
       delete flat.structures;
       delete flat.racks;
       delete flat.boughBedAge;

@@ -6,6 +6,7 @@ import { BASE_KCAL_PER_HOUR, COMFORT_C, FAT_FULL } from "../src/sim/player";
 import { deserialize, serialize } from "../src/sim/save";
 import type { Person } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG, PACK_HARD_KG } from "../src/units";
+import { siteCamp } from "./siting-helpers";
 
 describe("the person", () => {
   it("rolls the same three twice, a different three per boat, and never coast-born with forest-born", () => {
@@ -121,6 +122,7 @@ describe("the person", () => {
     expect(state.survivors[0].person).toEqual(medianPerson(state.survivors[0].person.sex));
     const custom: Person = { ...medianPerson("f"), axes: { strength: 1, build: -1, hands: 0, eyes: 2 }, quirks: ["bigEater"], face: 99 };
     const g = newGame(17, undefined, custom);
+    siteCamp(g.state, g.world);
     expect(g.state.survivors[0].person).toEqual(custom);
     const back = deserialize(serialize(g.state))!;
     expect(back.state.survivors[0].person).toEqual(custom);

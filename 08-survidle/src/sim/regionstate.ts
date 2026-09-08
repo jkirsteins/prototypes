@@ -26,7 +26,7 @@ export function newRegionState(world: World, id: number): RegionState {
   return {
     wood: r.wood0,
     pop: startingPop(world, id),
-    campCell: r.campCell,
+    campCell: null,
     sites: {},
     snares: 0,
     fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0, embers: 0, litSince: null, rainHeld: 0 },
@@ -66,9 +66,9 @@ export function siteFor(st: RegionState, cell: number): Site {
   return st.sites[cell];
 }
 
-/** What stands at the camp, or null with nothing built there. */
+/** What stands at the camp, or null with no camp sited or nothing built on it. */
 export function campSite(st: RegionState): Site | null {
-  return siteAt(st, st.campCell);
+  return st.campCell === null ? null : siteAt(st, st.campCell);
 }
 
 /**

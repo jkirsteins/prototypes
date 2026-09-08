@@ -8,7 +8,7 @@
  */
 import type { World } from "../world/gen";
 import { calendar, START_DOY } from "./calendar";
-import { addItem, listItems, pile, qty } from "./inventory";
+import { addItem, listItems, pile, pileAt, qty } from "./inventory";
 import { FOODS, type FoodId } from "./items";
 import { setSkillLevel } from "./horizon";
 import { type DayLedger, emptyBurn, type WeekAverage, weekBefore } from "./ledger";
@@ -88,7 +88,7 @@ function between(ledger: DayLedger[], from: number, to: number): { eaten: number
 
 function stockAt(state: GameState, world: World): MonthLine["stock"] {
   const st = regionState(state, world, state.player.region);
-  const camp = pile(state, st.campCell);
+  const camp = pileAt(state, st.campCell);
   const foodByKind: Record<string, number> = {};
   let foodKcal = 0;
   for (const { item, qty: n } of listItems(camp)) {
@@ -148,7 +148,8 @@ export function runWinter(seed: number, days = WINTER_DAYS): YearReport {
   const { state, world } = ref;
   for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
   const st = regionState(state, world, state.player.region);
-  const camp = pile(state, st.campCell);
+  // setUpReference has kitted the camp out, so this region has one.
+  const camp = pile(state, st.campCell!);
   addItem(camp, "driedMeat", WINTER_STOCK.driedMeatKg);
   addItem(camp, "fat", WINTER_STOCK.fatKg);
   addItem(camp, "firewood", WINTER_STOCK.firewoodKg);

@@ -239,8 +239,8 @@ interface IntentBase {
   arg?: string;
   /** The cell the work is done in, resolved once when the intent starts. */
   cell: number;
-  /** The home camp: where "bring it to camp" delivers. Fixed at start. */
-  campCell: number;
+  /** The home camp: where "bring it to camp" delivers. Fixed at start, and null when the region has no camp. */
+  campCell: number | null;
   until: Until;
   deliver: "leave" | "camp";
   /** Completions of the work so far. */
@@ -313,8 +313,8 @@ export interface RegionState {
   wood: number;
   /** Animals by species, only for species with capacity here. */
   pop: Partial<Record<Species, number>>;
-  /** The cell that is home: where the fire burns, the rack dries and the runner walks back to. */
-  campCell: number;
+  /** The cell that is home: where the fire burns, the rack dries and the runner walks back to. Null until somebody makes camp here. */
+  campCell: number | null;
   /** What stands on each built cell of this region, keyed by cell. */
   sites: Record<number, Site>;
   /** Snares set on this region's heath. They stand away from any camp, so they are the region's, not a site's. */

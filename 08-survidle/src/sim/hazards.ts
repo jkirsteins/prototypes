@@ -138,7 +138,7 @@ function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng, 
   if (ambient >= FREEZE_C) return;
   for (const id of touchedRegions(state)) {
     const st = state.regions[id];
-    if (st.fire.lit) continue;
+    if (st.fire.lit || st.campCell === null) continue;
     const camp = state.piles[st.campCell];
     if (!camp) continue;
     const litres = qty(camp, "water");

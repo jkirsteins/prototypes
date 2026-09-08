@@ -215,7 +215,7 @@ export function standingHere(state: GameState, st: RegionState, world: World, c:
       if (st.snares > 0) return true;
     } else if (arg === "basketTrap") {
       if (st.trap !== null) return true;
-    } else if (arg === "seep") {
+    } else if (arg === "seep" && st.campCell !== null) {
       const region = cellAt(world, st.campCell).region;
       if (Object.keys(state.seeps).some((cell) => cellAt(world, Number(cell)).region === region)) return true;
     } else if (site?.structures[arg as keyof Site["structures"]]) {

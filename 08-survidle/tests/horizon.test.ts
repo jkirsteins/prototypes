@@ -93,7 +93,7 @@ describe("the horizon stages", () => {
     expect(stage("producers").band).toEqual([10, 20]);
     expect(stage("stocked").band).toEqual([20, 60]);
     const s2 = setUpStage(17, stage("stocked"));
-    const camp = pile(s2.state, regionState(s2.state, s2.world, s2.state.player.region).campCell);
+    const camp = pile(s2.state, regionState(s2.state, s2.world, s2.state.player.region).campCell!);
     expect(qty(camp, "driedMeat")).toBeGreaterThanOrEqual(10);
     expect(qty(camp, "water")).toBeGreaterThanOrEqual(20);
     expect(qty(camp, "firewood")).toBeGreaterThanOrEqual(200);

@@ -18,6 +18,7 @@ import { dimAll } from "./mapped";
 import { fmtName } from "./names";
 import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
+import { cellOf } from "./position";
 import { current, newRecord, worldDate } from "./record";
 import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
@@ -119,6 +120,8 @@ export function oldCampRegion(state: GameState): number {
   let bestScore = -1;
   for (const id of touchedRegions(state).sort((a, b) => a - b)) {
     const st = state.regions[id];
+    // A region nobody made camp in has no old camp to land back beside.
+    if (st.campCell === null) continue;
     const firePit = campSite(st)?.structures.firePit ?? false;
     const score = campScore(st);
     if (!firePit && score === 0) continue;
@@ -174,7 +177,8 @@ export function beginAgain(state: GameState, world: World): void {
   // The dead survivor's log against the new clock would confuse the landing phase; the heir starts with a clean page.
   state.log = [];
   demoteFog(state);
-  const cell = landingCell(world, oldCamp, state.seed, state.survivors.length + 1);
+  // Nobody made camp: the ground the last survivor died on is what the heir lands near.
+  const cell = landingCell(world, oldCamp ?? cellOf(state, world), state.seed, state.survivors.length + 1);
   const candidates = rollCandidates(state.seed, state.survivors.length + 1, 0, state.survivors.map((s) => s.name));
   state.landing = { cell, region: regionOf(world, cell % world.w, Math.floor(cell / world.w)), date, gapDays, candidates, boat: 0, chosen: 0, name: candidates[0].name, oldCamp };
 }
@@ -212,7 +216,8 @@ export function nextBoatDate(from: WorldDate): { date: WorldDate; added: number 
  */
 export function nextBoat(state: GameState, world: World): void {
   const l = state.landing;
-  if (!l || l.oldCamp === null) return;
+  // Nobody has died here: this is the world's first boat, and newWorld rebuilds it.
+  if (!l || state.dead === null) return;
   const { date, added } = nextBoatDate(l.date);
   advance(state, world, added * 1440, { nobody: true });
   state.year = worldDate(state).year;
@@ -263,7 +268,10 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   // the carrySkills below, so the rungs a carried level opens are marked known
   // against an empty slate rather than against a dead person's.
   resetTeaching(state);
-  if (l.oldCamp === null) {
+  // The world's first survivor, told apart by nobody having died here rather than by
+  // there being no old camp: a survivor may die before ever making one, and their heir
+  // still inherits their skills, their journal and their place in the line.
+  if (state.dead === null) {
     state.survivors = [newRecord(1, name, l.date, 0, p)];
     newPerson(state, world, l.cell, l.region);
     state.landing = null;
@@ -279,11 +287,12 @@ export function land(state: GameState, world: World, name = state.landing?.name,
   newPerson(state, world, l.cell, l.region);
   state.landing = null;
   enterRegion(state, world, l.region);
-  const cc = cellAt(world, oldCamp);
   const lc = cellAt(world, l.cell);
-  const km = Math.round(Math.hypot(cc.x - lc.x, cc.y - lc.y) * CELL_KM);
-  const oldName = regionAt(world, cellAt(world, oldCamp).region).name;
-  const built = builtList(last);
+  // Nobody made camp in the life before, so there is no camp to be told the way to
+  // and nothing standing for a journal to list.
+  const oldName = oldCamp === null ? "" : regionAt(world, cellAt(world, oldCamp).region).name;
+  const toOldCamp = oldCamp === null ? "" : ` The old camp at ${oldName} lies ${Math.round(Math.hypot(cellAt(world, oldCamp).x - lc.x, cellAt(world, oldCamp).y - lc.y) * CELL_KM)} km ${bearing(world, l.cell, oldCamp)}.`;
+  const built = oldCamp === null ? "" : builtList(last);
   const journal = built ? ` The journal of ${fmtName(last.name)} lists ${built} at ${oldName}.` : "";
   // The carry sentence reads the ancestor's record directly rather than carrySkills's
   // return, so the landing line can be logged before the rung lines carrySkills logs (R2).
@@ -293,7 +302,7 @@ export function land(state: GameState, world: World, name = state.landing?.name,
     : "";
   log(
     state,
-    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. {You} {land} at ${regionAt(world, l.region).name} with an axe, wool on {your} back and a kilo of dried meat. The old camp at ${oldName} lies ${km} km ${bearing(world, l.cell, oldCamp)}.${journal}${carry}`,
+    `${fmtWorldDate(l.date)}. ${daysInWords(l.gapDays)} days after ${fmtName(last.name)} died. {You} {land} at ${regionAt(world, l.region).name} with an axe, wool on {your} back and a kilo of dried meat.${toOldCamp}${journal}${carry}`,
   );
   carrySkills(state, last);
 }

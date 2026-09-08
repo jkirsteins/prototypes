@@ -22,7 +22,7 @@ import { openManualOnFirstLanding } from "./sim/manual";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
-import { cellOf } from "./sim/position";
+import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
@@ -445,9 +445,10 @@ function onClick(ev: Event) {
     case "intent":
     case "camp-yes": {
       const id = target.dataset.id as TaskId;
-      // Binding a camp asks first: the row swaps to its question, and only the
-      // yes acts. Every other row acts on the click, as it always has.
-      if (id === "makeCamp" && act === "intent") {
+      // Moving a camp asks first: the row swaps to its question, and only the
+      // yes acts. A first siting moves nothing and leaves nothing, so it acts on
+      // the click, as every other row does.
+      if (id === "makeCamp" && act === "intent" && campCellOf(state, world) !== null) {
         ui.confirmCamp = true;
         break;
       }

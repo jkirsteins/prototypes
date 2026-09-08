@@ -11,6 +11,7 @@ import { addOrder, conditionOpen, orderMet, orderSentence } from "../src/sim/ord
 import { AWAY_HOURS_MAX } from "../src/units";
 import type { GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 class MemStorage implements Storage {
   private m = new Map<string, string>();
@@ -34,6 +35,7 @@ describe("advance", () => {
 
   it("kills an idle character who never eats, and names the cause", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     state.player.autoEat = false;
     advance(state, world, 1440 * 12);
     expect(state.dead).not.toBeNull();
@@ -44,6 +46,7 @@ describe("advance", () => {
 
   it("falls asleep on its own when idle and spent", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     state.player.energy = 9;
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
@@ -52,6 +55,7 @@ describe("advance", () => {
 
   it("survives the first day with the starting kit", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     advance(state, world, 1440);
     expect(state.dead).toBeNull();
     expect(state.player.health).toBeGreaterThan(50);
@@ -61,6 +65,7 @@ describe("advance", () => {
 describe("save", () => {
   it("round-trips the whole state", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     advance(state, world, 500);
     const file = deserialize(serialize(state, 1234));
     expect(file).not.toBeNull();
@@ -71,7 +76,8 @@ describe("save", () => {
   });
 
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
-    const { state } = newGame(8);
+    const { state, world } = newGame(8);
+    siteCamp(state, world);
     expect(state.player.water).toBe(2.5);
     expect(state.player.autoDrink).toBe(true);
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
@@ -83,10 +89,10 @@ describe("save", () => {
     expect(campSite(st)?.structures.hearth ?? false).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });
     // A rack standing and a trap set, both carried whole through the round trip.
-    const site = siteFor(st, st.campCell);
+    const site = siteFor(st, st.campCell!);
     site.structures.dryingRack = true;
     site.racks = 1;
-    st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
+    st.trap = { cell: st.campCell!, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
     delete raw.state.player.autoDrink;
@@ -138,6 +144,7 @@ describe("save", () => {
 
   it("a save mid-walk from before the route remembered its walked cells loads with none", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     startTask(state, world, calendar(0), "walk", "spot:forest");
     const raw = JSON.parse(serialize(state));
     expect(raw.state.route.walked.length).toBe(1);
@@ -149,6 +156,7 @@ describe("save", () => {
 
   it("a save from before a skill existed loads with it at nothing, and walks on", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const raw = JSON.parse(serialize(state));
     // The record is there and one key is missing, which is what a skill added
     // after a run started looks like. The whole-record default cannot see it,
@@ -175,6 +183,7 @@ describe("save", () => {
     // for "grouse". SaveFile.version is still 3, so they load and their task runs on.
     for (const task of [{ id: "fish" as const, progress: 59, duration: 60, repeat: false }, { id: "hunt" as const, arg: "grouse", progress: 59, duration: 60, repeat: false }]) {
       const { state, world } = newGame(4);
+      siteCamp(state, world);
       state.task = { ...task };
       expect(() => advance(state, world, 2)).not.toThrow();
       expect(state.task).toBeNull();
@@ -184,6 +193,7 @@ describe("save", () => {
 
   it("a save from the five-animal world loads with its roster filled and its dead keys gone", () => {
     const { state, world } = newGame(5);
+    siteCamp(state, world);
     const id = state.player.region;
     const st = state.regions[id];
     (st as unknown as { pop: Record<string, number> }).pop = { hare: 10, grouse: 20, deer: 3, elk: 1, fish: 40 };
@@ -220,6 +230,7 @@ describe("save", () => {
 
   it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const raw = JSON.parse(serialize(state));
     raw.version = 3;
     for (const st of Object.values(raw.state.regions) as Record<string, unknown>[]) {
@@ -239,6 +250,7 @@ describe("save", () => {
 
   it("an order from before the order ladder carries no when, held, givenDoy, dayOpened or dayBase, and reads exactly as it did", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     const o = addOrder(state, world, { task: "roots", until: { kind: "campHas", qty: 5 }, deliver: "camp", where: "nearest" }, "keep");
     const id = state.player.region;
     const cal = calendar(state.minute, state.startDoy);
@@ -264,6 +276,7 @@ describe("save", () => {
 
   it("catches up on time away, capped at a day, and reports what happened", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     // Twenty real minutes are 1200 game minutes.
     const away = catchUp(state, world, 20 * 60);
     expect(state.minute).toBeCloseTo(1200, 6);
@@ -277,6 +290,7 @@ describe("save", () => {
 
   it("reports what a daily order did across the days away, not only today's count", () => {
     const { state, world } = newGame(9);
+    siteCamp(state, world);
     state.awayHours = AWAY_HOURS_MAX;
     const o = addOrder(state, world, { task: "sticks", until: { kind: "daily", n: 1 }, deliver: "camp", where: "nearest" }, "job");
     // Three days: the day roll opens the count twice over, so an order whose done
@@ -362,6 +376,7 @@ describe("the version 6 save", () => {
     // unset with -1 and fillPopulations - which walks the same regions with the world in hand -
     // seeds them; without it every region read "the nests are empty" on a game that did nothing wrong.
     const { state, world } = newGame(17, 160);
+    siteCamp(state, world);
     const id = state.player.region;
     const raw = JSON.parse(serialize(state)) as { version: number; state: GameState };
     raw.version = 6;

@@ -10,7 +10,7 @@ import { itemLabel } from "./actions";
 import { bodyStep, currentNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
-import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
+import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
 import { log } from "./log";
@@ -202,10 +202,12 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     // The nearest wet cell with no seep on it.
     return { cell: nearestCell(state, world, (c) => seepGround(world, c) !== null && !state.seeps[c]), note: "" };
   }
-  if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell, note: "" };
+  // No camp to bind to: the work is judged where the survivor stands, and the camp
+  // guard in `check` is what refuses it, rather than a cell chosen to carry the refusal.
+  if (CAMP_BOUND.has(task) || (task === "build" && arg !== "snare")) return { cell: st.campCell ?? here, note: "" };
   if (task === "craft") {
     const needs = RECIPES[arg as RecipeId].needs;
-    return { cell: canConsume(reach(state, world), needs) ? here : st.campCell, note: "" };
+    return { cell: canConsume(reach(state, world), needs) ? here : (st.campCell ?? here), note: "" };
   }
   if (task === "hunt" && arg === "any") return anyHuntCell(state, world, cal, where);
   if (task === "fill" && st.iceHole && state.weather.iceCm >= ICE_SHORE_CM) return { cell: st.iceHole.cell, note: "" };
@@ -271,7 +273,7 @@ function fetchAllowance(state: GameState, world: World, task: TaskId, arg: strin
   if (task !== "build" || arg === "snare" || why !== "missing materials at camp") return { ok: false, detail: "" };
   const sid = arg as StructureId;
   const campCell = regionState(state, world, state.player.region).campCell;
-  if (!canFetch(state, world, sid, campCell)) return { ok: false, detail: "" };
+  if (campCell === null || !canFetch(state, world, sid, campCell)) return { ok: false, detail: "" };
   const { missing, sources } = fetchSources(state, world, sid, campCell, cellOf(state, world));
   const src = sources[0];
   // Name what the nearest pile actually holds, not just the first thing missing overall.
@@ -327,7 +329,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
     if (!o.ok && !fetchAllowance(state, world, req.task, req.arg, o.why).ok) {
       if (pocketed > 0) {
         const kit = orderKit(state)[0];
-        if (kit) transfer(state.player.pack, pile(state, campCell), kit, pocketed);
+        if (kit && campCell !== null) transfer(state.player.pack, pile(state, campCell), kit, pocketed);
       }
       state.intent = prevIntent;
       return false;
@@ -376,7 +378,7 @@ function untilMet(state: GameState, it: Intent): boolean {
     case "once": return it.done >= 1;
     case "times": return it.done >= u.n;
     case "campHas": {
-      let have = qty(pile(state, it.campCell), u.item) + qty(state.player.pack, u.item);
+      let have = qty(pileAt(state, it.campCell), u.item) + qty(state.player.pack, u.item);
       if (it.cell !== it.campCell) have += qty(pile(state, it.cell), u.item);
       return have >= u.qty - 1e-9;
     }
@@ -387,7 +389,7 @@ function untilMet(state: GameState, it: Intent): boolean {
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
 function packCarries(state: GameState, world: World, it: Intent): boolean {
   if (it.task === "fill" || it.task === "melt") {
-    const room = campWaterRoom(pile(state, it.campCell), campSite(regionState(state, world, state.player.region)));
+    const room = campWaterRoom(pileAt(state, it.campCell), campSite(regionState(state, world, state.player.region)));
     return vesselLitres(state.player) > 0 && room > 0;
   }
   const pack = state.player.pack;
@@ -404,7 +406,8 @@ function packCarries(state: GameState, world: World, it: Intent): boolean {
  * arrived with the player and is still owed a drop.
  */
 export function deliveryPending(state: GameState, world: World, it: Intent): boolean {
-  if (it.deliver !== "camp") return false;
+  // Nowhere to deliver to: an intent with no camp owes nothing to one.
+  if (it.deliver !== "camp" || it.campCell === null) return false;
   if (it.cell === it.campCell) return packCarries(state, world, it);
   return !isEmpty(pile(state, it.cell)) || packCarries(state, world, it);
 }
@@ -470,6 +473,8 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
  * unload; otherwise go back for the rest.
  */
 function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome {
+  const campCell = it.campCell;
+  if (campCell === null) return undefined;
   const here = cellOf(state, world);
   const pack = state.player.pack;
   // The work cell and the camp pile are the same pile when they are the same cell: nothing to load.
@@ -484,8 +489,8 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   // At camp, whatever is on the back comes off, yield or not - it is not going back out.
   // A pack holding nothing but this order's own kit comes off as nothing, and that is not a
   // step taken: fall through to the walk rather than claim one and stand here forever.
-  if (packCarries(state, world, it) || (here === it.campCell && !isEmpty(pack))) {
-    if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with the load");
+  if (packCarries(state, world, it) || (here === campCell && !isEmpty(pack))) {
+    if (here !== campCell) return walkTo(state, world, cal, it, campCell, " with the load");
     if (dropEverything(state, world)) {
       it.step = "unloading at camp";
       return "again";
@@ -493,7 +498,7 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   }
   if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, " for the rest");
   // At the pile with nothing loaded and nothing that counts: what is on your back is in the way. Take it to camp.
-  return walkTo(state, world, cal, it, it.campCell, " with the load");
+  return walkTo(state, world, cal, it, campCell, " with the load");
 }
 
 interface FetchNeed {
@@ -542,21 +547,23 @@ function canFetch(state: GameState, world: World, sid: StructureId, campCell: nu
 /** Moves the missing materials of a build from this region's piles to camp, one load at a time. "none" when there is nothing left to fetch, or nothing to be gained by trying. */
 function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome | "none" {
   const sid = it.arg as StructureId;
+  const campCell = it.campCell;
+  if (campCell === null) return "none";
   const st = regionState(state, world, state.player.region);
   if ((campSite(st)?.build[sid] ?? 0) > 0) return "none";
   const p = state.player;
-  const campInvs = [p.pack, pile(state, it.campCell)];
+  const campInvs = [p.pack, pile(state, campCell)];
   if (canConsume(campInvs, STRUCTURES[sid].needs)) return "none";
   const here = cellOf(state, world);
-  const { missing, wanted } = fetchMissing(state, sid, it.campCell);
+  const { missing, wanted } = fetchMissing(state, sid, campCell);
   if (wanted(p.pack)) {
-    if (here !== it.campCell) return walkTo(state, world, cal, it, it.campCell, " with materials");
+    if (here !== campCell) return walkTo(state, world, cal, it, campCell, " with materials");
     dropEverything(state, world);
     it.step = "laying out materials at camp";
     return "again";
   }
   // The route-filtered source list scans every pile in the region; only worth it once carrying is ruled out.
-  const { sources } = fetchSources(state, world, sid, it.campCell, here);
+  const { sources } = fetchSources(state, world, sid, campCell, here);
   if (!sources.length) return "none";
   const src = sources[0];
   if (here !== src.cell) return walkTo(state, world, cal, it, src.cell, " for materials");

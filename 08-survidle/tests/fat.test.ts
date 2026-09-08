@@ -9,6 +9,7 @@ import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { FAT_FULL, stepPlayer, workSpeed } from "../src/sim/player";
 import { waterLossPerHour } from "../src/sim/water";
+import { siteCamp } from "./siting-helpers";
 
 describe("the fat reserve", () => {
   it("costs fat and no health for an hour with kcal at zero and fat above zero", () => {
@@ -60,6 +61,7 @@ describe("the fat reserve", () => {
 describe("the berry ceiling", () => {
   function berried(kg: number) {
     const g = newGame(1);
+    siteCamp(g.state, g.world);
     addItem(g.state.player.pack, "berries", kg);
     return g;
   }

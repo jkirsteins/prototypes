@@ -11,7 +11,7 @@ import { itemLabel } from "./actions";
 import { bodyAsks, KIT_ITEMS } from "./body";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
-import { pile, qty } from "./inventory";
+import { pileAt, qty } from "./inventory";
 import { deliveryPending, intentMode, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
@@ -128,7 +128,7 @@ export function inSeason(doy: number, season: { from: number; to: number }): boo
  */
 export function keepStock(state: GameState, world: World, o: Order): number {
   const st = regionState(state, world, state.player.region);
-  const camp = pile(state, st.campCell);
+  const camp = pileAt(state, st.campCell);
   const keep = keepTarget(o);
   if (!keep) return 0;
   let have = qty(camp, keep.item) + (KIT_ITEMS.has(keep.item) ? qty(state.player.pack, keep.item) : 0);
@@ -192,7 +192,7 @@ export function conditionOpen(state: GameState, world: World, cal: Calendar, o: 
   if (w.season && !inSeason(cal.dayOfYear, w.season)) return `out of season until ${fmtDoy(w.season.from)}`;
   if (w.stock) {
     const st = regionState(state, world, state.player.region);
-    const have = qty(pile(state, st.campCell), w.stock.item);
+    const have = qty(pileAt(state, st.campCell), w.stock.item);
     // The tolerance on the line is a hair either side of the figure itself rather than a
     // hair above nothing, or a line drawn at a trace - "any raw meat at all", which is what
     // a drying rack waits for - would be a line the float guard swallows and never shuts.
@@ -255,7 +255,7 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   switch (u.kind) {
     case "once": return o.done >= 1;
     case "times": return o.done >= u.n;
-    case "campHas": return qty(pile(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
+    case "campHas": return qty(pileAt(state, st.campCell), yieldItem(o.req.task, o.req.arg)!) >= u.qty - 1e-9;
     case "forever": return false;
     case "daily": return o.done - (o.dayBase ?? 0) >= u.n;
   }
@@ -454,7 +454,7 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): { ch
     const keep = keepTarget(o);
     if (keep?.item === "water") {
       const homeSt = regionState(state, world, state.player.region);
-      const camp = pile(state, homeSt.campCell);
+      const camp = pileAt(state, homeSt.campCell);
       const cap = campWaterCapacity(camp, campSite(homeSt));
       // cap === 0 means no vessel has ever reached camp yet, not that camp is
       // full: qty + ice (both 0) trivially clears ">= cap - eps" either way, so

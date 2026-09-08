@@ -17,16 +17,21 @@ import type { RunnerIntent } from "../src/sim/types";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 
 /** Kills the reference player after a minute and lands the next survivor, the same beginAgain/land pair the epitaph flow uses. */
 function landHeir(seed: number): G {
   const { state, world } = newGame(seed);
+  siteCamp(state, world);
   advance(state, world, 60);
   die(state, "froze", regionAt(world, state.player.region).name);
   beginAgain(state, world);
   land(state, world);
+  // The heir lands in a region with no camp of its own; these tests are about the
+  // walk home to one, so the heir makes camp on the region's own ground first.
+  siteCamp(state, world);
   return { state, world };
 }
 
@@ -48,6 +53,7 @@ describe("searching for the way home", () => {
 
   it("offers nothing once the way is already known", () => {
     const { state, world } = newGame(4);
+    siteCamp(state, world);
     // A step off camp, onto ground the spawn's own sight already opened: the ordinary case.
     placeAtSpot(state, world, state.player.region, "forest");
     const cal = calendar(state.minute);
@@ -58,7 +64,7 @@ describe("searching for the way home", () => {
   it("searches toward camp and stops the moment a route opens", () => {
     // Seed 4 resolves in a handful of legs, all inside the landing region itself.
     const { state, world } = landHeir(4);
-    const camp = campCellOf(state, world);
+    const camp = campCellOf(state, world)!;
     expect(survivorRoute(state, world, cellOf(state, world), camp)).toBeNull();
     expect(startTask(state, world, calendar(state.minute), "searchHome")).toBe(true);
     const rng = new Rng(1);
@@ -76,13 +82,14 @@ describe("searching for the way home", () => {
 
   it("moves on to a neighbouring region once the one it is sweeping is used up", () => {
     const { state, world } = newGame(4);
+    siteCamp(state, world);
     const A = state.player.region;
     // Everything of the landing region is already known, so nothing here can open a route the survivor does not already have.
     mapRegion(state, world, A);
     const B = regionAt(world, A).neighbours[0]!.id;
     // B is named (seen from a distance), but not a cell of it has been walked.
     state.discovered[B] = SEEN;
-    const home = regionAt(world, B).campCell;
+    const home = regionAt(world, B).campCell!;
     expect(survivorRoute(state, world, cellOf(state, world), home)).toBeNull();
     const here = cellOf(state, world);
     // A leg already standing at its own end: the next tick reads straight into the "this region gave nothing more" branch.
@@ -102,7 +109,7 @@ describe("searching for the way home", () => {
     const cal = calendar(state.minute);
     expect(check(state, world, cal, "walk", "spot:camp").ok).toBe(false);
     const here = cellOf(state, world);
-    const campCell = regionState(state, world, state.player.region).campCell;
+    const campCell = regionState(state, world, state.player.region).campCell!;
     const it: RunnerIntent = {
       mode: "runner", task: "wait", cell: campCell, campCell, until: { kind: "forever" }, deliver: "leave",
       done: 0, step: "", need: null, orderId: null, windDown: false,
@@ -123,6 +130,7 @@ describe("searching for the way home", () => {
     expect(MASTERY_KEYS.wayfinding).toContain("searchHome");
 
     const { state, world } = newGame(4);
+    siteCamp(state, world);
     const ui = newUiState();
     expect(doHtml(state, world, calendar(state.minute), ui)).not.toContain('data-id="searchHome"');
   });

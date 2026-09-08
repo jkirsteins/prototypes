@@ -126,7 +126,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: R
 export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const campCell = regionState(state, world, state.player.region).campCell;
   const wait: RunnerIntent = {
-    mode: "runner", task: "wait", cell: campCell, campCell, until: { kind: "forever" }, deliver: "leave",
+    mode: "runner", task: "wait", cell: campCell ?? cellOf(state, world), campCell, until: { kind: "forever" }, deliver: "leave",
     done: 0, step: "", need: null, orderId: null, windDown: false,
   };
   return currentNeed(state, world, cal, wait);
@@ -136,6 +136,7 @@ export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNee
 export function canFeed(state: GameState, world: World, cal: Calendar, it: RunnerIntent): boolean {
   const p = state.player;
   if (AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(p.pack, f) > 1e-9)) return true;
+  if (it.campCell === null) return false;
   const camp = pile(state, it.campCell);
   if (!AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(camp, f) > 1e-9)) return false;
   return cellOf(state, world) === it.campCell || check(state, world, cal, "walk", `cell:${it.campCell}`).ok;
@@ -144,10 +145,12 @@ export function canFeed(state: GameState, world: World, cal: Calendar, it: Runne
 /** Minutes to this region's camp on foot right now, or null when there is no way there. Zero already there. */
 export function minutesToCamp(state: GameState, world: World, cal: Calendar): number | null {
   const st = regionState(state, world, state.player.region);
+  const camp = st.campCell;
+  if (camp === null) return null;
   const here = cellOf(state, world);
-  if (here === st.campCell) return 0;
+  if (here === camp) return 0;
   const ice = walkableIce(state.weather);
-  const route = survivorRoute(state, world, here, st.campCell, ice, fearsFell(state));
+  const route = survivorRoute(state, world, here, camp, ice, fearsFell(state));
   if (!route) return null;
   return routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather), ice);
 }
@@ -225,18 +228,22 @@ export function iceHoleSite(state: GameState, world: World, cal: Calendar): numb
 /** Camp water in reach: litres in the camp pile, and camp under foot or a walk there open. */
 function campWaterReady(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
-  if (qty(pile(state, st.campCell), "water") <= 1e-9) return false;
-  return cellOf(state, world) === st.campCell || check(state, world, cal, "walk", `cell:${st.campCell}`).ok;
+  const camp = st.campCell;
+  if (camp === null) return false;
+  if (qty(pile(state, camp), "water") <= 1e-9) return false;
+  return cellOf(state, world) === camp || check(state, world, cal, "walk", `cell:${camp}`).ok;
 }
 
 /** Whether this region's camp can melt snow for water right now: snow on the ground, a fire lit or still gettable, and camp in reach. */
 export function campMeltReady(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
+  const camp = st.campCell;
+  if (camp === null) return false;
   if (state.weather.snowCm < 1) return false;
-  if (!st.fire.lit && fireStep(state, world, cal, st.campCell) === null) return false;
-  return cellOf(state, world) === st.campCell
+  if (!st.fire.lit && fireStep(state, world, cal, camp) === null) return false;
+  return cellOf(state, world) === camp
     ? !st.fire.lit || check(state, world, cal, "melt").ok
-    : check(state, world, cal, "walk", `cell:${st.campCell}`).ok;
+    : check(state, world, cal, "walk", `cell:${camp}`).ok;
 }
 
 /** A place to walk to for water and what a walk there would give: endless at the shore or an open hole, the pool at a seep, the pile's litres at camp. */
@@ -249,8 +256,9 @@ function waterOptions(state: GameState, world: World, cal: Calendar): WaterOptio
   const out: WaterOption[] = [];
   const shore = shoreForWater(state, world, cal);
   if (shore !== null) out.push({ cell: shore, litres: Number.POSITIVE_INFINITY, km: straightKm(world, here, shore), why: " for water" });
-  if (campWaterReady(state, world, cal) && st.campCell !== here) {
-    out.push({ cell: st.campCell, litres: qty(pile(state, st.campCell), "water"), km: straightKm(world, here, st.campCell), why: " for water" });
+  const camp = st.campCell;
+  if (camp !== null && campWaterReady(state, world, cal) && camp !== here) {
+    out.push({ cell: camp, litres: qty(pile(state, camp), "water"), km: straightKm(world, here, camp), why: " for water" });
   }
   for (const k of Object.keys(state.seeps)) {
     const cell = Number(k);
@@ -300,11 +308,12 @@ function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null
     return walkStep(state, world, fullest.cell, " to wait at the seep");
   }
   const st = regionState(state, world, p.region);
-  const atCamp = here === st.campCell;
-  if (campMeltReady(state, world, cal)) {
-    if (!atCamp) return walkStep(state, world, st.campCell, " for water");
+  const camp = st.campCell;
+  const atCamp = camp !== null && here === camp;
+  if (camp !== null && campMeltReady(state, world, cal)) {
+    if (!atCamp) return walkStep(state, world, camp, " for water");
     // The cold step's fire, for the same reason: no fire, no melt.
-    const fs = fireStep(state, world, cal, st.campCell);
+    const fs = fireStep(state, world, cal, camp);
     if (fs) return fs;
     return { id: "melt", step: "melting snow" };
   }
@@ -314,11 +323,13 @@ function thirstyStep(state: GameState, world: World, cal: Calendar): Step | null
 /** Walk to this region's camp, light a fire there if a cold pit allows it, keep it fed against the wind with dry wood, then wait the storm out. */
 function stormStep(state: GameState, world: World, cal: Calendar): Step | null {
   const st = regionState(state, world, state.player.region);
+  const camp = st.campCell;
+  if (camp === null) return null;
   const here = cellOf(state, world);
-  if (here !== st.campCell) {
-    return check(state, world, cal, "walk", `cell:${st.campCell}`).ok ? walkStep(state, world, st.campCell, " before the storm") : null;
+  if (here !== camp) {
+    return check(state, world, cal, "walk", `cell:${camp}`).ok ? walkStep(state, world, camp, " before the storm") : null;
   }
-  const fs = fireStep(state, world, cal, st.campCell);
+  const fs = fireStep(state, world, cal, camp);
   if (fs) return fs;
   if (st.fire.lit && fuelTotal(st.fire) < SPREAD_FUEL_KG) feedFire(state, world, state.player.region, SPREAD_FUEL_KG - fuelTotal(st.fire), true);
   return { id: "rest", step: "waiting out the storm" };
@@ -327,8 +338,10 @@ function stormStep(state: GameState, world: World, cal: Calendar): Step | null {
 /** Walk to this region's camp and settle in before dark. */
 function homeStep(state: GameState, world: World, cal: Calendar): Step | null {
   const st = regionState(state, world, state.player.region);
-  if (cellOf(state, world) !== st.campCell) {
-    return check(state, world, cal, "walk", `cell:${st.campCell}`).ok ? walkStep(state, world, st.campCell, " before dark") : null;
+  const camp = st.campCell;
+  if (camp === null) return null;
+  if (cellOf(state, world) !== camp) {
+    return check(state, world, cal, "walk", `cell:${camp}`).ok ? walkStep(state, world, camp, " before dark") : null;
   }
   return { id: "rest", step: "in before dark" };
 }
@@ -371,6 +384,7 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
  */
 function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
+  if (st.campCell === null) return false;
   if (fireWarms(st) || roofed(campSite(st))) return true;
   return fireStep(state, world, cal, st.campCell) !== null;
 }
@@ -379,11 +393,13 @@ function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
 function campStep(state: GameState, world: World, cal: Calendar, it: RunnerIntent, need: "sleep" | "cold" | "spent"): Step {
   const p = state.player;
   const st = regionState(state, world, p.region);
+  const camp = st.campCell;
   const here = cellOf(state, world);
-  if (here !== st.campCell) {
+  // No camp made yet reads the same as no way to one: the runner lies down where it stands.
+  if (here !== camp) {
     // A walk home to lie down by day says what it is, the way the sleep step does.
     const why = need === "sleep" ? (cal.isNight ? " for the night" : " to doze") : need === "cold" ? " to warm up" : " for the evening";
-    if (check(state, world, cal, "walk", `cell:${st.campCell}`).ok) return walkStep(state, world, st.campCell, why);
+    if (camp !== null && check(state, world, cal, "walk", `cell:${camp}`).ok) return walkStep(state, world, camp, why);
     const s: Step = need === "sleep"
       ? { id: "sleep", step: "sleeping where {you} {stand}; no way to camp" }
       : need === "cold"
@@ -392,7 +408,7 @@ function campStep(state: GameState, world: World, cal: Calendar, it: RunnerInten
     if (!isRunning(state, s) && need === "sleep") log(state, "No way to camp from here. {You} {sleep} where {you} {are}.", "bad");
     return s;
   }
-  const fs = fireStep(state, world, cal, st.campCell);
+  const fs = fireStep(state, world, cal, camp!);
   if (fs) return fs;
   if (need === "sleep") {
     // A sleep that starts in daylight at camp is a doze by the fire and says
@@ -412,7 +428,7 @@ function hungryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it:
   const before = state.player.kcal;
   autoEat(state, world, rng, true);
   if (state.player.kcal > before) return null;
-  if (cellOf(state, world) === it.campCell) return null;
+  if (it.campCell === null || cellOf(state, world) === it.campCell) return null;
   const camp = pile(state, it.campCell);
   if (!AUTO_EAT_ORDER.some((f) => edible(state, f) && qty(camp, f) > 1e-9)) return null;
   if (!check(state, world, cal, "walk", `cell:${it.campCell}`).ok) return null;
@@ -530,7 +546,9 @@ export function provision(state: GameState, world: World): void {
 function quiverUp(state: GameState, world: World): void {
   const p = state.player;
   if (!hasTool(p, "bow")) return;
-  const camp = pile(state, regionState(state, world, p.region).campCell);
+  const campCell = regionState(state, world, p.region).campCell;
+  if (campCell === null) return;
+  const camp = pile(state, campCell);
   const want = ARROWS_TO_CARRY - qty(p.pack, "arrow");
   if (want <= 0) return;
   transfer(camp, p.pack, "arrow", Math.min(want, qty(camp, "arrow")));

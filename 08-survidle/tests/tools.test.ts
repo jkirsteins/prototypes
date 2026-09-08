@@ -11,6 +11,7 @@ import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { beginTask, check } from "../src/sim/tasks";
+import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
 
@@ -20,6 +21,7 @@ describe("tools as items", () => {
     expect(yieldItem("craft", "stoneAxe")).toBe("stoneAxe");
     expect(ITEM_KG.axe).toBe(1.5);
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const o = addOrder(state, world, { task: "craft", arg: "stoneAxe", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep");
     expect(o.kind).toBe("keep");
     expect(keepTarget(o)).toEqual({ item: "stoneAxe", qty: 1 });
@@ -49,9 +51,10 @@ describe("tools as items", () => {
 
   it("a spare on the ground is taken up when a task needing it starts there", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const p = state.player;
     p.tools = [];
-    const camp = regionState(state, world, p.region).campCell;
+    const camp = regionState(state, world, p.region).campCell!;
     placeAt(state, world, camp);
     addItem(pile(state, camp), "log", 1);
     expect(check(state, world, cal, "split").ok).toBe(false);
@@ -64,6 +67,7 @@ describe("tools as items", () => {
 
   it("a vessel taken up is empty and thawed", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     addItem(state.player.pack, "barkBucket", 1);
     expect(takeUp(state, world, "barkBucket")).toBe(true);
     expect(tool(state.player, "barkBucket")).toEqual({ id: "barkBucket", durability: 100, litres: 0, frozen: false });
@@ -71,8 +75,9 @@ describe("tools as items", () => {
 
   it("crafting a tool you hold makes a spare; one you lack is taken up", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const p = state.player;
-    const camp = regionState(state, world, p.region).campCell;
+    const camp = regionState(state, world, p.region).campCell!;
     placeAt(state, world, camp);
     addItem(p.pack, "stone", 2);
     addItem(p.pack, "stick", 1);

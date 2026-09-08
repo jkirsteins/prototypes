@@ -4,6 +4,7 @@ import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { kitOut } from "../src/sim/reference";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 
 /** A player nobody may touch: any read throws, so a world function that still reaches for the body fails loudly. */
 function forbidPlayer(state: ReturnType<typeof newGame>["state"]) {
@@ -13,11 +14,12 @@ function forbidPlayer(state: ReturnType<typeof newGame>["state"]) {
 describe("nobody home", () => {
   it("runs the world half only and never reads the player", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     kitOut(state, world);
     const st = regionState(state, world, state.player.region);
     st.fire.lit = true;
     st.fire.fuelKg = 6;
-    siteFor(st, st.campCell).structures.dryingRack = true;
+    siteFor(st, st.campCell!).structures.dryingRack = true;
     st.rack.kg = 3;
     st.snareCatch.count = 2;
     st.snares = 2;
@@ -37,6 +39,7 @@ describe("nobody home", () => {
 
   it("does nothing in nobody mode that a dead flag would stop while alive", () => {
     const { state, world } = newGame(8);
+    siteCamp(state, world);
     state.dead = { cause: "froze", minute: 0 };
     advance(state, world, 60);
     expect(state.minute).toBe(0);
@@ -46,15 +49,16 @@ describe("nobody home", () => {
 
   it("freezes the water at camp over a winter gap, with the bucket rolling its split", () => {
     const { state, world } = newGame(8, 280);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    addItem(pile(state, st.campCell), "barkBucket", 3);
-    addItem(pile(state, st.campCell), "water", 30);
+    addItem(pile(state, st.campCell!), "barkBucket", 3);
+    addItem(pile(state, st.campCell!), "water", 30);
     state.dead = { cause: "froze", minute: state.minute };
     forbidPlayer(state);
     advance(state, world, 120 * 1440, { nobody: true });
-    expect(qty(pile(state, st.campCell), "water")).toBe(0);
-    expect(qty(pile(state, st.campCell), "ice")).toBeGreaterThan(0);
+    expect(qty(pile(state, st.campCell!), "water")).toBe(0);
+    expect(qty(pile(state, st.campCell!), "ice")).toBeGreaterThan(0);
     // The split is a one-in-three roll per bucket on the freezing hour; deterministic per seed, so assert only that the rule ran.
-    expect(qty(pile(state, st.campCell), "barkBucket")).toBeLessThanOrEqual(3);
+    expect(qty(pile(state, st.campCell!), "barkBucket")).toBeLessThanOrEqual(3);
   });
 });

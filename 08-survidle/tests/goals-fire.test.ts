@@ -7,6 +7,7 @@ import { FAT_FULL } from "../src/sim/player";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { regionAt, type World } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 /**
  * These goals credit on real deeds emitted from stepCamp over real advance()
@@ -40,8 +41,9 @@ function run(state: ReturnType<typeof newGame>["state"], world: World, minutes: 
 /** A camp with a huge fuel stock so the fire's own burn math never ends a test early; only the deliberate mutations in each test do. */
 function litCamp(startDoy?: number) {
   const { state, world } = startDoy === undefined ? newGame(3) : newGame(3, startDoy);
+  siteCamp(state, world);
   const st = regionState(state, world, state.player.region);
-  placeAt(state, world, st.campCell);
+  placeAt(state, world, st.campCell!);
   state.player.autoFeed = false;
   st.fire.lit = true;
   st.fire.fuelKg = 1e7;

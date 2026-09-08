@@ -7,6 +7,7 @@ import { kitOut, REFERENCE_ORDERS } from "../src/sim/reference";
 import { addOrder } from "../src/sim/orders";
 import { addItem, pile } from "../src/sim/inventory";
 import { regionState } from "../src/sim/regionstate";
+import { siteCamp } from "./siting-helpers";
 
 describe("the away dial", () => {
   it("is eight hours on a new game and on a save without it, and caps at twenty-four", () => {
@@ -28,11 +29,12 @@ describe("the away dial", () => {
 
   it("the catch-up simulates at most the dial's hours, whatever the real time away", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     kitOut(state, world);
     for (const { req, kind } of REFERENCE_ORDERS) {
       addOrder(state, world, req, kind);
     }
-    const campCell = regionState(state, world, state.player.region).campCell;
+    const campCell = regionState(state, world, state.player.region).campCell!;
     addItem(pile(state, campCell), "driedMeat", 5);
     state.awayHours = 1;
     const from = state.minute;

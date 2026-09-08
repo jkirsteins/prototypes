@@ -13,6 +13,7 @@ import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
 import { statsHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
+import { siteCamp } from "./siting-helpers";
 
 type G = ReturnType<typeof newGame>;
 function run(g: G, minutes: number) {
@@ -24,6 +25,7 @@ const cal = calendar(0);
 describe("torch, the item", () => {
   it("is a 0.4 kg count item made from a stick and two bark in twenty minutes", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     expect(ITEM_KG.torch).toBe(0.4);
     expect(RECIPES.torch).toEqual({ name: "torch", needs: [{ item: "stick", qty: 1 }, { item: "bark", qty: 2 }], minutes: 20, out: { item: "torch", qty: 1 } });
@@ -49,6 +51,7 @@ describe("torch, the item", () => {
 describe("lighting a torch", () => {
   it("is Building's work under its own mastery key", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     expect(MASTERY_KEYS.building).toContain("lightTorch");
     expect(skillOf("lightTorch")).toBe("building");
     expect(masteryKey(state, world, "lightTorch")).toBe("lightTorch");
@@ -56,11 +59,12 @@ describe("lighting a torch", () => {
 
   it("takes a minute at a lit fire, ten with the drill, and is refused without either", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     expect(check(state, world, cal, "lightTorch").why).toBe("needs a torch");
     addItem(state.player.pack, "torch", 2);
     expect(check(state, world, cal, "lightTorch").why).toBe("needs a fire or a fire drill");
-    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 5;
     const atFire = check(state, world, cal, "lightTorch");
@@ -78,6 +82,7 @@ describe("lighting a torch", () => {
 
   it("consumes the torch, wears the drill away from the fire, and burns for an hour", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "torch", 1);
@@ -98,9 +103,10 @@ describe("lighting a torch", () => {
 
   it("lit from the fire, the drill is spared", () => {
     const g = newGame(3);
+    siteCamp(g.state, g.world);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 5;
     addItem(state.player.pack, "torch", 1);
@@ -113,6 +119,7 @@ describe("lighting a torch", () => {
 
   it("shows as a tag while it burns", () => {
     const { state, world } = newGame(3);
+    siteCamp(state, world);
     const html = () => statsHtml(state, world, cal, 5, newUiState());
     expect(html()).not.toContain("torch lit");
     state.player.torch = { lit: true, minutes: 42 };
@@ -142,6 +149,7 @@ describe("what a torch does", () => {
   it("keeps the wolves off, as does your own lit fire", () => {
     // Seed 1's start has wolves (seed 2's has none, capacity 0).
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     const rng = new Rng(11);
     const hits = () => {
       let n = 0;

@@ -124,7 +124,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     if (st.rack.kg > 0) {
       // Dry air dries; rain dries at half the rate, so two dry days become four wet ones.
       st.rack.dried += state.weather.precip === "none" ? dt : dt * (RACK_DRY_MINUTES / RACK_DRY_RAIN_MINUTES);
-      if (st.rack.dried >= RACK_DRY_MINUTES) {
+      if (st.rack.dried >= RACK_DRY_MINUTES && st.campCell !== null) {
         const dried = st.rack.kg / MEAT_DRY_RATIO;
         addItem(pile(state, st.campCell), "driedMeat", dried);
         log(state, `${st.rack.kg.toFixed(1)} kg of meat has dried to ${dried.toFixed(1)} kg at ${name()}.`, "good");
@@ -134,7 +134,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     }
 
     // A bucket of ice by a fed fire thaws itself; nobody has to tend it.
-    if (st.fire.lit && st.fire.fuelKg > 0) {
+    if (st.fire.lit && st.fire.fuelKg > 0 && st.campCell !== null) {
       const campPile = state.piles[st.campCell];
       const ice = campPile ? qty(campPile, "ice") : 0;
       if (campPile && ice > 1e-9) {
@@ -175,7 +175,7 @@ export function feedFire(state: GameState, world: World, region: number, wantKg:
   const st = regionState(state, world, region);
   const room = Math.max(0, Math.min(wantKg, FIRE_MAX_KG - fuelTotal(st.fire)));
   let added = 0;
-  const invs = [state.player.pack, pile(state, st.campCell)];
+  const invs = st.campCell === null ? [state.player.pack] : [state.player.pack, pile(state, st.campCell)];
   for (const inv of invs) {
     if (added >= room - 1e-9) break;
     const took = removeItem(inv, "firewood", room - added);
@@ -194,7 +194,8 @@ export function feedFire(state: GameState, world: World, region: number, wantKg:
 
 /** Dry firewood only: what wet wood in reach cannot count toward a fresh light. */
 export function firewoodAt(state: GameState, world: World, region: number): number {
-  return qty(state.player.pack, "firewood") + qty(pile(state, regionState(state, world, region).campCell), "firewood");
+  const camp = regionState(state, world, region).campCell;
+  return qty(state.player.pack, "firewood") + (camp === null ? 0 : qty(pile(state, camp), "firewood"));
 }
 
 /** Raw meat the camp's racks hold together. */
@@ -228,7 +229,8 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
     const r = regionAt(world, id);
     const st = state.regions[id];
     if (who && id === who.region) {
-      const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty([state.player.pack, pile(state, st.campCell)], f) > 1e-9);
+      const campInvs = st.campCell === null ? [state.player.pack] : [state.player.pack, pile(state, st.campCell)];
+      const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty(campInvs, f) > 1e-9);
       noteLarder(state, leanAtCamp);
     }
     if (st.snareCatch.count > 0) {
@@ -339,6 +341,8 @@ export function needsMending(site: Site | null, id: DecayingId): boolean {
  */
 export function leaveCamp(state: GameState, world: World): void {
   const st = regionState(state, world, state.player.region);
+  // A first siting leaves nothing behind: there is no old cell to tip a fire into.
+  if (st.campCell === null) return;
   const old = pile(state, st.campCell);
   const dry = st.fire.fuelKg;
   const wet = st.fire.wetKg;

@@ -10,7 +10,7 @@ import { leaveCamp, needsMending, rackCapacity, siteLine, siteReport } from "./c
 import { cue } from "./cues";
 import { exploreRoute, survivorRoute } from "./routing";
 import {
-  addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, produce, qty, reach,
+  addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, pileAt, produce, qty, reach,
   removeItem, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
 } from "./inventory";
 import {
@@ -39,7 +39,7 @@ import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roof
 import { goalDeed } from "./goals";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
-import { campSite, discovery, regionState, siteAt, siteFor } from "./regionstate";
+import { campSite, discovery, regionState, siteFor } from "./regionstate";
 import { SEEP, seepGround, seepNeedsRedig } from "./seep";
 import { seeFrom, sightReachCells } from "./sight";
 import { rootCellFullKg, rootCellKg, rootDigFactor, setRootCellKg } from "./stocks";
@@ -102,6 +102,13 @@ export function pausedFraction(state: GameState, world: World, id: TaskId, arg?:
   const key = pauseKey(state, world, id, arg, at);
   return key ? (state.paused[key]?.fraction ?? 0) : 0;
 }
+
+/**
+ * Why every camp-addressed task is refused in a region nobody has made camp
+ * in. One line for the lot, so the answer to "hang meat", "light the fire"
+ * and "camp for the night" is the same sentence and points at the same fix.
+ */
+export const NO_CAMP = "no camp here yet";
 
 /** Tasks whose pace depends on the body; the rest are walks and waits. Exported so a test can hold availableTasks to covering every one of them. */
 export const WORK_TASKS = new Set<TaskId>([
@@ -179,14 +186,19 @@ export function walkTarget(state: GameState, world: World, arg: string): { cell:
   const [kind, val] = parts;
   if (kind === "spot") {
     // "camp" is the one spot a move sends elsewhere; every other spot's cell is fixed at generation.
-    if (val === "camp") return { cell: campCellOf(state, world), label: SPOT_WORDS.camp, thin };
+    if (val === "camp") {
+      const camp = campCellOf(state, world);
+      return camp === null ? null : { cell: camp, label: SPOT_WORDS.camp, thin };
+    }
     const s = spotOf(regionAt(world, state.player.region), val as SpotId);
     return s ? { cell: s.cell, label: SPOT_WORDS[val as SpotId], thin } : null;
   }
   if (kind === "region") {
     const id = Number(val);
     const r = regionAt(world, id);
-    return r ? { cell: campCellOf(state, world, id), label: r.name, thin } : null;
+    // Travelling to a region aims at its own ground, and a region nobody has camped in
+    // still has a landmark cell to walk to: the one generation put its "camp" spot on.
+    return r ? { cell: campCellOf(state, world, id) ?? r.campCell, label: r.name, thin } : null;
   }
   if (kind === "cell") {
     const cell = Number(val);
@@ -206,7 +218,7 @@ export function whereIs(state: GameState, world: World, cell: number): string {
   const region = cellAt(world, cell).region;
   const r = regionAt(world, region);
   const inRegion = region === state.player.region ? "" : ` in ${r.name}`;
-  if (cell === campCellOf(state, world, region)) return `${SPOT_WORDS.camp}${inRegion}`;
+  if (campCellOf(state, world, region) !== null && cell === campCellOf(state, world, region)) return `${SPOT_WORDS.camp}${inRegion}`;
   const spot = r.spots.find((s) => s.id !== "camp" && s.cell === cell);
   if (spot) return `${SPOT_WORDS[spot.id]}${inRegion}`;
   const here = cellCenter(world, cellOf(state, world));
@@ -289,7 +301,10 @@ function noVesselRoom(state: GameState, world: World): string | null {
   if (vesselRoom(p) > 1e-9) return null;
   if (p.tools.some((t) => t.frozen && (TOOLS[t.id].litres ?? 0) > 0)) return "no vessel has room to fill";
   const homeSt = regionState(state, world, p.region);
-  return campWaterRoom(pile(state, homeSt.campCell), campSite(homeSt)) > 0 ? "the vessels are full" : "camp is full";
+  // No camp to pour into: the vessels being full is the whole of it, and "camp is full"
+  // would name a place that does not exist yet.
+  if (homeSt.campCell === null) return "the vessels are full";
+  return campWaterRoom(pileAt(state, homeSt.campCell), campSite(homeSt)) > 0 ? "the vessels are full" : "camp is full";
 }
 
 /** How much is about for a hunt or a cast from this cell, by the same weights the draw uses. 0 when the ground suits nothing. */
@@ -357,7 +372,7 @@ export function huntGroundValue(state: GameState, world: World, cal: Calendar, a
 function kitInReach(state: GameState, world: World, item: ItemId, invs: Inventory[]): boolean {
   if (totalQty(invs, item) >= 1) return true;
   const st = regionState(state, world, state.player.region);
-  return cellOf(state, world) === st.campCell && qty(pile(state, st.campCell), item) >= 1;
+  return st.campCell !== null && cellOf(state, world) === st.campCell && qty(pile(state, st.campCell), item) >= 1;
 }
 
 /** A patch gives this much to the most worn piece. */
@@ -427,8 +442,9 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
   // fishing spear". Materials are not: they are fetched by the delivery rules
   // and never carried out to the work.
   const here = cellOf(state, world);
-  const toolInvs = at !== here && here === st.campCell ? [...invs, pile(state, here)] : invs;
-  const camp = at === st.campCell;
+  const campCell = st.campCell;
+  const toolInvs = at !== here && here === campCell ? [...invs, pile(state, here)] : invs;
+  const camp = campCell !== null && at === campCell;
   const terrain = cellAt(world, at).terrain;
   const opt = (partial: Partial<TaskOption> & { label: string; group: TaskGroup }): TaskOption => ({
     id, arg, detail: "", duration: 0, ok: true, why: "", repeatable: false, ...partial,
@@ -439,7 +455,14 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     if (!hasSpot(r, spot)) return { ...o, ok: false, never: true, why: `no ${what} in ${r.name}` };
     return { ...o, ok: false, why: `stand ${what === "water" ? "by" : "in"} the ${what}; walk to ${SPOT_WORDS[spot]}` };
   };
-  const needCamp = (o: TaskOption): TaskOption => (camp ? o : { ...o, ok: false, why: "walk to camp" });
+  /**
+   * The one guard every camp-addressed task goes through. Two answers, in
+   * order: there is no camp in this region at all, or there is one and it is
+   * not the ground under foot. `haveCamp` is the first answer alone, for the
+   * work that walks itself to camp rather than needing to be stood at it.
+   */
+  const haveCamp = (o: TaskOption): TaskOption => (campCell === null ? { ...o, ok: false, why: NO_CAMP } : o);
+  const needCamp = (o: TaskOption): TaskOption => (campCell === null ? { ...o, ok: false, why: NO_CAMP } : camp ? o : { ...o, ok: false, why: "walk to camp" });
 
   switch (id) {
     case "chop": {
@@ -751,11 +774,12 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
         if (vesselLitresCapacity(p) <= 0 && !kitInReach(state, world, "barkBucket", invs) && !kitInReach(state, world, "waterskin", invs)) return { ...o2, ok: false, why: "needs a vessel to bail with" };
         if (done > 0) return { ...o2, detail: `${Math.round((done / total) * 100)}% dug` };
         // The sticks are pocketed at camp when the order sets out (provisionKit), so the camp pile counts from camp, as a snare's kit does.
-        const sticks = totalQty(invs, "stick") + (cellOf(state, world) === st.campCell && at !== st.campCell ? qty(pile(state, st.campCell), "stick") : 0);
+        const sticks = totalQty(invs, "stick") + (campCell !== null && here === campCell && at !== campCell ? qty(pile(state, campCell), "stick") : 0);
         if (sticks < def.needs[0].qty) return { ...o2, ok: false, why: "needs 4 sticks" };
         return o2;
       }
-      if (!camp) return { ...o, ok: false, why: "walk to camp" };
+      const o3 = needCamp(o);
+      if (!o3.ok) return o3;
       if (sid === "snowShelter") {
         if (site?.structures.turfHut || site?.structures.cabin) return { ...o, ok: false, why: "the hut is warmer" };
         if (site?.structures.snowShelter) return { ...o, ok: false, why: "already built here" };
@@ -852,23 +876,26 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       // a target given in the same "region:N" shape walk and explore already
       // take is what lets the reference player point this same search at some
       // other named ground, an heir's old camp among it.
-      const camp = (arg ? walkTarget(state, world, arg)?.cell : undefined) ?? campCellOf(state, world);
+      // "Home" is the ground named in the arg when there is one - an heir searches for
+      // the camp of the life before, in another region - and this region's camp otherwise.
+      const home = (arg ? walkTarget(state, world, arg)?.cell : undefined) ?? campCell;
       const o = opt({ group: "move", label: "Search for a way home", detail: "", repeatable: false });
-      const route = survivorRoute(state, world, here, camp, walkableIce(state.weather), fearsFell(state));
+      if (home === null) return { ...o, ok: false, why: NO_CAMP };
+      const route = survivorRoute(state, world, here, home, walkableIce(state.weather), fearsFell(state));
       if (route) return { ...o, ok: false, why: "{you} {know} the way home" };
       // Nobody can say how far the unmapped ground between here and camp actually runs, so no duration is offered.
       return { ...o, duration: 0, detail: "no telling how long; it ends the moment the way opens" };
     }
     case "haul": {
-      const here = at;
-      const campCell = st.campCell;
+      const from = at;
       // Haul does not read `repeat` (beginTask refuses "haul" outright; the intent's own until governs it), so a loop button beside it would be a promise the button cannot keep.
-      const o = opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false });
-      if (here === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
+      const o = haveCamp(opt({ group: "move", label: "Haul to camp", detail: "", repeatable: false }));
+      if (!o.ok || campCell === null) return o;
+      if (from === campCell) return { ...o, ok: false, why: "{you} {are} at camp" };
       const kg = weight(pile(state, at));
       if (kg <= TRACE_KG) return { ...o, ok: false, why: "nothing on the ground here" };
       const ice = walkIceMode(state, false);
-      const route = survivorRoute(state, world, here, campCell, ice, fearsFell(state));
+      const route = survivorRoute(state, world, from, campCell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
       const loaded = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, body(state).packHardKg + 5), ice);
       const empty = routeMinutes(world, route, baseWalkSpeed(state, cal, state.weather, 5), ice);
@@ -876,14 +903,14 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "makeCamp": {
       const o = opt({ group: "camp", label: "Make camp here", detail: "", duration: 20 });
-      if (at === campCellOf(state, world)) return { ...o, ok: false, why: "this is the camp" };
+      if (campCell !== null && at === campCell) return { ...o, ok: false, why: "this is the camp" };
       if (!passable(terrain)) return { ...o, ok: false, why: "not here" };
       return { ...o, detail: siteLine(siteReport(state, world, at)) };
     }
     case "night":
-      return opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 });
+      return haveCamp(opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 }));
     case "wait":
-      return opt({ group: "camp", label: "Wait at camp", detail: "rest at camp until there is something to do", duration: 0 });
+      return haveCamp(opt({ group: "camp", label: "Wait at camp", detail: "rest at camp until there is something to do", duration: 0 }));
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
     case "sleep": {
@@ -904,7 +931,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       const o = needCamp(opt({ group: "camp", label: "Thaw the water", detail: "a frozen vessel by the fire", duration: 10 }));
       if (!o.ok) return o;
       if (!st.fire.lit) return { ...o, ok: false, why: "needs a lit fire" };
-      if (!p.tools.some((t) => t.frozen) && qty(pile(state, st.campCell), "ice") <= 1e-9) return { ...o, ok: false, why: "nothing is frozen" };
+      if (!p.tools.some((t) => t.frozen) && qty(pileAt(state, campCell), "ice") <= 1e-9) return { ...o, ok: false, why: "nothing is frozen" };
       return o;
     }
     case "lightIndoors": {
@@ -1145,7 +1172,8 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     // The first minute of real progress is what raises the site, the same as a completed build does.
     if (arg !== "snare") {
       const homeSt = regionState(state, world, state.player.region);
-      siteFor(homeSt, homeSt.campCell).build[arg as StructureId] = 0.001;
+      // The build's own legality has already found the camp: nothing raises a site without one.
+      siteFor(homeSt, homeSt.campCell!).build[arg as StructureId] = 0.001;
     }
   }
   if (id === "walk" || id === "travel") {
@@ -1171,6 +1199,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   if (id === "searchHome") {
     const home = (arg ? walkTarget(state, world, arg)?.cell : undefined) ?? campCellOf(state, world);
     const from = cellOf(state, world);
+    if (home === null) return false;
     const leg = nextHomeLeg(state, world, cal, from, home);
     if (!leg) return false;
     const ice = walkIceMode(state, false);
@@ -1222,7 +1251,8 @@ export function setAside(state: GameState, world: World): void {
   if (!t) return;
   if (t.id === "build" && t.arg !== "snare") {
     const homeSt = regionState(state, world, state.player.region);
-    const site = siteFor(homeSt, homeSt.campCell);
+    // A build under way was started at a camp; setting it aside cannot have unmade one.
+    const site = siteFor(homeSt, homeSt.campCell!);
     const sid = t.arg as StructureId;
     site.build[sid] = (site.build[sid] ?? 0) + t.progress;
   } else if (t.id === "walk" || t.id === "travel" || t.id === "explore" || t.id === "searchHome") {
@@ -1728,7 +1758,7 @@ const SITE_STRUCTURE_NAME: Partial<Record<keyof Site["structures"], string>> = {
  */
 export function leftBehind(state: GameState, world: World): string {
   const st = regionState(state, world, state.player.region);
-  const site = siteAt(st, st.campCell);
+  const site = campSite(st);
   const names = site
     ? (Object.keys(site.structures) as (keyof Site["structures"])[])
         .filter((sid) => site.structures[sid])
@@ -1736,7 +1766,7 @@ export function leftBehind(state: GameState, world: World): string {
     : [];
   // Read only: pile() would insert an empty inventory at the camp cell, which the map
   // then underlines as though something lay there.
-  const p = state.piles[st.campCell];
+  const p = st.campCell === null ? undefined : state.piles[st.campCell];
   const kg = (p ? weight(p) : 0) + st.fire.fuelKg + st.fire.wetKg + st.rack.kg;
   const parts = kg > 1e-9 ? [...names, `${Math.round(kg * 10) / 10} kg`] : names;
   if (parts.length === 0) return "";
@@ -2050,7 +2080,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         consume(invs, STRUCTURES.snare.needs);
         st.snares++;
       } else {
-        const site = siteFor(st, st.campCell);
+        const site = siteFor(st, st.campCell!);
         if (sid === "seep") {
           const here = cellOf(state, world);
           state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
@@ -2080,7 +2110,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const sid = arg as DecayingId;
       consume(invs, MEND[sid].needs);
       // Reachable only once needsMending has confirmed the structure stands, so the site is already there.
-      siteFor(st, st.campCell).structureAge[sid] = 0;
+      siteFor(st, st.campCell!).structureAge[sid] = 0;
       record(state, { kind: "repaired", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is mended.`, "good");
       return;

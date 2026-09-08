@@ -5,7 +5,7 @@ import { needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
 import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
-import { herePile, listItems, pile, pilesIn, qty, weight } from "../sim/inventory";
+import { herePile, listItems, pileAt, pilesIn, qty, weight } from "../sim/inventory";
 import { body } from "../sim/person";
 import { intentSentence, WAITING_STEP } from "../sim/intent";
 import { CLOTHING, FOODS, type FoodId, KCAL_FULL, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
@@ -295,22 +295,26 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
     `bog ${pct(f.bog)}`, `meadow ${pct(f.meadow)}`, `rock ${pct(r.rock)}`, `water ${pct(f.water)}`,
   ].join(", ");
   const myCell = cellOf(state, world);
+  // The live camp, or null where nobody has made one: the generated "camp" spot is
+  // ground, not a camp, so its row is left out until there is a camp to draw.
+  const liveCamp = campCellOf(state, world, id);
   const spots = r.spots
     .map((s) => {
+      if (s.id === "camp" && liveCamp === null) return "";
       const pileKg = state.piles[s.cell] ? weight(state.piles[s.cell]) : 0;
       const lying = pileKg > 0 ? `${fmtKg(pileKg)} lying there` : "";
       if (!here) {
-        const km = kmBetween(state, world, campCellOf(state, world, id), s.cell);
-        const dist = s.id === "camp" ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
+        const km = liveCamp === null ? null : kmBetween(state, world, liveCamp, s.cell);
+        const dist = s.id === "camp" || liveCamp === null ? "" : km === null ? "no way there" : `${fmtKm(km)} from camp`;
         return `<div>${SPOT_WORDS[s.id]} <small>${[dist, lying].filter(Boolean).join(", ")}</small></div>`;
       }
       // The "camp" spot's cell is generated once and never moves; the live camp is campCellOf
       // (walkTarget's own "spot:camp" case resolves the same way, so the button below agrees).
-      const cell = s.id === "camp" ? campCellOf(state, world, id) : s.cell;
+      const cell = s.id === "camp" ? liveCamp! : s.cell;
       // A generated spot sited on the live camp's own cell would draw a second row for
       // the same cell (two "you are here" once you stand on it); the camp row above,
       // listed first, already stands for it.
-      if (s.id !== "camp" && cell === campCellOf(state, world, id)) return "";
+      if (s.id !== "camp" && cell === liveCamp) return "";
       if (cell === myCell) return `<div><b>@</b> ${SPOT_WORDS[s.id]} <small>${["you are here", lying].filter(Boolean).join(", ")}</small></div>`;
       // Distance and time from where the player stands, along the route.
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
@@ -363,7 +367,7 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
   const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
-  const campPile = pile(state, st.campCell);
+  const campPile = pileAt(state, st.campCell);
   const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`

@@ -11,19 +11,21 @@ import { placeAtSpot } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 describe("camp", () => {
   it("burns 3 kg of firewood an hour and feeds itself from camp while you are there", () => {
     const { state, world } = newGame(2);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    siteFor(st, st.campCell).structures.firePit = true;
+    siteFor(st, st.campCell!).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 6;
-    addItem(pile(state, st.campCell), "firewood", 10);
+    addItem(pile(state, st.campCell!), "firewood", 10);
     for (let m = 0; m < 65; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     expect(st.fire.lit).toBe(true);
     // 6 kg minus 3 kg burnt, then topped up from the pile when it dropped to 3 kg.
-    expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
+    expect(qty(pile(state, st.campCell!), "firewood")).toBeLessThan(10);
     state.player.autoFeed = false;
     for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     // Thirteen hours outlasts both the burn and the ember window that follows
@@ -36,17 +38,19 @@ describe("camp", () => {
 
   it("dries 3 kg of raw meat into 1 kg over two dry days", () => {
     const { state, world } = newGame(2);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
-    siteFor(st, st.campCell).structures.dryingRack = true;
+    siteFor(st, st.campCell!).structures.dryingRack = true;
     addItem(state.player.pack, "rawMeat", 3);
     expect(loadRack(state, world)).toBeCloseTo(3);
     for (let m = 0; m < 48 * 60; m++) stepCamp(state, world, -5, 1, { region: state.player.region, atCamp: true });
     expect(st.rack.kg).toBe(0);
-    expect(qty(pile(state, st.campCell), "driedMeat")).toBeCloseTo(1);
+    expect(qty(pile(state, st.campCell!), "driedMeat")).toBeCloseTo(1);
   });
 
   it("snares catch hares where hares are, and a fox takes old catches", () => {
     const { state, world } = newGame(2);
+    siteCamp(state, world);
     const rng = new Rng(4);
     const hares = (id: number) => regionAt(world, id).capacity.hare ?? 0;
     const home = state.player.region;
@@ -70,6 +74,7 @@ describe("camp", () => {
 
   it("eats a portion and auto-eats when low, keeping raw meat off the menu", () => {
     const { state, world } = newGame(2);
+    siteCamp(state, world);
     const rng = new Rng(1);
     state.player.kcal = 1000;
     state.player.pack = { items: {}, stacks: {} };
@@ -92,6 +97,7 @@ describe("camp", () => {
   it("wolves come only at night outside shelter", () => {
     // Seed 1's start has wolves (seed 2's has none, capacity 0).
     const { state, world } = newGame(1);
+    siteCamp(state, world);
     const rng = new Rng(11);
     let hits = 0;
     for (let i = 0; i < 2000; i++) {
@@ -101,7 +107,7 @@ describe("camp", () => {
     }
     expect(hits).toBeGreaterThan(5);
     const lst = regionState(state, world, state.player.region);
-    siteFor(lst, lst.campCell).structures.leanTo = true;
+    siteFor(lst, lst.campCell!).structures.leanTo = true;
     hits = 0;
     for (let i = 0; i < 2000; i++) {
       state.player.health = 100;
@@ -117,6 +123,7 @@ describe("the trap line", () => {
     expect(MAX_SNARES).toBe(40);
     expect(SNARE_ODDS_PER_NIGHT).toBe(0.04);
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     st.snares = 40;
     addItem(state.player.pack, "snare", 1);
@@ -129,6 +136,7 @@ describe("the trap line", () => {
 
   it("forty snares at full hare density catch about a hare and a half a night", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     st.snares = 40;
     st.pop.hare = 100000;

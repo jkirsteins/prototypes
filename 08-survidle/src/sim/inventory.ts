@@ -115,6 +115,16 @@ export function pile(state: GameState, cell: number): Inventory {
   return inv;
 }
 
+/**
+ * What lies on a cell, read without raising a pile there - and nothing at all
+ * for a cell that is null, which is how a region with no camp reads its camp
+ * pile. The inventory handed back is a fresh empty one when there is no pile,
+ * so nothing may be added through this call; use pile() to put something down.
+ */
+export function pileAt(state: GameState, cell: number | null): Inventory {
+  return (cell === null ? undefined : state.piles[cell]) ?? emptyInventory();
+}
+
 /** The pile under the player's feet. */
 export function herePile(state: GameState, world: World): Inventory {
   return pile(state, cellOf(state, world));

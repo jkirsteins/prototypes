@@ -43,6 +43,7 @@ import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import { cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
+import { siteCamp } from "./siting-helpers";
 
 /**
  * No reference seed's home region has a birch cell (the brief's own
@@ -75,12 +76,14 @@ describe("the reference player", () => {
     expect(list.length).toBeGreaterThan(20);
     stepReference(ref, 5 * 60);
     expect(ref.state.dead).toBeNull();
-    const camp = pile(ref.state, regionState(ref.state, ref.world, ref.state.player.region).campCell);
+    const camp = pile(ref.state, regionState(ref.state, ref.world, ref.state.player.region).campCell!);
     expect(qty(camp, "water") + qty(camp, "ice")).toBeGreaterThan(0);
   });
 
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
     const { state, world, player } = setUpReference(17);
+    // The opening act is making camp; this is about the list that follows it.
+    siteCamp(state, world);
     expect(ordersHere(state, world)).toEqual([]);
     player.tick(state, world);
     const list = ordersHere(state, world);
@@ -197,6 +200,7 @@ describe("the reference player", () => {
   // Cordage needs bark (see RECIPES), so the want that feeds it is bark.
   it("a want whose stand-in dropped off is given again while unmet, and a finished true job is not", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const player = new ReferencePlayer([
       { req: { task: "bark", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest" }, kind: "keep" },
       { req: { task: "craft", until: { kind: "once" }, arg: "cordage", deliver: "camp", where: "nearest" }, kind: "job" },
@@ -209,7 +213,7 @@ describe("the reference player", () => {
     const tasks = ordersHere(state, world).map((o) => o.req.task);
     expect(tasks.filter((t) => t === "craft")).toEqual([]);
     const st = regionState(state, world, state.player.region);
-    const have = qty(pile(state, st.campCell), "bark");
+    const have = qty(pile(state, st.campCell!), "bark");
     if (have < 5) expect(tasks).toContain("bark");
     else expect(tasks).not.toContain("bark");
   });
@@ -222,6 +226,7 @@ describe("the reference player", () => {
     const tap = REFERENCE_ORDERS.find((w) => w.req.task === "tapSap")!;
     const run = (level: number) => {
       const { state, world } = newGame(17, SAP_FROM_DOY);
+      siteCamp(state, world);
       placeAt(state, world, findBirchCell(world));
       state.player.tools.push({ id: "knife", durability: 100 });
       state.player.kcal = 3000;
@@ -248,11 +253,12 @@ describe("the reference player", () => {
   // tomorrow says so with a count a day; these four are the shapes that must not reopen.
   it("a garment craft is finished for good: one coat's materials, not a fresh one every day camp holds hides", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     setSkillLevel(state, "crafting", 8);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
+    placeAt(state, world, st.campCell!);
     state.player.tools.push({ id: "needle", durability: 100 });
-    const camp = pile(state, st.campCell);
+    const camp = pile(state, st.campCell!);
     addItem(camp, "hide", 60);
     addItem(camp, "sinew", 20);
     const player = new ReferencePlayer([
@@ -269,10 +275,11 @@ describe("the reference player", () => {
 
   it("a build:snare times-5 job is finished for good at five snares, not re-issued to forty", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     setSkillLevel(state, "hunting", 20);
     const st = regionState(state, world, state.player.region);
-    placeAt(state, world, st.campCell);
-    addItem(pile(state, st.campCell), "snare", 10);
+    placeAt(state, world, st.campCell!);
+    addItem(pile(state, st.campCell!), "snare", 10);
     const player = new ReferencePlayer([
       { req: { task: "build", arg: "snare", until: { kind: "times", n: 5 }, deliver: "leave", where: "nearest" }, kind: "job" },
     ]);
@@ -287,6 +294,7 @@ describe("the reference player", () => {
 
   it("read is finished for good after its one hour, not re-given the next day", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
     const player = new ReferencePlayer([{ req: { task: "read", until: { kind: "once" }, deliver: "camp", where: "nearest" }, kind: "job" }]);
     const ref = { state, world, player };
@@ -301,6 +309,7 @@ describe("the reference player", () => {
 
   it("setTrap is finished for good once the trap is set, not re-set the next day while it stands", () => {
     const { state, world } = newGame(4, 200);
+    siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "shore");
     const cell = cellOf(state, world);
     const obs = readShore(state, world, cell);
@@ -318,6 +327,7 @@ describe("the reference player", () => {
 
   it("a times want counts its stand-ins' units: given exactly twice at woodcraft 1, and once as itself at woodcraft 3", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const player = new ReferencePlayer([
       { req: { task: "sticks", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, kind: "job" },
     ]);
@@ -332,6 +342,7 @@ describe("the reference player", () => {
     expect(ordersHere(state, world).some((o) => o.req.task === "sticks")).toBe(false);
 
     const at3 = newGame(17);
+    siteCamp(at3.state, at3.world);
     at3.state.skills.woodcraft.xp = levelMinutes(3);
     const player3 = new ReferencePlayer([
       { req: { task: "sticks", until: { kind: "times", n: 2 }, deliver: "camp", where: "nearest" }, kind: "job" },
@@ -350,6 +361,7 @@ describe("the reference player", () => {
 
   it("a times want that reaches its rung mid-count keeps only its remainder, not a fresh n", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const player = new ReferencePlayer([
       { req: { task: "sticks", until: { kind: "times", n: 3 }, deliver: "camp", where: "nearest" }, kind: "job" },
     ]);
@@ -371,6 +383,7 @@ describe("the reference player", () => {
 
   it("the stand-in follows the level: a keep given at woodcraft 10 is a keep, ranked where the want sits", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     state.skills.woodcraft.xp = levelMinutes(10);
     const player = new ReferencePlayer([
       { req: { task: "fill", until: { kind: "campHas", qty: 2 }, deliver: "camp", where: "nearest" }, kind: "keep" },
@@ -388,7 +401,7 @@ describe("the reference player", () => {
     ref.player.tick(ref.state, ref.world);
     stepReference(ref, 6 * 60);
     expect(ref.state.dead).toBeNull();
-    const camp = pile(ref.state, regionState(ref.state, ref.world, ref.state.player.region).campCell);
+    const camp = pile(ref.state, regionState(ref.state, ref.world, ref.state.player.region).campCell!);
     expect(qty(camp, "water") + qty(camp, "ice")).toBeGreaterThan(0);
     expect(OPENING_TICK_MINUTES).toBe(60);
   });
@@ -415,6 +428,7 @@ describe("the reference player", () => {
     expect(fed(week(FOOD_CLAUSE_KCAL, 0))).toBe(false);
     // Seed 19's shape at day 26: stomach 0, camp 0, eating 2,971 a day - fed.
     const { state, world } = newGame(19);
+    siteCamp(state, world);
     state.player.kcal = 0;
     state.minute = 25 * 1440;
     for (let day = 19; day <= 25; day++) state.ledger.push({ day, yield: emptyYield(), eaten: 2971, leanKcal: 0, nonLeanKcal: 2971, leanAtCamp: false, burn: emptyBurn(), sleepMin: 0, workMin: 0 });
@@ -428,7 +442,8 @@ describe("the reference player", () => {
 
   it("campFoodKcal counts every food lying at camp", () => {
     const { state, world } = newGame(17);
-    const camp = pile(state, regionState(state, world, state.player.region).campCell);
+    siteCamp(state, world);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell!);
     expect(campFoodKcal(state, world)).toBe(0);
     addItem(camp, "cookedFish", 0.5);
     addItem(camp, "fish", 3);
@@ -574,6 +589,7 @@ describe("the lineage", () => {
 describe("wants by level", () => {
   it("opens the large-game hunts at the species' recommended hunting level and not below", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const elk = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "elk")!;
     const any = REFERENCE_ORDERS.find((w) => w.req.task === "hunt" && w.req.arg === "any")!;
     expect(wantOpen(state, world, elk)).toBe(false);
@@ -610,6 +626,7 @@ describe("wants by level", () => {
     // read. A month into the window: the rise starts at nothing on its first day.
     const start = WINTER_WOOD_FROM_DOY + 30;
     const { state, world } = newGame(17, start);
+    siteCamp(state, world);
     setSkillLevel(state, "woodcraft", 10);
     const player = new ReferencePlayer();
     // Above the list's 4-log summer keep, which is what tells the two apart under the rung.
@@ -661,6 +678,7 @@ describe("wants by level", () => {
     // leave standing: the returning player reads their own pile against the winter left
     // and lowers the ask, which costs the same morning that raising it did.
     const { state, world } = newGame(17, WOOD_DUE_DOY);
+    siteCamp(state, world);
     setSkillLevel(state, "woodcraft", 10);
     const player = new ReferencePlayer();
     const reserve = () => ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
@@ -729,6 +747,7 @@ describe("wants by level", () => {
 
   it("the hide coat, trousers and boots wait for Crafting 8; the needle, the fur hat, the mittens and the bow do not", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const want = (arg: string) => REFERENCE_ORDERS.find((w) => w.req.task === "craft" && w.req.arg === arg)!;
     for (const arg of ["hideCoat", "hideTrousers", "hideBoots"]) expect(wantOpen(state, world, want(arg)), arg).toBe(false);
     for (const arg of ["needle", "furHat", "furMittens", "bow"]) expect(wantOpen(state, world, want(arg)), arg).toBe(true);
@@ -755,13 +774,14 @@ describe("wants by level", () => {
     stepReference(ref, 20 * 1440);
     const st = regionState(ref.state, ref.world, ref.state.player.region);
     expect(hasTool(ref.state.player, "fishingSpear")).toBe(true);
-    expect(qty(pile(ref.state, st.campCell), "fishingSpear")).toBe(1);
+    expect(qty(pile(ref.state, st.campCell!), "fishingSpear")).toBe(1);
   });
 });
 
 describe("wants by method", () => {
   it("names the water method: the shore keep in summer, the hole keep with an axe on ice, the melt keep without one", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const shore = REFERENCE_ORDERS.find((w) => w.req.task === "fill" && w.req.arg === "shore" && w.req.until.kind === "campHas" && w.req.until.qty === 2)!;
     const hole = REFERENCE_ORDERS.find((w) => w.req.task === "fill" && w.req.arg === "hole" && w.req.until.kind === "campHas" && w.req.until.qty === 2)!;
@@ -779,13 +799,14 @@ describe("wants by method", () => {
     state.player.tools = state.player.tools.filter((t) => t.id !== "axe");
     expect(wantOpen(state, world, hole)).toBe(false);
     expect(wantOpen(state, world, melt)).toBe(true);
-    addItem(pile(state, st.campCell), "axe", 1);
+    addItem(pile(state, st.campCell!), "axe", 1);
     expect(wantOpen(state, world, hole)).toBe(true);
     expect(wantOpen(state, world, melt)).toBe(false);
   });
 
   it("keeps the pit fire lit until a hut or a hearth stands, then the fire indoors", () => {
     const { state, world } = newGame(17);
+    siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
     const pit = REFERENCE_ORDERS.find((w) => w.req.task === "light")!;
     const indoors = REFERENCE_ORDERS.find((w) => w.req.task === "lightIndoors")!;
@@ -793,7 +814,7 @@ describe("wants by method", () => {
     expect(indoors.kind).toBe("keep");
     expect(wantOpen(state, world, pit)).toBe(true);
     expect(wantOpen(state, world, indoors)).toBe(false);
-    siteFor(st, st.campCell).structures.turfHut = true;
+    siteFor(st, st.campCell!).structures.turfHut = true;
     expect(wantOpen(state, world, pit)).toBe(false);
     expect(wantOpen(state, world, indoors)).toBe(true);
   });

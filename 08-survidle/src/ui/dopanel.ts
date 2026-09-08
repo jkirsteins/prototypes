@@ -435,11 +435,11 @@ function intentRowHtml(o: TaskOption, ui: UiState, state: GameState, world: Worl
   // each of two regions and no way to tell which was which. So the click asks,
   // and the question says what camp this region already holds and what moving
   // it leaves behind, since neither is undone by the click.
-  if (o.id === "makeCamp" && ui.confirmCamp) {
+  if (o.id === "makeCamp" && ui.confirmCamp && regionState(state, world, state.player.region).campCell !== null) {
     const st = regionState(state, world, state.player.region);
     // Where the camp being moved actually is. Not whereIs, which answers "camp"
     // for the camp cell and turns the whole sentence into a tautology.
-    const km = kmBetween(state, world, cellOf(state, world), st.campCell);
+    const km = kmBetween(state, world, cellOf(state, world), st.campCell!);
     const held = km === null
       ? `${esc(regionAt(world, state.player.region).name)}'s camp is somewhere {you} cannot reach from here`
       : `${esc(regionAt(world, state.player.region).name)}'s camp stands ${esc(fmtKm(km))} from here`;

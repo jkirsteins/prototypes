@@ -54,7 +54,7 @@ export const BANKED_KG = 6;
 /** Lets a lit fire down to a few kilos before you leave it; the surplus goes back on the pile. */
 export function bankFire(state: GameState, world: World, region: number): number {
   const st = regionState(state, world, region);
-  if (!st.fire.lit) return 0;
+  if (!st.fire.lit || st.campCell === null) return 0;
   const total = fuelTotal(st.fire);
   if (total <= BANKED_KG) return 0;
   const surplus = total - BANKED_KG;
@@ -221,7 +221,7 @@ export function dryWood(state: GameState, dt: number, who: Presence | null): voi
     const site = campSite(st);
     const sheltered = st.fire.lit || site?.structures.cabin || site?.structures.turfHut;
     const perHour = sheltered ? 2 : site?.structures.leanTo ? (dry ? 2 : 0) : dry ? 0.5 : 0;
-    if (perHour <= 0) continue;
+    if (perHour <= 0 || st.campCell === null) continue;
     const campPile = state.piles[st.campCell];
     const atThisCamp = who !== null && id === who.region && who.atCamp;
     const invs = [campPile, atThisCamp ? state.player.pack : undefined].filter((x): x is Inventory => x !== undefined);
