@@ -12,7 +12,7 @@ import { log, warn } from "./log";
 import { BIG_EATER_BURN, body, hasQuirk } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
-import { campSite, regionState } from "./regionstate";
+import { campSite, regionState, siteAt } from "./regionstate";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
@@ -134,15 +134,17 @@ export const SNOW_FLOOR_C = -3;
 export function feltTemperature(state: GameState, world: World, ambient: number): number {
   const p = state.player;
   const r = regionState(state, world, p.region);
-  const site = campSite(r);
+  // A roof is a roof wherever it stands: the camp's, or one the survivor
+  // moved away from and has walked back into out of the rain.
+  const here = siteAt(r, cellOf(state, world));
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   // A cabin holds its room temperature only once the fire has a hearth to
   // burn on: without one the fire is at the pit outside, and the walls are a
   // roof and no more.
-  const inCabin = site?.structures.cabin && site.structures.hearth;
-  const indoors = camp && campTask && r.fire.lit && r.fire.indoors && (site?.structures.turfHut || inCabin);
-  const inSnow = camp && campTask && site?.structures.snowShelter && !indoors;
+  const inCabin = here?.structures.cabin && here.structures.hearth;
+  const indoors = campTask && r.fire.lit && r.fire.indoors && (here?.structures.turfHut || inCabin);
+  const inSnow = campTask && here?.structures.snowShelter && !indoors;
   let felt: number;
   if (indoors) {
     felt = Math.max(ambient, inCabin ? INDOOR_C.cabin : INDOOR_C.turfHut) + insulation(state);
@@ -152,16 +154,17 @@ export function feltTemperature(state: GameState, world: World, ambient: number)
     // either alone - reachable whenever a hut or cabin stands but its fire is unlit,
     // since nothing clears a snow shelter but three warm days in a row.
     const withSnow = Math.max(ambient, SNOW_FLOOR_C);
-    const withRoof = ambient + roofBonus(site);
+    const withRoof = ambient + roofBonus(here);
     felt = Math.max(withSnow, withRoof) + insulation(state);
   } else {
     felt = ambient + insulation(state);
     // A room at its temperature is the shelter's whole gift; the bonus is for a roof with no warm air under it.
-    if (camp && campTask) felt += shelterBonus(site);
+    if (campTask) felt += shelterBonus(here);
   }
+  // The fire is the camp's: there is no fire burning at a site the survivor left.
   if (camp && fireWarms(r)) felt += fireWarmth(r.fire, campTask);
   if (bedded(state.task)) felt += beddingInsulation(state);
-  if (camp && state.task?.id === "sleep" && site?.structures.boughBed) felt += BOUGH_BED_C;
+  if (state.task?.id === "sleep" && here?.structures.boughBed) felt += BOUGH_BED_C;
   const a = activityOf(state.task);
   felt += a === "heavy" ? 6 : a === "walk" ? 4 : a === "light" ? 2 : 0;
   felt -= 0.15 * p.wetness;

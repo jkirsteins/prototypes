@@ -4,6 +4,8 @@ import { calendar } from "../src/sim/calendar";
 import { dailyCamp } from "../src/sim/camp";
 import { BOUGH_BED_DAYS, STRUCTURE_LIFE_DAYS } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { placeAt } from "../src/sim/position";
+import { feltTemperature } from "../src/sim/player";
 import { campSite, newSite, regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { migrate } from "../src/sim/save";
 
@@ -127,5 +129,30 @@ describe("sites", () => {
     site.boughBedAge = BOUGH_BED_DAYS * 1440 - 1440;
     dailyCamp(state, world, calendar(state.minute, state.startDoy), new Rng(1), { region: state.player.region, atCamp: true });
     expect(siteAt(st, away)!.structures.boughBed).toBe(false);
+  });
+
+  it("an abandoned lean-to shelters whoever sleeps under it", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    const away = st.campCell + 1;
+    siteFor(st, away).structures.leanTo = true;
+    placeAt(state, world, away);
+    state.task = { id: "sleep", progress: 0, duration: 480, repeat: false };
+    const under = feltTemperature(state, world, 0);
+    placeAt(state, world, st.campCell);
+    const open = feltTemperature(state, world, 0);
+    expect(under).toBeGreaterThan(open);
+  });
+
+  it("bare ground gives no roof", () => {
+    const { state, world } = newGame(2);
+    const st = regionState(state, world, state.player.region);
+    const bare = st.campCell + 2;
+    placeAt(state, world, bare);
+    state.task = { id: "sleep", progress: 0, duration: 480, repeat: false };
+    const onBareGround = feltTemperature(state, world, 0);
+    placeAt(state, world, st.campCell);
+    expect(feltTemperature(state, world, 0)).toBe(onBareGround);
+    expect(siteAt(st, bare)).toBeNull();
   });
 });
