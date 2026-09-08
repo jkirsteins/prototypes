@@ -20,7 +20,7 @@ import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
 import { newWorld } from "./sim/newgame";
-import { moveOrderByHand, removeOrderByHand } from "./sim/orders";
+import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
 import { cellOf } from "./sim/position";
 import { current } from "./sim/record";
@@ -518,6 +518,9 @@ function onClick(ev: Event) {
     case "order-remove":
       removeOrderByHand(state, world, cal, rng, Number(target.dataset.id));
       break;
+    case "order-pin":
+      pinOrderByHand(state, world, cal, rng, Number(target.dataset.id));
+      break;
   }
   state.rng = rng.s;
   // After the rng write-back, so the request the click triggers reads the committed rng.
@@ -542,7 +545,7 @@ const forecaster = createForecaster(
 forecaster.onRow = (row) => { noteMonthRow(state, row); };
 /** The actions that change what the forecast reads: orders, needs, camp state. */
 const FORECAST_ACTS = [
-  "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "dismiss",
+  "task", "stop", "intent", "row-kind", "finish", "order-up", "order-down", "order-remove", "order-pin", "dismiss",
   "eat", "feed", "drink", "fill", "take", "drop", "drop-all", "toggle-eat", "toggle-feed", "toggle-drink",
 ];
 /** A request when nothing overlays the game: the list, the day, the dial, the region and the hour each call this; the frame calls it on a cadence. */

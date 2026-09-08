@@ -124,6 +124,23 @@ export function removeOrderByHand(state: GameState, world: World, cal: Calendar,
   decideAgain(state, world, cal, rng);
 }
 
+/**
+ * The door for a pin the player put on or took off. A pin decides the list
+ * as surely as a rank does - it is the one thing that stops it - so the
+ * answer is taken on the click rather than at the end of the chunk in hand:
+ * pinning a row that cannot run has to stop what is running, or the banner
+ * would say the list is held while the survivor visibly worked on.
+ *
+ * The body's row carries no pin: the list never goes past it, so there is
+ * nothing for one to hold.
+ */
+export function pinOrderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, id: number): void {
+  const o = ordersHere(state, world).find((x) => x.id === id);
+  if (!o || isBodyRow(o)) return;
+  o.pinned = !o.pinned;
+  decideAgain(state, world, cal, rng);
+}
+
 /** The stock a keep holds and its target, or null for any other order - including "keep it lit" and a keep on a structure, which hold no stock at all. */
 export function keepTarget(o: Order): { item: ItemId; qty: number } | null {
   if (o.kind !== "keep" || o.req.until.kind !== "campHas" || o.req.task === "light" || o.req.task === "lightIndoors" || structureKeep(o.req, o.kind)) return null;

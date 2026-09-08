@@ -396,8 +396,16 @@ const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><s
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
 const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
 
+/**
+ * The one sentence that answers "is this a queue or a stack": both, and
+ * which one a row landed by is the difference between the two ends of the
+ * list. It sits at the head of the list because that is where a player
+ * looks after clicking something and not finding it where they expected.
+ */
+const LANDING_RULE = `<div class="rule"><small>A click goes to the top. A standing order goes to the bottom.</small></div>`;
+
 /** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
-function ordersHtml(state: GameState, world: World, cal: Calendar): string {
+export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
   // An idle wait is waiting on the list, not on its own hour of rest: it says so
@@ -412,12 +420,23 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const waitWhere = it?.task === "wait" && cellOf(state, world) !== regionState(state, world, state.player.region).campCell
     ? `Waiting, ${describeWhere(state, world)}`
     : "Waiting at camp";
-  const waiting = it?.task === "wait"
-    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
+  // Only the scheduler's own wait, the one belonging to no row, is drawn
+  // loose above the list. The wait the body's row starts is that row's
+  // minute, and drawing it here as well would put the survivor's own doings
+  // in two places at once, neither of them the rank the player set them at.
+  const loose = it?.task === "wait" && it.orderId === null;
+  const waiting = loose
+    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it!.step))}`}</div>${state.task && !idle ? TASK_BAR : ""}`
     : "";
   // One judgement for the whole list: waitingLine reads it per row, and running
   // it per row would judge a ten-row list ten times a frame.
   const judged = judgeOrders(state, world, cal);
+  // A pin is the only thing that stops the list, so the one moment the list
+  // is stopped is the one moment it owes the player a banner: the row, why it
+  // cannot run, and the one click that lets the rest of the list go on.
+  const held = judged.blockedBy
+    ? `<div class="held bad">The list is held up by <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}. Unpin it - its "doing this first" button - to let the rest of the list run.</div>`
+    : "";
   const rows = orders.map((o, i) => {
     const live = it?.orderId === o.id;
     // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
@@ -433,24 +452,30 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     // says to it. It draws no x: it cannot be struck off, and a button that
     // does nothing when clicked is worse than none.
     const move = `<button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button>`;
+    // A row that can be passed over and a row that stops the list are two
+    // behaviours of the same row, so the button says which one is switched on
+    // and what the switched-on one costs. A pin on the body's row would mean
+    // nothing: the list never goes past that row, so it has none.
+    const pin = `<button class="mini${o.pinned ? " on" : ""}" data-act="order-pin" data-id="${o.id}" title="${o.pinned ? "Nothing under this runs until it is done" : "Hold the list here until this is done"}">${o.pinned ? "doing this first - holds the list" : "do this first"}</button>`;
     const btns = isBodyRow(o)
       ? `<span class="ctl">${move}</span>`
-      : `<span class="ctl">${move} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
+      : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
       : `<div class="head">`;
     // Words and not only the title: a touch device has no hover to show one, and
     // a mouse never rests on a row long enough to find it.
     const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
-    return `<div class="order${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
+    return `<div class="order${isBodyRow(o) ? " body" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
   }).join("");
-  return `${waiting}${rows}`;
+  return `${waiting}${held}${LANDING_RULE}${rows}`;
 }
 
 export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const t = state.task;
   const it = state.intent;
   const orders = ordersHere(state, world);
+  const work = orders.some((o) => !isBodyRow(o));
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
@@ -481,11 +506,14 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
     if (t.any) label = `${label} (whatever was about)`;
     if ((t.id === "walk" || t.id === "travel") && state.route) label = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
     head = `<div class="head"><b>${esc(label)}${t.repeat ? " <span class=\"r\">on repeat</span>" : ""}</b><button class="mini" data-act="stop" title="Set it aside; the share done is kept">stop</button></div>${TASK_BAR}`;
-  } else if (!it && !orders.length) {
+  } else if (!it && !work) {
     head = `<div class="dim">Nothing. Pick something below.</div>`;
   }
-  const list = orders.length ? ordersHtml(state, world, cal) : "";
-  return `<h2>${orders.length ? "Orders" : "Doing"}</h2>${head}${list}${asideHtml}`;
+  // The heading names what the panel is a list of, and a list holding only
+  // the body's row is not a list of orders: nobody has given one. Counting
+  // the rows cannot tell the two apart, since the body's row is on every
+  // list from the moment a region exists.
+  return `<h2>${work ? "Orders" : "Doing"}</h2>${head}${ordersHtml(state, world, cal)}${asideHtml}`;
 }
 
 const HORIZON_LABEL: Record<HorizonId, (state: GameState) => string> = {
