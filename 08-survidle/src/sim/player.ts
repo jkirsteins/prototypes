@@ -9,9 +9,9 @@ import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { lightFactor, skyLux, TORCH_LUX, WALK_LUX } from "./light";
 import { log, warn } from "./log";
-import { BIG_EATER_BURN, body, hasQuirk, massFactor } from "./person";
+import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
-import { fillDied, record } from "./record";
+import { current, fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
@@ -109,10 +109,15 @@ const FAT_THIN = 0.75;
 const FAT_RIBS = 0.5;
 const FAT_WASTING = 0.25;
 
-/** Share of the fat reserve gone, 0 (full) to 1 (empty), against this body's own reserve: what a thin body costs elsewhere. */
+/**
+ * How far the body has fallen into its failing range: nothing at the lower
+ * landmark and above, total at the floor it dies on. A naturally lean body
+ * sitting in its settling zone is not starving and reads zero, which is what
+ * makes this safe to feed to warmth, work speed and the body's own words.
+ */
 export function starvation(state: GameState): number {
-  const full = body(state).fatFull;
-  return 1 - clamp(state.player.fat, 0, full) / full;
+  const l = fatLandmarks(current(state).person);
+  return clamp((l.lower - state.player.fat) / (l.lower - l.floor), 0, 1);
 }
 
 /**

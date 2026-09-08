@@ -8,7 +8,8 @@ import { GUT, KCAL_FULL } from "../src/sim/items";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
 import { body, bodyMassKg, derived, fatLandmarks, MEDIAN_MASS_KG } from "../src/sim/person";
-import { FAT_FULL, FAT_KCAL_PER_KG, stepPlayer, workSpeed } from "../src/sim/player";
+import { FAT_FULL, FAT_KCAL_PER_KG, starvation, stepPlayer, workSpeed } from "../src/sim/player";
+import { current } from "../src/sim/record";
 import type { Person } from "../src/sim/types";
 import { waterLossPerHour } from "../src/sim/water";
 
@@ -43,10 +44,12 @@ describe("the fat reserve", () => {
     expect(state.player.fat).toBe(FAT_FULL);
   });
 
-  it("work speed at half fat is three quarters of the same body at full fat", () => {
+  it("work speed at the midpoint of the failing range is three quarters of a non-starving body", () => {
     const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.fat = l.typical;
     const full = workSpeed(state, world);
-    state.player.fat = FAT_FULL / 2;
+    state.player.fat = (l.lower + l.floor) / 2;
     const half = workSpeed(state, world);
     expect(half).toBeCloseTo(full * 0.75, 5);
   });
@@ -208,5 +211,34 @@ describe("the fat landmarks", () => {
     const p: Person = { sex: "m", axes: { strength: 0, build: 0, hands: 0, eyes: 0 }, quirks: [], face: 0 };
     const l = fatLandmarks(p);
     expect(derived(p).leanKg + l.typical / FAT_KCAL_PER_KG).toBeCloseTo(MEDIAN_MASS_KG, 1);
+  });
+});
+
+describe("starvation", () => {
+  it("is nothing at the lower landmark and above, and total at the floor", () => {
+    const { state } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.fat = l.typical;
+    expect(starvation(state)).toBe(0);
+    state.player.fat = l.lower;
+    expect(starvation(state)).toBe(0);
+    state.player.fat = l.upper * 2;
+    expect(starvation(state)).toBe(0);
+    state.player.fat = l.floor;
+    expect(starvation(state)).toBe(1);
+    state.player.fat = 0;
+    expect(starvation(state)).toBe(1);
+  });
+
+  it("rises without a step between the two", () => {
+    const { state } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    const mid = (l.lower + l.floor) / 2;
+    state.player.fat = mid;
+    const s = starvation(state);
+    expect(s).toBeGreaterThan(0);
+    expect(s).toBeLessThan(1);
+    state.player.fat = mid - 1000;
+    expect(starvation(state)).toBeGreaterThan(s);
   });
 });
