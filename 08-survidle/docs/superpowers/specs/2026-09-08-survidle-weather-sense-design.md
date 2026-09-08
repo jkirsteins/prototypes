@@ -1,39 +1,39 @@
 # Survidle: reading the weather, and what to do when it turns
 
-A storm gives one hour's warning, and the only answer to it is to walk
-home. This changes that: a survivor can learn to read the sky, and a
-survivor caught out can light a fire and get a roof over their head where
-they stand.
+A storm gives one hour's warning and the only answer is to walk home. This
+changes that. A survivor learns to read the sky, and a survivor caught out
+looks for cover, improves what they find, and builds only when the ground
+offers nothing.
 
 ## What the code does today, surveyed at 87cf39c
 
-A storm rolls in on a daily chance by season (`STORM_CHANCE`: winter 0.08,
-spring and autumn 0.04, summer 0.02). It starts 60 to 180 minutes after the
-roll and runs **6 to 19 hours** (`360 + rng.int(721)` minutes). While it
-blows, precipitation is heavy and felt temperature drops 6 C
-(`src/sim/player.ts`).
+A storm rolls on a daily chance by season (`STORM_CHANCE`: winter 0.08,
+spring and autumn 0.04, summer 0.02), starts 60 to 180 minutes later and
+runs **6 to 19 hours**. While it blows, precipitation is heavy and felt
+temperature drops 6 C. `stormComing` is true for exactly the hour before,
+and that hour is the whole warning.
 
-`stormComing` is true for exactly the hour before it starts, and that hour
-is the whole warning. `stormStep` in `src/sim/body.ts` answers it: walk to
-camp "before the storm", light the fire if the pit allows, feed it to
-`SPREAD_FUEL_KG` with dry wood, and rest until it passes. With no camp
-(`campCell === null`) it returns null and the survivor gets the notice "The
-storm is coming, and {you} {have} no shelter within reach."
-
-Nothing else is possible, because two things are camp-only. `light` is
-behind `needCamp` and `fireStep` requires the camp site's `firePit`, so a
-fire drill in the pack is inert anywhere but home. And the only
-shelter-shaped verb away from camp is `makeCamp`, which moves the whole camp
-rather than raising anything temporary.
+`stormStep` answers it one way: walk to camp, light the fire, feed it, rest.
+With no camp it returns null and the survivor is told there is no shelter
+within reach. Nothing else is possible: `light` sits behind `needCamp` and
+`fireStep` needs the camp's `firePit`, so a drill in the pack is inert
+anywhere but home; and the only shelter-shaped verb away from camp is
+`makeCamp`, which moves the whole camp rather than raising anything
+temporary.
 
 ### The measurements that shape this work
 
-Every spot in a region is 4 to 28 minutes' walk from its camp, and a region
-is about 4.2 km across. **So an hour is already comfortable for walking
-home, and lengthening the warning does not change that decision.**
+**Inside your own region, an hour is plenty.** Every spot is 4 to 28
+minutes from camp. Lengthening the warning changes nothing here.
 
-What a storm actually costs is fuel, and fuel depends on a roof, because
-heavy rain on an unroofed fire doubles its burn (`burnPerHour`):
+**From a neighbouring region, it is not.** Home is 48 to 110 minutes away
+(seeds 17, 19, 42, measured from the neighbour's forest to the home camp).
+Against a 60-minute warning: at best you just make it, typically you walk
+the last 30 to 50 minutes inside the storm, at worst you are an hour into
+it before you arrive. **This is the case the whole spec exists for.**
+
+**A storm is decided by fuel, and fuel by a roof**, because heavy rain on an
+unroofed fire doubles its burn:
 
 | | 6 h storm | 19 h storm |
 |---|---|---|
@@ -42,178 +42,285 @@ heavy rain on an unroofed fire doubles its burn (`burnPerHour`):
 | Turf hut | 7 kg | 23 kg |
 | Cabin | 5 kg | 15 kg |
 
-At -10 C, unroofed, 19 hours: 171 kg. The fire holds `FIRE_MAX_KG` = 36 kg
-at once, so a long storm has to be fed through.
+At -10 C unroofed for 19 hours: 171 kg, against a fire that holds 36 kg at
+once. Splitting is 15 minutes a log for 20 kg, so an hour of splitting is 80
+kg - but felling is 55 minutes for four logs and no burnable wood, and
+deadwood without an axe is 10 kg an hour. **No warning length lets a
+survivor build a roof and lay in 60 kg from nothing.**
 
-And an hour buys very different things depending on what is already down.
-Splitting is 15 minutes a log for 20 kg, so an hour of splitting is 80 kg
-and covers almost any storm - but felling is 55 minutes for four logs and no
-burnable wood at all, and deadwood without an axe is `DEADWOOD_KG` = 10 kg
-an hour. **No plausible warning length lets a survivor build a roof or lay
-in 60 kg from nothing.** The warning is not the binding constraint; having a
-roof and a woodpile before the storm is.
-
-That is why this spec does not simply lengthen the hour. Foresight is only
-worth having if running home is not the only thing it can buy.
+**The ground is not uniform.** Over 1800 cells across three seeds and nine
+regions: spruce 31.5%, pine 26.9%, meadow 26.7%, rock 9.3%, water 5.6%. So
+roughly two cells in five offer reliable natural cover, one in four offers
+none, and one in four is marginal. Being caught on the wrong ground is a
+real risk without being a common death.
 
 ## Decisions taken by the author
 
-- **Foresight buys the choice to stay out.** A warning becomes a real
-  decision - run for it, or dig in here - which requires that digging in be
-  possible. Passed over: more minutes of the same errand, which only ever
-  means starting the same walk sooner.
+- **Foresight buys the choice to stay out**, not more minutes of the same
+  errand. A warning becomes a decision: run for it, or dig in here.
+- **Looking comes before building.** Finding natural cover is the primary
+  answer and costs minutes; building from scratch is the fallback for
+  ground that offers nothing.
+- **Terrain decides whether there is anything to find; skill decides how
+  good it is and how fast it is found.** A novice on rock finds a poor
+  overhang slowly, an expert finds a good one quickly, and neither finds
+  anything on a meadow.
+- **An emergency shelter is not a small permanent one.** The useful
+  distinction is weatherproof enough to survive the event against good
+  enough to live in. Protection rises with the minutes put in rather than
+  arriving all at once.
+- **Shelter is a family of skills, not one.** In an idle game the
+  progression is part of the reward, and genuinely different techniques
+  deserve their own levels, speeds and ceilings. Not fragmented to the
+  point of a skill per part of a lean-to.
 - **Every route to weather sense is wanted**: a skill that levels with use,
   storms actually survived, a deliberate act of reading the sky, and a
-  quirk landed with. They stack rather than compete.
-- **Being caught out kills only when it compounds.** A storm alone stays a
-  hard night. Wet, cold, hungry and stormbound together should be able to
-  end a run. Passed over: making the storm itself lethal, which would put
-  the danger in the weather rather than in the survivor's choices.
+  quirk landed with. They stack.
+- **Being caught out kills only when it compounds.** A storm alone is a hard
+  night; wet, cold, hungry and stormbound together should end a run.
 
 ## The design
 
-### 1. A fire where you stand
+### 1. Shelter has one currency: protection
 
-`light` stops being camp-only. A survivor with a drill, tinder and a kilo of
-dry wood can light a fire on any passable land cell.
+Everything below - found cover, improved cover, an emergency build, and the
+existing lean-to, turf hut and cabin - produces the same thing, a
+**protection level**:
 
-What separates it from the camp's fire is that it is **nobody's home**:
+| Level | Word | Means |
+|---|---|---|
+| 0 | none | open ground |
+| 1 | windbreak | takes the wind off; some rain still gets in |
+| 2 | weatherproof | survives the event: rain off, fire keeps, wetness held |
+| 3 | liveable | good enough to live in - the existing built shelters |
 
-- It needs no fire pit. Bare ground is enough, which is what a fire site
-  already is - `firePit` costs 20 minutes and no materials, and exists to
-  make a camp's fire permanent, not to make fire possible.
-- It burns only while it is fed by hand. `autoFeed` reaches the camp's
-  woodpile; a fire out on the heath has only what is in the pack.
-- It dies when the survivor leaves the cell. No unattended clock, no
-  embers kept overnight, no `litSince` and so no contribution to the
-  fire-keeping goals. Those measure a hearth kept, and this is not one.
-- It is not stored on the region. One fire per region remains true of
-  *camp* fires; this one lives on the player, cleared on leaving.
+Level 2 is the bar that matters. It is what halves the storm's fuel burn
+(the existing `roofed` test), what stops wind driving wetness, and what the
+whole spec is about reaching before the storm lands. Level 3 is what a camp
+already builds and is unchanged.
 
-This is the smallest change that fixes the fiction at its break point: a
-fire is a thing you make, not a property of a place.
+Reusing one currency means `roofed`, `shelterBonus` and `sheltered` keep
+working: they read the protection at the survivor's cell, whatever produced
+it. After the camp-siting work those already read the site under the feet
+rather than the camp, so this is a widening rather than a rewrite.
 
-**Open question for the author.** Whether a fire out in the open should
-be allowed to boil, cook or dry anything, or only to warm. Warming only is
-the smaller change and keeps every cooking rule at the camp; allowing
-cooking makes a hunting trip self-sufficient and is a bigger question about
-whether camps still matter.
+### 2. Find shelter
 
-### 2. The rough shelter
+A task, available on any passable land cell, costing minutes rather than
+hours. It searches the ground and reports what is there.
 
-A **bivouac**: a lean-to of deadfall and boughs thrown up where the survivor
-stands. Distinct from every existing structure in that it belongs to nobody
-and keeps nothing.
+**Terrain sets the ceiling** - whether anything exists at all:
 
-- Materials off the ground, no axe and no cordage - the point is that it can
-  be built in a hurry with what is underfoot. Sticks alone.
-- Roughly **45 minutes**, against the lean-to's 240. The reasoning: this is
-  the emergency shelter of the handbooks rather than a built one, and the
-  bough bed is already 30 minutes for 12 sticks. **The author should confirm
-  the figure against the Swedish handbook and Kochanski before it ships** -
-  the repo's standing rule is that a number comes from a real source, and
-  this one is currently reasoned by analogy rather than read off a page.
-- It counts as a roof: it feeds `roofed`, `shelterBonus` and `sheltered`
-  exactly as a lean-to does, which after the camp-siting work already means
-  "the site under the survivor's feet". So it halves a storm's fuel burn
-  and keeps the rain off.
-- It rots fast - days, not seasons - and is not mended. Coming back to a
-  week-old bivouac should find nothing.
-- It is **not** a camp. No pile, no rack, no orders, and it never becomes
-  `campCell`. A region still has one camp.
+| Terrain | Ceiling | What it is |
+|---|---|---|
+| rock | 2 | overhang, boulder lee, root plate |
+| spruce | 2 | dense canopy, tree well, low branches |
+| pine, birch | 1 | thinner canopy; wind off, rain through |
+| meadow, bog, fell | 0 | nothing; open ground |
 
-Together these two make a storm caught out into a genuine fork: 45 minutes
-of shelter plus a hand-fed fire, or 28 minutes of walking in heavy rain.
+**Skill sets what you actually get and how long it takes.** A high
+natural-shelter level finds the ceiling quickly; a low one finds less than
+the ground holds, or takes longer, or both. The ceiling is never exceeded -
+no level of skill conjures an overhang on a meadow.
 
-### 3. Reading the weather
+The result binds to that cell for a short while and is not a structure: no
+materials, nothing to maintain, and it never becomes a camp.
 
-All four routes, stacking:
+### 3. Improve what you found
 
-- **Wayfinding levels it.** Reading the country already belongs to that
-  skill, and reading the sky is the same act. **This is a decision worth
-  challenging**: the alternative is an eighth skill, which is more legible
-  but costs the idle curve a full set of jobs, grinds and keeps per the
-  curve spec. Folding it into wayfinding is the cheaper and, I think,
-  truer answer - but say so if you want weather to stand on its own.
-- **Storms survived teach.** A counter on the life record: each storm lived
-  through - not merely rolled, but blowing while the survivor was alive -
-  lengthens the warning. This is the one route that cannot be ground; it
-  needs weather to actually happen to you.
-- **Reading the sky is an act.** A task costing minutes that buys a
-  forecast now: what is coming, and roughly when. It reads better the higher
-  wayfinding is, and it can be given as a standing order so a careful player
-  checks each morning.
-- **A weather eye is a quirk.** A sixth entry beside `coastBorn`,
-  `forestBorn`, `sleepsLight`, `bigEater` and `steadyByTheFire`, granting
-  the base warning a free step. It should clash with nothing.
+Found cover can be worked on. Labour raises its protection by one level
+above the terrain ceiling - piling boughs against an overhang, walling the
+lee side of a spruce, cutting drainage. So rock and spruce reach 3 with
+effort, pine and birch reach 2, and open ground still reaches nothing
+without a build.
 
-**What the warning says** grows in three stages, so that skill changes the
-*kind* of information and not only the number of minutes:
+This is the step that makes searching worth doing even when a build is
+possible: improving found cover is always cheaper than starting from
+nothing, which is exactly the real ordering.
 
-1. **That it is coming.** Today's hour, from nothing.
-2. **When, and how hard.** Enough to judge whether the woodpile will do.
-3. **How long.** The difference between a 6-hour blow and a 19-hour one is
-   the difference between 20 kg and 100, and knowing it is what turns
-   weather into a plan rather than an alarm.
+### 4. Build when the ground gives nothing
 
-The exact minutes per stage are the author's to set, and should come from
-what the fuel table above makes meaningful rather than from round numbers.
+An **emergency shelter**, raised anywhere from what is underfoot, with
+protection that **rises continuously with the minutes put in** rather than
+appearing when finished:
 
-### 4. When it compounds
+| Time in | Reaches |
+|---|---|
+| 30-60 min | 1, windbreak |
+| 1-2 h | 2, weatherproof |
+| several hours | 3, and now it is a lean-to |
 
-The stack is largely already modelled and should be used rather than
-replaced. Wetness costs 0.15 C of felt temperature per point, starvation up
-to 4 C, a storm 6 C; warmth under 20 drains health at 6 an hour, and
-`causeFrom` already names cold as a death. A soaked, starving survivor
-stormbound in the open is therefore already in trouble.
+The machinery for this already exists: `Site.build` keeps build progress in
+minutes per structure. Today a part-built structure gives nothing until it
+completes. An emergency shelter is the one thing that reads its own
+progress, which is what makes it answer a storm at all - a survivor with 50
+minutes gets a windbreak rather than nothing.
 
-What this spec adds is only what is missing: **wind on a wet body**. A storm
-should drive wetness up faster on a survivor with no roof over them, so that
-the difference between a bivouac and no bivouac is not just fuel but how
-fast the body gets soaked. That single change makes being caught out
-dangerous through the existing stack rather than through a new rule.
+It rots in days and is not mended. It is not a camp.
 
-No new death cause. No storm-specific health drain.
+**The numbers above are reasoned from the handbook shape the author
+described, not read off a page.** Before this ships they want checking
+against the Swedish handbook and Kochanski, the sources the rest of this
+game's numbers come from. The standing rule is that a number comes from a
+real source; these are honest placeholders for real ones.
+
+### 5. A fire where you stand
+
+`light` stops being camp-only. With a drill, tinder and a kilo of dry wood a
+survivor lights a fire on any passable land cell.
+
+What makes it not a camp fire: it needs no fire pit; it burns only while fed
+by hand, since `autoFeed` reaches the camp's woodpile and this has only the
+pack; it dies when the survivor leaves the cell, keeping no embers and no
+`litSince`, so it credits none of the fire-keeping goals, which measure a
+hearth kept. One camp fire per region stays true.
+
+**Open question.** Whether an open fire may cook and boil or only warm.
+Warming only is the smaller change and keeps camps meaningful; allowing
+cooking makes a hunting trip self-sufficient, which is a bigger question
+about what a camp is for.
+
+### 6. Reading the weather
+
+Four routes, stacking:
+
+- **A weather sense skill**, levelling with use.
+- **Storms survived.** A count on the life record - storms that blew while
+  the survivor was alive, not merely rolled. The one route that cannot be
+  ground; it needs weather to happen to you.
+- **Reading the sky**, a task costing minutes that buys a forecast now,
+  better the higher the skill, and givable as a standing order so a careful
+  player checks each morning.
+- **A weather eye**, a sixth quirk beside `coastBorn`, `forestBorn`,
+  `sleepsLight`, `bigEater` and `steadyByTheFire`, granting a free step.
+
+**What the warning says grows in three stages**, so skill changes the kind
+of information rather than only the number of minutes:
+
+1. **That it is coming** - today's hour, from nothing.
+2. **When, and how hard** - enough to judge whether the woodpile will do.
+3. **How long** - the difference between a 6-hour blow and a 19-hour one is
+   20 kg against 100, and knowing it turns weather into a plan.
+
+The minutes per stage should come from what the fuel and distance tables
+make meaningful - notably that 60 minutes does not cover the 48 to 110
+minute walk from a neighbouring region, so stage 2 or 3 should.
+
+### 7. What kind of storm
+
+One storm behaves one way today. The author named four that ask for
+different answers, and they change what the right move is:
+
+- **Rain and cold wind** - the common case. A roof and a fed fire.
+- **Snow** - a windbreak serves, and a snow shelter becomes possible where
+  the snow is right. The weather model already knows snow from rain
+  (`ambient <= 0` in `burnPerHour`).
+- **Gale** - the priority is a protected site and building low, not a big
+  shelter. Terrain lee matters more than roof.
+- **Lightning** - shelter-building itself becomes the danger under isolated
+  tall trees or on a ridge, which inverts the usual terrain advice.
+
+**Recommendation on scope:** carry rain-versus-snow now, since the weather
+model already distinguishes them and the snow shelter already exists. Take
+gale and lightning as a later piece - each needs its own terrain rule and
+lightning needs a hazard model this game does not have. Splitting it this
+way keeps this spec buildable.
+
+### 8. The skills
+
+The author's direction is one skill per shelter *family*, tied to genuinely
+different techniques. Their list, and what this spec proposes doing with it:
+
+| Named | Proposed | Why |
+|---|---|---|
+| Natural shelter finding | **Natural shelter** | its own skill, the new primary |
+| Rock/overhang improvement | folded into Natural shelter | finding cover and improving it are one technique, practised together |
+| Lean-to building | **Frame shelter** | frame plus covering |
+| Debris shelter building | folded into Frame shelter | same act, different covering |
+| Windbreak construction | folded into Frame shelter | a windbreak is half a lean-to |
+| Snow shelter building | **Snow shelter** | genuinely different, and seasonal |
+| Permanent hut building | stays in existing `building` | already there, already levelled |
+
+Plus **Weather sense** from section 6. That is four new skills, taking the
+ladder from seven to eleven.
+
+**The cost, stated plainly.** The idle curve spec assigns jobs, grinds and
+keeps per skill, and `MASTERY_KEYS` gives each skill its own action pool. Four
+new skills is four new sets of those, and it widens every panel that lists
+skills, the carry between heirs (`CARRY_SHARE`), and the rung moments. This
+is the largest single change in the spec and it is deliberate - the author's
+reasoning is that in an idle game the progression *is* the reward, and that
+distinct levels create survivor profiles: a survivor strong in natural
+shelter searches first, one strong in snow shelter skips searching in winter
+and builds. Both readings are defensible; the trim, if wanted, is to fold
+Snow shelter into Frame shelter and Weather sense into wayfinding, which
+would make it two new skills instead of four.
+
+### 9. When it compounds
+
+The stack is already modelled and should be used rather than replaced.
+Wetness costs 0.15 C of felt temperature per point, starvation up to 4 C, a
+storm 6 C; warmth under 20 drains health at 6 an hour and `causeFrom`
+already names cold as a death. A soaked, starving survivor stormbound in the
+open is therefore already in trouble.
+
+The one addition: **wind drives wetness faster on a body with no protection
+over it.** That makes the gap between level 0 and level 2 a matter of how
+fast you get soaked, not only how much wood you burn - and it makes being
+caught out dangerous through the existing stack rather than through a new
+rule. No new death cause, no storm-specific health drain.
 
 ## Not in scope
 
-- Lengthening the plain one-hour warning as a fix on its own. The
-  measurements say it is not the constraint.
-- Any change to the camp's own fire, its embers, its keeping goals, or the
-  one-camp-per-region rule.
-- Weather beyond storms - the seasonal model, precipitation and ice are
-  untouched.
-- A second hearth, a second pile, or anything that makes a bivouac
-  gradually become a camp.
+- Lengthening the plain hour as a fix on its own; the measurements say it is
+  not the constraint.
+- Gale and lightning as distinct storms (section 7).
+- Any change to the camp's own fire, its embers, its keeping goals, or one
+  camp per region.
+- Weather beyond storms: the seasonal model, precipitation and ice.
+- Anything that lets a found or emergency shelter drift into being a camp.
 
 ## Testing
 
-- A fire lights on open ground with a drill and dry wood, and no fire pit.
-- That fire dies on leaving the cell, keeps no embers, and credits no
-  fire-keeping goal.
-- A bivouac raised away from camp feeds `roofed`, `shelterBonus` and
-  `sheltered`, halves the storm burn rate, and is not the camp.
-- A bivouac rots on its own clock and is gone when its days are up.
-- The warning lengthens with wayfinding, with storms survived, and with the
-  quirk, and the three stack without any one of them being able to skip a
-  stage.
-- Reading the sky costs its minutes and returns a forecast whose detail
-  matches the reader's level.
+- Find shelter returns nothing on meadow at any skill, and something on rock
+  and spruce at every skill; what it returns rises with the level and the
+  time falls.
+- Improving found cover raises it one level above the terrain ceiling, and
+  no further.
+- An emergency shelter gives protection proportional to minutes in: a
+  survivor who stops at 50 minutes has a windbreak, not nothing.
+- Protection at level 2 halves the storm burn and is read by `roofed`,
+  `shelterBonus` and `sheltered` wherever it stands.
+- A fire lights on open ground with a drill and dry wood and no fire pit;
+  it dies on leaving, keeps no embers, credits no fire-keeping goal.
+- The warning lengthens with the skill, with storms survived, and with the
+  quirk, and the three stack without any one skipping a stage.
 - A soaked, starving survivor caught in the open dies; the same survivor
-  under a bivouac with a fed fire lives.
-- A survivor with a camp in reach still walks home - the fork must not make
-  digging in the default when home is 10 minutes away.
+  under level 2 cover with a fed fire lives.
+- A survivor with camp 10 minutes away still walks home - the fork must not
+  make digging in the default when home is close.
+- A survivor caught in a neighbouring region, 90 minutes out, survives by
+  finding and improving cover, which is the case this spec exists for.
 
 ## Gates
 
-`stormStep` currently walks everyone home, so giving the runner a second
+`stormStep` walks everyone home today, so giving the runner a real second
 option will move the reference player. Expect movement in `reference` and
 `year`, and read it rather than tuning it: a runner that digs in when it
-should have walked is a policy bug, and a runner that walks when digging in
-was right is the same bug mirrored. The standing rule holds - a gate
-measures the sim, and no constant moves to restore a reading.
+should have walked is a policy bug, and one that walks when it should have
+dug in is the same bug mirrored. A gate measures the sim; no constant moves
+to restore a reading.
 
-Seed 1 is the case to watch. It already regressed from day 29 to day 4 on
-the camp-siting work because the reference player ranges too far on known
-ground; a storm option that lets it stay out may make that better or much
-worse, and either way it is the seed that will say so first.
+Seed 1 is the case to watch. It regressed from day 29 to day 4 on the
+camp-siting work because the reference player ranges too far on known
+ground. A storm answer that lets it stay out may fix that or make it much
+worse, and it will say so first.
+
+## Open questions for the author
+
+1. Whether an open fire may cook, or only warm (section 5).
+2. The emergency shelter's minutes per protection level, against the
+   handbooks (section 4).
+3. Whether four new skills is the right size, or the two-skill trim is
+   (section 8).
+4. Whether gale and lightning are deferred, as recommended (section 7).
