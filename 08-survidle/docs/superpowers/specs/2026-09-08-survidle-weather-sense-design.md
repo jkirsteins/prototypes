@@ -118,6 +118,21 @@ hours. It searches the ground and reports what is there.
 | pine, birch | 1 | thinner canopy; wind off, rain through |
 | meadow, bog, fell | 0 | nothing; open ground |
 
+The list is FM 21-76's own: caves and rocky crevices, clumps of bushes,
+small depressions, large rocks on the leeward side of hills, large trees
+with low-hanging limbs, and fallen trees with thick branches. Every entry
+above is one of those read onto terrain this world already generates.
+
+**A tension worth keeping rather than resolving.** The same guidance warns
+off low ground - ravines, narrow valleys, creek beds - because cold air
+collects there at night, and warns to check overhead for loose rock and
+dead limbs. But low ground is exactly where a survivor should be in a
+lightning storm, and an overhang is exactly what a gale can drop something
+onto. So the best ground genuinely depends on which storm is coming, and a
+survivor who knows only "a storm" cannot pick correctly. That is the
+argument for the forecast's second stage, made by the sources rather than
+by us.
+
 **Skill sets what you actually get and how long it takes.** A high
 natural-shelter level finds the ceiling quickly; a low one finds less than
 the ground holds, or takes longer, or both. The ceiling is never exceeded -
@@ -140,29 +155,49 @@ nothing, which is exactly the real ordering.
 
 ### 4. Build when the ground gives nothing
 
-An **emergency shelter**, raised anywhere from what is underfoot, with
-protection that **rises continuously with the minutes put in** rather than
-appearing when finished:
+An **emergency shelter**, raised anywhere from what is underfoot, whose
+protection **rises continuously with the minutes put in** rather than
+appearing when finished.
 
-| Time in | Reaches |
-|---|---|
-| 30-60 min | 1, windbreak |
-| 1-2 h | 2, weatherproof |
-| several hours | 3, and now it is a lean-to |
+**Sourced ranges.** Field guidance does not give build-time constants, and
+should not be pretended to. What it gives is ranges, and they are wide
+because materials and experience dominate:
 
-The machinery for this already exists: `Site.build` keeps build progress in
-minutes per structure. Today a part-built structure gives nothing until it
-completes. An emergency shelter is the one thing that reads its own
-progress, which is what makes it answer a storm at all - a survivor with 50
-minutes gets a windbreak rather than nothing.
+- A lean-to of natural materials gives "a windbreak and a roof in under an
+  hour"; with a tarp or poncho it is minutes.
+- A debris hut runs from about 1.5 hours to half a day, with 2-4 hours
+  usual for a first-time builder and about 3 hours for one practised person
+  in wooded ground. A simple debris shelter can be had in about an hour.
+- FM 21-76 declines to give times at all, and frames shelter choice as a
+  trade between time and effort, tools, materials, and the protection
+  actually needed - which is precisely the choice this section models.
 
-It rots in days and is not mended. It is not a camp.
+**Design values, chosen inside those ranges** against the 60-minute warning
+so the decision has teeth:
 
-**The numbers above are reasoned from the handbook shape the author
-described, not read off a page.** Before this ships they want checking
-against the Swedish handbook and Kochanski, the sources the rest of this
-game's numbers come from. The standing rule is that a number comes from a
-real source; these are honest placeholders for real ones.
+| Protection | Minutes | Sits inside |
+|---|---|---|
+| 1, windbreak | 30 | "under an hour" for a natural lean-to |
+| 2, weatherproof | 90 | the 1-1.5 h low end of the debris-hut range |
+| 3, liveable | 240 | the 2-4 h usual, and the existing lean-to's own cost |
+
+These are **design values selected within sourced field ranges**, not
+measurements. That distinction should stay in the code comment beside them.
+
+Two things fall out that are worth keeping. At 90 minutes, a survivor with
+the standard hour's warning **cannot** reach weatherproof from nothing - so
+the plain warning is not enough, and reading the sky is what buys the
+margin. And at 240 minutes the emergency build lands exactly on the
+existing `STRUCTURES.leanTo.minutes`, so the curve joins the structure table
+rather than running beside it: build long enough and what you have *is* a
+lean-to.
+
+The machinery already exists. `Site.build` keeps build progress in minutes
+per structure; today a part-built structure gives nothing until it
+completes. The emergency shelter is the one thing that reads its own
+progress, which is what lets 50 minutes buy a windbreak instead of nothing.
+
+It rots in days, is not mended, and is not a camp.
 
 ### 5. A fire where you stand
 
