@@ -42,6 +42,8 @@ export const EMBER_RAIN_RATE = 2;
 export const EMBER_WARMTH = 2;
 /** The glow off coals, against a lit fire's 20: under every tier of NIGHT_WORK. */
 export const EMBER_LUX = 2;
+/** A light on live coals is tinder and breath, not a drill: minutes, not the lightingInRain durations. */
+export const EMBER_RELIGHT_MINUTES = 5;
 
 export function hasEmbers(fire: RegionState["fire"]): boolean {
   return !fire.lit && fire.embers > 0;

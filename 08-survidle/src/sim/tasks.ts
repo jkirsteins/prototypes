@@ -35,7 +35,7 @@ import {
   atCamp, campCellOf, cellCenter, cellIndex, cellOf, forestCell, heathCell, hereTerrain,
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
-import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { EMBER_RELIGHT_MINUTES, fireSiteMinutes, hasEmbers, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
 import { goalDeed } from "./goals";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
@@ -791,18 +791,19 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "light": {
+      const rekindle = hasEmbers(st.fire);
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
       const o = needCamp(opt({
         group: "camp", label: "Light the fire at the site",
         detail: `fire drill and 1 kg firewood${lr.failChance > 0 ? "; one in three fails in the rain" : ""}`,
-        duration: lr.minutes,
+        duration: rekindle ? EMBER_RELIGHT_MINUTES : lr.minutes,
       }));
       if (!o.ok) return o;
       if (!st.structures.firePit) return { ...o, ok: false, why: "needs a fire site" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
-      if (lr.blocked) return { ...o, ok: false, why: lr.blocked };
+      if (!rekindle && lr.blocked) return { ...o, ok: false, why: lr.blocked };
       return o;
     }
     case "lightTorch": {
@@ -2039,14 +2040,18 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     }
     case "light":
     case "lightIndoors": {
+      const rekindle = hasEmbers(st.fire);
       consume(invs, [{ item: "firewood", qty: 1 }]);
-      if (wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
+      if (!rekindle && wearTool(state, "fireDrill", 2 * wearFactor(state, world, "light"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
       const lr = lightingInRain(state.weather, ambientTemperature(cal, state.weather), roofed(st), hasQuirk(state, "steadyByTheFire"));
-      if (lr.failChance > 0 && rng.chance(lr.failChance)) {
+      if (!rekindle && lr.failChance > 0 && rng.chance(lr.failChance)) {
         log(state, "The tinder will not catch.", "bad");
         return;
       }
       st.fire.lit = true;
+      st.fire.embers = 0;
+      // A run of keeping survives the coals; only a fire lit from cold starts a new one.
+      if (st.fire.litSince === null) st.fire.litSince = state.minute;
       goalDeed(state, { kind: "lit" });
       cue("fireCatches");
       st.fire.fuelKg += 1;

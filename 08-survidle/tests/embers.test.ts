@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { EMBER_MINUTES, hasEmbers } from "../src/sim/fire";
+import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
+import { check, startTask } from "../src/sim/tasks";
 
 /** A lit fire at camp with a known fuel load and nobody to auto-feed it. */
 function litCamp(seed = 3, fuelKg = 1) {
@@ -85,5 +87,33 @@ describe("embers against a lit fire", () => {
     const { EMBER_LUX } = await import("../src/sim/fire");
     const { NIGHT_WORK } = await import("../src/sim/light");
     expect(EMBER_LUX).toBeLessThan(NIGHT_WORK.deadwood!.needLux);
+  });
+});
+
+describe("rekindling", () => {
+  it("takes no drill and cannot fail, however hard it is raining", () => {
+    const { state, world, st } = litCamp();
+    state.player.tools.push({ id: "fireDrill", durability: 100 });
+    advance(state, world, 120);
+    expect(hasEmbers(st.fire)).toBe(true);
+    const before = state.player.tools.find((t) => t.id === "fireDrill")!.durability;
+    state.weather.precip = "heavy";
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, calendar(state.minute, state.startDoy), "light");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "light")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(st.fire.lit).toBe(true);
+    expect(state.player.tools.find((t) => t.id === "fireDrill")!.durability).toBe(before);
+  });
+
+  it("still needs the drill when the coals are dead", () => {
+    const { state, world, st } = litCamp();
+    advance(state, world, 120 + EMBER_MINUTES + 60);
+    expect(hasEmbers(st.fire)).toBe(false);
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, calendar(state.minute, state.startDoy), "light");
+    expect(o.ok).toBe(false);
+    expect(o.why).toMatch(/drill/i);
   });
 });
