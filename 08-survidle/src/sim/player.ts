@@ -204,16 +204,21 @@ export function walkSpeed(state: GameState, cal: Calendar, weather: Weather, ter
 
 /**
  * The share of a task's work above base that is the body being moved, and so
- * scales with total mass. Walking is all of it. A task absent from this table
- * does not scale with mass at all - work done standing in one place costs
- * what it costs whoever is doing it, and a heavier body pays for its reserve
- * through the resting burn instead.
+ * scales with total mass. A task absent from this table does not scale with
+ * mass at all - work done standing in one place costs what it costs whoever
+ * is doing it, and a heavier body pays for its reserve through the resting
+ * burn instead.
+ *
+ * The walk activity itself (walk, travel, haul, explore, searchHome, by
+ * activityOf) is charged separately, in stepPlayer's walk branch, where
+ * `burn *= massFactor(state)` already scales all of it - this table covers
+ * only work done on the feet that is not the walk itself, so a walk-class
+ * task must not carry a row here.
  *
  * Same convention as NIGHT_WORK in light.ts: absence means the effect does
  * not apply.
  */
 export const ON_THE_FEET: Partial<Record<TaskId, number>> = {
-  walk: 1, travel: 1, haul: 1, explore: 1, searchHome: 1,
   hunt: 0.6, berries: 0.4, roots: 0.4, sticks: 0.4, deadwood: 0.4, seaweed: 0.4, stone: 0.4,
 };
 

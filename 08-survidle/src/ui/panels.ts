@@ -1,4 +1,4 @@
-import { edible, HUNGRY_LINE, itemLabel, refusalReason } from "../sim/actions";
+import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
@@ -123,7 +123,7 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   // Under the meal line means the meal did not happen - auto-eat off, or
   // nothing left it would take. Either way the fat behind it is paying, and
   // that is the state worth a word. Starving is what the fat running out is.
-  if (p.kcal < HUNGRY_LINE) tags.push(`<span class="tag bad">hungry</span>`);
+  if (p.kcal < hungerLine(state)) tags.push(`<span class="tag bad">hungry</span>`);
   if (starvation(state) >= FAT_RIBS) tags.push(`<span class="tag bad">starving</span>`);
   if (starvation(state) >= FAT_WASTING) tags.push(`<span class="tag bad">wasting</span>`);
   if (p.warmth < 20) tags.push(`<span class="tag bad">hypothermia</span>`);
@@ -141,7 +141,7 @@ ${bar("energy", "energy", "Energy")}
 ${bar("wet", "wet", "Wet")}
 <div class="statuses">${tags.join("")}</div>
 <div>
-  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under ${HUNGRY_LINE} kcal">auto-eat: ${p.autoEat ? "on" : "off"}</button>
+  <button class="mini${p.autoEat ? " on" : ""}" data-act="toggle-eat" title="Eat when the reserve drops under the meal line">auto-eat: ${p.autoEat ? "on" : "off"}</button>
   <button class="mini${p.autoFeed ? " on" : ""}" data-act="toggle-feed" title="Feed the fire from firewood at camp while you are there">auto-feed fire: ${p.autoFeed ? "on" : "off"}</button>
   <button class="mini${p.autoDrink ? " on" : ""}" data-act="toggle-drink" title="Drink when the reserve drops under 1 litre, if a vessel or the water under foot allows">auto-drink: ${p.autoDrink ? "on" : "off"}</button>
 </div>

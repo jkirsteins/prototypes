@@ -399,6 +399,7 @@ describe("the reference player", () => {
     // Only the reserve above essential fat is fuel; the floor is structure.
     const reserve = (l.typical - l.floor) + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
+    expect(REFERENCE_TARGET_DAY).toBe(20);
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
     expect(KITTED_TARGET_DAY).toBe(30);
   });
@@ -460,10 +461,12 @@ describe("the reference player", () => {
   });
 
   it("the gate day's checkpoint fed reads the week it prints, a full week by then", () => {
-    // Seed 17, not 79: seed 79's camp now goes cold on day 7, unrelated to the
-    // reserve this branch changed - the fire keeping merged from main leaves it
-    // short of firewood at that particular start - so it never reaches this
-    // checkpoint either. Seed 17 reaches REFERENCE_TARGET_DAY alive here.
+    // Seed 17, not 79: seed 79's body sits in its settling zone, where
+    // starvation() correctly reads 0 and no longer throttles workSpeed the
+    // way the old 1 - fat/typical did. Her day reshuffles, the fire goes
+    // unlit from day 4, warmth falls, and with p.kcal at 0 the health-regen
+    // gate never opens, so cold damage kills her by day 7 - never reaching
+    // this checkpoint. Seed 17 reaches REFERENCE_TARGET_DAY alive here.
     const r = runReference(17, 27);
     const c = r.checkpoints.find((cp) => cp.day === REFERENCE_TARGET_DAY);
     expect(c).toBeDefined();

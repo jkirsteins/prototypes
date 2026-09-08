@@ -142,9 +142,17 @@ leaves seed 79 short of firewood in its opening week where main's identical
 fire-keeping mechanics were not. It reproduces identically before and after
 the `FAT_SHARES` tune (still day 7, still froze), so it is not sensitive to
 where the landmarks sit - the interaction is with the mechanism, not the
-tuning. This is worth a look on its own before the branch merges: a run that
-used to clear the gate on firewood and starvation now fails it on cold,
-several weeks earlier, for a reason nobody has traced yet.
+tuning.
+
+The mechanism: seed 79's body sits in its settling zone in the opening week,
+where the rebased `starvation()` correctly reads 0. The old shape,
+`1 - fat/typical`, was nonzero there and throttled `workSpeed` through that
+week; the new one does not, so her day reshuffles, the fire goes unlit from
+day 4, warmth falls, and because `p.kcal` sits at 0 the health-regen gate
+never opens, so cold damage accumulates until she dies on day 7. A bisect
+confirms the mechanism: restoring the old `starvation()` shape, or feeding
+the old shape only to `workSpeed`, both leave her alive past day 13; changing
+`SATIETY_BASE` or forcing `massFactor` to 1 change nothing.
 
 ## Judgment: seed 17's heir dying of thirst on day 3
 
