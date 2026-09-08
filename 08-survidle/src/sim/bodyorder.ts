@@ -20,13 +20,12 @@ import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
 import { bodyStep, campNeed, currentNeed, NEED_ASIDE, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
-import { intentSentence, startIntent } from "./intent";
+import { intentSentence } from "./intent";
 import { log } from "./log";
 import { regionState } from "./regionstate";
 import { isRunning, takeStep } from "./steps";
 import { setAside } from "./tasks";
 import { isWorkIntent, type CareNeed, type CareOrder, type GameState, type Order, type RegionState, type Verdict } from "./types";
-import { insertWalkBefore } from "./walkorders";
 
 /** Neither row's own task is ever begun as work; their sentences are fixed, since neither carries a target for orderSentence to describe. */
 export const BODY_SENTENCE = "Self-care";
@@ -150,15 +149,6 @@ export function careLogLine(state: GameState, world: World, cal: Calendar, o: Ca
 function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder, need: CareNeed): void {
   const s = bodyStep(state, world, cal, rng, need);
   if (!s || isRunning(state, s)) return;
-  if (s.id === "walk") {
-    const target = Number(s.arg?.replace(/^cell:/, ""));
-    if (!Number.isInteger(target)) return;
-    setAside(state, world);
-    state.intent = null;
-    const walk = insertWalkBefore(state, world, target, o.id);
-    startIntent(state, world, cal, rng, walk.req, walk.id);
-    return;
-  }
   // A night out is the body's own errand under an order's name: the whole of
   // it is the sleep this row would take anyway, so the step goes under that
   // order rather than taking the night away from it.

@@ -278,37 +278,44 @@ export function migrate(state: GameState): void {
     st.logsWet ??= 1440;
     st.orders ??= [];
     st.nextOrderId ??= 1;
+    // Only a direct map click owns a Walk row, and that row always owns the
+    // top of the list. Older builds inserted route legs beside their parent.
+    const removedWalkIds = new Set(st.orders
+      .filter((o, i) => i > 0 && !isCareRow(o) && o.req.task === "walk")
+      .map((o) => o.id));
+    st.orders = st.orders.filter((o, i) => i === 0 || isCareRow(o) || o.req.task !== "walk");
+    if (st === state.regions[state.player.region] && removedWalkIds.size) {
+      if (state.intent?.orderId !== null && state.intent?.orderId !== undefined && removedWalkIds.has(state.intent.orderId)) {
+        state.intent = null;
+        if (state.task?.id === "walk") {
+          state.task = null;
+          state.route = null;
+        }
+      }
+      // The old generated Walk was classified as hand work and could replace
+      // itself with an ownerless collapse sleep. Let Self-care decide again.
+      if (!state.intent && state.task?.id === "sleep" && state.player.sleeping?.collapsed) {
+        state.task = null;
+        state.player.sleeping = null;
+      }
+    }
     st.iceHole ??= null;
     // A save from before a care row existed has none: it is unshifted on,
     // above the work, which is the rank the always-pre-empting tier already
     // held over the list it could not be seen on.
     ensureCareRows(st);
   }
-  // Walking used to be a hidden task owned by another intent, or a raw map
-  // task with no order at all. Preserve the route already under way, but put
-  // its exact destination into the visible queue and make that Walk the live
-  // intent. A scheduled requester remains immediately after it. A legacy
-  // hand intent is first materialized as a once job so it has the same place.
+  // A raw map walk used to have no order. Preserve that explicit destination
+  // as the one visible Walk at the top. A route owned by work or care remains
+  // a step of that owner and needs no migration.
   if (state.task?.id === "walk" && state.route) {
     const st = state.regions[state.player.region];
     if (st) {
       const old = state.intent;
+      if (old && (!isWorkIntent(old) || old.task !== "walk")) return;
       const alreadyVisible = isWorkIntent(old) && old.task === "walk" && old.orderId !== null
         && st.orders.some((o) => o.id === old.orderId && !isCareRow(o) && o.req.task === "walk");
       if (alreadyVisible) return;
-      let beforeId: number | null = old?.orderId ?? null;
-      if (isWorkIntent(old) && beforeId === null && old.task !== "walk") {
-        const until = old.until.kind === "campHas" ? { kind: "campHas" as const, qty: old.until.qty } : old.until;
-        const parent: WorkOrder = {
-          id: st.nextOrderId++, kind: old.until.kind === "forever" ? "grind" : "job",
-          req: { task: old.task, arg: old.arg, until, deliver: old.deliver, where: { cell: old.cell } },
-          done: old.done, minutes: 0, skipped: "",
-          givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
-        };
-        st.orders.unshift(parent);
-        beforeId = parent.id;
-      }
-      const at = beforeId === null ? 0 : Math.max(0, st.orders.findIndex((o) => o.id === beforeId));
       const target = state.route.target;
       const walk: WorkOrder = {
         id: st.nextOrderId++, kind: "job",
@@ -316,7 +323,7 @@ export function migrate(state: GameState): void {
         done: 0, minutes: 0, skipped: "",
         givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
       };
-      st.orders.splice(at, 0, walk);
+      st.orders.unshift(walk);
       state.intent = {
         mode: "hand", task: "walk", arg: `cell:${target}`, cell: target, campCell: st.campCell,
         until: { kind: "once" }, deliver: "leave", done: 0,

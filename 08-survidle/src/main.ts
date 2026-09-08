@@ -29,7 +29,7 @@ import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
 import { startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
-import { insertWalkBefore } from "./sim/walkorders";
+import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
@@ -199,7 +199,7 @@ function render() {
   setPanel("orders", queueHtml(state, world, cal));
   setPanel("forecast", forecastHtml(forecaster.view(), state));
   setPanel("panetabs", paneTabsHtml(ui.panes));
-  setPanel("dosubs", subtabsHtml(ui.panes));
+  setPanel("dosubs", ui.filter.trim() ? "" : subtabsHtml(ui.panes));
   // Shown and hidden, never rendered on demand: a pane built when it is
   // asked for is a pane whose scroll position starts again every time.
   for (const id of PANE_IDS) {
@@ -775,7 +775,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     ev.stopPropagation();
     const rng = new Rng(state.rng);
     const cal = calendar(state.minute, state.startDoy);
-    const walk = insertWalkBefore(state, world, cell, null);
+    const walk = insertWalkAtTop(state, world, cell);
     startIntent(state, world, cal, rng, walk.req, walk.id);
     state.rng = rng.s;
     saveGame(state);

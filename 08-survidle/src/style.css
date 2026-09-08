@@ -92,6 +92,7 @@ body { display: flex; flex-direction: column; height: 100vh; }
 .tabs .tab.on { color: var(--accent); border-color: var(--line); background: var(--panel); margin-bottom: -1px; }
 
 .subs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 6px; }
+.subs:empty { display: none; }
 .subs .sub { background: none; border: none; color: var(--dim); padding: 2px 6px; font: inherit; cursor: pointer; }
 .subs .sub.on { color: var(--accent); border-bottom: 1px solid var(--accent); }
 
@@ -100,6 +101,8 @@ body { display: flex; flex-direction: column; height: 100vh; }
    never replaced, only morphed. */
 .dosplit { display: flex; min-height: 0; flex: 1; }
 #dopurposes { width: 120px; flex: none; border-right: 1px solid var(--line); padding-right: 6px; }
+#dopurposes:empty { display: none; }
+#dopurposes:empty + #doitems { padding-left: 0; }
 #dopurposes .grp {
   display: block;
   width: 100%;

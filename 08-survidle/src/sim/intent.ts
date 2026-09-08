@@ -22,7 +22,6 @@ import { nearestSeep, seepGround } from "./seep";
 import { rootCellFullKg, rootCellKg } from "./stocks";
 import { fishSpecies, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
-import { insertWalkBefore } from "./walkorders";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { beginTask, check, huntGroundValue, isShortAtCamp, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
@@ -440,12 +439,11 @@ function dropEverything(state: GameState, world: World): boolean {
 type Outcome = "again" | undefined;
 
 /**
- * Makes a required walk an ordinary visible queue row immediately before
- * the row that requested it, then starts that row through the same intent
- * door as every other order. The requester stays in the list and is read
- * again after arrival.
+ * A route required by work is one step of that work. The parent intent stays
+ * live while the ordinary walk task moves it to the cell where its next step
+ * can run. Only an explicit map click has a Walk row of its own.
  */
-function queueWalkTo(state: GameState, world: World, cal: Calendar, rng: Rng, it: WorkIntent, cell: number): Outcome {
+function walkTo(state: GameState, world: World, cal: Calendar, rng: Rng, it: WorkIntent, cell: number): Outcome {
   const here = cellOf(state, world);
   if (here === cell) return undefined;
   if (here === it.campCell) provision(state, world);
@@ -458,13 +456,7 @@ function queueWalkTo(state: GameState, world: World, cal: Calendar, rng: Rng, it
     return undefined;
   }
   if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
-  if (it.orderId === null) {
-    endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why || "cannot schedule the walk"}. {You} {stop}.`, "bad");
-    return undefined;
-  }
-  const walk = insertWalkBefore(state, world, cell, it.orderId);
-  state.intent = null;
-  startIntent(state, world, cal, rng, walk.req, walk.id);
+  takeStep(state, world, cal, walkStep(state, world, cell, ""), rng);
   return undefined;
 }
 
@@ -491,15 +483,15 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, rng: Rng, i
   // A pack holding nothing but this order's own kit comes off as nothing, and that is not a
   // step taken: fall through to the walk rather than claim one and stand here forever.
   if (packCarries(state, world, it) || (here === campCell && !isEmpty(pack))) {
-    if (here !== campCell) return queueWalkTo(state, world, cal, rng, it, campCell);
+    if (here !== campCell) return walkTo(state, world, cal, rng, it, campCell);
     if (dropEverything(state, world)) {
       it.step = "unloading at camp";
       return "again";
     }
   }
-  if (here !== it.cell) return queueWalkTo(state, world, cal, rng, it, it.cell);
+  if (here !== it.cell) return walkTo(state, world, cal, rng, it, it.cell);
   // At the pile with nothing loaded and nothing that counts: what is on your back is in the way. Take it to camp.
-  return queueWalkTo(state, world, cal, rng, it, campCell);
+  return walkTo(state, world, cal, rng, it, campCell);
 }
 
 interface FetchNeed {
@@ -558,7 +550,7 @@ function fetchStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: 
   const here = cellOf(state, world);
   const { missing, wanted } = fetchMissing(state, sid, campCell);
   if (wanted(p.pack)) {
-    if (here !== campCell) return queueWalkTo(state, world, cal, rng, it, campCell);
+    if (here !== campCell) return walkTo(state, world, cal, rng, it, campCell);
     dropEverything(state, world);
     it.step = "laying out materials at camp";
     return "again";
@@ -567,7 +559,7 @@ function fetchStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: 
   const { sources } = fetchSources(state, world, sid, campCell, here);
   if (!sources.length) return "none";
   const src = sources[0];
-  if (here !== src.cell) return queueWalkTo(state, world, cal, rng, it, src.cell);
+  if (here !== src.cell) return walkTo(state, world, cal, rng, it, src.cell);
   // The missing things first, then whatever else fits.
   const before = weight(p.pack);
   let room = body(state).packHardKg - weight(p.pack);
@@ -678,7 +670,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     return undefined;
   }
   if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, rng, it);
-  if (here !== it.cell) return queueWalkTo(state, world, cal, rng, it, it.cell);
+  if (here !== it.cell) return walkTo(state, world, cal, rng, it, it.cell);
   if (it.task === "night") return undefined;
   const step: Step = { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
   if (!takeStep(state, world, cal, step, rng)) {

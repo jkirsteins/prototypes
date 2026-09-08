@@ -512,8 +512,13 @@ export function purposeCounts(state: GameState, world: World, ui: UiState): Reco
   return counts;
 }
 
-/** The left pane of the Do split: the purposes this subtab offers, and how many rows each holds. */
+/**
+ * The left pane of the Do split: the purposes this subtab offers, and how
+ * many rows each holds. Search is a separate, global mode, so its results
+ * use the whole width instead of leaving unrelated browse controls visible.
+ */
 export function doPurposesHtml(state: GameState, world: World, ui: UiState): string {
+  if (ui.filter.trim()) return "";
   return purposesHtml(ui.panes, purposeCounts(state, world, ui));
 }
 

@@ -13,26 +13,21 @@ function exactCell(o: WorkOrder): number | null {
 }
 
 /**
- * Inserts one exact Walk immediately before its requester. A direct map
- * click has no requester and lands at the whole list's top. Repeated reads
- * reuse the matching Walk already in that place rather than growing rows.
+ * A map click is the only thing that creates a Walk row. It replaces any
+ * previous explicit destination and owns the top of the list. Routes needed
+ * by another row remain steps of that row and never enter the list.
  */
-export function insertWalkBefore(state: GameState, world: World, cell: number, beforeId: number | null): WorkOrder {
+export function insertWalkAtTop(state: GameState, world: World, cell: number): WorkOrder {
   const st = regionState(state, world, state.player.region);
   const rows = st.orders;
-  const before = beforeId === null ? 0 : rows.findIndex((o) => o.id === beforeId);
-  const at = before < 0 ? rows.length : before;
-  const existing = beforeId === null ? rows[0] : rows[at - 1];
-  if (existing && isWalkOrder(existing) && exactCell(existing) === cell) return existing;
-  const o: WorkOrder = {
-    id: st.nextOrderId++,
-    kind: "job",
+  const walks = rows.filter(isWalkOrder);
+  const same = walks.find((o) => exactCell(o) === cell);
+  const o: WorkOrder = same ?? {
+    id: st.nextOrderId++, kind: "job",
     req: { task: "walk", arg: `cell:${cell}`, until: { kind: "once" }, deliver: "leave", where: { cell } },
-    done: 0,
-    minutes: 0,
-    skipped: "",
+    done: 0, minutes: 0, skipped: "",
     givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
   };
-  rows.splice(at, 0, o);
+  st.orders = [o, ...rows.filter((row) => !isWalkOrder(row))];
   return o;
 }
