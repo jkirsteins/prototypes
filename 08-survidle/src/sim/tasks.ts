@@ -907,16 +907,17 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "lightIndoors": {
+      const rekindle = hasEmbers(st.fire);
       const o = needCamp(opt({
         group: "camp", label: "Light a fire indoors",
         detail: st.structures.cabin && st.structures.hearth ? "at the hearth" : st.structures.turfHut && !st.structures.cabin ? "under the smoke hole" : "no smoke hole: the cabin will fill with smoke",
-        duration: 10,
+        duration: rekindle ? EMBER_RELIGHT_MINUTES : 10,
       }));
       if (!o.ok) return o;
       if (st.structures.snowShelter && !st.structures.turfHut && !st.structures.cabin) return { ...o, ok: false, why: "snow does not take a fire" };
       if (!st.structures.cabin && !st.structures.turfHut) return { ...o, ok: false, why: "needs a cabin or a turf hut" };
       if (st.fire.lit) return { ...o, ok: false, why: "already burning" };
-      if (!toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
+      if (!rekindle && !toolNear(p, "fireDrill", toolInvs)) return { ...o, ok: false, why: "needs a fire drill" };
       if (totalQty(invs, "firewood") < 1) return { ...o, ok: false, why: "needs 1 kg firewood" };
       return o;
     }

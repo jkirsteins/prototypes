@@ -116,4 +116,30 @@ describe("rekindling", () => {
     expect(o.ok).toBe(false);
     expect(o.why).toMatch(/drill/i);
   });
+
+  it("takes no drill indoors either, whoever is short one beside a turf hut's coals", () => {
+    const { state, world, st } = litCamp();
+    st.structures.turfHut = true;
+    st.fire.indoors = true;
+    advance(state, world, 120);
+    expect(hasEmbers(st.fire)).toBe(true);
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, calendar(state.minute, state.startDoy), "lightIndoors");
+    expect(o.ok, o.why).toBe(true);
+    expect(startTask(state, world, calendar(state.minute, state.startDoy), "lightIndoors")).toBe(true);
+    advance(state, world, o.duration + 1);
+    expect(st.fire.lit).toBe(true);
+  });
+
+  it("still needs the drill indoors once the hut's coals are dead", () => {
+    const { state, world, st } = litCamp();
+    st.structures.turfHut = true;
+    st.fire.indoors = true;
+    advance(state, world, 120 + EMBER_MINUTES + 60);
+    expect(hasEmbers(st.fire)).toBe(false);
+    addItem(state.player.pack, "firewood", 5);
+    const o = check(state, world, calendar(state.minute, state.startDoy), "lightIndoors");
+    expect(o.ok).toBe(false);
+    expect(o.why).toMatch(/drill/i);
+  });
 });
