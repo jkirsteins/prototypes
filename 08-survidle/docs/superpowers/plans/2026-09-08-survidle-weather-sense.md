@@ -207,7 +207,22 @@ Its refusal on ground with a ceiling of 0 is not a hard block: the survivor may 
 
 `protectionOf` returns the greater of the structures' level and `site.cover`.
 
-- [ ] **Step 6: Run and commit**
+- [ ] **Step 6: Cover does not keep**
+
+Found cover is a fact about a place the survivor noticed, not a thing they
+made, and it should not persist as though it were built. Add its clock to
+`dailyCamp`'s per-site loop beside the bough bed and the snow shelter: cover
+falls back to 0 after a few days, and the log says nothing - nobody needs
+telling that a hollow they once crawled into is still a hollow.
+
+Write the test first: a site with `cover` set, run `dailyCamp` past the
+window, and the cover is gone while the structures on that same site are
+untouched.
+
+**The number of days is not derivable from anything existing. Stop and ask
+the author for it rather than picking one.**
+
+- [ ] **Step 7: Run and commit**
 
 ```bash
 npm test && npm run build
@@ -284,7 +299,20 @@ The build reads `Site.build.emergency` - the progress field that already exists 
 
 `protectionOf` returns the greatest of: the structures' level, `site.cover`, and `builtProtection(site.build.emergency ?? 0)`.
 
-- [ ] **Step 5: Run and commit**
+- [ ] **Step 5: An emergency shelter rots**
+
+It is boughs and deadfall, not a built structure, and the spec says it goes
+in days rather than seasons and is never mended. Add it to `dailyCamp`'s
+per-site loop the way the decaying structures already work, and log its
+fall the way `FALLS` does for the others - a survivor who walks back to a
+week-old shelter should be told there is nothing there.
+
+Test it: build to protection 2, run the days out, and both the protection
+and the build progress are gone.
+
+**As with cover, the number of days is not derivable. Ask the author.**
+
+- [ ] **Step 6: Run and commit**
 
 ```bash
 git commit -m "feat(survidle): fifty minutes of work buys fifty minutes of shelter"
@@ -495,6 +523,17 @@ git commit -m "feat(survidle): the tree you ran to is the worst place to be"
 
 ## Notes for the executor
 
+- **Two numbers are deliberately missing**: how many days found cover lasts,
+  and how many days an emergency shelter lasts. Neither follows from
+  anything already in the tree, and the standing rule forbids inventing
+  one. Ask the author when you reach Task 2 Step 6 and Task 4 Step 5; do
+  not guess and do not use the lean-to's 365 days, which is a built
+  structure's life and the wrong shape entirely.
+- Several tasks in Stages 2 to 4 give the shape of the work rather than the
+  code. That is deliberate for the parts that depend on measurements taken
+  in the task before them, but it means those tasks need a fuller read of
+  the spec section they implement than the early ones do. The spec section
+  is named in each task's Files list.
 - The 30 / 90 / 240 minutes do not move in this plan. If the measurements say they are wrong, that is a finding for the author, not a fix.
 - Tasks 8 and 11 have measurements as their deliverable. A task that ships the code and skips the reading is not done.
 - Stage boundaries are gates. Do not start a stage on a red previous one.
