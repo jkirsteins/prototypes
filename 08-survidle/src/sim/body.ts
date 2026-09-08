@@ -1,9 +1,12 @@
 /**
- * The body's own tier, read off the player rather than off whatever is running:
- * sleep, storm, cold, thirst, hunger, the fire, snares, spent, home, in that
- * order, and what to do about each. Every step is an ordinary task; the fire
- * steps are guarded by check, so a missing drill or an under-level pit is
- * skipped, never an error.
+ * The needs read off the player and the camp rather than off whatever is
+ * running, and what to do about each. The body wants sleep, shelter from a
+ * storm, warmth, water, food, an evening by the fire and to be home before
+ * dark, in that order; the camp wants fuel on the fire and its snares
+ * checked, in that order. Which of the two outranks the other is not
+ * settled here: they are separate rows on the order list, and the player
+ * ranks them. Every step is an ordinary task; the fire steps are guarded by
+ * check, so a missing drill or an under-level pit is skipped, never an error.
  */
 import type { Rng } from "../rng";
 import { routeMinutes } from "../world/route";
@@ -24,7 +27,7 @@ import { seepStopped } from "./seep";
 import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
-import type { BodyNeed, GameState, Intent, ItemId } from "./types";
+import type { BodyNeed, CampNeed, CareNeed, GameState, Intent, ItemId } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
 
@@ -51,8 +54,8 @@ export const WORK_HOURS_DEFAULT = 10;
 /**
  * A catch hanging in the snares and the heath in reach by day: the cell to
  * walk to, or null. Arriving on the heath collects the catch, so the chore
- * ends where it is done. A person checks their snares on the way past,
- * which puts this above the evening's rest and below eating and drinking.
+ * ends where it is done. A catch keeps, which is why it is the lower of the
+ * camp's two wants.
  */
 export function snaresWaiting(state: GameState, world: World, cal: Calendar): number | null {
   if (cal.isNight) return null;
@@ -121,13 +124,6 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (thirsty) return "thirsty";
   if (p.kcal < HUNGRY_LINE && canFeed(state, world, cal)) return "hungry";
-  // Housekeeping the evening depends on, and so above the snares: a fire
-  // burnt down to the low mark is minutes from out, and out costs a drill, a
-  // split log and the warmth of whatever is left of the night, where a catch
-  // in a snare keeps until the body walks past it. Under thirst and hunger,
-  // which are the body itself rather than the camp around it.
-  if (fireWantsWood(state, world)) return "fire";
-  if (snaresWaiting(state, world, cal) !== null) return "snares";
   // Worked out: the evening by the fire, held until the fire has given the
   // fatigue back rather than until a clock says dawn. It also holds while the
   // body is nearly sleepy, so an evening that is within an hour of bed is
@@ -138,6 +134,24 @@ function needFrom(state: GameState, world: World, cal: Calendar, mem: NeedMemory
   const spent = p.energy < SPENT_AT || (mem.need === "spent" && (p.energy < RESTED_AT || sleepy >= SLEEPY_AT));
   if (spent) return p.water < WATER_FULL - 0.5 && waterSource(state, world) ? "thirsty" : "spent";
   if (homeBeforeDark(state, world, cal, mem.need)) return "home";
+  return null;
+}
+
+/**
+ * What the camp asks for, in the order it asks: the fire first, since a
+ * fire burnt down to the low mark is minutes from out and out costs a
+ * drill, a split log and the warmth of whatever is left of the night,
+ * where a catch in a snare keeps until the body walks past it.
+ *
+ * Nothing here is sticky and nothing is written, so there is one reading
+ * rather than a peeking and a serving pair: the camp's wants are read off
+ * the fire's own fuel and the snares' own catch, both of which say plainly
+ * whether they still want anything, and neither has an exit line above its
+ * entry line for a memory to hold it between.
+ */
+export function campNeed(state: GameState, world: World, cal: Calendar): CampNeed | null {
+  if (fireWantsWood(state, world)) return "fire";
+  if (snaresWaiting(state, world, cal) !== null) return "snares";
   return null;
 }
 
@@ -234,7 +248,7 @@ function homeBeforeDark(state: GameState, world: World, cal: Calendar, need: Bod
  * the person templates the log speaks in, so a fragment is the only voice
  * that reads right there.
  */
-export const NEED_WORDS: Record<BodyNeed, string> = {
+export const NEED_WORDS: Record<CareNeed, string> = {
   sleep: "needs sleep; nowhere to lie down",
   storm: "the storm is coming; no shelter within reach",
   cold: "cold; no fire and nowhere to warm up",
@@ -254,7 +268,7 @@ export const NEED_WORDS: Record<BodyNeed, string> = {
  * row's: a fragment reads wrong here, and a sentence reads wrong on the
  * row, which is why the two never share one string.
  */
-export const NEED_LOG_LINES: Record<BodyNeed, string> = {
+export const NEED_LOG_LINES: Record<CareNeed, string> = {
   sleep: "{You} {need} sleep, and there is nowhere to lie down.",
   storm: "The storm is coming, and {you} {have} no shelter within reach.",
   cold: "{You} {are} cold, with no fire and nowhere to warm up.",
@@ -273,7 +287,7 @@ export const NEED_LOG_LINES: Record<BodyNeed, string> = {
  * reach" - and this one says a want that is about to be, which is the
  * opposite reading and cannot borrow their words.
  */
-export const NEED_ASIDE: Record<BodyNeed, string> = {
+export const NEED_ASIDE: Record<CareNeed, string> = {
   sleep: "{you} {need} sleep",
   storm: "the storm is coming",
   cold: "{you} {are} cold",
@@ -300,7 +314,7 @@ const DRY_READY: Step = { id: "wait", step: "" };
  * never able to act on its own read to begin with, so dry changes nothing
  * for them.
  */
-export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, need: BodyNeed, dry = false): Step | null {
+export function bodyStep(state: GameState, world: World, cal: Calendar, rng: Rng, need: CareNeed, dry = false): Step | null {
   switch (need) {
     case "hungry": return hungryStep(state, world, cal, rng, dry);
     case "thirsty": return thirstyStep(state, world, cal, dry);

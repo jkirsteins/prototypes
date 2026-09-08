@@ -193,15 +193,18 @@ export interface IntentRequest {
 
 /**
  * A standing order keeps a stock (keep) or grinds forever (grind); a job
- * finishes and drops off the list. All three rank together, and the body
- * ranks with them under its own kind: sleep, food, water, warmth, shelter
- * and coming home before dark, one row rather than a tier hidden under the
- * list.
+ * finishes and drops off the list. All three rank together, and the two
+ * care rows rank with them under kinds of their own: the body (sleep, food,
+ * water, warmth, shelter and coming home before dark) and the camp (the
+ * fire fed, the snares checked), a row each rather than a tier hidden under
+ * the list. They are two rows and not one because they are two jobs: a
+ * player who drops the camp down the list to travel hard is saying nothing
+ * about sleep or thirst.
  */
-export type OrderKind = "keep" | "grind" | "job" | "body";
+export type OrderKind = "keep" | "grind" | "job" | "body" | "camp";
 
-/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. The body kind is never given, so it is never a rung to earn. */
-export type Rung = Exclude<OrderKind, "body"> | "condition" | "pace";
+/** What an order may say: its kind, and past the keep, the conditions and the pace it may carry. Neither care kind is ever given, so neither is a rung to earn. */
+export type Rung = Exclude<OrderKind, "body" | "camp"> | "condition" | "pace";
 
 export interface Order {
   /** Stable within the run; the live intent names its order by it. */
@@ -252,7 +255,13 @@ export type Verdict =
   | { v: "later" };
 
 /** A body need the runner is serving; kept so a need whose exit is above its entry holds between the two. */
-export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "fire" | "snares" | "spent" | "home";
+export type BodyNeed = "sleep" | "storm" | "cold" | "hungry" | "thirsty" | "spent" | "home";
+
+/** What the camp around the body asks for: fuel on the fire, a catch out of the snares. */
+export type CampNeed = "fire" | "snares";
+
+/** Either kind of want the scheduler serves from the need model, which is what the three phrase tables and bodyStep are keyed on. */
+export type CareNeed = BodyNeed | CampNeed;
 
 /**
  * What the player set out to do. The runner re-reads the world every minute
@@ -285,7 +294,7 @@ interface IntentBase {
  * takes it over or moves it anywhere. The body still speaks - the tags and
  * the log say tired, spent, sleepy, cold - and the player decides. What
  * keeps the body off it is where the click lands on the list, above the
- * body's own row, and not this tag: the tag says whose the work is, and the
+ * care rows, and not this tag: the tag says whose the work is, and the
  * collapse floor in `runIntent` reads it.
  */
 export interface HandIntent extends IntentBase {
@@ -294,9 +303,10 @@ export interface HandIntent extends IntentBase {
 
 /**
  * The runner's own: a standing or counted order, the wait at camp, and the
- * night out (whose whole content is the body's sleep). The body's own row
- * outranks it wherever the player has left it above the work - sleep,
- * storm, cold, thirst, hunger, snares, spent, home.
+ * night out (whose whole content is the body's sleep). A care row outranks
+ * it wherever the player has left that row above the work - the body's
+ * sleep, storm, cold, thirst, hunger, spent and home, the camp's fire and
+ * snares.
  * Which need holds and whether cold has already spent a rest live on the
  * player rather than here: this intent comes and goes with every order the
  * scheduler swaps in, and a need's stickiness has to outlast that.

@@ -1,6 +1,6 @@
 import { edible, HUNGRY_LINE, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
-import { isBodyRow } from "../sim/bodyorder";
+import { isCareRow } from "../sim/bodyorder";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
@@ -424,7 +424,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     ? `Waiting, ${describeWhere(state, world)}`
     : "Waiting at camp";
   // Only the scheduler's own wait, the one belonging to no row, is drawn
-  // loose above the list. The wait the body's row starts is that row's
+  // loose above the list. The wait a care row starts is that row's
   // minute, and drawing it here as well would put the survivor's own doings
   // in two places at once, neither of them the rank the player set them at.
   const loose = it?.task === "wait" && it.orderId === null;
@@ -450,17 +450,17 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(waitingLine(state, world, cal, o, judged))}</div>`;
-    // The body row ranks like any other row and draws the same up and down,
+    // A care row ranks like any other row and draws the same up and down,
     // since where it sits against the work is the whole of what the player
     // says to it. It draws no x: it cannot be struck off, and a button that
     // does nothing when clicked is worse than none.
     const move = `<button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button>`;
     // A row that can be passed over and a row that stops the list are two
     // behaviours of the same row, so the button says which one is switched on
-    // and what the switched-on one costs. A pin on the body's row would mean
-    // nothing: the list never goes past that row, so it has none.
+    // and what the switched-on one costs. A pin on a care row would mean
+    // nothing: the list never goes past those rows, so they have none.
     const pin = `<button class="mini${o.pinned ? " on" : ""}" data-act="order-pin" data-id="${o.id}" title="${o.pinned ? "Nothing under this runs until it is done" : "Hold the list here until this is done"}">${o.pinned ? "doing this first - holds the list" : "do this first"}</button>`;
-    const btns = isBodyRow(o)
+    const btns = isCareRow(o)
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
@@ -469,7 +469,7 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // Words and not only the title: a touch device has no hover to show one, and
     // a mouse never rests on a row long enough to find it.
     const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
-    return `<div class="order${isBodyRow(o) ? " body" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
+    return `<div class="order${isCareRow(o) ? " care" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
   }).join("");
   return `${waiting}${held}${LANDING_RULE}${rows}`;
 }
@@ -478,7 +478,7 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
   const t = state.task;
   const it = state.intent;
   const orders = ordersHere(state, world);
-  const work = orders.some((o) => !isBodyRow(o));
+  const work = orders.some((o) => !isCareRow(o));
   const aside = pausedList(state, world, cal);
   const asideHtml = aside.length
     ? `<div class="aside"><small>Set aside</small>${aside
@@ -513,8 +513,8 @@ export function taskHtml(state: GameState, world: World, cal: Calendar): string 
     head = `<div class="dim">Nothing. Pick something below.</div>`;
   }
   // The heading names what the panel is a list of, and a list holding only
-  // the body's row is not a list of orders: nobody has given one. Counting
-  // the rows cannot tell the two apart, since the body's row is on every
+  // the care rows is not a list of orders: nobody has given one. Counting
+  // the rows cannot tell the two apart, since both care rows are on every
   // list from the moment a region exists.
   return `<h2>${work ? "Orders" : "Doing"}</h2>${head}${ordersHtml(state, world, cal)}${asideHtml}`;
 }

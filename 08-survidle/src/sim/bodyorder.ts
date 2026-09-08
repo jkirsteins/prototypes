@@ -1,109 +1,157 @@
 /**
- * The body's row. Sleep, food, water, warmth, shelter and coming home
- * before dark are one row on the order list rather than a tier hidden
- * under it, so where the body ranks against the work is the player's to
- * say and is visible while they say it.
+ * The two care rows. The body's row - sleep, food, water, warmth, shelter
+ * and coming home before dark - and the camp's - the fire fed, the snares
+ * checked - are rows on the order list rather than a tier hidden under it,
+ * so where each ranks against the work is the player's to say and is
+ * visible while they say it.
  *
- * The row's verdict comes from the need model, not from a target: it asks
- * for nothing while the body wants nothing, and what it does when it wants
- * something is whatever step that need calls for. Judging the row must
- * never serve it - the panel and the scheduler both judge the list far
- * oftener than a minute turns over, and only the real service, once a
- * minute at most, is allowed to drink, eat or feed a fire on the body's
- * behalf.
+ * They are two rows because they are two jobs. A survivor who drops the
+ * camp down the list to travel hard is saying nothing about sleep or
+ * thirst, and one row would have made him say both at once.
+ *
+ * Neither row's verdict comes from a target: each asks the need model what
+ * it wants, asks for nothing while it wants nothing, and does whatever step
+ * that want calls for. Judging a row must never serve it - the panel and
+ * the scheduler both judge the list far oftener than a minute turns over,
+ * and only the real service, once a minute at most, is allowed to drink,
+ * eat or feed a fire on the survivor's behalf.
  */
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { bodyStep, currentNeed, NEED_ASIDE, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
+import { bodyStep, campNeed, currentNeed, NEED_ASIDE, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
 import { intentSentence, startIntent } from "./intent";
 import { log } from "./log";
 import { regionState } from "./regionstate";
 import { isRunning, takeStep } from "./steps";
 import { setAside } from "./tasks";
-import type { GameState, IntentRequest, Order, RegionState, Verdict } from "./types";
+import type { CareNeed, GameState, IntentRequest, Order, RegionState, Verdict } from "./types";
 
 /**
- * The request the row carries. `wait` is the task because the row's minute
- * is the body's own step rather than work: nothing ever begins a task from
- * this request, and the runner intent it would start is the same wait the
- * scheduler already gives the body between orders.
+ * The request a care row carries. `wait` is the task because the row's
+ * minute is the need's own step rather than work: nothing ever begins a
+ * task from this request, and the runner intent it would start is the same
+ * wait the scheduler already gives the body between orders.
  */
-export const BODY_REQ: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
+export const CARE_REQ: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
-/** The row's own task is never begun as work; its sentence is fixed, since it never carries a target for orderSentence to describe. */
+/** Neither row's own task is ever begun as work; their sentences are fixed, since neither carries a target for orderSentence to describe. */
 export const BODY_SENTENCE = "Look after yourself - sleep, food, water, warmth, shelter, home before dark";
+export const CAMP_SENTENCE = "Keep the camp - the fire fed, the snares checked";
 
 export function isBodyRow(o: Order): boolean {
   return o.kind === "body";
 }
 
-/** Adds the row at the top of a region's list. Every list born through regionState or a save's own load carries exactly one from that moment on. */
-export function addBodyRow(st: RegionState): Order {
-  const o: Order = { id: st.nextOrderId++, kind: "body", req: BODY_REQ, done: 0, minutes: 0, skipped: "" };
-  st.orders.unshift(o);
-  return o;
+export function isCampRow(o: Order): boolean {
+  return o.kind === "camp";
+}
+
+/**
+ * A row the scheduler serves from the need model rather than from a
+ * request. Everything the two share is asked through this: neither can be
+ * struck off, neither takes a pin, neither is work for the list to choose
+ * among, neither counts in a rank the player gives their own orders in,
+ * and both are drawn apart from the work.
+ */
+export function isCareRow(o: Order): boolean {
+  return isBodyRow(o) || isCampRow(o);
+}
+
+function careRow(st: RegionState, kind: "body" | "camp"): Order {
+  return { id: st.nextOrderId++, kind, req: CARE_REQ, done: 0, minutes: 0, skipped: "" };
+}
+
+/**
+ * Puts whichever care row a list is missing at its top, the camp above the
+ * body. The camp is what the body rests and sleeps in: the evening by the
+ * fire and the night at camp are both spent at a fire somebody has to feed,
+ * and a body ranked over the camp would hold the minute from dusk to dawn
+ * resting by a fire it never fed, which goes out under it. Feeding it costs
+ * no minute at all, so the camp taking its turn first costs the body
+ * nothing, and a player who wants it the other way round - the fire left to
+ * burn down while a freezing survivor gets warm - says so with the row's
+ * own up button. Every list born through regionState carries both rows from
+ * that moment on, and a list loaded out of a save is brought up to the same.
+ */
+export function ensureCareRows(st: RegionState): void {
+  const missing: ("camp" | "body")[] = [];
+  if (!st.orders.some(isCampRow)) missing.push("camp");
+  if (!st.orders.some(isBodyRow)) missing.push("body");
+  // Made top down, so a list that is missing both numbers them in the order
+  // they will be read in, then put on back to front so the first made ends
+  // up at the top.
+  const rows = missing.map((k) => careRow(st, k));
+  for (const o of rows.reverse()) st.orders.unshift(o);
 }
 
 export function bodyRowOf(state: GameState, world: World): Order | null {
   return regionState(state, world, state.player.region).orders.find(isBodyRow) ?? null;
 }
 
+export function campRowOf(state: GameState, world: World): Order | null {
+  return regionState(state, world, state.player.region).orders.find(isCampRow) ?? null;
+}
+
 /**
- * The row's reading. Met while the body wants nothing; ready when a need
- * holds and there is something here to do about it; blocked when a need
- * holds and nothing here can answer it - a thirst with no water within
- * reach - which is the moment the row most owes the player a word. Two
- * things keep this a judgement rather than a service: peekNeed reads the
- * same sticky memory the real service does without ever writing it back
- * (bodyNeed is a signal a task's own finish clears for one minute, not only
- * a cache, and a row read must not close that minute before the scheduler
- * sees it), and the dry read on bodyStep asks whether a step would go
- * through without ever taking it.
+ * A row's reading. Met while nothing is wanted; ready when a want holds and
+ * there is something here to do about it; blocked when a want holds and
+ * nothing here can answer it - a thirst with no water within reach - which
+ * is the moment the row most owes the player a word. The dry read on
+ * bodyStep is what keeps this a judgement rather than a service: it asks
+ * whether a step would go through without ever taking it.
  */
-export function judgeBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng): Verdict {
-  const need = peekNeed(state, world, cal);
+function judgeNeed(state: GameState, world: World, cal: Calendar, rng: Rng, need: CareNeed | null): Verdict {
   if (!need) return { v: "met" };
   return bodyStep(state, world, cal, rng, need, true) ? { v: "ready" } : { v: "blocked", why: NEED_WORDS[need] };
 }
 
 /**
- * What the log says when the row goes from met to blocked: NEED_LOG_LINES'
- * sentence for whatever the body currently wants, in the game's own person
- * voice, not NEED_WORDS' fragment - that one is the row's own and reads
- * wrong once it leaves the row. Read fresh with the same dry, non-writing
- * peek judgeBodyRow itself takes: the only thing markSkipped is handed at
- * that moment is the row's already-chosen fragment, not the need itself.
+ * The body row's reading. peekNeed is the second thing that keeps it a
+ * judgement: it reads the same sticky memory the real service does without
+ * ever writing it back (bodyNeed is a signal a task's own finish clears for
+ * one minute, not only a cache, and a row read must not close that minute
+ * before the scheduler sees it).
  */
-export function bodyLogLine(state: GameState, world: World, cal: Calendar): string | null {
-  const need = peekNeed(state, world, cal);
+export function judgeBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng): Verdict {
+  return judgeNeed(state, world, cal, rng, peekNeed(state, world, cal));
+}
+
+/** The camp row's reading. The camp's wants are sticky nowhere and written nowhere, so the judging read and the serving read are the same call. */
+export function judgeCampRow(state: GameState, world: World, cal: Calendar, rng: Rng): Verdict {
+  return judgeNeed(state, world, cal, rng, campNeed(state, world, cal));
+}
+
+/**
+ * What the log says when a care row goes from met to blocked:
+ * NEED_LOG_LINES' sentence for whatever is currently wanted, in the game's
+ * own person voice, not NEED_WORDS' fragment - that one is the row's own
+ * and reads wrong once it leaves the row. Read fresh with the same dry,
+ * non-writing reads the judgements take: the only thing markSkipped is
+ * handed at that moment is the row's already-chosen fragment, not the want
+ * itself.
+ */
+export function careLogLine(state: GameState, world: World, cal: Calendar, o: Order): string | null {
+  const need = isCampRow(o) ? campNeed(state, world, cal) : peekNeed(state, world, cal);
   return need ? NEED_LOG_LINES[need] : null;
 }
 
 /**
- * The row's minute. The need is read the serving way - sticky memory and
- * all, so a body halfway through answering one goes on answering it - and
- * whatever step that need calls for is taken. The sleep is the one step
- * the model rather than the clock ends: a sleep task runs as long as the
- * night is expected to be, and the two can disagree by minutes, so a body
- * past the wake line gets up on that minute instead of lying out an hour
- * it no longer needs.
+ * A care row's minute: whatever step the want calls for, taken under the
+ * row's own name.
  *
- * A need answered where the body stands - a mouthful from the pack, a pull
- * on the waterskin, a log onto the fire - costs the minute nothing and is
- * taken without disturbing anything: bodyStep does it and hands back no
- * step, and whatever was under way is still under way. Only a need that
- * wants the survivor's hands or feet claims the row's own intent, the
- * runner-shaped wait, which is there so that everything reading "what is
- * he doing" finds the body's row by name the way it finds any other row
- * that has the minute. Nothing is ever begun from BODY_REQ itself: the
- * step below is the whole of the minute, which is why the intent starts
- * without taking one of its own.
+ * A want answered where the survivor stands - a mouthful from the pack, a
+ * pull on the waterskin, a log onto the fire - costs the minute nothing and
+ * is taken without disturbing anything: bodyStep does it and hands back no
+ * step, and whatever was under way is still under way. Only a want that
+ * asks for the survivor's hands or feet claims the row's own intent, the
+ * runner-shaped wait, which is there so that everything reading "what is he
+ * doing" finds the row by name the way it finds any other row that has the
+ * minute. Nothing is ever begun from CARE_REQ itself: the step is the whole
+ * of the minute, which is why the intent starts without taking one of its
+ * own.
  */
-export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
-  const need = currentNeed(state, world, cal);
-  if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
-  if (!need) return;
+function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order, need: CareNeed): void {
   const s = bodyStep(state, world, cal, rng, need);
   if (!s || isRunning(state, s)) return;
   // A night out is the body's own errand under an order's name: the whole of
@@ -117,7 +165,36 @@ export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng:
     // exists to stop. The wait at camp is not work and says nothing.
     const dropped = state.intent && state.intent.orderId === null && state.intent.task !== "wait" ? state.intent : null;
     if (dropped) log(state, `${intentSentence(state, world, cal, dropped)}: set aside, ${NEED_ASIDE[need]}.`, "bad");
-    startIntent(state, world, cal, rng, BODY_REQ, o.id, false);
+    startIntent(state, world, cal, rng, CARE_REQ, o.id, false);
   }
   takeStep(state, world, cal, s);
+}
+
+/**
+ * The body row's minute. The need is read the serving way - sticky memory
+ * and all, so a body halfway through answering one goes on answering it -
+ * and whatever step that need calls for is taken. The sleep is the one step
+ * the model rather than the clock ends: a sleep task runs as long as the
+ * night is expected to be, and the two can disagree by minutes, so a body
+ * past the wake line gets up on that minute instead of lying out an hour it
+ * no longer needs.
+ */
+export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+  const need = currentNeed(state, world, cal);
+  if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
+  if (!need) return;
+  serveNeed(state, world, cal, rng, o, need);
+}
+
+/** The camp row's minute: a log on the fire, or the walk to the snares. */
+export function serveCampRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+  const need = campNeed(state, world, cal);
+  if (!need) return;
+  serveNeed(state, world, cal, rng, o, need);
+}
+
+/** The right service for whichever care row won the minute. */
+export function serveCareRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+  if (isCampRow(o)) serveCampRow(state, world, cal, rng, o);
+  else serveBodyRow(state, world, cal, rng, o);
 }

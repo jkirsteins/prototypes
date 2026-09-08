@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { isBodyRow } from "../src/sim/bodyorder";
+import { isCareRow } from "../src/sim/bodyorder";
 import { calendar, coastOpen, START_DOY } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
@@ -67,8 +67,8 @@ describe("the reference player", () => {
     // stays on the list rather than being withdrawn to make way.
     const ref = setUpReference(17, true);
     ref.player.tick(ref.state, ref.world);
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(ref.state, ref.world)[1].req.task).toBe("thaw");
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(ref.state, ref.world)[2].req.task).toBe("thaw");
     stepReference(ref, 60);
     const list = ordersHere(ref.state, ref.world);
     expect(list.some((o) => o.req.task === "thaw")).toBe(true);
@@ -82,10 +82,10 @@ describe("the reference player", () => {
 
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
     const { state, world, player } = setUpReference(17);
-    expect(ordersHere(state, world).every(isBodyRow)).toBe(true);
+    expect(ordersHere(state, world).every(isCareRow)).toBe(true);
     player.tick(state, world);
-    // The body row is not one of the reference's own wants.
-    const list = ordersHere(state, world).filter((o) => !isBodyRow(o));
+    // Neither care row is one of the reference's own wants.
+    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
     // Two readings shut a want on the opening morning. The runner's own rules shut the three
     // named hunts (the species' recommended level), the two ice-hole fetches and the two melts
     // (the shore is open), the fire indoors (no hut), the hide coat, trousers and boots
@@ -204,7 +204,7 @@ describe("the reference player", () => {
       { req: { task: "craft", until: { kind: "once" }, arg: "cordage", deliver: "camp", where: "nearest" }, kind: "job" },
     ]);
     player.tick(state, world);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "bark", "craft"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "bark", "craft"]);
     // The stand-ins run to completion and drop off.
     stepReference({ state, world, player }, 6 * 60);
     // The bark keep is unmet while camp has under half of 10, so it is standing again; the cordage job finished and is not.
@@ -340,15 +340,15 @@ describe("the reference player", () => {
     ]);
     player3.tick(at3.state, at3.world);
     const first = ordersHere(at3.state, at3.world);
-    // The body row plus the one real order.
-    expect(first.length).toBe(2);
-    expect(first[1].kind).toBe("job");
-    expect(first[1].req.until).toEqual({ kind: "times", n: 2 });
+    // The two care rows plus the one real order.
+    expect(first.length).toBe(3);
+    expect(first[2].kind).toBe("job");
+    expect(first[2].req.until).toEqual({ kind: "times", n: 2 });
     for (let h = 0; h < 6; h++) {
       player3.tick(at3.state, at3.world);
       advance(at3.state, at3.world, 60);
     }
-    expect(ordersHere(at3.state, at3.world).every(isBodyRow)).toBe(true);
+    expect(ordersHere(at3.state, at3.world).every(isCareRow)).toBe(true);
   });
 
   it("a times want that reaches its rung mid-count keeps only its remainder, not a fresh n", () => {
@@ -381,8 +381,8 @@ describe("the reference player", () => {
     ]);
     player.tick(state, world);
     const list = ordersHere(state, world);
-    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["wait", "body"], ["fill", "job"], ["split", "keep"]]);
-    expect(list[1].req.until.kind).toBe("once");
+    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["wait", "camp"], ["wait", "body"], ["fill", "job"], ["split", "keep"]]);
+    expect(list[2].req.until.kind).toBe("once");
   });
 
   it("the fill keep, given at the shore with a bucket in hand, stocks the camp within six hours", () => {

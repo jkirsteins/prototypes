@@ -134,8 +134,8 @@ describe("the order panel", () => {
     expect(taskHtml(state, world, cal)).toContain("<h2>Orders</h2>");
   });
 
-  it("the body row and the held banner have their own marks in the stylesheet", () => {
-    expect(css).toContain("#task .order.body");
+  it("the care rows and the held banner have their own marks in the stylesheet", () => {
+    expect(css).toContain("#task .order.care");
     expect(css).toContain("#task .held");
     expect(css).toContain("#task .rule");
   });

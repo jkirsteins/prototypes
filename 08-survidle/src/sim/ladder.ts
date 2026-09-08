@@ -53,8 +53,8 @@ export function normalizeOrder(req: IntentRequest, kind: OrderKind): { req: Inte
 /** The rungs an order asks for: its kind, and past the keep, each condition it carries. */
 export function rungsNeeded(req: IntentRequest, kind: OrderKind): Rung[] {
   const n = normalizeOrder(req, kind);
-  // normalizeOrder never turns anything into the body kind, nor is it ever
-  // called with one: nothing is ever given as a body row, so a rung list is
+  // normalizeOrder never turns anything into a care kind, nor is it ever
+  // called with one: nothing is ever given as a care row, so a rung list is
   // never asked of one either.
   const out: Rung[] = [n.kind as Rung];
   const w = n.req.when;
@@ -113,7 +113,7 @@ export function giveOrder(state: GameState, world: World, req: IntentRequest, ki
  * An order given by hand at the panel. A standing or counted order is a
  * policy: it joins the bottom of the list and is the runner's to serve. A
  * once order is the player's own choice in the moment: it goes to the top
- * of the whole list, above the body's own row, and starts now, whatever
+ * of the whole list, above both care rows, and starts now, whatever
  * the body says and whatever the runner was doing, which is set aside with
  * its minutes kept. A second click displaces the first, because that is
  * what clicking a thing means.

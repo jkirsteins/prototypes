@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
+import { campNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
@@ -336,9 +336,9 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   // Whatever was under way, by hand or by intent, is set aside with its share kept.
   setAside(state, world);
   // The first minute is the new intent's, unless the caller has a step of its
-  // own to take on it: the body's row spends its minute on the need that won
+  // own to take on it: a care row spends its minute on the want that won
   // it, and a wait that walked home first would have taken the minute and
-  // named the walk something other than what the body is walking for.
+  // named the walk something other than what the survivor is walking for.
   if (runNow) runIntent(state, world, cal, rng);
   // The note (a chosen spot that did not suit) belongs on the first step, not "setting out".
   if (note && state.intent) state.intent.step = `${note}; ${state.intent.step}`;
@@ -692,15 +692,21 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   return undefined;
 }
 
-/** Whether the live intent belongs to the body's own row, read off the list rather than off the intent, which carries only the row's number. */
-function isBodyRowIntent(state: GameState, world: World, it: Intent): boolean {
-  return it.orderId !== null && regionState(state, world, state.player.region).orders.some((o) => o.id === it.orderId && o.kind === "body");
+/**
+ * Which care row the live intent belongs to, or null when it belongs to
+ * neither, read off the list rather than off the intent, which carries only
+ * the row's number.
+ */
+function careRowIntent(state: GameState, world: World, it: Intent): "body" | "camp" | null {
+  if (it.orderId === null) return null;
+  const row = regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId);
+  return row?.kind === "body" || row?.kind === "camp" ? row.kind : null;
 }
 
 /**
  * Called once a minute by advance, after stepTask. The runner takes the
  * minute the scheduler already gave it and nothing more: which row holds
- * it, the body's own included, was decided on the list before this ever
+ * it, either care row included, was decided on the list before this ever
  * runs, and nothing here revisits that choice. The collapse clause below
  * is the one thing beneath it - the floor under work the player chose by
  * hand, which nothing else is allowed to interrupt once it outranks the
@@ -712,14 +718,16 @@ function isBodyRowIntent(state: GameState, world: World, it: Intent): boolean {
 export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (!state.intent || state.dead) return;
   const it = state.intent;
-  // A minute the body's own row has already spent is spent. The scheduler
-  // serves that row itself - the drink, the mouthful, the walk home - and
-  // some of what it serves takes no time at all, so a work tier still owed
-  // the rest of the minute would set a body that had just eaten walking for
-  // a camp it has no reason to go to. With nothing left to want, the row's
-  // intent is the wait it is shaped like, and rests, feeds the fire and
+  // A minute a care row has already spent is spent. The scheduler serves
+  // those rows itself - the drink, the mouthful, the log on the fire, the
+  // walk home - and some of what it serves takes no time at all, so a work
+  // tier still owed the rest of the minute would set a body that had just
+  // eaten walking for a camp it has no reason to go to. With nothing left to
+  // want, the row's intent is the wait it is shaped like, and rests and
   // comes home under it the same as any other wait.
-  if (state.player.bodyNeed !== null && isBodyRowIntent(state, world, it)) return;
+  const care = careRowIntent(state, world, it);
+  if (care === "body" && state.player.bodyNeed !== null) return;
+  if (care === "camp" && campNeed(state, world, cal) !== null) return;
   // The floor under work the player chose in the moment. Ranked over the
   // body's row, nothing thirsty, cold or dark takes the minute back off it,
   // however long it runs and however far past spent the body is. The body

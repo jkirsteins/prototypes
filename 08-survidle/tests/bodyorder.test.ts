@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { NEED_LOG_LINES, NEED_WORDS } from "../src/sim/body";
+import { FIRE_LOW_KG } from "../src/sim/items";
 import { advance } from "../src/sim/advance";
 import { intentSentence, startIntent } from "../src/sim/intent";
 import { newGame } from "../src/sim/newgame";
 import { SPENT_AT } from "../src/sim/sleep";
 import { addOrder, removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
-import { bodyRowOf, isBodyRow, judgeBodyRow, BODY_SENTENCE } from "../src/sim/bodyorder";
+import { bodyRowOf, campRowOf, isBodyRow, isCampRow, judgeBodyRow, judgeCampRow, serveCampRow, BODY_SENTENCE, CAMP_SENTENCE } from "../src/sim/bodyorder";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
@@ -16,22 +17,27 @@ import { deserialize, serialize } from "../src/sim/save";
 const cal = calendar(0);
 
 describe("the body row", () => {
-  it("a new region's list is the body row and nothing else", () => {
+  it("a new region's list is the two care rows and nothing else, the camp above the body", () => {
     const { state, world } = newGame(3);
     const list = ordersHere(state, world);
-    expect(list.length).toBe(1);
-    expect(isBodyRow(list[0])).toBe(true);
-    expect(orderSentence(state, world, cal, list[0])).toBe(BODY_SENTENCE);
+    expect(list.length).toBe(2);
+    expect(isCampRow(list[0])).toBe(true);
+    expect(isBodyRow(list[1])).toBe(true);
+    expect(orderSentence(state, world, cal, list[0])).toBe(CAMP_SENTENCE);
+    expect(orderSentence(state, world, cal, list[1])).toBe(BODY_SENTENCE);
   });
 
-  it("it cannot be struck off", () => {
+  it("neither care row can be struck off", () => {
     const { state, world } = newGame(3);
-    const row = bodyRowOf(state, world)!;
-    removeOrder(state, world, row.id);
-    expect(bodyRowOf(state, world)?.id).toBe(row.id);
+    const body = bodyRowOf(state, world)!;
+    const camp = campRowOf(state, world)!;
+    removeOrder(state, world, body.id);
+    removeOrder(state, world, camp.id);
+    expect(bodyRowOf(state, world)?.id).toBe(body.id);
+    expect(campRowOf(state, world)?.id).toBe(camp.id);
   });
 
-  it("a save from before it loads with one, at the top", () => {
+  it("a save from before them loads with both, at the top", () => {
     const { state, world } = newGame(3);
     const raw = JSON.parse(serialize(state));
     for (const st of Object.values(raw.state.regions) as Record<string, unknown>[]) {
@@ -39,7 +45,19 @@ describe("the body row", () => {
     }
     const file = deserialize(JSON.stringify(raw))!;
     const list = ordersHere(file.state, world);
-    expect(isBodyRow(list[0])).toBe(true);
+    expect(isCampRow(list[0])).toBe(true);
+    expect(isBodyRow(list[1])).toBe(true);
+  });
+
+  it("a save carrying the body row alone loads with the camp row put on above it", () => {
+    const { state, world } = newGame(3);
+    const raw = JSON.parse(serialize(state));
+    for (const st of Object.values(raw.state.regions) as { orders: { kind: string }[] }[]) {
+      st.orders = st.orders.filter((o: { kind: string }) => o.kind !== "camp");
+    }
+    const file = deserialize(JSON.stringify(raw))!;
+    const list = ordersHere(file.state, world);
+    expect(list.map((o) => o.kind)).toEqual(["camp", "body"]);
   });
 
   it("it reads met when the body wants nothing and ready when it does", () => {
@@ -103,6 +121,35 @@ describe("the body row", () => {
     p.bodyNeed = null;
     judgeBodyRow(state, world, cal, new Rng(1));
     expect(p.bodyNeed).toBeNull();
+  });
+
+  it("a dry read of the camp row never feeds the fire: judging a fire at the low mark leaves the woodpile and the fire's own fuel untouched", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAtSpot(state, world, state.player.region, "camp");
+    st.fire.lit = true;
+    st.fire.fuelKg = FIRE_LOW_KG;
+    addItem(pile(state, st.campCell), "firewood", 5);
+    expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
+    for (let i = 0; i < 20; i++) judgeCampRow(state, world, cal, new Rng(1));
+    expect(st.fire.fuelKg).toBe(FIRE_LOW_KG);
+    expect(qty(pile(state, st.campCell), "firewood")).toBe(5);
+  });
+
+  it("the camp row reads met with nothing to keep, and goes back to met once the wood is on", () => {
+    const { state, world } = newGame(3);
+    const st = regionState(state, world, state.player.region);
+    placeAtSpot(state, world, state.player.region, "camp");
+    expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("met");
+    st.fire.lit = true;
+    st.fire.fuelKg = FIRE_LOW_KG;
+    addItem(pile(state, st.campCell), "firewood", 5);
+    expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("ready");
+    // The wet read is what actually puts the wood on, and the row has
+    // nothing left to ask for after it.
+    serveCampRow(state, world, cal, new Rng(1), campRowOf(state, world)!);
+    expect(st.fire.fuelKg).toBeGreaterThan(FIRE_LOW_KG);
+    expect(judgeCampRow(state, world, cal, new Rng(1)).v).toBe("met");
   });
 
   it("a blocked need reads as the row's own fragment on the row, and the log's own sentence in the log", () => {

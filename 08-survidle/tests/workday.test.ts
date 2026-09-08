@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { currentNeed, iceHoleSite, snaresWaiting, WORK_HOURS_DEFAULT } from "../src/sim/body";
+import { campNeed, currentNeed, iceHoleSite, snaresWaiting, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
 import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
@@ -276,16 +276,24 @@ describe("checking the snares", () => {
     st.snareCatch = { count: 2, age: 0 };
     expect(snaresWaiting(state, world, calendar(state.minute))).toBe(heath);
     advance(state, world, 1);
-    expect(state.player.bodyNeed).toBe("snares");
-    expect(state.intent?.step).toContain("check the snares");
+    // The snares are the camp's want, not the body's: it is the camp row
+    // that asks for them and the camp row that walks there. It waits for the
+    // chunk of work in hand to end first, the way the work under it does.
+    expect(campNeed(state, world, calendar(state.minute))).toBe("snares");
+    let walking = false;
+    for (let m = 0; m < 600 && !walking; m++) {
+      advance(state, world, 1);
+      walking = (state.intent?.step ?? "").includes("check the snares");
+    }
+    expect(walking).toBe(true);
     // Walk there: the catch comes with you and the chore is over.
     for (let m = 0; m < 600 && st.snareCatch.count > 0; m += 15) advance(state, world, 15);
     expect(st.snareCatch.count).toBe(0);
-    expect(state.player.bodyNeed ?? null).not.toBe("snares");
+    expect(campNeed(state, world, calendar(state.minute))).not.toBe("snares");
     expect(state.log.some((e) => /hares? in the snares/.test(e.text))).toBe(true);
   });
 
-  it("the chore waits for daylight and yields to thirst", () => {
+  it("the chore waits for daylight, and a thirst by night is the body's own to answer", () => {
     const { state, world } = felling();
     const st = regionState(state, world, state.player.region);
     st.snareCatch = { count: 1, age: 0 };
@@ -293,11 +301,11 @@ describe("checking the snares", () => {
     const night = calendar(state.minute);
     expect(night.isNight).toBe(true);
     expect(snaresWaiting(state, world, night)).toBeNull();
-    state.minute = 0;
+    expect(campNeed(state, world, night)).toBeNull();
+    // The camp asks for nothing after dark, so the thirst is what holds.
     state.player.water = 0.5;
     state.player.energy = 100;
-    advance(state, world, 1);
-    expect(state.player.bodyNeed).toBe("thirsty");
+    expect(currentNeed(state, world, night)).toBe("thirsty");
   });
 });
 

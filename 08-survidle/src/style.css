@@ -590,8 +590,8 @@ button.act small, span.act small { display: block; color: var(--dim); }
 #task .rule + .order { border-top: 0; }
 /* The banner takes its colour from the shared bad class, the one a bad log line wears; only its spacing is its own. */
 #task .held { padding: 4px 0; }
-/* The body's row is one of the ranks and draws as one, marked only enough to be found at a glance. Before .live, so the row with the minute reads as live wherever it is. */
-#task .order.body { border-left: 2px solid var(--line); padding-left: 6px; }
+/* A care row is one of the ranks and draws as one, marked only enough to be found at a glance. Before .live, so the row with the minute reads as live wherever it is. */
+#task .order.care { border-left: 2px solid var(--line); padding-left: 6px; }
 #task .order.live { border-left: 2px solid var(--accent); padding-left: 6px; }
 #task .order .head { gap: 6px; }
 #task .order .ctl { white-space: nowrap; }

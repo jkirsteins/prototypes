@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { bodyStep, canFeed, currentNeed, SLEEP_AT, snaresWaiting, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
+import { bodyStep, campNeed, canFeed, currentNeed, SLEEP_AT, snaresWaiting, SOAKED_WETNESS, WET_COLD_C } from "../src/sim/body";
 import { alertness, RESTED_AT, sleepiness, sleepMinutes, SLEEP_MAX_MINUTES, SLEEP_MIN_MINUTES, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { calendar } from "../src/sim/calendar";
 import { WATER_FULL } from "../src/sim/water";
@@ -255,11 +255,11 @@ describe("the fire", () => {
 
   it("wants wood at the low mark, and putting it on takes no step and no minute", () => {
     const { state, world, st } = lowFire();
-    expect(currentNeed(state, world, cal)).toBe("fire");
+    expect(campNeed(state, world, cal)).toBe("fire");
     expect(bodyStep(state, world, cal, new Rng(1), "fire")).toBeNull();
     expect(fuelTotal(st.fire)).toBeGreaterThan(FIRE_LOW_KG);
     expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
-    expect(currentNeed(state, world, cal)).not.toBe("fire");
+    expect(campNeed(state, world, cal)).toBeNull();
   });
 
   it("a dry read finds the step ready and burns none of the woodpile", () => {
@@ -271,23 +271,24 @@ describe("the fire", () => {
 
   it("does not hold with nothing to feed it, the way a hunger with nothing to eat does not", () => {
     const { state, world } = lowFire(0);
-    expect(currentNeed(state, world, cal)).toBeNull();
+    expect(campNeed(state, world, cal)).toBeNull();
   });
 
-  it("holds under a thirst that can be quenched and over a catch in the snares", () => {
+  it("holds over a catch in the snares, which is the camp's other want", () => {
     const { state, world, st } = lowFire();
     st.snareCatch = { count: 1, age: 0 };
     expect(snaresWaiting(state, world, cal)).not.toBeNull();
-    expect(currentNeed(state, world, cal)).toBe("fire");
+    expect(campNeed(state, world, cal)).toBe("fire");
     // Fed, the fire has nothing more to ask, and the chore below it gets the day.
     expect(bodyStep(state, world, cal, new Rng(1), "fire")).toBeNull();
-    expect(currentNeed(state, world, cal)).toBe("snares");
-    // Thirst is the body itself and outranks the housekeeping either way.
-    st.fire.fuelKg = FIRE_LOW_KG;
+    expect(campNeed(state, world, cal)).toBe("snares");
+    // The body's own row knows nothing of either: a thirst is what it reads
+    // here, and which of the two is answered first is the ranks' business.
     state.player.water = 0.2;
     addItem(state.player.pack, "barkBucket", 1);
     takeUp(state, world, "barkBucket");
     state.player.tools.find((t) => t.id === "barkBucket")!.litres = 2;
+    expect(campNeed(state, world, cal)).toBe("snares");
     expect(currentNeed(state, world, cal)).toBe("thirsty");
   });
 });

@@ -111,8 +111,8 @@ describe("giving an order", () => {
   it("a shut gate throws with the reason and adds nothing", () => {
     const { state, world } = newGame(3);
     expect(() => giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep")).toThrow("keeps at Woodcraft 10, {you} {are} 1");
-    // Nothing added beyond the body row every list already carries.
-    expect(ordersHere(state, world).map((o) => o.kind)).toEqual(["body"]);
+    // Nothing added beyond the two care rows every list already carries.
+    expect(ordersHere(state, world).map((o) => o.kind)).toEqual(["camp", "body"]);
   });
 
   it("an open gate adds the order at the rank given", () => {
@@ -121,8 +121,8 @@ describe("giving an order", () => {
     setLevel(state, "woodcraft", 10);
     const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
     expect(o.kind).toBe("keep");
-    // Rank 0 is the top of the real work, one place behind the body row.
-    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["wait", "split", "sticks"]);
+    // Rank 0 is the top of the real work, behind the two care rows.
+    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["wait", "wait", "split", "sticks"]);
   });
 });
 
@@ -149,7 +149,7 @@ describe("where a row lands", () => {
     expect(state.intent?.orderId).toBe(b.id);
   });
 
-  it("a standing order lands at the bottom, under the body row and the day's requests alike", () => {
+  it("a standing order lands at the bottom, under the care rows and the day's requests alike", () => {
     const { state, world } = newGame(3);
     setLevel(state, "woodcraft", RUNG_LEVEL.grind);
     orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
@@ -158,15 +158,17 @@ describe("where a row lands", () => {
     expect(list[list.length - 1].id).toBe(o.id);
   });
 
-  it("a rank counts places among the work wherever the body row has been left", () => {
+  it("a rank counts places among the work wherever the care rows have been left", () => {
     const { state, world } = newGame(3);
-    const body = ordersHere(state, world)[0];
+    const [camp, body] = ordersHere(state, world);
     giveOrder(state, world, req("sticks", { kind: "once" }), "job");
-    // The player has ranked the body under the sticks; a rank given after that
-    // still counts the work alone, and rank 0 is the top of it.
+    // The player has ranked both care rows under the sticks; a rank given
+    // after that still counts the work alone, and rank 0 is the top of it.
+    moveOrder(state, world, camp.id, 1);
+    moveOrder(state, world, camp.id, 1);
     moveOrder(state, world, body.id, 1);
     giveOrder(state, world, req("stone", { kind: "once" }), "job", 0);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "wait"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "wait", "wait"]);
   });
 
   it("a haul given by hand is a row like any other: it runs, delivers, and drops off when the ground is bare", () => {

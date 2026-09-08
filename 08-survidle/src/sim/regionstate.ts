@@ -5,7 +5,7 @@
  * by not simulating them.
  */
 import { regionAt, speciesHere, type World } from "../world/gen";
-import { addBodyRow } from "./bodyorder";
+import { ensureCareRows } from "./bodyorder";
 import { log } from "./log";
 import { readShore } from "./knowledge";
 import { body, hasQuirk } from "./person";
@@ -47,11 +47,11 @@ export function newRegionState(world: World, id: number): RegionState {
     rootCells: {},
     sapTaps: { day: 0, n: 0 },
   };
-  // Every list a region ever has starts with the body row already on it, at
-  // the top: a survivor who has been given nothing still looks after himself,
-  // and the rank he does it at is a thing the player changes rather than a
-  // thing they have to grant.
-  addBodyRow(st);
+  // Every list a region ever has starts with the two care rows already on
+  // it, at the top: a survivor who has been given nothing still looks after
+  // himself and still keeps his camp, and the ranks he does either at are
+  // things the player changes rather than things they have to grant.
+  ensureCareRows(st);
   return st;
 }
 

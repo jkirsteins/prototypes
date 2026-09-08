@@ -102,8 +102,8 @@ describe("the runner keeps its night gate", () => {
     const night = calendar(state.minute, state.startDoy);
     expect(night.isNight).toBe(true);
     expect(chooseOrder(state, world, night)).toBeNull();
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.away);
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.away);
   });
 });
 

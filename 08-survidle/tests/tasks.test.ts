@@ -487,8 +487,8 @@ describe("mend clothing", () => {
     addOrder(state, world, { task: "repair", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     for (const g of state.player.clothing) g.durability = MEND_AT + 1;
     expect(chooseOrder(state, world, cal)).toBeNull();
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(state, world)[1].skipped).toBe("nothing worn enough to mend");
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(state, world)[2].skipped).toBe("nothing worn enough to mend");
     state.player.clothing[0].durability = MEND_AT;
     expect(chooseOrder(state, world, cal)?.req.task).toBe("repair");
     expect(ordersHere(state, world)[0].skipped).toBe("");

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
-import { bodyRowOf, isBodyRow } from "../src/sim/bodyorder";
+import { bodyRowOf, campRowOf, isCareRow } from "../src/sim/bodyorder";
 import { calendar, START_DOY } from "../src/sim/calendar";
 import { deliveryPending, resolveCell, startIntent, type IntentRequest } from "../src/sim/intent";
 import { normalizeOrder } from "../src/sim/ladder";
@@ -24,11 +24,11 @@ import { today } from "../src/sim/ledger";
 const cal = calendar(0);
 
 describe("the order record", () => {
-  it("a new region's list is the body row and nothing else, and the next id is past it", () => {
+  it("a new region's list is the two care rows and nothing else, and the next id is past them", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    expect(st.orders.map((o) => o.kind)).toEqual(["body"]);
-    expect(st.nextOrderId).toBe(2);
+    expect(st.orders.map((o) => o.kind)).toEqual(["camp", "body"]);
+    expect(st.nextOrderId).toBe(3);
   });
 
   it("a save without orders loads with empty lists, and a live intent without an order is manual", () => {
@@ -43,10 +43,10 @@ describe("the order record", () => {
     delete raw.state.intent.windDown;
     const file = deserialize(JSON.stringify(raw))!;
     const st = file.state.regions[file.state.player.region];
-    // A save from before the list existed at all gets the body row the same
-    // way one from before the row existed does.
-    expect(st.orders.map((o) => o.kind)).toEqual(["body"]);
-    expect(st.nextOrderId).toBe(2);
+    // A save from before the list existed at all gets both care rows the same
+    // way one from before either row existed does.
+    expect(st.orders.map((o) => o.kind)).toEqual(["camp", "body"]);
+    expect(st.nextOrderId).toBe(3);
     expect(file.state.intent?.orderId).toBeNull();
     expect(file.state.intent?.windDown).toBe(false);
   });
@@ -71,29 +71,29 @@ describe("the order record", () => {
 describe("the list", () => {
   it("a click appends at the bottom with the next id; up, down and remove edit the list", () => {
     const { state, world } = newGame(3);
-    // Id 1 is the body row every list already carries.
+    // Ids 1 and 2 are the camp and body rows every list already carries.
     const a = addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     const b = addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 3]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 3, 4]);
     expect(a.kind).toBe("grind");
     expect(b.kind).toBe("keep");
     moveOrder(state, world, b.id, -1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, 2]);
-    // The body row ranks like any other row: work moved over it is the player
-    // saying "keep at it, tired or not", and the row moves back the same way.
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 4, 3]);
+    // A care row ranks like any other row: work moved over the body is the
+    // player saying "keep at it, tired or not", and the row moves back the same way.
     moveOrder(state, world, b.id, -1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([3, 1, 2]);
-    moveOrder(state, world, 1, -1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, 2]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 4, 2, 3]);
+    moveOrder(state, world, 2, -1);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 4, 3]);
     // A move off either end does nothing.
     moveOrder(state, world, 1, -1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, 2]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 4, 3]);
     moveOrder(state, world, b.id, 1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 3]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 3, 4]);
     removeOrder(state, world, a.id);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 4]);
     // Ids are never reused within a run.
-    expect(addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job").id).toBe(4);
+    expect(addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job").id).toBe(5);
   });
 
   it("keep and camp-has need a countable yield, except a build keep, which stands on the structure and holds no stock", () => {
@@ -350,7 +350,7 @@ describe("the scheduler", () => {
     const g = campWith(3, { log: 2 });
     const { state, world } = g;
     const job = addOrder(state, world, req("split", { until: { kind: "times", n: 2 }, deliver: "camp" }), "job");
-    expect(until(g, () => ordersHere(state, world).every(isBodyRow))).toBe(true);
+    expect(until(g, () => ordersHere(state, world).every(isCareRow))).toBe(true);
     expect(job.done).toBe(2);
     // orderSentence adds "bringing it to camp" for a non-keep order that delivers to camp (Task 2 behaviour).
     expect(state.log.filter((e) => e.text === "Split a log, 2 of 2 done, bringing it to camp: done.").length).toBe(1);
@@ -364,7 +364,7 @@ describe("the scheduler", () => {
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(job.id);
     expect(until(g, () => state.intent === null, 1500)).toBe(true);
-    expect(ordersHere(state, world).every(isBodyRow)).toBe(true);
+    expect(ordersHere(state, world).every(isCareRow)).toBe(true);
     expect(job.done).toBe(1);
     expect(state.log.filter((e) => e.text === "Camp for the night: done.").length).toBe(1);
     // The list has no real order left, so nothing restarts it and no second sleep is ever started by the order.
@@ -459,7 +459,7 @@ describe("the scheduler", () => {
     expect(state.intent?.orderId).toBe(a.id);
     // Swapping the two rows below the live one: the top order is still the choice.
     moveOrderByHand(state, world, cal, new Rng(1), c.id, -1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([bodyRowOf(state, world)!.id, a.id, c.id, b.id]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([campRowOf(state, world)!.id, bodyRowOf(state, world)!.id, a.id, c.id, b.id]);
     expect(state.task?.id).toBe("split");
     expect(state.intent?.orderId).toBe(a.id);
   });
@@ -479,7 +479,7 @@ describe("the scheduler", () => {
     // minute now, and the question the move asks is still about the work.
     state.player.water = 0.5;
     moveOrderByHand(state, world, cal, new Rng(1), c.id, -1);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([bodyRowOf(state, world)!.id, a.id, c.id, b.id]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([campRowOf(state, world)!.id, bodyRowOf(state, world)!.id, a.id, c.id, b.id]);
     expect(state.task?.id).toBe("split");
     expect(state.task!.progress).toBe(done);
     expect(state.intent?.orderId).toBe(a.id);
@@ -493,7 +493,7 @@ describe("the scheduler", () => {
     expect(until(g, () => state.intent?.orderId === a.id)).toBe(true);
     removeOrder(state, world, a.id);
     expect(until(g, () => state.intent === null)).toBe(true);
-    expect(ordersHere(state, world).every(isBodyRow)).toBe(true);
+    expect(ordersHere(state, world).every(isCareRow)).toBe(true);
   });
 
   it("nothing to do starts one wait intent that stays live, not a task that ends and restarts it", () => {
@@ -586,9 +586,9 @@ describe("waiting at camp", () => {
     expect(cellOf(state, world)).toBe(st.campCell);
     expect(st.fire.lit).toBe(true);
     // The wait was not an order, and the sleep that took it over is the body's
-    // own row: the list still has that row and the one met keep, and nothing
-    // the runner did between them added a third.
-    expect(ordersHere(state, world).length).toBe(2);
+    // own row: the list still has the two care rows and the one met keep, and
+    // nothing the runner did between them added a fourth.
+    expect(ordersHere(state, world).length).toBe(3);
     expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
   });
 
@@ -713,7 +713,7 @@ describe("orders belong to a camp", () => {
     expect(until(g, () => state.player.region === nb, 6000)).toBe(true);
     expect(until(g, () => state.task === null, 6000)).toBe(true);
     advance(state, world, 5);
-    expect(ordersHere(state, world).every(isBodyRow)).toBe(true);
+    expect(ordersHere(state, world).every(isCareRow)).toBe(true);
     expect(state.intent).toBeNull();
     expect(startTask(state, world, calendar(state.minute), "travel", `region:${home}`)).toBe(true);
     // Home still has the order, so the runner is never truly idle here as it
@@ -722,7 +722,7 @@ describe("orders belong to a camp", () => {
     // until the order itself resumes. That resuming is the thing under test.
     expect(until(g, () => state.player.region === home && state.intent?.orderId === a.id, 6000)).toBe(true);
     advance(state, world, 5);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([bodyRowOf(state, world)!.id, a.id]);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([campRowOf(state, world)!.id, bodyRowOf(state, world)!.id, a.id]);
     expect(state.intent?.orderId).toBe(a.id);
   });
 });
@@ -784,8 +784,8 @@ describe("the away report", () => {
     expect(s2.intent?.orderId).toBe(a.id);
     catchUp(s2, world, 120);
     expect(s2.intent?.orderId).toBe(a.id);
-    // Index 1: the body row sits at 0.
-    expect(regionState(s2, world, s2.player.region).orders[1].done).toBeGreaterThan(a.done);
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(regionState(s2, world, s2.player.region).orders[2].done).toBeGreaterThan(a.done);
   });
 });
 
@@ -798,20 +798,20 @@ describe("rank", () => {
     const { state, world } = newGame(3);
     addOrder(state, world, sticks, "job");
     addOrder(state, world, bark, "job");
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "sticks", "bark"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "sticks", "bark"]);
   });
 
   it("with a rank it is inserted there, and a rank past the end appends", () => {
     const { state, world } = newGame(3);
     addOrder(state, world, sticks, "job");
     addOrder(state, world, bark, "job");
-    // Rank 0 is the top of the real work, one place behind the body row.
+    // Rank 0 is the top of the real work, behind the two care rows.
     addOrder(state, world, stone, "job", 0);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "stone", "sticks", "bark"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "stone", "sticks", "bark"]);
     addOrder(state, world, { ...stone, task: "berries" }, "job", 99);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "stone", "sticks", "bark", "berries"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "stone", "sticks", "bark", "berries"]);
     addOrder(state, world, { ...stone, task: "chop" }, "job", 2);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "stone", "sticks", "chop", "bark", "berries"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "stone", "sticks", "chop", "bark", "berries"]);
   });
 });
 
@@ -825,8 +825,8 @@ describe("the night", () => {
     const night = calendar(state.minute, state.startDoy);
     expect(night.isNight).toBe(true);
     expect(chooseOrder(state, world, night)).toBeNull();
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.away);
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.away);
     state.minute = 200;
     const day = calendar(state.minute, state.startDoy);
     expect(day.isNight).toBe(false);
@@ -852,8 +852,8 @@ describe("the night", () => {
     expect(chooseOrder(state, world, night)?.req.task).toBe("split");
     st.fire.lit = false;
     expect(chooseOrder(state, world, night)).toBeNull();
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.noFire);
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.noFire);
     state.player.torch.lit = true;
     expect(chooseOrder(state, world, night)?.req.task).toBe("split");
   });
@@ -868,8 +868,8 @@ describe("the night", () => {
     expect(chooseOrder(state, world, night)?.req.task).toBe("split");
     today(state).workMin = budget;
     expect(chooseOrder(state, world, night)).toBeNull();
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(state, world)[1].skipped).toBe(NIGHT_SKIP.budget);
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.budget);
   });
 
   it("lighting the fire is the one camp job the dark never stops, by neither the firelight rule nor the budget", () => {
@@ -884,12 +884,12 @@ describe("the night", () => {
     addOrder(state, world, { task: "light", until: { kind: "campHas", qty: 1 }, deliver: "camp", where: "nearest" }, "keep", 0);
     today(state).workMin = (body(state).workHours - night.daylightHours) * 60;
     expect(chooseOrder(state, world, night)?.req.task).toBe("light");
-    // Index 1: the body row sits at 0, then the light job given at rank 0, then the split keep.
-    expect(ordersHere(state, world)[1].skipped).toBe("");
-    expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.noFire);
+    // Indexes 0 and 1 are the care rows, then the light job given at rank 0, then the split keep.
+    expect(ordersHere(state, world)[2].skipped).toBe("");
+    expect(ordersHere(state, world)[3].skipped).toBe(NIGHT_SKIP.noFire);
     st.fire.lit = true;
     // Wood on it as well as a flame: a fire at the low mark with a woodpile
-    // beside it is the body's own row, and that row would take the minute
+    // beside it is the camp's own row, and that row would take the minute
     // before any chore the list holds.
     st.fire.fuelKg = 10;
     today(state).workMin = 0;
@@ -904,9 +904,9 @@ describe("the night", () => {
     addOrder(state, world, { task: "sleep", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job", 0);
     today(state).workMin = (body(state).workHours - night.daylightHours) * 60;
     expect(chooseOrder(state, world, night)?.req.task).toBe("sleep");
-    // Index 1: the body row sits at 0, then the sleep job given at rank 0, then the split keep.
-    expect(ordersHere(state, world)[1].skipped).toBe("");
-    expect(ordersHere(state, world)[2].skipped).toBe(NIGHT_SKIP.noFire);
+    // Indexes 0 and 1 are the care rows, then the sleep job given at rank 0, then the split keep.
+    expect(ordersHere(state, world)[2].skipped).toBe("");
+    expect(ordersHere(state, world)[3].skipped).toBe(NIGHT_SKIP.noFire);
   });
 
   it("by day the budget does not apply, and in June no chores run at night at all", () => {
@@ -927,8 +927,8 @@ describe("the night", () => {
     const juneNight = calendar(june.state.minute, june.state.startDoy);
     expect(juneNight.isNight).toBe(true);
     expect(chooseOrder(june.state, june.world, juneNight)).toBeNull();
-    // Index 1: the body row sits at 0.
-    expect(ordersHere(june.state, june.world)[1].skipped).toBe(NIGHT_SKIP.budget);
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(june.state, june.world)[2].skipped).toBe(NIGHT_SKIP.budget);
   });
 });
 

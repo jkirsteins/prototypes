@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { bodyRowOf } from "../src/sim/bodyorder";
+import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, herePile, pile } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { LEAN_KCAL_PER_DAY, RECIPE_IDS, STRUCTURE_IDS } from "../src/sim/items";
@@ -785,9 +785,9 @@ describe("the Orders panel", () => {
     expect(html).toContain("gathering sticks");
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
-    // The body row holds the top rank, where its own "up" is spent; the
-    // keep's is free, since the body row is a row it may be moved over.
-    expect(html).toContain(`data-act="order-up" data-id="${bodyRowOf(state, world)!.id}" disabled`);
+    // The camp row holds the top rank, where its own "up" is spent; the
+    // keep's is free, since a care row is a row it may be moved over.
+    expect(html).toContain(`data-act="order-up" data-id="${campRowOf(state, world)!.id}" disabled`);
     expect(html).not.toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
     expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);

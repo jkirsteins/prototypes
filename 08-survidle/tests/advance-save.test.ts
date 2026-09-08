@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
-import { bodyRowOf, isBodyRow } from "../src/sim/bodyorder";
+import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
 import { fillPopulations, regionState } from "../src/sim/regionstate";
@@ -220,10 +220,11 @@ describe("save", () => {
     st.nextOrderId = 3;
     const file = deserialize(serialize(state))!;
     const orders = file.state.regions[id].orders;
-    // The list carried none of its own, so the load migrates one on at the top.
-    expect(isBodyRow(orders[0])).toBe(true);
-    expect(orders[1].req.arg).toBe("any");
-    expect(orders[2].req.arg).toBe("willowGrouse");
+    // The list carried neither care row, so the load migrates both on at the top.
+    expect(isCampRow(orders[0])).toBe(true);
+    expect(isBodyRow(orders[1])).toBe(true);
+    expect(orders[2].req.arg).toBe("any");
+    expect(orders[3].req.arg).toBe("willowGrouse");
   });
 
   it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
@@ -252,15 +253,15 @@ describe("save", () => {
     const cal = calendar(state.minute, state.startDoy);
     const sentenceBefore = orderSentence(state, world, cal, o);
     const raw = JSON.parse(serialize(state)) as { state: { regions: Record<string, { orders: Record<string, unknown>[] }> } };
-    // Index 1: the body row sits at 0, and the keep was given after it.
-    const rawOrder = raw.state.regions[id].orders[1];
+    // Index 2: the two care rows sit at 0 and 1, and the keep was given after them.
+    const rawOrder = raw.state.regions[id].orders[2];
     delete (rawOrder.req as Record<string, unknown>).when;
     delete rawOrder.held;
     delete rawOrder.givenDoy;
     delete rawOrder.dayOpened;
     delete rawOrder.dayBase;
     const file = deserialize(JSON.stringify(raw))!;
-    const back = file.state.regions[id].orders[1];
+    const back = file.state.regions[id].orders[2];
     expect(() => orderMet(file.state, world, cal, back, false)).not.toThrow();
     expect(() => conditionOpen(file.state, world, cal, back)).not.toThrow();
     expect(orderSentence(file.state, world, cal, back)).toBe(sentenceBefore);

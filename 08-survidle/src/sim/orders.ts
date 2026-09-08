@@ -1,7 +1,7 @@
 /**
  * The order list: one ranked list per camp, of keeps ("keep camp at 40 kg
- * firewood"), grinds ("fell trees forever"), jobs ("build a cabin") and the
- * survivor's own body. judgeOrders reads it top down, on every render and
+ * firewood"), grinds ("fell trees forever"), jobs ("build a cabin"), the
+ * survivor's own body and the camp around him. judgeOrders reads it top down, on every render and
  * every minute, and asks each row whether it could run right now; the first
  * ready row is the one with the minute, and a row that cannot run - out of
  * season, missing a tool, no route to the site - is passed over rather than
@@ -11,13 +11,19 @@
  * Once a row is chosen, runOrders starts it through the same startIntent a
  * click uses, so an order and a hand-picked task run on identical machinery.
  *
- * The body is a row on this list, not a tier above or below the work: sleep,
- * food, water, warmth, shelter and coming home before dark are one row,
- * ranked by the player against the keeps, the grinds and the jobs the same
- * way those rank against each other. Where the body sits decides whether a
- * thirsty survivor drops the axe now or finishes the tree first, and there
- * is no second scheduler anywhere in the game to answer that question for
- * them - see bodyorder.ts for the row itself.
+ * The body and the camp are rows on this list, not tiers above or below the
+ * work. Sleep, food, water, warmth, shelter and coming home before dark are
+ * one row; the fire fed and the snares checked are another; both rank
+ * against the keeps, the grinds and the jobs the same way those rank
+ * against each other. Where the body sits decides whether a thirsty
+ * survivor drops the axe now or finishes the tree first, where the camp
+ * sits decides whether the fire waits for the tree to come down, and there
+ * is no second scheduler anywhere in the game to answer either question for
+ * them - see bodyorder.ts for the rows themselves.
+ *
+ * The body's row alone reaches past a chunk of work in hand. The camp's
+ * changes over at the chunk boundary, the way the work does: a fire merely
+ * low can wait for the piece of work under way to end, and a body cannot.
  *
  * A row below the one holding the minute is spared the expensive half of
  * its own reading - the site search and the walk check, either of which can
@@ -28,18 +34,19 @@
  * it holding.
  *
  * Judging a row must never act on it. judgeOrders runs far oftener than a
- * minute turns over - every render reads it fresh - so a row's want is read
- * with peekNeed and a dry bodyStep, never eating, drinking or feeding a fire
- * on the body's behalf; only runOrders and serveBodyRow, at most once a
- * minute, use the writing versions, currentNeed and a wet step. Reaching for
- * the wrong pair is the one mistake this file is written to make easy to
- * catch on sight.
+ * minute turns over - every render reads it fresh - so a care row's want is
+ * read with a dry bodyStep, never eating, drinking or feeding a fire on the
+ * survivor's behalf; only runOrders and the row services, at most once a
+ * minute, take a wet step. The body's own need is read with peekNeed at the
+ * judgement and currentNeed at the service, so the sticky memory is written
+ * back once a minute rather than once a render. Reaching for the wrong pair
+ * is the one mistake this file is written to make easy to catch on sight.
  */
 import { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { KIT_ITEMS } from "./body";
-import { bodyLogLine, bodyRowOf, BODY_SENTENCE, isBodyRow, judgeBodyRow, serveBodyRow } from "./bodyorder";
+import { bodyRowOf, BODY_SENTENCE, CAMP_SENTENCE, careLogLine, isBodyRow, isCampRow, isCareRow, judgeBodyRow, judgeCampRow, serveBodyRow, serveCareRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
@@ -61,11 +68,11 @@ export function ordersHere(state: GameState, world: World): Order[] {
 
 /**
  * Where a new row lands. A number is a place among the work rows, counted
- * as the giver counts its own orders, with the body's row invisible to it:
+ * as the giver counts its own orders, with the care rows invisible to it:
  * a caller ranking three orders against each other says 0, 1, 2 and does
- * not have to know where the body sits. "top" is the whole list's top,
- * above the body's row included, which is what a click asks for and the
- * one thing a work-relative number cannot say.
+ * not have to know where the body or the camp sits. "top" is the whole
+ * list's top, above the care rows included, which is what a click asks for
+ * and the one thing a work-relative number cannot say.
  */
 export type Landing = number | "top";
 
@@ -74,7 +81,7 @@ function placeOf(list: Order[], rank: Landing): number {
   if (rank === "top") return 0;
   let seen = 0;
   for (let i = 0; i < list.length; i++) {
-    if (isBodyRow(list[i])) continue;
+    if (isCareRow(list[i])) continue;
     if (seen === rank) return i;
     seen++;
   }
@@ -96,17 +103,18 @@ export function addOrder(state: GameState, world: World, req: IntentRequest, kin
   return o;
 }
 
-/** The body row is never struck off: it is filtered out of removal the same way it is filtered out of every "given" path, since nothing ever gives it and nothing ever takes it away. */
+/** A care row is never struck off: it is filtered out of removal the same way it is filtered out of every "given" path, since nothing ever gives it and nothing ever takes it away. */
 export function removeOrder(state: GameState, world: World, id: number): void {
   const st = regionState(state, world, state.player.region);
-  st.orders = st.orders.filter((o) => o.id !== id || isBodyRow(o));
+  st.orders = st.orders.filter((o) => o.id !== id || isCareRow(o));
 }
 
 /**
  * Moves one rank up (-1) or down (1); a move off either end does nothing.
- * The body's row moves like any other: ranking work over it is how the
- * player says "keep at it, tired or not", and ranking it back up is how
- * they take that back.
+ * A care row moves like any other: ranking work over the body is how the
+ * player says "keep at it, tired or not", ranking work over the camp is how
+ * they say "the fire can wait", and ranking either back up is how they take
+ * that back.
  */
 export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 1): void {
   const list = ordersHere(state, world);
@@ -129,11 +137,11 @@ export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 
  * and a load already on its way to camp is still delivered first, since a
  * delivering order reads ready and nothing here fires.
  *
- * What is asked is the work choice and not the row with the minute: a body
- * that wants something outranks the work, but it is not what the player just
- * moved and it is not what the moved row displaces. Reading it here would
- * bin the chunk in hand every time the list was nudged while the survivor
- * happened to be thirsty.
+ * What is asked is the work choice and not the row with the minute: a care
+ * row that wants something outranks the work, but it is not what the player
+ * just moved and it is not what the moved row displaces. Reading it here
+ * would bin the chunk in hand every time the list was nudged while the
+ * survivor happened to be thirsty.
  */
 function decideAgain(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   const work = judgeOrders(state, world, cal).work;
@@ -161,12 +169,12 @@ export function removeOrderByHand(state: GameState, world: World, cal: Calendar,
  * pinning a row that cannot run has to stop what is running, or the banner
  * would say the list is held while the survivor visibly worked on.
  *
- * The body's row carries no pin: the list never goes past it, so there is
- * nothing for one to hold.
+ * Neither care row carries a pin: the list never goes past either of them,
+ * so there is nothing for one to hold.
  */
 export function pinOrderByHand(state: GameState, world: World, cal: Calendar, rng: Rng, id: number): void {
   const o = ordersHere(state, world).find((x) => x.id === id);
-  if (!o || isBodyRow(o)) return;
+  if (!o || isCareRow(o)) return;
   o.pinned = !o.pinned;
   decideAgain(state, world, cal, rng);
 }
@@ -358,6 +366,7 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
 /** "Split a log, keep camp at 40 kg firewood"; "Fell a tree, forever, bringing it to camp". */
 export function orderSentence(state: GameState, world: World, cal: Calendar, o: Order): string {
   if (isBodyRow(o)) return BODY_SENTENCE;
+  if (isCampRow(o)) return CAMP_SENTENCE;
   const { cell } = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where);
   const parts = [check(state, world, cal, o.req.task, o.req.arg, cell).label];
   const keep = keepTarget(o);
@@ -443,15 +452,15 @@ function readOrder(state: GameState, world: World, cal: Calendar, o: Order, live
  */
 function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string, instead: Order | null): void {
   if (why && !o.skipped) {
-    // The body row is not a promise being skipped, so it does not read like
-    // one: no row title in front of it, no colon, no "instead". A body that
+    // A care row is not a promise being skipped, so it does not read like
+    // one: no row title in front of it, no colon, no "instead". A want that
     // cannot be answered is not a request going unserved in favour of
     // another, it is a want with nothing in reach to meet it, and naming the
     // work that ran in its place would read as an excuse for it. `why` here
     // is the row's own fragment (NEED_WORDS), which is right for o.skipped
-    // below but wrong for the log: bodyLogLine reads the need again, fresh,
+    // below but wrong for the log: careLogLine reads the want again, fresh,
     // and says it in the log's own person voice instead.
-    if (isBodyRow(o)) log(state, bodyLogLine(state, world, cal) ?? why, "bad");
+    if (isCareRow(o)) log(state, careLogLine(state, world, cal, o) ?? why, "bad");
     else {
       const asked = o.req.until.kind === "once";
       const tail = asked && instead ? ` ${cap(orderSentence(state, world, cal, instead))} instead.` : "";
@@ -482,8 +491,8 @@ export const NIGHT_SKIP = {
 /**
  * Whether the night keeps an order from running now, and why. Nobody sets
  * out for the forest, the shore or the hunt in the dark, so work away from
- * camp waits for first light; the body row's own walks (thirst, home) are
- * reflexes rather than orders and are not judged here, and a task already
+ * camp waits for first light; the care rows' own walks (thirst, home, the
+ * snares) are reflexes rather than orders and are not judged here, and a task already
  * under way finishes, since this runs only when the task slot is free. Camp
  * work runs by firelight, the camp fire or a torch in hand, and only while
  * today's work is under the working day less the day's light, so the light
@@ -572,13 +581,13 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): Judg
   // yes. A camp with many keeps cycles through several such rows a day, and
   // each one has to let go before the row under it is ever asked anything.
   const liveVerdict = liveIndex >= 0 ? judgeRow(state, world, cal, rng, rows[liveIndex], liveId, true) : null;
-  // The body's row holds nobody up. A minute it takes is a minute the work
-  // list is not moving through - a drink, a mouthful, the night - and the
-  // rows under it are in exactly the state they were in before it spoke, so
-  // they are asked their own reasons rather than told they are waiting their
-  // turn. Anything else would clear a blocked row's mark and make it say why
-  // again every time the survivor stops for water.
-  const liveOpen = liveIndex < 0 || liveVerdict!.v !== "ready" || isBodyRow(rows[liveIndex]);
+  // A care row holds nobody up. A minute it takes is a minute the work
+  // list is not moving through - a drink, a mouthful, a log on the fire, the
+  // night - and the rows under it are in exactly the state they were in
+  // before it spoke, so they are asked their own reasons rather than told
+  // they are waiting their turn. Anything else would clear a blocked row's
+  // mark and make it say why again every time the survivor stops for water.
+  const liveOpen = liveIndex < 0 || liveVerdict!.v !== "ready" || isCareRow(rows[liveIndex]);
   const verdicts = rows.map((o, i) => (i === liveIndex ? liveVerdict! : judgeRow(state, world, cal, rng, o, liveId, liveOpen || i <= liveIndex)));
   // The chosen and blocking rows are found first, over every row's verdict,
   // before any row is marked: a row passed over above the chosen one has to
@@ -589,27 +598,28 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): Judg
   // never holds it: it is not a row that failed to run, it is a row that was
   // never asked, so it can be neither the choice nor the reason for one.
   //
-  // The body's row is read like any other row and wins the list wherever the
-  // player has put it: a body ranked below the work waits for the work
-  // exactly as a job ranked below a keep does. It is counted apart from the
-  // work only for the pin, which is the player saying "nothing past this row
-  // until I say so" about the work they gave. A body stopping for water is
-  // not the list going past anything, so a pin neither holds it nor is
-  // answered by it.
-  let bodyReady: Order | null = null;
+  // The care rows are read like any other row and win the list wherever the
+  // player has put them: a body ranked below the work waits for the work
+  // exactly as a job ranked below a keep does, and so does a camp. They are
+  // counted apart from the work only for the pin, which is the player saying
+  // "nothing past this row until I say so" about the work they gave. A body
+  // stopping for water is not the list going past anything, so a pin neither
+  // holds it nor is answered by it. Only the topmost ready care row is taken:
+  // a minute is one minute, and the row under it is asked again next minute.
+  let careReady: Order | null = null;
   let work: Order | null = null;
   let blockedBy: Order | null = null;
   for (let i = 0; i < rows.length; i++) {
     const v = verdicts[i];
-    if (isBodyRow(rows[i])) {
-      if (v.v === "ready" && !bodyReady) bodyReady = rows[i];
+    if (isCareRow(rows[i])) {
+      if (v.v === "ready" && !careReady) careReady = rows[i];
       continue;
     }
     if (v.v === "ready" && !work && !blockedBy) work = rows[i];
     if ((v.v === "shut" || v.v === "blocked") && rows[i].pinned && !work && !blockedBy) blockedBy = rows[i];
   }
   if (blockedBy) work = null;
-  const chosen = bodyReady && (!work || rows.indexOf(bodyReady) < rows.indexOf(work)) ? bodyReady : work;
+  const chosen = careReady && (!work || rows.indexOf(careReady) < rows.indexOf(work)) ? careReady : work;
   // "later" clears a row's skip mark exactly as "met" does: the row was not
   // refused, it was simply not its turn, and waitingLine already reads that
   // as "waiting its turn, behind" the chosen row off the judgement below.
@@ -627,7 +637,7 @@ export function walkJudged(): number { return walked; }
 export function resetWalkJudged(): void { walked = 0; }
 
 /**
- * One row's reading. The body row reads off the need model rather than any
+ * One row's reading. A care row reads off the need model rather than any
  * of the checks below, and is asked first: a row that is never given and
  * never removed has no delivery, no condition, no walk to judge, and asking
  * it any of those questions would be asking them of a request nothing ever
@@ -640,6 +650,7 @@ export function resetWalkJudged(): void { walked = 0; }
  */
 function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order, liveId: number | null, canTakeIt: boolean): Verdict {
   if (isBodyRow(o)) return judgeBodyRow(state, world, cal, rng);
+  if (isCampRow(o)) return judgeCampRow(state, world, cal, rng);
   const live = state.intent;
   // A live order carrying a load home is still able to run: judged afresh at
   // the work cell it would read "the vessels are full" every trip, though
@@ -695,8 +706,8 @@ function judgeRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Or
 export function waitingLine(state: GameState, world: World, cal: Calendar, o: Order, judged: Judgement): string {
   if (o.skipped) return o.skipped;
   if (orderMet(state, world, cal, o, false)) return "met";
-  // The work under way, not the row with the minute: those differ while the
-  // body has it, and "waiting its turn, behind Look after yourself" would
+  // The work under way, not the row with the minute: those differ while a
+  // care row has it, and "waiting its turn, behind Look after yourself" would
   // tell a row it is behind something that is not work and will be done with
   // the minute before the next one turns over.
   const { work, blockedBy } = judged;
@@ -723,7 +734,9 @@ const WAIT: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver:
  * minute would spend the day walking between jobs he never finishes - but
  * a body cannot wait for a tree to come down, so the body's row alone is
  * read while somebody else's work runs, at the cost of the one need read
- * it takes to answer.
+ * it takes to answer. The camp's row is not: a fire merely low is minutes
+ * from out rather than seconds, and feeding it changes over at the chunk
+ * boundary the way the work itself does.
  *
  * Rank is the whole answer. Above the row being worked, the body takes the
  * minute, and the work is set aside with its share kept for the row to
@@ -765,10 +778,10 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   const st = regionState(state, world, state.player.region);
   const live = state.intent;
   for (const o of [...st.orders]) {
-    // The body row is never a job and never drops off; the kind check below
-    // would already pass over it, but naming the skip is what keeps a body
+    // A care row is never a job and never drops off; the kind check below
+    // would already pass over it, but naming the skip is what keeps a care
     // row from ever looking like an oversight in a sweep built for jobs.
-    if (isBodyRow(o)) continue;
+    if (isCareRow(o)) continue;
     // A daily count is today's alone, and the order stays on the list, since
     // the promise is the count every day rather than once. The day roll moves
     // the base the count is read from rather than zeroing `done`, which stays
@@ -796,31 +809,32 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   // spot is a request rather than a reading and a request cannot churn -
   // decideAgain is that door, not this one; and the body's own row, the one
   // row read on every minute of somebody else's work, because thirst, cold
-  // or the dark does not wait for a tree to come down.
+  // or the dark does not wait for a tree to come down. The camp's row waits
+  // for the chunk to end, the same as the work under it.
   if (state.task) {
     serveBodyMidChunk(state, world, cal, rng);
     return;
   }
   const judged = judgeOrders(state, world, cal);
-  // The body's row is served rather than started: nothing is ever begun from
-  // its request, and its minute is whatever step the need calls for. It is
+  // A care row is served rather than started: nothing is ever begun from
+  // its request, and its minute is whatever step the want calls for. It is
   // served on every minute it wins, its own intent already live or not, since
-  // a need is answered a step at a time and the second step is as much the
-  // row's as the first. A need answered where he stands - a mouthful, a pull
-  // on the waterskin - takes none of the minute, and the work under the row
-  // gets it instead of a survivor standing about having drunk.
-  if (judged.chosen && isBodyRow(judged.chosen)) {
-    serveBodyRow(state, world, cal, rng, judged.chosen);
+  // a want is answered a step at a time and the second step is as much the
+  // row's as the first. A want answered where he stands - a mouthful, a pull
+  // on the waterskin, a log onto the fire - takes none of the minute, and the
+  // work under the row gets it instead of a survivor standing about having drunk.
+  if (judged.chosen && isCareRow(judged.chosen)) {
+    serveCareRow(state, world, cal, rng, judged.chosen);
     if (state.task || state.intent?.orderId === judged.chosen.id) return;
   }
   const chosen = judged.work;
   // A region with no order to arbitrate among has no intent of its own
-  // (spec 2.3): the body row does not count as one, since it is never work
+  // (spec 2.3): the care rows do not count, since neither is work
   // the player asked for and the scheduler's own choosing is exactly what
   // this guards against running with nothing under it to choose. It has
   // already had its minute above, so what is left here is only the tidying
   // up of a work intent nothing on the list wants any more. Every list this
-  // scheduler ranks a real order onto already carries the body row from the
+  // scheduler ranks a real order onto already carries both care rows from the
   // moment regionState first builds it, so this reads true for a brand new
   // region and a loaded one alike, and stays true until the first real
   // order is given; it also covers the one list the game wipes to truly
@@ -833,7 +847,7 @@ export function runOrders(state: GameState, world: World, cal: Calendar, rng: Rn
   // bark in the pack at the forest the way one with a neighbour below it never did.
   // Nothing here cuts a chunk off mid-step: a chunk in hand has already
   // taken the minute above.
-  if (st.orders.every(isBodyRow)) {
+  if (st.orders.every(isCareRow)) {
     if (live && live.orderId !== null && deliveryPending(state, world, live)) live.windDown = true;
     else if (live && (live.orderId !== null || live.task === "wait")) state.intent = null;
     return;
