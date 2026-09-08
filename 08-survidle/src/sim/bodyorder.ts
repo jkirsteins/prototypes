@@ -15,7 +15,7 @@
 import type { Rng } from "../rng";
 import type { World } from "../world/gen";
 import type { Calendar } from "./calendar";
-import { bodyStep, NEED_WORDS, peekNeed } from "./body";
+import { bodyStep, NEED_LOG_LINES, NEED_WORDS, peekNeed } from "./body";
 import { regionState } from "./regionstate";
 import type { GameState, IntentRequest, Order, RegionState, Verdict } from "./types";
 
@@ -61,4 +61,17 @@ export function judgeBodyRow(state: GameState, world: World, cal: Calendar, rng:
   const need = peekNeed(state, world, cal);
   if (!need) return { v: "met" };
   return bodyStep(state, world, cal, rng, need, true) ? { v: "ready" } : { v: "blocked", why: NEED_WORDS[need] };
+}
+
+/**
+ * What the log says when the row goes from met to blocked: NEED_LOG_LINES'
+ * sentence for whatever the body currently wants, in the game's own person
+ * voice, not NEED_WORDS' fragment - that one is the row's own and reads
+ * wrong once it leaves the row. Read fresh with the same dry, non-writing
+ * peek judgeBodyRow itself takes: the only thing markSkipped is handed at
+ * that moment is the row's already-chosen fragment, not the need itself.
+ */
+export function bodyLogLine(state: GameState, world: World, cal: Calendar): string | null {
+  const need = peekNeed(state, world, cal);
+  return need ? NEED_LOG_LINES[need] : null;
 }

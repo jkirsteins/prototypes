@@ -222,20 +222,41 @@ function homeBeforeDark(state: GameState, world: World, cal: Calendar, need: Bod
 }
 
 /**
- * What the row says when a need holds and nothing here can answer it. Each
- * one stands alone as the body's own sentence rather than a fragment meant
- * to follow a row's name and a colon: the row is not a promise being
- * skipped, so the log line built from this is not shaped like one.
+ * What the row says when a need holds and nothing here can answer it, on
+ * the row itself: a fragment in the shape of every other skip reason -
+ * "dark; at first light", "waits for birch bark at camp" - because on the
+ * row it follows the order's own sentence, and the panel never resolves
+ * the person templates the log speaks in, so a fragment is the only voice
+ * that reads right there.
  */
 export const NEED_WORDS: Record<BodyNeed, string> = {
-  sleep: "Needs sleep and there is nowhere to lie down",
-  storm: "The storm is coming and there is no shelter within reach",
-  cold: "Cold, with no fire and nowhere to warm up",
-  thirsty: "Thirsty, with no water within reach",
-  hungry: "Hungry, with nothing safe to eat",
-  snares: "The snares want checking and there is no way there",
-  spent: "Worked out, and there is nowhere to sit down",
-  home: "Should be home before dark, and there is no way there",
+  sleep: "needs sleep; nowhere to lie down",
+  storm: "the storm is coming; no shelter within reach",
+  cold: "cold; no fire and nowhere to warm up",
+  thirsty: "thirsty; no water within reach",
+  hungry: "hungry; nothing safe to eat",
+  snares: "the snares want checking; no way there",
+  spent: "worked out; nowhere to sit down",
+  home: "should be home before dark; no way there",
+};
+
+/**
+ * The same eight needs, said the way the rest of the log already speaks:
+ * a full sentence in the game's own person templating, resolved by name or
+ * by "you" whenever the log is drawn - the same {You}/{are} voice as
+ * "{You} {are} thirsty." elsewhere. This is the log's own table, not the
+ * row's: a fragment reads wrong here, and a sentence reads wrong on the
+ * row, which is why the two never share one string.
+ */
+export const NEED_LOG_LINES: Record<BodyNeed, string> = {
+  sleep: "{You} {need} sleep, and there is nowhere to lie down.",
+  storm: "The storm is coming, and {you} {have} no shelter within reach.",
+  cold: "{You} {are} cold, with no fire and nowhere to warm up.",
+  thirsty: "{You} {are} thirsty, and there is no water within reach.",
+  hungry: "{You} {are} hungry, and there is nothing safe to eat.",
+  snares: "The snares want checking, and {you} {know} no way there.",
+  spent: "{You} {are} worked out, and there is nowhere to sit down.",
+  home: "{You} {have} no way home before dark.",
 };
 
 /** Stands in for a step a dry read finds ready without ever taking it: only whether bodyStep returned something is read back, never what it was. */

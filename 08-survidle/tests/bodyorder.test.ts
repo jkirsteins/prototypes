@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { NEED_WORDS } from "../src/sim/body";
+import { NEED_LOG_LINES, NEED_WORDS } from "../src/sim/body";
 import { newGame } from "../src/sim/newgame";
 import { removeOrder, ordersHere, orderSentence, judgeOrders } from "../src/sim/orders";
 import { bodyRowOf, isBodyRow, judgeBodyRow, BODY_SENTENCE } from "../src/sim/bodyorder";
@@ -102,15 +102,20 @@ describe("the body row", () => {
     expect(p.bodyNeed).toBeNull();
   });
 
-  it("a blocked need reads as the body's own sentence, not a row title and a colon", () => {
+  it("a blocked need reads as the row's own fragment on the row, and the log's own sentence in the log", () => {
     const { state, world } = newGame(3);
     // Off camp, over the pack's hard limit, so the walk home fails and the
     // storm has nowhere to send the body: the same way the reviewer reached it.
     placeAtSpot(state, world, state.player.region, "heath");
     addItem(state.player.pack, "log", 2);
     state.weather.storm = { from: state.minute, until: state.minute + 200, warned: true };
+    // The row's own reading is the fragment, the same shape every other
+    // skip reason takes, since the panel never resolves the log's voice.
     expect(judgeBodyRow(state, world, cal, new Rng(1))).toEqual({ v: "blocked", why: NEED_WORDS.storm });
     judgeOrders(state, world, cal);
-    expect(state.log.at(-1)?.text).toBe(`${NEED_WORDS.storm}.`);
+    // The log's own line is the templated sentence, not the row's fragment:
+    // this is the one the fix guards, since a wrong lookup here would still
+    // pass a test that checked the row's own text instead.
+    expect(state.log.at(-1)?.text).toBe(NEED_LOG_LINES.storm);
   });
 });

@@ -9,7 +9,7 @@ import { Rng } from "../rng";
 import type { World } from "../world/gen";
 import { itemLabel } from "./actions";
 import { bodyAsks, KIT_ITEMS } from "./body";
-import { BODY_SENTENCE, isBodyRow, judgeBodyRow } from "./bodyorder";
+import { bodyLogLine, BODY_SENTENCE, isBodyRow, judgeBodyRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
 import { pile, qty } from "./inventory";
@@ -368,8 +368,10 @@ function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, wh
     // The body row is not a promise being skipped, so it does not read like
     // one: no row title in front of it, no colon, no "instead" - it never
     // competes to be chosen, so nothing it names is ever a stand-in for it.
-    // NEED_WORDS already reads as the body's own sentence; this only closes it.
-    if (isBodyRow(o)) log(state, `${why}.`, "bad");
+    // `why` here is the row's own fragment (NEED_WORDS), which is right for
+    // o.skipped below but wrong for the log: bodyLogLine reads the need
+    // again, fresh, and says it in the log's own person voice instead.
+    if (isBodyRow(o)) log(state, bodyLogLine(state, world, cal) ?? why, "bad");
     else {
       const asked = o.req.until.kind === "once";
       const tail = asked && instead ? ` ${cap(orderSentence(state, world, cal, instead))} instead.` : "";
