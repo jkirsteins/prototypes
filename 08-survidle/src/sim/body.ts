@@ -241,12 +241,22 @@ function homeBeforeDark(state: GameState, world: World, cal: Calendar, need: Bod
 }
 
 /**
- * What the row says when a need holds and nothing here can answer it, on
+ * What the row says when a want holds and nothing here can answer it, on
  * the row itself: a fragment in the shape of every other skip reason -
  * "dark; at first light", "waits for birch bark at camp" - because on the
  * row it follows the order's own sentence, and the panel never resolves
  * the person templates the log speaks in, so a fragment is the only voice
  * that reads right there.
+ *
+ * The camp's two fragments are kept and never drawn. A camp want is always
+ * answerable by construction: fireWantsWood already requires wood within
+ * reach and snaresWaiting already requires the walk there to check out, so
+ * the want does not hold at all where it could not be met, and the camp row
+ * reads met rather than blocked. A camp want that could be refused - one
+ * whose test does not carry its own answerability, a repair the camp has no
+ * material for, say - would draw them the day it is added, which is why
+ * they stay rather than being deleted and rebuilt. The body's seven are
+ * drawn: a thirst with no water within reach is a real reading.
  */
 export const NEED_WORDS: Record<CareNeed, string> = {
   sleep: "needs sleep; nowhere to lie down",

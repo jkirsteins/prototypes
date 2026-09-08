@@ -132,6 +132,11 @@ export function judgeCampRow(state: GameState, world: World, cal: Calendar, rng:
  * itself.
  */
 export function careLogLine(state: GameState, world: World, cal: Calendar, o: Order): string | null {
+  // The camp branch answers nothing today: both camp wants carry their own
+  // answerability, so the camp row reads met where it could not act and
+  // never goes from met to blocked. It is written for the row rather than
+  // for the wants that happen to be on it, so a refusable camp want speaks
+  // the day it is added. See NEED_WORDS in body.ts.
   const need = isCampRow(o) ? campNeed(state, world, cal) : peekNeed(state, world, cal);
   return need ? NEED_LOG_LINES[need] : null;
 }

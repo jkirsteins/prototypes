@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { campNeed, currentNeed, iceHoleSite, snaresWaiting, WORK_HOURS_DEFAULT } from "../src/sim/body";
 import { calendar, START_MINUTE_OF_DAY } from "../src/sim/calendar";
+import { bodyRowOf, campRowOf } from "../src/sim/bodyorder";
 import { addItem, pile } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { body } from "../src/sim/person";
-import { addOrder } from "../src/sim/orders";
+import { addOrder, judgeOrders, moveOrder, ordersHere } from "../src/sim/orders";
 import { taskDrain } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
@@ -14,6 +15,7 @@ import { deserialize, serialize } from "../src/sim/save";
 import { alertness, RESTED_AT, sleepiness, SLEEP_ONSET, SPENT_AT, WAKE_AT } from "../src/sim/sleep";
 import { beginTask, setAside, startTask } from "../src/sim/tasks";
 import type { GameState } from "../src/sim/types";
+import type { World } from "../src/world/gen";
 import { drink, ICE_SHORE_CM, iceHoleOpen, THIRSTY_L, WATER_FULL } from "../src/sim/water";
 import { stormComing, stormNow } from "../src/sim/weather";
 import { regionAt, spotOf } from "../src/world/gen";
@@ -302,10 +304,85 @@ describe("checking the snares", () => {
     expect(night.isNight).toBe(true);
     expect(snaresWaiting(state, world, night)).toBeNull();
     expect(campNeed(state, world, night)).toBeNull();
-    // The camp asks for nothing after dark, so the thirst is what holds.
+    // The camp asks for nothing after dark, so the thirst is what the run
+    // actually serves, rank or no rank.
     state.player.water = 0.5;
     state.player.energy = 100;
-    expect(currentNeed(state, world, night)).toBe("thirsty");
+    state.player.sleepDebt = 0;
+    advance(state, world, 1);
+    expect(state.player.bodyNeed).toBe("thirsty");
+  });
+
+  /**
+   * A thirsty survivor out at the work with a catch waiting on the heath:
+   * both care rows want a walk of him at once, and which walk he takes is
+   * the rank and nothing else. Nothing on the belt to drink from and the
+   * water back at camp, so the thirst wants his feet rather than a mouthful
+   * where he stands - a want answered on the spot costs no minute and would
+   * never be asked to rank against anything.
+   */
+  function thirstyWithACatch() {
+    const g = felling();
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    for (let m = 0; m < 600 && state.task?.id !== "chop"; m++) advance(state, world, 1);
+    expect(state.task?.id).toBe("chop");
+    for (const t of state.player.tools) t.litres = 0;
+    addItem(pile(state, st.campCell), "water", 3);
+    state.player.water = 0.2;
+    state.player.energy = 100;
+    st.snareCatch = { count: 1, age: 0 };
+    const cal = calendar(state.minute);
+    expect(cal.isNight).toBe(false);
+    expect(snaresWaiting(state, world, cal)).toBe(spotOf(regionAt(world, state.player.region), "heath")!.cell);
+    expect(campNeed(state, world, cal)).toBe("snares");
+    expect(currentNeed(state, world, cal)).toBe("thirsty");
+    return g;
+  }
+
+  /** The first care row to take the minute off the work, and the step it took. */
+  function careRowWithTheMinute(state: GameState, world: World): { id: number | null; step: string } {
+    for (let m = 0; m < 900; m++) {
+      advance(state, world, 1);
+      const id = state.intent?.orderId ?? null;
+      if (id !== null && (id === campRowOf(state, world)!.id || id === bodyRowOf(state, world)!.id)) {
+        return { id, step: state.intent?.step ?? "" };
+      }
+    }
+    return { id: null, step: "" };
+  }
+
+  it("mid-chunk the thirst is answered first whatever the rank: only the body reaches past the work in hand", () => {
+    const { state, world } = thirstyWithACatch();
+    // The camp is the row above and still waits: a tree half felled is a
+    // chunk, the catch keeps, and the walk to the heath changes over at the
+    // end of it the way the work under it does.
+    const got = careRowWithTheMinute(state, world);
+    expect(got.id).toBe(bodyRowOf(state, world)!.id);
+    expect(got.step).toContain("water");
+  });
+
+  it("on a free minute the catch outranks the thirst, because the camp row sits over the body row", () => {
+    const { state, world } = thirstyWithACatch();
+    // Nothing in hand, so the scheduler chooses over the whole list and the
+    // rank is the whole answer.
+    setAside(state, world);
+    expect(state.task).toBeNull();
+    expect(judgeOrders(state, world, calendar(state.minute)).chosen?.id).toBe(campRowOf(state, world)!.id);
+    const got = careRowWithTheMinute(state, world);
+    expect(got.id).toBe(campRowOf(state, world)!.id);
+    expect(got.step).toContain("check the snares");
+  });
+
+  it("and the other way round the moment the player ranks the body over the camp", () => {
+    const { state, world } = thirstyWithACatch();
+    setAside(state, world);
+    moveOrder(state, world, bodyRowOf(state, world)!.id, -1);
+    expect(ordersHere(state, world).map((o) => o.kind).slice(0, 2)).toEqual(["body", "camp"]);
+    expect(judgeOrders(state, world, calendar(state.minute)).chosen?.id).toBe(bodyRowOf(state, world)!.id);
+    const got = careRowWithTheMinute(state, world);
+    expect(got.id).toBe(bodyRowOf(state, world)!.id);
+    expect(got.step).toContain("water");
   });
 });
 

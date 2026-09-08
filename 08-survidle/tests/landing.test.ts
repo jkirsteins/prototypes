@@ -193,8 +193,8 @@ describe("what the heir is told", () => {
     beginAgain(state, world);
     land(state, world, { first: "Aino", last: "Berzins" });
     // Every old camp is wiped clean; a landing cell in ground never touched
-    // before is a fresh region and carries only the body row every fresh
-    // region does. Neither carries a real order of the dead's.
+    // before is a fresh region and carries only the two care rows every
+    // fresh region does. Neither carries a real order of the dead's.
     for (const st of Object.values(state.regions)) expect(st.orders.every(isCareRow)).toBe(true);
     // The world is still there: the wood the ancestor split is at the old camp for the heir to find.
     expect(qty(pile(state, camp), "firewood")).toBeGreaterThan(0);
