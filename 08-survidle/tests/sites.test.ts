@@ -7,7 +7,7 @@ import { beginAgain, land } from "../src/sim/landing";
 import { knownShare } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { atCamp, campCellOf, cellOf, placeAt } from "../src/sim/position";
-import { die, feltTemperature, INDOOR_C } from "../src/sim/player";
+import { die, feltTemperature, INDOOR_C, sheltered } from "../src/sim/player";
 import { campSite, newSite, regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { migrate } from "../src/sim/save";
 import { MAX_SNARES } from "../src/sim/items";
@@ -248,6 +248,21 @@ describe("sites", () => {
     placeAt(state, world, st.campCell!);
     const open = feltTemperature(state, world, 0);
     expect(under).toBeGreaterThan(open);
+  });
+
+  it("an abandoned lean-to keeps the rain off too, not only the cold out", () => {
+    const { state, world } = newGame(2);
+    siteCamp(state, world);
+    const st = regionState(state, world, state.player.region);
+    const away = st.campCell! + 1;
+    siteFor(st, away).structures.leanTo = true;
+    state.task = { id: "sleep", progress: 0, duration: 480, repeat: false };
+    placeAt(state, world, away);
+    // A roof that warms you but does not keep the rain off is not a roof: sheltered
+    // reads the same place feltTemperature does, so both answer for the cell underfoot.
+    expect(sheltered(state, world)).toBe(true);
+    placeAt(state, world, st.campCell!);
+    expect(sheltered(state, world)).toBe(false);
   });
 
   it("bare ground gives no roof", () => {

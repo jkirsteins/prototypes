@@ -42,7 +42,7 @@ import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
-import { seaweedAvailable, setAside, startTask } from "./tasks";
+import { check, seaweedAvailable, setAside, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
 import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, OrderWhen, RecipeId, WorldDate } from "./types";
 
@@ -923,7 +923,12 @@ export class ReferencePlayer {
     // Nothing on the list can be done in a region with no camp: the fire site, the
     // deliveries and the night all address one. Siting it is the opening act.
     if (regionState(state, world, state.player.region).campCell === null) {
-      if (handsFree(state)) startTask(state, world, cal, "makeCamp");
+      // A refusal here is not a slow day, it is a run that can never begin: every
+      // want below addresses a camp. Fail loudly rather than idle for the whole span.
+      if (handsFree(state)) {
+        const why = check(state, world, cal, "makeCamp").why;
+        if (!startTask(state, world, cal, "makeCamp")) throw new Error(`the reference run cannot make camp: ${why}`);
+      }
       return;
     }
     this.openingDay ??= cal.day;

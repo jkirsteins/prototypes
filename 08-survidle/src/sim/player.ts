@@ -12,7 +12,7 @@ import { log, warn } from "./log";
 import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
-import { campSite, regionState, siteAt } from "./regionstate";
+import { regionState, siteAt } from "./regionstate";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
 import type { DeathCause, GameState, IceMode, Site, Task, TaskId, Terrain, Weather } from "./types";
@@ -61,11 +61,16 @@ export function shelterBonus(site: Site | null): number {
   return roofBonus(site);
 }
 
-/** True when the player is under a roof: at camp, doing camp things, with a shelter built. */
+/**
+ * True when the player is under a roof: doing camp things on a cell something
+ * shelter-shaped stands on. The roof is the one under the survivor's feet, the
+ * same one feltTemperature reads, so a lean-to left behind at an old camp still
+ * keeps the rain off whoever walks back into it.
+ */
 export function sheltered(state: GameState, world: World): boolean {
-  const site = campSite(regionState(state, world, state.player.region));
+  const site = siteAt(regionState(state, world, state.player.region), cellOf(state, world));
   if (!site) return false;
-  return atCamp(state, world) && isCampTask(state.task) && (site.structures.cabin || site.structures.leanTo || site.structures.turfHut || site.structures.snowShelter);
+  return isCampTask(state.task) && (site.structures.cabin || site.structures.leanTo || site.structures.turfHut || site.structures.snowShelter);
 }
 
 /** True with a lit torch in hand or beside your own lit fire: the light wolves keep away from. */
@@ -315,7 +320,8 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const camp = atCamp(state, world);
   const campTask = isCampTask(state.task);
   const roof = sheltered(state, world);
-  const site = campSite(r);
+  // Walls are the walls the survivor is standing inside, the same place roof reads.
+  const site = siteAt(r, cellOf(state, world));
   const walled = roof && (site?.structures.cabin || site?.structures.turfHut || site?.structures.snowShelter);
   const h = dt / 60;
 
