@@ -167,12 +167,13 @@ situation a competent player plays around - making a new camp instead of the
 walk, or stopping to drink along the way - not one the sim owes a guarantee
 against. The reference runner takes the unconditional walk-home order with no
 such judgment, so it dying here says more about the runner's lack of
-discretion than about the heir mechanism. The concrete lever named for this:
-SEEP (a low-effort, low-yield water source read off the ground rather than a
-dedicated fetch) would let a walk like this drink from what it is passing
-rather than needing the old camp's water to survive the trip. Recorded in
-`docs/roadmap-additions.md`, since it is a water/routing question that does
-not move with `FAT_SHARES`.
+discretion than about the heir mechanism. The tool for "stopping to drink
+along the way" already exists - `src/sim/seep.ts`, a dug hole that refills
+from the water table - the reference runner just never reaches for it
+(`REFERENCE_ORDERS` never mentions `seep`), so a raised heir inherits that
+blind spot. Recorded in `docs/roadmap-additions.md` as a question about the
+reference runner's want list, not a new mechanic; it is a water/routing
+question that does not move with `FAT_SHARES`.
 
 ## Postscript: both findings above were this branch's own bug, not main's
 
