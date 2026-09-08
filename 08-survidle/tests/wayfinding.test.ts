@@ -6,9 +6,10 @@ import { setSkillLevel } from "../src/sim/horizon";
 import { NOT_ORDERS } from "../src/sim/ladder";
 import { beginAgain, land } from "../src/sim/landing";
 import { knownShare } from "../src/sim/mapped";
+import { isRead } from "../src/sim/knowledge";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { placeAt } from "../src/sim/position";
+import { placeAt, watersideCell } from "../src/sim/position";
 import { current } from "../src/sim/record";
 import {
   levelMinutes, masteryKey, MASTERY_KEYS, opensOrders, RUNG_LINE, RUNG_ORDER, skillLevel, skillOf, train,
@@ -79,6 +80,24 @@ describe("wayfinding", () => {
     expect(MASTERY_KEYS.wayfinding).toEqual(["explore", "searchHome"]);
   });
 
+  it("runs Read water as real Fishing work inside one survey row", () => {
+    const { state, world } = newGame(4);
+    const region = state.player.region;
+    const shore = regionAt(world, region).cells.find((cell) => watersideCell(world, cell));
+    expect(shore).toBeDefined();
+    placeAt(state, world, shore!);
+    state.task = {
+      id: "explore", arg: `region:${region}`, progress: 0, duration: 60, repeat: false,
+      visited: [shore!], surveyPhase: "read", surveyedWater: [], surveyWater: shore!, surveyShore: shore!, surveyProgress: 0,
+    };
+    const beforeWayfinding = state.skills.wayfinding.xp;
+    stepTask(state, world, calendar(state.minute), new Rng(1), 60);
+    expect(isRead(state, shore!)).toBe(true);
+    expect(state.skills.fishing.xp).toBeGreaterThan(0);
+    expect(state.skills.fishing.mastery.read).toBeGreaterThan(0);
+    expect(state.skills.wayfinding.xp).toBe(beforeWayfinding);
+  });
+
   it("opens no orders, and logs no rung it does not have", () => {
     expect(opensOrders("wayfinding")).toBe(false);
     expect(opensOrders("woodcraft")).toBe(true);
@@ -94,10 +113,13 @@ describe("wayfinding", () => {
     expect(texts).toContain("Wayfinding 20.");
     for (const k of RUNG_ORDER) expect(texts).not.toContain(RUNG_LINE[k]("Wayfinding"));
 
-    // No order button appears for exploring either: the runner's own move, never a standing order.
+    // Survey is visible, but it has no order expansion: it is manual one-time work.
     expect(NOT_ORDERS).toContain("explore");
     const ui = newUiState();
-    expect(doHtml(state, world, calendar(state.minute), ui)).not.toContain('data-id="explore"');
+    ui.panes = { pane: "do", subtab: "Explore", purpose: "Wayfinding" };
+    const html = doHtml(state, world, calendar(state.minute), ui);
+    expect(html).toContain('data-id="explore"');
+    expect(html).not.toContain('data-act="row-more" data-id="explore"');
   });
 
   it("carrying a wayfinding level to an heir logs no rung either", () => {

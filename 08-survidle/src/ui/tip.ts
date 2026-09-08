@@ -14,7 +14,7 @@
  * this markup, because a string that changed on every mousemove would put
  * the map's redraw budget through the floor.
  */
-import type { Calendar } from "../sim/calendar";
+import { calendar, type Calendar } from "../sim/calendar";
 import { cellPossibilities } from "../sim/camp";
 import { listItems, weight } from "../sim/inventory";
 import { itemLabel } from "../sim/items";
@@ -28,9 +28,9 @@ import { plain } from "../sim/voice";
 import { fmtKg } from "../units";
 import { walkableIce } from "../sim/weather";
 import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
-import { wayIntoHtml } from "./panels";
 import { esc } from "./render";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
+import { compactEquipmentHtml } from "./equipment";
 
 /** What each terrain is called in a sentence, rather than by its glyph. */
 const GROUND: Record<string, string> = {
@@ -91,7 +91,11 @@ function inventoryRow(label: string, inv: Inventory | undefined): string {
 }
 
 /** Camp stores, plus a non-empty known pile on the cell currently highlighted. */
-export function mapInventoryHtml(state: GameState, world: World, highlighted: number | null): string {
+export function mapInventoryHtml(state: GameState, world: World, highlighted: number | null): string;
+export function mapInventoryHtml(state: GameState, world: World, cal: Calendar, highlighted: number | null): string;
+export function mapInventoryHtml(state: GameState, world: World, calOrHighlighted: Calendar | number | null, highlightedArg?: number | null): string {
+  const cal = typeof calOrHighlighted === "object" && calOrHighlighted !== null ? calOrHighlighted : calendar(state.minute, state.startDoy);
+  const highlighted = typeof calOrHighlighted === "object" && calOrHighlighted !== null ? (highlightedArg ?? null) : calOrHighlighted;
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
   const rows = [
@@ -102,7 +106,8 @@ export function mapInventoryHtml(state: GameState, world: World, highlighted: nu
       ? inventoryRow("Highlighted", state.piles[highlighted])
       : "",
   ].join("");
-  return rows ? `<div class="mapinv-label">Inventory</div>${rows}` : "";
+  const equipment = compactEquipmentHtml(state, world, cal);
+  return rows || equipment ? `<div class="mapinv-label">Inventory</div>${rows}${equipment}` : "";
 }
 
 export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number, display: TravelDisplay = DEFAULT_TRAVEL_DISPLAY): string {
@@ -110,18 +115,15 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const regionName = esc(head(regionAt(world, region).name));
   const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span></div>`;
 
-  // Another region first, and before the fog: ground over the border is not
-  // somewhere to walk, it is somewhere to go, and an unexplored one is
-  // exactly the region worth offering to explore. Answering that with "you
-  // have never been here" would be true and useless. This is what puts the
-  // regions on the map rather than in a list of names beside it.
+  // Another region first. The hover surface reports facts only; movement is
+  // controlled by the map and surveying lives under Explore.
   if (region !== state.player.region) {
-    if (!isKnown(state, cell)) return `${heading("Unknown ground")}${wayIntoHtml(state, world, cal, region, false, display)}`;
+    if (!isKnown(state, cell)) return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
     const x = cell % world.w;
     const y = Math.floor(cell / world.w);
     const terrain = terrainPeek(world, x, y);
     const name = spotAt(world, cell) ?? GROUND[terrain] ?? terrain;
-    return `${heading(name)}${wayIntoHtml(state, world, cal, region, false, display)}`;
+    return heading(name);
   }
 
   // Fog next: ground nobody has walked has nothing to report, and saying

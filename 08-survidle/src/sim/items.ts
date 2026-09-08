@@ -339,7 +339,7 @@ export const RACK_DRY_RAIN_MINUTES = 96 * 60;
 /** Three kilos of raw meat come off the rack as one dried: the water leaves and the kcal stay, which is why driedMeat is 3,300 kcal a kilo against raw meat's 1,100. */
 export const MEAT_DRY_RATIO = 3;
 export const SNARE_CATCH_MAX_AGE = 2 * 1440;
-/** Minutes a torch burns once lit; there is no putting it out. */
+/** Minutes a fresh torch burns while lit. */
 export const TORCH_BURN_MINUTES = 60;
 
 /**

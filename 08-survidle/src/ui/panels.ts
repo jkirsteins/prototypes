@@ -45,6 +45,7 @@ import { esc, type UiState } from "./render";
 import { plain, voice } from "../sim/voice";
 import { skyHtml, WALL } from "./sky";
 import { DEFAULT_TRAVEL_DISPLAY, formatTravel, type TravelDisplay } from "./travel";
+import { activeEquipmentHtml } from "./equipment";
 
 /**
  * A mark on a bar: either a fixed share, which belongs in the markup since
@@ -164,7 +165,11 @@ ${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above her
 </div>`;
 }
 
-export function gearHtml(state: GameState, felt: number): string {
+export function gearHtml(state: GameState, felt: number): string;
+export function gearHtml(state: GameState, world: World, cal: Calendar, felt: number): string;
+export function gearHtml(state: GameState, worldOrFelt: World | number, cal?: Calendar, feltArg?: number): string {
+  const world = typeof worldOrFelt === "number" ? null : worldOrFelt;
+  const felt = typeof worldOrFelt === "number" ? worldOrFelt : (feltArg ?? 0);
   const p = state.player;
   const cf = coldFeet(state, felt);
   const ch = coldHands(state, felt);
@@ -179,7 +184,8 @@ export function gearHtml(state: GameState, felt: number): string {
   const tools = p.tools.length
     ? p.tools.map((t) => `<div>${TOOLS[t.id].name} <small>${Math.round(t.durability)}%</small>${durBar(t.durability, `tool:${t.id}`)}</div>`).join("")
     : "<div class=\"dim\">no tools</div>";
-  return `<h2>Worn <span class="r">+${insulation(state).toFixed(1)} C</span></h2>${clothes}<h2 style="margin-top:10px">Tools</h2>${tools}`;
+  const active = world && cal ? activeEquipmentHtml(state, world, cal) : "";
+  return `${active ? `<h2>Active equipment</h2>${active}` : ""}<h2${active ? ' style="margin-top:10px"' : ""}>Worn <span class="r">+${insulation(state).toFixed(1)} C</span></h2>${clothes}<h2 style="margin-top:10px">Tools</h2>${tools}`;
 }
 
 export function skillsHtml(state: GameState): string {
@@ -247,7 +253,7 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   ${ground ? `<div class="wx-k">Ground</div><div class="wx-v">${ground}</div>` : ""}
 </div>
 ${storm}${dry}
-<div class="wx-where">${esc(regionAt(world, state.player.region).name)}<span class="wx-rate ${rate > 1 ? "hurrying" : ""}">1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span></div>
+<div class="wx-where"><svg class="speed-history" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="speed-fade-${uid || "live"}"><stop offset="0" stop-opacity="0"/><stop offset="1" stop-opacity="1"/></linearGradient></defs><path data-speed-path fill="url(#speed-fade-${uid || "live"})"></path></svg><span>${esc(regionAt(world, state.player.region).name)}</span><span class="wx-rate ${rate > 1 ? "hurrying" : ""}" data-speed-rate>1 s = ${Math.round(GAME_MINUTES_PER_REAL_SECOND * rate)} game min</span></div>
 </div>`;
 }
 
@@ -608,7 +614,11 @@ export function activity(state: GameState, world: World, cal: Calendar): Activit
   // A raw task with no intent behind it: started by hand, so it is its own
   // title and there is no step under it to name.
   const opts = availableTasks(state, world, cal);
-  let title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+  const title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+  if (t.id === "explore") {
+    const step = t.surveyPhase === "read" ? "reading the water" : state.route ? "walking the country" : "surveying";
+    return { title, step, progress: t.duration > 0 };
+  }
   if ((t.id === "walk" || t.id === "travel") && state.route) {
     const km = routeKm(state.route.path).toFixed(1);
     const named = state.route.label.startsWith("a spot ") ? "" : ` to ${state.route.label.replace(/^the /, "")}`;

@@ -132,7 +132,7 @@ describe("what the tooltip says", () => {
     expect(html).toMatch(/no way|too far|cannot|water/i);
   });
 
-  it("ground in another region offers the way in, not a walk that would stop at the border", () => {
+  it("ground in another region stays informational", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     const nb = regionAt(world, state.player.region).neighbours[0].id;
@@ -141,8 +141,8 @@ describe("what the tooltip says", () => {
     // to get in, rather than naming it in a list beside the map.
     const html = tipHtml(state, world, cal, cell);
     expect(html).toContain(regionAt(world, nb).name);
-    expect(html).toMatch(/Explore|Go to|know no way|cannot/);
-    expect(html).not.toContain('data-id="walk"');
+    expect(html).toContain("Unknown ground");
+    expect(html).not.toContain("<button");
   });
 
   it("a hover tooltip has no redundant close button", () => {

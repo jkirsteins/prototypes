@@ -186,7 +186,7 @@ describe("panels", () => {
     const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
     expect(light.brightness).toBeLessThan(1);
     setPanel("map", mapHtml(world, state, newUiState(), cal));
-    const style = document.querySelector("#map .grid")!.getAttribute("style")!;
+    const style = document.querySelector("#map .scroll-x")!.getAttribute("style")!;
     // The same figures updateSky writes, so the first frame after a rebuild
     // changes nothing and the 0.5 s transitions have nothing to animate.
     expect(style).toContain(`--bright:${light.brightness.toFixed(3)}`);
@@ -203,8 +203,8 @@ describe("panels", () => {
     state.weather.clear = false;
     const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
     setPanel("map", mapHtml(world, state, newUiState(), cal));
-    const grid = document.querySelector("#map .grid")!;
-    expect(grid.classList.contains(light.precip === "snow" ? "snowing" : "rain")).toBe(true);
+    const viewport = document.querySelector("#map .scroll-x")!;
+    expect(viewport.classList.contains(light.precip === "snow" ? "snowing" : "rain")).toBe(true);
   });
 
   it("the zoom buttons sit in the map's bottom left corner, drawn after the grid", () => {
@@ -469,7 +469,7 @@ describe("panels", () => {
     for (const c of untouched) expect(glyphAt(c).classList.contains("fog")).toBe(true);
   });
 
-  it("names black ground it has heard of, and offers Explore rather than Go", () => {
+  it("names black ground it has heard of without embedding controls in its hover surface", () => {
     const { state, world } = newGame(21);
     siteCamp(state, world);
     const cal = calendar(0);
@@ -493,12 +493,10 @@ describe("panels", () => {
     const glyph = document.querySelectorAll("#map .c")[(y - y0) * l.w + (x - x0)] as HTMLElement;
     expect(glyph.classList.contains("fog")).toBe(true);
     expect(glyph.title).toBe("");
+    const tip = tipHtml(state, world, cal, cellInView!);
+    expect(tip).toContain("Unknown ground");
+    expect(tip).not.toContain("<button");
     expect(glyph.getAttribute("data-act")).toBe("select");
-    setPanel("maptravel", travelHtml(state, world, cal));
-    const btn = document.querySelector(`#maptravel [data-act="task"][data-id="explore"][data-arg="region:${nbId}"]`);
-    expect(btn).not.toBeNull();
-    expect(btn!.textContent).toContain(`Explore ${nb.name}`);
-    expect(document.querySelector(`#maptravel [data-act="task"][data-id="travel"][data-arg="region:${nbId}"]`)).toBeNull();
   });
 
   it("the camp box shows camp water against its capacity", () => {

@@ -48,6 +48,7 @@ export function weight(inv: Inventory): number {
 /** Weight of everything the player carries: pack, tools and worn clothing. */
 export function carried(p: Player): number {
   let kg = weight(p.pack);
+  if (p.torch.minutes > 0) kg += ITEM_KG.torch;
   for (const t of p.tools) kg += TOOLS[t.id].kg + (t.litres ?? 0);
   for (const g of p.clothing) kg += CLOTHING[g.id].kg;
   return kg;

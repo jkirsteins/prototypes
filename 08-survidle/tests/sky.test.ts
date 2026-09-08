@@ -156,11 +156,11 @@ describe("sky in the page", () => {
     expect(opacity("#sky-sun")).toBe(0);
     expect(opacity("#sky-moon")).toBe(1);
     expect(Number(document.querySelector("#sky-moon")!.getAttribute("cx"))).not.toBe(noonX);
-    const grid = document.querySelector<HTMLElement>("#map .grid")!;
-    expect(Number(grid.style.getPropertyValue("--bright"))).toBeLessThan(0.6);
+    const viewport = document.querySelector<HTMLElement>("#map .scroll-x")!;
+    expect(Number(viewport.style.getPropertyValue("--bright"))).toBeLessThan(0.6);
     state.weather.precip = "heavy";
     updateSky(state, night, -3);
-    expect(grid.classList.contains("snowing")).toBe(true);
+    expect(viewport.classList.contains("snowing")).toBe(true);
     // And under a sky that thick there is no disc left to see.
     expect(opacity("#sky-moon")).toBeLessThan(0.1);
   });

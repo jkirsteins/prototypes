@@ -212,6 +212,11 @@ export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId
       ...fishSpecies().filter((s) => r.capacity[s]).map((s) => ({ id: "fish" as TaskId, arg: s })),
       { id: "read" as TaskId }, { id: "setTrap" as TaskId }, { id: "emptyTrap" as TaskId },
     ] },
+    { label: "Explore", items: [
+      { id: "explore" as TaskId, arg: `region:${r.id}` },
+      ...r.neighbours.map((n) => ({ id: "explore" as TaskId, arg: `region:${n.id}` })),
+      { id: "searchHome" as TaskId },
+    ] },
     { label: "Camp", items: [{ id: "makeCamp" }, { id: "split" }, { id: "splitWedges" }, { id: "hang" }, { id: "cook", arg: "rawMeat" }, { id: "cook", arg: "fish" }, { id: "cook", arg: "oilyFish" }, { id: "cook", arg: "rawFat" }, { id: "cook", arg: "roots" }, { id: "crack" }, { id: "grindBark" }, { id: "light" }, { id: "lightIndoors" }, { id: "melt" }, { id: "thaw" }, { id: "fill", arg: "shore" }, { id: "fill", arg: "hole" }, { id: "fill", arg: "seep" }, { id: "iceHole" }, { id: "lightTorch" }, { id: "repair" }, { id: "sharpen" }, { id: "hone" }, { id: "night" }, { id: "rest" }, { id: "sleep" }] },
     { label: "Make", items: RECIPE_IDS.map((id) => ({ id: "craft" as TaskId, arg: id })) },
     // Mending sits with building because it is the same act on the same things: a
@@ -441,7 +446,7 @@ function groupRows(g: { label: string; items: { id: TaskId; arg?: string }[] }, 
     const open = ui.open !== null && ui.open.id === id && ui.open.arg === argKey;
     const where = open ? ui.choice.where : "nearest";
     return withProgression(state, world, intentOption(state, world, cal, id, arg, where));
-  });
+  }).filter((o) => (o.id !== "explore" && o.id !== "searchHome") || o.ok);
 }
 
 /**
@@ -507,6 +512,7 @@ export function purposeCounts(state: GameState, world: World, ui: UiState): Reco
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
     if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
     if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
+    if ((i.id === "explore" || i.id === "searchHome") && !check(state, world, calendar(state.minute, state.startDoy), i.id, i.arg).ok) continue;
     const q = purposeOf(i.id, i.arg);
     if (q !== null && q in counts) counts[q]++;
   }

@@ -109,6 +109,14 @@ export interface Task {
   visited?: number[];
   /** The cell a searchHome sweep is trying to reach: fixed at the start, since the sweep's own region drifts as it crosses one to sight another. */
   home?: number;
+  /** The real sub-action currently owned by a region survey. */
+  surveyPhase?: "walk" | "read";
+  /** Connected water systems this survey has completed or found temporarily unreadable. */
+  surveyedWater?: number[];
+  /** Canonical water-system cell and representative shore for the active read. */
+  surveyWater?: number;
+  surveyShore?: number;
+  surveyProgress?: number;
 }
 
 /**
@@ -460,7 +468,7 @@ export interface Player {
   injured: number;
   clothing: Garment[];
   tools: Tool[];
-  /** A torch in hand: lit, and the minutes of burn left. */
+  /** A torch in hand: lit or put out, and the minutes of burn left. Zero means none equipped. */
   torch: { lit: boolean; minutes: number };
   pack: Inventory;
   /** Litres of water in the body, 0..3. */

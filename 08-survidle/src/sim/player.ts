@@ -437,7 +437,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
     if (p.frostbite.hands > 0) p.frostbite.hands = Math.max(0, p.frostbite.hands - dt);
   }
 
-  // A torch burns whatever you do, and there is no saving the stub.
+  // Only a lit torch burns. A put-out stub stays equipped with its fuel.
   if (p.torch.lit) {
     p.torch.minutes = Math.max(0, p.torch.minutes - dt);
     if (p.torch.minutes === 0) {

@@ -30,6 +30,8 @@ describe("the map's own surface", () => {
     expect(css).toContain(".grid .c.fog, .grid .c.void");
     expect(css).toContain(".grid .c.fog::before, .grid .c.void::before");
     expect(rule(".grid .c.dim")).toContain("opacity");
+    expect(css).toContain(".scroll-x > .shade");
+    expect(css).toContain(".scroll-x::after");
   });
 });
 
@@ -49,7 +51,7 @@ describe("the layout", () => {
     const mid = html.slice(html.indexOf('id="center"'), html.indexOf('id="right"'));
     const right = html.slice(html.indexOf('id="right"'), html.indexOf('id="build"'));
 
-    for (const id of ["goals", "stats", "gear", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
+    for (const id of ["goals", "stats", "skills", "forecast"]) expect(left).toContain(`id="${id}"`);
     // The clock is gone: the day and the hour are three lines in the weather
     // widget, and the row it took is map now.
     for (const id of ["map", "task", "panes"]) expect(mid).toContain(`id="${id}"`);
@@ -72,24 +74,22 @@ describe("the layout", () => {
     const stats = left.indexOf('id="stats"');
     const forecast = left.indexOf('id="forecast"');
     const away = left.indexOf('data-away="hours"');
-    const gear = left.indexOf('id="gear"');
     expect(stats).toBeLessThan(forecast);
     expect(forecast).toBeLessThan(away);
-    expect(away).toBeLessThan(gear);
-    const box = html.slice(html.indexOf('id="forecastbox"'), html.indexOf('id="gear"'));
+    const box = html.slice(html.indexOf('id="forecastbox"'), html.indexOf('id="skills"'));
     expect(box).toContain('id="forecast"');
     expect(box).toContain('id="away"');
     expect(rule("#forecast .row")).toContain("white-space: nowrap");
   });
 
-  it("all five panes exist at once, four of them hidden", () => {
+  it("all six panes exist at once, five of them hidden", () => {
     const html = page();
-    for (const id of ["pane-do", "pane-camp", "pane-log", "pane-pack", "pane-journal"]) {
+    for (const id of ["pane-do", "pane-camp", "pane-log", "pane-pack", "pane-gear", "pane-journal"]) {
       expect(html).toContain(`id="${id}"`);
     }
     // Rendering a pane on demand would destroy the other three and the
     // scroll position each holds, which is the complaint this answers.
-    expect((html.match(/id="pane-[a-z]+"[^>]*hidden/g) ?? []).length).toBe(4);
+    expect((html.match(/id="pane-[a-z]+"[^>]*hidden/g) ?? []).length).toBe(5);
   });
 
   it("the Do pane's only scroll container is the item pane", () => {

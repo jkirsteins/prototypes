@@ -13,7 +13,7 @@
 import { PURPOSES, type SubtabId, SUBTABS } from "./purpose";
 import { esc } from "./render";
 
-export type PaneId = "do" | "camp" | "log" | "pack" | "journal";
+export type PaneId = "do" | "camp" | "log" | "pack" | "gear" | "journal";
 
 /**
  * Do first, then Pack.
@@ -23,9 +23,9 @@ export type PaneId = "do" | "camp" | "log" | "pack" | "journal";
  * other half of acting on the world, and it belongs beside the list of
  * things to do rather than behind the log.
  */
-export const PANE_IDS: PaneId[] = ["do", "camp", "pack", "log", "journal"];
+export const PANE_IDS: PaneId[] = ["do", "camp", "pack", "gear", "log", "journal"];
 
-const PANE_LABEL: Record<PaneId, string> = { do: "Do", camp: "Camp", pack: "Inventory", log: "Log", journal: "Journal" };
+const PANE_LABEL: Record<PaneId, string> = { do: "Do", camp: "Camp", pack: "Inventory", gear: "Gear", log: "Log", journal: "Journal" };
 
 export interface Panes {
   pane: PaneId;

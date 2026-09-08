@@ -10,10 +10,12 @@ import { cellPossibilities } from "../src/sim/camp";
 import { isKnown, mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { discovery, SEEN } from "../src/sim/regionstate";
-import { survivorRoute } from "../src/sim/routing";
+import { frontierRoute, survivorRoute } from "../src/sim/routing";
 import { seepGround } from "../src/sim/seep";
 import { check } from "../src/sim/tasks";
-import { regionAt } from "../src/world/gen";
+import { cellAt, neighbours, regionAt } from "../src/world/gen";
+import { passable } from "../src/world/route";
+import { cellOf } from "../src/sim/position";
 
 const cal = calendar(0);
 
@@ -66,5 +68,21 @@ describe("the survivor routes on knowledge", () => {
     mapRegion(state, world, home);
     mapRegion(state, world, nb.id);
     expect(survivorRoute(state, world, camp, regionAt(world, nb.id).campCell)).not.toBeNull();
+  });
+
+  it("frontierRoute permits one unknown final step and no route through unknown ground", () => {
+    const { state, world } = newGame(3);
+    const from = cellOf(state, world);
+    let target: number | undefined;
+    for (const known of Object.keys(state.mapped).map(Number)) {
+      target = neighbours(world, known).find((cell) => !isKnown(state, cell) && passable(cellAt(world, cell).terrain) && survivorRoute(state, world, from, known) !== null);
+      if (target !== undefined) break;
+    }
+    expect(target).toBeDefined();
+    const route = frontierRoute(state, world, from, target!);
+    expect(route?.at(-1)).toBe(target);
+    expect(route?.slice(0, -1).every((cell) => isKnown(state, cell))).toBe(true);
+    const deeper = neighbours(world, target!).find((cell) => !isKnown(state, cell) && neighbours(world, cell).every((n) => !isKnown(state, n)) && passable(cellAt(world, cell).terrain));
+    if (deeper !== undefined) expect(frontierRoute(state, world, from, deeper)).toBeNull();
   });
 });

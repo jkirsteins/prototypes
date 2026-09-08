@@ -1,6 +1,7 @@
 import { monthStartDoy } from "../sim/calendar";
 import { NOT_ORDERS } from "../sim/ladder";
 import { type HurryState, newHurry } from "./hurry";
+import { newSpeedHistory, type SpeedHistory } from "./speed-history";
 import { DEFAULT_ZOOM } from "./map";
 import { defaultPanes, type Panes } from "./panes";
 import { DEFAULT_TRAVEL_DISPLAY, type TravelDisplay } from "./travel";
@@ -53,6 +54,8 @@ export interface UiState {
   specific: { trees: boolean; fish: boolean };
   /** The hurry: how fast the work chosen by hand is running right now. Never saved. */
   hurry: HurryState;
+  /** Last minute of real-time speed, for the weather footer. Never saved. */
+  speedHistory: SpeedHistory;
 }
 
 /** A Do row's order settings: what "more" opens, and what a kind button there gives. */
@@ -133,7 +136,7 @@ export function newUiState(): UiState {
     panes: defaultPanes(), travelDisplay: DEFAULT_TRAVEL_DISPLAY, selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, goalsDone: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
     open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false },
-    hurry: newHurry(),
+    hurry: newHurry(), speedHistory: newSpeedHistory(),
   };
 }
 

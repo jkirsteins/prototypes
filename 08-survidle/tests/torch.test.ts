@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { hourlyEvents } from "../src/sim/events";
-import { addItem, qty, tool } from "../src/sim/inventory";
+import { addItem, carried, qty, tool } from "../src/sim/inventory";
 import { ITEM_KG, RECIPES, TORCH_BURN_MINUTES } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, firelit, stepPlayer } from "../src/sim/player";
@@ -10,7 +10,8 @@ import { placeAtSpot } from "../src/sim/position";
 import { regionState, siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
-import { check, startTask, stepTask } from "../src/sim/tasks";
+import { check, putOutTorch, startTask, stepTask } from "../src/sim/tasks";
+import { activeEquipment, compactEquipmentHtml } from "../src/ui/equipment";
 import { statsHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { siteCamp } from "./siting-helpers";
@@ -115,6 +116,33 @@ describe("lighting a torch", () => {
     run(g, 5);
     expect(tool(state.player, "fireDrill")!.durability).toBe(50);
     expect(state.player.torch.lit).toBe(true);
+  });
+
+  it("can be put out and relit without consuming another torch or losing fuel", () => {
+    const g = newGame(3);
+    siteCamp(g.state, g.world);
+    const { state, world } = g;
+    const st = regionState(state, world, state.player.region);
+    siteFor(st, st.campCell!).structures.firePit = true;
+    st.fire.lit = true;
+    st.fire.fuelKg = 5;
+    state.player.torch = { lit: true, minutes: 37 };
+    const load = carried(state.player);
+    expect(putOutTorch(state)).toBe(true);
+    expect(state.player.torch).toEqual({ lit: false, minutes: 37 });
+    expect(carried(state.player)).toBe(load);
+    expect(startTask(state, world, cal, "lightTorch")).toBe(true);
+    run(g, 2);
+    expect(state.player.torch).toEqual({ lit: true, minutes: 37 });
+    expect(qty(state.player.pack, "torch")).toBe(0);
+  });
+
+  it("shares one active-equipment reading with the Gear and map surfaces", () => {
+    const { state, world } = newGame(3);
+    state.player.torch = { lit: false, minutes: 42 };
+    const row = activeEquipment(state, world, cal)[0];
+    expect(row).toMatchObject({ label: "Torch", state: "out", remaining: 42, actionLabel: "relight" });
+    expect(compactEquipmentHtml(state, world, cal)).toContain("Torch:</b> out, 42 min");
   });
 
   it("shows as a tag while it burns", () => {

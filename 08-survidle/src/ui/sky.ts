@@ -324,7 +324,7 @@ export function updateSky(state: GameState, cal: Calendar, ambient: number, root
   // the widget's wall are the same picture and must agree.
   for (const svg of root.querySelectorAll<SVGElement>("svg.sky")) dressSky(svg, state, cal, ambient);
   const light = lighting(cal, state.weather, ambient);
-  const grid = root.querySelector<HTMLElement>("#map .grid");
+  const grid = root.querySelector<HTMLElement>("#map .scroll-x");
   if (grid) {
     grid.style.setProperty("--bright", light.brightness.toFixed(3));
     grid.style.setProperty("--sat", light.saturation.toFixed(3));

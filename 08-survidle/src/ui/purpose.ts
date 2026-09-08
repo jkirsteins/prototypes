@@ -17,14 +17,15 @@
  */
 import type { TaskId } from "../sim/types";
 
-export type SubtabId = "Gather" | "Hunt" | "Camp" | "Make" | "Build";
+export type SubtabId = "Gather" | "Hunt" | "Explore" | "Camp" | "Make" | "Build";
 
-export const SUBTABS: SubtabId[] = ["Gather", "Hunt", "Camp", "Make", "Build"];
+export const SUBTABS: SubtabId[] = ["Gather", "Hunt", "Explore", "Camp", "Make", "Build"];
 
 /** The left pane's entries per subtab, in the order they are shown. */
 export const PURPOSES: Record<SubtabId, string[]> = {
   Gather: ["Woodcutting", "Kindling", "Tree products", "Wild food", "Stone"],
   Hunt: ["Game", "Fish", "Traps"],
+  Explore: ["Wayfinding"],
   Camp: ["Fire", "Fuel", "Food", "Water", "Rest", "Tools"],
   Make: ["Fire", "Tools", "Hunting", "Clothing", "Water"],
   Build: ["Site", "Fire", "Shelter", "Water", "Food"],
@@ -64,6 +65,10 @@ const HOME: Record<string, [SubtabId, string]> = {
   read: ["Hunt", "Fish"],
   setTrap: ["Hunt", "Traps"],
   emptyTrap: ["Hunt", "Traps"],
+
+  // Explore
+  explore: ["Explore", "Wayfinding"],
+  searchHome: ["Explore", "Wayfinding"],
 
   // Camp
   light: ["Camp", "Fire"],

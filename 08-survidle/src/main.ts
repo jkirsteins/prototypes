@@ -20,6 +20,7 @@ import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
 import { isKnown } from "./sim/mapped";
+import { frontierRoute } from "./sim/routing";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
@@ -27,7 +28,7 @@ import { campCellOf, cellOf } from "./sim/position";
 import { current } from "./sim/record";
 import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
-import { startTask, stopTask } from "./sim/tasks";
+import { putOutTorch, startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
 import { insertWalkAtTop } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
@@ -51,8 +52,9 @@ import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
 import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
+import { newSpeedHistory, updateSpeedHistory } from "./ui/speed-history";
 import { loadTravelDisplay, saveTravelDisplay } from "./ui/travel";
-import { cellAt, generateWorld, regionAt, type World } from "./world/gen";
+import { generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
 // The face self-test page: a page of generated faces to judge, in place of the game.
@@ -122,6 +124,7 @@ function fresh(seed = (Math.random() * 0xffffffff) >>> 0, startDoy?: number, boa
   ui.selected = null;
   ui.away = null;
   ui.hurry = newHurry();
+  ui.speedHistory = newSpeedHistory();
   ui.confirmAbandon = false;
   ui.panes = loadPanes(localStorage);
   ui.confirmCamp = false;
@@ -166,8 +169,8 @@ function render() {
   setPanel("stats", statsHtml(state, world, cal, ambient, ui));
   setPanel("camp", campHtml(state, world, cal));
   setPanel("maptravel", placesHtml(state, world, cal, ui.travelDisplay));
-  setPanel("mapinventory", mapInventoryHtml(state, world, ui.hover));
-  setPanel("gear", gearHtml(state, feltTemperature(state, world, ambient)));
+  setPanel("mapinventory", mapInventoryHtml(state, world, cal, ui.hover));
+  setPanel("gear", gearHtml(state, world, cal, feltTemperature(state, world, ambient)));
   setPanel("skills", skillsHtml(state));
   setPanel("goals", goalsHtml(state, cal));
   setPanel("weather", weatherHtml(state, world, cal, ambient, ui.hurry.rate));
@@ -286,6 +289,7 @@ function frame(now: number) {
   wasDead = Boolean(state.dead);
   beacon.tick(state, document.visibilityState === "visible", !state.dead && !state.landing && !ui.away, now);
   render();
+  updateSpeedHistory(document, ui.speedHistory, now, GAME_MINUTES_PER_REAL_SECOND * ui.hurry.rate);
   const cal = calendar(state.minute, state.startDoy);
   sounds.frame(state, world, cal, ambientTemperature(cal, state.weather), now, !state.dead && !state.landing && !ui.away && document.visibilityState !== "hidden");
   if (now - lastSave > 5000) {
@@ -355,6 +359,9 @@ function onClick(ev: Event) {
     }
     case "stop":
       stopTask(state, world);
+      break;
+    case "torch-out":
+      putOutTorch(state);
       break;
     case "pane":
       ui.panes = { ...ui.panes, pane: target.dataset.pane as PaneId };
@@ -729,6 +736,7 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 {
   const board = document.getElementById("mapdyn")!;
   let pointerType = "mouse";
+  let touchCell: number | null = null;
   let targetGlyph: HTMLElement | null = null;
   const clearTarget = () => {
     targetGlyph?.classList.remove("target");
@@ -762,13 +770,21 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
     // Touch keeps its first tap for inspecting the cell. A mouse click on
     // known ground in this region is an explicit destination in its own
     // right, whether or not generation happened to name that cell a place.
-    if (pointerType === "touch") return;
     const cell = cellUnder(ev);
-    if (cell === null || cell === cellOf(state, world) || !isKnown(state, cell)) return;
-    if (cellAt(world, cell).region !== state.player.region) return;
+    if (cell === null || cell === cellOf(state, world)) return;
+    if (pointerType === "touch" && touchCell !== cell) {
+      touchCell = cell;
+      ui.hover = cell;
+      render();
+      return;
+    }
+    const cal = calendar(state.minute, state.startDoy);
+    const frontier = !isKnown(state, cell)
+      ? frontierRoute(state, world, cellOf(state, world), cell, "none")
+      : null;
+    if (!isKnown(state, cell) && !frontier) return;
     ev.stopPropagation();
     const rng = new Rng(state.rng);
-    const cal = calendar(state.minute, state.startDoy);
     const walk = insertWalkAtTop(state, world, cell);
     startIntent(state, world, cal, rng, walk.req, walk.id);
     state.rng = rng.s;

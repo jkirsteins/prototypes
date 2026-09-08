@@ -30,7 +30,7 @@ describe("the ways out", () => {
     const { state, world } = newGame(21);
     const cal = calendar(state.minute, state.startDoy);
     const html = travelHtml(state, world, cal);
-    const listed = [...html.matchAll(/data-arg="region:(\d+)"/g)].map((m) => Number(m[1]));
+    const listed = [...html.matchAll(/data-way="(\d+)"/g)].map((m) => Number(m[1]));
     const nb = regionAt(world, state.player.region).neighbours.map((n) => n.id);
     expect(nb.length).toBeGreaterThan(0);
     expect([...new Set(listed)].sort((a, b) => a - b)).toEqual([...nb].sort((a, b) => a - b));

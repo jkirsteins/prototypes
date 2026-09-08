@@ -1,5 +1,5 @@
 import { Rng } from "../rng";
-import { CELL_KM, shareWord } from "../units";
+import { CELL_KM, fmtDuration, shareWord } from "../units";
 import { BIG_EATER_PACE, body, FELL_FEAR_LINE, fearsFell, hasQuirk, SHORE_FEAR_LINE, shunsShore } from "./person";
 import { cellAt, hasSpot, neighbours, regionAt, spotOf, type World } from "../world/gen";
 import { passable, routeKm, routeMinutes } from "../world/route";
@@ -8,7 +8,7 @@ import { absence, popOf, regionDensity } from "./animals";
 import { dayNumber, type Calendar } from "./calendar";
 import { cellPossibilities, leaveCamp, needsMending, rackCapacity } from "./camp";
 import { cue } from "./cues";
-import { exploreRoute, survivorRoute } from "./routing";
+import { exploreRoute, frontierRoute, survivorRoute } from "./routing";
 import {
   addItem, AXES, axeInHand, axeNear, canConsume, consume, hasTool, herePile, listItems, pile, pileAt, produce, qty, reach,
   removeItem, shortOf, takeUp, toolNear, totalQty, TRACE_KG, transfer, wearTool, weight,
@@ -28,7 +28,7 @@ import { hasEvent, record } from "./record";
 import {
   chopSticks, craftSuccess, effectiveNeeds, fishKg, gap, gapInjury, huntExtras, injuryChance,
   masteryKey, masteryProgress, oddsFactor, RECOMMENDED, skillLevel, SKILL_NAMES,
-  skillOf, spoiledNeeds, train, wearFactor, yieldFactor,
+  skillOf, spoiledNeeds, train, trainTask, wearFactor, yieldFactor,
 } from "./skills";
 import { sleepMinutes } from "./sleep";
 import {
@@ -52,6 +52,7 @@ import {
 import { isWorkIntent } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
+import { plain } from "./voice";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -880,9 +881,10 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       return o;
     }
     case "lightTorch": {
-      const o = opt({ group: "camp", label: "Light a torch", detail: "burns 1 h; no night penalty on foot, and wolves keep off", duration: 1 });
+      const relight = p.torch.minutes > 0;
+      const o = opt({ group: "camp", label: relight ? "Relight torch" : "Light a torch", detail: relight ? `${fmtDuration(p.torch.minutes)} fuel left` : "burns 1 h; no night penalty on foot, and wolves keep off", duration: 1 });
       if (p.torch.lit) return { ...o, ok: false, why: "a torch is already burning" };
-      if (totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
+      if (!relight && totalQty(invs, "torch") < 1) return { ...o, ok: false, why: "needs a torch" };
       if (camp && st.fire.lit) return { ...o, detail: `${o.detail}; lit from the fire` };
       if (hasTool(p, "fireDrill")) return { ...o, duration: 10, detail: `${o.detail}; with the fire drill` };
       return { ...o, ok: false, why: "needs a fire or a fire drill" };
@@ -897,7 +899,8 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       if (target.cell === from) return { ...o, ok: false, why: "{you} {are} here" };
       if (target.thin && iceMode(state.weather) !== "thin") return { ...o, ok: false, why: "the ice is not thin here" };
       const ice = walkIceMode(state, target.thin);
-      const route = survivorRoute(state, world, from, target.cell, ice, fearsFell(state));
+      const route = survivorRoute(state, world, from, target.cell, ice, fearsFell(state))
+        ?? frontierRoute(state, world, from, target.cell, ice, fearsFell(state));
       if (!route) return { ...o, ok: false, why: "{you} {know} no way there" };
       const v = baseWalkSpeed(state, cal, state.weather);
       const minutes = routeMinutes(world, route, v, ice);
@@ -909,13 +912,15 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "explore": {
       const target = walkTarget(state, world, arg ?? "");
-      const o = opt({ group: "move", label: `Explore ${target?.label ?? "?"}`, detail: "", repeatable: false });
+      const o = opt({ group: "move", label: `Survey ${target?.label ?? "?"}`, detail: "", repeatable: false });
       if (!target) return { ...o, ok: false, why: "no such place" };
       const region = cellAt(world, target.cell).region;
       if (discovery(state, region) === 0) return { ...o, ok: false, why: "{you} {know} nothing of that country" };
-      if (knownShare(state, world, region) >= 1) return { ...o, ok: false, why: "{you} {know} that country" };
+      const water = state.weather.iceCm < ICE_SHORE_CM ? nextSurveyWater(state, world, region, []) : null;
+      if (knownShare(state, world, region) >= 1 && !water) return { ...o, ok: false, why: "{you} {know} that country" };
+      if (!pickVantage(state, world, cal, region, [here]) && !water) return { ...o, ok: false, why: "no reachable frontier" };
       // No duration is promised: how long it takes is how long the ground takes.
-      return { ...o, duration: 0, detail: "as long as the ground takes" };
+      return { ...o, duration: 0, detail: "maps the region and reads its waters" };
     }
     case "searchHome": {
       // The player's button never carries an arg and reads camp, same as ever;
@@ -1100,6 +1105,9 @@ export function availableTasks(state: GameState, world: World, cal: Calendar): T
   for (const s of r.spots) if (s.cell !== here) out.push(check(state, world, cal, "walk", `spot:${s.id}`));
   out.push(check(state, world, cal, "haul"));
   for (const nb of r.neighbours) out.push(check(state, world, cal, "travel", `region:${nb.id}`));
+  out.push(check(state, world, cal, "explore", `region:${r.id}`));
+  for (const nb of r.neighbours) out.push(check(state, world, cal, "explore", `region:${nb.id}`));
+  out.push(check(state, world, cal, "searchHome"));
   return out.map((o) => withProgression(state, world, o));
 }
 
@@ -1223,7 +1231,8 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const target = walkTarget(state, world, arg ?? "")!;
     const ice = walkIceMode(state, target.thin);
     const from = cellOf(state, world);
-    const path = survivorRoute(state, world, from, target.cell, ice, fearsFell(state)) ?? [];
+    const path = survivorRoute(state, world, from, target.cell, ice, fearsFell(state))
+      ?? frontierRoute(state, world, from, target.cell, ice, fearsFell(state)) ?? [];
     state.route = { target: target.cell, path, walked: [from], label: target.label, ice, lastLand: from };
     state.task = { id, arg, progress: 0, duration: o.duration, repeat: false };
     return true;
@@ -1233,10 +1242,16 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
     const region = cellAt(world, target.cell).region;
     const from = cellOf(state, world);
     const vantage = pickVantage(state, world, cal, region, [from]);
-    if (!vantage) return false;
     const ice = walkIceMode(state, false);
-    state.route = { target: vantage.cell, path: vantage.path, walked: [from], label: target.label, ice, lastLand: from };
-    state.task = { id, arg, progress: 0, duration: routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice), repeat: false, visited: [from, vantage.cell] };
+    state.task = { id, arg, progress: 0, duration: 0, repeat: false, visited: [from], surveyPhase: "walk", surveyedWater: [] };
+    if (vantage) {
+      state.route = { target: vantage.cell, path: vantage.path, walked: [from], label: target.label, ice, lastLand: from };
+      state.task.visited!.push(vantage.cell);
+      state.task.duration = routeMinutes(world, vantage.path, baseWalkSpeed(state, cal, state.weather), ice);
+    } else if (!planSurvey(state, world, cal, state.task, region, target.label)) {
+      state.task = null;
+      return false;
+    }
     return true;
   }
   if (id === "searchHome") {
@@ -1641,6 +1656,102 @@ function exploreInjury(state: GameState, world: World, rng: Rng, before: number,
   record(state, { kind: "injury", cause: "wayfinding" });
 }
 
+interface SurveyWater {
+  key: number;
+  shores: number[];
+}
+
+const surveyWaterCache = new WeakMap<World, Map<number, SurveyWater[]>>();
+
+/** Connected water systems touching a region, with land in that region from which each can be read. */
+function surveyWaters(world: World, region: number): SurveyWater[] {
+  let byRegion = surveyWaterCache.get(world);
+  if (!byRegion) {
+    byRegion = new Map();
+    surveyWaterCache.set(world, byRegion);
+  }
+  const cached = byRegion.get(region);
+  if (cached) return cached;
+  const starts = regionAt(world, region).cells.filter((cell) => cellAt(world, cell).terrain === "water");
+  const seen = new Set<number>();
+  const systems: SurveyWater[] = [];
+  for (const start of starts) {
+    if (seen.has(start)) continue;
+    const todo = [start];
+    const shores = new Set<number>();
+    let key = start;
+    seen.add(start);
+    while (todo.length) {
+      const cell = todo.pop()!;
+      key = Math.min(key, cell);
+      for (const n of neighbours(world, cell)) {
+        if (cellAt(world, n).terrain === "water") {
+          if (!seen.has(n)) {
+            seen.add(n);
+            todo.push(n);
+          }
+        } else if (cellAt(world, n).region === region && passable(cellAt(world, n).terrain)) {
+          shores.add(n);
+        }
+      }
+    }
+    if (shores.size) systems.push({ key, shores: [...shores] });
+  }
+  byRegion.set(region, systems);
+  return systems;
+}
+
+function nextSurveyWater(state: GameState, world: World, region: number, handled: number[]): { key: number; shore: number; path: number[] } | null {
+  const from = cellOf(state, world);
+  const ice = walkIceMode(state, false);
+  for (const system of surveyWaters(world, region)) {
+    if (handled.includes(system.key)) continue;
+    if (system.shores.some((shore) => isRead(state, shore))) {
+      handled.push(system.key);
+      continue;
+    }
+    let best: { shore: number; path: number[] } | null = null;
+    for (const shore of system.shores) {
+      const path = exploreRoute(state, world, from, shore, region, ice, fearsFell(state));
+      if (path && (!best || path.length < best.path.length)) best = { shore, path };
+    }
+    if (best) return { key: system.key, ...best };
+  }
+  return null;
+}
+
+/** Chooses the next real read or mapping leg. */
+function planSurvey(state: GameState, world: World, cal: Calendar, t: NonNullable<GameState["task"]>, region: number, label: string): boolean {
+  if (!t.surveyedWater) t.surveyedWater = [];
+  const handled = t.surveyedWater;
+  if (state.weather.iceCm < ICE_SHORE_CM) {
+    const water = nextSurveyWater(state, world, region, handled);
+    if (water) {
+      const from = cellOf(state, world);
+      const ice = walkIceMode(state, false);
+      state.route = { target: water.shore, path: water.path, walked: [from], label: "water", ice, lastLand: from };
+      t.surveyPhase = "walk";
+      t.surveyWater = water.key;
+      t.surveyShore = water.shore;
+      t.surveyProgress = 0;
+      t.duration = t.progress + routeMinutes(world, water.path, baseWalkSpeed(state, cal, state.weather), ice);
+      return true;
+    }
+  }
+  const next = pickVantage(state, world, cal, region, t.visited ?? []);
+  if (!next) return false;
+  const from = cellOf(state, world);
+  const ice = walkIceMode(state, false);
+  state.route = { target: next.cell, path: next.path, walked: [from], label, ice, lastLand: from };
+  t.visited = [...(t.visited ?? []), next.cell];
+  t.surveyPhase = "walk";
+  delete t.surveyWater;
+  delete t.surveyShore;
+  delete t.surveyProgress;
+  t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), ice);
+  return true;
+}
+
 /**
  * Walks the current leg of an exploring sweep; when it lands, picks
  * wherever unmapped ground of the region is best seen from next and sets
@@ -1649,8 +1760,50 @@ function exploreInjury(state: GameState, world: World, rng: Rng, before: number,
  */
 function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task!;
-  if (!state.route) {
+  const target = walkTarget(state, world, t.arg ?? "");
+  if (!target) {
     state.task = null;
+    state.route = null;
+    return;
+  }
+  const region = cellAt(world, target.cell).region;
+  if (t.surveyPhase === "read") {
+    const shore = t.surveyShore ?? cellOf(state, world);
+    const option = check(state, world, cal, "read", undefined, shore);
+    if (!option.ok) {
+      if (!t.surveyedWater) t.surveyedWater = [];
+      if (t.surveyWater !== undefined) t.surveyedWater.push(t.surveyWater);
+      log(state, `Water unread: ${plain(option.why)}.`);
+      delete t.surveyWater;
+      delete t.surveyShore;
+      delete t.surveyProgress;
+      if (!planSurvey(state, world, cal, t, region, target.label)) {
+        state.task = null;
+        state.route = null;
+      }
+      return;
+    }
+    const pace = workSpeed(state, world);
+    trainTask(state, world, { id: "read" }, dt);
+    t.progress += dt;
+    t.surveyProgress = (t.surveyProgress ?? 0) + dt * pace;
+    t.duration = t.progress + Math.max(0, option.duration - t.surveyProgress);
+    if (t.surveyProgress < option.duration) return;
+    complete(state, world, cal, rng, "read");
+    if (!t.surveyedWater) t.surveyedWater = [];
+    if (t.surveyWater !== undefined) t.surveyedWater.push(t.surveyWater);
+    delete t.surveyWater;
+    delete t.surveyShore;
+    delete t.surveyProgress;
+    if (!planSurvey(state, world, cal, t, region, target.label)) {
+      state.task = null;
+      state.route = null;
+      log(state, `{You} {finish} surveying ${regionAt(world, region).name}.`);
+    }
+    return;
+  }
+  if (!state.route) {
+    if (!planSurvey(state, world, cal, t, region, target.label)) state.task = null;
     return;
   }
   // The route walked trains nothing; the eye reading the country as it goes is wayfinding's own practice.
@@ -1668,24 +1821,17 @@ function stepExplore(state: GameState, world: World, cal: Calendar, rng: Rng, dt
   placeAt(state, world, cellOf(state, world));
   if (spotHere(state, world) === "heath") collectSnares(state, world);
   collectTrap(state, world);
-  const region = cellAt(world, walkTarget(state, world, t.arg ?? "")!.cell).region;
-  if (knownShare(state, world, region) >= 1) {
-    state.route = null;
-    state.task = null;
-    log(state, `{You} {know} ${regionAt(world, region).name} now.`);
+  state.route = null;
+  if (t.surveyWater !== undefined) {
+    t.surveyPhase = "read";
+    t.surveyProgress = 0;
+    t.duration = t.progress + 60;
     return;
   }
-  const next = pickVantage(state, world, cal, region, t.visited ?? []);
-  if (!next) {
-    // Nothing left the survivor can walk to would show them more of it.
-    state.route = null;
+  if (!planSurvey(state, world, cal, t, region, target.label)) {
     state.task = null;
-    return;
+    log(state, `{You} {finish} surveying ${regionAt(world, region).name}.`);
   }
-  const from = cellOf(state, world);
-  state.route = { target: next.cell, path: next.path, walked: [from], label: route.label, ice: route.ice, lastLand: from };
-  t.visited = [...(t.visited ?? []), next.cell];
-  t.duration = t.progress + routeMinutes(world, next.path, baseWalkSpeed(state, cal, state.weather), route.ice);
 }
 
 /**
@@ -2200,9 +2346,10 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       return;
     }
     case "lightTorch": {
-      consume(invs, [{ item: "torch", qty: 1 }]);
+      const relight = p.torch.minutes > 0;
+      if (!relight) consume(invs, [{ item: "torch", qty: 1 }]);
       if (!(atCamp(state, world) && st.fire.lit) && wearTool(state, "fireDrill", wearFactor(state, world, "lightTorch"))) record(state, { kind: "toolWorn", tool: "fireDrill" });
-      p.torch = { lit: true, minutes: TORCH_BURN_MINUTES };
+      p.torch = { lit: true, minutes: relight ? p.torch.minutes : TORCH_BURN_MINUTES };
       cue("torchLit");
       log(state, "The torch catches.", "good");
       return;
@@ -2276,6 +2423,14 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "rest":
       return;
   }
+}
+
+/** Puts out the equipped torch immediately and preserves its remaining fuel. */
+export function putOutTorch(state: GameState): boolean {
+  if (!state.player.torch.lit || state.player.torch.minutes <= 0) return false;
+  state.player.torch.lit = false;
+  log(state, "The torch is out.");
+  return true;
 }
 
 /** Moves the live fish out of this region's trap into the pack and credits the trap's row. Returns the kilos taken (fish and oily fish together). */

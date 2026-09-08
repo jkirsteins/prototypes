@@ -68,7 +68,7 @@ describe("what the strips draw", () => {
     const html = paneTabsHtml(panes);
     expect((html.match(/class="tab on"/g) ?? []).length).toBe(1);
     expect(html).toContain('data-pane="do"');
-    for (const id of ["log", "pack", "journal"]) expect(html).toContain(`data-pane="${id}"`);
+    for (const id of ["log", "pack", "gear", "journal"]) expect(html).toContain(`data-pane="${id}"`);
   });
 
   it("Pack comes second, since it is the other half of acting on the world", () => {
@@ -76,7 +76,7 @@ describe("what the strips draw", () => {
     // they carry, with the take and haul buttons, so it belongs beside the
     // list of things to do rather than behind the log.
     const order = [...paneTabsHtml(panes).matchAll(/data-pane="([a-z]+)"/g)].map((m) => m[1]);
-    expect(order).toEqual(["do", "camp", "pack", "log", "journal"]);
+    expect(order).toEqual(["do", "camp", "pack", "gear", "log", "journal"]);
   });
 
   it("one subtab is on and it is the one showing", () => {

@@ -530,7 +530,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x" style="--px:${l.px}px;--line:${l.line}px"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
+  parts.push(`<div class="scroll-x${cal.isNight ? " night" : ""}${falling}" style="--px:${l.px}px;--line:${l.line}px;${lit}"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -622,6 +622,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // delay and stood over whatever it was next to.
     parts.push(`<span class="${cls.join(" ")}"${act}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
-  parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}</div></div>${tools}`);
+  parts.push(`${walkSvg(world, state, playerCell, x0, y0, z, l)}</div><i class="shade"></i></div>${tools}`);
   return parts.join("");
 }
