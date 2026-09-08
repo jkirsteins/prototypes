@@ -169,16 +169,49 @@ real source; these are honest placeholders for real ones.
 `light` stops being camp-only. With a drill, tinder and a kilo of dry wood a
 survivor lights a fire on any passable land cell.
 
-What makes it not a camp fire: it needs no fire pit; it burns only while fed
-by hand, since `autoFeed` reaches the camp's woodpile and this has only the
-pack; it dies when the survivor leaves the cell, keeping no embers and no
-`litSince`, so it credits none of the fire-keeping goals, which measure a
-hearth kept. One camp fire per region stays true.
+**The rule is that a fire's capabilities follow the fire and the equipment
+present, not whether the map calls the place a camp.** A fire hot enough to
+boil a pot is hot enough to put meat on a stick beside it, and a rule that
+says otherwise is one players eventually notice and rightly resent. What a
+camp gives is not a hotter fire; it is **infrastructure**.
 
-**Open question.** Whether an open fire may cook and boil or only warm.
-Warming only is the smaller change and keeps camps meaningful; allowing
-cooking makes a hunting trip self-sufficient, which is a bigger question
-about what a camp is for.
+So the gate on this whole class of work changes from *where you are* to
+*what you have with you*:
+
+| Field fire, with the gear | Camp, because of what stands there |
+|---|---|
+| cook carried or raw food | batch cooking |
+| boil water, carrying a vessel | large quantities of water, the trough |
+| melt snow, thaw ice | the rack: hanging meat to dry |
+| roast directly, no cookware | smoking and preservation |
+| dry yourself and small carried items | processing a carcass beside storage and tools |
+| warm | a fire indoors, under a hut or cabin roof |
+
+Concretely, of the tasks behind `needCamp` today, these move to an
+equipment gate and become possible anywhere with a fire: `cook` (every
+food), `crack`, `grindBark`, `melt`, `thaw`. These stay with the camp
+because they need something that stands there: `hang` (the drying rack),
+`lightIndoors` (a hut or cabin roof), `mend` (a structure to mend), `build`
+of the permanent structures, and `haul`, `night` and `wait`, which are all
+about home by definition.
+
+The refusal wording changes with it, and improves: a survivor is told they
+need a bark bucket, not that there is no camp here yet.
+
+**What still makes a field fire different from a camp's** is that it is
+nobody's home. It needs no fire pit. It burns only what is fed by hand,
+since `autoFeed` reaches the camp's woodpile and this has only the pack. It
+dies when the survivor leaves the cell, keeping no embers and no
+`litSince`, so it credits none of the fire-keeping goals, which measure a
+hearth kept. An improvised fire may also cost more time and fuel for the
+same work than a camp's does. One camp fire per region stays true.
+
+**A consequence worth naming.** This softens the camp-siting work's
+`no camp here yet` guard considerably, and for the better: a survivor who
+has landed and not yet chosen where to live can make a fire, cook, and melt
+snow. Today they cannot, which is a strange thing to tell someone standing
+on a beach with an axe and a drill. The guard remains for the things that
+genuinely need a home.
 
 ### 6. Reading the weather
 
@@ -329,6 +362,13 @@ rule. No new death cause, no storm-specific health drain.
   `shelterBonus` and `sheltered` wherever it stands.
 - A fire lights on open ground with a drill and dry wood and no fire pit;
   it dies on leaving, keeps no embers, credits no fire-keeping goal.
+- Cooking, cracking, bark-grinding, melting and thawing all work at a field
+  fire when the survivor carries the gear, and are refused for want of the
+  gear rather than for want of a camp.
+- Hanging meat, lighting a fire indoors and mending still need the camp,
+  and say so.
+- A survivor who has landed and sited no camp can still light a fire, cook
+  and melt snow.
 - The warning lengthens with the skill, with storms survived, and with the
   quirk, and the three stack without any one skipping a stage.
 - A soaked, starving survivor caught in the open dies; the same survivor
@@ -363,8 +403,7 @@ worse, and it will say so first.
 
 Taken one at a time, in this order:
 
-1. Whether an open fire may cook and boil, or only warm (section 5).
-2. The emergency shelter's minutes per protection level, against the
+1. The emergency shelter's minutes per protection level, against the
    handbooks (section 4).
-3. Whether a survivor caught by lightning on the wrong ground should be
+2. Whether a survivor caught by lightning on the wrong ground should be
    able to die of it, or only ever be driven off that ground (section 7).
