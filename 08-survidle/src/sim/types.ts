@@ -514,8 +514,8 @@ export interface SkillState {
 }
 
 export type GoalId =
-  | "firewood" | "fire" | "cook" | "bed" | "roof" | "water" | "snare" | "store"
-  | "spring" | "summer" | "autumn" | "winter";
+  | "firewood" | "fire" | "cook" | "keptNight" | "bed" | "keptDays" | "roof" | "keptRain"
+  | "water" | "snare" | "store" | "spring" | "summer" | "autumn" | "winter";
 
 export interface GoalState {
   done: Partial<Record<GoalId, true>>;

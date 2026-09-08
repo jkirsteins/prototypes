@@ -50,21 +50,33 @@ describe("the goal ladder", () => {
     expect(activeGoals(state, cal)).toEqual(["firewood"]);
   });
 
+  it("stays one goal at a time through the whole opening chain, fire-keeping included", () => {
+    const { state } = newGame(3);
+    // firewood is covered by the case above; walk the rest of the chain the
+    // same way, since a width bug widens silently rather than crashing.
+    for (const id of ["firewood", "fire"] as const) {
+      state.goals.done[id] = true;
+      expect(activeGoals(state, cal).length).toBe(1);
+    }
+    state.goals.done.cook = true;
+    expect(activeGoals(state, cal)).toEqual(["keptNight"]);
+  });
+
   it("widens to two once the fire and food chain is behind it", () => {
     const { state } = newGame(3);
-    for (const id of ["firewood", "fire", "cook"] as const) state.goals.done[id] = true;
-    expect(activeGoals(state, cal)).toEqual(["bed", "roof"]);
+    for (const id of ["firewood", "fire", "cook", "keptNight"] as const) state.goals.done[id] = true;
+    expect(activeGoals(state, cal)).toEqual(["bed", "keptDays"]);
   });
 
   it("widens to three once the camp jobs run in parallel", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 5)) state.goals.done[g.id] = true;
+    for (const g of GOALS.slice(0, 8)) state.goals.done[g.id] = true;
     expect(activeGoals(state, cal)).toEqual(["water", "snare", "store"]);
   });
 
   it("never shows more than the seasons can fill, and never narrows", () => {
     const { state } = newGame(3);
-    for (const g of GOALS.slice(0, 7)) state.goals.done[g.id] = true;
+    for (const g of GOALS.slice(0, 10)) state.goals.done[g.id] = true;
     const active = activeGoals(state, cal);
     // One worked goal left and the whole tail behind it, which is one slot.
     expect(active[0]).toBe("store");
@@ -107,6 +119,9 @@ describe("goal guards", () => {
         { kind: "stored" } as const,
         { kind: "delivered", item: "firewood", kg: 99 } as const,
         { kind: "delivered", item: "wetFirewood", kg: 99 } as const,
+        { kind: "keptNight" } as const,
+        { kind: "keptFor", minutes: 999999 } as const,
+        { kind: "keptRain", minutes: 999999 } as const,
       ];
       expect(emitted.some((d) => g.credit(d) > 0), `${g.id} is unreachable`).toBe(true);
     }

@@ -2,7 +2,7 @@ import { Rng } from "../rng";
 import { regionAt, type World } from "../world/gen";
 import { autoEat } from "./actions";
 import { dailyAnimals } from "./animals";
-import { calendar } from "./calendar";
+import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp } from "./camp";
 import { hourlyEvents } from "./events";
 import { goalDeed } from "./goals";
@@ -22,8 +22,6 @@ import { autoDrink } from "./water";
 import { ambientTemperature, stepWeather, stormComing } from "./weather";
 
 export const MAX_STEP = 1;
-/** Daily rolls happen at this hour. */
-const DAILY_HOUR = 4;
 /** Below this energy an idle character falls asleep unbidden. */
 const EXHAUSTED = 10;
 
