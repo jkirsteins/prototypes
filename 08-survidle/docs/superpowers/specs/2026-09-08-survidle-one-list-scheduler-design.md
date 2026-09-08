@@ -40,9 +40,12 @@ and why that is expected rather than a regression.
   has pinned holds the list while it is unmet, which is today's once
   behaviour, kept as a deliberate tool rather than a rule the player
   discovers by dying of it.
-- **The topmost runnable row wins, every minute, including mid-work.**
-  One sentence describes the whole scheduler. A row that takes over sets
-  the live one aside with its progress kept.
+- **The topmost runnable row is what the survivor does next.** One
+  sentence describes the whole scheduler. The list is read every minute;
+  what waits for the end of the current piece of work is the changeover,
+  with the body row as the one thing that may interrupt it. Section 2.1
+  says why an earlier draft's "every minute, including mid-work" had to
+  go, and what it cost when it was measured.
 - **The body is one row now, not seven.** "Look after yourself" covers
   sleep, food, water, warmth, shelter and coming home. Splitting it into a
   row per need is a later change, and the design keeps it a data change
@@ -103,12 +106,15 @@ makes a once order stall the list today, is deleted. Nothing about a row's
 current chunk to end - which `decideAgain` exists to work around, by
 setting the live task aside whenever the player edits the list.
 
-Under one rule the judgement runs every minute whether or not a task is
-live. When the chosen row is not the live row, the live row is set aside
-(`setAside`, which keeps its share of the work) and the chosen row starts.
-`decideAgain` and the two `...ByHand` doors it serves are deleted: the
-scheduler now notices an edit on the next minute by itself, which is what
-those doors were faking.
+The judgement runs every minute whether or not a task is live - the panel
+and `waitingLine` draw from it, so it is taken whether or not it is acted
+on. What waits is the changeover: while a task is running, the scheduler
+leaves it alone and takes over when the chunk ends.
+
+`decideAgain` and the two `...ByHand` doors stay. A player editing the list
+re-decides on the spot, because that is a request rather than a reading, and
+a request cannot churn - it happens as often as the player clicks. What
+waits for a boundary is the scheduler's own re-reading.
 
 One exception survives, unchanged: a live order carrying a load home is
 still the chosen row until it has delivered (`deliveryPending`, and the
@@ -127,14 +133,34 @@ Without this the multi-hundred-day gates would put A* in the inner loop.
 The rule is stated as an invariant in the code, not left to be inferred:
 *a row is judged for readiness only if it could take the minute.*
 
-**Thrash guard.** A row takes over live work only when it crosses its
-**idle** start line, never its live one. `orderMet` already distinguishes
-the two (a keep is unmet under half today's target when idle, under the
-whole target when live), and `keepBand` gives a restart band the same
-memory. The body's needs have their own sticky exits inside `currentNeed`.
-So the guard is not new machinery - it is a rule about which threshold the
-scheduler asks for, and it is what stops a keep hovering at its line from
-yanking the survivor out of a chop every other minute.
+### 2.1 Why the changeover waits for the chunk
+
+An earlier draft of this spec had the topmost runnable row take the minute
+the moment it became runnable, mid-work included, guarded only by
+`orderMet`'s idle/live split: a keep is unmet under half today's target when
+idle and under the whole target when live, so a keep hovering at its own
+line cannot yank the survivor out of a chop every other minute.
+
+That guard covers **one** row hovering at **its own** line. It does not
+cover a dozen rows crossing their own lines at overlapping times, which is
+what a camp actually is: splitting draws down what chopping produced, a
+snare draws down cordage, a bucket draws down bark. At any given minute one
+of those siblings is under its half-line, so it takes the minute from
+whichever of them is live, and the day is spent walking between them
+rather than finishing any of it.
+
+Measured on seed 17, forty days, with the prefix rule disabled and every
+guard removed so that nothing but the rule itself was under test: the
+survivor was never fed once, took none of the 9180 kg of roots it was
+standing on, cycled between seventeen camp-building tasks for twenty-two
+days without hunting, fishing or foraging even once, and starved on day 23.
+The same seed on the chunk-boundary rule feeds itself and lives.
+
+So the changeover waits for the end of the current piece of work. The body
+row is the exception and may interrupt it, because a body need cannot wait
+for a tree to come down - which is what the old body tier was doing when it
+pre-empted the live intent every minute, and the only part of that behaviour
+worth keeping.
 
 ## 3. The body row
 
