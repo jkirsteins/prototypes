@@ -7,57 +7,50 @@
 import type { Rng } from "../rng";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
 import { itemLabel } from "./actions";
-import { campNeed, fireStep, orderKit, provision, provisionKit, SLEEP_AT } from "./body";
+import { absence, popOf } from "./animals";
+import { orderKit, provision, provisionKit, SLEEP_AT } from "./body";
 import type { Calendar } from "./calendar";
 import { bankFire } from "./fire";
 import { canConsume, isEmpty, listItems, pile, pileAt, pilesIn, qty, reach, resolveNeed, TRACE_KG, transfer, weight } from "./inventory";
 import { body, fearsFell } from "./person";
 import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE, ROOT_TO_DOY, STRUCTURES } from "./items";
 import { log } from "./log";
-import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
 import { campSite, regionState } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { nearestSeep, seepGround } from "./seep";
 import { rootCellFullKg, rootCellKg } from "./stocks";
-import { type Species, SPECIES_DEFS, waterOf } from "./species";
+import { fishSpecies, type Species, SPECIES_DEFS, waterOf } from "./species";
 import { walkableIce } from "./weather";
+import { insertWalkBefore } from "./walkorders";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { beginTask, check, huntGroundValue, isShortAtCamp, loadPack, setAside, type TaskOption, whereIs } from "./tasks";
 import type {
-  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where,
+  GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
+import { isWorkIntent } from "./types";
 
 /**
  * Whose an intent is, read once from what it was asked to do. A once order
  * is the player's own choice in the moment and stays theirs: the body never
  * moves it. Everything the runner keeps going on its own - a standing or
- * counted order, the wait - is the runner's, and so is the night out, a
+ * counted order is the runner's, and so is the night out, a
  * once whose only content is the sleep the body serves.
  */
-export function intentMode(task: TaskId, until: Until | UntilChoice): Intent["mode"] {
-  if (task === "night" || task === "wait") return "runner";
+export function intentMode(task: TaskId, until: Until | UntilChoice): WorkIntent["mode"] {
+  if (task === "night") return "runner";
   return until.kind === "once" ? "hand" : "runner";
 }
 
 export type { IntentRequest, UntilChoice, Where } from "./types";
 
-/**
- * The step of a wait with nothing else to do: an hour of rest, and then
- * another, until an order can run. The panel reads it to tell that hour from
- * the work a wait does do - keeping the fire, the body's own rest - since
- * neither the words nor the hour's bar mean anything to a player who is
- * waiting on the list rather than on the clock.
- */
-export const WAITING_STEP = "waiting at camp";
-
 /** Work that is done at camp whatever the ground. */
-const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "wait", "hang", "mend", "crack", "grindBark"]);
+const CAMP_BOUND = new Set<TaskId>(["split", "splitWedges", "cook", "light", "lightIndoors", "repair", "sharpen", "hone", "melt", "thaw", "hang", "mend", "crack", "grindBark"]);
 /** Work whose place is wherever you stand. */
 const HERE = new Set<TaskId>(["haul", "night", "rest", "sleep"]);
 /** Intents whose legality is not a question for check: the runner knows when they are over. */
-const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep", "wait"]);
+const UNCHECKED = new Set<TaskId>(["night", "rest", "sleep"]);
 
 const GROUND_OF: Partial<Record<TaskId, SpotId>> = {
   chop: "forest", deadwood: "forest", sticks: "forest", bark: "forest", stone: "outcrop", berries: "heath",
@@ -131,48 +124,20 @@ export function yieldItems(task: TaskId, arg?: string): ItemId[] | "all" {
   return one ? [one] : [];
 }
 
-/** The spots a hunt could start from; the forest is where a hunt with nothing about begins. */
-const HUNT_SPOTS: SpotId[] = ["forest", "heath", "outcrop", "shore"];
-
 /**
- * Where a hunt for anything goes. It names no species and so no ground of
- * its own: the ground under foot is kept whenever it is worth as much as
- * anywhere in reach, so a hunt that starts on a heath full of hare does not
- * walk off for the sake of walking. Otherwise the spot whose hunting is
- * worth the most meat an hour to this hunter.
+ * Where a hunt for anything goes. It names no species and so no single kind
+ * of ground: use the nearest reachable cell where this hunter has something
+ * worth hunting. A named place remains an explicit override when it works.
  */
 function anyHuntCell(state: GameState, world: World, cal: Calendar, where: Where): { cell: number; note: string } {
-  const here = cellOf(state, world);
   const r = regionAt(world, state.player.region);
-  // Grounds are ranked by the meat a day's hunting on them would bring home,
-  // not by whether anything at all is about: a shore with one duck on the
-  // water does not outrank a forest two cells off holding seventy-six roe
-  // deer. The value reads the hunter's own odds, so a beginner is not sent
-  // after game they cannot take.
   const weigh = (cell: number) => huntGroundValue(state, world, cal, cell);
-  let asked: SpotId | null = null;
   if (typeof where === "string" && where !== "nearest") {
     const s = spotOf(r, where);
     if (s && weigh(s.cell) > 0) return { cell: s.cell, note: "" };
-    asked = where;
+    return { cell: nearestCell(state, world, (cell) => weigh(cell) > 0), note: `${SPOT_WORDS[where]} does not suit; going to the nearest hunting ground instead` };
   }
-  const note = (spot: SpotId) => (asked ? `${SPOT_WORDS[asked]} does not suit; going to ${SPOT_WORDS[spot]} instead` : "");
-  let best: { id: SpotId; cell: number; w: number } | null = null;
-  for (const id of HUNT_SPOTS) {
-    const s = spotOf(r, id);
-    if (!s) continue;
-    const w = weigh(s.cell);
-    if (w > 0 && (!best || w > best.w)) best = { id, cell: s.cell, w };
-  }
-  // The ground under foot wins ties, so a hunt that starts on a heath full of
-  // hare does not walk off for the sake of walking; it loses to better ground.
-  const hereW = weigh(here);
-  if (hereW > 0 && (!best || hereW >= best.w)) {
-    return { cell: here, note: asked ? `${SPOT_WORDS[asked]} does not suit; hunting from here instead` : "" };
-  }
-  if (best) return { cell: best.cell, note: note(best.id) };
-  const forest = spotOf(r, "forest");
-  return forest ? { cell: forest.cell, note: note("forest") } : { cell: here, note: "" };
+  return { cell: nearestCell(state, world, (cell) => weigh(cell) > 0), note: "" };
 }
 
 /**
@@ -219,12 +184,10 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     return { cell: any ?? here, note: "" };
   }
   if (task === "setTrap") {
-    const cells = readCells(state, world, state.player.region).filter((c) => state.player.known[c].fish.length > 0);
-    if (cells.length) return { cell: cells[0], note: "" };
+    return { cell: nearestCell(state, world, (cell) => (state.player.known[cell]?.fish.length ?? 0) > 0), note: "" };
   }
   if (task === "eggs") {
-    const spot = (r.capacity.mallard || r.capacity.eider ? spotOf(r, "shore") : null) ?? spotOf(r, "heath");
-    return { cell: spot ? spot.cell : here, note: "" };
+    return { cell: nearestCell(state, world, (cell) => watersideCell(world, cell) || heathCell(world, cell)), note: "" };
   }
   if (task === "innerBark") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "pine"), note: "" };
   if (task === "tapSap") return { cell: nearestCell(state, world, (c) => cellAt(world, c).terrain === "birch"), note: "" };
@@ -253,10 +216,20 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
     if (s && suits(world, s.cell, ground, water)) return { cell: s.cell, note: "" };
     note = `${SPOT_WORDS[where]} does not suit; going to ${SPOT_WORDS[ground]} instead`;
   }
-  if (suits(world, here, ground, water)) return { cell: here, note };
-  const s = spotOf(r, ground);
-  // No such ground in this region: check at the cell under foot says so in its own words.
-  return { cell: s ? s.cell : here, note };
+  const usable = (cell: number) => {
+    if (!suits(world, cell, ground, water)) return false;
+    if (task === "chop" && (arg === "spruce" || arg === "pine" || arg === "birch") && cellAt(world, cell).terrain !== arg) return false;
+    if (task !== "fish" || arg !== "any") return true;
+    const seen = state.player.known[cell];
+    return fishSpecies().some((species) => {
+      if (seen && !seen.fish.includes(species)) return false;
+      if (!r.capacity[species] || popOf(st, species) < 1) return false;
+      if (absence(SPECIES_DEFS[species], cal, state.weather.iceCm)) return false;
+      return watersideCell(world, cell, waterOf(species) ?? "any");
+    });
+  };
+  if (usable(here)) return { cell: here, note };
+  return { cell: nearestCell(state, world, usable), note };
 }
 
 /**
@@ -293,7 +266,7 @@ export function intentOption(state: GameState, world: World, cal: Calendar, task
 
 /** Sets out. False when the work could not start at its place; the button already said why. */
 export function startIntent(state: GameState, world: World, cal: Calendar, rng: Rng, req: IntentRequest, orderId: number | null = null, runNow = true): boolean {
-  if (state.dead || req.task === "walk" || req.task === "travel") return false;
+  if (state.dead || req.task === "travel") return false;
   const { cell, note } = resolveCell(state, world, cal, req.task, req.arg, req.where);
   const item = yieldItem(req.task, req.arg);
   let until: Until = req.until.kind === "campHas"
@@ -316,10 +289,12 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   // Tentatively in place, so the kit check below sees the new task; reverted on a failed check.
   const prevIntent = state.intent;
   const campCell = regionState(state, world, state.player.region).campCell;
-  state.intent = {
-    mode: intentMode(req.task, until), task: req.task, arg: req.arg, cell, campCell,
-    until, deliver, done: 0, step: "setting out", orderId, windDown: false,
+  const mode = intentMode(req.task, until);
+  const fields = {
+    task: req.task, arg: req.arg, cell, campCell, until, deliver,
+    done: 0, step: "setting out", orderId, windDown: false,
   };
+  state.intent = mode === "hand" ? { mode, ...fields } : { mode, ...fields };
   // A bow hunt's arrows, or a set-snares job's snares, must be in the pack before the
   // check below, which reads the pack only; food and vessels stay in the camp pile
   // until the intent actually starts.
@@ -339,8 +314,7 @@ export function startIntent(state: GameState, world: World, cal: Calendar, rng: 
   setAside(state, world);
   // The first minute is the new intent's, unless the caller has a step of its
   // own to take on it: a care row spends its minute on the want that won
-  // it, and a wait that walked home first would have taken the minute and
-  // named the walk something other than what the survivor is walking for.
+  // it rather than starting generic work here.
   if (runNow) runIntent(state, world, cal, rng);
   // The note (a chosen spot that did not suit) belongs on the first step, not "setting out".
   if (note && state.intent) state.intent.step = `${note}; ${state.intent.step}`;
@@ -352,12 +326,13 @@ export function endIntent(state: GameState, text: string, kind?: "good" | "bad")
   state.intent = null;
 }
 
-function labelOf(state: GameState, world: World, cal: Calendar, it: Intent): string {
+function labelOf(state: GameState, world: World, cal: Calendar, it: WorkIntent): string {
   return check(state, world, cal, it.task, it.arg, it.cell).label;
 }
 
 /** "Fell a tree, until camp has 40 logs, bringing it to camp". */
 export function intentSentence(state: GameState, world: World, cal: Calendar, it: Intent): string {
+  if (!isWorkIntent(it)) return it.care === "camp" ? "Camp maintenance" : "Self-care";
   const parts = [labelOf(state, world, cal, it)];
   const u = it.until;
   if (u.kind === "times") parts.push(`${it.done} of ${u.n} done`);
@@ -375,7 +350,7 @@ export function intentSentence(state: GameState, world: World, cal: Calendar, it
  * judges the camp pile alone (orderMet): a keep is a promise about camp,
  * and it is the live intent's job to decide when the work in hand is done.
  */
-function untilMet(state: GameState, it: Intent): boolean {
+function untilMet(state: GameState, it: WorkIntent): boolean {
   if (it.task === "haul") return isEmpty(pile(state, it.cell));
   const u = it.until;
   switch (u.kind) {
@@ -430,7 +405,7 @@ export function deliveryPending(state: GameState, world: World, d: Delivery): bo
   return !isEmpty(pile(state, d.cell)) || packCarries(state, world, d);
 }
 
-function loadFull(state: GameState, it: Intent): boolean {
+function loadFull(state: GameState, it: WorkIntent): boolean {
   if (it.cell === it.campCell) return false;
   return weight(state.player.pack) + weight(pile(state, it.cell)) >= body(state).packHardKg - 1e-9;
 }
@@ -450,7 +425,7 @@ function dropEverything(state: GameState, world: World): boolean {
   const here = cellOf(state, world);
   const to = pile(state, here);
   const keep = new Set(orderKit(state));
-  const atHome = state.intent?.campCell === here;
+  const atHome = isWorkIntent(state.intent) && state.intent.campCell === here;
   let moved = false;
   for (const { item, qty: q } of listItems(from)) {
     if (keep.has(item)) continue;
@@ -465,10 +440,12 @@ function dropEverything(state: GameState, world: World): boolean {
 type Outcome = "again" | undefined;
 
 /**
- * A walk the runner starts. Leaving the home camp, it pockets provisions
- * first. A walk that cannot start ends the intent with the walk's reason.
+ * Makes a required walk an ordinary visible queue row immediately before
+ * the row that requested it, then starts that row through the same intent
+ * door as every other order. The requester stays in the list and is read
+ * again after arrival.
  */
-function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell: number, why: string): Outcome {
+function queueWalkTo(state: GameState, world: World, cal: Calendar, rng: Rng, it: WorkIntent, cell: number): Outcome {
   const here = cellOf(state, world);
   if (here === cell) return undefined;
   if (here === it.campCell) provision(state, world);
@@ -481,7 +458,13 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
     return undefined;
   }
   if (here === it.campCell && cell !== it.campCell) bankFire(state, world, state.player.region);
-  takeStep(state, world, cal, walkStep(state, world, cell, why));
+  if (it.orderId === null) {
+    endIntent(state, `${labelOf(state, world, cal, it)}: ${o.why || "cannot schedule the walk"}. {You} {stop}.`, "bad");
+    return undefined;
+  }
+  const walk = insertWalkBefore(state, world, cell, it.orderId);
+  state.intent = null;
+  startIntent(state, world, cal, rng, walk.req, walk.id);
   return undefined;
 }
 
@@ -490,7 +473,7 @@ function walkTo(state: GameState, world: World, cal: Calendar, it: Intent, cell:
  * at the pile, fill up first; carrying anything, take it to camp; at camp,
  * unload; otherwise go back for the rest.
  */
-function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome {
+function deliveryStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: WorkIntent): Outcome {
   const campCell = it.campCell;
   if (campCell === null) return undefined;
   const here = cellOf(state, world);
@@ -508,15 +491,15 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, it: Intent)
   // A pack holding nothing but this order's own kit comes off as nothing, and that is not a
   // step taken: fall through to the walk rather than claim one and stand here forever.
   if (packCarries(state, world, it) || (here === campCell && !isEmpty(pack))) {
-    if (here !== campCell) return walkTo(state, world, cal, it, campCell, " with the load");
+    if (here !== campCell) return queueWalkTo(state, world, cal, rng, it, campCell);
     if (dropEverything(state, world)) {
       it.step = "unloading at camp";
       return "again";
     }
   }
-  if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, " for the rest");
+  if (here !== it.cell) return queueWalkTo(state, world, cal, rng, it, it.cell);
   // At the pile with nothing loaded and nothing that counts: what is on your back is in the way. Take it to camp.
-  return walkTo(state, world, cal, it, campCell, " with the load");
+  return queueWalkTo(state, world, cal, rng, it, campCell);
 }
 
 interface FetchNeed {
@@ -563,7 +546,7 @@ function canFetch(state: GameState, world: World, sid: StructureId, campCell: nu
 }
 
 /** Moves the missing materials of a build from this region's piles to camp, one load at a time. "none" when there is nothing left to fetch, or nothing to be gained by trying. */
-function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome | "none" {
+function fetchStep(state: GameState, world: World, cal: Calendar, rng: Rng, it: WorkIntent): Outcome | "none" {
   const sid = it.arg as StructureId;
   const campCell = it.campCell;
   if (campCell === null) return "none";
@@ -575,7 +558,7 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   const here = cellOf(state, world);
   const { missing, wanted } = fetchMissing(state, sid, campCell);
   if (wanted(p.pack)) {
-    if (here !== campCell) return walkTo(state, world, cal, it, campCell, " with materials");
+    if (here !== campCell) return queueWalkTo(state, world, cal, rng, it, campCell);
     dropEverything(state, world);
     it.step = "laying out materials at camp";
     return "again";
@@ -584,7 +567,7 @@ function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): O
   const { sources } = fetchSources(state, world, sid, campCell, here);
   if (!sources.length) return "none";
   const src = sources[0];
-  if (here !== src.cell) return walkTo(state, world, cal, it, src.cell, " for materials");
+  if (here !== src.cell) return queueWalkTo(state, world, cal, rng, it, src.cell);
   // The missing things first, then whatever else fits.
   const before = weight(p.pack);
   let room = body(state).packHardKg - weight(p.pack);
@@ -648,7 +631,7 @@ const GERUND: Partial<Record<TaskId, (arg?: string) => string>> = {
  * A makeCamp never gets the place suffix: its cell is the new site, not the old
  * campCell it is bound to walk back to, and "making camp" already says where.
  */
-function workGerund(state: GameState, world: World, it: Intent): string {
+function workGerund(state: GameState, world: World, it: WorkIntent): string {
   const g = GERUND[it.task]?.(it.arg) ?? it.task;
   if (it.task === "makeCamp") return g;
   return it.cell === it.campCell ? g : `${g} at ${whereIs(state, world, it.cell)}`;
@@ -656,11 +639,23 @@ function workGerund(state: GameState, world: World, it: Intent): string {
 
 /** The work tier: one rule fires. "again" means an instant action was taken and the next decision can follow at once. */
 function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outcome {
-  const it = state.intent!;
+  const it = state.intent;
+  if (!isWorkIntent(it)) return undefined;
   const here = cellOf(state, world);
   const label = labelOf(state, world, cal, it);
+  if (it.task === "walk") {
+    if (here === it.cell) {
+      it.done++;
+      const order = regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId);
+      if (order) order.done++;
+      state.intent = null;
+      return "again";
+    }
+    if (!takeStep(state, world, cal, walkStep(state, world, it.cell, ""), rng)) state.intent = null;
+    return undefined;
+  }
   if (it.task === "build" && it.arg !== "snare") {
-    const f = fetchStep(state, world, cal, it);
+    const f = fetchStep(state, world, cal, rng, it);
     if (f !== "none") return f;
   }
   // A camp-bound delivery already standing at camp: whatever produce() left on the
@@ -674,7 +669,7 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
   const o = UNCHECKED.has(it.task) ? null : check(state, world, cal, it.task, it.arg, it.cell);
   const met = it.windDown || untilMet(state, it);
   if (met || (o && !o.ok)) {
-    if (deliveryPending(state, world, it)) return deliveryStep(state, world, cal, it);
+    if (deliveryPending(state, world, it)) return deliveryStep(state, world, cal, rng, it);
     // An order's intent says nothing: the scheduler removes a met job with its
     // done line and re-judges a blocked one, logging the reason once.
     if (it.orderId !== null || it.windDown) state.intent = null;
@@ -682,37 +677,15 @@ function workStep(state: GameState, world: World, cal: Calendar, rng: Rng): Outc
     else endIntent(state, `${label}: ${o!.why}. {You} {stop}.`, "bad");
     return undefined;
   }
-  if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, it);
-  if (here !== it.cell) return walkTo(state, world, cal, it, it.cell, "");
+  if (it.deliver === "camp" && (it.task === "haul" || loadFull(state, it))) return deliveryStep(state, world, cal, rng, it);
+  if (here !== it.cell) return queueWalkTo(state, world, cal, rng, it, it.cell);
   if (it.task === "night") return undefined;
-  // A wait rests and never lies down of its own accord: sleep is a need of
-  // the body's, and the body's row takes the rest over the moment the onset
-  // line is crossed, whatever the hour.
-  // A runner waiting at camp keeps its fire, the way a spent one does
-  // (campStep in body.ts): every camp chore the dark allows works by
-  // firelight, so a wait that let the fire burn out would be a wait with no
-  // way back to work before dawn. Null once the fire is lit or nothing more
-  // can be done about it, and the rest follows as before.
-  const fire = it.task === "wait" && here === it.campCell ? fireStep(state, world, cal, it.campCell) : null;
-  const step: Step = fire ?? (it.task === "wait"
-    ? { id: "rest", step: WAITING_STEP }
-    : { id: it.task, arg: it.arg, step: workGerund(state, world, it) });
+  const step: Step = { id: it.task, arg: it.arg, step: workGerund(state, world, it) };
   if (!takeStep(state, world, cal, step, rng)) {
     if (it.orderId !== null) state.intent = null;
     else endIntent(state, `${label}: cannot go on. {You} {stop}.`, "bad");
   }
   return undefined;
-}
-
-/**
- * Which care row the live intent belongs to, or null when it belongs to
- * neither, read off the list rather than off the intent, which carries only
- * the row's number.
- */
-function careRowIntent(state: GameState, world: World, it: Intent): "body" | "camp" | null {
-  if (it.orderId === null) return null;
-  const row = regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId);
-  return row?.kind === "body" || row?.kind === "camp" ? row.kind : null;
 }
 
 /**
@@ -730,16 +703,9 @@ function careRowIntent(state: GameState, world: World, it: Intent): "body" | "ca
 export function runIntent(state: GameState, world: World, cal: Calendar, rng: Rng): void {
   if (!state.intent || state.dead) return;
   const it = state.intent;
-  // A minute a care row has already spent is spent. The scheduler serves
-  // those rows itself - the drink, the mouthful, the log on the fire, the
-  // walk home - and some of what it serves takes no time at all, so a work
-  // tier still owed the rest of the minute would set a body that had just
-  // eaten walking for a camp it has no reason to go to. With nothing left to
-  // want, the row's intent is the wait it is shaped like, and rests and
-  // comes home under it the same as any other wait.
-  const care = careRowIntent(state, world, it);
-  if (care === "body" && state.player.bodyNeed !== null) return;
-  if (care === "camp" && campNeed(state, world, cal) !== null) return;
+  // Care is advanced by the ranked care row in runOrders. It is not work
+  // and never falls through into the work-intent state machine.
+  if (!isWorkIntent(it)) return;
   // The floor under work the player chose in the moment. Ranked over the
   // body's row, nothing thirsty, cold or dark takes the minute back off it,
   // however long it runs and however far past spent the body is. The body

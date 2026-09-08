@@ -5,13 +5,12 @@
  * The panel used to be five folding groups, one of which - Camp - held
  * twenty-six rows covering cooking, water, fire, tools and rest under a
  * single heading. A player looking for food read the whole thing. So the
- * left pane of each subtab asks the only question a player actually has,
- * which is what a row is *for*, and the item pane answers it.
+ * left pane of each subtab gives that kind of work a short, concrete name,
+ * and the item pane holds the actions in it.
  *
- * A row belongs to exactly one purpose, chosen by what a player wants it
- * for first: inner bark is food before it is cordage stock, so it is
- * Food, and bark is Material. Two homes would mean a reader who found it
- * under one could not be sure they had seen everything under the other.
+ * A row belongs to exactly one purpose. Two homes would mean a reader who
+ * found it under one could not be sure they had seen everything under the
+ * other.
  *
  * tests/purpose.test.ts holds every row to having exactly one home, and
  * every home to having at least one row.
@@ -24,8 +23,8 @@ export const SUBTABS: SubtabId[] = ["Gather", "Hunt", "Camp", "Make", "Build"];
 
 /** The left pane's entries per subtab, in the order they are shown. */
 export const PURPOSES: Record<SubtabId, string[]> = {
-  Gather: ["Fuel", "Food", "Material"],
-  Hunt: ["Food", "Traps", "Scout"],
+  Gather: ["Woodcutting", "Kindling", "Tree products", "Wild food", "Stone"],
+  Hunt: ["Game", "Fish", "Traps"],
   Camp: ["Fire", "Fuel", "Food", "Water", "Rest", "Tools"],
   Make: ["Fire", "Tools", "Hunting", "Clothing", "Water"],
   Build: ["Site", "Fire", "Shelter", "Water", "Food"],
@@ -43,28 +42,28 @@ export function rowKey(id: TaskId, arg?: string): string {
 /**
  * An `id:arg` entry wins over a bare `id`. That is what lets craft split
  * across four panes by recipe while hunt keeps one line for every
- * species: whatever you are hunting, you are hunting it for food.
+ * species: generic and specific variants live beside each other.
  */
 const HOME: Record<string, [SubtabId, string]> = {
   // Gather
-  chop: ["Gather", "Fuel"],
-  deadwood: ["Gather", "Fuel"],
-  sticks: ["Gather", "Fuel"],
-  berries: ["Gather", "Food"],
-  eggs: ["Gather", "Food"],
-  roots: ["Gather", "Food"],
-  seaweed: ["Gather", "Food"],
-  innerBark: ["Gather", "Food"],
-  tapSap: ["Gather", "Food"],
-  bark: ["Gather", "Material"],
-  stone: ["Gather", "Material"],
+  chop: ["Gather", "Woodcutting"],
+  deadwood: ["Gather", "Kindling"],
+  sticks: ["Gather", "Kindling"],
+  bark: ["Gather", "Tree products"],
+  innerBark: ["Gather", "Tree products"],
+  tapSap: ["Gather", "Tree products"],
+  berries: ["Gather", "Wild food"],
+  eggs: ["Gather", "Wild food"],
+  roots: ["Gather", "Wild food"],
+  seaweed: ["Gather", "Wild food"],
+  stone: ["Gather", "Stone"],
 
   // Hunt
-  hunt: ["Hunt", "Food"],
-  fish: ["Hunt", "Food"],
-  emptyTrap: ["Hunt", "Food"],
+  hunt: ["Hunt", "Game"],
+  fish: ["Hunt", "Fish"],
+  read: ["Hunt", "Fish"],
   setTrap: ["Hunt", "Traps"],
-  read: ["Hunt", "Scout"],
+  emptyTrap: ["Hunt", "Traps"],
 
   // Camp
   light: ["Camp", "Fire"],

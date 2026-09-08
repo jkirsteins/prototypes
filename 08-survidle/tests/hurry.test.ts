@@ -129,7 +129,7 @@ describe("what is hurried", () => {
     addItem(herePile(g4.state, g4.world), "firewood", 50);
     addOrder(g4.state, g4.world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
     advance(g4.state, g4.world, 1);
-    expect(g4.state.intent?.task).toBe("wait");
+    expect(g4.state.intent).toBeNull();
     expect(hurryKind(g4.state)).toBe("none");
   });
 

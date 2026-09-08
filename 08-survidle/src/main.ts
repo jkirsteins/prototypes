@@ -19,6 +19,7 @@ import type { FoodId } from "./sim/items";
 import { orderByHand, orderGate } from "./sim/ladder";
 import { beginAgain, land, nextBoat, pickCandidate } from "./sim/landing";
 import { openManualOnFirstLanding } from "./sim/manual";
+import { isKnown } from "./sim/mapped";
 import { newWorld } from "./sim/newgame";
 import { moveOrderByHand, pinOrderByHand, removeOrderByHand } from "./sim/orders";
 import { abandon, feltTemperature } from "./sim/player";
@@ -28,10 +29,11 @@ import { fillPopulations } from "./sim/regionstate";
 import { awaySeconds, catchUp, clearSave, loadGame, saveGame } from "./sim/save";
 import { startTask, stopTask } from "./sim/tasks";
 import type { GameState, ItemId, TaskId } from "./sim/types";
+import { insertWalkBefore } from "./sim/walkorders";
 import { drink, fillVessels } from "./sim/water";
 import { ambientTemperature } from "./sim/weather";
 import { GAME_MINUTES_PER_REAL_SECOND } from "./units";
-import { placeTip, updateBars, updateFills, updateHurryBar } from "./ui/bars";
+import { updateBars, updateFills, updateHurryBar } from "./ui/bars";
 import { mountBeaconPanel } from "./ui/beacon-panel";
 import { buildHtml } from "./ui/build";
 import { mountAwayDial, type AwayDial } from "./ui/dial";
@@ -39,17 +41,17 @@ import { doHtml, doPurposesHtml, KW_PREFIX } from "./ui/dopanel";
 import { goalDoneHtml, goalMomentToOpen, goalsHtml, updateGoalBars } from "./ui/goalpanel";
 import { loadPanes, PANE_IDS, type PaneId, paneTabsHtml, savePanes, subtabsHtml, toSubtab } from "./ui/panes";
 import type { SubtabId } from "./ui/purpose";
-import { cellFromPoint, LEVELS, legendHtml, mapHtml, mapKey } from "./ui/map";
+import { cellFromClient, levelAt, LEVELS, legendHtml, mapHtml, mapKey, viewOrigin } from "./ui/map";
 import { tipHtml, tipKey } from "./ui/tip";
 import {
   awayHtml, campHtml, cemeteryHtml, forecastHtml, gearHtml, inventoryHtml, journalHtml, landingHtml, logHtml,
   manualHtml, queueHtml, skillsHtml, placesHtml, statsHtml, taskHtml, tombstoneHtml, weatherHtml,
 } from "./ui/panels";
 import { conceptHtml, momentToOpen, welcomeHtml } from "./ui/teachpanel";
-import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type WhenField } from "./ui/render";
+import { commitChoiceN, defaultChoiceFor, newUiState, resetPanels, rowRequest, setPanel, setWhenField, WHEN_FIELDS, type RowChoice, type UiState, type WhenField } from "./ui/render";
 import { hurryClick, hurryFrame, hurryKind, newHurry } from "./ui/hurry";
 import { updateSky } from "./ui/sky";
-import { generateWorld, regionAt, type World } from "./world/gen";
+import { cellAt, generateWorld, regionAt, type World } from "./world/gen";
 
 const params = new URLSearchParams(location.search);
 // The face self-test page: a page of generated faces to judge, in place of the game.
@@ -88,6 +90,13 @@ let wasDead = false;
 let state!: GameState;
 let world!: World;
 const ui = newUiState();
+const SPECIFIC_KEY = "survidle.specific";
+try {
+  const saved = JSON.parse(localStorage.getItem(SPECIFIC_KEY) ?? "{}") as Partial<UiState["specific"]>;
+  ui.specific = { trees: saved.trees === true, fish: saved.fish === true };
+} catch {
+  // A malformed UI preference is only a closed chooser.
+}
 let awayInfo: { seconds: number; capped: boolean } | null = null;
 const audio = createAudioEngine(SLOTS);
 const sounds = createScheduler(audio);
@@ -371,6 +380,14 @@ function onClick(ev: Event) {
       ui.panes = { ...ui.panes, purpose: target.dataset.purpose as string };
       savePanes(localStorage, ui.panes);
       break;
+    case "specific": {
+      const kind = target.dataset.specific as keyof UiState["specific"];
+      if (kind === "trees" || kind === "fish") {
+        ui.specific[kind] = !ui.specific[kind];
+        localStorage.setItem(SPECIFIC_KEY, JSON.stringify(ui.specific));
+      }
+      break;
+    }
     case "zoom":
       zoomBy(target.dataset.dir === "in" ? -1 : 1);
       break;
@@ -717,18 +734,77 @@ document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
 // stale under it.
 {
   const board = document.getElementById("mapdyn")!;
-  const tip = document.getElementById("maptip")!;
+  let pointerType = "mouse";
+  let targetGlyph: HTMLElement | null = null;
+  const clearTarget = () => {
+    targetGlyph?.classList.remove("target");
+    targetGlyph = null;
+  };
+  const showTarget = (cell: number) => {
+    clearTarget();
+    const l = levelAt(ui.zoom);
+    const { x0, y0 } = viewOrigin(state, world, ui.zoom);
+    const x = cell % world.w;
+    const y = Math.floor(cell / world.w);
+    const gx = Math.floor((x - x0) / l.cells);
+    const gy = Math.floor((y - y0) / l.cells);
+    if (gx < 0 || gy < 0 || gx >= l.w || gy >= l.h) return;
+    const glyph = document.querySelector<HTMLElement>("#mapdyn .grid")?.children.item(gy * l.w + gx);
+    if (!(glyph instanceof HTMLElement) || !glyph.classList.contains("c")) return;
+    glyph.classList.add("target");
+    targetGlyph = glyph;
+  };
+  const cellUnder = (ev: { clientX: number; clientY: number }): number | null => {
+    const grid = board.querySelector<HTMLElement>(".grid");
+    return grid ? cellFromClient(world, state, ui, ev.clientX, ev.clientY, grid.getBoundingClientRect()) : null;
+  };
   board.addEventListener("pointermove", (ev) => {
-    const r = board.getBoundingClientRect();
-    const x = ev.clientX - r.left;
-    const y = ev.clientY - r.top;
-    ui.hover = cellFromPoint(world, state, ui, x, y);
-    if (ui.hover !== null) placeTip(tip, board, x, y);
+    ui.hover = cellUnder(ev);
   });
-  // A pointer that left the board is looking at nothing; a touch has no
-  // leave to give, which is why the tooltip carries its own close.
+  board.addEventListener("pointerdown", (ev) => {
+    pointerType = ev.pointerType;
+  });
+  board.addEventListener("click", (ev) => {
+    // Touch keeps its first tap for inspecting the cell. A mouse click on
+    // known ground in this region is an explicit destination in its own
+    // right, whether or not generation happened to name that cell a place.
+    if (pointerType === "touch") return;
+    const cell = cellUnder(ev);
+    if (cell === null || cell === cellOf(state, world) || !isKnown(state, cell)) return;
+    if (cellAt(world, cell).region !== state.player.region) return;
+    ev.stopPropagation();
+    const rng = new Rng(state.rng);
+    const cal = calendar(state.minute, state.startDoy);
+    const walk = insertWalkBefore(state, world, cell, null);
+    startIntent(state, world, cal, rng, walk.req, walk.id);
+    state.rng = rng.s;
+    saveGame(state);
+    render();
+  });
   board.addEventListener("pointerleave", (ev) => {
     if (ev.pointerType !== "touch") ui.hover = null;
+  });
+
+  // A row that names somewhere to go points at it while the pointer is on
+  // it: the map marks the cell and the box reads it out, which is the whole
+  // of "where would this take me" without a click or a guess.
+  const map = document.getElementById("map")!;
+  map.addEventListener("pointerover", (ev) => {
+    const row = (ev.target as HTMLElement | null)?.closest?.("[data-at]") as HTMLElement | null;
+    if (!row) return;
+    const cell = Number(row.dataset.at);
+    if (Number.isFinite(cell)) {
+      ui.hover = cell;
+      showTarget(cell);
+    }
+  });
+  map.addEventListener("pointerout", (ev) => {
+    const from = (ev.target as HTMLElement | null)?.closest?.("[data-at]");
+    const to = (ev.relatedTarget as HTMLElement | null)?.closest?.("[data-at]");
+    if (from && !to && ev.pointerType !== "touch") {
+      ui.hover = null;
+      clearTarget();
+    }
   });
 }
 render();

@@ -9,11 +9,10 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
 import { campCellOf, cellOf, placeAtSpot } from "../src/sim/position";
-import { regionState, SEEN } from "../src/sim/regionstate";
+import { SEEN } from "../src/sim/regionstate";
 import { survivorRoute } from "../src/sim/routing";
 import { MASTERY_KEYS, masteryKey, skillOf } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
-import type { RunnerIntent } from "../src/sim/types";
 import { doHtml } from "../src/ui/dopanel";
 import { newUiState } from "../src/ui/render";
 import { regionAt } from "../src/world/gen";
@@ -114,12 +113,7 @@ describe("searching for the way home", () => {
     const cal = calendar(state.minute);
     expect(check(state, world, cal, "walk", "spot:camp").ok).toBe(false);
     const here = cellOf(state, world);
-    const campCell = regionState(state, world, state.player.region).campCell!;
-    const it: RunnerIntent = {
-      mode: "runner", task: "wait", cell: campCell, campCell, until: { kind: "forever" }, deliver: "leave",
-      done: 0, step: "", orderId: null, windDown: false,
-    };
-    state.intent = it;
+    state.intent = null;
     const rng = new Rng(1);
     const step = bodyStep(state, world, cal, rng, "sleep");
     // The body settles where it stands rather than setting off over unknown ground.

@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { HORIZON_STAGES, runStage, setSkillLevel, setUpStage } from "../src/sim/horizon";
 import { pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { isCareRow } from "../src/sim/bodyorder";
 import { ordersHere } from "../src/sim/orders";
 import { REFERENCE_ORDERS } from "../src/sim/reference";
 import { campSite, regionState } from "../src/sim/regionstate";
 import { SKILL_IDS, skillLevel } from "../src/sim/skills";
+import { isWorkOrder } from "../src/sim/types";
 
 const stage = (id: string) => HORIZON_STAGES.find((s) => s.id === id)!;
 
@@ -32,7 +32,7 @@ describe("the horizon stages", () => {
   it("the manual stage is every open want as a once job on a stocked camp", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     // Neither care row is one of the stage's own wants.
-    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
+    const list = ordersHere(state, world).filter(isWorkOrder);
     // A stage gives the list once, so what shuts a want here is the runner's own rules and
     // nothing else: the three named hunts (elk, reindeer, deer) gate above level 1, the two
     // ice-hole fetches and the two melts wait for the shore to ice over, the fire indoors for
@@ -51,14 +51,14 @@ describe("the horizon stages", () => {
 
   it("the grinds stage (skills at 5) has no elk or reindeer hunt: both gate above it", () => {
     const { state, world } = setUpStage(17, stage("grinds"));
-    const list = ordersHere(state, world);
+    const list = ordersHere(state, world).filter(isWorkOrder);
     expect(list.some((o) => o.req.task === "hunt" && o.req.arg === "elk")).toBe(false);
     expect(list.some((o) => o.req.task === "hunt" && o.req.arg === "reindeer")).toBe(false);
   });
 
   it("the manual stage (level 1) has none of the three named hunts", () => {
     const { state, world } = setUpStage(17, stage("manual"));
-    const list = ordersHere(state, world);
+    const list = ordersHere(state, world).filter(isWorkOrder);
     for (const arg of ["elk", "reindeer", "deer"]) {
       expect(list.some((o) => o.req.task === "hunt" && o.req.arg === arg), arg).toBe(false);
     }
@@ -66,7 +66,7 @@ describe("the horizon stages", () => {
 
   it("the grinds stage has the deer hunt grind last, camp-has jobs for the keeps, and no keep", () => {
     const { state, world } = setUpStage(17, stage("grinds"));
-    const list = ordersHere(state, world);
+    const list = ordersHere(state, world).filter(isWorkOrder);
     expect(list.some((o) => o.kind === "keep")).toBe(false);
     // The 150-log keep closes on 1 April, so the last open want here is the deer
     // hunt grind, the hardest of the three named hunts that opens at level 5.
@@ -77,7 +77,7 @@ describe("the horizon stages", () => {
 
   it("the keeps stage keeps wood and fire and gives water as a job", () => {
     const { state, world } = setUpStage(17, stage("keeps"));
-    const list = ordersHere(state, world);
+    const list = ordersHere(state, world).filter(isWorkOrder);
     expect(list.find((o) => o.req.task === "split")!.kind).toBe("keep");
     expect(list.find((o) => o.req.task === "light")!.kind).toBe("keep");
     expect(list.find((o) => o.req.task === "fill")!.kind).toBe("job");

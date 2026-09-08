@@ -17,7 +17,7 @@ import { regionState, siteFor } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { huntedLand } from "../src/sim/species";
 import { check, startTask } from "../src/sim/tasks";
-import type { Task } from "../src/sim/types";
+import type { Intent, Task } from "../src/sim/types";
 import { regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 
@@ -481,39 +481,18 @@ describe("sleep by the model, not by the clock", () => {
     expect(sleepiness(state.player.sleepDebt, calendar(state.minute, state.startDoy).hour)).toBeLessThanOrEqual(WAKE_AT + 1);
   });
 
-  it("a wait intent at camp keeps its fire before it rests", () => {
-    // Every camp chore the dark allows works by firelight, so a runner that
-    // waited a fire out would have no way back to work before dawn. The same
-    // step a spent body takes at camp.
-    const { state, world, night } = septemberEvening();
-    const st = regionState(state, world, state.player.region);
-    st.fire.lit = false;
-    siteFor(st, st.campCell!).structures.firePit = true;
-    state.player.tools.push({ id: "fireDrill", durability: 100 });
-    addItem(pile(state, st.campCell!), "firewood", 5);
+  it("idleness creates no task; a body need creates the task that serves it", () => {
+    const { state, world } = septemberEvening();
     state.intent = null;
     state.task = null;
-    state.player.sleepDebt = 0;
-    startIntent(state, world, night, new Rng(1), { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" });
-    expect((state.task as Task | null)?.id).toBe("light");
-  });
-
-  it("a wait intent never lies down of its own accord: the body's need is what puts it to bed", () => {
-    const { state, world, night } = septemberEvening();
-    state.intent = null;
-    state.task = null;
-    const wait = { task: "wait" as const, until: { kind: "forever" as const }, deliver: "leave" as const, where: "nearest" as const };
-    // Not sleepy, in the dark: a wait rests.
     state.player.sleepDebt = 0;
     state.player.water = WATER_FULL;
-    startIntent(state, world, night, new Rng(1), wait);
-    // The cast widens past the "= null" above: tsc otherwise narrows
-    // state.task to null there and reads this access as unreachable, since it
-    // cannot see that startIntent assigns a task of its own.
-    expect((state.task as Task | null)?.id).toBe("rest");
-    // Sleepy: the body's row takes the rest over on the next minute.
+    advance(state, world, 1);
+    expect(state.intent).toBeNull();
+    expect(state.task).toBeNull();
     state.player.sleepDebt = debtFor(SLEEP_ONSET + 1, calendar(state.minute, state.startDoy).hour);
     advance(state, world, 1);
+    expect((state.intent as Intent | null)?.mode).toBe("care");
     expect((state.task as Task | null)?.id).toBe("sleep");
   });
 });

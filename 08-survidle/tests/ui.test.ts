@@ -794,33 +794,15 @@ describe("the Orders panel", () => {
     expect(html.slice(html.indexOf('data-opt="intent:split:"'))).toContain("keep camp at 40 kg firewood");
   });
 
-  it("a wait with nothing to do says so once; a wait doing something names what it is doing, and the bar for it is under the map", () => {
-    // The wait's own hour of rest is not a thing the player is waiting for: it
-    // ends when an order can run, not when the hour is up.
+  it("genuine idleness has flavor text but no activity progress bar", () => {
     const { state, world } = newGame(1);
     siteCamp(state, world);
-    const st = regionState(state, world, state.player.region);
     placeAtSpot(state, world, state.player.region, "camp");
     addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 3);
-    expect(state.intent?.task).toBe("wait");
-    let html = queueHtml(state, world, calendar(state.minute));
-    expect(html).toContain("Waiting at camp");
-    expect(html).not.toContain("Waiting at camp: waiting at camp");
-    expect(html).not.toContain('id="bar-task"');
-    // The fire is work, and work under way has its bar and its own words.
-    siteFor(st, st.campCell!).structures.firePit = true;
-    state.player.tools.push({ id: "fireDrill", durability: 100 });
-    addItem(pile(state, st.campCell!), "firewood", 5);
-    for (let i = 0; i < 120 && state.task?.id === "rest"; i++) advance(state, world, 1);
-    expect(state.task?.id).not.toBe("rest");
-    html = queueHtml(state, world, calendar(state.minute));
-    expect(html).toContain("Waiting at camp: ");
-    // One running job, one bar: it is in the activity row under the map, so
-    // the list never draws a second one with the same ids for bars.ts to
-    // pick between.
-    expect(html).not.toContain('id="bar-task"');
-    expect(taskHtml(state, world, calendar(state.minute))).toContain('id="bar-task"');
+    expect(state.intent).toBeNull();
+    expect(state.task).toBeNull();
+    expect(taskHtml(state, world, calendar(state.minute))).not.toContain('id="bar-task"');
   });
 
   it("lists the orders in rank order with their state, counters and buttons", () => {
@@ -888,7 +870,7 @@ describe("the Orders panel", () => {
     expect(html.indexOf(`data-id="${grind.id}"`)).toBeLessThan(html.indexOf(`data-id="${bodyId}"`));
   });
 
-  it("a blocked order below the live one names the row it is waiting behind, not its own reason", () => {
+  it("a row below live work gets no redundant waiting explanation", () => {
     const { state, world } = newGame(3);
     siteCamp(state, world);
     const st = regionState(state, world, state.player.region);
@@ -900,12 +882,11 @@ describe("the Orders panel", () => {
     const cabin = addOrder(state, world, { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(grind.id);
-    // Cabin sits below the live grind, which cannot be pre-empted from there:
-    // asking whether cabin could run is not this minute's question, so the
-    // panel reads the one thing that is true regardless - it is waiting its
-    // turn - rather than a "missing materials" reason nothing asked it for.
+    // Cabin sits below the live grind, which cannot be pre-empted from there.
+    // Its position already explains why it is not running, and its own
+    // materials have not been asked about this minute.
     const html = queueHtml(state, world, calendar(state.minute));
-    expect(html).toContain('<div class="step">waiting its turn, behind');
+    expect(html).not.toContain('<span class="kind blocked">blocked</span>');
     expect(html).not.toContain('<div class="step">missing materials at camp</div>');
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
   });

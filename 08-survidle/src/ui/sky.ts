@@ -249,7 +249,7 @@ function ridgePath(g: SkyGeom, seed: number, height: number, samples = 34): stri
  * silently, while its thirteen cards looked plausible. The game draws one
  * sky and needs no suffix; the gallery passes the case name.
  */
-export function skyHtml(g: SkyGeom = STRIP, uid = ""): string {
+export function skyHtml(g: SkyGeom = STRIP, uid = "", showPhase = true): string {
   const u = uid ? `-${uid}` : "";
   const arc = `M ${g.cx - g.arcR} ${g.groundY} A ${g.arcR} ${g.arcR} 0 0 1 ${g.cx + g.arcR} ${g.groundY}`;
   const rand = (n: number, seed: number) => ((Math.sin(seed * 12.9898) * 43758.5453) % 1 + 1) % 1 * n;
@@ -309,7 +309,7 @@ export function skyHtml(g: SkyGeom = STRIP, uid = ""): string {
 <path id="sky-far" d="${ridgePath(g, 7, g.groundY * 0.30, 30)}" fill="#141c24" opacity="0.75"/>
 <path id="sky-mid" d="${ridgePath(g, 23, g.groundY * 0.20, 34)}" fill="#0f161c"/>
 <path id="sky-near" d="${ridgePath(g, 51, g.groundY * 0.12, 40)}" fill="#0b1210"/>
-<text id="sky-label" x="${g.w - 4}" y="${g.h - 3}" text-anchor="end" font-size="8" fill="rgba(255,255,255,0.6)"></text>
+${showPhase ? `<text id="sky-label" x="${g.w - 4}" y="${g.h - 3}" text-anchor="end" font-size="8" fill="rgba(255,255,255,0.6)"></text>` : ""}
 </svg>`;
 }
 

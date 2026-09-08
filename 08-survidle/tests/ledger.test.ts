@@ -271,7 +271,7 @@ describe("burn in buckets", () => {
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).sleepMin).toBe(0);
     expect(today(state).workMin).toBe(0);
-    state.task = { id: "wait", progress: 0, duration: 60, repeat: false };
+    state.task = { id: "rest", progress: 0, duration: 60, repeat: false };
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     expect(today(state).workMin).toBe(0);
   });

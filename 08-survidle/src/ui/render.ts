@@ -46,6 +46,8 @@ export interface UiState {
   choice: RowChoice;
   /** The Do panel's filter box: narrows rows to those whose label contains it, case-insensitive. */
   filter: string;
+  /** Specific tree and fish rows are tucked behind their named chooser. */
+  specific: { trees: boolean; fish: boolean };
   /** The hurry: how fast the work chosen by hand is running right now. Never saved. */
   hurry: HurryState;
 }
@@ -127,7 +129,7 @@ export function newUiState(): UiState {
   return {
     panes: defaultPanes(), selected: null, hover: null, away: null, confirmAbandon: false, confirmCamp: false,
     cemetery: false, manual: false, teach: null, goalsDone: null, welcome: false, settings: false, cemeteryOpen: null, confirmLeave: false, awayFromDay: 1, zoom: DEFAULT_ZOOM,
-    open: null, choice: defaultChoice(), filter: "",
+    open: null, choice: defaultChoice(), filter: "", specific: { trees: false, fish: false },
     hurry: newHurry(),
   };
 }

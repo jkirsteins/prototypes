@@ -14,12 +14,20 @@ import { fmtDuration, fmtReal } from "../units";
 import type { World } from "../world/gen";
 import { type HurryState, pulseLeft } from "./hurry";
 
+/**
+ * The named bar, wherever it is drawn.
+ *
+ * By name and not by id: the same reading can stand on two surfaces at once
+ * - the work's own bar sits in the strip under the map and on its row in the
+ * queue - and two elements sharing one id left this writing to whichever it
+ * happened to find first.
+ */
 function setBar(id: string, frac: number, text?: string, root: ParentNode = document): void {
-  const fill = root.querySelector<HTMLElement>(`#bar-${id}`);
-  if (fill) fill.style.width = `${Math.max(0, Math.min(100, frac * 100)).toFixed(1)}%`;
-  if (text !== undefined) {
-    const val = root.querySelector<HTMLElement>(`#val-${id}`);
-    if (val && val.textContent !== text) val.textContent = text;
+  const width = `${Math.max(0, Math.min(100, frac * 100)).toFixed(1)}%`;
+  for (const fill of root.querySelectorAll<HTMLElement>(`[data-bar="${id}"]`)) fill.style.width = width;
+  if (text === undefined) return;
+  for (const val of root.querySelectorAll<HTMLElement>(`[data-val="${id}"]`)) {
+    if (val.textContent !== text) val.textContent = text;
   }
 }
 
@@ -45,7 +53,7 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
   setBar("kcal", p.kcal / KCAL_FULL, `${Math.round(p.kcal)} kcal`, root);
   // Under the meal line the bar reads as harm: the meal was due and did not
   // happen, and the fat bar under it is what is paying for the difference.
-  const kcalBar = root.querySelector<HTMLElement>("#bar-kcal")?.parentElement;
+  const kcalBar = root.querySelector<HTMLElement>('[data-bar="kcal"]')?.parentElement;
   const line = hungerLine(state);
   kcalBar?.classList.toggle("low", p.kcal < line);
   // The mark itself moves with the same line - a lean reserve eats sooner,
@@ -92,8 +100,10 @@ export function updateBars(state: GameState, world: World, root: ParentNode = do
     // order's - but the row it sits in names the step now, an inch to its
     // left, so saying it twice only made the row too long to read.
     setBar("task", frac, `${fmtDuration(left)} left (${fmtReal(left)})`, root);
-    const pct = root.querySelector<HTMLElement>("#task-pct");
-    if (pct) pct.textContent = `${Math.floor(frac * 100)}%`;
+    const share = `${Math.floor(frac * 100)}%`;
+    for (const pct of root.querySelectorAll<HTMLElement>('[data-pct="task"]')) {
+      if (pct.textContent !== share) pct.textContent = share;
+    }
   }
 }
 
@@ -152,24 +162,4 @@ export function updateFills(state: GameState, root: ParentNode = document): void
     if (share === null) continue;
     fill.style.width = `${Math.max(0, Math.min(100, share * 100)).toFixed(1)}%`;
   }
-}
-
-/**
- * Puts the tooltip beside the pointer, clamped inside the board.
- *
- * Written straight onto the element for the same reason a bar's width is:
- * a pointer moves many times a second, and a coordinate in the panel's
- * markup would make that markup differ on every move, sending the whole
- * map through a parse and a diff to shift a box a few pixels. morphAttrs
- * leaves `style` alone precisely so this survives a redraw.
- */
-export function placeTip(tip: HTMLElement, board: HTMLElement, x: number, y: number): void {
-  const pad = 14;
-  const w = tip.offsetWidth || 260;
-  const h = tip.offsetHeight || 100;
-  // Flip to the other side of the pointer rather than hanging off the edge.
-  const left = x + pad + w > board.clientWidth ? Math.max(0, x - pad - w) : x + pad;
-  const top = y + pad + h > board.clientHeight ? Math.max(0, y - pad - h) : y + pad;
-  tip.style.left = `${Math.round(left)}px`;
-  tip.style.top = `${Math.round(top)}px`;
 }

@@ -14,15 +14,14 @@
       <aside id="left" class="col">
         <section id="goals" class="panel"></section>
         <section id="stats" class="panel"></section>
-        <section id="camp" class="panel"></section>
-        <section id="gear" class="panel"></section>
-        <section id="skills" class="panel"></section>
         <section id="forecast" class="panel"></section>
         <div id="away" class="panel">
           <label><input type="range" min="1" max="24" step="1" data-away="hours" aria-label="hours away" /> <b data-away="label"></b></label>
           <button type="button" class="mini" data-act="manual-open">how to survive</button>
           <button type="button" class="mini" data-act="settings-open">settings</button>
         </div>
+        <section id="gear" class="panel"></section>
+        <section id="skills" class="panel"></section>
       </aside>
       <main id="center" class="col">
         <section id="map" class="panel">
@@ -48,6 +47,7 @@
               <div id="doitems"></div>
             </div>
           </div>
+          <div id="pane-camp" class="pane" hidden><div id="camp"></div></div>
           <div id="pane-pack" class="pane" hidden><div id="inventory"></div></div>
           <div id="pane-log" class="pane" hidden><div id="log"></div></div>
           <div id="pane-journal" class="pane" hidden><div id="journal"></div></div>

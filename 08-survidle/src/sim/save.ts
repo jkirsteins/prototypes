@@ -13,7 +13,7 @@ import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { newSite, regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
-import type { DecayingId, GameState, Intent, Inventory, LogEntry, StructureId, TaskId, Until } from "./types";
+import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 
 export const SAVE_KEY = "survidle.save";
 
@@ -111,13 +111,20 @@ export function migrate(state: GameState): void {
     d.nonLeanKcal ??= 0;
     d.leanAtCamp ??= false;
   }
+  // Old saves represented idleness as a synthetic wait intent and task.
+  // Idleness now has no record at all, so discard both halves on load.
+  if ((state.intent as unknown as { task?: string } | null)?.task === "wait") state.intent = null;
+  if ((state.task as unknown as { id?: string } | null)?.id === "wait") state.task = null;
   if (state.intent) {
     state.intent.orderId ??= null;
-    state.intent.windDown ??= false;
     // Whose the intent is was read off what it was asked to do; a save from
     // before that reads the same way.
-    const it = state.intent as Partial<Intent> & { task: TaskId; until: Until };
-    it.mode ??= intentMode(it.task, it.until);
+    const it = state.intent as Partial<Intent> & { task?: TaskId; until?: Until };
+    if (it.mode !== "care" && it.task && it.until) {
+      it.mode ??= intentMode(it.task, it.until);
+      const work = state.intent;
+      if (isWorkIntent(work)) work.windDown ??= false;
+    }
   }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
@@ -131,9 +138,9 @@ export function migrate(state: GameState): void {
     if (t.id === "craft" && t.arg === "axe") t.arg = "stoneAxe";
   };
   renameArg(state.task);
-  if (state.intent && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
-  if (state.intent && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
-  if (state.intent && state.intent.task === "craft" && state.intent.arg === "axe") state.intent.arg = "stoneAxe";
+  if (isWorkIntent(state.intent) && state.intent.task === "fish" && !state.intent.arg) state.intent.arg = "any";
+  if (isWorkIntent(state.intent) && state.intent.task === "hunt" && state.intent.arg === "grouse") state.intent.arg = "willowGrouse";
+  if (isWorkIntent(state.intent) && state.intent.task === "craft" && state.intent.arg === "axe") state.intent.arg = "stoneAxe";
   const crafting = state.skills.crafting.mastery;
   if (crafting["craft:axe"] !== undefined) {
     crafting["craft:stoneAxe"] = (crafting["craft:stoneAxe"] ?? 0) + crafting["craft:axe"];
@@ -143,6 +150,10 @@ export function migrate(state: GameState): void {
   // for located work, "id:arg" for carried work, cell -1). Renaming .arg without moving the
   // entry to the recomputed key would strand it under the old key, unresumable and undeletable.
   for (const [key, p] of Object.entries(state.paused)) {
+    if ((p as unknown as { id?: string }).id === "wait") {
+      delete state.paused[key];
+      continue;
+    }
     renameArg(p);
     const newKey = p.cell === -1 ? `${p.id}:${p.arg ?? ""}` : `${p.id}:${p.arg ?? ""}@${p.cell}`;
     if (newKey !== key) {
@@ -153,6 +164,10 @@ export function migrate(state: GameState): void {
   // An order's click carries the same task/arg shape under different field names.
   for (const st of Object.values(state.regions)) {
     for (const o of st.orders ?? []) {
+      if (isCareRow(o)) {
+        delete (o as unknown as { req?: unknown }).req;
+        continue;
+      }
       if (o.req.task === "fish" && !o.req.arg) o.req.arg = "any";
       if (o.req.task === "hunt" && o.req.arg === "grouse") o.req.arg = "willowGrouse";
       if (o.req.task === "craft" && o.req.arg === "axe") o.req.arg = "stoneAxe";
@@ -268,6 +283,46 @@ export function migrate(state: GameState): void {
     // above the work, which is the rank the always-pre-empting tier already
     // held over the list it could not be seen on.
     ensureCareRows(st);
+  }
+  // Walking used to be a hidden task owned by another intent, or a raw map
+  // task with no order at all. Preserve the route already under way, but put
+  // its exact destination into the visible queue and make that Walk the live
+  // intent. A scheduled requester remains immediately after it. A legacy
+  // hand intent is first materialized as a once job so it has the same place.
+  if (state.task?.id === "walk" && state.route) {
+    const st = state.regions[state.player.region];
+    if (st) {
+      const old = state.intent;
+      const alreadyVisible = isWorkIntent(old) && old.task === "walk" && old.orderId !== null
+        && st.orders.some((o) => o.id === old.orderId && !isCareRow(o) && o.req.task === "walk");
+      if (alreadyVisible) return;
+      let beforeId: number | null = old?.orderId ?? null;
+      if (isWorkIntent(old) && beforeId === null && old.task !== "walk") {
+        const until = old.until.kind === "campHas" ? { kind: "campHas" as const, qty: old.until.qty } : old.until;
+        const parent: WorkOrder = {
+          id: st.nextOrderId++, kind: old.until.kind === "forever" ? "grind" : "job",
+          req: { task: old.task, arg: old.arg, until, deliver: old.deliver, where: { cell: old.cell } },
+          done: old.done, minutes: 0, skipped: "",
+          givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
+        };
+        st.orders.unshift(parent);
+        beforeId = parent.id;
+      }
+      const at = beforeId === null ? 0 : Math.max(0, st.orders.findIndex((o) => o.id === beforeId));
+      const target = state.route.target;
+      const walk: WorkOrder = {
+        id: st.nextOrderId++, kind: "job",
+        req: { task: "walk", arg: `cell:${target}`, until: { kind: "once" }, deliver: "leave", where: { cell: target } },
+        done: 0, minutes: 0, skipped: "",
+        givenDoy: calendar(state.minute, state.startDoy).dayOfYear,
+      };
+      st.orders.splice(at, 0, walk);
+      state.intent = {
+        mode: "hand", task: "walk", arg: `cell:${target}`, cell: target, campCell: st.campCell,
+        until: { kind: "once" }, deliver: "leave", done: 0,
+        step: `walking to ${state.route.label}`, orderId: walk.id, windDown: false,
+      };
+    }
   }
 }
 

@@ -14,6 +14,7 @@ import { findRoute, routeKm } from "../src/world/route";
 import { campSite, regionState } from "../src/sim/regionstate";
 import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { isWorkOrder } from "../src/sim/types";
 
 type G = ReturnType<typeof newGame>;
 function run(g: G, minutes: number, seed = 1) {
@@ -513,7 +514,8 @@ describe("mend clothing", () => {
     // Index 2: the camp row sits at 0 and the body row at 1.
     expect(ordersHere(state, world)[2].skipped).toBe("nothing worn enough to mend");
     state.player.clothing[0].durability = MEND_AT;
-    expect(chooseOrder(state, world, cal)?.req.task).toBe("repair");
+    const chosen = chooseOrder(state, world, cal);
+    expect(chosen && isWorkOrder(chosen) ? chosen.req.task : null).toBe("repair");
     expect(ordersHere(state, world)[0].skipped).toBe("");
   });
 

@@ -131,6 +131,14 @@ describe("sky in the page", () => {
     resetPanels();
   });
 
+  it("leaves the day phase out of the weather card", () => {
+    const { state, world } = newGame(21);
+    const cal = at(22);
+    setPanel("weather", weatherHtml(state, world, cal, ambientTemperature(cal, state.weather)));
+    updateSky(state, cal, ambientTemperature(cal, state.weather));
+    expect(document.querySelector("#weather #sky-label")).toBeNull();
+  });
+
   it("moves the sun and lights the map grid every frame", () => {
     const { state, world } = newGame(21);
     const cal = at(13);

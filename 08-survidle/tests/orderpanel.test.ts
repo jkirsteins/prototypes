@@ -13,7 +13,7 @@ const CABIN = { task: "build" as const, arg: "cabin", until: { kind: "once" as c
 const STICKS = { task: "sticks" as const, until: { kind: "forever" as const }, deliver: "camp" as const, where: "nearest" as const };
 
 describe("the order panel", () => {
-  it("every row but the body's carries the pin, and it says which state it is in and what that costs", () => {
+  it("names whether a blocked row stops or skips the rows below it", () => {
     const { state, world } = newGame(1);
     const o = addOrder(state, world, STICKS, "grind");
     advance(state, world, 1);
@@ -21,15 +21,11 @@ describe("the order panel", () => {
 
     const off = ordersHtml(state, world, cal);
     expect(off).toContain(`data-act="order-pin" data-id="${o.id}"`);
-    expect(off).toContain("do this first");
-    expect(off).not.toContain("holds the list");
+    expect(off).toContain("on block: skip");
 
     o.pinned = true;
     const on = ordersHtml(state, world, cal);
-    expect(on).toContain("doing this first - holds the list");
-    // The state is on the button as well as in its words: a pin is a switch,
-    // and a switch that looks the same either way is the confusion itself.
-    expect(on).toMatch(new RegExp(`class="mini on" data-act="order-pin" data-id="${o.id}"`));
+    expect(on).toContain("on block: stop");
   });
 
   it("an ordinary row carries rank, pin and remove; the body's row carries rank alone", () => {
@@ -76,13 +72,14 @@ describe("the order panel", () => {
     const cal = calendar(state.minute, state.startDoy);
 
     // Unpinned, the cabin is passed over and the sticks run: nothing is held.
-    expect(ordersHtml(state, world, cal)).not.toContain("Held up by");
+    expect(ordersHtml(state, world, cal)).not.toContain("Queue stopped at");
     expect(judgeOrders(state, world, cal).work?.id).toBe(sticks.id);
 
-    blocked.pinned = true;
+    pinOrderByHand(state, world, cal, new Rng(state.rng), blocked.id);
     const held = ordersHtml(state, world, cal);
     expect(judgeOrders(state, world, cal).blockedBy?.id).toBe(blocked.id);
-    expect(held).toContain("Held up by");
+    expect(held).toContain("Queue stopped at");
+    expect(held).toContain(">blocked</span>");
     // The reason the row itself gives is the reason the banner gives.
     expect(held).toContain(blocked.skipped);
     expect(blocked.skipped.length).toBeGreaterThan(0);
@@ -97,11 +94,11 @@ describe("the order panel", () => {
 
     pinOrderByHand(state, world, cal, new Rng(state.rng), blocked.id);
     expect(blocked.pinned).toBe(true);
-    expect(ordersHtml(state, world, cal)).toContain("Held up by");
+    expect(ordersHtml(state, world, cal)).toContain("Queue stopped at");
 
     pinOrderByHand(state, world, cal, new Rng(state.rng), blocked.id);
     expect(blocked.pinned).toBe(false);
-    expect(ordersHtml(state, world, cal)).not.toContain("Held up by");
+    expect(ordersHtml(state, world, cal)).not.toContain("Queue stopped at");
     advance(state, world, 1);
     expect(state.intent?.orderId).toBe(sticks.id);
   });

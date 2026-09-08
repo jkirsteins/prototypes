@@ -31,8 +31,8 @@ describe("the names are Norwegian", () => {
   });
 });
 
-describe("the log reads the way a story is told", () => {
-  it("oldest first, since he read newest-first as his own misreading", () => {
+describe("the log puts the latest information first", () => {
+  it("renders every visible timestamp newest first", () => {
     const { state, world } = newGame(21);
     advance(state, world, 600);
     expect(state.log.length).toBeGreaterThan(1);
@@ -42,7 +42,7 @@ describe("the log reads the way a story is told", () => {
     const stamps = [...logHtml(state).matchAll(/<time>d(\d+) (\d+):(\d+)<\/time>/g)]
       .map((m) => Number(m[1]) * 1440 + Number(m[2]) * 60 + Number(m[3]));
     expect(stamps.length).toBeGreaterThan(1);
-    for (let i = 1; i < stamps.length; i++) expect(stamps[i]).toBeGreaterThanOrEqual(stamps[i - 1]);
+    for (let i = 1; i < stamps.length; i++) expect(stamps[i]).toBeLessThanOrEqual(stamps[i - 1]);
   });
 });
 

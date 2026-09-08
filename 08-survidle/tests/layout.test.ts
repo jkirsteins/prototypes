@@ -71,7 +71,13 @@ describe("the layout", () => {
     const html = page();
     const left = html.slice(html.indexOf('id="left"'), html.indexOf('id="center"'));
     expect(left).toContain('data-away="hours"');
-    expect(left.indexOf('id="forecast"')).toBeLessThan(left.indexOf('data-away="hours"'));
+    const stats = left.indexOf('id="stats"');
+    const forecast = left.indexOf('id="forecast"');
+    const away = left.indexOf('data-away="hours"');
+    const gear = left.indexOf('id="gear"');
+    expect(stats).toBeLessThan(forecast);
+    expect(forecast).toBeLessThan(away);
+    expect(away).toBeLessThan(gear);
   });
 
   it("all four panes exist at once, three of them hidden", () => {

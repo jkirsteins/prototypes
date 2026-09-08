@@ -82,6 +82,9 @@ describe("the voice", () => {
     const html = awayHtml(away, 6 * 3600, false, "Nothing worth telling.", current(state).person, name);
     expect(html).not.toMatch(/<time>[^<]*<\/time>You /);
     expect(html).toContain(`</time>${name} `);
+    const newest = away.entries[away.entries.length - 1];
+    const firstRendered = html.match(/<time>[^<]*<\/time>(.*?)<\/div>/)?.[1] ?? "";
+    expect(firstRendered).toContain(voice(newest.text, newest.away ? name : null));
     const log = logHtml(state);
     expect(log).toContain(voice(state.log[0].text, null).slice(0, 20));
   });

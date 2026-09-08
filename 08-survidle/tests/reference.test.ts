@@ -44,6 +44,7 @@ import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
 import { ICE_SHORE_CM } from "../src/sim/water";
 import { cellIdx, terrainOf, WORLD_H, WORLD_W, type World } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { isWorkOrder } from "../src/sim/types";
 
 /**
  * No reference seed's home region has a birch cell (the brief's own
@@ -67,10 +68,9 @@ describe("the reference player", () => {
     // stays on the list rather than being withdrawn to make way.
     const ref = setUpReference(17, true);
     ref.player.tick(ref.state, ref.world);
-    // Index 2: the camp row sits at 0 and the body row at 1.
-    expect(ordersHere(ref.state, ref.world)[2].req.task).toBe("thaw");
+    expect(ordersHere(ref.state, ref.world).filter(isWorkOrder)[0].req.task).toBe("thaw");
     stepReference(ref, 60);
-    const list = ordersHere(ref.state, ref.world);
+    const list = ordersHere(ref.state, ref.world).filter(isWorkOrder);
     expect(list.some((o) => o.req.task === "thaw")).toBe(true);
     // The rows under it run just the same: a row passed over holds nothing up.
     expect(list.length).toBeGreaterThan(20);
@@ -87,7 +87,7 @@ describe("the reference player", () => {
     expect(ordersHere(state, world).every(isCareRow)).toBe(true);
     player.tick(state, world);
     // Neither care row is one of the reference's own wants.
-    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
+    const list = ordersHere(state, world).filter(isWorkOrder);
     // Two readings shut a want on the opening morning. The runner's own rules shut the three
     // named hunts (the species' recommended level), the two ice-hole fetches and the two melts
     // (the shore is open), the fire indoors (no hut), the hide coat, trousers and boots
@@ -207,11 +207,11 @@ describe("the reference player", () => {
       { req: { task: "craft", until: { kind: "once" }, arg: "cordage", deliver: "camp", where: "nearest" }, kind: "job" },
     ]);
     player.tick(state, world);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "bark", "craft"]);
+    expect(ordersHere(state, world).map((o) => isCareRow(o) ? o.kind : o.req.task)).toEqual(["camp", "body", "bark", "craft"]);
     // The stand-ins run to completion and drop off.
     stepReference({ state, world, player }, 6 * 60);
     // The bark keep is unmet while camp has under half of 10, so it is standing again; the cordage job finished and is not.
-    const tasks = ordersHere(state, world).map((o) => o.req.task);
+    const tasks = ordersHere(state, world).filter((o) => !isCareRow(o)).map((o) => o.req.task);
     expect(tasks.filter((t) => t === "craft")).toEqual([]);
     const st = regionState(state, world, state.player.region);
     const have = qty(pile(state, st.campCell!), "bark");
@@ -268,10 +268,10 @@ describe("the reference player", () => {
     const ref = { state, world, player };
     stepReference(ref, 24 * 60);
     expect(qty(camp, "hide")).toBe(54);
-    expect(ordersHere(state, world).some((o) => o.req.task === "craft")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "craft")).toBe(false);
     stepReference(ref, 24 * 60);
     expect(qty(camp, "hide")).toBe(54);
-    expect(ordersHere(state, world).some((o) => o.req.task === "craft")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "craft")).toBe(false);
   });
 
   it("a build:snare times-5 job is finished for good at five snares, not re-issued to forty", () => {
@@ -287,10 +287,10 @@ describe("the reference player", () => {
     const ref = { state, world, player };
     stepReference(ref, 24 * 60);
     expect(st.snares).toBe(5);
-    expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "build")).toBe(false);
     stepReference(ref, 24 * 60);
     expect(st.snares).toBe(5);
-    expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "build")).toBe(false);
   });
 
   it("read is finished for good after its one hour, not re-given the next day", () => {
@@ -302,10 +302,10 @@ describe("the reference player", () => {
     stepReference(ref, 24 * 60);
     const known1 = Object.keys(state.player.known).length;
     expect(known1).toBeGreaterThan(0);
-    expect(ordersHere(state, world).some((o) => o.req.task === "read")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "read")).toBe(false);
     stepReference(ref, 24 * 60);
     expect(Object.keys(state.player.known).length).toBe(known1);
-    expect(ordersHere(state, world).some((o) => o.req.task === "read")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "read")).toBe(false);
   });
 
   it("setTrap is finished for good once the trap is set, not re-set the next day while it stands", () => {
@@ -321,9 +321,9 @@ describe("the reference player", () => {
     const ref = { state, world, player };
     stepReference(ref, 24 * 60);
     expect(st.trap).not.toBeNull();
-    expect(ordersHere(state, world).some((o) => o.req.task === "setTrap")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "setTrap")).toBe(false);
     stepReference(ref, 24 * 60);
-    expect(ordersHere(state, world).some((o) => o.req.task === "setTrap")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "setTrap")).toBe(false);
   });
 
   it("a times want counts its stand-ins' units: given exactly twice at woodcraft 1, and once as itself at woodcraft 3", () => {
@@ -335,12 +335,12 @@ describe("the reference player", () => {
     const seen = new Set<number>();
     for (let h = 0; h < 6; h++) {
       player.tick(state, world);
-      for (const o of ordersHere(state, world)) if (o.req.task === "sticks") seen.add(o.id);
+      for (const o of ordersHere(state, world).filter(isWorkOrder)) if (o.req.task === "sticks") seen.add(o.id);
       advance(state, world, 60);
     }
     // Two once-job stand-ins, never a third: their units add up to the want's n:2.
     expect(seen.size).toBe(2);
-    expect(ordersHere(state, world).some((o) => o.req.task === "sticks")).toBe(false);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "sticks")).toBe(false);
 
     const at3 = newGame(17);
     siteCamp(at3.state, at3.world);
@@ -353,7 +353,7 @@ describe("the reference player", () => {
     // The two care rows plus the one real order.
     expect(first.length).toBe(3);
     expect(first[2].kind).toBe("job");
-    expect(first[2].req.until).toEqual({ kind: "times", n: 2 });
+    expect(isWorkOrder(first[2]) && first[2].req.until).toEqual({ kind: "times", n: 2 });
     for (let h = 0; h < 6; h++) {
       player3.tick(at3.state, at3.world);
       advance(at3.state, at3.world, 60);
@@ -370,7 +370,7 @@ describe("the reference player", () => {
     const seen = new Set<number>();
     for (let h = 0; h < 2; h++) {
       player.tick(state, world);
-      for (const o of ordersHere(state, world)) if (o.req.task === "sticks") seen.add(o.id);
+      for (const o of ordersHere(state, world).filter(isWorkOrder)) if (o.req.task === "sticks") seen.add(o.id);
       advance(state, world, 60);
     }
     // Two once-job stand-ins complete before the skill reaches the rung.
@@ -378,7 +378,7 @@ describe("the reference player", () => {
 
     state.skills.woodcraft.xp = levelMinutes(3);
     player.tick(state, world);
-    const standing = ordersHere(state, world).find((o) => o.req.task === "sticks")!;
+    const standing = ordersHere(state, world).filter(isWorkOrder).find((o) => o.req.task === "sticks")!;
     expect(standing.kind).toBe("job");
     expect(standing.req.until).toEqual({ kind: "times", n: 1 });
   });
@@ -393,8 +393,8 @@ describe("the reference player", () => {
     ]);
     player.tick(state, world);
     const list = ordersHere(state, world);
-    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["wait", "camp"], ["wait", "body"], ["fill", "job"], ["split", "keep"]]);
-    expect(list[2].req.until.kind).toBe("once");
+    expect(list.map((o) => [isCareRow(o) ? o.kind : o.req.task, o.kind])).toEqual([["camp", "camp"], ["body", "body"], ["fill", "job"], ["split", "keep"]]);
+    expect(!isCareRow(list[2]) && list[2].req.until.kind).toBe("once");
   });
 
   it("the fill keep, given at the shore with a bucket in hand, stocks the camp within six hours", () => {
@@ -609,7 +609,7 @@ describe("wants by level", () => {
     setSkillLevel(state, "woodcraft", 10);
     const player = new ReferencePlayer();
     // Above the list's 4-log summer keep, which is what tells the two apart under the rung.
-    const woodpile = () => ordersHere(state, world).filter((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
+    const woodpile = () => ordersHere(state, world).filter(isWorkOrder).filter((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
     player.tick(state, world);
     expect(woodpile().length).toBe(1);
     const target = woodpile()[0].req.until;
@@ -660,7 +660,7 @@ describe("wants by level", () => {
     siteCamp(state, world);
     setSkillLevel(state, "woodcraft", 10);
     const player = new ReferencePlayer();
-    const reserve = () => ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
+    const reserve = () => ordersHere(state, world).filter(isWorkOrder).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty > 4);
     player.tick(state, world);
     // The due date itself: the stand-in is given at the whole figure.
     const peak = reserve()!.req.until;

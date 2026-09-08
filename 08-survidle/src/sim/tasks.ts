@@ -49,6 +49,7 @@ import {
   type DecayingId, FILL_METHODS, type FillMethod, type GameState, type IceMode, type Inventory, type ItemId, type Order, type PausedTask, type RecipeId,
   type Site, type SkillId, type SpotId, type StructureId, type TaskId, type ToolId,
 } from "./types";
+import { isWorkIntent } from "./types";
 import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, takeUpTripVessel, tripLitres, tripVessel, vesselLitresCapacity, vesselRoom, waterSource, WATER_FULL } from "./water";
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 
@@ -495,7 +496,11 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
 
   switch (id) {
     case "chop": {
-      const o = ground(forestCell(world, at), "forest", "forest", opt({ group: "gather", label: "Fell a tree", detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: (terrain === "spruce" ? 50 : 60) * edgeFactor(state), repeatable: true }));
+      const tree = arg === "spruce" || arg === "pine" || arg === "birch" ? arg : null;
+      const label = tree ? `Fell ${tree}` : "Fell any tree";
+      const base = opt({ group: "gather", label, detail: `4 logs and ${chopSticks(state, world)} sticks left on the ground`, duration: (terrain === "spruce" ? 50 : 60) * edgeFactor(state), repeatable: true });
+      if (tree && r.frac[tree] <= 0) return { ...base, ok: false, never: true, why: `no ${tree} in ${r.name}` };
+      const o = ground(forestCell(world, at) && (!tree || terrain === tree), "forest", tree ? `${tree} forest` : "forest", base);
       if (!o.ok) return o;
       if (stormNow(state.weather, state.minute)) return { ...o, ok: false, why: "too rough" };
       if (!axeNear(p, toolInvs)) return { ...o, ok: false, why: "needs an axe" };
@@ -940,8 +945,6 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
     }
     case "night":
       return haveCamp(opt({ group: "camp", label: "Camp for the night", detail: `go to camp, make a fire if you can, sleep; ${bedText(state, world)}`, duration: 0 }));
-    case "wait":
-      return haveCamp(opt({ group: "camp", label: "Wait at camp", detail: "rest at camp until there is something to do", duration: 0 }));
     case "rest":
       return opt({ group: "camp", label: "Rest", detail: "an hour off your feet", duration: 60, repeatable: true });
     case "sleep": {
@@ -1176,7 +1179,6 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   if (state.dead) return false;
   if (id === "night") return false;
   if (id === "haul") return false;
-  if (id === "wait") return false;
   const o = check(state, world, cal, id, arg);
   if (!o.ok) return false;
   const need = toolFor(id, arg);
@@ -1322,7 +1324,7 @@ export function pausedList(state: GameState, world: World, cal: Calendar): { key
  */
 function liveOrderFor(state: GameState, world: World, id: TaskId, arg?: string): Order | null {
   const it = state.intent;
-  if (!it || it.orderId === null) return null;
+  if (!isWorkIntent(it) || it.orderId === null) return null;
   const isWork = (it.task === id && (it.arg ?? "") === (arg ?? "")) || (it.task === "night" && id === "sleep");
   if (!isWork) return null;
   return regionState(state, world, state.player.region).orders.find((o) => o.id === it.orderId) ?? null;
@@ -1377,7 +1379,7 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   const repeat = t.repeat;
   state.task = null;
   const it = state.intent;
-  if (it) {
+  if (isWorkIntent(it)) {
     if (it.task === id && ((it.arg ?? "") === (wanted ?? "") || (it.arg ?? "") === (arg ?? ""))) {
       it.done++;
       if (order) order.done++;
@@ -1394,6 +1396,15 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     // recovers some other way, rather than resting here forever for less than a point of gain.
     // Only the runner's own rest carries a warmth-at-start to judge the gain against.
     if (it.mode === "runner" && id === "rest" && state.player.bodyNeed === "cold") {
+      const gained = state.player.warmth - (it.restFromWarmth ?? state.player.warmth);
+      if (gained < 1) {
+        state.player.coldSpent = true;
+        state.player.bodyNeed = null;
+      }
+    }
+  } else if (it?.mode === "care" && it.care === "body") {
+    if (id === "sleep" && state.player.bodyNeed === "sleep") state.player.bodyNeed = null;
+    if (id === "rest" && state.player.bodyNeed === "cold") {
       const gained = state.player.warmth - (it.restFromWarmth ?? state.player.warmth);
       if (gained < 1) {
         state.player.coldSpent = true;
@@ -1501,6 +1512,8 @@ function walkAlong(state: GameState, world: World, cal: Calendar, rng: Rng, dt: 
  */
 function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task!;
+  const order = t.id === "walk" ? liveOrderFor(state, world, "walk", t.arg) : null;
+  if (order) order.minutes += dt;
   if (!state.route) {
     state.task = null;
     return;
@@ -1513,6 +1526,11 @@ function stepWalk(state: GameState, world: World, cal: Calendar, rng: Rng, dt: n
   if (finished) {
     const label = route.label;
     const wasTravel = t.id === "travel";
+    const it = state.intent;
+    if (!wasTravel && isWorkIntent(it) && it.task === "walk") {
+      it.done++;
+      if (order) order.done++;
+    }
     state.route = null;
     state.task = null;
     placeAt(state, world, cellOf(state, world));
@@ -2232,7 +2250,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       const left = leftBehind(state, world);
       leaveCamp(state, world);
       st.campCell = here;
-      if (state.intent) state.intent.campCell = here;
+      if (isWorkIntent(state.intent)) state.intent.campCell = here;
       log(state, left ? `{You} {make} camp here. ${left}` : "{You} {make} camp here.");
       return;
     }
@@ -2241,7 +2259,6 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
     case "sleep":
     case "haul":
     case "night":
-    case "wait":
     case "travel":
     case "walk":
     case "explore":

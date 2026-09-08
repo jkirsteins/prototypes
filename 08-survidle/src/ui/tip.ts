@@ -24,7 +24,7 @@ import { regionState } from "../sim/regionstate";
 import { check, whereIs } from "../sim/tasks";
 import type { GameState } from "../sim/types";
 import { plain } from "../sim/voice";
-import { fmtDuration, fmtKg, fmtKm, fmtReal } from "../units";
+import { fmtDuration, fmtKg, fmtKm } from "../units";
 import { walkableIce } from "../sim/weather";
 import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
 import { wayIntoHtml } from "./panels";
@@ -59,31 +59,56 @@ export function tipKey(state: GameState, world: World, cell: number): string {
 }
 
 /** The named place this cell is, if it is one. */
-function spotAt(state: GameState, world: World, cell: number): string | null {
-  const r = regionAt(world, state.player.region);
+function spotAt(world: World, cell: number): string | null {
+  const r = regionAt(world, cellAt(world, cell).region);
   const spot = r.spots.find((s) => s.cell === cell);
   return spot ? SPOT_WORDS[spot.id] : null;
 }
 
+/** A heading is a heading wherever it came from: a region's name, a spot's, or a terrain's. */
+function head(name: string): string {
+  return name ? name[0].toUpperCase() + name.slice(1) : name;
+}
+
+/** The map heading's compact direction, in place of "a spot 1.3 km east". */
+function compactWhere(where: string): string {
+  const match = /^a spot ([0-9.]+ km) (north|south|east|west)$/.exec(where);
+  if (!match) return where;
+  const direction = { north: "N", south: "S", east: "E", west: "W" }[match[2]];
+  return `${match[1]} ${direction}`;
+}
+
 export function tipHtml(state: GameState, world: World, cal: Calendar, cell: number): string {
-  const close = `<button class="mini" data-act="tip-close" title="Close">x</button>`;
+  // Held, the box says so and offers the way out of it. Only previewing, it
+  // says what a click would buy - which is the one place the interface has
+  // to teach itself, since a box that follows the pointer looks like one
+  // that cannot be reached.
+  // A touch has no leave to give, so the box keeps its own way out; nothing
+  // else in it is pressed.
+  const close = `<button class="mini tip-close" data-act="tip-close" title="Close">x</button>`;
+  const region = cellAt(world, cell).region;
+  const regionName = esc(head(regionAt(world, region).name));
+  const heading = (name: string, where = "") => `<div class="tiphead"><b>${esc(head(name))}</b><span class="dim">${regionName}${where ? `, ${esc(where)}` : ""}</span>${close}</div>`;
 
   // Another region first, and before the fog: ground over the border is not
   // somewhere to walk, it is somewhere to go, and an unexplored one is
   // exactly the region worth offering to explore. Answering that with "you
   // have never been here" would be true and useless. This is what puts the
   // regions on the map rather than in a list of names beside it.
-  const region = cellAt(world, cell).region;
   if (region !== state.player.region) {
-    const name = esc(regionAt(world, region).name);
-    return `<div class="tiphead"><b>${name}</b>${close}</div>${wayIntoHtml(state, world, cal, region)}`;
+    if (!isKnown(state, cell)) return `${heading("Unknown ground")}${wayIntoHtml(state, world, cal, region)}`;
+    const x = cell % world.w;
+    const y = Math.floor(cell / world.w);
+    const terrain = terrainPeek(world, x, y);
+    const name = spotAt(world, cell) ?? GROUND[terrain] ?? terrain;
+    return `${heading(name)}${wayIntoHtml(state, world, cal, region)}`;
   }
 
   // Fog next: ground nobody has walked has nothing to report, and saying
   // so is the honest answer rather than describing land out of a survivor's
   // reach who has never seen it.
   if (!isKnown(state, cell)) {
-    return `<div class="tiphead"><b>Unknown ground</b>${close}</div><div class="dim">You have never been here.</div>`;
+    return `${heading("Unknown ground")}<div class="dim">You have never been here.</div>`;
   }
 
   const here = cellOf(state, world);
@@ -92,7 +117,7 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   const terrain = terrainPeek(world, x, y);
-  const spot = spotAt(state, world, cell);
+  const spot = spotAt(world, cell);
   const name = spot ?? GROUND[terrain] ?? terrain;
 
   const lines: string[] = [];
@@ -104,10 +129,10 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
     const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
     const walk = check(state, world, cal, "walk", `cell:${cell}`);
     const dist = km === null ? "no way there" : fmtKm(km);
-    const go = walk.ok
-      ? `<button class="mini" data-act="task" data-id="walk" data-arg="cell:${cell}">walk (${fmtDuration(walk.duration)}, ${fmtReal(walk.duration)})</button>`
-      : `<span class="dim">${esc(plain(walk.why))}</span>`;
-    lines.push(`<div>${esc(dist)} ${go}</div>`);
+    // What it would cost to stand there, said rather than offered: the walk
+    // itself is the places box's, in the corner it has always been in.
+    const cost = walk.ok ? `, ${fmtDuration(walk.duration)} walk` : `, ${plain(walk.why)}`;
+    lines.push(`<div>${esc(dist)}${esc(cost)}</div>`);
   }
 
   // What stands on it, in the words the rest of the game uses.
@@ -136,6 +161,6 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
     lines.push(`<div class="dim">as a camp: ${esc(siteLine(siteReport(state, world, cell)))}</div>`);
   }
 
-  const where = spot ? "" : `<span class="dim"> ${esc(whereIs(state, world, cell))}</span>`;
-  return `<div class="tiphead"><b>${esc(name)}</b>${where}${close}</div>${lines.join("")}`;
+  const where = spot ? "" : compactWhere(whereIs(state, world, cell));
+  return `${heading(name, where)}${lines.join("")}`;
 }

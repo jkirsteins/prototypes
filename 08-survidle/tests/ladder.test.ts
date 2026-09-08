@@ -38,7 +38,7 @@ describe("the gate skill", () => {
   });
 
   it("the runner's own steps and the moves are not orders", () => {
-    expect(NOT_ORDERS).toEqual(["walk", "travel", "wait", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"]);
+    expect(NOT_ORDERS).toEqual(["walk", "travel", "rest", "sleep", "night", "makeCamp", "explore", "searchHome"]);
   });
 });
 
@@ -122,7 +122,7 @@ describe("giving an order", () => {
     const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
     expect(o.kind).toBe("keep");
     // Rank 0 is the top of the real work, behind the two care rows.
-    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["wait", "wait", "split", "sticks"]);
+    expect(ordersHere(state, world).map((x) => x.kind === "body" || x.kind === "camp" ? x.kind : x.req.task)).toEqual(["camp", "body", "split", "sticks"]);
   });
 });
 
@@ -168,7 +168,7 @@ describe("where a row lands", () => {
     moveOrder(state, world, camp.id, 1);
     moveOrder(state, world, body.id, 1);
     giveOrder(state, world, req("stone", { kind: "once" }), "job", 0);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "wait", "wait"]);
+    expect(ordersHere(state, world).map((o) => o.kind === "body" || o.kind === "camp" ? o.kind : o.req.task)).toEqual(["stone", "sticks", "camp", "body"]);
   });
 
   it("a haul given by hand is a row like any other: it runs, delivers, and drops off when the ground is bare", () => {

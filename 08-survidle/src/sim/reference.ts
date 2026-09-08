@@ -14,7 +14,6 @@
  * once jobs until a skill reaches 3, no keeps for weeks and no conditions
  * for longer, and stands in by hand for the rest.
  */
-import { Rng } from "../rng";
 import { CELL_KM } from "../units";
 import { cellAt } from "../world/cells";
 import { regionAt, spotOf, type World } from "../world/gen";
@@ -22,7 +21,7 @@ import { advance } from "./advance";
 import { bodyAsks } from "./body";
 import { calendar, dayNumber, START_DOY, type Calendar } from "./calendar";
 import { addItem, AXES, axeInHand, freshTool, listItems, pile, pileAt, qty, TRACE_KG } from "./inventory";
-import { nearestCell, startIntent } from "./intent";
+import { nearestCell } from "./intent";
 import {
   BARK_FROM_DOY, BARK_TO_DOY, EGG_FROM_DOY, EGG_TO_DOY, FOODS, type FoodId, LEAN_KCAL_PER_DAY, MEAT_DRY_RATIO, RECIPES,
   ROOT_FROM_DOY, ROOT_TO_DOY, SAP_FROM_DOY, SAP_TAPS_PER_DAY, SAP_TO_DOY, SPOIL_HOURS, TOOLS,
@@ -44,9 +43,9 @@ import { nestsFor, rootKgLeft } from "./stocks";
 import { APRIL, BURN, coldBand, MIDSUMMER_DOY, PLANT_HOURS_PER_DAY, SLEEP_HOURS, sourceBand, tableFor, verdict } from "./tables";
 import { check, seaweedAvailable, setAside, startTask } from "./tasks";
 import { ICE_SHORE_CM } from "./water";
-import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, Order, OrderKind, OrderWhen, RecipeId, WorldDate } from "./types";
+import type { DeathCause, GameState, IntentRequest, Inventory, LifeRecord, OrderWhen, RecipeId, WorkOrder, WorldDate } from "./types";
 
-type Want = { req: IntentRequest; kind: OrderKind };
+type Want = { req: IntentRequest; kind: WorkOrder["kind"] };
 
 const keep = (task: IntentRequest["task"], qty: number, arg?: string, deliver: "leave" | "camp" = "camp", when?: OrderWhen): Want =>
   ({ req: { task, arg, until: { kind: "campHas", qty }, deliver, where: "nearest", when }, kind: "keep" });
@@ -330,7 +329,7 @@ const WINTER_BUFFER_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON, by: WOOD_DUE
 const WINTER_RESERVE_WHEN: OrderWhen = { season: WINTER_WOOD_SEASON, by: WOOD_DUE_DOY, spend: true };
 
 /** The winter-stock keeps, the 600 kg split keep and the 300-log keep, told from the list's summer keeps by their targets. */
-export function winterStockWant(w: { req: IntentRequest; kind: OrderKind }): boolean {
+export function winterStockWant(w: { req: IntentRequest; kind: WorkOrder["kind"] }): boolean {
   if (w.kind !== "keep" || w.req.until.kind !== "campHas") return false;
   const firewood = w.req.task === "split" || w.req.task === "splitWedges" || w.req.task === "deadwood";
   return (firewood && w.req.until.qty >= WINTER_STOCK.firewoodKg) || (w.req.task === "chop" && w.req.until.qty >= WINTER_STOCK.logs);
@@ -805,9 +804,6 @@ export class ReferencePlayer {
   /** The day the walk home ended, once it has; null while it is still under way or when there was none. */
   reachedDay: number | null = null;
 
-  /** Whether the rest live now is `HAND_REST`, serving a hand move's need, rather than a real task the board is showing. */
-  private servingHandRest = false;
-
   /**
    * `home` is the region of the old camp for an heir: the first log line
    * gives the bearing, and a competent player walks there before anything
@@ -838,7 +834,7 @@ export class ReferencePlayer {
   }
 
   /** The want as an order to read off: the runner's own probe, never on any list. */
-  private probe(i: number, done = 0): Order {
+  private probe(i: number, done = 0): WorkOrder {
     const w = this.wants[i];
     return { id: -1, kind: w.kind, req: w.req, done, minutes: 0, skipped: "", held: this.held.get(i), givenDoy: this.paced.get(i)?.doy };
   }
@@ -1008,33 +1004,16 @@ export class ReferencePlayer {
   }
 
   /**
-   * A sweep or a walk toward ground not yet known, watched the way the
-   * click that started it would be: left running while nothing is owed,
-   * paused the moment the body asks for something, and picked back up once
-   * it has nothing left to ask. A plain "wait" is not what serves that
-   * pause: runOrders claims any bare wait intent (no order behind it) as
-   * its own and tears it down the moment its own order list is empty
-   * (spec 2.3) - exactly the heir's list, every hour, which would undo the
-   * serving before it ever drank. `HAND_REST` is a task runOrders has no
-   * claim on, left running while the body's row does the serving. `servingHandRest` is what
-   * tells that rest apart from a hand move still under way, so an ordinary
-   * "nothing to do" is never read as one. True whenever a hand move, or
-   * the rest serving one, is why nothing else happened this tick.
+   * A sweep or a walk toward ground not yet known is left running while
+   * nothing is owed and set aside the moment the body asks for something.
+   * The body row then creates the concrete care intent it needs. No filler
+   * task or placeholder intent stands between the move and that care.
    */
   private handMoveBusy(state: GameState, world: World, cal: Calendar): boolean {
-    if (this.servingHandRest) {
-      if (bodyAsks(state, world, cal)) return true;
-      this.servingHandRest = false;
-      state.intent = null;
-      return false;
-    }
     if (state.task?.id !== "explore" && state.task?.id !== "travel" && state.task?.id !== "searchHome") return false;
     if (!bodyAsks(state, world, cal)) return true;
     setAside(state, world);
-    const r = new Rng(state.rng);
-    startIntent(state, world, cal, r, HAND_REST);
-    state.rng = r.s;
-    this.servingHandRest = true;
+    state.intent = null;
     return true;
   }
 }
@@ -1043,17 +1022,12 @@ export class ReferencePlayer {
 const NO_KNOWN_WAY = "{you} {know} no way there";
 
 /**
- * Free enough to send off exploring: nothing running at all, or nothing but
- * a filler rest, the runner's own word (or `handMoveBusy`'s) for "nothing
- * better to do" and not a want on any list. Real sleep is left alone - the
- * body's own need, not idle time to spend looking at the ground.
+ * Free enough to send off exploring means genuinely idle: no task at all.
+ * Rest and sleep are concrete actions and are left alone.
  */
 function handsFree(state: GameState): boolean {
-  return !state.task || state.task.id === "rest";
+  return !state.task;
 }
-
-/** A rest with no order behind it, read as `handMoveBusy` serving a hand move rather than the list's own wait. */
-const HAND_REST: IntentRequest = { task: "rest", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
 
 export function setUpReference(seed: number, kitted = false, startDoy = START_DOY): { state: GameState; world: World; player: ReferencePlayer } {
   const g = newGame(seed, startDoy);

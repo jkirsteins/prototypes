@@ -34,7 +34,7 @@ describe("the mood a task reads as", () => {
     expect(moodOf(state)).toBe("work");
     doing(state, "makeCamp");
     expect(moodOf(state)).toBe("work");
-    doing(state, "wait");
+    doing(state, "rest");
     expect(moodOf(state)).toBe("rest");
     doing(state, "sleep");
     expect(moodOf(state)).toBe("sleep");

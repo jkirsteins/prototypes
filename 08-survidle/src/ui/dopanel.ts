@@ -18,6 +18,8 @@ import { purposesHtml } from "./panes";
 import { PURPOSES, purposeOf, subtabOf } from "./purpose";
 import { esc, rowRequest, type RowChoice, stockQty, type UiState } from "./render";
 
+const TREE_TERRAINS = ["spruce", "pine", "birch"] as const;
+
 /**
  * The concepts a row serves, and the words it answers to that it never says
  * out loud. Nothing on the torch row says "fire" and nothing on the bough bed
@@ -196,7 +198,11 @@ export function makeFirst<T extends { ok: boolean }>(rows: T[]): T[] {
  */
 export function intentGroups(r: RegionDef): { label: string; items: { id: TaskId; arg?: string }[] }[] {
   return [
-    { label: "Gather", items: [{ id: "chop" }, { id: "deadwood" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }, { id: "eggs" }, { id: "innerBark" }, { id: "roots" }, { id: "tapSap" }, { id: "seaweed" }] },
+    { label: "Gather", items: [
+      { id: "chop" },
+      ...TREE_TERRAINS.filter((terrain) => r.frac[terrain] > 0).map((terrain) => ({ id: "chop" as TaskId, arg: terrain })),
+      { id: "deadwood" }, { id: "sticks" }, { id: "bark" }, { id: "stone" }, { id: "berries" }, { id: "eggs" }, { id: "innerBark" }, { id: "roots" }, { id: "tapSap" }, { id: "seaweed" },
+    ] },
     { label: "Hunt", items: [
       { id: "hunt" as TaskId, arg: "any" },
       ...huntedLand().filter((s) => r.capacity[s]).map((s) => ({ id: "hunt" as TaskId, arg: s })),
@@ -371,7 +377,7 @@ function conceptsHtml(id: string | undefined, arg: string | undefined): string {
 }
 
 /**
- * A NOT_ORDERS task (rest, sleep, night, wait, a runner step) is a move the
+ * A NOT_ORDERS task (rest, sleep, night, or a runner step) is a move the
  * Do panel starts directly, not something the ladder gates: rowRequest
  * always collapses its choice to a once job, so a kind button on such a row
  * would read "forever" and give a one-off rest. No more, no expansion.
@@ -478,15 +484,17 @@ function searchHtml(state: GameState, world: World, cal: Calendar, ui: UiState):
 /**
  * The rows of the showing subtab and purpose, startable ones first.
  *
- * Nothing is tucked away behind a "more": a pane holds a handful of rows
- * now rather than the whole of Camp, and learning what is available is
- * most of learning the game. What a player cannot do yet still shows, and
- * says why.
+ * Generic tree and fish actions lead their panes. Their specific variants
+ * stay behind a small chooser so the common case is short without making
+ * those choices undiscoverable. What a player cannot do yet still shows,
+ * and says why.
  */
 function paneRows(state: GameState, world: World, cal: Calendar, ui: UiState): TaskOption[] {
   const wanted = intentGroups(regionAt(world, state.player.region))
     .flatMap((g) => g.items)
-    .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose);
+    .filter((i) => subtabOf(i.id, i.arg) === ui.panes.subtab && purposeOf(i.id, i.arg) === ui.panes.purpose)
+    .filter((i) => i.id !== "chop" || !i.arg || ui.specific.trees)
+    .filter((i) => i.id !== "fish" || i.arg === "any" || ui.specific.fish);
   return makeFirst(groupRows({ label: ui.panes.subtab, items: wanted }, state, world, cal, ui));
 }
 
@@ -496,6 +504,8 @@ export function purposeCounts(state: GameState, world: World, ui: UiState): Reco
   for (const q of PURPOSES[ui.panes.subtab]) counts[q] = 0;
   for (const i of intentGroups(regionAt(world, state.player.region)).flatMap((g) => g.items)) {
     if (subtabOf(i.id, i.arg) !== ui.panes.subtab) continue;
+    if (i.id === "chop" && i.arg && !ui.specific.trees) continue;
+    if (i.id === "fish" && i.arg !== "any" && !ui.specific.fish) continue;
     const q = purposeOf(i.id, i.arg);
     if (q !== null && q in counts) counts[q]++;
   }
@@ -507,11 +517,26 @@ export function doPurposesHtml(state: GameState, world: World, ui: UiState): str
   return purposesHtml(ui.panes, purposeCounts(state, world, ui));
 }
 
+function specificChooser(kind: keyof UiState["specific"], open: boolean): string {
+  const one = kind === "trees" ? "tree" : "fish";
+  const label = open ? `hide ${one} choices` : `choose ${one}...`;
+  return `<button class="mini specific" data-act="specific" data-specific="${kind}" aria-expanded="${open}">${label}</button>`;
+}
+
+function paneRowsHtml(rows: TaskOption[], ui: UiState, state: GameState, world: World): string {
+  return rows.map((o) => {
+    const row = intentRowHtml(o, ui, state, world);
+    if (o.id === "chop" && !o.arg) return `${row}${specificChooser("trees", ui.specific.trees)}`;
+    if (o.id === "fish" && o.arg === "any") return `${row}${specificChooser("fish", ui.specific.fish)}`;
+    return row;
+  }).join("");
+}
+
 /** The item pane: the rows of one purpose, or what the filter found across all of them. */
 export function doHtml(state: GameState, world: World, cal: Calendar, ui: UiState): string {
   const body = ui.filter.trim()
     ? searchHtml(state, world, cal, ui)
-    : ((rows) => (rows.length ? rowsBox("main", "", rows.map((o) => intentRowHtml(o, ui, state, world)).join("")) : rowsBox("main", "nothing here yet", "")))(
+    : ((rows) => (rows.length ? rowsBox("main", "", paneRowsHtml(rows, ui, state, world)) : rowsBox("main", "nothing here yet", "")))(
         paneRows(state, world, cal, ui),
       );
   return body;

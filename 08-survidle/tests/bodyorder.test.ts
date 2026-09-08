@@ -289,26 +289,22 @@ describe("work with no row behind it", () => {
     expect(state.log.some((e) => e.text === `${said}: set aside, {you} {are} thirsty.`)).toBe(true);
   });
 
-  it("says nothing about the wait at camp, which is not work anybody asked for", () => {
+  it("leaves the survivor idle until the body has a concrete need", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
     siteCamp(state, world);
     placeAtSpot(state, world, state.player.region, "camp");
-    // A keep camp already meets: the list has a row on it and nothing to do
-    // about it, which is what puts the survivor on the scheduler's own wait.
+    // A keep already meets, so the scheduler has no work to start.
     addItem(pile(state, st.campCell!), "firewood", 60);
     addOrder(state, world, { task: "split", until: { kind: "campHas", qty: 40 }, deliver: "camp", where: "nearest" }, "keep");
-    let waiting = false;
-    for (let m = 0; m < 200 && !waiting; m++) {
-      advance(state, world, 1);
-      waiting = state.intent?.task === "wait" && state.intent.orderId === null;
-    }
-    expect(waiting).toBe(true);
-    // The body takes that minute off the wait: sleep at camp is a step of its
-    // own, so the row claims the intent rather than resting on under it.
+    advance(state, world, 10);
+    expect(state.intent).toBeNull();
+    expect(state.task).toBeNull();
+    // A real sleep need creates a care intent and a sleep task.
     state.player.sleepDebt = 1000;
     advance(state, world, 2);
     expect(state.task?.id).toBe("sleep");
+    expect(state.intent?.mode).toBe("care");
     expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
     expect(state.log.some((e) => e.text.includes("set aside,"))).toBe(false);
   });

@@ -104,6 +104,26 @@ hover to trigger. Since the rule only trips on a real touch device, a
 browser pass checks this with touch emulation, not a resized desktop
 window.
 
+## The activity queue is strictly top to bottom
+
+Every row follows the same rule, including Camp maintenance and Self-care.
+The first ready row runs. A row set to `on block: skip` is passed over when
+it cannot run. A row set to `on block: stop` stops every row below it. Those
+rows carry a compact `blocked` label; their position already shows what is
+ahead of them.
+
+The queue contains every same-region action the survivor will perform.
+When an action needs another cell, it places an exact once-only Walk
+immediately before itself. A direct map click creates the same kind of Walk
+at the top. The central strip shows the active row's current task and its
+only progress bar.
+
+## Event logs put the newest entry first
+
+The Log pane and the event list shown after time away both render their
+newest event at the top. Storage remains chronological so simulation and
+save behavior do not depend on presentation order.
+
 ## Every browser pass runs at both widths and says so
 
 A browser pass is not done at one width. It runs the page at 1440 by 900

@@ -19,7 +19,7 @@ import { newGame } from "../src/sim/newgame";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf } from "../src/sim/position";
-import { cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
+import { cellFromClient, cellFromPoint, levelAt, viewOrigin } from "../src/ui/map";
 import { newUiState } from "../src/ui/render";
 import { tipHtml, tipKey } from "../src/ui/tip";
 import { regionAt } from "../src/world/gen";
@@ -45,6 +45,12 @@ describe("finding the cell under the pointer", () => {
     const here = cellOf(state, world);
     const p = pointOf(world, state, ui, here);
     expect(cellFromPoint(world, state, ui, p.x, p.y)).toBe(here);
+  });
+
+  it("subtracts a centered grid's screen offset before resolving a cell", () => {
+    const here = cellOf(state, world);
+    const p = pointOf(world, state, ui, here);
+    expect(cellFromClient(world, state, ui, p.x + 137, p.y + 41, { left: 137, top: 41 })).toBe(here);
   });
 
   it("a point off the board resolves to nothing rather than to cell zero", () => {

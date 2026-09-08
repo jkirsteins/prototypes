@@ -17,6 +17,7 @@ import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { addOrder, ordersHere } from "../src/sim/orders";
 import { check } from "../src/sim/tasks";
 import { PACK_COMFORTABLE_KG } from "../src/units";
+import { isWorkOrder } from "../src/sim/types";
 import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 import { siteCamp } from "./siting-helpers";
@@ -335,7 +336,7 @@ describe("the body's row against the work", () => {
     // this trace that a body row holding the minute could quietly break. The
     // row it is picked up from is still on the list at the end.
     expect(choppedAfterTheNight).toBeGreaterThan(120);
-    expect(ordersHere(state, world).some((o) => o.req.task === "chop")).toBe(true);
+    expect(ordersHere(state, world).filter(isWorkOrder).some((o) => o.req.task === "chop")).toBe(true);
     expect(sawThirsty).toBe(true);
     // Woodcraft trained only through the felling minutes. The trace samples after each minute, so the
     // minute a tree comes down is counted by train and not by the trace: one minute per tree of slack.

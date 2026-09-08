@@ -16,6 +16,7 @@ import { discovery, siteAt, VISITED } from "../sim/regionstate";
 import type { GameState, RegionState, Terrain } from "../sim/types";
 import { ambientTemperature, DEEP_SNOW_CM, iceMode } from "../sim/weather";
 import { cellAt, cellIdx, regionPeek, terrainPeek, type World } from "../world/gen";
+import { WORLD_H, WORLD_W } from "../world/terrain";
 import { esc, type UiState } from "./render";
 import { elevationAt, groundGlyph, offshoreAt, toneCuts, toneOf, TREES, turnedGround, VARIANTS, type ToneCuts } from "./ground";
 import { moodOf } from "./mood";
@@ -104,6 +105,9 @@ export interface ZoomLevel {
 
 /** The board every level from the cell outwards is drawn on: 72 by 36 small glyphs. */
 const BOARD = { w: 72, h: 36, px: 11, line: 14, font: 12 };
+/** The farthest rung: the world at one glyph per block, in the world's own shape. */
+const FAR_CELLS = Math.ceil(WORLD_H / BOARD.h);
+const FAR = { cells: FAR_CELLS, w: Math.ceil(WORLD_W / FAR_CELLS), h: BOARD.h, px: BOARD.px, line: BOARD.line, font: BOARD.font };
 
 /**
  * The ladder, closest first. Past one cell per glyph there is nothing finer
@@ -118,7 +122,12 @@ export const LEVELS: ZoomLevel[] = [
   { cells: 1, ...BOARD },
   { cells: 3, ...BOARD },
   { cells: 9, ...BOARD },
-  { cells: Math.max(Math.ceil(1800 / BOARD.w), Math.ceil(1300 / BOARD.h)), ...BOARD },
+  // The whole world, and no more than the world. Its cells-per-glyph is set
+  // by the taller side, and the board is then only as wide as the world
+  // needs - a fixed 72 columns at that scale drew the world in the middle of
+  // a wide band of void, which reads as a border round the map rather than
+  // as the edge of the land.
+  FAR,
 ];
 
 /** Where a fresh screen opens: one cell per glyph on the whole board, as it always did. */
@@ -130,8 +139,8 @@ export function levelAt(zoom: number): ZoomLevel {
 }
 
 /**
- * The cell under a point inside the map board, or null when the point is
- * off it. `x` and `y` are offsets within #mapdyn.
+ * The cell under a point inside the map grid, or null when the point is
+ * off it. `x` and `y` are offsets within the grid itself.
  *
  * Read from where the pointer is rather than from a glyph's own enter and
  * leave: a glyph replaced under the pointer fires an enter, and a glyph
@@ -152,6 +161,18 @@ export function cellFromPoint(world: World, state: GameState, ui: UiState, x: nu
   // The view can hang over the world's edge, and void is not a cell.
   if (cx < 0 || cy < 0 || cx >= world.w || cy >= world.h) return null;
   return cellIdx(world, cx, cy);
+}
+
+/** Converts a screen position through the grid's real, possibly centered, origin. */
+export function cellFromClient(
+  world: World,
+  state: GameState,
+  ui: UiState,
+  clientX: number,
+  clientY: number,
+  grid: Pick<DOMRect, "left" | "top">,
+): number | null {
+  return cellFromPoint(world, state, ui, clientX - grid.left, clientY - grid.top);
 }
 
 /** Cells per glyph at each zoom level. */
@@ -518,14 +539,11 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const named = reg >= 0 && discovery(state, reg) > 0;
     const cls = ["c"];
     let glyph = " ";
-    let title = "";
     let style = "";
     if (reg < 0) {
       cls.push("void");
     } else if (seen === 0) {
       cls.push("fog");
-      // Only regions already built get named; building one here would fill its chunks for a tooltip.
-      title = named ? (world.regions.get(reg)?.name ?? "ground heard of, not seen") : "unknown ground";
       // The outline still shows through: where the country you are in ends and
       // what adjoins it, on ground nobody has walked. The class says which of
       // the three the edge belongs to and the stylesheet picks its colour, so a
@@ -572,11 +590,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
         cls.push(iceMode(state.weather) === "safe" ? "ice-safe" : "ice-thin");
       }
       if (snow && t === "meadow") glyph = "*";
-      title = world.regions.get(reg)?.name ?? (seen === 2 ? "known country" : "known once");
-      if (pileGlyphs.has(i) && seen === 2) {
-        cls.push("pl");
-        title += ", something lies here";
-      }
+      if (pileGlyphs.has(i) && seen === 2) cls.push("pl");
       const ring = rings.get(i);
       if (ring !== undefined) {
         cls.push(`lit-${ring}`);
@@ -591,7 +605,6 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
       // change of task replace the glyph's node instead of retitling it.
       if (m.cls === "mk-player") cls.push(`mood-${moodOf(state)}`);
       glyph = m.glyph;
-      title = `${m.label}, ${title}`;
     }
     // Selecting is what puts the Explore button on the panel, so a named region stays
     // clickable on the map whether or not its ground itself has been walked.
@@ -606,7 +619,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
     // The scroll wrapper centres on this glyph after every rebuild.
     const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
-    parts.push(`<span class="${cls.join(" ")}"${act}${you}${style} title="${esc(title)}">${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    // No title attribute: the board's own box says all of this, at once and
+    // in the page's own voice, where the browser's tooltip said it after a
+    // delay and stood over whatever it was next to.
+    parts.push(`<span class="${cls.join(" ")}"${act}${you}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
   parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}</div></div>${tools}`);
   return parts.join("");

@@ -5,11 +5,11 @@
  * hand-started intent, a once order) runs at up to PEAK on its own; a
  * standing or counted order goes ahead a pulse at a time when its row is
  * clicked, with the pulse as the cooldown. Body needs, the runner's
- * waiting and everything done while away run at the one scale.
+ * care and everything done while away run at the one scale.
  *
  * Spec: docs/superpowers/specs/2026-09-05-survidle-hurry-design.md.
  */
-import type { GameState } from "../sim/types";
+import { isWorkIntent, type GameState } from "../sim/types";
 
 export type HurryKind = "auto" | "click" | "none";
 
@@ -40,7 +40,7 @@ export function hurryKind(state: GameState): HurryKind {
   if (state.dead || state.landing) return "none";
   const it = state.intent;
   if (!it) return state.task ? "auto" : "none";
-  if (it.task === "wait" || (it.mode === "runner" && state.player.bodyNeed !== null)) return "none";
+  if (!isWorkIntent(it) || (it.mode === "runner" && state.player.bodyNeed !== null)) return "none";
   if (it.orderId === null || it.until.kind === "once") return "auto";
   return "click";
 }

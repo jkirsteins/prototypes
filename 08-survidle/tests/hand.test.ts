@@ -71,9 +71,9 @@ describe("work chosen by hand is the player's", () => {
     addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     addOrder(state, world, { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     advance(state, world, 1);
-    // Not the first once: the runner is its own between orders, and the body is spent.
-    expect(state.intent?.task).toBe("wait");
-    expect(state.intent?.mode === "runner" && state.player.bodyNeed).toBe("spent");
+    // Not the first once: the body takes over between orders because it is spent.
+    expect(state.intent?.mode).toBe("care");
+    expect(state.player.bodyNeed).toBe("spent");
     expect(until(g, () => state.intent?.task === "sticks", 1500)).toBe(true);
     expect(state.player.energy).toBeGreaterThanOrEqual(RESTED_AT);
     expect(until(g, () => state.intent?.task === "deadwood", 1500)).toBe(true);

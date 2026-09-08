@@ -53,7 +53,7 @@ describe("a waiting row names its cause", () => {
     judged = judgeOrders(state, world, cal);
     expect(judged.blockedBy?.id).toBe(blocked.id);
     expect(judged.chosen).toBeNull();
-    expect(waitingLine(state, world, cal, sticks, judged)).toContain("held up by");
+    expect(waitingLine(state, world, cal, sticks, judged)).toBe("blocked");
   });
 
   it("a row the scheduler refused keeps its own reason", () => {

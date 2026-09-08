@@ -27,7 +27,7 @@ import { seepStopped } from "./seep";
 import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
 import { isRunning, type Step, walkStep } from "./steps";
 import { check, toolFor } from "./tasks";
-import type { BodyNeed, CampNeed, CareNeed, GameState, Intent, ItemId } from "./types";
+import { isWorkIntent, type BodyNeed, type CampNeed, type CareNeed, type GameState, type ItemId, type WorkIntent } from "./types";
 import { drink, fillVessels, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "./water";
 import { ambientTemperature, stormComing, stormNow, walkableIce } from "./weather";
 
@@ -171,7 +171,7 @@ export function campNeed(state: GameState, world: World, cal: Calendar): CampNee
  */
 export function currentNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const p = state.player;
-  const mem: NeedMemory = { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 };
+  const mem: NeedMemory = { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: isWorkIntent(state.intent) && state.intent.task === "night" && state.intent.done < 1 };
   const need = needFrom(state, world, cal, mem);
   p.bodyNeed = need;
   p.sleeping = mem.sleeping;
@@ -181,7 +181,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar): Body
 
 /**
  * What a body with no history at all would make of this minute: the
- * reading a fresh wait would take on its first minute, with nothing sticky
+ * reading a fresh body would take on its first minute, with nothing sticky
  * behind it. The reference player asks it of itself, to know whether the
  * survivor is owed something before it spends the minute on a move of its
  * own. The memory handed in is blank and thrown away after: this is a
@@ -210,7 +210,7 @@ export function bodyAsks(state: GameState, world: World, cal: Calendar): BodyNee
  */
 export function peekNeed(state: GameState, world: World, cal: Calendar): BodyNeed | null {
   const p = state.player;
-  return needFrom(state, world, cal, { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: state.intent?.task === "night" && state.intent.done < 1 });
+  return needFrom(state, world, cal, { need: p.bodyNeed, sleeping: p.sleeping, coldSpent: p.coldSpent, night: isWorkIntent(state.intent) && state.intent.task === "night" && state.intent.done < 1 });
 }
 
 /** Whether hunger can be answered: safe food in the pack, or at camp with a walk there open. A hunger nothing can answer masks nothing. */
@@ -324,7 +324,7 @@ export const NEED_ASIDE: Record<CareNeed, string> = {
 };
 
 /** Stands in for a step a dry read finds ready without ever taking it: only whether bodyStep returned something is read back, never what it was. */
-const DRY_READY: Step = { id: "wait", step: "" };
+const DRY_READY: Step = { id: "rest", step: "" };
 
 /**
  * The step a need calls for, or null when there is nothing to start for it.
@@ -657,12 +657,12 @@ function campStep(state: GameState, world: World, cal: Calendar, need: "sleep" |
     const s: Step = { id: "sleep", step: cal.isNight ? "sleeping" : "dozing by the fire" };
     // A live intent's campCell is the home the minute set out for, fixed
     // when that intent began; st.campCell is wherever the survivor has
-    // actually settled just now. The two agree unless a night or a wait
+    // actually settled just now. The two agree unless a night
     // begun in one region ran on into another and put the body down at that
     // region's own camp instead, which is exactly the crossing this line
     // announces by name. With no intent at all there is no journey to have
     // ended somewhere else, and nothing to announce.
-    const from = state.intent?.campCell ?? st.campCell;
+    const from = isWorkIntent(state.intent) ? state.intent.campCell : st.campCell;
     if (!dry && !isRunning(state, s) && st.campCell !== from) log(state, `{You} {turn} in at camp in ${regionAt(world, p.region).name}.`);
     return s;
   }
@@ -703,6 +703,7 @@ export const KIT_ITEMS = new Set<ItemId>(["arrow", "snare"]);
 /** What the live order needs in the pack beside food: arrows for a bow hunt, snares for a set-snares job, a basket for a set-trap job, sticks for a seep dug away from camp. */
 export function orderKit(state: GameState): ItemId[] {
   const it = state.intent;
+  if (!isWorkIntent(it)) return [];
   if (it?.task === "hunt" && hasTool(state.player, "bow")) return ["arrow"];
   if (it?.task === "build" && it.arg === "snare") return ["snare"];
   if (it?.task === "build" && it.arg === "seep") return ["stick"];
@@ -711,7 +712,7 @@ export function orderKit(state: GameState): ItemId[] {
 }
 
 /** How many snares this intent still needs: its times target minus what it has already set, floored at one and capped at MAX_SNARES so a stray target never over-pockets. An intent with no times target (a once build, or one started by hand) has no target to read, so it takes one. */
-function snaresWanted(it: Intent): number {
+function snaresWanted(it: WorkIntent): number {
   const left = it.until.kind === "times" ? it.until.n - it.done : 1;
   return Math.min(MAX_SNARES, Math.max(1, left));
 }
@@ -724,7 +725,7 @@ function snaresWanted(it: Intent): number {
  */
 export function provisionKit(state: GameState, world: World): number {
   const it = state.intent;
-  if (!it || cellOf(state, world) !== it.campCell) return 0;
+  if (!isWorkIntent(it) || cellOf(state, world) !== it.campCell) return 0;
   // The tool the work swings, when none is in hand and the camp pile holds
   // one: taken up here on the way out. A tool in hand is never put down, so
   // this is not undone when the start fails; the kit below is. Vessels are
@@ -767,7 +768,7 @@ export function provisionKit(state: GameState, world: World): number {
  */
 export function provision(state: GameState, world: World): void {
   const it = state.intent;
-  if (!it || cellOf(state, world) !== it.campCell) return;
+  if (!isWorkIntent(it) || cellOf(state, world) !== it.campCell) return;
   const pack = state.player.pack;
   const camp = pile(state, it.campCell);
   let want = PROVISION_KG - PROVISIONS.reduce((a, f) => a + qty(pack, f), 0);

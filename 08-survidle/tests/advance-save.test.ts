@@ -10,7 +10,7 @@ import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
 import { addOrder, conditionOpen, orderMet, orderSentence } from "../src/sim/orders";
 import { AWAY_HOURS_MAX } from "../src/units";
-import type { GameState } from "../src/sim/types";
+import { isWorkOrder, type GameState } from "../src/sim/types";
 import { regionAt, speciesHere } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 
@@ -237,8 +237,8 @@ describe("save", () => {
     // The list carried neither care row, so the load migrates both on at the top.
     expect(isCampRow(orders[0])).toBe(true);
     expect(isBodyRow(orders[1])).toBe(true);
-    expect(orders[2].req.arg).toBe("any");
-    expect(orders[3].req.arg).toBe("willowGrouse");
+    expect(isWorkOrder(orders[2]) && orders[2].req.arg).toBe("any");
+    expect(isWorkOrder(orders[3]) && orders[3].req.arg).toBe("willowGrouse");
   });
 
   it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
@@ -278,6 +278,7 @@ describe("save", () => {
     delete rawOrder.dayBase;
     const file = deserialize(JSON.stringify(raw))!;
     const back = file.state.regions[id].orders[2];
+    if (!isWorkOrder(back)) throw new Error("the migrated row is not work");
     expect(() => orderMet(file.state, world, cal, back, false)).not.toThrow();
     expect(() => conditionOpen(file.state, world, cal, back)).not.toThrow();
     expect(orderSentence(file.state, world, cal, back)).toBe(sentenceBefore);

@@ -1,5 +1,6 @@
 import { edible, hungerLine, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
+import { COLD_UNDER, SLEEP_AT, SOAKED_WETNESS } from "../sim/body";
 import { isCareRow } from "../sim/bodyorder";
 import { isFish, isVoiceOnly, SPECIES_DEFS, type Species } from "../sim/species";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
@@ -9,8 +10,8 @@ import { coldFeet, coldHands, garmentWet } from "../sim/clothing";
 import { groundDry, hasEmbers, smoky } from "../sim/fire";
 import { herePile, listItems, pileAt, qty, weight } from "../sim/inventory";
 import { body, fatLandmarks } from "../sim/person";
-import { intentSentence, WAITING_STEP } from "../sim/intent";
-import { CLOTHING, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
+import { intentSentence } from "../sim/intent";
+import { CLOTHING, FIRE_LOW_KG, FIRE_MAX_KG, FOODS, type FoodId, ITEM_KG, KG_ITEMS, STRUCTURES, TOOLS } from "../sim/items";
 import { knownShare } from "../sim/mapped";
 import { entry, epitaph, epitaphTail, fmtWorldDate, monthOfDoy, stories } from "../sim/epitaph";
 import { CAUSE_WORD, type ForecastRow } from "../sim/forecast";
@@ -21,7 +22,7 @@ import { cardHtml, deadExtras, livingExtras } from "./card";
 import { faceSvg } from "./face";
 import { moodOf } from "./mood";
 import { fmtName } from "../sim/names";
-import { sleepiness, SLEEPY_AT } from "../sim/sleep";
+import { sleepiness, SLEEPY_AT, SPENT_AT } from "../sim/sleep";
 import { countWord, judgeOrders, orderSentence, ordersHere, waitingLine } from "../sim/orders";
 import { FAT_RIBS, FAT_WASTING, feltTemperature, insulation, starvation } from "../sim/player";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
@@ -31,9 +32,9 @@ import type { AwayOrder, AwaySummary } from "../sim/save";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
 import {
-  availableTasks, check, fallChance, pausedList, type TaskOption, whereIs,
+  availableTasks, check, fallChance, type TaskOption, whereIs,
 } from "../sim/tasks";
-import type { GameState, Garment, ItemId, LogEntry, Person, SkillId } from "../sim/types";
+import { isWorkIntent, type GameState, type Garment, type ItemId, type LogEntry, type Person, type SkillId } from "../sim/types";
 import { campWaterCapacity, ICE_SHORE_CM, THIRSTY_L, vesselLitres, WATER_FULL, waterSource } from "../sim/water";
 import { iceMode, stormNow, walkableIce, weatherLabel } from "../sim/weather";
 import { fmtDuration, fmtKg, fmtKm, GAME_MINUTES_PER_REAL_SECOND, shareWord } from "../units";
@@ -49,13 +50,28 @@ import { skyHtml, WALL } from "./sky";
  * updateBars onto this element rather than into the panel's diffed markup
  * (tests/churn.test.ts).
  */
-function bar(id: string, cls: string, label: string, mark?: number | { name: string; title: string }): string {
-  const m = mark === undefined
-    ? ""
-    : typeof mark === "number"
-      ? `<div class="mark" style="left:${(mark * 100).toFixed(1)}%" title="dies here"></div>`
-      : `<div class="mark" data-mark="${mark.name}" title="${esc(mark.title)}"></div>`;
-  return `<div class="bar ${cls}"><div class="fill" id="bar-${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}"></b></span></div>`;
+/**
+ * One bar, and the lines on it the body acts at.
+ *
+ * A mark is a place something changes - eats here, sits down here, dies here
+ * - drawn where a number alone would leave the player to infer it from
+ * watching the survivor. It says what it demarcates and nothing else: the
+ * bar itself is named beside its own figure and wants no explaining, and a
+ * tooltip on the whole bar would swallow the marks' own.
+ *
+ * A fixed share is written into the markup; a moving one is named and
+ * bars.ts writes its position each frame, since a share that changed in the
+ * markup would redraw the panel sixty times a second (tests/churn.test.ts).
+ */
+interface BarMark { at: number | string; title: string }
+
+function bar(id: string, cls: string, label: string, marks: BarMark[] = []): string {
+  const m = marks
+    .map((k) => (typeof k.at === "number"
+      ? `<div class="mark" style="left:${(k.at * 100).toFixed(1)}%" title="${esc(k.title)}"></div>`
+      : `<div class="mark" data-mark="${k.at}" title="${esc(k.title)}"></div>`))
+    .join("");
+  return `<div class="bar readout ${cls}"><div class="fill" id="bar-${id}" data-bar="${id}"></div>${m}<span class="lbl"><span>${label}</span><b id="val-${id}" data-val="${id}"></b></span></div>`;
 }
 
 /**
@@ -67,13 +83,13 @@ function bar(id: string, cls: string, label: string, mark?: number | { name: str
  * element, touching nothing else. tests/churn.test.ts holds the line.
  */
 function durBar(v: number, of: string): string {
-  return `<div class="bar dur${v < 25 ? " low" : ""}"><div class="fill" data-fill="${esc(of)}"></div></div>`;
+  return `<div class="bar compact dur${v < 25 ? " low" : ""}"><div class="fill" data-fill="${esc(of)}"></div></div>`;
 }
 
 function wetBar(g: Garment): string {
   const w = garmentWet(g);
-  const label = w > 80 ? "soaked" : w > 50 ? "wet" : "";
-  return `<div class="bar dur wet"><div class="fill" data-fill="${esc(`garmentWet:${g.id}`)}"></div>${label ? `<span class="lbl"><span>${label}</span></span>` : ""}</div>`;
+  const label = w > 80 ? "soaked" : w > 50 ? "wet" : w > 0 ? "damp" : "dry";
+  return `<small class="meter-caption">wetness: ${label}</small><div class="bar compact dur wet"><div class="fill" data-fill="${esc(`garmentWet:${g.id}`)}"></div></div>`;
 }
 
 /**
@@ -93,7 +109,7 @@ export function masteryLine(state: GameState, m: { level: number; skill: SkillId
   const next = masteryMilestone(state, m.skill, m.key);
   if (!next) return crumb;
   const label = `${plain(next.text)} at ${next.at}`;
-  return `${crumb}<div class="bar mastery" title="${esc(label)}"><div class="fill" data-fill="${esc(`masteryTo:${m.skill}|${m.key}`)}"></div><span class="lbl"><span>${esc(label)}</span></span></div>`;
+  return `${crumb}<small class="mastery-next">${esc(label)}</small><div class="bar mastery" title="${esc(label)}"><div class="fill" data-fill="${esc(`masteryTo:${m.skill}|${m.key}`)}"></div></div>`;
 }
 
 /** What the pool is giving right now, in words. */
@@ -132,12 +148,12 @@ export function statsHtml(state: GameState, world: World, cal: Calendar, ambient
   if (p.water < THIRSTY_L) tags.push(`<span class="tag bad">thirsty</span>`);
   return `<h2><span class="stat-face mood-${moodOf(state)}">${faceSvg(current(state).person, 24)}</span>${esc(current(state).name.first)} <span class="r">day ${cal.day}</span></h2>
 ${bar("health", "health", "Health")}
-${bar("kcal", "kcal", "Food", { name: "hunger", title: "eats here" })}
-${bar("fat", "fat", "Fat", marks.floor / marks.upper)}
-${bar("water", "water", "Water")}
-${bar("warmth", "warmth", "Warmth")}
-${bar("energy", "energy", "Energy")}
-${bar("wet", "wet", "Wet")}
+${bar("kcal", "kcal", "Food", [{ at: "hunger", title: "eats below here" }])}
+${bar("fat", "fat", "Fat", [{ at: marks.floor / marks.upper, title: "dies here" }, { at: marks.lower / marks.upper, title: "thin below here" }, { at: marks.upper / marks.upper, title: "well fed above here" }])}
+${bar("water", "water", "Water", [{ at: THIRSTY_L / WATER_FULL, title: "thirsty below here" }])}
+${bar("warmth", "warmth", "Warmth", [{ at: COLD_UNDER / 100, title: "goes to the fire below here" }, { at: 0.2, title: "hypothermia below here" }])}
+${bar("energy", "energy", "Energy", [{ at: SPENT_AT / 100, title: "stops work below here" }, { at: SLEEP_AT / 100, title: "collapses below here" }])}
+${bar("wet", "wet", "Wet", [{ at: SOAKED_WETNESS / 100, title: "soaked above here" }])}
 <div class="statuses">${tags.join("")}</div>
 <div style="margin-top:8px">
   ${ui.confirmAbandon
@@ -186,8 +202,8 @@ export function skillsHtml(state: GameState): string {
         ? ` carried from ${esc(fmtName(state.survivors[state.survivors.length - 2].name))}`
         : "";
     return `<div class="skill"><div class="line"><b>${SKILL_NAMES[id]}</b> <span class="lvl">${l}</span><span class="r">${toNext}${carriedNote}</span></div>
-<div class="bar dur"><div class="fill" data-fill="skill:${id}"></div></div>
-<div class="bar pool"><div class="fill" data-fill="pool:${id}"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i><span class="lbl"><span>pool ${Math.round(pool * 100)}%</span></span></div>
+<div class="bar compact dur"><div class="fill" data-fill="skill:${id}"></div></div>
+<small class="meter-caption">pool ${Math.round(pool * 100)}%</small><div class="bar compact pool"><div class="fill" data-fill="pool:${id}"></div><i style="left:10%"></i><i style="left:25%"></i><i style="left:50%"></i><i style="left:95%"></i></div>
 ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : ""}<div class="rungs"><small>${rungs}</small></div></div>`;
   });
   return `<h2>Skills</h2>${rows.join("")}`;
@@ -214,7 +230,7 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
   const felt = Math.round(feltTemperature(state, world, ambient));
   return `<div class="wx">
-<div class="wx-bg">${skyHtml(WALL, uid)}</div>
+<div class="wx-bg">${skyHtml(WALL, uid, false)}</div>
 <div class="wx-head">
   <div class="wx-day">
     <div class="wx-clock">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>
@@ -295,17 +311,24 @@ export function placesHtml(state: GameState, world: World, cal: Calendar): strin
       if (s.id !== "camp" && cell === camp) return "";
       const name = esc(SPOT_WORDS[s.id]);
       if (cell === here) return `<div class="way" data-place="${s.id}"><b>${name}</b> <small class="dim">you are here</small></div>`;
+      const at = ` data-at="${cell}"`;
       const walk = check(state, world, cal, "walk", `spot:${s.id}`);
       const km = kmBetween(state, world, here, cell, walkableIce(state.weather));
-      if (!walk.ok) return `<div class="way" data-place="${s.id}"><span class="dim">${name}: ${esc(plain(walk.why))}</span></div>`;
+      if (!walk.ok) return `<div class="way" data-place="${s.id}"${at}><span class="dim">${name}: ${esc(plain(walk.why))}</span></div>`;
       // The whole row is the button, and what it costs is in its own label:
       // a name in a button beside a sentence saying "from here" spent two
       // thirds of the row on words that never change.
       const cost = `${km === null ? "" : `${esc(fmtKm(km))}, `}${esc(fmtDuration(walk.duration))}`;
-      return `<div class="way" data-place="${s.id}"><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
+      return `<div class="way" data-place="${s.id}"${at}><button class="mini go" data-act="task" data-id="walk" data-arg="spot:${s.id}">${name} <small>${cost}</small></button>${thinIceButton(state, world, cal, "walk", `spot:${s.id}`, walk)}</div>`;
     })
     .join("");
-  return `<div class="waylabel">places</div>${rows}`;
+  // The ways out, under the places and in the same corner - but only those
+  // that can be taken. Every neighbour listed with its own refusal was five
+  // lines telling the player five times that the list held nothing for them.
+  const out = regionAt(world, state.player.region).neighbours
+    .map((n) => wayIntoHtml(state, world, cal, n.id, true))
+    .join("");
+  return `<div class="waylabel">places</div>${rows}${out ? `<div class="waylabel">ways out</div>${out}` : ""}`;
 }
 
 /**
@@ -317,19 +340,23 @@ export function placesHtml(state: GameState, world: World, cal: Calendar): strin
  * because a list of names in a corner is a second place to learn about
  * ground the map is already drawing.
  */
-export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number): string {
+export function wayIntoHtml(state: GameState, world: World, cal: Calendar, region: number, offersOnly = false): string {
   const name = esc(regionAt(world, region).name);
+  // Where the region lies, so hovering the row can point at it on the map.
+  const at = ` data-at="${regionAt(world, region).campCell}"`;
   if (knownShare(state, world, region) >= 1) {
     const go = check(state, world, cal, "travel", `region:${region}`);
     const ice = thinIceButton(state, world, cal, "travel", `region:${region}`, go);
+    if (!go.ok && offersOnly) return "";
     return go.ok
-      ? `<div class="way" data-way="${region}"><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(fmtDuration(go.duration))}</small></button>${ice}</div>`
-      : `<div class="way" data-way="${region}"><span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
+      ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="travel" data-arg="region:${region}">Go to ${name} <small>${esc(fmtDuration(go.duration))}</small></button>${ice}</div>`
+      : `<div class="way" data-way="${region}"${at}><span class="dim">${name}: ${esc(plain(go.why))}</span>${ice}</div>`;
   }
   const ex = check(state, world, cal, "explore", `region:${region}`);
+  if (!ex.ok && offersOnly) return "";
   return ex.ok
-    ? `<div class="way" data-way="${region}"><button class="mini go" data-act="task" data-id="explore" data-arg="region:${region}">Explore ${name}</button></div>`
-    : `<div class="way" data-way="${region}"><span class="dim">${name}: ${esc(plain(ex.why))}</span></div>`;
+    ? `<div class="way" data-way="${region}"${at}><button class="mini go" data-act="task" data-id="explore" data-arg="region:${region}">Explore ${name}</button></div>`
+    : `<div class="way" data-way="${region}"${at}><span class="dim">${name}: ${esc(plain(ex.why))}</span></div>`;
 }
 
 /**
@@ -400,7 +427,7 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
     : hasEmbers(st.fire)
       ? '<span class="ember">coals</span>'
       : '<span class="dim">cold</span>';
-  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel")}` : "";
+  const fire = site?.structures.firePit ? `<div>fire: ${fireWord}</div>${bar("fire", "fire", "Fuel", [{ at: FIRE_LOW_KG / FIRE_MAX_KG, title: "burning low below here" }])}` : "";
   const rack = site?.structures.dryingRack
     ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
@@ -426,34 +453,14 @@ export function campHtml(state: GameState, world: World, cal: Calendar): string 
 }
 
 
-const TASK_BAR = `<div class="bar task"><div class="fill" id="bar-task"></div><span class="lbl"><span id="val-task"></span><span id="task-pct"></span></span></div>`;
+const TASK_BAR = `<div class="bar readout task"><div class="fill" data-bar="task"></div><span class="lbl"><span data-val="task"></span><span data-pct="task"></span></span></div>`;
 /** The pulse draining, on the live row of an order hurried by clicking; written by id each frame. */
-const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry"></div></div>`;
+const HURRY_BAR = `<div class="bar hurry"><div class="fill" id="bar-hurry" data-bar="hurry"></div></div>`;
 
-/** The ranked list: each row its sentence, counters, state and buttons; the live row carries the task bar. */
+/** The ranked list: each row its sentence, counters, state and buttons; progress lives only in the central activity strip. */
 export function ordersHtml(state: GameState, world: World, cal: Calendar): string {
   const orders = ordersHere(state, world);
   const it = state.intent;
-  // An idle wait is waiting on the list, not on its own hour of rest: it says so
-  // plainly and shows no bar, since the hour running out changes nothing. A wait
-  // that is doing something - the fire, the body's own rest - names it and keeps
-  // the bar, which is that work's own.
-  const idle = it?.task === "wait" && it.step === WAITING_STEP;
-  // Where the wait actually is, rather than a fixed "at camp": the wait's body
-  // tier walks - home, to the water, to the snares - so the fixed string spent
-  // those minutes claiming to be at camp while its own step said it was walking
-  // there. The cell is read, so the two halves of the sentence cannot disagree.
-  const waitWhere = it?.task === "wait" && cellOf(state, world) !== regionState(state, world, state.player.region).campCell
-    ? `Waiting, ${describeWhere(state, world)}`
-    : "Waiting at camp";
-  // Only the scheduler's own wait, the one belonging to no row, is drawn
-  // loose above the list. The wait a care row starts is that row's
-  // minute, and drawing it here as well would put the survivor's own doings
-  // in two places at once, neither of them the rank the player set them at.
-  const loose = it?.task === "wait" && it.orderId === null;
-  const waiting = loose
-    ? `<div class="step">${esc(waitWhere)}${idle ? "" : `: ${esc(plain(it!.step))}`}</div>`
-    : "";
   // One judgement for the whole list: waitingLine reads it per row, and running
   // it per row would judge a ten-row list ten times a frame.
   const judged = judgeOrders(state, world, cal);
@@ -461,29 +468,60 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
   // is stopped is the one moment it owes the player a banner: the row, why it
   // cannot run, and the one click that lets the rest of the list go on.
   const held = judged.blockedBy
-    ? `<div class="held bad">Held up by <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}</div>`
+    ? `<div class="held bad">Queue stopped at <b>${esc(orderSentence(state, world, cal, judged.blockedBy))}</b>${judged.blockedBy.skipped ? ` - ${esc(judged.blockedBy.skipped)}` : ""}</div>`
     : "";
+  const blockedAt = judged.blockedBy ? orders.indexOf(judged.blockedBy) : -1;
   const rows = orders.map((o, i) => {
+    const care = isCareRow(o);
+    const blocked = blockedAt >= 0 && i >= blockedAt;
     const live = it?.orderId === o.id;
     // A counted or standing order goes ahead a pulse at a time when its head is clicked; a once order is hurried unasked.
     const clicks = live && hurryKind(state) === "click";
-    const counts = o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
+    const counts = !care && o.done > 0 ? ` <small>${esc(`${o.done} ${countWord(o.req.task, o.done)}, ${fmtDuration(o.minutes)}`)}</small>` : "";
+    // Once or standing, on the row. The two are not the same promise - a
+    // once order is done and gone, a standing one is kept - and the list
+    // treats them differently enough that which is which has to be visible:
+    // a once order works through the night and cuts into work in hand, a
+    // standing one waits for the light and for the chunk to end.
+    const once = !care && o.req.until.kind === "once";
+    const kind = care ? "" : `<span class="kind">${once ? "once" : "standing"}</span>`;
+    const blockedTag = blocked ? `<span class="kind blocked">blocked</span>` : "";
     // waitingLine is the plain reading and writes nothing; the scheduler's own read
     // is what moves a restart band's mark, so drawing a row never advances the list.
+    // Task progress and the concrete step live in the central strip. The
+    // queue row already names its purpose, so repeating either here would
+    // create two competing places to read the same activity.
     const second = live
-      ? `<div class="step">${esc(plain(it!.step))}</div>${clicks ? HURRY_BAR : ""}`
-      : `<div class="step">${esc(plain(waitingLine(state, world, cal, o, judged)))}</div>`;
+      ? (clicks ? HURRY_BAR : "")
+      : blocked && o !== judged.blockedBy
+        ? ""
+        : ((line) => line ? `<div class="step">${esc(cap(plain(line)))}</div>` : "")(waitingLine(state, world, cal, o, judged));
     // A care row ranks like any other row and draws the same up and down,
     // since where it sits against the work is the whole of what the player
     // says to it. It draws no x: it cannot be struck off, and a button that
-    // does nothing when clicked is worse than none.
-    const move = `<button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button>`;
-    // A row that can be passed over and a row that stops the list are two
-    // behaviours of the same row, so the button says which one is switched on
-    // and what the switched-on one costs. A pin on a care row would mean
-    // nothing: the list never goes past those rows, so they have none.
-    const pin = `<button class="mini${o.pinned ? " on" : ""}" data-act="order-pin" data-id="${o.id}" title="${o.pinned ? "Nothing under this runs until it is done" : "Hold the list here until this is done"}">${o.pinned ? "doing this first - holds the list" : "do this first"}</button>`;
-    const btns = isCareRow(o)
+    // does nothing when clicked is worse than none - which is why the top
+    // row draws no up and the bottom row no down, rather than drawing one
+    // greyed out.
+    const up = i > 0 ? `<button class="mini" data-act="order-up" data-id="${o.id}">up</button>` : "";
+    const down = i < orders.length - 1 ? `<button class="mini" data-act="order-down" data-id="${o.id}">down</button>` : "";
+    const move = `${up} ${down}`;
+    // The pin is not "run this sooner" - moving the row up is that. It is
+    // "do not fall through": hold the whole list here rather than quietly
+    // running the row below. So it belongs only on a row that cannot run,
+    // which is the only row a fall-through can happen at, and on one already
+    // pinned, which would otherwise have no way back off. A pin on a care
+    // row would mean nothing: the list never goes past those rows.
+    // A switch showing the state it is in, not the click it takes. It is
+    // drawn only where it decides anything: on a row that cannot run, which
+    // is the only place a fall-through happens, and on one already blocking,
+    // which would otherwise have no way back off.
+    //
+    // Not blocking is the red one. A row that cannot run while the list
+    // walks past it is the state worth flagging - the player asked for that
+    // work and it is not happening - and blocking is the settled answer to
+    // it, so that one sits quiet.
+    const pin = `<button class="mini pin ${o.pinned ? "blocking" : "skipping"}" data-act="order-pin" data-id="${o.id}" title="When this row cannot run, ${o.pinned ? "stop the queue here" : "skip it"}">on block: ${o.pinned ? "stop" : "skip"}</button>`;
+    const btns = care
       ? `<span class="ctl">${move}</span>`
       : `<span class="ctl">${move} ${pin} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
@@ -492,9 +530,9 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
     // Words and not only the title: a touch device has no hover to show one, and
     // a mouse never rests on a row long enough to find it.
     const hint = clicks ? `<small class="hint">click to hurry</small>` : "";
-    return `<div class="order${isCareRow(o) ? " care" : ""}${live ? " live" : ""}">${head}<b>${i + 1}. ${esc(orderSentence(state, world, cal, o))}</b>${counts}${hint}${btns}</div>${second}</div>`;
+    return `<div class="order${care ? " care" : ""}${once ? " once" : ""}${live ? " live" : ""}">${head}<span class="ti"><b>${esc(orderSentence(state, world, cal, o))}</b><span class="meta">${kind}${blockedTag}</span>${counts}${hint}</span>${btns}</div>${second}</div>`;
   }).join("");
-  return `${waiting}${held}${rows}`;
+  return `${held}${rows}`;
 }
 
 /**
@@ -507,52 +545,71 @@ export function ordersHtml(state: GameState, world: World, cal: Calendar): strin
  * their life. The bar is here rather than on the live order row because
  * one running job wants one bar.
  */
-export function taskHtml(state: GameState, world: World, cal: Calendar): string {
+/**
+ * What is happening, in two parts: what it is for, and what is being done
+ * about it this minute.
+ *
+ * One reading, used by every surface that draws the doing rather than a
+ * per-surface guess at it. The title is whatever owns the work - the order's
+ * own sentence, "Self-care" for a body row, or the job itself when the
+ * player started it by hand with no row behind it. The step is the minute:
+ * sleeping, walking to the forest, felling a tree.
+ *
+ * Each surface takes what it needs and no more. The strip under the map has
+ * no other context, so it draws both; a row in the queue has already said
+ * its own title in its own heading, so it draws the step alone.
+ */
+export interface Activity { title: string; step: string; progress: boolean }
+
+export function activity(state: GameState, world: World, cal: Calendar): Activity | null {
+  const it = state.intent;
+  if (it) {
+    const row = ordersHere(state, world).find((o) => o.id === it.orderId);
+    return {
+      title: row ? orderSentence(state, world, cal, row) : isWorkIntent(it) ? intentSentence(state, world, cal, it) : it.care === "camp" ? "Camp maintenance" : "Self-care",
+      step: plain(it.step),
+      progress: !!state.task && state.task.duration > 0,
+    };
+  }
   const t = state.task;
+  if (!t) return null;
+  // A raw task with no intent behind it: started by hand, so it is its own
+  // title and there is no step under it to name.
+  const opts = availableTasks(state, world, cal);
+  let title = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
+  // Started as "anything": the species is what it turned out to be, so it says both.
+  if (t.any) title = `${title} (whatever was about)`;
+  if ((t.id === "walk" || t.id === "travel") && state.route) title = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
+  if (t.repeat) title = `${title}, on repeat`;
+  return { title, step: "", progress: t.duration > 0 };
+}
+
+/** A line that stands on its own starts with a capital, whoever wrote it. */
+export function cap(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+export function taskHtml(state: GameState, world: World, cal: Calendar): string {
   const it = state.intent;
   const orders = ordersHere(state, world);
-  const aside = pausedList(state, world, cal);
-  const asideHtml = aside.length
-    ? `<div class="aside"><small>Set aside</small>${aside
-        .map(({ task, option, here: isHere }) => {
-          const pct = Math.round(task.fraction * 100);
-          const note = !isHere || !option.ok ? ` <small>${esc(plain(option.why))}</small>` : "";
-          const resume = option.ok
-            ? ` <button class="mini" data-act="task" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}">resume</button>`
-            : "";
-          // Located work names its cell; carried work (light, repair, sharpen, craft) carries none,
-          // so main.ts resolves it through "nearest" instead - camp for camp-bound work, here for craft.
-          const cellAttr = task.cell >= 0 ? ` data-cell="${task.cell}"` : "";
-          const finish = ` <button class="mini" data-act="finish" data-id="${task.id}" data-arg="${esc(task.arg ?? "")}"${cellAttr} title="Go there if need be and finish it">finish</button>`;
-          return `<div class="paused">${esc(option.label)} <b>${pct}%</b>${note}${resume}${finish}</div>`;
-        })
-        .join("")}</div>`
-    : "";
   // A row's own work is stopped from its row; work started by hand is
   // stopped here, since there is no row to stop it from.
-  const scheduled = it !== null && (it.task === "wait" || orders.some((o) => o.id === it.orderId));
+  const scheduled = it !== null && orders.some((o) => o.id === it.orderId);
   const stop = scheduled || (!it && !state.task) ? "" : `<button class="mini" data-act="stop" title="Stop; the share done is kept">stop</button>`;
 
   // One row, and one place for each fact: the row says what is happening,
-  // the bar beside it says how far along and how long is left. A label
-  // over a step line over a bar that repeated the step said the same thing
-  // three times and spent three rows doing it.
+  // the bar beside it says how far along and how long is left. A label over
+  // a step line over a bar that repeated the step said the same thing three
+  // times and spent three rows doing it.
   //
-  // Work started by hand has no row on the list, so this says the whole
-  // order; work the list started has its sentence on its own row up there,
-  // so this says the step it is on rather than repeating it.
-  let what = idleLine(state, cal);
-  if (it) what = scheduled ? plain(it.step) : intentSentence(state, world, cal, it);
-  else if (t) {
-    const opts = availableTasks(state, world, cal);
-    what = opts.find((o) => o.id === t.id && (o.arg ?? "") === (t.arg ?? ""))?.label ?? t.id;
-    // Started as "anything": the species is what it turned out to be, so it says both.
-    if (t.any) what = `${what} (whatever was about)`;
-    if ((t.id === "walk" || t.id === "travel") && state.route) what = `${t.id === "travel" ? "Go" : "Walk"} to ${state.route.label}`;
-    if (t.repeat) what = `${what}, on repeat`;
-  }
-  const idle = !it && !t;
-  return `<div class="now"><span class="what${idle ? " dim" : ""}">${esc(what)}</span>${t ? TASK_BAR : ""}${stop}</div>${asideHtml}`;
+  // Both halves here, since the strip has nothing else around it to say what
+  // the work is for: "Self-care: sleeping" rather than a bare "sleeping" the
+  // player has to place for themselves.
+  const now = activity(state, world, cal);
+  const what = now
+    ? `<b>${esc(cap(now.title))}</b>${now.step ? `<span class="sub">${esc(now.step)}</span>` : ""}`
+    : `<span class="dim">${esc(idleLine(state, cal))}</span>`;
+  return `<div class="now"><span class="what">${what}</span>${now?.progress ? TASK_BAR : ""}${stop}</div>`;
 }
 
 /**
@@ -752,9 +809,7 @@ export function fmtLogTime(e: LogEntry): string {
 
 /** The log: "you" for what the player watched, the survivor's name for what happened while they were away. */
 export function logHtml(state: GameState): string {
-  // Oldest first, the way a story is told and the way he expected it: he
-  // read the newest-first order as his own misreading rather than the log's.
-  const entries = state.log.slice(-60);
+  const entries = state.log.slice(-60).reverse();
   const name = current(state).name.first;
   return `<h2>Log</h2><div class="entries">${entries
     .map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`)
@@ -871,7 +926,7 @@ export function awayHtml(away: AwaySummary, realSeconds: number, capped: boolean
 <p>${h ? `${h} h ` : ""}${m} min of the clock; ${fmtDuration(gameMin)} in the north${capped ? " (a day is as much as the world runs on without you)" : ""}.</p>
 <p>${person ? faceSvg(person, 32) : ""} ${esc(sinceLine)}</p>
 ${moved}${orders}
-${entries.length ? `<div class="entries">${entries.slice(-40).map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
+${entries.length ? `<div class="entries">${entries.slice(-40).reverse().map((e) => `<div class="e ${e.kind ?? ""}"><time>${fmtLogTime(e)}</time>${esc(voice(e.text, e.away ? name : null))}</div>`).join("")}</div>` : "<p class=\"dim\">Nothing worth telling.</p>"}
 <button class="act" data-act="dismiss">Continue</button>
 </div>`;
 }

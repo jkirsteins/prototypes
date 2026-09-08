@@ -14,6 +14,7 @@ import {
 } from "../src/sim/reference";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { MIDSUMMER_DOY, PLANT_HOURS_PER_DAY } from "../src/sim/tables";
+import { isWorkOrder } from "../src/sim/types";
 import { siteCamp } from "./siting-helpers";
 
 const key = (w: (typeof REFERENCE_ORDERS)[number]) => `${w.req.task}:${w.req.arg ?? ""}:${w.kind}`;
@@ -173,7 +174,7 @@ describe("the list after the axe", () => {
     const { state, world, player } = setUpReference(17, true);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
     // The summer row, told from the winter dig standing shut beside it by the window it carries.
-    const roots = () => ordersHere(state, world).find((o) => o.req.task === "roots" && o.req.when?.season?.from === ROOT_FROM_DOY);
+    const roots = () => ordersHere(state, world).filter(isWorkOrder).find((o) => o.req.task === "roots" && o.req.when?.season?.from === ROOT_FROM_DOY);
     player.tick(state, world);
     const first = roots();
     expect(first).toBeDefined();
@@ -236,7 +237,7 @@ describe("the list after the axe", () => {
     // Kitted, all skills 20: the reserve goes with its pace and its season and no morning is counted for it.
     stepReference({ state, world, player }, 1440 * 3);
     // The log reserve, told from the summer keep of the same task by its target.
-    const paced = ordersHere(state, world).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.logs);
+    const paced = ordersHere(state, world).filter(isWorkOrder).find((o) => o.req.task === "chop" && o.req.until.kind === "campHas" && o.req.until.qty === WINTER_STOCK.logs);
     expect(paced?.req.when?.by).toBe(WOOD_DUE_DOY);
     expect(paced?.req.when?.season).toEqual({ from: MIDSUMMER_DOY, to: WINTER_WOOD_TO_DOY - 1 });
     // No morning at all: the lean-to, a once job whose materials are not at

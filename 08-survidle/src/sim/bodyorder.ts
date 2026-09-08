@@ -25,25 +25,18 @@ import { log } from "./log";
 import { regionState } from "./regionstate";
 import { isRunning, takeStep } from "./steps";
 import { setAside } from "./tasks";
-import type { CareNeed, GameState, IntentRequest, Order, RegionState, Verdict } from "./types";
-
-/**
- * The request a care row carries. `wait` is the task because the row's
- * minute is the need's own step rather than work: nothing ever begins a
- * task from this request, and the runner intent it would start is the same
- * wait the scheduler already gives the body between orders.
- */
-export const CARE_REQ: IntentRequest = { task: "wait", until: { kind: "forever" }, deliver: "leave", where: "nearest" };
+import { isWorkIntent, type CareNeed, type CareOrder, type GameState, type Order, type RegionState, type Verdict } from "./types";
+import { insertWalkBefore } from "./walkorders";
 
 /** Neither row's own task is ever begun as work; their sentences are fixed, since neither carries a target for orderSentence to describe. */
-export const BODY_SENTENCE = "Look after yourself - sleep, food, water, warmth, shelter, home before dark";
-export const CAMP_SENTENCE = "Keep the camp - the fire fed, the snares checked";
+export const BODY_SENTENCE = "Self-care";
+export const CAMP_SENTENCE = "Camp maintenance";
 
-export function isBodyRow(o: Order): boolean {
+export function isBodyRow(o: Order): o is CareOrder & { kind: "body" } {
   return o.kind === "body";
 }
 
-export function isCampRow(o: Order): boolean {
+export function isCampRow(o: Order): o is CareOrder & { kind: "camp" } {
   return o.kind === "camp";
 }
 
@@ -54,12 +47,12 @@ export function isCampRow(o: Order): boolean {
  * among, neither counts in a rank the player gives their own orders in,
  * and both are drawn apart from the work.
  */
-export function isCareRow(o: Order): boolean {
+export function isCareRow(o: Order): o is CareOrder {
   return isBodyRow(o) || isCampRow(o);
 }
 
-function careRow(st: RegionState, kind: "body" | "camp"): Order {
-  return { id: st.nextOrderId++, kind, req: CARE_REQ, done: 0, minutes: 0, skipped: "" };
+function careRow(st: RegionState, kind: "body" | "camp"): CareOrder {
+  return { id: st.nextOrderId++, kind, done: 0, minutes: 0, skipped: "" };
 }
 
 /**
@@ -85,11 +78,11 @@ export function ensureCareRows(st: RegionState): void {
   for (const o of rows.reverse()) st.orders.unshift(o);
 }
 
-export function bodyRowOf(state: GameState, world: World): Order | null {
+export function bodyRowOf(state: GameState, world: World): (CareOrder & { kind: "body" }) | null {
   return regionState(state, world, state.player.region).orders.find(isBodyRow) ?? null;
 }
 
-export function campRowOf(state: GameState, world: World): Order | null {
+export function campRowOf(state: GameState, world: World): (CareOrder & { kind: "camp" }) | null {
   return regionState(state, world, state.player.region).orders.find(isCampRow) ?? null;
 }
 
@@ -131,7 +124,7 @@ export function judgeCampRow(state: GameState, world: World, cal: Calendar, rng:
  * handed at that moment is the row's already-chosen fragment, not the want
  * itself.
  */
-export function careLogLine(state: GameState, world: World, cal: Calendar, o: Order): string | null {
+export function careLogLine(state: GameState, world: World, cal: Calendar, o: CareOrder): string | null {
   // The camp branch answers nothing today: both camp wants carry their own
   // answerability, so the camp row reads met where it could not act and
   // never goes from met to blocked. It is written for the row rather than
@@ -149,29 +142,38 @@ export function careLogLine(state: GameState, world: World, cal: Calendar, o: Or
  * pull on the waterskin, a log onto the fire - costs the minute nothing and
  * is taken without disturbing anything: bodyStep does it and hands back no
  * step, and whatever was under way is still under way. Only a want that
- * asks for the survivor's hands or feet claims the row's own intent, the
- * runner-shaped wait, which is there so that everything reading "what is he
- * doing" finds the row by name the way it finds any other row that has the
- * minute. Nothing is ever begun from CARE_REQ itself: the step is the whole
- * of the minute, which is why the intent starts without taking one of its
- * own.
+ * asks for the survivor's hands or feet claims the row's own care intent,
+ * so everything reading "what is he doing" finds the row by name the way it
+ * finds any other row that has the minute. The need's concrete step is the
+ * whole of that minute.
  */
-function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order, need: CareNeed): void {
+function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder, need: CareNeed): void {
   const s = bodyStep(state, world, cal, rng, need);
   if (!s || isRunning(state, s)) return;
+  if (s.id === "walk") {
+    const target = Number(s.arg?.replace(/^cell:/, ""));
+    if (!Number.isInteger(target)) return;
+    setAside(state, world);
+    state.intent = null;
+    const walk = insertWalkBefore(state, world, target, o.id);
+    startIntent(state, world, cal, rng, walk.req, walk.id);
+    return;
+  }
   // A night out is the body's own errand under an order's name: the whole of
   // it is the sleep this row would take anyway, so the step goes under that
   // order rather than taking the night away from it.
-  if (state.intent?.task !== "night" && (!state.intent || state.intent.orderId !== o.id)) {
+  if ((!isWorkIntent(state.intent) || state.intent.task !== "night") && (!state.intent || state.intent.orderId !== o.id)) {
     // Work with no row behind it is not picked up again: the list is what
     // brings work back, and an intent nothing on the list stands for has
     // nothing to bring it back with. So it is said aloud, once, as it goes -
     // a survivor quietly not doing what was asked is the thing the list
-    // exists to stop. The wait at camp is not work and says nothing.
-    const dropped = state.intent && state.intent.orderId === null && state.intent.task !== "wait" ? state.intent : null;
+    // exists to stop.
+    const dropped = isWorkIntent(state.intent) && state.intent.orderId === null ? state.intent : null;
     if (dropped) log(state, `${intentSentence(state, world, cal, dropped)}: set aside, ${NEED_ASIDE[need]}.`, "bad");
-    startIntent(state, world, cal, rng, CARE_REQ, o.id, false);
+    setAside(state, world);
+    state.intent = { mode: "care", care: o.kind, need, orderId: o.id, step: s.step };
   }
+  if (state.intent?.mode === "care" && state.intent.orderId === o.id) state.intent.need = need;
   takeStep(state, world, cal, s);
 }
 
@@ -184,7 +186,7 @@ function serveNeed(state: GameState, world: World, cal: Calendar, rng: Rng, o: O
  * past the wake line gets up on that minute instead of lying out an hour it
  * no longer needs.
  */
-export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder & { kind: "body" }): void {
   const need = currentNeed(state, world, cal);
   if (state.task?.id === "sleep" && need !== "sleep") setAside(state, world);
   if (!need) return;
@@ -192,14 +194,14 @@ export function serveBodyRow(state: GameState, world: World, cal: Calendar, rng:
 }
 
 /** The camp row's minute: a log on the fire, or the walk to the snares. */
-export function serveCampRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+export function serveCampRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder & { kind: "camp" }): void {
   const need = campNeed(state, world, cal);
   if (!need) return;
   serveNeed(state, world, cal, rng, o, need);
 }
 
 /** The right service for whichever care row won the minute. */
-export function serveCareRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: Order): void {
+export function serveCareRow(state: GameState, world: World, cal: Calendar, rng: Rng, o: CareOrder): void {
   if (isCampRow(o)) serveCampRow(state, world, cal, rng, o);
   else serveBodyRow(state, world, cal, rng, o);
 }
