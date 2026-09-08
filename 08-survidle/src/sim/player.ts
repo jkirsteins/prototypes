@@ -9,9 +9,9 @@ import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { lightFactor, skyLux, TORCH_LUX, WALK_LUX } from "./light";
 import { log, warn } from "./log";
-import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor } from "./person";
+import { BIG_EATER_BURN, body, fatLandmarks, hasQuirk, massFactor, personOf } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
-import { current, fillDied, record } from "./record";
+import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
 import { speedFactor } from "./skills";
 import { debtFallHalved, debtStep, sleepiness, SLEEPY_AT, SPENT_AT } from "./sleep";
@@ -108,7 +108,7 @@ const FAT_WASTING = 0.75;
  * makes this safe to feed to warmth, work speed and the body's own words.
  */
 export function starvation(state: GameState): number {
-  const l = fatLandmarks(current(state).person);
+  const l = fatLandmarks(personOf(state));
   return clamp((l.lower - state.player.fat) / (l.lower - l.floor), 0, 1);
 }
 
@@ -278,6 +278,7 @@ export function taskDrain(workHours: number): number {
 export function stepPlayer(state: GameState, world: World, cal: Calendar, ambient: number, dt: number): Drains {
   const p = state.player;
   const d = body(state);
+  const l = fatLandmarks(personOf(state));
   const r = regionState(state, world, p.region);
   const w = state.weather;
   const felt = feltTemperature(state, world, ambient);
@@ -405,7 +406,7 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   const drains: Drains = { starve: 0, cold: 0, sick: 0, thirst, smoke: 0 };
   // The floor is essential fat: structure, not fuel. A body at it is dying,
   // however much weight is still on it.
-  if (p.kcal <= 0 && p.fat <= fatLandmarks(current(state).person).floor) drains.starve = 2 * h;
+  if (p.kcal <= 0 && p.fat <= l.floor) drains.starve = 2 * h;
   if (p.warmth < 20) drains.cold = 6 * h;
   if (p.sick > 0 && !(roof && felt >= 10)) drains.sick = 0.5 * h;
   const smoking = camp && state.task?.id === "sleep" && r.smoke > SMOKE_DEADLY;

@@ -393,11 +393,12 @@ describe("the reference player", () => {
   });
 
   it("the April target is the day a beginner eating the least and burning the most runs out of fat", () => {
-    // Mirrors reference.ts's own OLD_FAT_FULL: the flat reserve the gate was
-    // derived against before the body carried landmarks. Task 11 moves both
-    // this test and the gate onto fatLandmarks(medianPerson("m")).typical - .floor.
-    const oldFatFull = 80000;
-    const reserve = oldFatFull + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
+    // Mirrors reference.ts's own FLAT_FAT_RESERVE_KCAL: the flat reserve the
+    // gate is derived against, a placeholder for
+    // fatLandmarks(medianPerson("m")).typical - .floor, the reserve that is
+    // actually fuel.
+    const flatFatReserveKcal = 80000;
+    const reserve = flatFatReserveKcal + START_KCAL + ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg;
     const deficit = BURN.day.hi - APRIL.rows.total!.beginner.lo;
     expect(REFERENCE_TARGET_DAY).toBe(Math.floor(reserve / deficit));
     expect(REFERENCE_TARGET_DAY).toBe(19);
