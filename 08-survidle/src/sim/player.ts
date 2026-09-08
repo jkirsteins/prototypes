@@ -9,7 +9,7 @@ import { CLOTHING, KCAL_FULL } from "./items";
 import { creditBurn, creditTime } from "./ledger";
 import { lightFactor, skyLux, TORCH_LUX, WALK_LUX } from "./light";
 import { log, warn } from "./log";
-import { BIG_EATER_BURN, body, hasQuirk } from "./person";
+import { BIG_EATER_BURN, body, hasQuirk, massFactor } from "./person";
 import { atCamp, cellOf, hereTerrain, watersideCell } from "./position";
 import { fillDied, record } from "./record";
 import { regionState } from "./regionstate";
@@ -317,7 +317,8 @@ export function stepPlayer(state: GameState, world: World, cal: Calendar, ambien
   // The base is this body's resting burn and the work above it is scaled by its strength.
   const eats = hasQuirk(state, "bigEater") ? BIG_EATER_BURN : 1;
   const above = (burn - BASE_KCAL_PER_HOUR) * d.workBurn * eats;
-  const base = d.baseBurn * eats;
+  // The reserve is mass the body carries everywhere, so resting costs more for a body that has one.
+  const base = BASE_KCAL_PER_HOUR * massFactor(state) * eats;
   burn = base + above;
   const afterCold = burn * coldBurnFactor(felt);
   const afterSick = p.sick > 0 ? afterCold * SICK_BURN_FACTOR : afterCold;

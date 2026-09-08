@@ -7,7 +7,7 @@ import { addItem, qty } from "../src/sim/inventory";
 import { GUT, KCAL_FULL } from "../src/sim/items";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
-import { derived, fatLandmarks, MEDIAN_MASS_KG } from "../src/sim/person";
+import { body, bodyMassKg, derived, fatLandmarks, MEDIAN_MASS_KG } from "../src/sim/person";
 import { FAT_FULL, FAT_KCAL_PER_KG, stepPlayer, workSpeed } from "../src/sim/player";
 import type { Person } from "../src/sim/types";
 import { waterLossPerHour } from "../src/sim/water";
@@ -19,7 +19,10 @@ describe("the fat reserve", () => {
     const fat0 = state.player.fat;
     const health0 = state.player.health;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    expect(fat0 - state.player.fat).toBeCloseTo(100, 0);
+    // A new survivor starts at FAT_FULL, a reserve a touch under this body's
+    // typical share, so the base bucket reads a touch under BASE_KCAL_PER_HOUR
+    // and the hour (base plus the rest activity's 30 above it) comes in under 100.
+    expect(fat0 - state.player.fat).toBeCloseTo(98.84, 1);
     expect(state.player.health).toBeCloseTo(health0, 1);
   });
 
@@ -56,6 +59,31 @@ describe("the fat reserve", () => {
     for (const line of ["{You} {are} getting thin.", "{Your} ribs show.", "{You} {are} wasting away."]) {
       expect(texts.filter((t) => t === line).length).toBe(1);
     }
+  });
+});
+
+describe("body mass", () => {
+  it("counts the fat reserve, so a fatter body weighs more and burns more at rest", () => {
+    const { state, world } = newGame(1);
+    const lean = body(state).leanKg;
+    state.player.fat = 0;
+    expect(bodyMassKg(state)).toBeCloseTo(lean, 6);
+    state.player.fat = 9 * FAT_KCAL_PER_KG;
+    expect(bodyMassKg(state)).toBeCloseTo(lean + 9, 6);
+
+    // Resting burn tracks total mass.
+    state.player.fat = 0;
+    state.task = null;
+    const k0 = state.player.kcal;
+    state.player.kcal = 3000;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    const thin = 3000 - state.player.kcal;
+    state.player.fat = 20 * FAT_KCAL_PER_KG;
+    state.player.kcal = 3000;
+    for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
+    const fat = 3000 - state.player.kcal;
+    expect(fat).toBeGreaterThan(thin);
+    void k0;
   });
 });
 

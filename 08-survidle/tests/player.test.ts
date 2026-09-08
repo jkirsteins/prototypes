@@ -17,12 +17,15 @@ describe("player physiology", () => {
     const { state, world } = newGame(1);
     const k0 = state.player.kcal;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    expect(k0 - state.player.kcal).toBeCloseTo(100, 0);
+    // A fresh survivor's arrival fat sits a touch under this body's typical
+    // reserve, so the base bucket - and so the idle hour - reads a touch under 100.
+    expect(k0 - state.player.kcal).toBeCloseTo(98.84, 1);
     state.task = { id: "chop", progress: 0, duration: 60, repeat: false };
     const k1 = state.player.kcal;
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
-    // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
-    expect(k1 - state.player.kcal).toBeCloseTo(500, 0);
+    // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work,
+    // carrying the same under-typical base offset as the idle hour above.
+    expect(k1 - state.player.kcal).toBeCloseTo(498.84, 1);
   });
 
   it("starves at 2 health per hour with kcal and fat both empty", () => {

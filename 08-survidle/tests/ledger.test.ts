@@ -7,6 +7,7 @@ import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { FOODS } from "../src/sim/items";
 import { creditBurn, creditEaten, creditTime, creditYield, type DayLedger, emptyBurn, emptyYield, today, weekBefore, YIELD_SOURCES } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
+import { massFactor } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR, coldBurnFactor, feltTemperature, stepPlayer, WALK_KCAL_PER_HOUR } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { kitOut } from "../src/sim/reference";
@@ -132,7 +133,9 @@ describe("burn in buckets", () => {
     state.task = { id: "sleep", progress: 0, duration: 60, repeat: false };
     for (let m = 0; m < 60; m++) stepPlayer(state, world, calendar(state.minute, state.startDoy), 15, 1);
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(BASE_KCAL_PER_HOUR, 6);
+    // A fresh survivor's arrival fat (FAT_FULL) sits a touch under this body's
+    // typical reserve, so the live base burn reads a touch under BASE_KCAL_PER_HOUR.
+    expect(b.base).toBeCloseTo(68.841975, 6);
     expect(b.activity).toBeCloseTo(0, 6);
     expect(b.walk).toBe(0);
     expect(b.cold).toBe(0);
@@ -150,14 +153,17 @@ describe("burn in buckets", () => {
     // so the felt cold nudges down across the hour; the expected cold bucket
     // is accumulated minute by minute at the felt each step actually used,
     // not read back once from the state the loop leaves behind.
+    // Heavy work totals base plus the 430 above it; base is under BASE_KCAL_PER_HOUR
+    // because the arrival reserve sits under this body's typical share.
+    const heavyBurn = BASE_KCAL_PER_HOUR * massFactor(state) + 430;
     let expectedCold = 0;
     for (let m = 0; m < 60; m++) {
       const felt = feltTemperature(state, world, -30);
-      expectedCold += (500 * (coldBurnFactor(felt) - 1)) / 60;
+      expectedCold += (heavyBurn * (coldBurnFactor(felt) - 1)) / 60;
       stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(68.841975, 6);
     // Heavy work at 500 kcal/h: the MET tables' 6 to 7 MET at 72 kg for axe work.
     expect(b.activity).toBeCloseTo(430, 6);
     expect(b.walk).toBe(0);
@@ -190,17 +196,20 @@ describe("burn in buckets", () => {
     // above: the felt cold drifts across the hour as outdoor clothing wears,
     // so the expected cold and sick buckets are accumulated minute by minute
     // at the felt each step actually used.
+    // Rest totals base plus the 30 above it; base is under BASE_KCAL_PER_HOUR because
+    // the arrival reserve sits under this body's typical share.
+    const restBurn = BASE_KCAL_PER_HOUR * massFactor(state) + 30;
     let expectedCold = 0;
     let expectedSick = 0;
     for (let m = 0; m < 60; m++) {
       const felt = feltTemperature(state, world, -30);
       const factor = coldBurnFactor(felt);
-      expectedCold += (100 * (factor - 1)) / 60;
-      expectedSick += (100 * factor * 0.2) / 60;
+      expectedCold += (restBurn * (factor - 1)) / 60;
+      expectedSick += (restBurn * factor * 0.2) / 60;
       stepPlayer(state, world, calendar(state.minute, state.startDoy), -30, 1);
     }
     const b = today(state).burn;
-    expect(b.base).toBeCloseTo(70, 6);
+    expect(b.base).toBeCloseTo(68.841975, 6);
     expect(b.activity).toBeCloseTo(30, 6);
     // The cold burn grows with the felt cold rather than sitting at a flat factor.
     expect(b.cold).toBeCloseTo(expectedCold, 6);

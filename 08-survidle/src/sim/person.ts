@@ -161,6 +161,20 @@ export function body(state: GameState): Derived {
   return derived(personOf(state));
 }
 
+/** What the body weighs right now: its frame and muscle, plus the reserve it is carrying. */
+export function bodyMassKg(state: GameState): number {
+  return body(state).leanKg + state.player.fat / FAT_KCAL_PER_KG;
+}
+
+/**
+ * Total mass against the reference body, the multiplier every mass-scaled
+ * burn uses. Resting costs more for a heavier body, and so does work that
+ * moves it.
+ */
+export function massFactor(state: GameState): number {
+  return bodyMassKg(state) / MEDIAN_MASS_KG;
+}
+
 /** A big eater's pace on work, and its burn on everything. */
 export const BIG_EATER_PACE = 0.9;
 export const BIG_EATER_BURN = 1.1;
