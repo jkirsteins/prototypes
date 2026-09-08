@@ -6,6 +6,7 @@ import { MOOD_BY_TASK, MOODS, moodOf } from "../src/ui/mood";
 import { statsHtml } from "../src/ui/panels";
 import { newUiState } from "../src/ui/render";
 import { ambientTemperature } from "../src/sim/weather";
+import { regionState } from "../src/sim/regionstate";
 import type { GameState, TaskId } from "../src/sim/types";
 import { css } from "./css";
 
@@ -62,6 +63,21 @@ describe("the mood on the screen", () => {
     expect(statsHtml(state, world, cal, ambient, ui)).toContain("stat-face mood-walk");
   });
 
+  it("puts live condition and firelight classes on the header portrait", () => {
+    const { state, world } = newGame(17);
+    const ui = newUiState();
+    const cal = calendar(state.minute, state.startDoy);
+    doing(state, "chop");
+    const focused = statsHtml(state, world, cal, 0, ui);
+    expect(focused).toContain("data-portrait-signature");
+    expect(focused).toContain("is-focused");
+    state.player.warmth = 35;
+    expect(statsHtml(state, world, cal, 0, ui)).toContain("is-cold");
+    state.player.warmth = 80;
+    regionState(state, world, state.player.region).fire.lit = true;
+    expect(statsHtml(state, world, cal, 0, ui)).toContain("is-firelit");
+  });
+
   it("changes the map's key, so a mood that changes while you stand still is drawn", () => {
     const { state, world } = newGame(17);
     const ui = newUiState();
@@ -87,5 +103,11 @@ describe("the mood on the screen", () => {
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduced).toContain("mood-walk");
     expect(reduced).toContain("mood-work");
+    expect(css).toContain(".portrait.is-firelit");
+    expect(css).toContain("radial-gradient(ellipse at 50% 100%");
+    expect(css).toContain(".portrait.is-focused");
+    expect(css).toContain(".portrait.is-hot");
+    expect(css).toContain(".portrait.is-cold");
+    expect(reduced).toContain(".portrait.is-firelit::before");
   });
 });

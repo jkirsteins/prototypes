@@ -70,7 +70,7 @@ export function liveFaceHtml(person: Person, px: number, view: LivePortraitState
   const raised = { ...base, eyebrows: "raised" } as FaceExpression;
   const blink = { ...base, eyes: "bow" } as FaceExpression;
   const classes = [
-    "stat-face", "portrait", `mood-${view.activity}`, `is-${view.expression}`,
+    "stat-face", `mood-${view.activity}`, "portrait", `is-${view.expression}`,
     view.firelit ? "is-firelit" : "",
     `motion-${view.motion}`,
     `focus-brow-${person.face % 2 === 0 ? "left" : "right"}`,
