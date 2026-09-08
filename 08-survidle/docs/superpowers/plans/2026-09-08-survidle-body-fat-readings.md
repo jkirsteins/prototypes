@@ -158,18 +158,17 @@ the old shape only to `workSpeed`, both leave her alive past day 13; changing
 
 `tests/reference.test.ts` already documents this in a comment: on seed 17 the
 raised heir dies of thirst on day 3 without reaching the old camp at all,
-which is why the walk-home test uses seed 19 instead. That comment is honest
-about what happened, but moving the fixture off the seed that fails is not
-the same as deciding the failure is acceptable.
+which is why the walk-home test uses seed 19 instead.
 
-It is not. An heir is meant to land near the old camp and walk to it; dying
-of thirst three days in, before reaching camp, is exactly the failure mode
-the walk-home mechanism exists to prevent, and it is failing on one of only
-two seeds this codebase has ever run it against. A fixture quietly moved off
-a seed it cannot pass, with no test anywhere asserting the seed it moved away
-from should also survive, is a hole in the story the exploration and heir
-work tells about a life continuing rather than just restarting. This should
-be picked up as a real gap - most plausibly a heir that can land far enough
-from water, or with too little water margin, to make the walk itself lethal -
-not folded into this task's landmark tuning, since it is a water/routing
-question and does not move with `FAT_SHARES` at all.
+Ruled acceptable by the author: a heir landing far from the old camp is a
+situation a competent player plays around - making a new camp instead of the
+walk, or stopping to drink along the way - not one the sim owes a guarantee
+against. The reference runner takes the unconditional walk-home order with no
+such judgment, so it dying here says more about the runner's lack of
+discretion than about the heir mechanism. The concrete lever named for this:
+SEEP (a low-effort, low-yield water source read off the ground rather than a
+dedicated fetch) would let a walk like this drink from what it is passing
+rather than needing the old camp's water to survive the trip. Not a gap to
+close in this task - it is a water/routing question, does not move with
+`FAT_SHARES`, and is now a candidate for the water or reference-runner work
+rather than something the heir/walk-home mechanism itself must prevent.
