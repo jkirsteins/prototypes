@@ -156,28 +156,6 @@ function boot() {
   }
 }
 
-/**
- * Puts the survivor's glyph in the middle of the map's box, on both axes.
- *
- * viewOrigin already centres the player in the grid it draws, but the grid
- * is a fixed 792 by 504 and the box around it is whatever the column can
- * spare, so the box scrolls - and a box scrolled to its top left shows a
- * survivor somewhere off the middle. This is what makes the map a view
- * centred on the person rather than a picture with them somewhere in it.
- *
- * Called when the map is rebuilt and whenever the box changes size, which
- * is what a shorter window or a newly opened panel does to it. Between
- * those a hand may scroll it wherever it likes; the next redraw, which is
- * every time the survivor moves, brings them back to the middle.
- */
-function centreMapOnSurvivor() {
-  const wrap = document.querySelector<HTMLElement>("#mapdyn .scroll-x");
-  const you = wrap?.querySelector<HTMLElement>("[data-you]");
-  if (!wrap || !you) return;
-  wrap.scrollLeft = you.offsetLeft + you.offsetWidth / 2 - wrap.clientWidth / 2;
-  wrap.scrollTop = you.offsetTop + you.offsetHeight / 2 - wrap.clientHeight / 2;
-}
-
 let lastTipKey = "";
 let lastMapKey = "";
 function render() {
@@ -196,7 +174,7 @@ function render() {
   const key = mapKey(state, world, ui, cal);
   if (key !== lastMapKey) {
     lastMapKey = key;
-    if (setPanel("mapdyn", mapHtml(world, state, ui, cal))) centreMapOnSurvivor();
+    setPanel("mapdyn", mapHtml(world, state, ui, cal));
   }
   setPanel("task", taskHtml(state, world, cal));
   setPanel("orders", queueHtml(state, world, cal));
@@ -486,6 +464,14 @@ function onClick(ev: Event) {
     case "settings-close":
       ui.settings = false;
       break;
+    case "reset-world":
+      if (!window.confirm("Reset all world data? This cannot be undone.")) break;
+      clearSave();
+      fresh();
+      ui.settings = false;
+      lastReal = performance.now();
+      render();
+      return;
     case "manual-open":
       ui.manual = true;
       break;
@@ -646,7 +632,7 @@ document.addEventListener("keydown", () => audio.unlock(), { capture: true });
 // The build's own name, written once: it cannot change while the page is open.
 setPanel("build", buildHtml());
 mountControl(document.getElementById("sound")!, audio);
-awayDial = mountAwayDial(document.getElementById("away")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
+awayDial = mountAwayDial(document.getElementById("forecastbox")!, () => state.awayHours, (h) => { state.awayHours = h; requestForecast(); });
 mountBeaconPanel(document.getElementById("beacon")!, beacon, beaconConfigured, () => state, (on) => {
   if (on && beaconConfigured && !sinkMade) {
     sink = makeSink();
@@ -735,18 +721,6 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pagehide", () => saveGame(state));
 // The terrain letters never change, so the legend is set once rather than rebuilt with the map.
 document.querySelector<HTMLElement>("#map .legend")!.innerHTML = legendHtml();
-
-// The map's box takes what the column can spare, so it changes size when the
-// window does or when a panel above it grows. Its markup does not change with
-// it, so the redraw that would have re-centred the survivor never happens:
-// watch the box itself.
-{
-  const board = document.getElementById("mapdyn");
-  if (board && typeof ResizeObserver !== "undefined") {
-    new ResizeObserver(() => centreMapOnSurvivor()).observe(board);
-  }
-  window.addEventListener("resize", () => centreMapOnSurvivor());
-}
 
 // The map's tooltip. pointermove covers mouse, pen and a touch drag with one
 // listener; a tap fires it too, which is what gives a touch device the

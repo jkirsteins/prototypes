@@ -1004,22 +1004,15 @@ describe("the skills panel and the rungs", () => {
 });
 
 describe("the forecast panel", () => {
-  it("asks one question - what happens if you leave for this long - and says what the hours buy", () => {
+  it("shows one compact risk line without repeating the horizon", () => {
     const { state } = newGame(17);
     state.awayHours = 8;
     const v = emptyView();
     beginRequest(v, 1);
     applyRow(v, 1, { id: "away", runs: 10, died: 1, cause: "wolves", day: 1 });
     const html = forecastHtml(v, state);
-    // He read "away up to 24 hours" as how long the survivor works, so the
-    // panel says leaving, and says the days those hours buy: a real second
-    // is a game minute, so eight hours is twenty days.
-    expect(html).toContain("If you leave");
-    expect(html).toContain("for 8 h");
-    // What the hours buy is on the dial right under this, and saying it in
-    // both put the same figure twice in one box.
-    expect(html).not.toContain("20 days pass");
-    expect(html).toContain("1 of 10 die: wolves, day 1");
+    expect(html).toContain("Risk 1/10: wolves, day 1");
+    expect(html).not.toContain("for 8 h");
     expect(html).not.toContain("away up to");
     // The horizons nobody asked for are gone from the panel.
     expect(html).not.toContain("tonight");
@@ -1032,14 +1025,14 @@ describe("the forecast panel", () => {
     const v = emptyView();
     beginRequest(v, 1);
     applyRow(v, 1, { id: "away", runs: 10, died: 0, cause: null, day: null });
-    expect(forecastHtml(v, state)).toContain("none of 10 die");
+    expect(forecastHtml(v, state)).toContain("Risk 0/10");
     beginRequest(v, 2);
-    expect(forecastHtml(v, state)).toMatch(/none of 10 die[\s\S]*?\.\.\./);
+    expect(forecastHtml(v, state)).toMatch(/Risk 0\/10[\s\S]*?\.\.\./);
   });
 
   it("nothing has landed yet, so it says so rather than showing an empty row", () => {
     const { state } = newGame(17);
-    expect(forecastHtml(null, state)).toContain("If you leave");
+    expect(forecastHtml(null, state)).toContain("Risk");
     expect(forecastHtml(null, state)).toContain("...");
   });
 });

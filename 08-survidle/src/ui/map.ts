@@ -530,7 +530,7 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
   const light = lighting(cal, state.weather, ambientTemperature(cal, state.weather));
   const falling = light.precip === "rain" ? " rain" : light.precip === "snow" ? " snowing" : "";
   const lit = `--bright:${light.brightness.toFixed(3)};--sat:${light.saturation.toFixed(3)};--tint:${light.tint};--tint-a:${light.alpha.toFixed(3)}`;
-  parts.push(`<div class="scroll-x"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
+  parts.push(`<div class="scroll-x" style="--px:${l.px}px;--line:${l.line}px"><div class="grid season-${cal.season}${snow ? " snow" : ""}${deepSnow ? " snow-deep" : ""}${cal.isNight ? " night" : ""}${falling}" style="--cols:${l.w};--px:${l.px}px;--line:${l.line}px;--font:${l.font}px;${lit}">`);
   for (let i = 0; i < l.w * l.h; i++) {
     const gx = i % l.w;
     const gy = Math.floor(i / l.w);
@@ -617,12 +617,10 @@ export function mapHtml(world: World, state: GameState, ui: UiState, cal: Calend
     // flicker on the @ and the camp's x: they are the cells whose names
     // differ enough to be found and moved.
     const act = named ? ` data-act="select" data-i="${i}" data-r="${reg}"` : "";
-    // The scroll wrapper centres on this glyph after every rebuild.
-    const you = m?.cls === "mk-player" ? ` data-you="1"` : "";
     // No title attribute: the board's own box says all of this, at once and
     // in the page's own voice, where the browser's tooltip said it after a
     // delay and stood over whatever it was next to.
-    parts.push(`<span class="${cls.join(" ")}"${act}${you}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
+    parts.push(`<span class="${cls.join(" ")}"${act}${style}>${glyph === "\"" ? "&quot;" : glyph}</span>`);
   }
   parts.push(`<i class="shade"></i>${walkSvg(world, state, playerCell, x0, y0, z, l)}</div></div>${tools}`);
   return parts.join("");

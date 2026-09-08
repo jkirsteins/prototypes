@@ -50,12 +50,11 @@ body { display: flex; flex-direction: column; height: 100vh; }
    thing. It keeps its column and says it is empty. */
 #camp:empty { display: none; }
 
-/* The forecast and the dial that sets it are one thing: the control sits
-   under what it changes, with no border between them. The slider stays
-   static markup with its own listener - a control redrawn mid-drag is a
-   control that fights the hand on it. */
-#forecast { border-bottom: none; padding-bottom: 4px; }
-#away { border-top: none; padding-top: 4px; }
+/* One panel owns the horizon, risk and control. The slider stays static
+   markup with its own listener - a control redrawn mid-drag fights the hand. */
+#forecastbox > [data-away="label"] { display: block; white-space: nowrap; }
+#away { margin-top: 6px; }
+#away > [data-away="hours"] { display: block; width: 100%; margin: 0 0 6px; }
 
 /* The tab container that stands where the region panel stood.
    It claims a floor of the middle column's height, and the map gives way:
@@ -158,8 +157,8 @@ small, .dim { color: var(--dim); }
 /* Between .good's fed fire and .dim's dead one: still holding a live coal, not asking for wood. */
 .ember { color: #c08355; }
 
-/* A label on the left, a value on the right; the forecast panel's four horizons. */
-#forecast .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+/* Every horizon uses one line, so moving the slider never changes the panel height. */
+#forecast .row { min-height: 1.4em; padding: 2px 0; white-space: nowrap; }
 
 /* An empty ladder collapses rather than leaving a titled box with nothing in it. */
 #goals:empty { display: none; }
@@ -407,13 +406,20 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    under it: a flex child will not shrink below its content without it, so
    the grid would push the Do pane off the screen instead of scrolling. */
 #mapdyn { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-/* The grid is a fixed 72 glyphs wide and can outrun a narrow column; it
-   scrolls sideways inside this box rather than the page ever scrolling
-   horizontally. */
-/* The grid is a fixed 72 glyphs wide and 36 tall and can outrun its column
-   either way; it scrolls inside this box rather than pushing the panels
-   under it off the screen. scrollMapToSurvivor keeps the player in view. */
-.scroll-x { overflow: auto; flex: 1; min-height: 0; }
+/* The world moves under the survivor; the viewport never pans. A fixed-size
+   grid is centred and clipped, while any spare area carries the same grain
+   as unknown ground instead of exposing the panel as a black bar. */
+.scroll-x {
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  background-color: #0a0e17;
+  background-image: radial-gradient(#141a26 1px, transparent 1px);
+  background-size: var(--px) var(--line);
+  background-position: center;
+}
 .grid {
   /* A grid narrower than the panel sits in the middle of it rather than in
      the left corner with the slack all on one side. */
@@ -446,10 +452,10 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
   opacity: calc(1 - var(--bright));
   transition: opacity 0.5s linear;
 }
-/* Fog of war and the edge of the world: fog has a grain so the world's extent reads against the void. */
-.grid .c.fog { color: #141a26; background: #0a0e17; }
-.grid .c.fog::before { content: "\00b7"; }
-.grid .c.void { color: transparent; background: #05070c; }
+/* Space beyond the generated world is just as unknown to the player as fog,
+   so it continues the map instead of drawing a black frame around it. */
+.grid .c.fog, .grid .c.void { color: #141a26; background: #0a0e17; }
+.grid .c.fog::before, .grid .c.void::before { content: "\00b7"; }
 .grid .c.dim { opacity: 0.45; }
 /* Set and forget: the zoom sits in the map's corner as a note rather than a
    panel of its own. It is nice to have and it is not what anybody came to
@@ -1090,8 +1096,7 @@ button.act small.gives, span.act small.gives,
   #task { order: 1; }
   #stats { order: 2; }
   #weather { order: 3; }
-  #forecast { order: 4; }
-  #away { order: 5; }
+  #forecastbox { order: 4; }
   #orders { order: 6; }
   #map { order: 7; }
   #panes { order: 8; }

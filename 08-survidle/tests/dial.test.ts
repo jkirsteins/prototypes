@@ -58,14 +58,14 @@ describe("the away dial", () => {
     expect(input.value).toBe("8");
     expect(input.min).toBe("1");
     expect(input.max).toBe("24");
-    expect(label.textContent).toBe("8 hours - 20 days pass");
+    expect(label.textContent).toBe("8 real h = 20 d game");
     input.value = "2";
     input.dispatchEvent(new Event("input"));
     expect(hours).toBe(2);
-    expect(label.textContent).toBe("2 hours - 5 days pass");
+    expect(label.textContent).toBe("2 real h = 5 d game");
     input.value = "1";
     input.dispatchEvent(new Event("input"));
-    expect(label.textContent).toBe("1 hour - 3 days pass");
+    expect(label.textContent).toBe("1 real h = 2 d 12 h game");
   });
 
   it("refresh() re-reads get(), for a new world whose dial did not change by input", () => {
@@ -79,6 +79,6 @@ describe("the away dial", () => {
     expect(input.value).toBe("8");
     dial.refresh();
     expect(input.value).toBe("3");
-    expect(label.textContent).toBe("3 hours - 8 days pass");
+    expect(label.textContent).toBe("3 real h = 7 d 12 h game");
   });
 });

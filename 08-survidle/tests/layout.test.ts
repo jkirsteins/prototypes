@@ -26,11 +26,9 @@ describe("the map's own surface", () => {
     expect(grid).toContain("-webkit-user-select: none");
   });
 
-  it("keeps fog, void and dim tellable apart, since all three read as dark ground", () => {
-    // Fog carries a grain the void does not, and dim is a drawn glyph at
-    // reduced opacity rather than a colour: three states, three readings.
-    expect(css).toContain(".grid .c.fog::before");
-    expect(rule(".grid .c.void")).toContain("background");
+  it("draws space beyond the world like unexplored ground instead of a black bar", () => {
+    expect(css).toContain(".grid .c.fog, .grid .c.void");
+    expect(css).toContain(".grid .c.fog::before, .grid .c.void::before");
     expect(rule(".grid .c.dim")).toContain("opacity");
   });
 });
@@ -78,6 +76,10 @@ describe("the layout", () => {
     expect(stats).toBeLessThan(forecast);
     expect(forecast).toBeLessThan(away);
     expect(away).toBeLessThan(gear);
+    const box = html.slice(html.indexOf('id="forecastbox"'), html.indexOf('id="gear"'));
+    expect(box).toContain('id="forecast"');
+    expect(box).toContain('id="away"');
+    expect(rule("#forecast .row")).toContain("white-space: nowrap");
   });
 
   it("all five panes exist at once, four of them hidden", () => {
@@ -125,6 +127,14 @@ describe("the layout", () => {
     expect(rule("#maptip")).toMatch(/left:\s*var\(--map-overlay-inset\)/);
   });
 
+  it("centres the map on a fog surface without scrolling or panning", () => {
+    const viewport = rule(".scroll-x");
+    expect(viewport).toContain("overflow: hidden");
+    expect(viewport).toContain("place-items: center");
+    expect(viewport).toContain("background");
+    expect(viewport).not.toContain("overflow: auto");
+  });
+
   it("the sound and the beacon live in a settings panel that is hidden until it is asked for", () => {
     const html = readFileSync("index.html", "utf8");
     const open = html.indexOf('data-act="settings-open"');
@@ -150,6 +160,12 @@ describe("the layout", () => {
     const settings = html.slice(html.indexOf('id="settings"'), html.indexOf('id="overlay"'));
     expect((settings.match(/data-display="travel"/g) ?? []).length).toBe(1);
     for (const value of ["distance", "time", "both"]) expect(settings).toContain(`value="${value}"`);
+  });
+
+  it("settings can discard the saved world without presenting preferences as world data", () => {
+    const settings = page().slice(page().indexOf('id="settings"'), page().indexOf('id="overlay"'));
+    expect(settings).toContain('data-act="reset-world"');
+    expect(settings).toContain("reset world data");
   });
 
   it("the page ends in a footer naming the build, filled from the version the bundle was built with", () => {

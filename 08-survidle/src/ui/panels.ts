@@ -670,15 +670,10 @@ export function queueHtml(state: GameState, world: World, cal: Calendar): string
   return `<h2>Activity queue${count}</h2>${ordersHtml(state, world, cal)}`;
 }
 
-/** "N of 10 die: cause, day D", or "none of 10 die" when nothing died. */
+/** One compact risk line. */
 export function forecastRowText(row: ForecastRow): string {
-  if (row.died === 0) return `none of ${row.runs} die`;
-  return `${row.died} of ${row.runs} die: ${CAUSE_WORD[row.cause!]}, day ${row.day}`;
-}
-
-/** The game days a stretch of real hours away buys, since that is the number the answer is in. */
-export function awayDays(hours: number): number {
-  return Math.round((hours * 3600 * GAME_MINUTES_PER_REAL_SECOND) / 1440);
+  if (row.died === 0) return `Risk 0/${row.runs}`;
+  return `Risk ${row.died}/${row.runs}: ${CAUSE_WORD[row.cause!]}, day ${row.day}`;
 }
 
 /**
@@ -693,16 +688,12 @@ export function awayDays(hours: number): number {
  * would otherwise sit there being wrong.
  */
 export function forecastHtml(view: ForecastView | null, state: GameState): string {
-  const head = `<h2>If you leave</h2>`;
-  if (state.dead) return `${head}<div class="row"><span class="dim">nothing ahead</span></div>`;
-  // The dial under this says what the hours buy in days; saying it here too
-  // put the same figure twice in one box.
-  const label = `for ${state.awayHours} h`;
+  if (state.dead) return `<div class="row dim">Nothing ahead</div>`;
   const r = view?.rows.away;
-  if (!r) return `${head}<div class="row"><span class="dim">${label}</span><span class="dim">...</span></div>`;
+  if (!r) return `<div class="row dim">Risk ...</div>`;
   const text = esc(forecastRowText(r));
-  if (r.stale) return `${head}<div class="row"><span class="dim">${label}</span><span class="dim">${text} ...</span></div>`;
-  return `${head}<div class="row"><span>${label}</span><span>${text}</span></div>`;
+  if (r.stale) return `<div class="row dim">${text} ...</div>`;
+  return `<div class="row">${text}</div>`;
 }
 
 /** The eat / add firewood buttons, shown whenever they apply, wherever the player stands. */
