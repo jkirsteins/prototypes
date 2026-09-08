@@ -291,10 +291,26 @@ knowing a storm is coming matters less than knowing which one.
   behind a boulder: it catches wind, and it can come down. So a gale reads
   a shelter's profile as well as its protection, and terrain lee - rock,
   dense spruce, a depression - counts for more than a roof.
-- **Lightning** - the terrain advice **inverts**. The ground that shelters
-  you from rain is what kills you here: an isolated tall tree, a rock
-  outcrop, a ridge, high open fell. The right answer is low ground, away
-  from lone trees, and *not* the overhang you would run to in rain.
+- **Lightning** - the terrain advice **inverts**, and it can kill. The
+  ground that shelters you from rain is what kills you here: an isolated
+  tall tree, a rock outcrop, a ridge, high open fell. The right answer is
+  low ground, away from lone trees, and *not* the overhang you would run to
+  in rain.
+
+  The inversion is not invented. US National Weather Service casualty data
+  for 2006-2011 puts the commonest places to die of lightning as **under or
+  near trees (25%)** and **open ground (25%)**, with water third at 23% -
+  so a survivor who runs to the biggest spruce is running to the single
+  worst place there is, and one who stands out on open fell is no better
+  off. Both are exactly what this world's terrain offers.
+
+  **Lightning is a summer storm.** Over 70% of US lightning deaths fall in
+  June, July and August. That is worth honouring for its own sake and it
+  also does the balance a favour: summer currently carries the *lowest*
+  storm chance in the game (0.02, against winter's 0.08), so it has little
+  weather of its own. Lightning gives summer a danger that winter does not
+  have, which is a better shape than every season being dangerous the same
+  way.
 
 That inversion is the reason lightning earns its place rather than being
 deferred. It is the one storm where a survivor who knows only "a storm is
@@ -317,6 +333,27 @@ protection level, and a cell carries whether it is **lee** and whether it is
 **exposed high ground**. Both are readable off terrain the world already
 generates: rock and fell are high and exposed, a depression or dense spruce
 is lee, a frame shelter is high profile and a found scrape or cave is low.
+
+**A strike can kill.** Sitting a lightning storm out on struck ground - under
+a lone tall tree, on a ridge, on open fell - carries a small chance per hour
+exposed. This is the one place the spec adds a death the game does not have,
+and it is deliberate: without it, lightning is a suggestion, and the second
+stage of the forecast is a convenience rather than the thing that saves a
+run.
+
+**How the odds get set.** There is no honest per-hour figure to read off a
+page: real strike statistics describe a modern sheltered population and say
+nothing about a person deliberately standing under a spruce for six hours.
+So the number is **calibrated to a stated target rather than sourced**, and
+the target is the design decision: a survivor who repeatedly sits lightning
+storms out on bad ground should die of it eventually; a survivor who reads
+the sky and moves should essentially never. Record it as a design value with
+that target written beside it, the same way the shelter minutes are
+recorded, and check it against the seeds rather than asserting it.
+
+The death wants its own cause in `causeFrom` and its own epitaph line. It is
+the one death in this game that is instant rather than the end of a slide,
+and the record should say so.
 
 ### 8. The skills
 
@@ -438,7 +475,6 @@ worse, and it will say so first.
 
 Taken one at a time, in this order:
 
-1. The emergency shelter's minutes per protection level, against the
-   handbooks (section 4).
+1. Answered: design values inside sourced field ranges (section 4).
 2. Whether a survivor caught by lightning on the wrong ground should be
    able to die of it, or only ever be driven off that ground (section 7).
