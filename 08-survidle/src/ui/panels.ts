@@ -199,7 +199,7 @@ ${perks.length ? `<div class="good"><small>${perks.join(", ")}</small></div>` : 
  * here in three lines, and the row it was taking is now map, which is what
  * a player is actually looking at.
  */
-export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1): string {
+export function weatherHtml(state: GameState, world: World, cal: Calendar, ambient: number, rate = 1, uid = ""): string {
   const snow = state.weather.snowCm >= 1 ? `snow ${Math.round(state.weather.snowCm)} cm` : "";
   const ice = state.weather.iceCm >= 1 ? `ice ${Math.round(state.weather.iceCm)} cm` : "";
   const ground = [snow, ice].filter(Boolean).join(", ");
@@ -208,7 +208,7 @@ export function weatherHtml(state: GameState, world: World, cal: Calendar, ambie
   const dry = groundDry(state.weather, cal) ? `<div class="wx-warn">tinder dry</div>` : "";
   const felt = Math.round(feltTemperature(state, world, ambient));
   return `<div class="wx">
-<div class="wx-bg">${skyHtml(WALL)}</div>
+<div class="wx-bg">${skyHtml(WALL, uid)}</div>
 <div class="wx-head">
   <div class="wx-day">
     <div class="wx-clock">Day ${cal.day} <span class="hour">${fmtClock(cal.hour)}</span></div>

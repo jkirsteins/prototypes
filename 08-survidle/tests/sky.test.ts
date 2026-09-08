@@ -35,15 +35,20 @@ describe("sky arc", () => {
     expect(early.x).toBeLessThan(late.x);
   });
 
-  it("draws the moon's shadow to the left while waxing, to the right while waning, over it at new and clear of it at full", () => {
+  it("cuts the moon's dark side to the left while waxing, to the right while waning, over it at new and clear of it at full", () => {
     const { state } = newGame(1);
     const root = document.createElement("div");
     root.innerHTML = skyHtml();
-    /** Shadow offset from the moon at 00:00 after run day d (the run starts at 08:00, so +16 h is midnight). */
+    /**
+     * How far the mask's dark disc sits from the lit one at 00:00 after run
+     * day d (the run starts at 08:00, so +16 h is midnight). The dark side is
+     * cut out of the moon rather than painted over it, so what moves is the
+     * black circle inside the mask.
+     */
     const shadowX = (d: number) => {
       updateSky(state, calendar(1440 * (d - 1) + 16 * 60), 0, root);
-      const moon = Number(root.querySelector("#sky-moon")!.getAttribute("cx"));
-      const shadow = Number(root.querySelector("#sky-moon-shadow")!.getAttribute("cx"));
+      const moon = Number(root.querySelector("#sky-moon-lit")!.getAttribute("cx"));
+      const shadow = Number(root.querySelector("#sky-moon-dark")!.getAttribute("cx"));
       return shadow - moon;
     };
     // Full on 3 April (run day 3): the shadow is a whole diameter aside.
@@ -53,6 +58,31 @@ describe("sky arc", () => {
     // Waning a week after full: shadow right. Waxing a week before the next full (about 2 May): shadow left.
     expect(shadowX(9)).toBeGreaterThan(4);
     expect(shadowX(26)).toBeLessThan(-4);
+  });
+
+  it("names every gradient, filter and mask after its own sky, so two on a page do not share one", () => {
+    /**
+     * url(#x) and mask=url(#x) are resolved against the whole document, not
+     * against the svg they are written in. Thirteen skies on the gallery
+     * page with identical ids therefore all drew the FIRST card's cloud,
+     * moon phase and sunset - and looked entirely plausible doing it, which
+     * is why this is a test rather than a note.
+     */
+    const refs = (html: string) => [...html.matchAll(/url\(#([^)]+)\)/g)].map((m) => m[1]);
+    const ids = (html: string) => [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+
+    const a = skyHtml(undefined, "one");
+    const b = skyHtml(undefined, "two");
+    // Everything one sky points at, it defines itself.
+    for (const r of refs(a)) expect(ids(a)).toContain(r);
+    expect(refs(a).length).toBeGreaterThan(4);
+    // And nothing it points at belongs to the sky beside it.
+    for (const r of refs(a)) expect(refs(b)).not.toContain(r);
+
+    // The game draws one sky and asks for no suffix; what it points at is
+    // still its own.
+    const plain = skyHtml();
+    for (const r of refs(plain)) expect(ids(plain)).toContain(r);
   });
 });
 
@@ -109,18 +139,21 @@ describe("sky in the page", () => {
     updateSky(state, cal, ambientTemperature(cal, state.weather));
     const sun = document.querySelector("#sky-sun")!;
     const noonX = Number(sun.getAttribute("cx"));
-    expect(sun.getAttribute("opacity")).toBe("1");
+    const opacity = (sel: string) => Number(document.querySelector(sel)!.getAttribute("opacity"));
+    expect(opacity("#sky-sun")).toBe(1);
     // 22:00: the moon is still on the left half of its arc, so its x differs from the noon sun's.
     const night = at(22);
     updateSky(state, night, -3);
-    expect(document.querySelector("#sky-sun")!.getAttribute("opacity")).toBe("0");
-    expect(document.querySelector("#sky-moon")!.getAttribute("opacity")).toBe("1");
+    expect(opacity("#sky-sun")).toBe(0);
+    expect(opacity("#sky-moon")).toBe(1);
     expect(Number(document.querySelector("#sky-moon")!.getAttribute("cx"))).not.toBe(noonX);
     const grid = document.querySelector<HTMLElement>("#map .grid")!;
     expect(Number(grid.style.getPropertyValue("--bright"))).toBeLessThan(0.6);
     state.weather.precip = "heavy";
     updateSky(state, night, -3);
     expect(grid.classList.contains("snowing")).toBe(true);
+    // And under a sky that thick there is no disc left to see.
+    expect(opacity("#sky-moon")).toBeLessThan(0.1);
   });
 
   it("spot distances are from where you stand, with the walking time on the button", () => {

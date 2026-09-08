@@ -765,10 +765,13 @@ button.act small, span.act small { display: block; color: var(--dim); }
    what keeps them readable at noon, when the sky behind them is bright. */
 .wx-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; }
 .wx-bg .sky { width: 100%; height: 100%; display: block; }
+/* The scrim is heaviest where the words are, which is the top. It used to
+   be heaviest at the bottom, and the bottom is the horizon: a sunset put
+   its whole glow under the darkest part of the wash and vanished. */
 .wx-bg::after {
   content: "";
   position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(6, 9, 14, 0.15) 0%, rgba(6, 9, 14, 0.55) 55%, rgba(6, 9, 14, 0.85) 100%);
+  background: linear-gradient(180deg, rgba(6, 9, 14, 0.42) 0%, rgba(6, 9, 14, 0.34) 50%, rgba(6, 9, 14, 0.14) 100%);
 }
 .wx > *:not(.wx-bg) { position: relative; z-index: 1; }
 
@@ -792,20 +795,22 @@ button.act small, span.act small { display: block; color: var(--dim); }
 /* What the air is doing, drawn rather than named. Cloud drifts, and what
    falls out of it falls: snow wanders down, rain goes straight and fast,
    and a storm leans both of them over and hurries them along. */
-.sky-cloud ellipse { fill: var(--cloud, #8a97a8); opacity: 0.5; }
+.sky-cloud rect { opacity: 0.9; }
 .sky-cloud { animation: sky-drift var(--drift, 120s) linear infinite; }
 @keyframes sky-drift { from { transform: translateX(0); } to { transform: translateX(-240px); } }
 
 #sky-fall .sky-drop { transform: translate(var(--x), var(--y)); }
-#sky-fall line { stroke: rgba(255, 255, 255, 0.55); stroke-width: 1; opacity: 0; }
+#sky-fall line { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1.1; opacity: 0; }
 #sky-fall circle { fill: rgba(255, 255, 255, 0.85); opacity: 0; }
 .sky.rain #sky-fall line { opacity: 1; animation: sky-rain 0.9s linear infinite; animation-delay: calc(var(--n) * -0.9s); }
 .sky.snow #sky-fall circle { opacity: 1; animation: sky-snow 6s linear infinite; animation-delay: calc(var(--n) * -6s); }
 .sky.storm #sky-fall line { animation-duration: 0.5s; }
 .sky.storm #sky-fall circle { animation-duration: 3s; }
 .sky.storm .sky-cloud { animation-duration: 26s; }
-@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(-14px, 220px); } }
-@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(10px, 220px); } }
+@keyframes sky-rain { from { transform: translate(0, -20px); } to { transform: translate(-52px, 220px); } }
+/* Each flake wanders its own way down: one shared sideways drift made snow
+   march in step, which is the one thing snow never does. */
+@keyframes sky-snow { from { transform: translate(0, -20px); } to { transform: translate(var(--sx, 10px), 220px); } }
 
 @media (prefers-reduced-motion: reduce) {
   .sky-cloud, #sky-fall line, #sky-fall circle { animation: none; }

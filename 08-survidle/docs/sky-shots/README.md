@@ -19,6 +19,10 @@ them; `npm run sky -- --check` says which ones a change has altered.
 
   ![dusk](dusk.png)
 
+- **golden** - goldenthe last light before the sun is gone
+
+  ![golden](golden.png)
+
 - **night-clear** - night-clearthe moon up and the stars out
 
   ![night-clear](night-clear.png)
