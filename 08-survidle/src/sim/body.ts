@@ -221,16 +221,21 @@ function homeBeforeDark(state: GameState, world: World, cal: Calendar, need: Bod
   return (cal.sunset - cal.hour) * 60 <= minutes + 15;
 }
 
-/** What the row says when a need holds and nothing here can answer it. */
+/**
+ * What the row says when a need holds and nothing here can answer it. Each
+ * one stands alone as the body's own sentence rather than a fragment meant
+ * to follow a row's name and a colon: the row is not a promise being
+ * skipped, so the log line built from this is not shaped like one.
+ */
 export const NEED_WORDS: Record<BodyNeed, string> = {
-  sleep: "needs sleep; nowhere to lie down",
-  storm: "the storm is coming; no shelter within reach",
-  cold: "cold; no fire and nowhere to warm up",
-  thirsty: "thirsty; no water within reach",
-  hungry: "hungry; nothing safe to eat",
-  snares: "the snares want checking; no way there",
-  spent: "worked out; nowhere to sit down",
-  home: "should be home before dark; no way there",
+  sleep: "Needs sleep and there is nowhere to lie down",
+  storm: "The storm is coming and there is no shelter within reach",
+  cold: "Cold, with no fire and nowhere to warm up",
+  thirsty: "Thirsty, with no water within reach",
+  hungry: "Hungry, with nothing safe to eat",
+  snares: "The snares want checking and there is no way there",
+  spent: "Worked out, and there is nowhere to sit down",
+  home: "Should be home before dark, and there is no way there",
 };
 
 /** Stands in for a step a dry read finds ready without ever taking it: only whether bodyStep returned something is read back, never what it was. */

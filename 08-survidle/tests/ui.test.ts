@@ -785,8 +785,9 @@ describe("the Orders panel", () => {
     expect(html).toContain("gathering sticks");
     expect(html).toContain('id="bar-task"');
     expect(html.split('id="bar-task"').length).toBe(2);
-    // The body row holds the top rank now; the keep's own "up" is free.
-    expect(html).toContain(`data-act="order-up" data-id="${bodyRowOf(state, world)!.id}" disabled`);
+    // The body row holds the top rank and draws no controls of its own,
+    // since none of them could do anything; the keep's own "up" is free.
+    expect(html).not.toContain(`data-act="order-up" data-id="${bodyRowOf(state, world)!.id}"`);
     expect(html).not.toContain(`data-act="order-up" data-id="${keep.id}" disabled`);
     expect(html).toContain(`data-act="order-down" data-id="${cabin.id}" disabled`);
     expect(html).toContain(`data-act="order-remove" data-id="${cabin.id}"`);
@@ -799,6 +800,18 @@ describe("the Orders panel", () => {
     moveOrder(state, world, cabin.id, -1);
     html = taskHtml(state, world, calendar(state.minute));
     expect(html.indexOf(`data-id="${cabin.id}"`)).toBeLessThan(html.indexOf(`data-id="${grind.id}"`));
+  });
+
+  it("the body row draws no up, down or remove button: none of them could do anything", () => {
+    const { state, world } = newGame(1);
+    addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
+    advance(state, world, 1);
+    const bodyId = bodyRowOf(state, world)!.id;
+    const html = taskHtml(state, world, calendar(state.minute));
+    expect(html).toContain("Look after yourself");
+    expect(html).not.toContain(`data-act="order-up" data-id="${bodyId}"`);
+    expect(html).not.toContain(`data-act="order-down" data-id="${bodyId}"`);
+    expect(html).not.toContain(`data-act="order-remove" data-id="${bodyId}"`);
   });
 
   it("a blocked order below the live one names the row it is waiting behind, not its own reason", () => {

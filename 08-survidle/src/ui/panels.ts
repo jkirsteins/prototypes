@@ -1,5 +1,6 @@
 import { edible, itemLabel, refusalReason } from "../sim/actions";
 import { absence, densityLabel, regionDensity } from "../sim/animals";
+import { isBodyRow } from "../sim/bodyorder";
 import { type Calendar, fmtClock, fmtDate, monthName } from "../sim/calendar";
 import { canMoveCamp, needsMending, rackCapacity, siteLine, siteReport } from "../sim/camp";
 import { CAPABILITIES, standingHere } from "../sim/capabilities";
@@ -427,7 +428,13 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(waitingLine(state, world, cal, o, judged))}</div>`;
-    const btns = `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
+    // The body row draws no controls at all: it cannot be struck off, and
+    // moveOrder refuses to swap it out of the top place, so an up, a down or
+    // an x here would be a button that does nothing when clicked - worse
+    // than none, since the row stays on the list either way.
+    const btns = isBodyRow(o)
+      ? ""
+      : `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
       : `<div class="head">`;

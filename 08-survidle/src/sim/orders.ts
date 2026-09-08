@@ -365,9 +365,16 @@ function readOrder(state: GameState, world: World, cal: Calendar, o: Order, live
  */
 function markSkipped(state: GameState, world: World, cal: Calendar, o: Order, why: string, instead: Order | null): void {
   if (why && !o.skipped) {
-    const asked = o.req.until.kind === "once";
-    const tail = asked && instead ? ` ${cap(orderSentence(state, world, cal, instead))} instead.` : "";
-    log(state, `${orderSentence(state, world, cal, o)}: ${why}.${tail}`, "bad");
+    // The body row is not a promise being skipped, so it does not read like
+    // one: no row title in front of it, no colon, no "instead" - it never
+    // competes to be chosen, so nothing it names is ever a stand-in for it.
+    // NEED_WORDS already reads as the body's own sentence; this only closes it.
+    if (isBodyRow(o)) log(state, `${why}.`, "bad");
+    else {
+      const asked = o.req.until.kind === "once";
+      const tail = asked && instead ? ` ${cap(orderSentence(state, world, cal, instead))} instead.` : "";
+      log(state, `${orderSentence(state, world, cal, o)}: ${why}.${tail}`, "bad");
+    }
   }
   o.skipped = why;
 }
