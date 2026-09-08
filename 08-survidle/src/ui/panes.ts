@@ -15,7 +15,15 @@ import { esc } from "./render";
 
 export type PaneId = "do" | "log" | "pack" | "journal";
 
-export const PANE_IDS: PaneId[] = ["do", "log", "pack", "journal"];
+/**
+ * Do first, then Pack.
+ *
+ * Pack is not only what the survivor carries: it draws the pile on the
+ * ground under them as well, with the take and haul buttons. So it is the
+ * other half of acting on the world, and it belongs beside the list of
+ * things to do rather than behind the log.
+ */
+export const PANE_IDS: PaneId[] = ["do", "pack", "log", "journal"];
 
 const PANE_LABEL: Record<PaneId, string> = { do: "Do", log: "Log", pack: "Pack", journal: "Journal" };
 

@@ -71,6 +71,14 @@ describe("what the strips draw", () => {
     for (const id of ["log", "pack", "journal"]) expect(html).toContain(`data-pane="${id}"`);
   });
 
+  it("Pack comes second, since it is the other half of acting on the world", () => {
+    // It draws the pile on the ground under the survivor as well as what
+    // they carry, with the take and haul buttons, so it belongs beside the
+    // list of things to do rather than behind the log.
+    const order = [...paneTabsHtml(panes).matchAll(/data-pane="([a-z]+)"/g)].map((m) => m[1]);
+    expect(order).toEqual(["do", "pack", "log", "journal"]);
+  });
+
   it("one subtab is on and it is the one showing", () => {
     const html = subtabsHtml(panes);
     expect((html.match(/class="sub on"/g) ?? []).length).toBe(1);
