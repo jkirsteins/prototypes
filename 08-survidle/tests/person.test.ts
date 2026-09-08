@@ -57,8 +57,8 @@ describe("the person", () => {
     expect(m.baseBurn).toBe(BASE_KCAL_PER_HOUR);
     const f = derived(medianPerson("f"));
     expect(f.massKg).toBe(62);
-    expect(f.fatFull).toBeCloseTo(68888.89, 1);
-    expect(f.baseBurn).toBeCloseTo(60.28, 1);
+    expect(f.fatFull).toBe(68888.88888888889);
+    expect(f.baseBurn).toBe(60.27777777777778);
   });
 
   it("derives the table's ends", () => {
@@ -95,16 +95,16 @@ describe("the person", () => {
 
   it("shows grades as the word first and the quantity behind it", () => {
     const p = medianPerson("f");
-    // A woman's own median (62 kg) scales by build the same way a man's does, so these are
-    // her mass at each build rather than the sex-blind 84/72/60 a man's card also still shows.
+    // A woman's own median (62 kg) scales by build the same way a man's does, so
+    // her card shows her own mass at each build, rounded to a tenth off the median.
     expect(grades({ ...p, axes: { strength: 2, build: 2, hands: 2, eyes: 2 } })).toEqual([
       { word: "Mighty and unflagging.", evidence: "carries 30 kg, 42 kg at a push; works 12 hours" },
-      { word: "Heavy, sleeps warm.", evidence: "72.33333333333334 kg" },
+      { word: "Heavy, sleeps warm.", evidence: "72.3 kg" },
       { word: "Steady hands, an eagle's eye.", evidence: "" },
     ]);
     expect(grades({ ...p, axes: { strength: -1, build: -2, hands: -2, eyes: -1 } })).toEqual([
       { word: "Slight and short-winded.", evidence: "carries 22.5 kg, 31.5 kg at a push; works 9 hours" },
-      { word: "Spare, sleeps cold.", evidence: "51.66666666666667 kg" },
+      { word: "Spare, sleeps cold.", evidence: "51.7 kg" },
       { word: "Clumsy hands, short sight.", evidence: "" },
     ]);
     expect(grades(p)).toEqual([

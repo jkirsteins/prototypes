@@ -77,11 +77,12 @@ describe("the epitaph", () => {
     // The larder these seeds empty is meat, berries, roots, eggs and bark flour together;
     // frozen lingon under the snow open a berries row through the April start itself, ahead
     // of the wood-first grind order, so it empties where the ledger above finds it. Both
-    // seeds now die the same way, which is the shape a level-1 opening holds: the larder
-    // gives out weeks before the woodpile does, and the body starves at its own fire with
-    // wood still stacked beside it. Neither freezes, because the short-term reserve is
-    // small enough that what a meal cannot hold goes to fat, and fat is insulation as well
-    // as fuel - a body that eats well early is warm later on the same food.
+    // seeds' larders give out weeks before the woodpile does, which is the shape a level-1
+    // opening holds: seed 17 starves at its own fire with wood still stacked beside it,
+    // while seed 19 falls short of camp on the way back, 0.6 km out. Neither freezes,
+    // because the short-term reserve is small enough that what a meal cannot hold goes to
+    // fat, and fat is insulation as well as fuel - a body that eats well early is warm
+    // later on the same food.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.

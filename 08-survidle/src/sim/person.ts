@@ -56,7 +56,9 @@ export function rollCandidates(seed: number, index: number, boat: number, taken:
 /**
  * Median total mass at the typical reserve, in kilos, by sex. The male
  * figure is MEDIAN_MASS_KG, so a median man at his typical reserve weighs
- * what the burn equations have always been scaled against.
+ * what the burn equations have always been scaled against. The female figure
+ * is a game parameter like FAT_SHARES below, not a measured population
+ * median, settled by the same balance runs.
  */
 const MEDIAN_TOTAL_KG: Record<Sex, number> = { m: MEDIAN_MASS_KG, f: 62 };
 
@@ -84,7 +86,7 @@ const FAT_SHARES: Record<Sex, { floor: number; lower: number; typical: number; u
 export interface FatLandmarks {
   /** Death: essential fat, in kcal. */
   floor: number;
-  /** starvation() is 1 here and 0 above, in kcal. */
+  /** The level starvation is read against, in kcal. */
   lower: number;
   /** Where a survivor lands, in kcal. */
   typical: number;
@@ -129,8 +131,8 @@ export interface Derived {
 
 export function derived(p: Person): Derived {
   const { strength: s, build: b, hands: h, eyes: e } = p.axes;
-  // Total mass scales off the sex's own median the same way build has always scaled MEDIAN_MASS_KG,
-  // so a median man's numbers below fall out bit-identical to before this body carried a sex.
+  // Build scales the sex's own median the way it has always scaled MEDIAN_MASS_KG,
+  // so a median man is MEDIAN_MASS_KG exactly.
   const massKg = MEDIAN_TOTAL_KG[p.sex] * (1 + (6 / MEDIAN_MASS_KG) * b);
   const leanKg = massKg * (1 - FAT_SHARES[p.sex].typical);
   return {
@@ -200,7 +202,7 @@ export function grades(p: Person): GradeLine[] {
     },
     {
       word: `${BUILD_WORDS[b + 2]}${b > 0 ? ", sleeps warm" : b < 0 ? ", sleeps cold" : ""}.`,
-      evidence: `${d.massKg} kg`,
+      evidence: `${kg(d.massKg)}`,
     },
     { word: `${HANDS_WORDS[p.axes.hands + 2]}, ${EYES_WORDS[p.axes.eyes + 2]}.`, evidence: "" },
   ];

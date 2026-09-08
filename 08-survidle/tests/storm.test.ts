@@ -110,7 +110,7 @@ describe("storms", () => {
 
 describe("the body at work", () => {
   it("walking the fell burns twice what the forest does, and deep snow doubles it again", () => {
-    // The base bucket now scales by sex as well as build, so this seam - terrain and snow
+    // The base bucket scales by sex as well as build, so this seam - terrain and snow
     // alone - is pinned against the median man rather than whatever sex seed 17 rolls.
     const { state, world } = newGame(17, undefined, medianPerson("m"));
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
