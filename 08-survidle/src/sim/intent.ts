@@ -388,15 +388,29 @@ function untilMet(state: GameState, it: Intent): boolean {
   }
 }
 
+/**
+ * What "owed to camp" is judged against: the work, where it is done, and
+ * the camp it owes. A live intent is one of these; so is a row on the list,
+ * once its cell is resolved, which is how a row can ask whether its own
+ * load has landed without an intent to ask through.
+ */
+export interface Delivery {
+  task: TaskId;
+  arg?: string;
+  deliver: "leave" | "camp";
+  cell: number;
+  campCell: number;
+}
+
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
-function packCarries(state: GameState, world: World, it: Intent): boolean {
-  if (it.task === "fill" || it.task === "melt") {
-    const room = campWaterRoom(pile(state, it.campCell), regionState(state, world, state.player.region));
+function packCarries(state: GameState, world: World, d: Delivery): boolean {
+  if (d.task === "fill" || d.task === "melt") {
+    const room = campWaterRoom(pile(state, d.campCell), regionState(state, world, state.player.region));
     return vesselLitres(state.player) > 0 && room > 0;
   }
   const pack = state.player.pack;
   if (weight(pack) >= body(state).packHardKg - 1e-9) return true;
-  const items = yieldItems(it.task, it.arg);
+  const items = yieldItems(d.task, d.arg);
   if (items === "all") return !isEmpty(pack);
   return items.some((i) => qty(pack, i) > 1e-9);
 }
@@ -407,10 +421,10 @@ function packCarries(state: GameState, world: World, it: Intent): boolean {
  * in the camp pile - but the pack can still hold something unrelated that
  * arrived with the player and is still owed a drop.
  */
-export function deliveryPending(state: GameState, world: World, it: Intent): boolean {
-  if (it.deliver !== "camp") return false;
-  if (it.cell === it.campCell) return packCarries(state, world, it);
-  return !isEmpty(pile(state, it.cell)) || packCarries(state, world, it);
+export function deliveryPending(state: GameState, world: World, d: Delivery): boolean {
+  if (d.deliver !== "camp") return false;
+  if (d.cell === d.campCell) return packCarries(state, world, d);
+  return !isEmpty(pile(state, d.cell)) || packCarries(state, world, d);
 }
 
 function loadFull(state: GameState, it: Intent): boolean {

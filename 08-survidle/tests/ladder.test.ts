@@ -4,7 +4,7 @@ import { newGame } from "../src/sim/newgame";
 import { moveOrder, ordersHere } from "../src/sim/orders";
 import { levelMinutes, RUNG_LEVEL, RUNG_LINE, RUNG_ORDER, SKILL_IDS, train } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { advance } from "../src/sim/advance";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { mapRegion } from "../src/sim/mapped";
@@ -183,6 +183,35 @@ describe("where a row lands", () => {
     for (let i = 0; i < 4000 && ordersHere(state, world).some((r) => r.id === o.id); i++) advance(state, world, 1);
     expect(qty(pile(state, camp), "log")).toBe(4);
     expect(ordersHere(state, world).map((r) => r.id)).not.toContain(o.id);
+  });
+
+  it("a haul displaced mid-carry is not done: the row stands until the load is at camp", () => {
+    const { state, world } = newGame(3);
+    mapRegion(state, world, state.player.region);
+    const camp = regionState(state, world, state.player.region).campCell;
+    const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
+    placeAt(state, world, spot);
+    addItem(state.player.pack, "driedMeat", 2);
+    addItem(pile(state, spot), "log", 1);
+    const haul = orderByHand(state, world, cal, new Rng(1), { task: "haul", until: { kind: "once" }, deliver: "camp", where: { cell: spot } }, "job");
+    // The log is on the back and the ground is bare, with camp still to walk to.
+    let carrying = false;
+    for (let i = 0; i < 200 && !carrying; i++) {
+      advance(state, world, 1);
+      carrying = qty(state.player.pack, "log") > 0 && cellOf(state, world) !== camp;
+    }
+    expect(carrying).toBe(true);
+    // The player asks for something else in that moment: the click takes the
+    // top of the list and the minute, and the log is still owed to camp.
+    orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    advance(state, world, 1);
+    expect(ordersHere(state, world).map((o) => o.id)).toContain(haul.id);
+    expect(state.log.some((l) => l.text.startsWith("Haul to camp: done."))).toBe(false);
+    expect(qty(pile(state, camp), "log")).toBe(0);
+    // It is struck off when the log is at camp and not a minute before.
+    for (let i = 0; i < 3000 && ordersHere(state, world).some((o) => o.id === haul.id); i++) advance(state, world, 1);
+    expect(qty(pile(state, camp), "log")).toBe(1);
+    expect(state.log.some((l) => l.text.startsWith("Haul to camp: done."))).toBe(true);
   });
 });
 

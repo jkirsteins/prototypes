@@ -12,7 +12,7 @@ import { KIT_ITEMS } from "./body";
 import { bodyLogLine, bodyRowOf, BODY_SENTENCE, isBodyRow, judgeBodyRow, serveBodyRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
-import { isEmpty, pile, qty } from "./inventory";
+import { pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
@@ -286,13 +286,17 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
     return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
-  // Nothing counts a trip, so a haul has no tally for a once to read. It is
-  // done when the ground it names is bare and the last load is off the back,
-  // which is the same reading the live intent ends its own trips on.
+  // Nothing counts a trip, so a haul has no tally for a once to read. What
+  // says it is done is the world: nothing of its left on the ground it
+  // names, and nothing of its still on the back. A haul always owes camp -
+  // carrying a pile home is the whole of it - so that is what it is judged
+  // against, whether or not the row happens to hold the minute: a load is
+  // still owed after a click takes the survivor off to something else, and
+  // a row that said "done" there would be reporting work it had not
+  // finished.
   if (o.req.task === "haul") {
     const cell = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where).cell;
-    const carrying = live && state.intent !== null && state.intent.orderId === o.id && deliveryPending(state, world, state.intent);
-    return isEmpty(pile(state, cell)) && !carrying;
+    return !deliveryPending(state, world, { task: o.req.task, arg: o.req.arg, deliver: "camp", cell, campCell: st.campCell });
   }
   const u = o.req.until;
   switch (u.kind) {
