@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
-import { isCareRow } from "../src/sim/bodyorder";
+import { bodyRowOf, campRowOf, isBodyRow, isCampRow, isCareRow } from "../src/sim/bodyorder";
 import { calendar, COAST_OPEN_FROM, COAST_OPEN_TO, coastOpen } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty } from "../src/sim/inventory";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -198,9 +198,37 @@ describe("what the heir is told", () => {
     for (const st of Object.values(state.regions)) expect(st.orders.every(isCareRow)).toBe(true);
     // The world is still there: the wood the ancestor split is at the old camp for the heir to find.
     expect(qty(pile(state, camp), "firewood")).toBeGreaterThan(0);
-    // The heir's own orders are the only ones the list ever holds again.
+    // The heir's own orders are the only work the list ever holds again.
     giveOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest" }, "keep");
-    expect(regionState(state, world, region).orders.map((o) => o.req.task)).toEqual(state.player.region === region ? ["sticks"] : []);
+    const work = regionState(state, world, region)
+      .orders.filter((o) => !isCareRow(o))
+      .map((o) => o.req.task);
+    expect(work).toEqual(state.player.region === region ? ["sticks"] : []);
+  });
+
+  // A body is not a plan. The heir has thirst, hunger, cold and sleep from the
+  // hour it lands, and the two rows that answer them are the only thing on a
+  // region's list that no survivor ever chose to put there - so the wipe that
+  // takes the dead's work must hand them back, on every region the dead had
+  // touched as well as on the fresh ground the boat comes to.
+  it("leaves the heir a body row and a camp row in every region", () => {
+    const { state, world } = newGame(17);
+    const home = state.player.region;
+    for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
+    giveOrder(state, world, { task: "sticks", until: { kind: "campHas", qty: 10 }, deliver: "camp", where: "nearest" }, "keep");
+    advance(state, world, 1440);
+    die(state, "starved");
+    beginAgain(state, world);
+    land(state, world, { first: "Aino", last: "Berzins" });
+    const regions = [...new Set([home, state.player.region, ...Object.keys(state.regions).map(Number)])];
+    for (const id of regions) {
+      const st = regionState(state, world, id);
+      expect(st.orders.filter(isBodyRow).length).toBe(1);
+      expect(st.orders.filter(isCampRow).length).toBe(1);
+    }
+    // And they are where a fresh list puts them: the care rows above the work.
+    expect(bodyRowOf(state, world)).not.toBe(null);
+    expect(campRowOf(state, world)).not.toBe(null);
   });
 
   it("says nothing about the journal when nothing was built, and the first tombstone has no comparison", () => {
