@@ -79,8 +79,14 @@ describe("the list", () => {
     expect(b.kind).toBe("keep");
     moveOrder(state, world, b.id, -1);
     expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, 2]);
-    // A move that would swap with the body row does nothing, the same as a move off either end.
+    // The body row ranks like any other row: work moved over it is the player
+    // saying "keep at it, tired or not", and the row moves back the same way.
     moveOrder(state, world, b.id, -1);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([3, 1, 2]);
+    moveOrder(state, world, 1, -1);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, 2]);
+    // A move off either end does nothing.
+    moveOrder(state, world, 1, -1);
     expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, 2]);
     moveOrder(state, world, b.id, 1);
     expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 2, 3]);

@@ -285,7 +285,14 @@ function onClick(ev: Event) {
   switch (act) {
     case "task": {
       const id = target.dataset.id as TaskId;
-      if (id === "haul" || id === "night") {
+      if (id === "haul") {
+        // Carrying a pile home is work like any other, so it goes on the list
+        // as the row the click makes it: without one, the body could take the
+        // minute from it and nothing would bring it back.
+        orderByHand(state, world, cal, rng, { task: id, until: { kind: "once" }, deliver: "camp", where: { cell: cellOf(state, world) } }, "job");
+      } else if (id === "night") {
+        // A night out is the body's own sleep under a name, and the body's row
+        // serves it where it stands. It never becomes a row of its own.
         startIntent(state, world, cal, rng, { task: id, until: { kind: "once" }, deliver: "camp", where: { cell: cellOf(state, world) } });
       } else {
         startTask(state, world, cal, id, target.dataset.arg || undefined, target.dataset.repeat === "1", rng);

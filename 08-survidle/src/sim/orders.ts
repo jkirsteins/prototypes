@@ -12,7 +12,7 @@ import { KIT_ITEMS } from "./body";
 import { bodyLogLine, bodyRowOf, BODY_SENTENCE, isBodyRow, judgeBodyRow, serveBodyRow } from "./bodyorder";
 import { body } from "./person";
 import { type Calendar, calendar, fmtDoy } from "./calendar";
-import { pile, qty } from "./inventory";
+import { isEmpty, pile, qty } from "./inventory";
 import { deliveryPending, intentOption, resolveCell, startIntent, yieldItem } from "./intent";
 import { BARK_DRY_RATIO, ITEM_NAMES, MEAT_DRY_RATIO, STRUCTURES } from "./items";
 import { normalizeOrder, structureKeep } from "./ladder";
@@ -30,25 +30,39 @@ export function ordersHere(state: GameState, world: World): Order[] {
 }
 
 /**
+ * Where a new row lands. A number is a place among the work rows, counted
+ * as the giver counts its own orders, with the body's row invisible to it:
+ * a caller ranking three orders against each other says 0, 1, 2 and does
+ * not have to know where the body sits. "top" is the whole list's top,
+ * above the body's row included, which is what a click asks for and the
+ * one thing a work-relative number cannot say.
+ */
+export type Landing = number | "top";
+
+/** The array place a landing names, appending when the rank runs past the work. */
+function placeOf(list: Order[], rank: Landing): number {
+  if (rank === "top") return 0;
+  let seen = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (isBodyRow(list[i])) continue;
+    if (seen === rank) return i;
+    seen++;
+  }
+  return list.length;
+}
+
+/**
  * Appends, or inserts at `rank` when one is given. The kind and the until
  * are the normalised ones (see normalizeOrder in ladder.ts). This is the
  * raw mutator: the Do panel and the player script go through giveOrder,
  * which reads the ladder's gate first.
  */
-export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: number): Order {
+export function addOrder(state: GameState, world: World, req: IntentRequest, kind: OrderKind, rank?: Landing): Order {
   const st = regionState(state, world, state.player.region);
   const n = normalizeOrder(req, kind);
   // The day it was given is the rise's start for a paced keep that names no season.
   const o: Order = { id: st.nextOrderId++, kind: n.kind, req: n.req, done: 0, minutes: 0, skipped: "", givenDoy: calendar(state.minute, state.startDoy).dayOfYear };
-  // A rank counts places among the real work, not places in the array: the
-  // body row sits ahead of every list this ever runs on, so rank 0 - the
-  // top of the real orders - is one place past it, and every other rank
-  // shifts the same one place behind it. The one list this ever hands out
-  // with no body row at all (a landed heir's wiped camps, before the first
-  // order of the new life) has nothing to shift past, and reads that off
-  // the list itself rather than assuming the row is there to ask.
-  const offset = st.orders.length > 0 && isBodyRow(st.orders[0]) ? 1 : 0;
-  st.orders.splice(rank === undefined ? st.orders.length : Math.min(rank + offset, st.orders.length), 0, o);
+  st.orders.splice(rank === undefined ? st.orders.length : placeOf(st.orders, rank), 0, o);
   return o;
 }
 
@@ -59,17 +73,16 @@ export function removeOrder(state: GameState, world: World, id: number): void {
 }
 
 /**
- * Moves one rank up (-1) or down (1); a move off either end does nothing,
- * and neither does a move that would touch the body row - up out of the
- * second place, or down out of the first - since swapping with it is the
- * one way this would otherwise dislodge it from the top.
+ * Moves one rank up (-1) or down (1); a move off either end does nothing.
+ * The body's row moves like any other: ranking work over it is how the
+ * player says "keep at it, tired or not", and ranking it back up is how
+ * they take that back.
  */
 export function moveOrder(state: GameState, world: World, id: number, dir: -1 | 1): void {
   const list = ordersHere(state, world);
   const i = list.findIndex((o) => o.id === id);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= list.length) return;
-  if (isBodyRow(list[i]) || isBodyRow(list[j])) return;
   [list[i], list[j]] = [list[j], list[i]];
 }
 
@@ -273,6 +286,14 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
     return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
+  // Nothing counts a trip, so a haul has no tally for a once to read. It is
+  // done when the ground it names is bare and the last load is off the back,
+  // which is the same reading the live intent ends its own trips on.
+  if (o.req.task === "haul") {
+    const cell = resolveCell(state, world, cal, o.req.task, o.req.arg, o.req.where).cell;
+    const carrying = live && state.intent !== null && state.intent.orderId === o.id && deliveryPending(state, world, state.intent);
+    return isEmpty(pile(state, cell)) && !carrying;
+  }
   const u = o.req.until;
   switch (u.kind) {
     case "once": return o.done >= 1;

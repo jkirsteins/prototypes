@@ -8,15 +8,15 @@ import { bankFire } from "../src/sim/fire";
 import { addItem, pile, qty, weight } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
 import { mapRegion } from "../src/sim/mapped";
+import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { addOrder, ordersHere } from "../src/sim/orders";
 import { check } from "../src/sim/tasks";
-import type { GameState, Order } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG } from "../src/units";
-import { cellAt, hasSpot, neighbours, regionAt, type World } from "../src/world/gen";
+import { cellAt, hasSpot, neighbours, regionAt } from "../src/world/gen";
 import { findRoute, routeMinutes } from "../src/world/route";
 
 type G = ReturnType<typeof newGame>;
@@ -44,19 +44,6 @@ function felling(seed = 39, deliver: "leave" | "camp" = "leave") {
   addOrder(state, world, { task: "chop", until: { kind: "forever" }, deliver, where: "nearest" }, "grind");
   advance(state, world, 1);
   return { g, state, world, camp };
-}
-
-/**
- * A row ranked over the body's own, which is where work the player chose in
- * the moment sits. No panel control moves a row past the body row, so the
- * list is arranged here directly: what these tests are about is what the
- * scheduler does with a rank, not the door the rank is asked for through.
- */
-function over(state: GameState, world: World, o: Order): Order {
-  const list = ordersHere(state, world);
-  list.splice(list.indexOf(o), 1);
-  list.unshift(o);
-  return o;
 }
 
 describe("the body's row against the work", () => {
@@ -386,7 +373,7 @@ describe("the body's row against the work", () => {
     addItem(state.player.pack, "driedMeat", 2);
     state.player.energy = 40;
     const cabin = { task: "build" as const, arg: "cabin", until: { kind: "once" as const }, deliver: "leave" as const, where: "nearest" as const };
-    over(state, world, addOrder(state, world, cabin, "job"));
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
     expect(until(g, () => state.task?.id === "build", 10)).toBe(true);
     // Past the spent line the build goes on: it is ranked over the body's own
     // row, and a body that has to wait its turn takes nothing back from the
@@ -404,14 +391,14 @@ describe("the body's row against the work", () => {
     expect(state.task?.id).toBe("sleep");
     expect(state.player.sleeping?.collapsed).toBe(true);
     // Awake again, the player picks the build back up where the collapse left it.
-    over(state, world, addOrder(state, world, cabin, "job"));
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
-    over(state, world, addOrder(state, world, { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job"));
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     advance(state, world, 1);
     const banked = st.build.cabin ?? 0;
     expect(banked).toBeGreaterThan(10);
     expect(until(g, () => state.intent?.task !== "sticks", 1500)).toBe(true);
-    over(state, world, addOrder(state, world, cabin, "job"));
+    orderByHand(state, world, calendar(state.minute, state.startDoy), new Rng(1), cabin, "job");
     expect(until(g, () => state.task?.id === "build", 200)).toBe(true);
     expect(state.task!.duration).toBeCloseTo(3600 - banked, 0);
   });

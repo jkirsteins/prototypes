@@ -110,15 +110,12 @@ describe("the runner keeps its night gate", () => {
 describe("the collapse", () => {
   it("is the one thing that stops work chosen by hand, and it sleeps where it stands", () => {
     const c = camp(MIDNIGHT);
-    // Ranked over the body's row, the way work the player chose in the moment
-    // is: nothing tired, thirsty or cold takes the minute back off it, and the
-    // collapse is the one thing left that ends it. The click starts the work
-    // itself, which is how a once order runs at an hour the list would refuse
-    // to send anyone out at.
-    const o = orderByHand(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
-    const list = ordersHere(c.state, c.world);
-    list.splice(list.indexOf(o), 1);
-    list.unshift(o);
+    // A click lands over the body's row, which is what makes the work the
+    // player chose in the moment the player's: nothing tired, thirsty or cold
+    // takes the minute back off it, and the collapse is the one thing left
+    // that ends it. The click starts the work itself, which is how a once
+    // order runs at an hour the list would refuse to send anyone out at.
+    orderByHand(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     expect(c.state.intent?.mode).toBe("hand");
     c.state.player.energy = SLEEP_AT;
     advance(c.state, c.world, 1);
@@ -129,10 +126,7 @@ describe("the collapse", () => {
 
   it("does not fire while there is anything left in the body", () => {
     const c = camp(MIDNIGHT);
-    const o = orderByHand(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
-    const list = ordersHere(c.state, c.world);
-    list.splice(list.indexOf(o), 1);
-    list.unshift(o);
+    orderByHand(c.state, c.world, c.cal, new Rng(1), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" }, "job");
     c.state.player.energy = SLEEP_AT + 5;
     advance(c.state, c.world, 1);
     expect(c.state.intent).not.toBeNull();

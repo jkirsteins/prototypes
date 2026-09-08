@@ -10,8 +10,6 @@ import { addOrder, ordersHere } from "../src/sim/orders";
 import { cellOf, placeAt } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { RESTED_AT, SPENT_AT } from "../src/sim/sleep";
-import type { GameState, Order } from "../src/sim/types";
-import type { World } from "../src/world/gen";
 
 type G = ReturnType<typeof newGame>;
 const cal = calendar(0);
@@ -34,23 +32,10 @@ function spentAtCamp() {
   return { g, state, world, camp };
 }
 
-/**
- * A row ranked over the body's own, which is where work the player chose in
- * the moment belongs. No panel control moves a row past the body row, so the
- * list is arranged here directly: these tests are about what the scheduler
- * does with a rank, not about the door the rank is asked for through.
- */
-function over(state: GameState, world: World, o: Order): Order {
-  const list = ordersHere(state, world);
-  list.splice(list.indexOf(o), 1);
-  list.unshift(o);
-  return o;
-}
-
 describe("work chosen by hand is the player's", () => {
   it("a once order past the spent line walks to the wood and gathers; it turns for camp for nothing short of the collapse", () => {
     const { g, state, world, camp } = spentAtCamp();
-    over(state, world, orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job"));
+    orderByHand(state, world, cal, new Rng(1), { task: "deadwood", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
     // Started on the click, spent or not, and ranked over the body's row,
     // which is what keeps a body past the spent line from taking it back.
     expect(state.intent?.task).toBe("deadwood");
@@ -89,7 +74,7 @@ describe("work chosen by hand is the player's", () => {
     expect(until(g, () => state.intent?.task === "deadwood", 1500)).toBe(true);
   });
 
-  it("a once given by hand while the runner is on its own order cuts in, and a second one queues behind the first", () => {
+  it("a once given by hand while the runner is on its own order cuts in, and a second click displaces the first", () => {
     const { g, state, world } = spentAtCamp();
     state.player.energy = 90;
     addOrder(state, world, { task: "sticks", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
@@ -98,9 +83,11 @@ describe("work chosen by hand is the player's", () => {
     expect(state.intent?.task).toBe("deadwood");
     // Body row is 1, the standing sticks grind given first is 2, so deadwood is 3.
     expect(state.intent?.orderId).toBe(3);
+    // The second click is the player asking for something else now: it takes
+    // the top of the list, the body row included, and the minute with it.
     const second = orderByHand(state, world, cal, new Rng(1), { task: "stone", until: { kind: "once" }, deliver: "camp", where: "nearest" }, "job");
-    expect(state.intent?.orderId).toBe(3);
-    expect(ordersHere(state, world).map((o) => o.id)).toEqual([1, 3, second.id, 2]);
+    expect(state.intent?.orderId).toBe(second.id);
+    expect(ordersHere(state, world).map((o) => o.id)).toEqual([second.id, 3, 1, 2]);
   });
 
   it("the same work as a standing order is the runner's, and the spent body goes home first", () => {

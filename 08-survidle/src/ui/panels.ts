@@ -428,13 +428,14 @@ function ordersHtml(state: GameState, world: World, cal: Calendar): string {
     const second = live
       ? `<div class="step">${esc(plain(it!.step))}</div>${state.task ? TASK_BAR : ""}${clicks ? HURRY_BAR : ""}`
       : `<div class="step">${esc(waitingLine(state, world, cal, o, judged))}</div>`;
-    // The body row draws no controls at all: it cannot be struck off, and
-    // moveOrder refuses to swap it out of the top place, so an up, a down or
-    // an x here would be a button that does nothing when clicked - worse
-    // than none, since the row stays on the list either way.
+    // The body row ranks like any other row and draws the same up and down,
+    // since where it sits against the work is the whole of what the player
+    // says to it. It draws no x: it cannot be struck off, and a button that
+    // does nothing when clicked is worse than none.
+    const move = `<button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button>`;
     const btns = isBodyRow(o)
-      ? ""
-      : `<span class="ctl"><button class="mini" data-act="order-up" data-id="${o.id}" ${i === 0 ? "disabled" : ""}>up</button> <button class="mini" data-act="order-down" data-id="${o.id}" ${i === orders.length - 1 ? "disabled" : ""}>down</button> <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
+      ? `<span class="ctl">${move}</span>`
+      : `<span class="ctl">${move} <button class="mini" data-act="order-remove" data-id="${o.id}" title="Take it off the list">x</button></span>`;
     const head = clicks
       ? `<div class="head hurry" data-act="hurry" title="Click to hurry it: ${Math.round(PULSE_MIN)} minutes in a moment, then wait for the bar">`
       : `<div class="head">`;
