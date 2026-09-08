@@ -64,6 +64,7 @@ describe("the epitaph", () => {
 
   it("is deterministic for the reference seeds; trap yields more with larger capacities", () => {
     // Inline snapshots fill themselves on the first run; a later change to the sim that moves a death shows here.
+    // A body need is the survivor's own, not the order's: exhaustion or cold from one job holds through the handover to the next.
     // What these two deaths rest on: a shore's fish capacity is biomass per hectare over mean weight, tens of
     // thousands per km2, so a trap and a spear both find fish; a hunted small-game range refills from its
     // neighbours as well as from the herd migration, so the snares keep finding hares; a pole rack holds 40 kg
@@ -76,17 +77,16 @@ describe("the epitaph", () => {
     // opening and a keep of eight as the restock below the clothing block.
     // The larder these seeds empty is meat, berries, roots, eggs and bark flour together;
     // frozen lingon under the snow open a berries row through the April start itself, ahead
-    // of the wood-first grind order, so it empties where the ledger above finds it. Both
-    // seeds now die the same way, which is the shape a level-1 opening holds: the larder
-    // gives out weeks before the woodpile does, and the body starves at its own fire with
-    // wood still stacked beside it. Neither freezes, because the short-term reserve is
-    // small enough that what a meal cannot hold goes to fat, and fat is insulation as well
-    // as fuel - a body that eats well early is warm later on the same food.
+    // of the wood-first grind order, so it empties where the ledger above finds it. Seed 19
+    // and seed 17 are the same shape a level-1 opening holds: the larder gives out weeks
+    // before the woodpile does, and both starve at their own fire with wood to spare. The
+    // wood is the tell - a camp that keeps its fire in banks more of it than it burns, so
+    // what runs out is always the food.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
     expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 22. Starved at camp, with nothing in the pack and 47 kg of firewood at camp."`);
-    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 28. Starved at camp, with nothing in the pack and 12 kg of firewood at camp."`);
+    expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 25. Starved at camp, with nothing in the pack and 60 kg of firewood at camp."`);
   });
 
   it("writes the first snare set as its own line", () => {

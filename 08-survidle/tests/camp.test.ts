@@ -13,18 +13,21 @@ import { check } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
 
 describe("camp", () => {
-  it("burns 3 kg of firewood an hour and feeds itself from camp while you are there", () => {
+  it("burns 3 kg of firewood an hour and takes none of camp's own to do it", () => {
     const { state, world } = newGame(2);
     const st = regionState(state, world, state.player.region);
     st.structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 6;
     addItem(pile(state, st.campCell), "firewood", 10);
-    for (let m = 0; m < 65; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
+    for (let m = 0; m < 60; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     expect(st.fire.lit).toBe(true);
-    // 6 kg minus 3 kg burnt, then topped up from the pile when it dropped to 3 kg.
-    expect(qty(pile(state, st.campCell), "firewood")).toBeLessThan(10);
-    state.player.autoFeed = false;
+    expect(st.fire.fuelKg).toBeCloseTo(3, 1);
+    // The woodpile is the survivor's to spend: putting a log on is a body
+    // need, taken through the order list, and never a thing the camp does of
+    // its own accord with somebody standing there.
+    expect(qty(pile(state, st.campCell), "firewood")).toBeCloseTo(10);
+    // Nobody feeding it is the only way a fire goes out.
     for (let m = 0; m < 60 * 13; m++) stepCamp(state, world, 5, 1, { region: state.player.region, atCamp: true });
     // Thirteen hours outlasts both the burn and the ember window that follows
     // it, so the fire is out for good rather than merely down to coals.

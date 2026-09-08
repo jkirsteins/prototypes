@@ -100,10 +100,12 @@ export const HUNGRY_LINE = 1800;
  * take speaks once too, and does not speak again until a meal has cleared
  * the latch - the news a player can still act on is that the food ran out,
  * and repeating it every minute is not more news.
+ *
+ * Whether the survivor stops to eat at all is the body row's question, asked
+ * where the player ranks that row against the work.
  */
-export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
+export function autoEat(state: GameState, world: World, rng: Rng): void {
   const p = state.player;
-  if (!force && !p.autoEat) return;
   const eaten = new Map<FoodId, number>();
   let guard = 0;
   while (p.kcal < HUNGRY_LINE && guard++ < 200) {

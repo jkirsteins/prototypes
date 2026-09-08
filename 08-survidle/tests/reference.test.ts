@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
+import { isCareRow } from "../src/sim/bodyorder";
 import { calendar, START_DOY } from "../src/sim/calendar";
 import { setSkillLevel } from "../src/sim/horizon";
 import { addItem, hasTool, pile, qty } from "../src/sim/inventory";
@@ -58,19 +59,19 @@ function findBirchCell(world: World): number {
 }
 
 describe("the reference player", () => {
-  it("takes the one order that is stalling the list off it, and puts it back when it can run", () => {
-    // A once order stops every order under it, and under the ladder's rungs
-    // every want is a once job. The opening list's first row is the thaw, and
-    // in a summer with nothing frozen it can never start: a player reads that
-    // row and strikes it off rather than leaving the list standing all day.
+  it("a job that cannot run is passed over, and the rows under it run without it being struck off", () => {
+    // Under the ladder's rungs every want is a once job. The opening list's
+    // first row is the thaw, and in a summer with nothing frozen it can
+    // never run: nothing pins it, so the list does not wait on it, and it
+    // stays on the list rather than being withdrawn to make way.
     const ref = setUpReference(17, true);
     ref.player.tick(ref.state, ref.world);
-    expect(ordersHere(ref.state, ref.world)[0].req.task).toBe("thaw");
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(ref.state, ref.world)[2].req.task).toBe("thaw");
     stepReference(ref, 60);
     const list = ordersHere(ref.state, ref.world);
-    expect(list.some((o) => o.req.task === "thaw")).toBe(false);
-    // The rows under it run, and only the stalling row came off: a row waiting
-    // on the work of the rows above it holds nothing up and stays.
+    expect(list.some((o) => o.req.task === "thaw")).toBe(true);
+    // The rows under it run just the same: a row passed over holds nothing up.
     expect(list.length).toBeGreaterThan(20);
     stepReference(ref, 5 * 60);
     expect(ref.state.dead).toBeNull();
@@ -80,9 +81,10 @@ describe("the reference player", () => {
 
   it("at level 1 the first tick gives every open want as a once job, ranked as the list", () => {
     const { state, world, player } = setUpReference(17);
-    expect(ordersHere(state, world)).toEqual([]);
+    expect(ordersHere(state, world).every(isCareRow)).toBe(true);
     player.tick(state, world);
-    const list = ordersHere(state, world);
+    // Neither care row is one of the reference's own wants.
+    const list = ordersHere(state, world).filter((o) => !isCareRow(o));
     // Two readings shut a want on the opening morning. The runner's own rules shut the three
     // named hunts (the species' recommended level), the two ice-hole fetches and the two melts
     // (the shore is open), the fire indoors (no hut), the hide coat, trousers and boots
@@ -201,7 +203,7 @@ describe("the reference player", () => {
       { req: { task: "craft", until: { kind: "once" }, arg: "cordage", deliver: "camp", where: "nearest" }, kind: "job" },
     ]);
     player.tick(state, world);
-    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["bark", "craft"]);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["wait", "wait", "bark", "craft"]);
     // The stand-ins run to completion and drop off.
     stepReference({ state, world, player }, 6 * 60);
     // The bark keep is unmet while camp has under half of 10, so it is standing again; the cordage job finished and is not.
@@ -337,14 +339,15 @@ describe("the reference player", () => {
     ]);
     player3.tick(at3.state, at3.world);
     const first = ordersHere(at3.state, at3.world);
-    expect(first.length).toBe(1);
-    expect(first[0].kind).toBe("job");
-    expect(first[0].req.until).toEqual({ kind: "times", n: 2 });
+    // The two care rows plus the one real order.
+    expect(first.length).toBe(3);
+    expect(first[2].kind).toBe("job");
+    expect(first[2].req.until).toEqual({ kind: "times", n: 2 });
     for (let h = 0; h < 6; h++) {
       player3.tick(at3.state, at3.world);
       advance(at3.state, at3.world, 60);
     }
-    expect(ordersHere(at3.state, at3.world).length).toBe(0);
+    expect(ordersHere(at3.state, at3.world).every(isCareRow)).toBe(true);
   });
 
   it("a times want that reaches its rung mid-count keeps only its remainder, not a fresh n", () => {
@@ -377,8 +380,8 @@ describe("the reference player", () => {
     ]);
     player.tick(state, world);
     const list = ordersHere(state, world);
-    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["fill", "job"], ["split", "keep"]]);
-    expect(list[0].req.until.kind).toBe("once");
+    expect(list.map((o) => [o.req.task, o.kind])).toEqual([["wait", "camp"], ["wait", "body"], ["fill", "job"], ["split", "keep"]]);
+    expect(list[2].req.until.kind).toBe("once");
   });
 
   it("the fill keep, given at the shore with a bucket in hand, stocks the camp within six hours", () => {
@@ -493,13 +496,15 @@ describe("the reference player", () => {
 
   it("a capped run does not double the checkpoint", () => {
     // calendar()'s day is dayIndex + 1, so a run of REFERENCE_TARGET_DAY - 1 full days
-    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops. Seed 17
-    // is alive there, so the day cap and the REFERENCE_TARGET_DAY checkpoint land on the
-    // same day, without hunting for a seed that dies there instead - this does not cover
-    // the death-landing-on-a-checkpoint variant of the same branch. Seed 79 used to be the
-    // one standing here and now dies of thirst on the target day, which is the gate's
-    // reading to report rather than this test's business.
-    const r = runReference(17, REFERENCE_TARGET_DAY - 1);
+    // (day 1 is the start) reads back as day REFERENCE_TARGET_DAY once it stops, so the day
+    // cap and the REFERENCE_TARGET_DAY checkpoint land on the same day. This does not cover
+    // the death-landing-on-a-checkpoint variant of the same branch.
+    //
+    // Which seed stands here is incidental: the subject is the cap, and any run still alive
+    // at it will do. A seed that starts dying before the cap is a reading for the gate to
+    // report, not a reason to change what this test is about - swap in another living seed
+    // and leave the death where the gate can see it.
+    const r = runReference(79, REFERENCE_TARGET_DAY - 1);
     expect(r.outcome).toEqual({ kind: "reached", day: REFERENCE_TARGET_DAY });
     const days = r.checkpoints.map((c) => c.day);
     expect(new Set(days).size).toBe(days.length);

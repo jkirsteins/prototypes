@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
+import { bodyRowOf, isCampRow, isBodyRow } from "../src/sim/bodyorder";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
-import { fillPopulations } from "../src/sim/regionstate";
+import { fillPopulations, regionState } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
@@ -32,9 +33,8 @@ describe("advance", () => {
     expect(b.state.minute).toBeCloseTo(60, 6);
   });
 
-  it("kills an idle character who never eats, and names the cause", () => {
+  it("kills an idle character who runs out, and names the cause", () => {
     const { state, world } = newGame(8);
-    state.player.autoEat = false;
     advance(state, world, 1440 * 12);
     expect(state.dead).not.toBeNull();
     // Never drinks either: away from any shore or vessel, thirst can win the race.
@@ -42,8 +42,21 @@ describe("advance", () => {
     expect(state.task).toBeNull();
   });
 
-  it("falls asleep on its own when idle and spent", () => {
+  it("falls asleep on its own when idle and spent: the body's own row puts it down", () => {
     const { state, world } = newGame(8);
+    state.player.energy = 9;
+    advance(state, world, 5);
+    expect(state.task?.id).toBe("sleep");
+    expect(state.player.bodyNeed).toBe("sleep");
+    expect(state.intent?.orderId).toBe(bodyRowOf(state, world)!.id);
+  });
+
+  it("falls asleep on its own when idle and spent, with no list at all to put it down", () => {
+    const { state, world } = newGame(8);
+    // The one list the game wipes to nothing, an heir's before their first
+    // order: no body row on it, and a body at the end of itself still lies
+    // down where it stands rather than standing there until it dies.
+    regionState(state, world, state.player.region).orders.length = 0;
     state.player.energy = 9;
     advance(state, world, 5);
     expect(state.task?.id).toBe("sleep");
@@ -73,7 +86,6 @@ describe("save", () => {
   it("a new game starts with the new body fields, and an old save gets them filled", () => {
     const { state } = newGame(8);
     expect(state.player.water).toBe(2.5);
-    expect(state.player.autoDrink).toBe(true);
     expect(state.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(state.weather.iceCm).toBe(0);
     expect(state.weather.storm).toBeNull();
@@ -89,7 +101,6 @@ describe("save", () => {
     st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
-    delete raw.state.player.autoDrink;
     delete raw.state.player.frostbite;
     delete raw.state.player.toes;
     delete raw.state.player.fingers;
@@ -113,7 +124,6 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].trap.age;
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.player.water).toBe(2.5);
-    expect(back.player.autoDrink).toBe(true);
     expect(back.player.frostbite).toEqual({ feet: 0, hands: 0 });
     expect(back.player.toes).toBe(false);
     expect(back.player.fingers).toBe(false);
@@ -216,8 +226,11 @@ describe("save", () => {
     st.nextOrderId = 3;
     const file = deserialize(serialize(state))!;
     const orders = file.state.regions[id].orders;
-    expect(orders[0].req.arg).toBe("any");
-    expect(orders[1].req.arg).toBe("willowGrouse");
+    // The list carried neither care row, so the load migrates both on at the top.
+    expect(isCampRow(orders[0])).toBe(true);
+    expect(isBodyRow(orders[1])).toBe(true);
+    expect(orders[2].req.arg).toBe("any");
+    expect(orders[3].req.arg).toBe("willowGrouse");
   });
 
   it("a genuine version 3 save predating ice holes and water piles loads clean", () => {
@@ -246,14 +259,15 @@ describe("save", () => {
     const cal = calendar(state.minute, state.startDoy);
     const sentenceBefore = orderSentence(state, world, cal, o);
     const raw = JSON.parse(serialize(state)) as { state: { regions: Record<string, { orders: Record<string, unknown>[] }> } };
-    const rawOrder = raw.state.regions[id].orders[0];
+    // Index 2: the two care rows sit at 0 and 1, and the keep was given after them.
+    const rawOrder = raw.state.regions[id].orders[2];
     delete (rawOrder.req as Record<string, unknown>).when;
     delete rawOrder.held;
     delete rawOrder.givenDoy;
     delete rawOrder.dayOpened;
     delete rawOrder.dayBase;
     const file = deserialize(JSON.stringify(raw))!;
-    const back = file.state.regions[id].orders[0];
+    const back = file.state.regions[id].orders[2];
     expect(() => orderMet(file.state, world, cal, back, false)).not.toThrow();
     expect(() => conditionOpen(file.state, world, cal, back)).not.toThrow();
     expect(orderSentence(file.state, world, cal, back)).toBe(sentenceBefore);

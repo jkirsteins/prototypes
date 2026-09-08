@@ -41,7 +41,6 @@ function litCamp(startDoy?: number) {
   const { state, world } = startDoy === undefined ? newGame(3) : newGame(3, startDoy);
   const st = regionState(state, world, state.player.region);
   placeAt(state, world, st.campCell);
-  state.player.autoFeed = false;
   st.fire.lit = true;
   st.fire.fuelKg = 1e7;
   st.fire.wetKg = 0;

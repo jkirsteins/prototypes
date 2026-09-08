@@ -258,7 +258,7 @@ describe("tasks", () => {
     const g = newGame(3);
     const { state, world } = g;
     placeAtSpot(state, world, state.player.region, "forest");
-    const intent = { mode: "runner" as const, task: "chop" as const, cell: cellOf(state, world), campCell: regionState(state, world, state.player.region).campCell, until: { kind: "forever" as const }, deliver: "leave" as const, done: 0, step: "", need: null, orderId: null, windDown: false };
+    const intent = { mode: "runner" as const, task: "chop" as const, cell: cellOf(state, world), campCell: regionState(state, world, state.player.region).campCell, until: { kind: "forever" as const }, deliver: "leave" as const, done: 0, step: "", orderId: null, windDown: false };
     state.intent = { ...intent };
     expect(beginTask(state, world, cal, "chop")).toBe(true);
     expect(state.intent).not.toBeNull();
@@ -276,11 +276,12 @@ describe("tasks", () => {
     const g = newGame(3);
     const { state, world } = g;
     expect(startTask(state, world, cal, "night")).toBe(false);
-    state.intent = { mode: "runner", task: "night", cell: cellOf(state, world), campCell: cellOf(state, world), until: { kind: "once" }, deliver: "leave", done: 0, step: "", need: "sleep", orderId: null, windDown: false };
+    state.intent = { mode: "runner", task: "night", cell: cellOf(state, world), campCell: cellOf(state, world), until: { kind: "once" }, deliver: "leave", done: 0, step: "", orderId: null, windDown: false };
+    state.player.bodyNeed = "sleep";
     expect(beginTask(state, world, cal, "sleep")).toBe(true);
     done(g);
     expect(state.intent!.done).toBe(1);
-    expect(state.intent!.need).toBeNull();
+    expect(state.player.bodyNeed).toBeNull();
   });
 });
 
@@ -486,7 +487,8 @@ describe("mend clothing", () => {
     addOrder(state, world, { task: "repair", until: { kind: "forever" }, deliver: "camp", where: "nearest" }, "grind");
     for (const g of state.player.clothing) g.durability = MEND_AT + 1;
     expect(chooseOrder(state, world, cal)).toBeNull();
-    expect(ordersHere(state, world)[0].skipped).toBe("nothing worn enough to mend");
+    // Index 2: the camp row sits at 0 and the body row at 1.
+    expect(ordersHere(state, world)[2].skipped).toBe("nothing worn enough to mend");
     state.player.clothing[0].durability = MEND_AT;
     expect(chooseOrder(state, world, cal)?.req.task).toBe("repair");
     expect(ordersHere(state, world)[0].skipped).toBe("");

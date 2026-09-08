@@ -1,6 +1,7 @@
 import { AWAY_HOURS_DEFAULT, GAME_MINUTES_PER_REAL_SECOND } from "../units";
 import { regionAt, type World } from "../world/gen";
 import { advance } from "./advance";
+import { ensureCareRows, isCareRow } from "./bodyorder";
 import { calendar, START_DOY } from "./calendar";
 import { newGoals } from "./goals";
 import { addItem } from "./inventory";
@@ -119,10 +120,9 @@ function fillDefaults(state: GameState): void {
     state.intent.orderId ??= null;
     state.intent.windDown ??= false;
     // Whose the intent is was read off what it was asked to do; a save from
-    // before that reads the same way, and a hand intent carries no need.
+    // before that reads the same way.
     const it = state.intent as Partial<Intent> & { task: TaskId; until: Until };
     it.mode ??= intentMode(it.task, it.until);
-    if (it.mode === "hand") it.need = null;
   }
   // Hauling was a stored plan once; an intent restarts from anywhere, so a saved plan is simply forgotten.
   delete (state as unknown as Record<string, unknown>).plan;
@@ -167,7 +167,6 @@ function fillDefaults(state: GameState): void {
   p.torch ??= { lit: false, minutes: 0 };
   p.fat ??= FAT_FULL;
   p.water ??= 2.5;
-  p.autoDrink ??= true;
   p.frostbite ??= { feet: 0, hands: 0 };
   p.toes ??= false;
   p.fingers ??= false;
@@ -181,9 +180,18 @@ function fillDefaults(state: GameState): void {
   // any of them drops them here and round-trips clean.
   p.sleepDebt ??= 100 - p.energy;
   p.sleeping ??= null;
+  // A save with no sticky need reads its need fresh on the next free minute,
+  // which costs one minute of stickiness and nothing else.
+  p.bodyNeed ??= null;
+  p.coldSpent ??= false;
   delete (p as { restUntil?: number }).restUntil;
   delete (p as { sleptTonight?: boolean }).sleptTonight;
   delete (p as { workHours?: number }).workHours;
+  // Hunger, thirst and the fire are the care rows' now, so the three
+  // switches a save may still carry for them mean nothing and go the same way.
+  delete (p as { autoEat?: boolean }).autoEat;
+  delete (p as { autoFeed?: boolean }).autoFeed;
+  delete (p as { autoDrink?: boolean }).autoDrink;
   for (const g of p.clothing) g.wet ??= 0;
   for (const t of p.tools) {
     if (TOOLS[t.id].litres === undefined) continue;
@@ -231,6 +239,10 @@ function fillDefaults(state: GameState): void {
     st.orders ??= [];
     st.nextOrderId ??= 1;
     st.iceHole ??= null;
+    // A save from before a care row existed has none: it is unshifted on,
+    // above the work, which is the rank the always-pre-empting tier already
+    // held over the list it could not be seen on.
+    ensureCareRows(st);
   }
 }
 
@@ -281,7 +293,9 @@ export function catchUp(state: GameState, world: World, realSecondsElapsed: numb
   const cal = calendar(state.minute, state.startDoy);
   // The whole order is copied: a job that finishes while away is removed with
   // its counters, and its "until" is what says how many completions that took.
-  const snap = ordersHere(state, world).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
+  // Neither care row finishes anything for the report to count, so both are
+  // left off the same way they are left off every other tally of the list's work.
+  const snap = ordersHere(state, world).filter((o) => !isCareRow(o)).map((o) => ({ ...o, label: orderSentence(state, world, cal, o) }));
   advance(state, world, minutes);
   // Written while nobody watched: the panels render these by name.
   for (const e of state.log.slice(before)) if (e.minute > firstMinute) e.away = true;

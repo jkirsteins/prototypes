@@ -283,7 +283,6 @@ describe("spread and smoke", () => {
     advance(state, world, 15);
     expect(st.fire.indoors).toBe(true);
     feedFire(state, world, state.player.region, 30);
-    state.player.autoFeed = true;
     advance(state, world, 150);
     expect(st.smoke).toBeGreaterThan(40);
     expect(state.log.some((e) => e.text === "The fire is smoking the place out.")).toBe(true);

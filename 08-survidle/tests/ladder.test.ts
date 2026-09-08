@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderGate, rungsNeeded, withinLadder } from "../src/sim/ladder";
+import { gateSkill, giveOrder, GRIND_STAND_IN, NOT_ORDERS, normalizeOrder, orderByHand, orderGate, rungsNeeded, withinLadder } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
-import { ordersHere } from "../src/sim/orders";
+import { moveOrder, ordersHere } from "../src/sim/orders";
 import { levelMinutes, RUNG_LEVEL, RUNG_LINE, RUNG_ORDER, SKILL_IDS, train } from "../src/sim/skills";
 import { TASK_IDS, type IntentRequest, type SkillId } from "../src/sim/types";
-import { placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
+import { advance } from "../src/sim/advance";
+import { addItem, pile, qty } from "../src/sim/inventory";
+import { mapRegion } from "../src/sim/mapped";
+import { regionState } from "../src/sim/regionstate";
+import { cellAt, neighbours } from "../src/world/gen";
 import { startTask } from "../src/sim/tasks";
 import { calendar } from "../src/sim/calendar";
 import { Rng } from "../src/rng";
@@ -106,7 +111,8 @@ describe("giving an order", () => {
   it("a shut gate throws with the reason and adds nothing", () => {
     const { state, world } = newGame(3);
     expect(() => giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep")).toThrow("keeps at Woodcraft 10, {you} {are} 1");
-    expect(ordersHere(state, world)).toEqual([]);
+    // Nothing added beyond the two care rows every list already carries.
+    expect(ordersHere(state, world).map((o) => o.kind)).toEqual(["camp", "body"]);
   });
 
   it("an open gate adds the order at the rank given", () => {
@@ -115,7 +121,99 @@ describe("giving an order", () => {
     setLevel(state, "woodcraft", 10);
     const o = giveOrder(state, world, req("split", { kind: "campHas", qty: 40 }), "keep", 0);
     expect(o.kind).toBe("keep");
-    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["split", "sticks"]);
+    // Rank 0 is the top of the real work, behind the two care rows.
+    expect(ordersHere(state, world).map((x) => x.req.task)).toEqual(["wait", "wait", "split", "sticks"]);
+  });
+});
+
+describe("where a row lands", () => {
+  const cal = calendar(0);
+
+  it("a click lands at the top of the whole list, above the body row, and runs now", () => {
+    const { state, world } = newGame(3);
+    // The body wants something, and the click still takes the minute: rank is
+    // what settles that, and the click has ranked itself over the body's row.
+    state.player.water = 0;
+    const o = orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    expect(ordersHere(state, world)[0].id).toBe(o.id);
+    expect(state.intent?.orderId).toBe(o.id);
+  });
+
+  it("a second click displaces the first", () => {
+    const { state, world } = newGame(3);
+    const a = orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    const b = orderByHand(state, world, cal, new Rng(1), req("deadwood", { kind: "once" }), "job");
+    const list = ordersHere(state, world);
+    expect(list[0].id).toBe(b.id);
+    expect(list[1].id).toBe(a.id);
+    expect(state.intent?.orderId).toBe(b.id);
+  });
+
+  it("a standing order lands at the bottom, under the care rows and the day's requests alike", () => {
+    const { state, world } = newGame(3);
+    setLevel(state, "woodcraft", RUNG_LEVEL.grind);
+    orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    const o = orderByHand(state, world, cal, new Rng(1), req("chop", { kind: "forever" }), "grind");
+    const list = ordersHere(state, world);
+    expect(list[list.length - 1].id).toBe(o.id);
+  });
+
+  it("a rank counts places among the work wherever the care rows have been left", () => {
+    const { state, world } = newGame(3);
+    const [camp, body] = ordersHere(state, world);
+    giveOrder(state, world, req("sticks", { kind: "once" }), "job");
+    // The player has ranked both care rows under the sticks; a rank given
+    // after that still counts the work alone, and rank 0 is the top of it.
+    moveOrder(state, world, camp.id, 1);
+    moveOrder(state, world, camp.id, 1);
+    moveOrder(state, world, body.id, 1);
+    giveOrder(state, world, req("stone", { kind: "once" }), "job", 0);
+    expect(ordersHere(state, world).map((o) => o.req.task)).toEqual(["stone", "sticks", "wait", "wait"]);
+  });
+
+  it("a haul given by hand is a row like any other: it runs, delivers, and drops off when the ground is bare", () => {
+    const { state, world } = newGame(3);
+    mapRegion(state, world, state.player.region);
+    const camp = regionState(state, world, state.player.region).campCell;
+    const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
+    placeAt(state, world, spot);
+    addItem(state.player.pack, "driedMeat", 2);
+    addItem(pile(state, spot), "log", 4);
+    const o = orderByHand(state, world, cal, new Rng(1), { task: "haul", until: { kind: "once" }, deliver: "camp", where: { cell: spot } }, "job");
+    expect(ordersHere(state, world)[0].id).toBe(o.id);
+    expect(state.intent?.orderId).toBe(o.id);
+    for (let i = 0; i < 4000 && ordersHere(state, world).some((r) => r.id === o.id); i++) advance(state, world, 1);
+    expect(qty(pile(state, camp), "log")).toBe(4);
+    expect(ordersHere(state, world).map((r) => r.id)).not.toContain(o.id);
+  });
+
+  it("a haul displaced mid-carry is not done: the row stands until the load is at camp", () => {
+    const { state, world } = newGame(3);
+    mapRegion(state, world, state.player.region);
+    const camp = regionState(state, world, state.player.region).campCell;
+    const spot = neighbours(world, camp).find((n) => cellAt(world, n).terrain !== "water")!;
+    placeAt(state, world, spot);
+    addItem(state.player.pack, "driedMeat", 2);
+    addItem(pile(state, spot), "log", 1);
+    const haul = orderByHand(state, world, cal, new Rng(1), { task: "haul", until: { kind: "once" }, deliver: "camp", where: { cell: spot } }, "job");
+    // The log is on the back and the ground is bare, with camp still to walk to.
+    let carrying = false;
+    for (let i = 0; i < 200 && !carrying; i++) {
+      advance(state, world, 1);
+      carrying = qty(state.player.pack, "log") > 0 && cellOf(state, world) !== camp;
+    }
+    expect(carrying).toBe(true);
+    // The player asks for something else in that moment: the click takes the
+    // top of the list and the minute, and the log is still owed to camp.
+    orderByHand(state, world, cal, new Rng(1), req("sticks", { kind: "once" }), "job");
+    advance(state, world, 1);
+    expect(ordersHere(state, world).map((o) => o.id)).toContain(haul.id);
+    expect(state.log.some((l) => l.text.startsWith("Haul to camp: done."))).toBe(false);
+    expect(qty(pile(state, camp), "log")).toBe(0);
+    // It is struck off when the log is at camp and not a minute before.
+    for (let i = 0; i < 3000 && ordersHere(state, world).some((o) => o.id === haul.id); i++) advance(state, world, 1);
+    expect(qty(pile(state, camp), "log")).toBe(1);
+    expect(state.log.some((l) => l.text.startsWith("Haul to camp: done."))).toBe(true);
   });
 });
 

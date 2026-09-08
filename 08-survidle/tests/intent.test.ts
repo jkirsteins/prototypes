@@ -286,7 +286,7 @@ describe("the work tier", () => {
     const light: Intent = {
       mode: "hand", task: "light", cell: camp, campCell: camp,
       until: { kind: "once" }, deliver: "camp", done: 0,
-      step: "lighting the fire", need: null, orderId: null, windDown: false,
+      step: "lighting the fire", orderId: null, windDown: false,
     };
     expect(intentSentence(state, world, cal, light)).toBe("Light the fire at the site");
   });
@@ -445,9 +445,10 @@ describe("a rest's gain, not just its completion, decides whether cold is spent"
     const camp = regionState(state, world, state.player.region).campCell;
     state.intent = {
       mode: "runner", task: "chop", cell: camp, campCell: camp,
-      until: { kind: "forever" }, deliver: "leave", done: 0, step: "", need: "cold", orderId: null, windDown: false,
+      until: { kind: "forever" }, deliver: "leave", done: 0, step: "", orderId: null, windDown: false,
     };
     const it = state.intent;
+    state.player.bodyNeed = "cold";
     state.player.warmth = 20;
     expect(takeStep(state, world, cal, { id: "rest", step: "resting to warm up" })).toBe(true);
     expect(it.restFromWarmth).toBe(20);
@@ -455,7 +456,7 @@ describe("a rest's gain, not just its completion, decides whether cold is spent"
     state.player.warmth = 25;
     for (let m = 0; m < 60; m++) stepTask(state, world, cal, new Rng(1), 1);
     expect(state.task).toBeNull();
-    expect(it.coldSpent).toBeFalsy();
+    expect(state.player.coldSpent).toBeFalsy();
   });
 });
 
