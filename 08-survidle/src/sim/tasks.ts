@@ -36,6 +36,7 @@ import {
   placeAt, rockCell, setRegion, spotHere, SPOT_WORDS, straightKm, watersideCell,
 } from "./position";
 import { fireSiteMinutes, lightingInRain, roofed, SMOKE_COUGH, splitIsWet, splitSheltered } from "./fire";
+import { goalDeed } from "./goals";
 import { isRead, readLine, readShore } from "./knowledge";
 import { isKnown, knownShare } from "./mapped";
 import { discovery, regionState } from "./regionstate";
@@ -1707,7 +1708,17 @@ function marrowAnimal(state: GameState): Species {
   return best;
 }
 
+/**
+ * Every finished task, and the one place goals hear about it. The switch
+ * below is untouched: a deed is what happened, not a special case inside
+ * whatever happened.
+ */
 function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
+  completeTask(state, world, cal, rng, id, arg);
+  goalDeed(state, { kind: "task", id, arg });
+}
+
+function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, id: TaskId, arg?: string): void {
   const p = state.player;
   const st = regionState(state, world, p.region);
   const invs = reach(state, world);
@@ -2008,6 +2019,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
       state.stats.structures++;
       // Once per structure per life; the first snare set is the record's snare line.
       if (!hasEvent(state, (e) => e.kind === "built" && e.structure === sid)) record(state, { kind: "built", structure: sid });
+      goalDeed(state, { kind: "built", structure: sid });
       log(state, `The ${STRUCTURES[sid].name} is ${sid === "snare" ? "set" : sid === "seep" ? "dug" : "finished"}.`, "good");
       return;
     }
@@ -2035,6 +2047,7 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
         return;
       }
       st.fire.lit = true;
+      goalDeed(state, { kind: "lit" });
       cue("fireCatches");
       st.fire.fuelKg += 1;
       // The row names the method: the pit fire is outdoors whatever stands, the fire indoors is indoors.
@@ -2086,7 +2099,12 @@ function complete(state: GameState, world: World, cal: Calendar, rng: Rng, id: T
     }
     case "hang": {
       const kg = loadRack(state, world);
-      if (kg > 0) log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
+      // Raw meat auto-eaten while the task ran leaves loadRack nothing to move: the
+      // task still finishes, but a hang that hung nothing is not food put by.
+      if (kg > 0) {
+        log(state, `{You} {hang} ${kg.toFixed(1)} kg of meat to dry.`);
+        goalDeed(state, { kind: "stored" });
+      }
       return;
     }
     case "iceHole": {
