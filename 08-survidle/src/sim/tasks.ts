@@ -1734,7 +1734,10 @@ export function leftBehind(state: GameState, world: World): string {
         .filter((sid) => site.structures[sid])
         .map((sid) => SITE_STRUCTURE_NAME[sid] ?? STRUCTURES[sid as StructureId].name)
     : [];
-  const kg = weight(pile(state, st.campCell)) + st.fire.fuelKg + st.fire.wetKg + st.rack.kg;
+  // Read only: pile() would insert an empty inventory at the camp cell, which the map
+  // then underlines as though something lay there.
+  const p = state.piles[st.campCell];
+  const kg = (p ? weight(p) : 0) + st.fire.fuelKg + st.fire.wetKg + st.rack.kg;
   const parts = kg > 1e-9 ? [...names, `${Math.round(kg * 10) / 10} kg`] : names;
   if (parts.length === 0) return "";
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;

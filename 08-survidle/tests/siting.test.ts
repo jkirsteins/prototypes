@@ -9,7 +9,7 @@ import { baseWalkSpeed } from "../src/sim/player";
 import { atCamp, campCellOf, cellOf, describeWhere, kmBetween, placeAt, spotHere, SPOT_WORDS } from "../src/sim/position";
 import { regionState, siteAt, siteFor } from "../src/sim/regionstate";
 import { advance } from "../src/sim/advance";
-import { availableTasks, beginTask, walkTarget, whereIs } from "../src/sim/tasks";
+import { availableTasks, beginTask, leftBehind, walkTarget, whereIs } from "../src/sim/tasks";
 import { ICE_SAFE_CM, walkableIce } from "../src/sim/weather";
 import { doHtml } from "../src/ui/dopanel";
 import { mapHtml } from "../src/ui/map";
@@ -93,6 +93,25 @@ describe("making camp elsewhere is always legal, and leaves what it held", () =>
     expect(st.rack.kg).toBe(0);
   });
 
+  it("wet wood alone still moves, and lands as wetFirewood alone with no dry fuel beside it", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    const old = st.campCell;
+    st.fire.lit = false;
+    st.fire.fuelKg = 0;
+    st.fire.wetKg = 2;
+    const away = neighbourLandCell(world, old);
+    placeAt(state, world, away);
+    const cal = calendar(state.minute, state.startDoy);
+    expect(beginTask(state, world, cal, "makeCamp")).toBe(true);
+    advance(state, world, 20);
+    expect(st.campCell).toBe(away);
+    // Any pile dries a touch on its own even with nothing built to shelter it; the wet
+    // kilos themselves, not the split between the two wood items, are what this pins.
+    expect(qty(pile(state, old), "wetFirewood") + qty(pile(state, old), "firewood")).toBeCloseTo(2, 1);
+    expect(qty(pile(state, old), "firewood")).toBeLessThan(0.1);
+  });
+
   it("reads the camp pile without creating one where nothing lies", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
@@ -100,6 +119,15 @@ describe("making camp elsewhere is always legal, and leaves what it held", () =>
     placeAt(state, world, neighbourLandCell(world, st.campCell));
     expect(state.piles[st.campCell]).toBeUndefined();
     availableTasks(state, world, cal);
+    expect(state.piles[st.campCell]).toBeUndefined();
+  });
+
+  it("leftBehind reads the old camp's pile without creating one, on the same cell the confirm dialog asks it about", () => {
+    const { state, world } = newGame(17);
+    const st = regionState(state, world, state.player.region);
+    placeAt(state, world, neighbourLandCell(world, st.campCell));
+    expect(state.piles[st.campCell]).toBeUndefined();
+    expect(leftBehind(state, world)).toBe("");
     expect(state.piles[st.campCell]).toBeUndefined();
   });
 });
