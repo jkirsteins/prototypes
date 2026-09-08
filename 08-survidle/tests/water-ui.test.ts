@@ -5,7 +5,7 @@ import { addItem, pile } from "../src/sim/inventory";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { seepGround } from "../src/sim/seep";
 import { waterLine, waterList } from "../src/ui/water";
 import { cellAt, neighbours, regionAt, type World } from "../src/world/gen";
@@ -66,7 +66,7 @@ describe("the water line", () => {
     expect(list).toMatch(/shore \d+ min, endless/);
     expect(list).toMatch(/seep \d+ min, 6\.0 of 10 l/);
     expect(list).toMatch(/camp water 1\.5 l, 0 min/);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 5;
     state.weather.snowCm = 10;

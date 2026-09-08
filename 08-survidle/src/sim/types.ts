@@ -289,15 +289,14 @@ export type SeepClass = "bog" | "damp";
 /** A seep dug on a cell: its ground, the liquid and frozen litres in it (at most the pool between them), and the minute it was last dug. */
 export interface Seep { class: SeepClass; litres: number; ice: number; dug: number }
 
-export interface RegionState {
-  /** Standing trees worth felling. */
-  wood: number;
-  /** Animals by species, only for species with capacity here. */
-  pop: Partial<Record<Species, number>>;
-  /** The cell the camp, fire and shelter stand on. */
-  campCell: number;
-  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; snares: number; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
-  /** Drying racks standing at the camp, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
+/**
+ * What stands on one cell. A site comes into being when something is built
+ * there and outlives the camp moving away, so a lean-to left behind still
+ * keeps the rain off whoever sleeps under it.
+ */
+export interface Site {
+  structures: { firePit: boolean; leanTo: boolean; cabin: boolean; dryingRack: boolean; boughBed: boolean; hearth: boolean; turfHut: boolean; waterStore: boolean; snowShelter: boolean };
+  /** Drying racks standing here, 0 to MAX_RACKS; structures.dryingRack is true while any stands. */
   racks: number;
   /** Minutes since the bough bed was laid; boughs go flat and brown after four days. */
   boughBedAge: number;
@@ -307,6 +306,19 @@ export interface RegionState {
   structureAge: Partial<Record<DecayingId, number>>;
   /** Build progress in minutes, per structure, kept between visits. */
   build: Partial<Record<StructureId, number>>;
+}
+
+export interface RegionState {
+  /** Standing trees worth felling. */
+  wood: number;
+  /** Animals by species, only for species with capacity here. */
+  pop: Partial<Record<Species, number>>;
+  /** The cell that is home: where the fire burns, the rack dries and the runner walks back to. */
+  campCell: number;
+  /** What stands on each built cell of this region, keyed by cell. */
+  sites: Record<number, Site>;
+  /** Snares set on this region's heath. They stand away from any camp, so they are the region's, not a site's. */
+  snares: number;
   fire: { lit: boolean; fuelKg: number; wetKg: number; indoors: boolean; unattended: number };
   /** Raw meat on the rack and how many dry minutes it has had. */
   rack: { kg: number; dried: number };

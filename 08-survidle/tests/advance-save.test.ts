@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { rootStockFor } from "../src/sim/camp";
 import { newGame } from "../src/sim/newgame";
-import { fillPopulations } from "../src/sim/regionstate";
+import { campSite, fillPopulations } from "../src/sim/regionstate";
 import { rootKgLeft } from "../src/sim/stocks";
 import { startTask } from "../src/sim/tasks";
 import { awaySeconds, catchUp, deserialize, loadGame, SAVE_KEY, saveGame, serialize } from "../src/sim/save";
@@ -80,12 +80,11 @@ describe("save", () => {
     const st = state.regions[state.player.region];
     expect(st.fire).toEqual({ lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 });
     expect(st.smoke).toBe(0);
-    expect(st.structures.hearth).toBe(false);
+    expect(campSite(st).structures.hearth).toBe(false);
     state.player.tools.push({ id: "barkBucket", durability: 100 });
-    // A rack standing and a trap set: the rack count is filled from the
-    // structure that says one stands, and a trap's age from the day it was set.
-    st.structures.dryingRack = true;
-    st.racks = 1;
+    // A rack standing and a trap set, both carried whole through the round trip.
+    campSite(st).structures.dryingRack = true;
+    campSite(st).racks = 1;
     st.trap = { cell: st.campCell, kg: 0, oilyKg: 0, fish: [], age: 0 };
     const raw = JSON.parse(serialize(state));
     delete raw.state.player.water;
@@ -104,9 +103,7 @@ describe("save", () => {
     delete raw.state.regions[state.player.region].fire.indoors;
     delete raw.state.regions[state.player.region].fire.unattended;
     delete raw.state.regions[state.player.region].smoke;
-    delete raw.state.regions[state.player.region].structures.hearth;
     delete raw.state.regions[state.player.region].logsWet;
-    delete raw.state.regions[state.player.region].racks;
     delete raw.state.regions[state.player.region].trap.age;
     const back = deserialize(JSON.stringify(raw))!.state;
     expect(back.player.water).toBe(2.5);
@@ -126,9 +123,9 @@ describe("save", () => {
     expect(back.regions[state.player.region].fire.indoors).toBe(false);
     expect(back.regions[state.player.region].fire.unattended).toBe(0);
     expect(back.regions[state.player.region].smoke).toBe(0);
-    expect(back.regions[state.player.region].structures.hearth).toBe(false);
+    expect(campSite(back.regions[state.player.region]).structures.hearth).toBe(false);
     expect(back.regions[state.player.region].logsWet).toBe(1440);
-    expect(back.regions[state.player.region].racks).toBe(1);
+    expect(campSite(back.regions[state.player.region]).racks).toBe(1);
     expect(back.regions[state.player.region].trap!.age).toBe(0);
   });
 
@@ -307,9 +304,6 @@ describe("the world save", () => {
     delete v4.state.year;
     delete v4.state.landing;
     delete v4.state.spine;
-    // structureAge is version 5's own field: a real version 4 file never had it, so the
-    // fixture must drop it too, or fillDefaults' default is never exercised.
-    for (const st of Object.values(v4.state.regions as Record<string, Record<string, unknown>>)) delete st.structureAge;
     const file = deserialize(JSON.stringify(v4))!;
     expect(file.state.year).toBe(1);
     expect(file.state.landing).toBeNull();
@@ -318,7 +312,7 @@ describe("the world save", () => {
     expect(file.state.survivors[0].name.first.length).toBeGreaterThan(0);
     expect(file.state.survivors[0].landed).toEqual({ year: 1, doy: file.state.startDoy });
     expect(file.state.spine).toEqual({ fired: {}, announced: {} });
-    for (const st of Object.values(file.state.regions)) expect(st.structureAge).toEqual({});
+    for (const st of Object.values(file.state.regions)) expect(campSite(st).structureAge).toEqual({});
   });
 });
 
@@ -331,8 +325,15 @@ describe("the version 6 save", () => {
     old.version = 5;
     delete old.state.player.known;
     for (const st of Object.values(old.state.regions) as Record<string, unknown>[]) {
-      delete (st.structures as Record<string, unknown>).turfHut;
-      delete (st.structures as Record<string, unknown>).waterStore;
+      delete st.sites;
+      delete st.snares;
+      // The old flat shape, from before turfHut and waterStore joined the other structure flags.
+      st.structures = { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false, snowShelter: false };
+      st.racks = 0;
+      st.boughBedAge = 0;
+      st.meltDays = 0;
+      st.structureAge = {};
+      st.build = {};
       delete st.trap;
     }
     old.state.ledger = [{ day: 1, yield: { fish: 0, snare: 0, hunt: 0, berries: 0, kit: 0 }, eaten: 0, burn: { base: 0, activity: 0, walk: 0, cold: 0, sick: 0 }, sleepMin: 0, workMin: 0 }];
@@ -340,8 +341,8 @@ describe("the version 6 save", () => {
     expect(file).not.toBeNull();
     expect(file.state.player.known).toEqual({});
     for (const st of Object.values(file.state.regions)) {
-      expect(st.structures.turfHut).toBe(false);
-      expect(st.structures.waterStore).toBe(false);
+      expect(campSite(st).structures.turfHut).toBe(false);
+      expect(campSite(st).structures.waterStore).toBe(false);
       expect(st.trap).toBeNull();
     }
     expect(file.state.ledger[0].yield.trap).toBe(0);
@@ -350,7 +351,7 @@ describe("the version 6 save", () => {
   it("a save carrying a region's roots as one number loads with every cell at full, and one from before the seasonal stocks gets its nests", () => {
     // A region's kilos say nothing about which cells they were dug from, so the number is dropped
     // and the ground reads full: what one survivor took out of nine hectares is inside the season's
-    // regrowth anyway. The nests have no such ground to fall back on, so fillDefaults marks them
+    // regrowth anyway. The nests have no such ground to fall back on, so migrate marks them
     // unset with -1 and fillPopulations - which walks the same regions with the world in hand -
     // seeds them; without it every region read "the nests are empty" on a game that did nothing wrong.
     const { state, world } = newGame(17, 160);

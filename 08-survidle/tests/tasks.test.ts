@@ -11,7 +11,7 @@ import { availableTasks, beginTask, check, drawSpecies, MEND_AT, startTask, step
 import { fishSpecies, huntedLand, SPECIES_DEFS, type Species, waterOf } from "../src/sim/species";
 import { spotOf } from "../src/world/gen";
 import { findRoute, routeKm } from "../src/world/route";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { rosterHtml } from "../src/ui/panels";
 import { cellAt, regionAt } from "../src/world/gen";
 
@@ -173,7 +173,7 @@ describe("tasks", () => {
     expect(qty(herePile(state, world), "stone")).toBe(0);
     done(g);
     const st = regionState(state, world, state.player.region);
-    expect(st.structures.firePit).toBe(true);
+    expect(campSite(st).structures.firePit).toBe(true);
     startTask(state, world, cal, "light");
     done(g);
     expect(st.fire.lit).toBe(true);
@@ -192,13 +192,13 @@ describe("tasks", () => {
     run(g, 100);
     stopTask(state, world);
     const st = regionState(state, world, state.player.region);
-    expect(st.build.leanTo).toBeGreaterThan(99);
+    expect(campSite(st).build.leanTo).toBeGreaterThan(99);
     const again = check(state, world, cal, "build", "leanTo");
     expect(again.ok).toBe(true);
     expect(again.duration).toBeCloseTo(140, 0);
     startTask(state, world, cal, "build", "leanTo");
     done(g);
-    expect(st.structures.leanTo).toBe(true);
+    expect(campSite(st).structures.leanTo).toBe(true);
   });
 
   it("hunts deer in the forest with a bow and eventually succeeds", () => {

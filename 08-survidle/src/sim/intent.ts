@@ -17,7 +17,7 @@ import { ITEM_KG, ITEM_NAMES, type Need, RECIPES, ROOT_FROM_DOY, ROOT_POOR_SHARE
 import { log } from "./log";
 import { readCells } from "./knowledge";
 import { cellOf, forestCell, heathCell, kmBetween, rockCell, SPOT_WORDS, straightKm, watersideCell } from "./position";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { nearestSeep, seepGround } from "./seep";
 import { rootCellFullKg, rootCellKg } from "./stocks";
@@ -388,7 +388,7 @@ function untilMet(state: GameState, it: Intent): boolean {
 /** The pack holds something a delivery should carry, or cannot take more anyway. */
 function packCarries(state: GameState, world: World, it: Intent): boolean {
   if (it.task === "fill" || it.task === "melt") {
-    const room = campWaterRoom(pile(state, it.campCell), regionState(state, world, state.player.region));
+    const room = campWaterRoom(pile(state, it.campCell), campSite(regionState(state, world, state.player.region)));
     return vesselLitres(state.player) > 0 && room > 0;
   }
   const pack = state.player.pack;
@@ -448,7 +448,7 @@ function dropEverything(state: GameState, world: World): boolean {
     }
   }
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
-  if (atHome) moved = pourVessels(state.player, to, regionState(state, world, state.player.region)) > 1e-9 || moved;
+  if (atHome) moved = pourVessels(state.player, to, campSite(regionState(state, world, state.player.region))) > 1e-9 || moved;
   return moved;
 }
 
@@ -554,7 +554,7 @@ function canFetch(state: GameState, world: World, sid: StructureId, campCell: nu
 function fetchStep(state: GameState, world: World, cal: Calendar, it: Intent): Outcome | "none" {
   const sid = it.arg as StructureId;
   const st = regionState(state, world, state.player.region);
-  if ((st.build[sid] ?? 0) > 0) return "none";
+  if ((campSite(st).build[sid] ?? 0) > 0) return "none";
   const p = state.player;
   const campInvs = [p.pack, pile(state, it.campCell)];
   if (canConsume(campInvs, STRUCTURES[sid].needs)) return "none";

@@ -19,7 +19,7 @@ import { fmtName } from "./names";
 import { rollCandidates } from "./person";
 import { newPerson } from "./newgame";
 import { current, newRecord, worldDate } from "./record";
-import { DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
+import { campSite, DIM, enterRegion, regionState, touchedRegions } from "./regionstate";
 import { CARRY_SHARE, carrySkills, level, SKILL_IDS, SKILL_NAMES } from "./skills";
 import { resetTeaching } from "./teach";
 import type { GameState, ItemId, LifeEvent, LifeRecord, Person, RegionState, WorldDate } from "./types";
@@ -103,8 +103,8 @@ export function demoteFog(state: GameState): void {
 
 /** How much stands at a camp: the eight one-off structures plus however many snares. */
 function campScore(st: RegionState): number {
-  const s = st.structures;
-  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + (s.turfHut ? 1 : 0) + (s.waterStore ? 1 : 0) + (s.snowShelter ? 1 : 0) + s.snares;
+  const s = campSite(st).structures;
+  return (s.firePit ? 1 : 0) + (s.leanTo ? 1 : 0) + (s.cabin ? 1 : 0) + (s.dryingRack ? 1 : 0) + (s.hearth ? 1 : 0) + (s.turfHut ? 1 : 0) + (s.waterStore ? 1 : 0) + (s.snowShelter ? 1 : 0) + st.snares;
 }
 
 /**
@@ -119,7 +119,7 @@ export function oldCampRegion(state: GameState): number {
   let bestScore = -1;
   for (const id of touchedRegions(state).sort((a, b) => a - b)) {
     const st = state.regions[id];
-    const firePit = st.structures.firePit;
+    const firePit = campSite(st).structures.firePit;
     const score = campScore(st);
     if (!firePit && score === 0) continue;
     if (best < 0 || (firePit && !bestFirePit) || (firePit === bestFirePit && score > bestScore)) {

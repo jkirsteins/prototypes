@@ -10,7 +10,7 @@ import { fuelTotal } from "./fire";
 import { FIRE_LOW_KG } from "./items";
 import { sheltered } from "./player";
 import { atCamp, cellOf } from "./position";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { type Call, SPECIES_DEFS } from "./species";
 import type { GameState, RecipeId, Terrain } from "./types";
 import { ICE_THIN_CM, stormNow } from "./weather";
@@ -78,6 +78,7 @@ export function surroundings(state: GameState, world: World, ambient: number): S
     }
   }
   const st = regionState(state, world, state.player.region);
+  const site = campSite(st);
   const camp = atCamp(state, world);
   const fire: Surroundings["fire"] = camp && st.fire.lit ? (fuelTotal(st.fire) > FIRE_LOW_KG ? "fed" : "low") : state.player.torch.lit ? "torch" : "none";
   const w = state.weather;
@@ -86,7 +87,7 @@ export function surroundings(state: GameState, world: World, ambient: number): S
     footing: footingOf(cellAt(world, here).terrain, w.snowCm),
     frozen: w.iceCm >= ICE_THIN_CM,
     fire,
-    indoors: sheltered(state, world) && (st.structures.cabin || st.structures.turfHut),
+    indoors: sheltered(state, world) && (site.structures.cabin || site.structures.turfHut),
     rain: ambient > 0 ? w.precip : "none",
     storm: stormNow(w, state.minute),
   };

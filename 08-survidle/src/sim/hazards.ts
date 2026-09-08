@@ -16,7 +16,7 @@ import { log } from "./log";
 import { activityOf } from "./player";
 import { atCamp, cellOf } from "./position";
 import { record } from "./record";
-import { regionState, touchedRegions } from "./regionstate";
+import { campSite, regionState, touchedRegions } from "./regionstate";
 import { fallChance, fallThrough } from "./tasks";
 import type { GameState } from "./types";
 import { campWaterCapacity, FREEZE_C } from "./water";
@@ -50,9 +50,10 @@ function spread(state: GameState, world: World, cal: Calendar, rng: Rng, who: Pr
     if (!st.fire.lit || fuelTotal(st.fire) <= SPREAD_FUEL_KG || st.fire.unattended <= SPREAD_UNATTENDED_MINUTES) continue;
     if (!rng.chance(SPREAD_PER_HOUR)) continue;
     st.wood = Math.max(0, st.wood - (10 + rng.int(21)));
-    st.structures.leanTo = false;
-    delete st.structureAge.leanTo;
-    st.structures.boughBed = false;
+    const site = campSite(st);
+    site.structures.leanTo = false;
+    delete site.structureAge.leanTo;
+    site.structures.boughBed = false;
     st.fire.lit = false;
     st.fire.fuelKg = 0;
     st.fire.wetKg = 0;
@@ -143,7 +144,7 @@ function freezeCamps(state: GameState, world: World, ambient: number, rng: Rng, 
     addItem(camp, "ice", litres);
     // Each bucket at camp rolls the split a carried one does, and takes its share of the ice with it.
     const buckets = qty(camp, "barkBucket");
-    const full = litres > campWaterCapacity(camp, st) / 2;
+    const full = litres > campWaterCapacity(camp, campSite(st)) / 2;
     for (let i = 0; i < buckets; i++) {
       if (!full || !rng.chance(1 / 3)) continue;
       removeItem(camp, "barkBucket", 1);

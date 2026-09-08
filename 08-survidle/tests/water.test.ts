@@ -9,7 +9,7 @@ import { itemLabel, take } from "../src/sim/actions";
 import { newGame } from "../src/sim/newgame";
 import { causeFrom, stepPlayer, workSpeed } from "../src/sim/player";
 import { placeAt, placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import {
   campWaterCapacity, drink, fillVessels, ICE_SHORE_CM, pourVessels, THIRSTY_L,
@@ -116,7 +116,7 @@ describe("vessels and snow", () => {
     const g = newGame(17);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 10;
     state.weather.snowCm = 5;
@@ -205,7 +205,7 @@ describe("water at camp", () => {
     expect(qty(camp, "ice")).toBeCloseTo(1.5, 5);
     expect(qty(camp, "barkBucket")).toBe(2);
     expect(state.log.some((l) => l.text === "The water at camp has frozen.")).toBe(true);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     // Two litres an hour: half an hour thaws one.

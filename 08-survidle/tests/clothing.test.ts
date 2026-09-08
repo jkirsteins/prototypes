@@ -7,7 +7,7 @@ import { CLOTHING } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, insulation, stepPlayer } from "../src/sim/player";
 import { placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { craftSuccess, oddsFactor } from "../src/sim/skills";
 
 const dry = { raining: false, heavy: false, snowing: false, roof: false, walled: false, fireAtCamp: false, bedded: false, storm: false };
@@ -104,8 +104,8 @@ describe("frostbite", () => {
     expect(state.player.frostbite.feet).toBe(3 * 1440);
     // Under a roof by a fire it counts down.
     const st = regionState(state, world, state.player.region);
-    st.structures.leanTo = true;
-    st.structures.firePit = true;
+    campSite(st).structures.leanTo = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     placeAtSpot(state, world, state.player.region, "camp");

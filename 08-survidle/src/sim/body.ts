@@ -17,7 +17,7 @@ import { AUTO_EAT_ORDER, type FoodId, ITEM_KG, MAX_SNARES, STRUCTURES, TOOLS } f
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
 import { cellOf, straightKm, watersideCell } from "./position";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { survivorRoute } from "./routing";
 import { seepStopped } from "./seep";
 import { RESTED_AT, sleepiness, SLEEP_ONSET, SLEEPY_AT, SPENT_AT, WAKE_AT } from "./sleep";
@@ -348,11 +348,12 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
   // any of it is worth the walk home. The fire site is bare ground and can be
   // cleared anywhere; without a drill, clearing it warms nobody tonight.
   if (!toolNear(p, "fireDrill", [p.pack, pile(state, at)])) return null;
-  if (!st.structures.firePit) {
+  const site = campSite(st);
+  if (!site.structures.firePit) {
     return check(state, world, cal, "build", "firePit", at).ok ? { id: "build", arg: "firePit", step: "clearing the fire site" } : null;
   }
   // The body's own choice of method, allowed to a reflex: the fire indoors where a hut or a hearth stands, the pit otherwise.
-  const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
+  const indoors = site.structures.turfHut || (site.structures.cabin && site.structures.hearth);
   if (indoors && check(state, world, cal, "lightIndoors", undefined, at).ok) return { id: "lightIndoors", step: "lighting the fire indoors" };
   if (check(state, world, cal, "light", undefined, at).ok) return { id: "light", step: "lighting the fire" };
   const firewood = qty(state.player.pack, "firewood") + qty(pile(state, at), "firewood");
@@ -370,7 +371,7 @@ export function fireStep(state: GameState, world: World, cal: Calendar, at: numb
  */
 function campCanWarm(state: GameState, world: World, cal: Calendar): boolean {
   const st = regionState(state, world, state.player.region);
-  if (fireWarms(st) || roofed(st)) return true;
+  if (fireWarms(st) || roofed(campSite(st))) return true;
   return fireStep(state, world, cal, st.campCell) !== null;
 }
 

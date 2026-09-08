@@ -15,7 +15,7 @@ import { type WeekAverage, weekBefore } from "./ledger";
 import { newGame } from "./newgame";
 import { addOrder } from "./orders";
 import { kitOut, kitTrap, REFERENCE_ORDERS, wantOpen } from "./reference";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { levelMinutes, SKILL_IDS } from "./skills";
 import type { DeathCause, GameState, ItemId, SkillId } from "./types";
 
@@ -53,9 +53,10 @@ export function setUpStage(seed: number, stage: HorizonStage, startDoy = START_D
   const g = newGame(seed, startDoy);
   kitOut(g.state, g.world, false);
   const st = regionState(g.state, g.world, g.state.player.region);
+  const site = campSite(st);
   for (const b of stage.built ?? []) {
-    if (b === "turfHut") st.structures.turfHut = true;
-    else if (b === "waterStore") st.structures.waterStore = true;
+    if (b === "turfHut") site.structures.turfHut = true;
+    else if (b === "waterStore") site.structures.waterStore = true;
     else if (b === "trap") kitTrap(g.state, g.world);
   }
   if (stage.stocks) {

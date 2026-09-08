@@ -11,7 +11,7 @@ import { body, hasQuirk } from "./person";
 import { watersideCell } from "./position";
 import { record } from "./record";
 import { seedSeasonalStocks } from "./stocks";
-import type { GameState, RegionState, Species } from "./types";
+import type { GameState, RegionState, Site, Species } from "./types";
 
 /** Starting numbers: seven tenths of what the land can hold. */
 export function startingPop(world: World, id: number): Partial<Record<Species, number>> {
@@ -27,12 +27,8 @@ export function newRegionState(world: World, id: number): RegionState {
     wood: r.wood0,
     pop: startingPop(world, id),
     campCell: r.campCell,
-    structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, boughBed: false, hearth: false, turfHut: false, waterStore: false, snowShelter: false },
-    racks: 0,
-    boughBedAge: 0,
-    meltDays: 0,
-    structureAge: {},
-    build: {},
+    sites: {},
+    snares: 0,
     fire: { lit: false, fuelKg: 0, wetKg: 0, indoors: false, unattended: 0 },
     rack: { kg: 0, dried: 0 },
     snareCatch: { count: 0, age: 0 },
@@ -48,11 +44,38 @@ export function newRegionState(world: World, id: number): RegionState {
   };
 }
 
+export function newSite(): Site {
+  return {
+    structures: { firePit: false, leanTo: false, cabin: false, dryingRack: false, boughBed: false, hearth: false, turfHut: false, waterStore: false, snowShelter: false },
+    racks: 0,
+    boughBedAge: 0,
+    meltDays: 0,
+    structureAge: {},
+    build: {},
+  };
+}
+
+/** What stands on a cell, or null. Read only: asking must never be what builds a site. */
+export function siteAt(st: RegionState, cell: number): Site | null {
+  return st.sites[cell] ?? null;
+}
+
+/** The site at a cell, raised blank if nothing stands there yet. The one call that creates. */
+export function siteFor(st: RegionState, cell: number): Site {
+  st.sites[cell] ??= newSite();
+  return st.sites[cell];
+}
+
+/** What stands at the camp. */
+export function campSite(st: RegionState): Site {
+  return siteFor(st, st.campCell);
+}
+
 /**
  * A region saved before a species existed has no number for it. Fill every
  * touched region's missing species at their starting numbers, and drop
  * numbers for species the catalogue no longer has. Called once after a
- * load, with the world in hand, which fillDefaults does not have.
+ * load, with the world in hand, which migrate does not have.
  */
 export function fillPopulations(state: GameState, world: World): void {
   // A save from before cells were the thing walked: everything its survivor entered or

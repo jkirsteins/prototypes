@@ -5,7 +5,7 @@ import { fireSiteMinutes } from "../src/sim/fire";
 import { addItem, pile, qty, removeItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAt } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { check, startTask } from "../src/sim/tasks";
 import { cellAt, type World } from "../src/world/gen";
 
@@ -28,7 +28,7 @@ describe("the fire site", () => {
     expect(o.ok).toBe(true);
     expect(startTask(state, world, cal, "build", "firePit")).toBe(true);
     advance(state, world, o.duration);
-    expect(st.structures.firePit).toBe(true);
+    expect(campSite(st).structures.firePit).toBe(true);
     // And the fire that was gated behind it is now only a drill and a kilo of wood away.
     addItem(state.player.pack, "fireDrill", 1);
     addItem(state.player.pack, "firewood", 2);

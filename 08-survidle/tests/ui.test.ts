@@ -10,7 +10,7 @@ import { newGame } from "../src/sim/newgame";
 import { addOrder, moveOrder } from "../src/sim/orders";
 import { die } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
-import { discovery, regionState, SEEN } from "../src/sim/regionstate";
+import { campSite, discovery, regionState, SEEN } from "../src/sim/regionstate";
 import { levelMinutes, poolCapacity } from "../src/sim/skills";
 import { startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { ambientTemperature } from "../src/sim/weather";
@@ -92,8 +92,8 @@ describe("reachability: everything in the catalogue has a button", () => {
   it("offers a real mend button once a lean-to stands worn and the sticks are in reach", () => {
     const worn = newGame(21);
     const st = regionState(worn.state, worn.world, worn.state.player.region);
-    st.structures.leanTo = true;
-    st.structureAge.leanTo = 244 * 1440;
+    campSite(st).structures.leanTo = true;
+    campSite(st).structureAge.leanTo = 244 * 1440;
     addItem(worn.state.player.pack, "stick", 2);
     const h = allActions(worn.state, worn.world);
     expect(h).toContain(`data-act="intent" data-id="mend" data-arg="leanTo"`);
@@ -663,7 +663,7 @@ describe("the Do panel", () => {
 
   it("a build already finished renders as a greyed row, not a fetchable one, however much sits elsewhere", () => {
     const g = newGame(3);
-    regionState(g.state, g.world, g.state.player.region).structures.leanTo = true;
+    campSite(regionState(g.state, g.world, g.state.player.region)).structures.leanTo = true;
     const r = regionAt(g.world, g.state.player.region);
     const forest = spotOf(r, "forest")!.cell;
     addItem(pile(g.state, forest), "log", 4);
@@ -699,7 +699,7 @@ describe("the Do panel", () => {
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, camp), "firewood", 2);
     // Paused partway through, at camp; light is carried work, so its paused entry carries no cell.
@@ -747,7 +747,7 @@ describe("the Orders panel", () => {
     expect(html).not.toContain("Waiting at camp: waiting at camp");
     expect(html).not.toContain('id="bar-task"');
     // The fire is work, and work under way has its bar and its own words.
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     addItem(pile(state, st.campCell), "firewood", 5);
     for (let i = 0; i < 120 && state.task?.id === "rest"; i++) advance(state, world, 1);
@@ -763,7 +763,7 @@ describe("the Orders panel", () => {
     const g = newGame(1);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     placeAtSpot(state, world, state.player.region, "camp");
     addItem(pile(state, st.campCell), "log", 6);
@@ -800,7 +800,7 @@ describe("the Orders panel", () => {
   it("a blocked order below the live one shows its own reason, not \"waiting\"", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100 });
     placeAtSpot(state, world, state.player.region, "camp");
     addItem(pile(state, st.campCell), "log", 6);

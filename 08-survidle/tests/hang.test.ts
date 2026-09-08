@@ -9,7 +9,7 @@ import { RACK_MAX_KG } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, orderMet } from "../src/sim/orders";
 import { placeAt } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { beginTask, check, startTask } from "../src/sim/tasks";
 
 type G = ReturnType<typeof newGame>;
@@ -26,8 +26,8 @@ function rackCamp() {
   const { state, world } = g;
   const st = regionState(state, world, state.player.region);
   placeAt(state, world, st.campCell);
-  st.structures.dryingRack = true;
-  st.racks = 1;
+  campSite(st).structures.dryingRack = true;
+  campSite(st).racks = 1;
   // Fat, not dried meat: a driedMeat keep's untilMet counts the pack as
   // well as the camp pile, so pack food of the same item the keep targets
   // would read as the shortfall already in hand and never let the rack run.
@@ -38,9 +38,9 @@ function rackCamp() {
 describe("hanging meat is a task", () => {
   it("needs the rack, raw meat and room; takes five minutes a kilo for what fits", () => {
     const { state, world, st, camp } = rackCamp();
-    st.structures.dryingRack = false;
+    campSite(st).structures.dryingRack = false;
     expect(check(state, world, cal, "hang")).toMatchObject({ ok: false, why: "needs a drying rack" });
-    st.structures.dryingRack = true;
+    campSite(st).structures.dryingRack = true;
     expect(check(state, world, cal, "hang")).toMatchObject({ ok: false, why: "no raw meat here" });
     addItem(camp, "rawMeat", 9);
     expect(check(state, world, cal, "hang")).toMatchObject({ ok: true, duration: 45 });
@@ -86,7 +86,7 @@ describe("a real rack", () => {
     // nibble the driedMeat this test measures once the rack drops it.
     addItem(pile(state, st.campCell), "water", 20);
     state.player.autoEat = false;
-    expect(rackCapacity(st)).toBe(40);
+    expect(rackCapacity(campSite(st))).toBe(40);
     addItem(pile(state, st.campCell), "rawMeat", 100);
     expect(loadRack(state, world)).toBe(40);
     expect(check(state, world, cal, "hang")).toMatchObject({ ok: false, why: "the rack is full" });
@@ -96,8 +96,8 @@ describe("a real rack", () => {
     expect(check(state, world, cal, "build", "dryingRack").ok).toBe(true);
     startTask(state, world, cal, "build", "dryingRack");
     advance(state, world, 60);
-    expect(st.racks).toBe(2);
-    expect(rackCapacity(st)).toBe(80);
+    expect(campSite(st).racks).toBe(2);
+    expect(rackCapacity(campSite(st))).toBe(80);
     expect(check(state, world, cal, "build", "dryingRack")).toMatchObject({ ok: false, why: "two racks stand here already" });
     expect(loadRack(state, world)).toBe(40);
     // Rain halves the drying: 48 dry hours, 96 wet.

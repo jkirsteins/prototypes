@@ -9,7 +9,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellOf, kmBetween, placeAt, placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { candidateWeight, check, huntGroundValue, stepTask, stopTask } from "../src/sim/tasks";
 import { setSkillLevel } from "../src/sim/horizon";
@@ -307,7 +307,7 @@ describe("the work tier", () => {
     expect(startIntent(state, world, cal, rng(), req("build", { arg: "leanTo" }))).toBe(true);
     expect(state.intent?.step).toContain("for materials");
     expect(until(g, () => state.intent === null, 8000)).toBe(true);
-    expect(regionState(state, world, region).structures.leanTo).toBe(true);
+    expect(campSite(regionState(state, world, region)).structures.leanTo).toBe(true);
     expect(qty(pile(state, forest), "log")).toBe(0);
     expect(state.log.some((e) => e.text === "lean-to: done.")).toBe(true);
   });
@@ -371,7 +371,7 @@ describe("the work tier", () => {
     const region = state.player.region;
     const r = regionAt(world, region);
     const forest = spotOf(r, "forest")!.cell;
-    regionState(state, world, region).structures.leanTo = true;
+    campSite(regionState(state, world, region)).structures.leanTo = true;
     addItem(pile(state, forest), "log", 4);
     const o = intentOption(state, world, cal, "build", "leanTo", "nearest");
     expect(o.ok).toBe(false);

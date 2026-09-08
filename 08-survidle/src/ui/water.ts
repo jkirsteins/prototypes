@@ -9,7 +9,7 @@ import type { Calendar } from "../sim/calendar";
 import { pile, qty } from "../sim/inventory";
 import { baseWalkSpeed } from "../sim/player";
 import { cellOf, watersideCell } from "../sim/position";
-import { regionState } from "../sim/regionstate";
+import { campSite, regionState } from "../sim/regionstate";
 import { survivorRoute } from "../sim/routing";
 import { SEEP, seepGround, seepStopped } from "../sim/seep";
 import type { GameState } from "../sim/types";
@@ -36,7 +36,7 @@ export function waterLine(state: GameState, world: World, cal: Calendar): string
   const parts: string[] = [];
   if (cell === st.campCell) {
     const camp = pile(state, st.campCell);
-    const cap = campWaterCapacity(camp, st);
+    const cap = campWaterCapacity(camp, campSite(st));
     if (cap > 0 || qty(camp, "water") > 1e-9) parts.push(`${qty(camp, "water").toFixed(1)} of ${cap.toFixed(1)} l at camp`);
   }
   if (watersideCell(world, cell)) {

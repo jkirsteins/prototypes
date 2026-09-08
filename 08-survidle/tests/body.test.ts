@@ -12,7 +12,7 @@ import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { baseWalkSpeed, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, watersideCell } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { check } from "../src/sim/tasks";
 import type { RunnerIntent } from "../src/sim/types";
 import { PACK_COMFORTABLE_KG } from "../src/units";
@@ -164,7 +164,7 @@ describe("the body tier", () => {
   it("cold with a lean-to at camp and no fire still goes to camp: shelter alone counts", () => {
     const { g, state, world } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.leanTo = true;
+    campSite(st).structures.leanTo = true;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
     state.player.warmth = 29;
     advance(state, world, 1);
@@ -175,7 +175,7 @@ describe("the body tier", () => {
   it("cold with a lean-to and no fire in deep cold: a rest that cannot help gives the need up", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.leanTo = true;
+    campSite(st).structures.leanTo = true;
     // Far below any target the shelter alone can reach, so the rest that follows cannot gain a point.
     state.weather.offset = -25;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -309,7 +309,7 @@ describe("the body tier", () => {
     // for the rest of this longer, heavier-laden trace.
     const { state, world, camp } = felling(10, "camp");
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     addItem(pile(state, camp), "firewood", 40);
@@ -338,7 +338,7 @@ describe("the body tier", () => {
     const { state, world } = g;
     const camp = regionState(state, world, state.player.region).campCell;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     addItem(pile(state, camp), "log", 40);
     addItem(pile(state, camp), "stone", 12);
     addItem(pile(state, camp), "cordage", 8);
@@ -364,7 +364,7 @@ describe("the body tier", () => {
     startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
     // The player sets it aside by choosing something else; the minutes are banked and read back into the next start.
     startIntent(state, world, cal, rng(), { task: "sticks", until: { kind: "once" }, deliver: "leave", where: "nearest" });
-    const banked = st.build.cabin ?? 0;
+    const banked = campSite(st).build.cabin ?? 0;
     expect(banked).toBeGreaterThan(10);
     expect(until(g, () => state.intent?.task !== "sticks", 1500)).toBe(true);
     startIntent(state, world, cal, rng(), { task: "build", arg: "cabin", until: { kind: "once" }, deliver: "leave", where: "nearest" });
@@ -404,7 +404,7 @@ describe("the runner in the elements", () => {
     state.weather.iceCm = 4;
     state.weather.snowCm = 5;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     expect(until(g, () => state.task?.id === "chop")).toBe(true);
@@ -423,8 +423,8 @@ describe("the runner in the elements", () => {
   it("a storm sends it home, keeps the fire fed, and it waits under the roof until the storm passes", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
-    st.structures.leanTo = true;
+    campSite(st).structures.firePit = true;
+    campSite(st).structures.leanTo = true;
     st.fire.lit = true;
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
@@ -513,7 +513,7 @@ describe("the runner in the elements", () => {
     const g = newGame(39);
     const { state, world } = g;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 30;
     startIntent(state, world, cal, rng(), { task: "chop", until: { kind: "once" }, deliver: "leave", where: "nearest" });
@@ -541,7 +541,7 @@ describe("the runner in the elements", () => {
   it("a storm with no roof still sends the runner to camp to feed the fire and wait it out", () => {
     const { g, state, world, camp } = felling();
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 4;
     addItem(pile(state, camp), "firewood", 20);
@@ -606,7 +606,7 @@ describe("the runner in the elements", () => {
     state.weather.iceCm = 4;
     state.weather.snowCm = 5;
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     state.player.water = 0.8;
@@ -634,7 +634,7 @@ describe("the runner in the elements", () => {
 
     // Thirst: the shore is iced shut at this thickness, so this forces the melt-at-camp fallback.
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     state.weather.snowCm = 5;

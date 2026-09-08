@@ -192,7 +192,7 @@ describe("goals are the world's, not a life's", () => {
     expect(state.goals.progress).toEqual({ firewood: 6 });
   });
 
-  it("fillDefaults gives a save with no goals field an empty ladder standing in today's season", () => {
+  it("migrate gives a save with no goals field an empty ladder standing in today's season", () => {
     const { state } = newGame(3);
     const raw = JSON.parse(serialize(state)) as { version: number; state: Record<string, unknown> };
     delete raw.state.goals;

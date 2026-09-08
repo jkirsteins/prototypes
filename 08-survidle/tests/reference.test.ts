@@ -37,7 +37,7 @@ import { emptyBurn, emptyYield, weekBefore } from "../src/sim/ledger";
 import { runYear } from "../src/sim/year";
 import { SAP_FROM_DOY, SAP_KCAL, SAP_TAPS_PER_DAY } from "../src/sim/items";
 import { readShore } from "../src/sim/knowledge";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { levelMinutes, SKILL_IDS } from "../src/sim/skills";
 import { SPECIES_DEFS } from "../src/sim/species";
 import { APRIL, BURN, MIDSUMMER_DOY } from "../src/sim/tables";
@@ -278,10 +278,10 @@ describe("the reference player", () => {
     ]);
     const ref = { state, world, player };
     stepReference(ref, 24 * 60);
-    expect(st.structures.snares).toBe(5);
+    expect(st.snares).toBe(5);
     expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
     stepReference(ref, 24 * 60);
-    expect(st.structures.snares).toBe(5);
+    expect(st.snares).toBe(5);
     expect(ordersHere(state, world).some((o) => o.req.task === "build")).toBe(false);
   });
 
@@ -793,7 +793,7 @@ describe("wants by method", () => {
     expect(indoors.kind).toBe("keep");
     expect(wantOpen(state, world, pit)).toBe(true);
     expect(wantOpen(state, world, indoors)).toBe(false);
-    st.structures.turfHut = true;
+    campSite(st).structures.turfHut = true;
     expect(wantOpen(state, world, pit)).toBe(false);
     expect(wantOpen(state, world, indoors)).toBe(true);
   });

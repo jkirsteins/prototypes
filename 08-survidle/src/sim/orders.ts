@@ -18,7 +18,7 @@ import { normalizeOrder, structureKeep } from "./ladder";
 import { today } from "./ledger";
 import { log } from "./log";
 import { cellOf, SPOT_WORDS } from "./position";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { check, setAside } from "./tasks";
 import type { GameState, IntentRequest, ItemId, Order, OrderKind, StructureId, TaskId } from "./types";
 import { campWaterCapacity } from "./water";
@@ -240,15 +240,15 @@ export function orderMet(state: GameState, world: World, cal: Calendar, o: Order
   if (structureKeep(o.req, o.kind)) {
     if (o.req.arg === "snare") {
       const want = o.req.until.kind === "campHas" ? o.req.until.qty : 1;
-      return live ? st.structures.snares >= want : st.structures.snares >= want / 2;
+      return live ? st.snares >= want : st.snares >= want / 2;
     }
-    return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return campSite(st).structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.kind === "grind") return false;
   // A seep stands on a cell, not at the camp: its dig is a job done once.
   if (o.req.task === "build" && o.req.arg === "seep") return o.done >= 1;
   if (o.req.task === "build" && o.req.arg !== "snare") {
-    return st.structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
+    return campSite(st).structures[o.req.arg as Exclude<StructureId, "snare" | "seep">] === true;
   }
   if (o.req.task === "light" || o.req.task === "lightIndoors") return st.fire.lit;
   const u = o.req.until;
@@ -455,7 +455,7 @@ export function judgeOrders(state: GameState, world: World, cal: Calendar): { ch
     if (keep?.item === "water") {
       const homeSt = regionState(state, world, state.player.region);
       const camp = pile(state, homeSt.campCell);
-      const cap = campWaterCapacity(camp, homeSt);
+      const cap = campWaterCapacity(camp, campSite(homeSt));
       // cap === 0 means no vessel has ever reached camp yet, not that camp is
       // full: qty + ice (both 0) trivially clears ">= cap - eps" either way, so
       // without this guard a camp with no bucket at all reads as "at capacity"

@@ -27,7 +27,7 @@ import { feltTemperature, insulation, starvation } from "../sim/player";
 import { illuminance, lightWord } from "../sim/light";
 import { campCellOf, cellOf, describeWhere, kmBetween, spotHere, SPOT_WORDS, watersideCell } from "../sim/position";
 import { current, worldDate } from "../sim/record";
-import { regionState } from "../sim/regionstate";
+import { campSite, regionState } from "../sim/regionstate";
 import type { AwayOrder, AwaySummary } from "../sim/save";
 import { CARRY_SHARE, keyName, level, levelMinutes, masteryMilestone, poolShare, SKILL_CAP, SKILL_IDS, SKILL_NAMES, RUNG_LEVEL, RUNG_ORDER, RUNG_WORD } from "../sim/skills";
 import { NAMES, ASKS_FOR, nextThreshold } from "../sim/spine";
@@ -336,26 +336,27 @@ export function regionHtml(state: GameState, world: World, cal: Calendar, ui: Ui
       return `<div>${fmtKg(weight(x.inv))} lying at ${esc(whereIs(state, world, x.cell))}${btn}</div>`;
     })
     .join("");
+  const site = campSite(st);
   const built: string[] = [];
-  if (st.structures.firePit) built.push(STRUCTURES.firePit.name);
-  if (st.structures.leanTo) built.push(needsMending(st, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
-  if (st.structures.cabin) built.push("log cabin");
-  if (st.structures.turfHut) built.push(needsMending(st, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
-  if (st.structures.dryingRack) built.push(needsMending(st, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
-  if (st.structures.boughBed) built.push("bough bed");
-  if (st.structures.waterStore) built.push("water trough");
-  if (st.structures.snowShelter) built.push("snow shelter");
-  if (st.structures.snares) built.push(`${st.structures.snares} snare${st.structures.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
+  if (site.structures.firePit) built.push(STRUCTURES.firePit.name);
+  if (site.structures.leanTo) built.push(needsMending(site, "leanTo") ? "lean-to (needs re-roofing)" : "lean-to");
+  if (site.structures.cabin) built.push("log cabin");
+  if (site.structures.turfHut) built.push(needsMending(site, "turfHut") ? "turf hut (needs re-roofing)" : "turf hut");
+  if (site.structures.dryingRack) built.push(needsMending(site, "dryingRack") ? "drying rack (needs relashing)" : "drying rack");
+  if (site.structures.boughBed) built.push("bough bed");
+  if (site.structures.waterStore) built.push("water trough");
+  if (site.structures.snowShelter) built.push("snow shelter");
+  if (st.snares) built.push(`${st.snares} snare${st.snares > 1 ? "s" : ""}${st.snareCatch.count ? ` (${st.snareCatch.count} caught)` : ""}`);
   if (st.trap) built.push(`trap at ${esc(whereIs(state, world, st.trap.cell))}: ${st.trap.kg > 0 ? `${st.trap.kg.toFixed(1)} kg` : "empty"}`);
-  const unfinished = (Object.keys(st.build) as (keyof typeof st.build)[]).filter((k) => (st.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
-  const fire = st.structures.firePit
+  const unfinished = (Object.keys(site.build) as (keyof typeof site.build)[]).filter((k) => (site.build[k] ?? 0) > 0).map((k) => `${k} in progress`);
+  const fire = site.structures.firePit
     ? `<div>fire: ${st.fire.lit ? `<span class="good">burning${smoky(st.fire) ? ", smoking" : ""}</span>` : "<span class=\"dim\">cold</span>"}</div>${here ? bar("fire", "fire", "Fuel") : ""}`
     : "";
-  const rack = st.structures.dryingRack
-    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(st)} kg max)</small></div>`
+  const rack = site.structures.dryingRack
+    ? `<div>rack: ${st.rack.kg > 0 ? `${st.rack.kg.toFixed(1)} kg drying, ${Math.round((st.rack.dried / (48 * 60)) * 100)}%` : "empty"} <small>(${rackCapacity(site)} kg max)</small></div>`
     : "";
   const campPile = pile(state, st.campCell);
-  const cap = campWaterCapacity(campPile, st);
+  const cap = campWaterCapacity(campPile, site);
   const water = cap > 0 || qty(campPile, "water") + qty(campPile, "ice") > 0
     ? `<div>water: ${qty(campPile, "water").toFixed(1)} of ${cap.toFixed(1)} l${qty(campPile, "ice") > 0 ? `, ${qty(campPile, "ice").toFixed(1)} l frozen` : ""}${st.iceHole ? ", ice hole open" : ""}</div>`
     : "";

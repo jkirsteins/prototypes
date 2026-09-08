@@ -3,7 +3,7 @@ import { advance } from "../src/sim/advance";
 import { addItem, pile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { kitOut } from "../src/sim/reference";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 
 /** A player nobody may touch: any read throws, so a world function that still reaches for the body fails loudly. */
 function forbidPlayer(state: ReturnType<typeof newGame>["state"]) {
@@ -17,10 +17,10 @@ describe("nobody home", () => {
     const st = regionState(state, world, state.player.region);
     st.fire.lit = true;
     st.fire.fuelKg = 6;
-    st.structures.dryingRack = true;
+    campSite(st).structures.dryingRack = true;
     st.rack.kg = 3;
     st.snareCatch.count = 2;
-    st.structures.snares = 2;
+    st.snares = 2;
     state.player.autoFeed = true;
     state.dead = { cause: "froze", minute: state.minute };
     forbidPlayer(state);
@@ -28,7 +28,7 @@ describe("nobody home", () => {
     expect(state.minute).toBeCloseTo(90 * 1440, 3);
     expect(st.fire.lit).toBe(false);
     // The rack still stands after 90 days; the meat hung on it has dried and moved to the pile.
-    expect(st.structures.dryingRack).toBe(true);
+    expect(campSite(st).structures.dryingRack).toBe(true);
     expect(st.rack.kg).toBe(0);
     // The catch cycles between being taken by the fox and re-caught by the standing snares over 90
     // untended days, so the count at the exact end is a coin flip on the seed; assert the fox rule ran.

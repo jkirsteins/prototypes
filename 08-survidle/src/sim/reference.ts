@@ -38,7 +38,7 @@ import { FAT_FULL } from "./player";
 import { medianPerson } from "./person";
 import { cellOf, heathCell, watersideCell } from "./position";
 import { current } from "./record";
-import { regionState } from "./regionstate";
+import { campSite, regionState } from "./regionstate";
 import { RECOMMENDED, skillLevel } from "./skills";
 import { inSpawn, LARGE_GAME, SPECIES_DEFS } from "./species";
 import { nestsFor, rootKgLeft } from "./stocks";
@@ -462,14 +462,14 @@ export function wantOpen(state: GameState, world: World, w: Want): boolean {
   if (w.req.task === "melt") return shoreIced(state) && !axeInReach(state, world);
   // The fire by method: the pit until a hut or a hearth stands, the fire indoors after.
   if (w.req.task === "light" || w.req.task === "lightIndoors") {
-    const st = regionState(state, world, state.player.region);
-    const indoors = st.structures.turfHut || (st.structures.cabin && st.structures.hearth);
+    const site = campSite(regionState(state, world, state.player.region));
+    const indoors = site.structures.turfHut || (site.structures.cabin && site.structures.hearth);
     return w.req.task === "lightIndoors" ? indoors : !indoors;
   }
   // The snow shelter closes once a hut or a cabin stands: warmer walls, and the same cell to camp on.
   if (w.req.task === "build" && w.req.arg === "snowShelter") {
-    const st = regionState(state, world, state.player.region);
-    return !(st.structures.turfHut || st.structures.cabin);
+    const site = campSite(regionState(state, world, state.player.region));
+    return !(site.structures.turfHut || site.structures.cabin);
   }
   if (w.req.task === "hunt" && w.req.arg && w.req.arg !== "any") {
     const rec = RECOMMENDED[`hunt:${w.req.arg}`];
@@ -708,10 +708,11 @@ export function kitOut(state: GameState, world: World, producers = true): void {
   const camp = pile(state, st.campCell);
   addItem(camp, "barkBucket", 1);
   addItem(camp, "firewood", 20);
-  st.structures.firePit = true;
+  const site = campSite(st);
+  site.structures.firePit = true;
   if (producers) {
-    st.structures.turfHut = true;
-    st.structures.waterStore = true;
+    site.structures.turfHut = true;
+    site.structures.waterStore = true;
     kitTrap(state, world);
   }
   // A camp this built is one somebody has lived at, so its own country is
@@ -1250,8 +1251,9 @@ export interface LineageReport {
 /** What the heir finds at the old camp, read after the gap has run and before the heir moves. */
 function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landCell: number, trapKg: number | null): Found {
   const oldSt = regionState(state, world, oldRegion);
+  const oldSite = campSite(oldSt);
   const camp = pile(state, oldSt.campCell);
-  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSt.structures[s]);
+  const structures = (["firePit", "leanTo", "cabin", "dryingRack", "boughBed", "hearth", "turfHut", "waterStore", "snowShelter"] as const).filter((s) => oldSite.structures[s]);
   const lc = cellAt(world, landCell);
   const cc = cellAt(world, oldSt.campCell);
   return {
@@ -1259,7 +1261,7 @@ function foundAtOldCamp(state: GameState, world: World, oldRegion: number, landC
     campFoodKcal: Math.round(campFoodKcalAt(camp)),
     campFirewoodKg: Math.round(qty(camp, "firewood")),
     logs: Math.round(qty(camp, "log")),
-    snares: oldSt.structures.snares,
+    snares: oldSt.snares,
     kmToOldCamp: Math.round(Math.hypot(lc.x - cc.x, lc.y - cc.y) * CELL_KM * 10) / 10,
     trapKg,
   };

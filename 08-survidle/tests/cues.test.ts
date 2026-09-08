@@ -5,7 +5,7 @@ import { type Cue, cue, setCueSink } from "../src/sim/cues";
 import { addItem } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { fallThrough, startTask, stepTask } from "../src/sim/tasks";
 
 const cal = calendar(0);
@@ -37,7 +37,7 @@ describe("cues", () => {
 
     placeAtSpot(state, world, state.player.region, "camp");
     const st = regionState(state, world, state.player.region);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     state.player.tools.push({ id: "fireDrill", durability: 100, litres: 0, frozen: false });
     addItem(state.player.pack, "firewood", 5);
     expect(startTask(state, world, cal, "light")).toBe(true);

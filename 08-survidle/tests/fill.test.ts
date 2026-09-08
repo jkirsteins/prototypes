@@ -6,7 +6,7 @@ import { addItem, freshTool, pile, qty, takeUp } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, orderMet } from "../src/sim/orders";
 import { placeAt, watersideCell } from "../src/sim/position";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { beginTask, check } from "../src/sim/tasks";
 import { ICE_SHORE_CM, takeUpTripVessel, tripLitres, tripVessel, vesselLitres, vesselLitresCapacity, waterSource } from "../src/sim/water";
 import { regionAt, spotOf } from "../src/world/gen";
@@ -179,7 +179,7 @@ describe("the fill task", () => {
     const { state, world, st } = waterCamp();
     state.weather.iceCm = 10;
     state.weather.snowCm = 20;
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     const shore = spotOf(regionAt(world, state.player.region), "shore")!;
@@ -247,7 +247,7 @@ describe("the winter methods", () => {
     const { state, world } = newGame(17);
     const st = regionState(state, world, state.player.region);
     placeAt(state, world, st.campCell);
-    st.structures.firePit = true;
+    campSite(st).structures.firePit = true;
     st.fire.lit = true;
     st.fire.fuelKg = 20;
     state.player.tools.push(freshTool("barkBucket"));

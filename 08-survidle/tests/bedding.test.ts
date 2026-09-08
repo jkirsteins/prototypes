@@ -6,7 +6,7 @@ import { addItem, carried, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
 import { placeAtSpot } from "../src/sim/position";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
-import { regionState } from "../src/sim/regionstate";
+import { campSite, regionState } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import { levelMinutes } from "../src/sim/skills";
 import { check, startTask, stepTask } from "../src/sim/tasks";
@@ -25,7 +25,7 @@ describe("bedding", () => {
   it("a bough bed at camp warms you only while you sleep on it", () => {
     const { state, world } = newGame(1);
     const bare = feltTemperature(state, world, -10);
-    regionState(state, world, state.player.region).structures.boughBed = true;
+    campSite(regionState(state, world, state.player.region)).structures.boughBed = true;
     expect(feltTemperature(state, world, -10)).toBeCloseTo(bare, 5);
     state.task = { id: "sleep", progress: 0, duration: 480, repeat: false };
     expect(feltTemperature(state, world, -10)).toBeCloseTo(bare + 4, 5);
@@ -86,7 +86,7 @@ describe("bough bed and blanket in play", () => {
     expect(o.duration).toBe(30);
     expect(startTask(state, world, cal, "build", "boughBed")).toBe(true);
     done(g);
-    expect(st.structures.boughBed).toBe(true);
+    expect(campSite(st).structures.boughBed).toBe(true);
     expect(qty(state.player.pack, "stick")).toBe(0);
     placeAtSpot(state, world, state.player.region, "forest");
     addItem(state.player.pack, "stick", 12);
@@ -96,11 +96,11 @@ describe("bough bed and blanket in play", () => {
   it("a bough bed rots away after four days and can be laid again", () => {
     const { state, world } = newGame(3);
     const st = regionState(state, world, state.player.region);
-    st.structures.boughBed = true;
+    campSite(st).structures.boughBed = true;
     for (let d = 0; d < 3; d++) dailyCamp(state, world, calendar(state.minute), new Rng(1), { region: state.player.region, atCamp: true });
-    expect(st.structures.boughBed).toBe(true);
+    expect(campSite(st).structures.boughBed).toBe(true);
     for (let d = 0; d < 1; d++) dailyCamp(state, world, calendar(state.minute), new Rng(1), { region: state.player.region, atCamp: true });
-    expect(st.structures.boughBed).toBe(false);
+    expect(campSite(st).structures.boughBed).toBe(false);
     expect(state.log.some((e) => e.text.includes("gone flat"))).toBe(true);
     addItem(state.player.pack, "stick", 12);
     expect(check(state, world, cal, "build", "boughBed").ok).toBe(true);
@@ -132,8 +132,8 @@ describe("bough bed and blanket in play", () => {
     expect(detail()).toContain("on bare ground, in the open");
     state.player.clothing.push({ id: "hideBlanket", durability: 100 });
     expect(detail()).toContain("on bare ground, under {your} blanket");
-    st.structures.leanTo = true;
-    st.structures.boughBed = true;
+    campSite(st).structures.leanTo = true;
+    campSite(st).structures.boughBed = true;
     st.fire.lit = true;
     expect(detail()).toContain("on a bough bed, under {your} blanket and the roof, by the fire");
     state.player.clothing = state.player.clothing.filter((g) => g.id !== "hideBlanket");
@@ -147,21 +147,27 @@ describe("bough bed and blanket in play", () => {
     const text = serialize(state, 1);
     const raw = JSON.parse(text);
     for (const id of Object.keys(raw.state.regions)) {
-      delete raw.state.regions[id].structures.boughBed;
-      delete raw.state.regions[id].boughBedAge;
+      const r = raw.state.regions[id];
+      delete r.sites;
+      delete r.snares;
+      // The old flat shape, from before boughBed joined the other structure flags.
+      r.structures = { firePit: false, leanTo: false, cabin: false, dryingRack: false, snares: 0, hearth: false, turfHut: false, waterStore: false, snowShelter: false };
+      r.racks = 0;
+      r.structureAge = {};
+      r.build = {};
     }
     const file = deserialize(JSON.stringify(raw));
     expect(file).not.toBeNull();
     const st = regionState(file!.state, world, file!.state.player.region);
-    expect(st.structures.boughBed).toBe(false);
-    expect(st.boughBedAge).toBe(0);
+    expect(campSite(st).structures.boughBed).toBe(false);
+    expect(campSite(st).boughBedAge).toBe(0);
   });
 
   it("the worn list shows the blanket as warmth for sleeping, and the camp card lists the bed", () => {
     const { state, world } = newGame(3);
     state.player.clothing.push({ id: "hideBlanket", durability: 100 });
     expect(gearHtml(state, 10)).toContain("hide blanket <small>+8 C asleep, 100%</small>");
-    regionState(state, world, state.player.region).structures.boughBed = true;
+    campSite(regionState(state, world, state.player.region)).structures.boughBed = true;
     expect(regionHtml(state, world, cal, newUiState())).toContain("bough bed");
   });
 });

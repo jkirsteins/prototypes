@@ -13,12 +13,12 @@ import {
 import { noteLarder } from "./ledger";
 import { log } from "./log";
 import { baseWalkSpeed } from "./player";
-import { regionState, touchedRegions } from "./regionstate";
+import { campSite, regionState, touchedRegions } from "./regionstate";
 import { seepGround } from "./seep";
 import { masteryOf, skillLevel, yieldFactor } from "./skills";
 import { fishItem, SPECIES_DEFS } from "./species";
 import { growRoots, nestsFor, rootStockFor } from "./stocks";
-import { type DecayingId, type GameState, type RegionState, type SeepClass, type SpotId, PERISHABLES } from "./types";
+import { type DecayingId, type GameState, type SeepClass, type Site, type SpotId, PERISHABLES } from "./types";
 import { ICE_SHORE_CM, THAW_L_PER_HOUR } from "./water";
 import { seasonalMean, walkableIce } from "./weather";
 
@@ -36,7 +36,7 @@ export function stepCamp(state: GameState, world: World, ambient: number, dt: nu
     st.logsWet = state.weather.precip !== "none" ? 0 : st.logsWet + dt;
 
     if (st.fire.lit) {
-      const roof = roofed(st);
+      const roof = roofed(campSite(st));
       const perMin = burnPerHour(state.weather, ambient, st) / 60;
       const total = fuelTotal(st.fire);
       if (total > 0) {
@@ -139,8 +139,8 @@ export function firewoodAt(state: GameState, world: World, region: number): numb
 }
 
 /** Raw meat the camp's racks hold together. */
-export function rackCapacity(st: RegionState): number {
-  return RACK_MAX_KG * Math.max(1, st.racks);
+export function rackCapacity(site: Site): number {
+  return RACK_MAX_KG * Math.max(1, site.racks);
 }
 
 /** Draws a basket trap gets at dawn: four at the start, one more every five levels of fishing past five, capped at eight. */
@@ -168,6 +168,7 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
   for (const id of touchedRegions(state)) {
     const r = regionAt(world, id);
     const st = state.regions[id];
+    const site = campSite(st);
     if (who && id === who.region) {
       const leanAtCamp = LEAN_FOOD_IDS.some((f) => totalQty([state.player.pack, pile(state, st.campCell)], f) > 1e-9);
       noteLarder(state, leanAtCamp);
@@ -180,9 +181,9 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         st.snareCatch.age = 0;
       }
     }
-    if (st.structures.snares > 0) {
+    if (st.snares > 0) {
       const d = regionDensity(state, world, id, "hare", cal);
-      for (let i = 0; i < st.structures.snares; i++) {
+      for (let i = 0; i < st.snares; i++) {
         if (popOf(st, "hare") >= 1 && rng.chance(SNARE_ODDS_PER_NIGHT * d)) {
           st.pop.hare = popOf(st, "hare") - 1;
           st.snareCatch.count += 1;
@@ -220,30 +221,30 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
         }
       }
     }
-    if (st.structures.boughBed) {
-      st.boughBedAge += 1440;
-      if (st.boughBedAge >= BOUGH_BED_DAYS * 1440) {
-        st.structures.boughBed = false;
-        st.boughBedAge = 0;
+    if (site.structures.boughBed) {
+      site.boughBedAge += 1440;
+      if (site.boughBedAge >= BOUGH_BED_DAYS * 1440) {
+        site.structures.boughBed = false;
+        site.boughBedAge = 0;
         log(state, `The bough bed at ${r.name} has gone flat and brown. Lay it again.`, "bad");
       }
     }
-    if (st.structures.snowShelter) {
+    if (site.structures.snowShelter) {
       const mean = seasonalMean(cal.dayOfYear) + state.weather.offset;
-      st.meltDays = mean > 0 ? st.meltDays + 1 : 0;
-      if (st.meltDays >= SNOW_MELT_DAYS) {
-        st.structures.snowShelter = false;
-        st.meltDays = 0;
+      site.meltDays = mean > 0 ? site.meltDays + 1 : 0;
+      if (site.meltDays >= SNOW_MELT_DAYS) {
+        site.structures.snowShelter = false;
+        site.meltDays = 0;
         log(state, `The snow shelter at ${r.name} has slumped.`, "bad");
       }
     }
     for (const sid of DECAYING) {
-      if (!st.structures[sid]) continue;
-      st.structureAge[sid] = (st.structureAge[sid] ?? 0) + 1440;
-      if (st.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
-      st.structures[sid] = false;
-      delete st.structureAge[sid];
-      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; st.racks = 0; }
+      if (!site.structures[sid]) continue;
+      site.structureAge[sid] = (site.structureAge[sid] ?? 0) + 1440;
+      if (site.structureAge[sid]! < STRUCTURE_LIFE_DAYS[sid] * 1440) continue;
+      site.structures[sid] = false;
+      delete site.structureAge[sid];
+      if (sid === "dryingRack") { st.rack.kg = 0; st.rack.dried = 0; site.racks = 0; }
       if (sid === "turfHut") st.fire.indoors = false;
       log(state, FALLS[sid](r.name), "bad");
     }
@@ -260,16 +261,16 @@ export function dailyCamp(state: GameState, world: World, cal: Calendar, rng: Rn
 }
 
 /** Past two thirds of its life a lean-to needs re-roofing, a rack relashing, a hut a new roof; the camp panel says so. */
-export function needsMending(st: RegionState, id: DecayingId): boolean {
-  return st.structures[id] && (st.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
+export function needsMending(site: Site, id: DecayingId): boolean {
+  return site.structures[id] && (site.structureAge[id] ?? 0) >= (STRUCTURE_LIFE_DAYS[id] * 1440 * 2) / 3;
 }
 
 /**
  * The word canMoveCamp names for each structure flag that can hold a camp in place, in the order
- * RegionState.structures declares them, snares excepted since they stand on the heath, not the camp cell.
+ * Site.structures declares them, snares excepted since they stand on the heath, not the camp cell.
  * Names come from STRUCTURES where a structure is built there; a hearth has no build entry of its own.
  */
-const STRUCTURE_WORD: Partial<Record<keyof RegionState["structures"], string>> = {
+const STRUCTURE_WORD: Partial<Record<keyof Site["structures"], string>> = {
   firePit: STRUCTURES.firePit.name,
   leanTo: STRUCTURES.leanTo.name,
   cabin: STRUCTURES.cabin.name,
@@ -284,8 +285,9 @@ const STRUCTURE_WORD: Partial<Record<keyof RegionState["structures"], string>> =
 /** Whether the camp may be moved: nothing built at it, no fire banked, nothing lying in its pile. */
 export function canMoveCamp(state: GameState, world: World): { ok: true } | { ok: false; why: string } {
   const st = regionState(state, world, state.player.region);
+  const site = campSite(st);
   for (const [key, word] of Object.entries(STRUCTURE_WORD)) {
-    if (st.structures[key as keyof typeof st.structures]) return { ok: false, why: `the ${word} stands there` };
+    if (site.structures[key as keyof typeof site.structures]) return { ok: false, why: `the ${word} stands there` };
   }
   if (st.fire.lit || fuelTotal(st.fire) > 0) return { ok: false, why: "the fire is banked there" };
   // Read only: pile() would insert an empty inventory at the camp cell, which the map

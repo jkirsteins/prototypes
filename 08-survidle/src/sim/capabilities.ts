@@ -8,7 +8,8 @@
  * are content beneath rows and are not here.
  */
 import { cellAt, type World } from "../world/gen";
-import type { GameState, RecipeId, RegionState, Rung, SkillId, StructureId, TaskId } from "./types";
+import { campSite } from "./regionstate";
+import type { GameState, RecipeId, RegionState, Rung, Site, SkillId, StructureId, TaskId } from "./types";
 
 export type CapabilityKey = `rec:${string}` | `build:${StructureId}` | `craft:${RecipeId}` | `rung:${Rung}`;
 
@@ -204,19 +205,20 @@ export function capabilityFor(id: TaskId, arg: string | undefined): CapabilityRo
  * this region.
  */
 export function standingHere(state: GameState, st: RegionState, world: World, c: CapabilityRow): boolean {
+  const site = campSite(st);
   for (const k of c.keys) {
     const [kind, arg] = k.split(":");
     // A row names its thing under build or craft: the basket trap is crafted
     // and then set, the snare is both. "rec:" keys are levels, not things.
     if (kind !== "build" && kind !== "craft") continue;
     if (arg === "snare") {
-      if (st.structures.snares > 0) return true;
+      if (st.snares > 0) return true;
     } else if (arg === "basketTrap") {
       if (st.trap !== null) return true;
     } else if (arg === "seep") {
       const region = cellAt(world, st.campCell).region;
       if (Object.keys(state.seeps).some((cell) => cellAt(world, Number(cell)).region === region)) return true;
-    } else if (st.structures[arg as keyof RegionState["structures"]]) {
+    } else if (site.structures[arg as keyof Site["structures"]]) {
       return true;
     }
   }
