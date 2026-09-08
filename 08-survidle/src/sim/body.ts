@@ -7,7 +7,7 @@
 import type { Rng } from "../rng";
 import { routeMinutes } from "../world/route";
 import { cellAt, regionAt, spotOf, type World } from "../world/gen";
-import { autoEat, edible, HUNGRY_LINE } from "./actions";
+import { autoEat, edible, hungerLine } from "./actions";
 import type { Calendar } from "./calendar";
 import { feedFire } from "./camp";
 import { fireWarms, fuelTotal, roofed, SPREAD_FUEL_KG } from "./fire";
@@ -100,7 +100,7 @@ export function currentNeed(state: GameState, world: World, cal: Calendar, it: R
   const cold = !it.coldSpent && (p.warmth < coldUnder || (it.need === "cold" && p.warmth < WARM_AT));
   if (cold && campCanWarm(state, world, cal)) return "cold";
   if (thirsty) return "thirsty";
-  if (p.kcal < HUNGRY_LINE && canFeed(state, world, cal, it)) return "hungry";
+  if (p.kcal < hungerLine(state) && canFeed(state, world, cal, it)) return "hungry";
   if (snaresWaiting(state, world, cal) !== null) return "snares";
   // Worked out: the evening by the fire, held until the fire has given the
   // fatigue back rather than until a clock says dawn. It also holds while the

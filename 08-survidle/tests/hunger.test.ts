@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
-import { autoEat, HUNGRY_LINE } from "../src/sim/actions";
+import { autoEat, eat, hungerLine, HUNGRY_LINE, SATIETY_BASE, satietyTarget } from "../src/sim/actions";
 import { advance } from "../src/sim/advance";
 import { addItem } from "../src/sim/inventory";
 import { KCAL_FULL } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { fatLandmarks } from "../src/sim/person";
 import { BASE_KCAL_PER_HOUR } from "../src/sim/player";
+import { current } from "../src/sim/record";
 
 /**
  * The meal line and what the body does at it. The pool's size is not free:
@@ -139,5 +141,57 @@ describe("hunger and satiety", () => {
     // not a rounding error masquerading as starvation.
     expect(lost / days).toBeGreaterThan(BASE_KCAL_PER_HOUR * 24 * 0.5);
     expect(lost / days).toBeLessThan(BASE_KCAL_PER_HOUR * 24 * 3);
+  });
+});
+
+describe("appetite answers the reserve", () => {
+  const at = (fat: number) => {
+    const { state } = newGame(1);
+    state.player.fat = fat;
+    return { hunger: hungerLine(state), satiety: satietyTarget(state) };
+  };
+
+  it("is flat across the settling zone", () => {
+    const { state } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    const a = at(l.lower + (l.typical - l.lower) / 2);
+    const b = at(l.typical);
+    expect(a.hunger).toBeCloseTo(b.hunger, 6);
+    expect(a.satiety).toBeCloseTo(b.satiety, 6);
+    expect(b.hunger).toBeCloseTo(HUNGRY_LINE, 6);
+    expect(b.satiety).toBeCloseTo(SATIETY_BASE, 6);
+  });
+
+  it("eats sooner and further below the lower landmark", () => {
+    const { state } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    const norm = at(l.typical);
+    const lean = at(l.floor + (l.lower - l.floor) * 0.2);
+    expect(lean.hunger).toBeGreaterThan(norm.hunger);
+    expect(lean.satiety).toBeGreaterThan(norm.satiety);
+  });
+
+  it("argues back above the upper landmark, and only gently", () => {
+    const { state } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    const norm = at(l.typical);
+    const stout = at(l.upper * 1.5);
+    expect(stout.hunger).toBeLessThan(norm.hunger);
+    expect(stout.satiety).toBeLessThan(norm.satiety);
+    // Weak by design: the brake against gain is nothing like the drive to regain.
+    const drop = norm.satiety - stout.satiety;
+    const rise = at(l.floor + (l.lower - l.floor) * 0.2).satiety - norm.satiety;
+    expect(rise).toBeGreaterThan(drop * 2);
+  });
+
+  it("still lets a very stout body gain on rich food", () => {
+    const { state, world } = newGame(1);
+    const l = fatLandmarks(current(state).person);
+    state.player.fat = l.upper * 1.5;
+    const fat0 = state.player.fat;
+    state.player.kcal = KCAL_FULL;
+    addItem(state.player.pack, "fat", 20);
+    for (let i = 0; i < 20; i++) eat(state, world, "fat", new Rng(1));
+    expect(state.player.fat).toBeGreaterThan(fat0);
   });
 });

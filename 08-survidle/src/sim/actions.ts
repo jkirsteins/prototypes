@@ -3,6 +3,7 @@
  * putting down. Tasks with a duration live in tasks.ts.
  */
 import type { Rng } from "../rng";
+import { clamp } from "../units";
 import type { World } from "../world/gen";
 import { feedFire, rackCapacity } from "./camp";
 import { goalDeed } from "./goals";
@@ -11,7 +12,8 @@ import { herePile, qty, removeItem, totalQty, transfer, weight } from "./invento
 import { AUTO_EAT_ORDER, FOODS, type FoodId, GUT, ITEM_KG, ITEM_NAMES, itemLabel, KCAL_FULL } from "./items";
 import { creditEaten } from "./ledger";
 import { atCamp } from "./position";
-import { body } from "./person";
+import { body, fatLandmarks } from "./person";
+import { current } from "./record";
 import { regionState } from "./regionstate";
 import { log, warn } from "./log";
 import type { GameState, ItemId } from "./types";
@@ -76,22 +78,82 @@ export function eat(state: GameState, world: World, food: FoodId, rng: Rng): boo
 }
 
 /**
- * The reserve under which the body eats on its own. The walk below stops as
- * soon as the line is passed rather than filling the stomach, so this is not
- * a floor the body bounces off occasionally - it is where a fed body lives,
- * and where the bar draws its mark. tests/hunger.test.ts holds that resting
- * band inside the upper half of KCAL_FULL.
+ * The reserve under which a body in the settling zone eats on its own -
+ * hungerLine(state) below carries this same value there and moves off it
+ * only outside the zone. The walk below stops as soon as the line is passed
+ * rather than filling the stomach, so this is not a floor the body bounces
+ * off occasionally - it is where a fed body lives, and where the bar draws
+ * its mark. tests/hunger.test.ts holds that resting band inside the upper
+ * half of KCAL_FULL.
  */
 export const HUNGRY_LINE = 1800;
 
 /**
- * The reserve a meal is eaten up to, once it has started. HUNGRY_LINE
- * answers when eating begins; this answers when it stops, and holding the
- * two apart is what a meal is. What a meal should feel like: filled well
- * past the hunger line at 1800, short of a stomach stuffed to the 3000 cap
- * - the reserve someone eating to satisfaction, not to bursting, stops at.
+ * The reserve a meal is eaten up to, once it has started, for a body in the
+ * settling zone - satietyTarget(state) below carries this same value there.
+ * HUNGRY_LINE answers when eating begins; this answers when it stops, and
+ * holding the two apart is what a meal is. What a meal should feel like:
+ * filled well past the hunger line at 1800, short of a stomach stuffed to
+ * the 3000 cap - the reserve someone eating to satisfaction, not to
+ * bursting, stops at.
  */
 export const SATIETY_BASE = 2600;
+
+/**
+ * How far hunger climbs when the reserve is spent, as a share of the gap
+ * between the baseline and a full stomach. Leptin falls with the fat it is
+ * secreted in proportion to, and a starving body's drive to regain what it
+ * lost is the strong half of appetite - so this is the full share, taken
+ * whole rather than damped.
+ */
+const HUNGER_RISE = 1;
+/**
+ * How far appetite falls once the reserve is past the upper landmark, as a
+ * share of the same gap. A fraction of HUNGER_RISE: gaining fat has no
+ * leptin-strength brake behind it, only a weak, separate mechanism, so a
+ * body carrying a large reserve is nudged rather than driven off it - a good
+ * autumn can still put weight on.
+ */
+const HUNGER_FALL = 0.25;
+/** The reserve, in multiples of the settling zone's width above the upper landmark, at which the fall is fully in. */
+const FALL_SPAN = 1;
+
+/**
+ * Where appetite sits for the reserve the body is carrying, as a share:
+ * +1 fully hungry, 0 the settling zone, -1 fully sated. Flat across the
+ * settling zone, steep below the lower landmark, gentle above the upper one.
+ */
+function appetite(state: GameState): number {
+  const l = fatLandmarks(current(state).person);
+  const fat = state.player.fat;
+  if (fat < l.lower) {
+    // Square it, so the drive is mild just under the landmark and fierce near the floor.
+    const into = clamp((l.lower - fat) / (l.lower - l.floor), 0, 1);
+    return into * into;
+  }
+  if (fat > l.upper) return -clamp((fat - l.upper) / ((l.upper - l.lower) * FALL_SPAN), 0, 1);
+  return 0;
+}
+
+/** The reserve at which this body decides to eat. Drawn on the Food bar. */
+export function hungerLine(state: GameState): number {
+  const a = appetite(state);
+  const span = KCAL_FULL - HUNGRY_LINE;
+  return HUNGRY_LINE + span * (a >= 0 ? a * HUNGER_RISE : a * HUNGER_FALL);
+}
+
+/**
+ * The reserve a meal is eaten up to. Mirrors hungerLine's shape on the same
+ * span of headroom above SATIETY_BASE, so the two constants carry the same
+ * asymmetry here as they do there - a satiety target computed off some other
+ * width would let the fall arm outweigh the rise arm even though the rise is
+ * meant to dominate.
+ */
+export function satietyTarget(state: GameState): number {
+  const a = appetite(state);
+  const span = KCAL_FULL - SATIETY_BASE;
+  return SATIETY_BASE + span * (a >= 0 ? a * HUNGER_RISE : a * HUNGER_FALL);
+}
 
 /**
  * Eats when the reserve runs low: the order is least valuable first and fat
@@ -102,10 +164,12 @@ export const SATIETY_BASE = 2600;
  * and a body with room under the ceiling eats the lean food and keeps the
  * fat.
  *
- * Entry is still gated on HUNGRY_LINE: a body above the line does not eat at
- * all, no matter how far below SATIETY_BASE it sits. Once a meal starts, it
- * fills past the line it started at, up to the target - that is what turns
- * "just enough" into a surplus the body can store.
+ * Entry is still gated on hungerLine(state): a body above the line does not
+ * eat at all, no matter how far below satietyTarget(state) it sits. Once a
+ * meal starts, it fills past the line it started at, up to the target - that
+ * is what turns "just enough" into a surplus the body can store. Both move
+ * with the reserve the body is carrying; HUNGRY_LINE and SATIETY_BASE are
+ * only their settling-zone values.
  *
  * The meal speaks once, not once a portion: crossing the target takes
  * several portions and a line each would bury the log. Crossing the hungry
@@ -116,13 +180,15 @@ export const SATIETY_BASE = 2600;
 export function autoEat(state: GameState, world: World, rng: Rng, force = false): void {
   const p = state.player;
   if (!force && !p.autoEat) return;
-  if (p.kcal >= HUNGRY_LINE) {
+  const line = hungerLine(state);
+  if (p.kcal >= line) {
     warn(state, "hungry", false, "");
     return;
   }
+  const target = satietyTarget(state);
   const eaten = new Map<FoodId, number>();
   let guard = 0;
-  while (p.kcal < SATIETY_BASE && guard++ < 200) {
+  while (p.kcal < target && guard++ < 200) {
     let ate = false;
     for (const food of AUTO_EAT_ORDER) {
       const had = totalQty([p.pack, herePile(state, world)], food);
@@ -143,7 +209,7 @@ export function autoEat(state: GameState, world: World, rng: Rng, force = false)
   // fat behind the stomach is what the next hours come out of, and this is
   // the last moment the player can still do something about it. The latch
   // clears itself the next time a meal carries the body back over.
-  warn(state, "hungry", p.kcal < HUNGRY_LINE, "Nothing left {you} can eat. {Your} body starts on its fat.");
+  warn(state, "hungry", p.kcal < line, "Nothing left {you} can eat. {Your} body starts on its fat.");
 }
 
 /** "a, b and c" - the meal's foods in one line. */

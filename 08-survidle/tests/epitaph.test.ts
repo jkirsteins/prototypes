@@ -82,10 +82,16 @@ describe("the epitaph", () => {
     // Neither freezes, because fat is insulation as well as fuel and the reserve a body
     // lands with carries it that far - a body that eats well early is warm later on the
     // same food.
+    // What these snapshots hold: Ausra Zukauskaite (seed 17) starves at camp on day 39, pack
+    // empty, 95 kg of firewood still stacked beside her - appetite that argues hard for food
+    // while the reserve is being spent empties the larder sooner and leaves more of the
+    // woodpile unburned when it does. Sigrid Lund (seed 19) starves at camp on day 35, pack
+    // empty, 69 kg of firewood beside her; her larder collapses from a fixed shortage rather
+    // than from where the eat line sits, so appetite's shape does not move her day.
     // A few minutes moved either way swings the day by several, so the day numbers here are
     // a determinism check rather than a reading; what the epitaph is asked for is where the
     // body lies, what it carried and what it left.
-    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 42. Starved at camp, with nothing in the pack and 60 kg of firewood at camp."`);
+    expect(epitaph(runReference(17, 60).record)).toMatchInlineSnapshot(`"Ausra Zukauskaite. Day 39. Starved at camp, with nothing in the pack and 95 kg of firewood at camp."`);
     expect(epitaph(runReference(19, 60).record)).toMatchInlineSnapshot(`"Sigrid Lund. Day 35. Starved at camp, with nothing in the pack and 69 kg of firewood at camp."`);
   });
 
