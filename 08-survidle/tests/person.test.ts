@@ -36,22 +36,29 @@ describe("the person", () => {
     for (const [i, share] of [1 / 9, 2 / 9, 3 / 9, 2 / 9, 1 / 9].entries()) expect(Math.abs(counts[i] / n - share)).toBeLessThan(0.02);
   });
 
-  it("derives today's numbers from the median for either sex", () => {
+  it("derives today's numbers from the median for either sex, mass included", () => {
+    // Everything but mass is sex-blind; mass carries the reference body (72 kg, FAT_FULL, BASE_KCAL_PER_HOUR)
+    // for a man and a lighter body of the woman's own median (62 kg) scaled the same way for the other sex.
     for (const sex of ["f", "m"] as const) {
       const d = derived(medianPerson(sex));
       expect(d.packComfortableKg).toBe(PACK_COMFORTABLE_KG);
       expect(d.packHardKg).toBe(PACK_HARD_KG);
       expect(d.workHours).toBe(WORK_HOURS_DEFAULT);
       expect(d.workBurn).toBe(1);
-      expect(d.massKg).toBe(72);
-      expect(d.fatFull).toBe(FAT_FULL);
-      expect(d.baseBurn).toBe(BASE_KCAL_PER_HOUR);
       expect(d.comfortC).toBe(COMFORT_C);
       expect(d.spoilFactor).toBe(1);
       expect(d.wearFactor).toBe(1);
       expect(d.sightReach).toBe(1);
       expect(d.dayOdds).toBe(1);
     }
+    const m = derived(medianPerson("m"));
+    expect(m.massKg).toBe(72);
+    expect(m.fatFull).toBe(FAT_FULL);
+    expect(m.baseBurn).toBe(BASE_KCAL_PER_HOUR);
+    const f = derived(medianPerson("f"));
+    expect(f.massKg).toBe(62);
+    expect(f.fatFull).toBeCloseTo(68888.89, 1);
+    expect(f.baseBurn).toBeCloseTo(60.28, 1);
   });
 
   it("derives the table's ends", () => {
@@ -88,19 +95,21 @@ describe("the person", () => {
 
   it("shows grades as the word first and the quantity behind it", () => {
     const p = medianPerson("f");
+    // A woman's own median (62 kg) scales by build the same way a man's does, so these are
+    // her mass at each build rather than the sex-blind 84/72/60 a man's card also still shows.
     expect(grades({ ...p, axes: { strength: 2, build: 2, hands: 2, eyes: 2 } })).toEqual([
       { word: "Mighty and unflagging.", evidence: "carries 30 kg, 42 kg at a push; works 12 hours" },
-      { word: "Heavy, sleeps warm.", evidence: "84 kg" },
+      { word: "Heavy, sleeps warm.", evidence: "72.33333333333334 kg" },
       { word: "Steady hands, an eagle's eye.", evidence: "" },
     ]);
     expect(grades({ ...p, axes: { strength: -1, build: -2, hands: -2, eyes: -1 } })).toEqual([
       { word: "Slight and short-winded.", evidence: "carries 22.5 kg, 31.5 kg at a push; works 9 hours" },
-      { word: "Spare, sleeps cold.", evidence: "60 kg" },
+      { word: "Spare, sleeps cold.", evidence: "51.66666666666667 kg" },
       { word: "Clumsy hands, short sight.", evidence: "" },
     ]);
     expect(grades(p)).toEqual([
       { word: "Ordinary and steady.", evidence: "carries 25 kg, 35 kg at a push; works 10 hours" },
-      { word: "Ordinary.", evidence: "72 kg" },
+      { word: "Ordinary.", evidence: "62 kg" },
       { word: "Ordinary hands, ordinary sight.", evidence: "" },
     ]);
     expect(quirkFear("coastBorn")).toBe("the fell in cloud");

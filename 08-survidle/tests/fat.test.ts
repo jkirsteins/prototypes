@@ -7,7 +7,9 @@ import { addItem, qty } from "../src/sim/inventory";
 import { GUT, KCAL_FULL } from "../src/sim/items";
 import { today } from "../src/sim/ledger";
 import { newGame } from "../src/sim/newgame";
-import { FAT_FULL, stepPlayer, workSpeed } from "../src/sim/player";
+import { derived, fatLandmarks, MEDIAN_MASS_KG } from "../src/sim/person";
+import { FAT_FULL, FAT_KCAL_PER_KG, stepPlayer, workSpeed } from "../src/sim/player";
+import type { Person } from "../src/sim/types";
 import { waterLossPerHour } from "../src/sim/water";
 
 describe("the fat reserve", () => {
@@ -125,5 +127,58 @@ describe("the berry ceiling", () => {
   // The Swedish handbook's not over two litres of berries a day, about 1.2 kg, past which the gut turns.
   it("the ceiling's numbers are the table's", () => {
     expect(GUT.berries).toEqual({ fullCreditKg: 1.2, refuseKg: 2 });
+  });
+});
+
+describe("the fat landmarks", () => {
+  it("are strictly ordered for every build and both sexes", () => {
+    for (const sex of ["m", "f"] as const) {
+      for (const build of [-2, -1, 0, 1, 2] as const) {
+        const p: Person = { sex, axes: { strength: 0, build, hands: 0, eyes: 0 }, quirks: [], face: 0 };
+        const l = fatLandmarks(p);
+        expect(l.floor).toBeGreaterThan(0);
+        expect(l.lower).toBeGreaterThan(l.floor);
+        expect(l.typical).toBeGreaterThan(l.lower);
+        expect(l.upper).toBeGreaterThan(l.typical);
+      }
+    }
+  });
+
+  it("puts a woman's floor at a larger share of her mass than a man's", () => {
+    const share = (sex: "m" | "f") => {
+      const p: Person = { sex, axes: { strength: 0, build: 0, hands: 0, eyes: 0 }, quirks: [], face: 0 };
+      const l = fatLandmarks(p);
+      const d = derived(p);
+      const floorKg = l.floor / FAT_KCAL_PER_KG;
+      return floorKg / (d.leanKg + floorKg);
+    };
+    expect(share("f")).toBeGreaterThan(share("m") * 2);
+  });
+
+  it("stands both sexes at the midpoint of their own settling zone", () => {
+    // The zone is defined in body-fat share, so the invariant is exact there: FAT_SHARES
+    // places typical at the midpoint between lower and upper for both sexes by construction.
+    // Converting a share to kilocalories is nonlinear (fatAt's share/(1-share)), so the same
+    // midpoint does not land at the same fraction of the zone measured in kcal - that curve
+    // is real and is read back out here rather than tuned away.
+    const shareOf = (kcal: number, leanKg: number) => {
+      const fatKg = kcal / FAT_KCAL_PER_KG;
+      return fatKg / (leanKg + fatKg);
+    };
+    for (const sex of ["m", "f"] as const) {
+      const p: Person = { sex, axes: { strength: 0, build: 0, hands: 0, eyes: 0 }, quirks: [], face: 0 };
+      const l = fatLandmarks(p);
+      const lean = derived(p).leanKg;
+      const lower = shareOf(l.lower, lean);
+      const typical = shareOf(l.typical, lean);
+      const upper = shareOf(l.upper, lean);
+      expect((typical - lower) / (upper - lower)).toBeCloseTo(0.5, 6);
+    }
+  });
+
+  it("weighs a median man at his typical reserve at the reference mass", () => {
+    const p: Person = { sex: "m", axes: { strength: 0, build: 0, hands: 0, eyes: 0 }, quirks: [], face: 0 };
+    const l = fatLandmarks(p);
+    expect(derived(p).leanKg + l.typical / FAT_KCAL_PER_KG).toBeCloseTo(MEDIAN_MASS_KG, 1);
   });
 });

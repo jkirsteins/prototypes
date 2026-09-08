@@ -4,6 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { KCAL_FULL } from "../src/sim/items";
 import { newGame } from "../src/sim/newgame";
+import { medianPerson } from "../src/sim/person";
 import { feltTemperature, stepPlayer } from "../src/sim/player";
 import { cellOf, placeAt, placeAtSpot } from "../src/sim/position";
 import { craftSuccess } from "../src/sim/skills";
@@ -109,7 +110,9 @@ describe("storms", () => {
 
 describe("the body at work", () => {
   it("walking the fell burns twice what the forest does, and deep snow doubles it again", () => {
-    const { state, world } = newGame(17);
+    // The base bucket now scales by sex as well as build, so this seam - terrain and snow
+    // alone - is pinned against the median man rather than whatever sex seed 17 rolls.
+    const { state, world } = newGame(17, undefined, medianPerson("m"));
     state.task = { id: "walk", progress: 0, duration: 60, repeat: false };
     const forest = burnForTerrain(state, world, ["spruce", "pine", "birch"], 0);
     expect(burnForTerrain(state, world, ["fell"], 0)).toBeCloseTo(forest * 2, 0);
