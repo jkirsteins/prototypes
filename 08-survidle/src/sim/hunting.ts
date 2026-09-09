@@ -81,6 +81,10 @@ export function stepCarcasses(state: GameState, dt: number, ambient: number): vo
     if (carcass.yields.fatKg) carcass.yields.fatKg *= share;
   }
   state.carcasses = state.carcasses.filter((carcass) => carcass.warmAge < CARCASS_GONE_AFTER && carcass.yields.meatKg > 0.05);
+  const live = new Set(state.carcasses.map((carcass) => carcass.id));
+  for (const [key, task] of Object.entries(state.paused)) {
+    if (task.huntPhase === "field" && task.carcassId !== undefined && !live.has(task.carcassId)) delete state.paused[key];
+  }
 }
 
 export function carcassMinutes(carcass: Carcass): number {
@@ -88,7 +92,7 @@ export function carcassMinutes(carcass: Carcass): number {
 }
 
 /** Finishes the field work and turns only the recoverable share into goods. */
-export function processCarcass(state: GameState, world: World, id: number): CarcassYields | null {
+export function processCarcass(state: GameState, world: World, id: number): (CarcassYields & { meatDestination: "pack" | "pile" }) | null {
   const index = state.carcasses.findIndex((x) => x.id === id && x.cell === cellOf(state, world));
   if (index < 0) return null;
   const carcass = state.carcasses[index];
@@ -102,14 +106,14 @@ export function processCarcass(state: GameState, world: World, id: number): Carc
     ...(carcass.yields.bone ? { bone: Math.max(1, Math.floor(carcass.yields.bone * share)) } : {}),
     ...(carcass.yields.sinew ? { sinew: Math.max(1, Math.floor(carcass.yields.sinew * share)) } : {}),
   };
-  produce(state, world, "rawMeat", recovered.meatKg);
+  const meatDestination = produce(state, world, "rawMeat", recovered.meatKg);
   if (recovered.hideKg) produce(state, world, "hide", recovered.hideKg);
   if (recovered.furKg) produce(state, world, "fur", recovered.furKg);
   if (recovered.fatKg) produce(state, world, "rawFat", recovered.fatKg);
   if (recovered.bone) produce(state, world, "bone", recovered.bone);
   if (recovered.sinew) produce(state, world, "sinew", recovered.sinew);
   state.carcasses.splice(index, 1);
-  return recovered;
+  return { ...recovered, meatDestination };
 }
 
 function suits(world: World, cell: number, species: Species): boolean {
@@ -123,20 +127,25 @@ function suits(world: World, cell: number, species: Species): boolean {
 
 /** Personal evidence found by seeing or pursuing an animal at this cell. */
 export function noteHuntSign(state: GameState, cell: number, species: Species): boolean {
-  const previous = state.player.huntSigns[cell];
-  const fresh = previous && state.minute - previous.minute < HUNT_SIGN_DAYS * 1440 ? previous : undefined;
-  const discovered = !fresh?.species.includes(species);
-  const kinds = new Set(fresh?.species ?? []);
-  kinds.add(species);
-  state.player.huntSigns[cell] = { minute: state.minute, species: [...kinds] };
+  const previous = state.player.huntSigns[cell]?.species ?? {};
+  const seenAt = previous[species];
+  const discovered = seenAt === undefined || state.minute - seenAt >= HUNT_SIGN_DAYS * 1440;
+  state.player.huntSigns[cell] = { species: { ...previous, [species]: state.minute } };
   if (discovered) goalDeed(state, { kind: "foundSign" });
   return discovered;
 }
 
 function recentSign(state: GameState, cell: number): Species[] {
   const sign = state.player.huntSigns[cell];
-  if (!sign || state.minute - sign.minute >= HUNT_SIGN_DAYS * 1440) return [];
-  return sign.species;
+  if (!sign) return [];
+  return huntedLand().filter((species) => {
+    const seenAt = sign.species[species];
+    return seenAt !== undefined && state.minute - seenAt < HUNT_SIGN_DAYS * 1440;
+  });
+}
+
+export function hasRecentHuntSign(state: GameState, cell: number, species: Species): boolean {
+  return recentSign(state, cell).includes(species);
 }
 
 function recoveryShare(state: GameState): number {
@@ -147,8 +156,11 @@ function recoveryShare(state: GameState): number {
 export function knownHuntSpecies(state: GameState, world: World, region = state.player.region): Species[] {
   const known = new Set<Species>();
   for (const [key, sign] of Object.entries(state.player.huntSigns)) {
-    if (state.minute - sign.minute >= HUNT_SIGN_DAYS * 1440 || cellAt(world, Number(key)).region !== region) continue;
-    for (const species of sign.species) known.add(species);
+    if (cellAt(world, Number(key)).region !== region) continue;
+    for (const species of huntedLand()) {
+      const seenAt = sign.species[species];
+      if (seenAt !== undefined && state.minute - seenAt < HUNT_SIGN_DAYS * 1440) known.add(species);
+    }
   }
   return huntedLand().filter((species) => known.has(species));
 }

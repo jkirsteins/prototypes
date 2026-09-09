@@ -223,14 +223,17 @@ and worse encounters. Population depletion belongs mainly to small, localized
 animals such as beaver unless later evidence justifies a broader population
 model.
 
-The first post-recovery seed 17 run at Hunting 20 took 11 reindeer and one
-ptarmigan, yielding 1,918 large-game kcal a day. That is far below the old
-3,400-14,100 range but still above the experienced 300-1,500 band. A stronger
-14-day, 4 km pressure experiment perversely raised it to 13 reindeer and 2,264
-kcal a day by changing where the reference hunter ranged. It was reverted.
-This is evidence that isolated pressure constants are not a safe balancing
-lever. Rebuild the paired production evaluator, then calibrate the whole
-selection, cadence, recovery and runway loop against multiple seeds.
+The 2026-09-09 post-merge year gate confirms that recovery alone did not settle
+expert hunting. Three of five kitted Hunting 20 survivors lived a year, one
+died on day 48 without taking large game, and one died on day 80 after taking
+some. The four lives that did take large game produced 2,413-6,878 kcal a day,
+all above the experienced 300-1,500 band; successful camps ended with roughly
+507,000-716,000 kcal, and one exceeded 1.1 million during autumn. This is a
+real balance defect, but isolated pressure constants are not a safe lever: an
+earlier stronger 14-day, 4 km pressure experiment increased production by
+changing where the reference hunter ranged. Rebuild the paired production
+evaluator, then calibrate selection, encounter cadence, recovery, local
+avoidance and food-runway stopping together.
 
 The final late-August five-seed probe passed first snow on seeds 17, 79 and
 45, but seeds 17 and 79 starved soon afterwards; seeds 19 and 42 starved
@@ -239,15 +242,19 @@ not the former 181-253 kg plus dozens of logs. Food now outranks speculative
 fuel correctly, but the underlying late-start food supply succeeds on only
 three of five seeds and is still unhealthy.
 
-The ordinary April reference gate passed only two of seeds 17, 19 and 42;
-all three starved on days 26-28. This is a real bootstrap regression after
-instant whole-animal recovery was removed, not evidence for restoring that
-abstraction. Revisit the first-month mix of passive food, inexpensive food
-work and hunting only after the paired source probes identify the missing
-calories.
+The 2026-09-09 ordinary April reference gate passed three of five seeds. All
+five survived at least 27 days, and the two gate failures died on days 28 and
+30. The runner reported thousands of kilos of reachable roots and, on several
+seeds, known oily or spawning fish while taking none. That makes this evidence
+of reference-policy blindness, not yet evidence that the player-facing food
+model is underpowered. A beginner living at a sustained food deficit is also
+consistent with the intended harsh start. Keep the April source rates unchanged
+until paired probes and a competent-player scenario separate policy from supply.
 
-The current horizon output also demonstrates why its fixtures must be
-rebuilt: seed 17 held 5, 5, 35, 29 and 35 days across stages whose bands are
-0-2, 1-2, 3-5, 10-20 and 20-60. Those stages are transformed snapshots of
-the changing reference list, so the readings mix capability with policy and
-must not be used to tune the game.
+The 2026-09-09 horizon output still demonstrates why its fixtures must be
+rebuilt. Manual-only lives held 5-6 days against a 0-2 band. Jobs-and-grinds
+lives ranged from 4 days to alive at 30 against 1-2. Keeps held 24-30 days
+against 3-5. Trap/hut/trough held 24 days to alive at 30 against 10-20, while
+every stocked life was alive at 30 and in its 20-60 band. These are transformed
+snapshots of the changing reference list, so the readings mix capability,
+world seed and policy and must not be used to tune the game.

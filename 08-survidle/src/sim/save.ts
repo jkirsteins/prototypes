@@ -13,7 +13,7 @@ import { fatLandmarks, medianPerson, personOf, rollCandidates } from "./person";
 import { newSite, regionState } from "./regionstate";
 import { newSkills, SKILL_IDS } from "./skills";
 import { intentMode } from "./intent";
-import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
+import { isWorkIntent, type DecayingId, type GameState, type Intent, type Inventory, type LogEntry, type Species, type StructureId, type TaskId, type Until, type WorkOrder } from "./types";
 import { emptyWildlife } from "./wildlife-agents";
 
 export const SAVE_KEY = "survidle.save";
@@ -104,6 +104,14 @@ export function migrate(state: GameState): void {
   }
   state.player.known ??= {};
   state.player.huntSigns ??= {};
+  for (const [cell, sign] of Object.entries(state.player.huntSigns)) {
+    const legacy = sign as typeof sign & { minute?: number; species: Species[] | typeof sign.species };
+    if (Array.isArray(legacy.species)) {
+      state.player.huntSigns[Number(cell)] = {
+        species: Object.fromEntries(legacy.species.map((species) => [species, legacy.minute ?? state.minute])),
+      };
+    }
+  }
   state.seeps ??= {};
   state.carcasses ??= [];
   state.nextCarcassId ??= 1;

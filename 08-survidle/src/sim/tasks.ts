@@ -55,7 +55,7 @@ import { campPileHere, campWaterRoom, fillVessels, ICE_SHORE_CM, iceHoleOpen, ta
 import { ambientTemperature, DEEP_SNOW_CM, ICE_SAFE_CM, iceMode, stormNow, walkableIce } from "./weather";
 import { plain } from "./voice";
 import { AGENT_SPECIES, knownBearDen, takeWildlifeMember, unknownBearDen } from "./wildlife-agents";
-import { carcassMinutes, createCarcass, disturbHuntingGround, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteHuntSign, processCarcass } from "./hunting";
+import { carcassMinutes, createCarcass, disturbHuntingGround, hasRecentHuntSign, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteHuntSign, processCarcass } from "./hunting";
 
 export type TaskGroup = "gather" | "hunt" | "camp" | "craft" | "build" | "move";
 
@@ -453,14 +453,14 @@ function darkNote(state: GameState, world: World, cal: Calendar, id: TaskId, at:
   return { ...o, detail: `${o.detail}${o.detail ? "; " : ""}${lightWord(lux)}, ${oddsText(odds)}` };
 }
 
-export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
-  const o = feared(state, world, id, arg, at, checkRaw(state, world, cal, id, arg, at));
+export function checkFresh(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world), huntFromAny = false): TaskOption {
+  const o = feared(state, world, id, arg, at, checkRaw(state, world, cal, id, arg, at, huntFromAny));
   // A big eater works a tenth faster at anything the body paces.
   if (o.ok && WORK_TASKS.has(id) && hasQuirk(state, "bigEater")) return { ...o, duration: o.duration * BIG_EATER_PACE };
   return o;
 }
 
-function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world)): TaskOption {
+function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg?: string, at = cellOf(state, world), huntFromAny = false): TaskOption {
   const p = state.player;
   const r = regionAt(world, p.region);
   const st = regionState(state, world, p.region);
@@ -666,6 +666,7 @@ function checkRaw(state: GameState, world: World, cal: Calendar, id: TaskId, arg
       // Away before empty: the last of a flock lingers in the numbers for weeks after it has gone.
       const gone = absence(def, cal, state.weather.iceCm);
       if (gone && !den) return { ...o, ok: false, why: gone };
+      if (!den && !huntFromAny && !hasRecentHuntSign(state, at, s)) return { ...o, ok: false, why: "no fresh sign" };
       return o;
     }
     case "findDen": {
@@ -1277,7 +1278,7 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
   }
   // Pick up where this task was left, if it was.
   const key = pausedKey ?? pauseKey(state, world, id, arg);
-  const fresh = checkFresh(state, world, cal, id, arg);
+  const fresh = checkFresh(state, world, cal, id, arg, cellOf(state, world), any);
   const fraction = paused?.fraction ?? 0;
   if (key) delete state.paused[key];
   const wildlifeSubject = id === "hunt" && arg && AGENT_SPECIES.includes(arg as (typeof AGENT_SPECIES)[number])
@@ -1295,9 +1296,10 @@ export function beginTask(state: GameState, world: World, cal: Calendar, id: Tas
 }
 
 /** Fills the pack to the hard limit from the pile here, heaviest things first. */
-export function loadPack(state: GameState, world: World): void {
+export function loadPack(state: GameState, world: World): Partial<Record<ItemId, number>> {
   const from = herePile(state, world);
   const pack = state.player.pack;
+  const moved: Partial<Record<ItemId, number>> = {};
   let room = body(state).packHardKg - weight(pack);
   const items = listItems(from).sort((a, b) => ITEM_KG[b.item] - ITEM_KG[a.item]);
   for (const { item, qty: have } of items) {
@@ -1305,9 +1307,10 @@ export function loadPack(state: GameState, world: World): void {
     const unit = ITEM_KG[item];
     const n = unit >= 1 ? Math.min(have, Math.floor(room / unit + 1e-9)) : Math.min(have, room / unit);
     if (n <= 0) continue;
-    transfer(from, pack, item, n);
+    moved[item] = transfer(from, pack, item, n);
     room -= n * unit;
   }
+  return moved;
 }
 
 /** Stops by hand: the intent is over and the task is set aside with its share kept. */
@@ -1379,6 +1382,12 @@ function liveOrderFor(state: GameState, world: World, id: TaskId, arg?: string):
 export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng, dt: number): void {
   const t = state.task;
   if (!t || state.dead) return;
+  if (t.id === "hunt" && t.huntPhase === "field" && (t.carcassId === undefined
+    || !state.carcasses.some((carcass) => carcass.id === t.carcassId && carcass.cell === cellOf(state, world)))) {
+    state.task = null;
+    log(state, "The carcass is gone.", "bad");
+    return;
+  }
   if (t.id === "walk" || t.id === "travel") {
     stepWalk(state, world, cal, rng, dt);
     return;
@@ -1466,10 +1475,14 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
     if (recovered) {
       const kcal = recovered.meatKg * FOODS.rawMeat.kcalPerKg + (recovered.fatKg ?? 0) * FOODS.fat.kcalPerKg;
       creditYield(state, "hunt", kcal);
+      goalDeed(state, { kind: "foodAcquired", method: "hunt" });
       if (LARGE_GAME.includes(arg as Species) || arg === "bear") state.stats.killsKcal += kcal;
       const camp = campCellOf(state, world);
       if (camp !== null && camp === cellOf(state, world)) goalDeed(state, { kind: "recoveredAtCamp" });
-      else if (isWorkIntent(it) && it.task === "hunt" && it.deliver === "camp") it.recoveredMeatKg = recovered.meatKg;
+      else if (isWorkIntent(it) && it.task === "hunt" && it.deliver === "camp") {
+        if (recovered.meatDestination === "pack") it.recoveredMeatPackedKg = recovered.meatKg;
+        else it.recoveredMeatAtSourceKg = recovered.meatKg;
+      }
       log(state, `${Math.round(recovered.meatKg * 10) / 10} kg of meat dressed from the carcass.`, "good");
     }
     goalDeed(state, { kind: "task", id, arg });

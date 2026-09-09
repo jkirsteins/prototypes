@@ -3,6 +3,7 @@ import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem, herePile, pile, qty, tool, TRACE_KG } from "../src/sim/inventory";
 import { startIntent } from "../src/sim/intent";
+import { noteHuntSign } from "../src/sim/hunting";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
 import { addOrder, chooseOrder, ordersHere } from "../src/sim/orders";
@@ -219,6 +220,7 @@ describe("tasks", () => {
     state.player.tools.push({ id: "bow", durability: 100 });
     addItem(state.player.pack, "arrow", 40);
     regionState(state, world, state.player.region).pop.deer = regionAt(world, state.player.region).capacity.deer;
+    noteHuntSign(state, cellOf(state, world), "deer");
     expect(check(state, world, cal, "hunt", "deer").ok).toBe(true);
     startTask(state, world, cal, "hunt", "deer", true);
     const huntRng = new Rng(9);
@@ -240,9 +242,11 @@ describe("tasks", () => {
     state.player.tools.push({ id: "bow", durability: 100 });
     addItem(state.player.pack, "arrow", 10);
     regionState(state, world, state.player.region).pop.deer = 0;
+    noteHuntSign(state, cellOf(state, world), "deer");
+    const signs = structuredClone(state.player.huntSigns);
     expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
     stepTask(state, world, cal, new Rng(9), state.task!.duration + 1);
-    expect(state.player.huntSigns).toEqual({});
+    expect(state.player.huntSigns).toEqual(signs);
   });
 
   it("resumes a generic hunt's carcass work without another animal or bow", () => {
@@ -431,6 +435,7 @@ describe("anything", () => {
     const { state, world } = g;
     armed(g);
     placeAtSpot(state, world, state.player.region, "heath");
+    noteHuntSign(state, cellOf(state, world), "hare");
     expect(startIntent(state, world, cal, new Rng(1), { task: "hunt", arg: "hare", until: { kind: "once" }, deliver: "leave", where: "nearest" })).toBe(true);
     expect(state.task).toMatchObject({ id: "hunt", arg: "hare" });
     // Stand in for a task adopted from an already-running "anything" hunt that drew hare.
@@ -470,6 +475,7 @@ describe("away for the season", () => {
     expect(o.ok).toBe(false);
     expect(o.why).toBe("gone until April");
     // June, the same shore: the row is the ordinary one again.
+    noteHuntSign(state, cellOf(state, g.world), "mallard");
     expect(check(state, g.world, calendar(1440 * 70), "hunt", "mallard").ok).toBe(true);
   });
 

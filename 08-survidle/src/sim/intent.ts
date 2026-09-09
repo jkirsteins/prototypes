@@ -27,7 +27,7 @@ import { walkableIce } from "./weather";
 import { type Step, takeStep, walkStep } from "./steps";
 import { campWaterRoom, ICE_SHORE_CM, pourVessels, vesselLitres } from "./water";
 import { check, isShortAtCamp, loadPack, setAside, type InitialWalk, type TaskOption, whereIs } from "./tasks";
-import { bestHuntCell, huntEstimate } from "./hunting";
+import { bestHuntCell, hasRecentHuntSign, huntEstimate } from "./hunting";
 import type {
   GameState, Intent, IntentRequest, Inventory, ItemId, RecipeId, SpotId, StructureId, TaskId, Until, UntilChoice, Where, WorkIntent,
 } from "./types";
@@ -221,6 +221,7 @@ export function resolveCell(state: GameState, world: World, cal: Calendar, task:
   const usable = (cell: number) => {
     if (!suits(world, cell, ground, water)) return false;
     if (task === "chop" && (arg === "spruce" || arg === "pine" || arg === "birch") && cellAt(world, cell).terrain !== arg) return false;
+    if (task === "hunt" && arg && arg !== "any" && !hasRecentHuntSign(state, cell, arg as Species)) return false;
     if (task !== "fish" || arg !== "any") return true;
     const seen = state.player.known[cell];
     return fishSpecies().some((species) => {
@@ -461,19 +462,21 @@ function dropEverything(state: GameState, world: World): boolean {
   const keep = new Set(orderKit(state));
   const atHome = isWorkIntent(state.intent) && state.intent.campCell === here;
   let moved = false;
-  let recoveredMeat = false;
+  let recoveredMeat = 0;
   for (const { item, qty: q } of listItems(from)) {
     if (keep.has(item)) continue;
     const kg = transfer(from, to, item, q);
     if (kg > 1e-9) {
       moved = true;
-      if (item === "rawMeat" && isWorkIntent(state.intent) && (state.intent.recoveredMeatKg ?? 0) > 0) recoveredMeat = true;
+      if (item === "rawMeat" && isWorkIntent(state.intent)) {
+        recoveredMeat = Math.min(kg, state.intent.recoveredMeatPackedKg ?? 0);
+      }
     }
   }
   // Unloading at the home camp empties the vessels too, as far as the vessels and trough at camp have room.
   if (atHome) moved = pourVessels(state.player, to, campSite(regionState(state, world, state.player.region))) > 1e-9 || moved;
-  if (recoveredMeat && isWorkIntent(state.intent)) {
-    delete state.intent.recoveredMeatKg;
+  if (recoveredMeat > 0 && isWorkIntent(state.intent)) {
+    state.intent.recoveredMeatPackedKg = Math.max(0, (state.intent.recoveredMeatPackedKg ?? 0) - recoveredMeat);
     goalDeed(state, { kind: "recoveredAtCamp" });
   }
   return moved;
@@ -516,7 +519,12 @@ function deliveryStep(state: GameState, world: World, cal: Calendar, rng: Rng, i
   // The work cell and the camp pile are the same pile when they are the same cell: nothing to load.
   if (it.cell !== it.campCell && here === it.cell && !isEmpty(pile(state, it.cell)) && weight(pack) < body(state).packHardKg - 1e-9) {
     const before = weight(pack);
-    loadPack(state, world);
+    const loaded = loadPack(state, world);
+    const recovered = Math.min(loaded.rawMeat ?? 0, it.recoveredMeatAtSourceKg ?? 0);
+    if (recovered > 0) {
+      it.recoveredMeatAtSourceKg = Math.max(0, (it.recoveredMeatAtSourceKg ?? 0) - recovered);
+      it.recoveredMeatPackedKg = (it.recoveredMeatPackedKg ?? 0) + recovered;
+    }
     if (weight(pack) > before + 1e-9) {
       it.step = "loading up";
       return "again";

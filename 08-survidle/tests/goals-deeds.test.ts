@@ -348,6 +348,31 @@ describe("deeds reach the ladder", () => {
     expect(goalSteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(true);
   });
 
+  it("does not mistake unrelated raw meat for the dressed carcass", () => {
+    const { state, world } = newGame(17);
+    introduceGoals(state, ["huntMeal"]);
+    siteCamp(state, world);
+    const camp = regionState(state, world, state.player.region).campCell!;
+    placeAtSpot(state, world, state.player.region, "forest");
+    const field = cellOf(state, world);
+    addItem(state.player.pack, "rawMeat", 0.2);
+    addItem(state.player.pack, "stick", 40);
+    const carcass = createCarcass(state, world, "deer", { meatKg: 12 });
+    state.intent = {
+      mode: "hand", task: "hunt", arg: "deer", cell: field, campCell: camp,
+      until: { kind: "once" }, deliver: "camp", done: 0, step: "", orderId: null, windDown: false,
+    };
+    state.task = {
+      id: "hunt", arg: "deer", progress: 0, duration: carcassMinutes(carcass), repeat: false,
+      huntPhase: "field", carcassId: carcass.id,
+    };
+    stepTask(state, world, cal, new Rng(1), state.task.duration + 1);
+    expect(qty(pile(state, field), "rawMeat")).toBeGreaterThan(0);
+    placeAt(state, world, camp);
+    advance(state, world, 1);
+    expect(goalSteps(state, "huntMeal").find((step) => step.id === "recover")?.done).toBe(false);
+  });
+
   it("credits nothing when the meat is gone before the hang finishes", () => {
     const { state, world } = announcedGame(17);
     siteCamp(state, world);

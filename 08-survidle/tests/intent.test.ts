@@ -4,7 +4,7 @@ import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { intentOption, type IntentRequest, intentSentence, resolveCell, startIntent } from "../src/sim/intent";
 import { addItem, hasTool, herePile, isEmpty, pile, qty } from "../src/sim/inventory";
-import { huntEstimate } from "../src/sim/hunting";
+import { huntEstimate, noteHuntSign } from "../src/sim/hunting";
 import { ITEM_KG, SAP_FROM_DOY } from "../src/sim/items";
 import { mapRegion } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
@@ -199,6 +199,18 @@ describe("where the work is done", () => {
     const chosen = resolveCell(state, world, cal, "hunt", "any", "nearest").cell;
     expect(cellAt(world, chosen).terrain).toMatch(/spruce|pine|birch/);
     expect(huntEstimate(state, world, cal, forest).kgPerHour).toBeGreaterThan(0);
+  });
+
+  it("a named hunt goes to the cell where that animal's fresh sign was found", () => {
+    const { state, world } = newGame(3);
+    siteCamp(state, world);
+    const r = regionAt(world, state.player.region);
+    const forest = r.cells.filter((cell) => /spruce|pine|birch/.test(cellAt(world, cell).terrain));
+    expect(forest.length).toBeGreaterThan(1);
+    placeAt(state, world, forest[0]);
+    noteHuntSign(state, forest[1], "deer");
+
+    expect(resolveCell(state, world, cal, "hunt", "deer", "nearest").cell).toBe(forest[1]);
   });
 
   it("the button is judged at the resolved cell, so ground is never the reason", () => {

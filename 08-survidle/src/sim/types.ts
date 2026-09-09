@@ -105,7 +105,8 @@ export interface Garment { id: ClothingId; durability: number; /** 0 dry to 100 
 
 /** What an hour's watching told a survivor about one shore: which fish this water holds. Dies with the person. */
 export interface Observation { minute: number; fish: Species[] }
-export interface HuntSign { minute: number; species: Species[] }
+/** The last minute each species left evidence on this cell. */
+export interface HuntSign { species: Partial<Record<Species, number>> }
 
 export interface CarcassYields {
   meatKg: number;
@@ -391,8 +392,10 @@ interface WorkIntentBase extends IntentBase {
   done: number;
   /** The scheduler has chosen another order: deliver what is owed, then end. */
   windDown: boolean;
-  /** Carcass meat still owed to camp by this hunt. Absent once any recovered meat reaches camp. */
-  recoveredMeatKg?: number;
+  /** This hunt's dressed meat still on its source cell. */
+  recoveredMeatAtSourceKg?: number;
+  /** This hunt's dressed meat currently carried in the pack. */
+  recoveredMeatPackedKg?: number;
 }
 
 /**

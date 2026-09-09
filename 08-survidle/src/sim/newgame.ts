@@ -15,7 +15,7 @@ import { enterRegion } from "./regionstate";
 import { seeFrom } from "./sight";
 import { newSkills } from "./skills";
 import { resetTeaching } from "./teach";
-import type { GameState, LifeRecord, Person } from "./types";
+import type { GameState, LifeRecord, Person, Player } from "./types";
 import { seasonalMean } from "./weather";
 import { emptyWildlife, resetWildlifeKnowledge } from "./wildlife-agents";
 
@@ -28,18 +28,16 @@ export const START_KCAL = KCAL_FULL * (5 / 6);
 /** Dried meat in the arrival pack, in kilos. */
 export const ARRIVAL_DRIED_MEAT_KG = 1;
 
-/** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
-export function newPerson(state: GameState, world: World, cell: number, region: number): void {
-  resetWildlifeKnowledge(state);
+function freshPlayer(person: Person, world: World, cell: number, region: number): Player {
   const pack = emptyInventory();
   addItem(pack, "driedMeat", ARRIVAL_DRIED_MEAT_KG);
-  state.player = {
+  return {
     x: (cell % world.w) + 0.5,
     y: Math.floor(cell / world.w) + 0.5,
     region,
     health: 100,
     kcal: START_KCAL,
-    fat: fatLandmarks(personOf(state)).typical,
+    fat: fatLandmarks(person).typical,
     warmth: 80,
     energy: 90,
     // The debt a body carries off a full night and two hours up, which is
@@ -69,6 +67,12 @@ export function newPerson(state: GameState, world: World, cell: number, region: 
     known: {},
     huntSigns: {},
   };
+}
+
+/** Fills the person half of a state: the body, its kit, its skills and its empty log. The world half is untouched. */
+export function newPerson(state: GameState, world: World, cell: number, region: number): void {
+  resetWildlifeKnowledge(state);
+  state.player = freshPlayer(personOf(state), world, cell, region);
   state.task = null;
   state.log = [];
   state.dead = null;
@@ -111,37 +115,51 @@ export function newWorld(seed: number, boat = 0, startDoy = START_DOY): { state:
 export function newGame(seed: number, startDoy = START_DOY, person?: Person): { state: GameState; world: World } {
   const world = generateWorld(seed);
   const start = regionAt(world, world.start);
+  const first = firstRecord(seed, startDoy, person);
   // The weather opens for the season: past the thaw there is no ice and no snow.
   const warm = seasonalMean(startDoy) > 0;
-  const state = {
+  const state: GameState = {
     seed,
     startDoy,
     awayHours: AWAY_HOURS_DEFAULT,
     minute: 0,
     rng: derive(seed, 99),
+    player: freshPlayer(first.person, world, start.campCell, world.start),
     regions: {},
     discovered: {},
     mapped: {},
     weather: { precip: "none", clear: true, offset: 0, snowCm: warm ? 0 : 3, rolledDay: 0, storm: null, dryDays: 0, wetDay: false, dryWarned: false, iceCm: 0 },
+    task: null,
+    log: [],
+    dead: null,
+    stats: { trees: 0, animals: 0, structures: 0, km: 0, kills: {}, killsKcal: 0 },
+    skills: newSkills(),
     lastHour: 0,
     lastDay: 0,
     piles: {},
+    paused: {},
     carcasses: [],
     nextCarcassId: 1,
     huntPressure: {},
     seeps: {},
-    survivors: [firstRecord(seed, startDoy, person)],
+    route: null,
+    intent: null,
+    ledger: [],
+    survivors: [first],
     year: 1,
     landing: null,
     spine: { fired: {}, announced: {} },
     manualSeen: false,
     goals: newGoals(calendar(0, startDoy).season),
     shopping: null,
+    taught: {},
+    teachQueue: [],
     wildlife: emptyWildlife(),
-  } as unknown as GameState;
+  };
   // The same fresh slate a landing gives, from the one door that gives it.
   resetTeaching(state);
-  newPerson(state, world, start.campCell, world.start);
+  creditYield(state, "kit", ARRIVAL_DRIED_MEAT_KG * FOODS.driedMeat.kcalPerKg);
+  seeFrom(state, world, calendar(state.minute, state.startDoy), start.campCell);
   enterRegion(state, world, world.start);
   // A camp is chosen, and a choice needs the ground in front of you.
   mapRegion(state, world, world.start);

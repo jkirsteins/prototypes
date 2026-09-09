@@ -16,7 +16,7 @@ import { calendar } from "../src/sim/calendar";
 import { addItem, emptyInventory, pile } from "../src/sim/inventory";
 import { isKnown, mapRegion, markKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { createCarcass } from "../src/sim/hunting";
+import { createCarcass, stepCarcasses } from "../src/sim/hunting";
 import { seeFrom } from "../src/sim/sight";
 import { siteCamp } from "./siting-helpers";
 import { campCellOf, cellOf, placeAt } from "../src/sim/position";
@@ -240,6 +240,16 @@ describe("the tooltip's key", () => {
     addItem(pile(state, camp), "firewood", 5);
     expect(tipKey(state, world, cal, camp)).not.toBe(before);
   });
+
+  it("changes as a carcass ages, so condition and time do not stay stale", () => {
+    const { state, world } = newGame(21);
+    const cal = calendar(state.minute, state.startDoy);
+    const here = cellOf(state, world);
+    createCarcass(state, world, "hare", { meatKg: 1 });
+    const before = tipKey(state, world, cal, here);
+    stepCarcasses(state, 60, 12);
+    expect(tipKey(state, world, cal, here)).not.toBe(before);
+  });
 });
 
 describe("the map inventory", () => {
@@ -299,6 +309,7 @@ describe("the map inventory", () => {
 
   it("shows recoverable carcasses at camp, here, and a highlighted cell", () => {
     const { state, world } = newGame(21);
+    state.weather.offset = 20;
     siteCamp(state, world);
     const camp = campCellOf(state, world)!;
     const other = regionAt(world, state.player.region).cells.find((cell) => cell !== camp)!;
@@ -308,7 +319,11 @@ describe("the map inventory", () => {
     createCarcass(state, world, "hare", { meatKg: 1 });
 
     const html = read(mapInventoryHtml(state, world, camp));
-    expect(html).toContain("Camp: 1 roe deer carcass");
-    expect(html).toContain("Here: 1 mountain hare carcass");
+    expect(html).toContain("Camp: roe deer carcass: 10 kg, fresh, 36 h left");
+    expect(html).toContain("Here: mountain hare carcass: 1.0 kg, fresh, 36 h left");
+    expect(read(tipHtml(state, world, calendar(state.minute, state.startDoy), other))).toContain("mountain hare carcass: 1.0 kg, fresh, 36 h left");
+
+    stepCarcasses(state, 18 * 60, 12);
+    expect(read(mapInventoryHtml(state, world, calendar(state.minute, state.startDoy), camp))).toContain("scavenged, 18 h left");
   });
 });

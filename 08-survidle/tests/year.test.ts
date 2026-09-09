@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { Rng } from "../src/rng";
 import { calendar } from "../src/sim/calendar";
 import { addItem } from "../src/sim/inventory";
+import { noteHuntSign } from "../src/sim/hunting";
 import { newGame } from "../src/sim/newgame";
-import { placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAtSpot } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { setUpReference } from "../src/sim/reference";
 import { LARGE_GAME } from "../src/sim/species";
@@ -65,6 +66,7 @@ describe("the year script", () => {
     state.player.tools.push({ id: "bow", durability: 100 });
     addItem(state.player.pack, "arrow", 200);
     regionState(state, world, state.player.region).pop.elk = regionAt(world, state.player.region).capacity.elk;
+    noteHuntSign(state, cellOf(state, world), "elk");
     startTask(state, world, calendar(state.minute, state.startDoy), "hunt", "elk", true);
     const rng = new Rng(9);
     for (let m = 0; m < 240 * 60 && state.stats.killsKcal <= 0; m++) stepTask(state, world, calendar(state.minute, state.startDoy), rng, 1);

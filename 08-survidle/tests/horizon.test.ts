@@ -31,7 +31,16 @@ describe("the horizon stages", () => {
   it("the manual stage is every open want as a once job on a stocked camp", () => {
     const { state, world } = setUpStage(17, stage("manual"));
     const list = ordersHere(state, world).filter(isWorkOrder);
-    expect(list.length).toBeGreaterThan(0);
+    expect(list.map((o) => `${o.req.task}:${o.req.arg ?? ""}`)).toEqual([
+      "thaw:", "fill:shore", "build:firePit", "stone:", "sticks:", "bark:", "craft:cordage", "craft:fireDrill",
+      "light:", "chop:", "split:", "build:leanTo", "build:boughBed", "build:snowShelter", "craft:knife",
+      "craft:snare", "build:snare", "craft:barkBucket", "craft:fishingSpear", "read:", "craft:basketTrap",
+      "setTrap:", "cook:rawFat", "cook:fish", "cook:oilyFish", "cook:", "crack:", "build:dryingRack",
+      "build:snare", "hang:", "craft:bow", "craft:arrows", "hunt:any", "split:", "chop:", "eggs:", "roots:",
+      "roots:", "cook:roots", "tapSap:", "fish:any", "berries:", "craft:needle", "repair:", "craft:furHat",
+      "craft:furMittens", "stone:", "craft:whetstone", "hone:", "craft:wedges", "sticks:", "bark:",
+      "build:turfHut", "build:waterStore", "build:snare", "fill:shore",
+    ]);
     for (const o of list) {
       expect(o.kind).toBe("job");
       expect(o.req.until.kind).toBe("once");

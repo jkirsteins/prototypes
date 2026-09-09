@@ -23,10 +23,10 @@ import { isKnown } from "../sim/mapped";
 import { campCellOf, cellOf, kmBetween, SPOT_WORDS } from "../sim/position";
 import { regionState } from "../sim/regionstate";
 import { check, whereIs } from "../sim/tasks";
-import type { GameState, Inventory } from "../sim/types";
+import type { Carcass, GameState, Inventory } from "../sim/types";
 import { plain } from "../sim/voice";
-import { fmtKg } from "../units";
-import { walkableIce } from "../sim/weather";
+import { fmtDuration, fmtKg } from "../units";
+import { ambientTemperature, walkableIce } from "../sim/weather";
 import { visibleWildlife, wildlifeMembers } from "../sim/wildlife-agents";
 import { cellAt, regionAt, terrainPeek, type World } from "../world/gen";
 import { SPECIES_DEFS } from "../sim/species";
@@ -59,12 +59,16 @@ export function tipKey(state: GameState, world: World, cal: Calendar, cell: numb
   const heap = state.piles[cell] ? weight(state.piles[cell]).toFixed(1) : "";
   const known = isKnown(state, cell) ? "k" : "";
   const trap = st.trap?.cell === cell ? "T" : "";
-  const carcasses = state.carcasses.filter((carcass) => carcass.cell === cell).map((carcass) => `${carcass.id}:${carcass.yields.meatKg.toFixed(1)}`).join(",");
+  const carcasses = state.carcasses
+    .filter((carcass) => carcass.cell === cell)
+    .map((carcass) => `${carcass.id}:${carcass.yields.meatKg.toFixed(1)}:${carcass.warmAge.toFixed(0)}`)
+    .join(",");
+  const ambient = ambientTemperature(cal, state.weather).toFixed(1);
   const wildlife = visibleWildlife(state, world, cal)
     .filter((subject) => subject.active?.cell === cell)
     .map((subject) => `${subject.id}:${wildlifeMembers(subject)}:${subject.active?.intent}:${state.wildlife.recognized[subject.id] ? subject.name ?? "" : ""}`)
     .join(",");
-  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${carcasses}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${wildlife}`;
+  return `${cell}|${cellOf(state, world)}|${known}|${heap}|${carcasses}|${ambient}|${st.campCell}|${trap}|${st.fire.lit ? "F" : ""}|${wildlife}`;
 }
 
 function animalsAt(state: GameState, world: World, cal: Calendar, cell: number): string[] {
@@ -109,14 +113,19 @@ function inventoryRow(label: string, inv: Inventory | undefined): string {
   return inv && weight(inv) > 0 ? `<div><b>${label}:</b> ${esc(inventoryItems(inv))}</div>` : "";
 }
 
-function cellInventoryRow(state: GameState, label: string, cell: number | null): string {
+function carcassLine(carcass: Carcass, ambient: number): string {
+  const condition = ambient < -10 ? "frozen" : carcass.warmAge >= 12 * 60 ? "scavenged" : "fresh";
+  const decayRate = ambient < -10 ? 0 : ambient <= 0 ? 0.5 : 1;
+  const time = decayRate === 0 ? "" : `, ${fmtDuration((36 * 60 - carcass.warmAge) / decayRate)} left`;
+  return `${SPECIES_DEFS[carcass.species].name} carcass: ${fmtKg(carcass.yields.meatKg)}, ${condition}${time}`;
+}
+
+function cellInventoryRow(state: GameState, label: string, cell: number | null, ambient: number): string {
   if (cell === null) return "";
   const parts: string[] = [];
   const inv = state.piles[cell];
   if (inv && weight(inv) > 0) parts.push(inventoryItems(inv));
-  const counts = new Map<string, number>();
-  for (const carcass of state.carcasses) if (carcass.cell === cell) counts.set(carcass.species, (counts.get(carcass.species) ?? 0) + 1);
-  for (const [species, count] of counts) parts.push(`${count} ${SPECIES_DEFS[species as keyof typeof SPECIES_DEFS].name} carcass${count === 1 ? "" : "es"}`);
+  for (const carcass of state.carcasses) if (carcass.cell === cell) parts.push(carcassLine(carcass, ambient));
   return parts.length ? `<div><b>${label}:</b> ${esc(parts.join(", "))}</div>` : "";
 }
 
@@ -128,12 +137,13 @@ export function mapInventoryHtml(state: GameState, world: World, calOrHighlighte
   const highlighted = typeof calOrHighlighted === "object" && calOrHighlighted !== null ? (highlightedArg ?? null) : calOrHighlighted;
   const camp = campCellOf(state, world);
   const here = cellOf(state, world);
+  const ambient = ambientTemperature(cal, state.weather);
   const rows = [
-    cellInventoryRow(state, "Camp", camp),
+    cellInventoryRow(state, "Camp", camp, ambient),
     inventoryRow("Carried", state.player.pack),
-    here !== camp ? cellInventoryRow(state, "Here", here) : "",
+    here !== camp ? cellInventoryRow(state, "Here", here, ambient) : "",
     highlighted !== null && highlighted !== camp && highlighted !== here && isKnown(state, highlighted)
-      ? cellInventoryRow(state, "Highlighted", highlighted)
+      ? cellInventoryRow(state, "Highlighted", highlighted, ambient)
       : "",
   ].join("");
   const equipment = compactEquipmentHtml(state, world, cal);
@@ -199,6 +209,10 @@ export function tipHtml(state: GameState, world: World, cal: Calendar, cell: num
   // firewood, so a heap is worth saying wherever it sits.
   const heap = state.piles[cell] ? weight(state.piles[cell]) : 0;
   if (heap > 0) lines.push(`<div>${esc(fmtKg(heap))} lying here</div>`);
+  const ambient = ambientTemperature(cal, state.weather);
+  for (const carcass of state.carcasses) {
+    if (carcass.cell === cell) lines.push(`<div>${esc(carcassLine(carcass, ambient))}</div>`);
+  }
 
   // What the water has been read to hold, which is the read skill's payoff
   // and belongs on the water it is about.

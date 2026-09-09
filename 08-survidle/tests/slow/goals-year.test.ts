@@ -9,12 +9,14 @@
  * .test.ts already does for the same reference machinery.
  */
 import { describe, expect, it } from "vitest";
-import { SEASON_ORDER } from "../../src/sim/goals";
+import { introduceGoals, SEASON_ORDER } from "../../src/sim/goals";
 import { setSkillLevel } from "../../src/sim/horizon";
+import { addItem, pile } from "../../src/sim/inventory";
 import { beginAgain, land } from "../../src/sim/landing";
 import { medianPerson } from "../../src/sim/person";
 import { measure, setUpReference } from "../../src/sim/reference";
 import { SKILL_IDS } from "../../src/sim/skills";
+import { regionState } from "../../src/sim/regionstate";
 
 describe("the seasonal tail over a real year", () => {
   it("clears all four seasons in arrival order, through however many lives it takes", () => {
@@ -22,6 +24,12 @@ describe("the seasonal tail over a real year", () => {
     // bare arrival kit dies too fast to ever be alive when a season turns.
     const ref = setUpReference(17, true);
     const { state, world } = ref;
+    introduceGoals(state, SEASON_ORDER);
+    const camp = pile(state, regionState(state, world, state.player.region).campCell!);
+    addItem(camp, "driedMeat", 500);
+    addItem(camp, "fat", 100);
+    addItem(camp, "firewood", 5000);
+    addItem(camp, "water", 500);
     for (const s of SKILL_IDS) setSkillLevel(state, s, 20);
     for (let life = 0; life < 6; life++) {
       measure(ref, 400);

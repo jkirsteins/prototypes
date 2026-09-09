@@ -324,12 +324,12 @@ describe("the world save", () => {
     state.carcasses.push({ id: 3, species: "deer", cell: 12, killedAt: 40, warmAge: 5, yields: { meatKg: 9, hideKg: 2 } });
     state.nextCarcassId = 4;
     state.huntPressure[12] = 0.45;
-    state.player.huntSigns[12] = { minute: 40, species: ["deer"] };
+    state.player.huntSigns[12] = { species: { deer: 40 } };
     const back = deserialize(serialize(state))!.state;
     expect(back.carcasses).toEqual(state.carcasses);
     expect(back.nextCarcassId).toBe(4);
     expect(back.huntPressure).toEqual({ 12: 0.45 });
-    expect(back.player.huntSigns).toEqual({ 12: { minute: 40, species: ["deer"] } });
+    expect(back.player.huntSigns).toEqual({ 12: { species: { deer: 40 } } });
   });
 
   it("initializes hunting recovery state in older saves", () => {

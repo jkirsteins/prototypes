@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
-import { bestHuntCell, createCarcass, disturbHuntingGround, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
+import { bestHuntCell, carcassMinutes, createCarcass, disturbHuntingGround, huntEstimate, huntPressureFactor, huntSignOdds, huntSpeciesWeights, knownHuntSpecies, noteHuntSign, processCarcass, stepCarcasses } from "../src/sim/hunting";
 import { addItem, herePile, qty } from "../src/sim/inventory";
 import { newGame } from "../src/sim/newgame";
-import { cellOf, placeAt, straightKm } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot, straightKm } from "../src/sim/position";
 import { regionState } from "../src/sim/regionstate";
 import { setSkillLevel } from "../src/sim/horizon";
+import { check, startTask, stepTask, stopTask } from "../src/sim/tasks";
 import { huntedLand, SPECIES_DEFS } from "../src/sim/species";
 import { cellAt, regionAt, spotOf } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
+import { isWorkIntent } from "../src/sim/types";
 
 const cal = calendar(0);
 
@@ -21,6 +23,17 @@ function armedGame() {
 }
 
 describe("hunting knowledge", () => {
+  it("requires current evidence before a named hunt can start", () => {
+    const { state, world } = armedGame();
+    const cell = spotOf(regionAt(world, state.player.region), "heath")!.cell;
+    placeAt(state, world, cell);
+    expect(check(state, world, cal, "hunt", "hare")).toMatchObject({ ok: false, why: "no fresh sign" });
+    noteHuntSign(state, cell, "hare");
+    expect(check(state, world, cal, "hunt", "hare").ok).toBe(true);
+    state.minute += 14 * 1440;
+    expect(check(state, world, calendar(state.minute), "hunt", "hare")).toMatchObject({ ok: false, why: "no fresh sign" });
+  });
+
   it("keeps a beginner on the nearest plausible ground but lets an expert choose the better return", () => {
     const { state, world } = armedGame();
     const r = regionAt(world, state.player.region);
@@ -84,7 +97,7 @@ describe("hunting knowledge", () => {
     const before = huntEstimate(state, world, cal, here).confidence;
     expect(noteHuntSign(state, here, "hare")).toBe(true);
     expect(noteHuntSign(state, here, "hare")).toBe(false);
-    expect(state.player.huntSigns[here]).toEqual({ minute: 0, species: ["hare"] });
+    expect(state.player.huntSigns[here]).toEqual({ species: { hare: 0 } });
     expect(huntEstimate(state, world, cal, here).confidence).toBeGreaterThan(before);
     state.minute = 15 * 24 * 60;
     expect(huntEstimate(state, world, calendar(state.minute), here).confidence).toBe(before);
@@ -98,6 +111,16 @@ describe("hunting knowledge", () => {
     expect(knownHuntSpecies(state, world)).toEqual(["hare"]);
     state.minute = 15 * 24 * 60;
     expect(knownHuntSpecies(state, world)).toEqual([]);
+  });
+
+  it("does not refresh old species when new sign is found on the same cell", () => {
+    const { state, world } = armedGame();
+    const here = cellOf(state, world);
+    noteHuntSign(state, here, "hare");
+    state.minute = 13 * 24 * 60;
+    noteHuntSign(state, here, "deer");
+    state.minute = 15 * 24 * 60;
+    expect(knownHuntSpecies(state, world)).toEqual(["deer"]);
   });
 
   it("lets hunting skill improve sign reading without making empty ground speak", () => {
@@ -171,6 +194,37 @@ describe("carcass recovery", () => {
     expect(after.yields.meatKg).toBeLessThan(12);
     stepCarcasses(state, 48 * 60, 12);
     expect(state.carcasses).toHaveLength(0);
+  });
+
+  it("discards paused field work when its carcass is gone", () => {
+    const { state, world } = armedGame();
+    placeAtSpot(state, world, state.player.region, "forest");
+    const carcass = createCarcass(state, world, "deer", { meatKg: 12 });
+    state.task = {
+      id: "hunt", arg: "deer", progress: 10, duration: carcassMinutes(carcass), repeat: false,
+      huntPhase: "field", carcassId: carcass.id,
+    };
+    stopTask(state, world);
+    expect(Object.keys(state.paused)).toHaveLength(1);
+    stepCarcasses(state, 48 * 60, 12);
+    expect(Object.keys(state.paused)).toHaveLength(0);
+    noteHuntSign(state, cellOf(state, world), "deer");
+    expect(startTask(state, world, cal, "hunt", "deer")).toBe(true);
+    expect(state.task?.huntPhase).toBeUndefined();
+    expect(state.task?.carcassId).toBeUndefined();
+  });
+
+  it("does not complete active field work after its carcass disappears", () => {
+    const { state, world } = armedGame();
+    placeAtSpot(state, world, state.player.region, "forest");
+    state.intent = {
+      mode: "hand", task: "hunt", arg: "deer", cell: cellOf(state, world), campCell: null,
+      until: { kind: "once" }, deliver: "leave", done: 0, step: "", orderId: null, windDown: false,
+    };
+    state.task = { id: "hunt", arg: "deer", progress: 29, duration: 30, repeat: false, huntPhase: "field", carcassId: 999 };
+    stepTask(state, world, cal, { chance: () => false } as never, 1);
+    expect(state.task).toBeNull();
+    expect(isWorkIntent(state.intent) ? state.intent.done : -1).toBe(0);
   });
 });
 
