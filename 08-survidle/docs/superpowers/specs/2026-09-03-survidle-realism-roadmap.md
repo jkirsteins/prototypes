@@ -628,6 +628,15 @@ number of metres per hour, faster in sun and slower under overcast, so the
 high cells clear first and the last of it lies on the bog at noon; an
 autumn overcast can hold it all day; once storms exist, wind tears it off.
 
+Fog, cloud, rain, falling snow and low smoke share one per-cell atmospheric
+transmission calculation. A sight ray accumulates transmission through every
+cell it crosses, for terrain and for luminous sources alike. A flame in haze
+fades with distance; in dense fog it may disappear within a few hundred metres;
+heavy rain or snow shortens its clear-air range. A diffuse amber patch in fog
+does not disclose an exact fire cell: if the simulation records only light or
+smoke without localization, the map may show an uncertain bearing or area, not
+an `F`. The renderer never manufactures that observation from hidden state.
+
 What fog does to the body and the work: it dampens slowly, like snow,
 never past damp, and nothing dries outdoors in it; hunting odds halve,
 since you cannot see the animal, while fishing is untouched; the dawn log
@@ -1261,8 +1270,21 @@ succession function, and both should serve generation too:
 something other than a hearth or a torch, since all three are orange
 light on a dark map. A hearth today is one marker with one or two amber
 rings that flicker in place; a torch is one amber ring around you. The
-fire is told apart on four counts, and the rule that keeps them apart is
+fire is told apart on five counts, and the rule that keeps them apart is
 that rings belong to hearths and torches only:
+
+- Visibility and occlusion. The one-cell map uses the current terrain
+  viewshed. Every burning cell is tested separately: a visible part of a
+  front burns on the map and the rest does not. A ridge or canopy cell is
+  visible while lower flame behind it is not. Firelight may colour only
+  foreground ground already in that viewshed; it never makes the ground
+  behind an occluder visible. A hearth or torch is a single source and is
+  therefore shown whole or hidden whole, never as half a glyph. The current
+  hearth establishes that pattern with its own five-kilometre clear-air night
+  range and a direct terrain line-of-sight test, independent of ambient terrain
+  sight. Roadmap 7's atmospheric transmission then shortens and fades that
+  range in fog, low cloud, rain, falling snow and low smoke. Cosmetic subcells
+  do not decide any of these outcomes.
 
 - Shape and motion. A fire is many cells, contiguous, and it moves: the
   front advances a glyph at a time, every ten game seconds at speed. A
@@ -1272,18 +1294,29 @@ that rings belong to hearths and torches only:
   is `x` in ember red with a slow pulse while it smoulders, then `x` in
   ash grey on charcoal, no animation, day and night: a black scar that
   stays. Thicket is `y`, the small birch.
-- Smoke. Two or three cells downwind carry a brown-grey veil with the
-  glyph faded, the fog veil in another colour, by day as much as by
-  night. Firelight has no smoke.
+- Smoke. Low smoke is a per-cell density two or three cells downwind. It
+  carries a translucent brown-grey veil while preserving and fading the
+  ground glyph beneath it, by day as much as by night; diluted smoke may
+  become pale grey, but smoke never replaces the land with white `*`
+  glyphs, which already read as snow and sparks. Density sets the local
+  visibility cap through the fog mechanism. An elevated plume is a
+  separate observation: it can clear a foreground ridge and give a rough
+  bearing while the low smoke and fire cells remain occluded. Firelight does
+  not pass through smoke for free: it uses the same atmospheric transmission
+  as every other sight ray. A separate diffuse glow observation may survive
+  where exact flame localization does not.
 - The sky. With a fire within 10 km the sky strip's horizon goes tan and
   the sun disc red; at night the horizon on the fire's side carries an
   orange band and the map tint takes a brown cast. A hearth never touches
   the sky.
-- Range. A smoke column is seen fifty kilometres off, so a burning block
-  shows red at every zoom and even in never-visited fog, and the coarse
-  zooms show burnt blocks as scar. The clock line says "fire 2.1 km NW,
-  coming this way", which is the one signal that needs no reading of
-  colour.
+- Range. A large smoke column can be seen fifty kilometres off, but that
+  observation does not reveal exact burning cells. Burning ground shows
+  red at any zoom only where the ground or flame itself has line of sight;
+  never-visited fog instead receives an approximate smoke bearing and an
+  uncertainty appropriate to distance. Coarse zooms show known burnt
+  blocks as scar. Once the fire front has been observed closely enough,
+  the clock line may say "fire 2.1 km NW, coming this way"; a plume alone
+  says "smoke NW, distance uncertain".
 
 If play shows the hearth and the fire still confused, the hearth marker
 moves from brick red toward amber and the fire keeps the red. A crackle

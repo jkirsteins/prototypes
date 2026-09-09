@@ -499,6 +499,9 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
    so it continues the map instead of drawing a black frame around it. */
 .grid .c.fog, .grid .c.void { color: #141a26; background: #0a0e17; }
 .grid .c.fog::before, .grid .c.void::before { content: "\00b7"; }
+/* Ground seen in this life but outside the current viewshed. A fixed colour
+   treatment carries one fact only - remembered, not partly visible. */
+.grid .c.memory { filter: brightness(0.58) saturate(0.45); }
 .grid .c.dim { opacity: 0.45; }
 /* Set and forget: the zoom sits in the map's corner as a note rather than a
    panel of its own. It is nice to have and it is not what anybody came to
@@ -522,6 +525,7 @@ button.act small.warn, span.act small.warn, .opt.off span.act small.warn { color
 .grid:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .grid .c:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .legend .fog-key { color: #4a5160; }
+.legend .memory-key { color: #777d86; }
 /* Your walk: a line through the glyph centres, solid ahead, dashed behind. Its
    named layer keeps it over weather and night, under the @ and fire glow. */
 .grid .walk { position: absolute; inset: 0; z-index: var(--map-route); width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
@@ -872,6 +876,12 @@ polyline.walk-behind { stroke: rgba(230, 194, 41, 0.45); stroke-width: 1.5px; st
 .grid.night .c.mk-fire {
   --f0: #b8431a; --f1: #ff9a3a;
   animation: flicker 1.1s ease-in-out infinite alternate;
+}
+/* A distant camp fire is a point of flame, not two 300 m rings of lit ground. */
+.grid.night .c.mk-fire.fire-far {
+  --f0: #632d18; --f1: #a54d20;
+  color: #ffe0aa;
+  text-shadow: 0 0 3px #d7772f;
 }
 .grid.night .c.lit-0 {
   position: relative; z-index: var(--map-signal);

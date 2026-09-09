@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { calendar } from "../src/sim/calendar";
 import { isKnown } from "../src/sim/mapped";
 import { newGame } from "../src/sim/newgame";
-import { seeFrom } from "../src/sim/sight";
+import { seeFrom, sightRangeCells, visibleCells } from "../src/sim/sight";
 import { cellAt, regionAt, type World } from "../src/world/gen";
+import { fieldsAt } from "../src/world/terrain";
+import { placeAt } from "../src/sim/position";
 
 const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
@@ -24,6 +26,16 @@ function openRun(world: World, region: number, n: number): { vantage: number; en
         const nt = cellAt(world, ny * world.w + nx).terrain;
         if (nt === "spruce" || nt === "pine" || nt === "birch") { ok = false; break; }
         end = ny * world.w + nx;
+      }
+      if (ok) {
+        const observer = fieldsAt(world.seed, x, y).e * 1200 + 1.7;
+        let horizon = -Infinity;
+        for (let i = 1; i <= n; i++) {
+          const elevation = fieldsAt(world.seed, x + dx * i, y + dy * i).e * 1200;
+          const slope = (elevation - observer) / i;
+          if (i === n && slope < horizon) ok = false;
+          horizon = Math.max(horizon, slope);
+        }
       }
       if (ok) return { vantage: idx, end };
     }
@@ -79,6 +91,58 @@ function forget(state: { mapped: Record<number, number> }): void {
 }
 
 describe("sight", () => {
+  it("never sees beyond its Euclidean range at the square corners", () => {
+    const { state, world } = newGame(1);
+    const vantage = regionAt(world, state.player.region).cells.find((cell) => {
+      const t = cellAt(world, cell).terrain;
+      return t === "meadow" || t === "bog" || t === "fell" || t === "rock";
+    });
+    expect(vantage).toBeDefined();
+    const range = sightRangeCells(state, world, NOON, vantage!);
+    const vx = vantage! % world.w;
+    const vy = Math.floor(vantage! / world.w);
+    const farthest = Math.max(...[...visibleCells(state, world, NOON, vantage!)]
+      .map((cell) => Math.hypot(cell % world.w - vx, Math.floor(cell / world.w) - vy)));
+    expect(farthest).toBeLessThanOrEqual(range);
+  });
+
+  it("shows an open ridge but hides lower ground behind it", () => {
+    const { state, world } = newGame(1);
+    let scenario: { vantage: number; ridge: number; behind: number } | null = null;
+    const forest = new Set(["spruce", "pine", "birch"]);
+    for (const vantage of regionAt(world, state.player.region).cells) {
+      if (forest.has(cellAt(world, vantage).terrain)) continue;
+      const vx = vantage % world.w;
+      const vy = Math.floor(vantage / world.w);
+      const observer = fieldsAt(world.seed, vx, vy).e * 1200 + 1.7;
+      const range = Math.min(12, sightRangeCells(state, world, NOON, vantage));
+      for (const [dx, dy] of DIRS) {
+        let highestSlope = -Infinity;
+        let ridge = -1;
+        for (let distance = 1; distance <= range; distance++) {
+          const x = vx + dx * distance;
+          const y = vy + dy * distance;
+          const cell = y * world.w + x;
+          if (x < 0 || y < 0 || x >= world.w || y >= world.h || forest.has(cellAt(world, cell).terrain)) break;
+          const slope = (fieldsAt(world.seed, x, y).e * 1200 - observer) / distance;
+          if (slope > highestSlope + 8) {
+            highestSlope = slope;
+            ridge = cell;
+          } else if (ridge >= 0 && highestSlope > slope + 15) {
+            scenario = { vantage, ridge, behind: cell };
+            break;
+          }
+        }
+        if (scenario) break;
+      }
+      if (scenario) break;
+    }
+    expect(scenario).not.toBeNull();
+    const visible = visibleCells(state, world, NOON, scenario!.vantage);
+    expect(visible.has(scenario!.ridge)).toBe(true);
+    expect(visible.has(scenario!.behind)).toBe(false);
+  });
+
   it("reads far over open ground and no further than the next cell through closed spruce", () => {
     const { state, world } = newGame(1);
     const region = state.player.region;
@@ -131,6 +195,18 @@ describe("sight", () => {
     seeFrom(state, world, night, vantage);
     expect(isKnown(state, vantage)).toBe(true);
     expect(isKnown(state, end)).toBe(false);
+  });
+
+  it("a torch lights nearby ground but does not turn night into distant terrain sight", () => {
+    const { state, world } = newGame(1);
+    const { vantage, end } = openRun(world, state.player.region, 10);
+    placeAt(state, world, vantage);
+    state.player.torch = { lit: true, minutes: 60 };
+    state.weather.clear = false;
+    const night = { ...NOON, hour: 2, dayOfYear: 334, month: 11, isNight: true, moon: 0, moonLight: 0 };
+    const visible = visibleCells(state, world, night, vantage);
+    expect(visible.has(vantage)).toBe(true);
+    expect(visible.has(end)).toBe(false);
   });
 
   it("stops at the first blocking canopy", () => {

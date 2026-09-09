@@ -7,7 +7,7 @@ import { CELL_KM } from "../units";
 import { terrainOf, type World } from "../world/gen";
 import { fieldsAt } from "../world/terrain";
 import type { Calendar } from "./calendar";
-import { illuminance, lightFactor, SPOT_LUX, WALK_LUX } from "./light";
+import { lightFactor, skyLux, SPOT_LUX, WALK_LUX } from "./light";
 import { markKnown } from "./mapped";
 import { body } from "./person";
 import { RUNG_LEVEL, skillLevel } from "./skills";
@@ -37,6 +37,38 @@ const FOREST_RANGE_CELLS = 1;
  * worth arguing with.
  */
 const FELL_SPINE_M = 1200;
+/** Mean Earth radius, metres; enough here to stop an elevated view claiming ground below its geometric horizon. */
+const EARTH_RADIUS_M = 6_371_000;
+/** Representative mature canopy tops above the generated ground surface. */
+const CANOPY_HEIGHT_M: Partial<Record<Terrain, number>> = { spruce: 22, pine: 17, birch: 14 };
+
+/** Terrain is immutable, so the few daylight ranges repeatedly read from one place can share their expensive results. */
+const VIEWSHED_CACHE_ENTRIES = 32;
+const VIEWSHED_CACHE_CELL_BUDGET = 200_000;
+const viewshedCache = new Map<string, ReadonlySet<number>>();
+let viewshedCacheCells = 0;
+
+function cachedViewshed(key: string): ReadonlySet<number> | null {
+  const cells = viewshedCache.get(key);
+  if (!cells) return null;
+  // Refresh insertion order, making the first key the least recently used.
+  viewshedCache.delete(key);
+  viewshedCache.set(key, cells);
+  return cells;
+}
+
+function retainViewshed(key: string, cells: ReadonlySet<number>): ReadonlySet<number> {
+  while (viewshedCache.size && (viewshedCache.size >= VIEWSHED_CACHE_ENTRIES || viewshedCacheCells + cells.size > VIEWSHED_CACHE_CELL_BUDGET)) {
+    const oldest = viewshedCache.keys().next().value;
+    if (oldest === undefined) break;
+    const dropped = viewshedCache.get(oldest);
+    viewshedCache.delete(oldest);
+    viewshedCacheCells -= dropped?.size ?? 0;
+  }
+  viewshedCache.set(key, cells);
+  viewshedCacheCells += cells.size;
+  return cells;
+}
 
 /** Cells to the horizon for a vantage this many metres up, floored: reaching a little short of the true line is safer than claiming ground unseen. */
 function horizonCells(heightM: number): number {
@@ -75,15 +107,17 @@ function wayfindingSightMult(state: GameState): number {
 
 /**
  * How far the eye reaches from `cell`, in cells: the vantage's own canopy
- * or height, scaled by how much of the dark-to-daylight span the light
- * here has climbed (SPOT_LUX is what seeing ground at a distance needs,
- * the same figure a hunter's eye wants), scaled again by how good that
- * eye is and by how practised it is at reading what it sees. Not
+ * or height, scaled by how much of the dark-to-daylight span the sky light
+ * has climbed (SPOT_LUX is what seeing ground at a distance needs, the same
+ * figure a hunter's eye wants), scaled again by how good that eye is and by
+ * how practised it is at reading what it sees. A nearby flame lights work,
+ * not kilometres of terrain. Not
  * exploring-only: a wayfinder notices more of the country on every walk,
  * not only while deliberately sweeping a region.
  */
 export function sightRangeCells(state: GameState, world: World, cal: Calendar, cell: number): number {
-  return Math.max(ringCells(illuminance(state, world, cal, cell)), sightReachCells(state, world, cal, cell));
+  const daylight = skyLux(cal, state.weather.clear, state.weather.snowCm);
+  return Math.max(ringCells(daylight), sightReachCells(state, world, cal, cell));
 }
 
 /**
@@ -100,7 +134,7 @@ export function sightReachCells(state: GameState, world: World, cal: Calendar, c
   const x = cell % world.w;
   const y = Math.floor(cell / world.w);
   const base = vantageBaseCells(world, terrainOf(world, x, y), x, y);
-  const lf = lightFactor(illuminance(state, world, cal, cell), SPOT_LUX, 0);
+  const lf = lightFactor(skyLux(cal, state.weather.clear, state.weather.snowCm), SPOT_LUX, 0);
   const reach = SIGHT_REACH_MULT[body(state).sightReach];
   return Math.max(0, Math.floor(base * lf * reach * wayfindingSightMult(state)));
 }
@@ -125,24 +159,68 @@ function ringCells(lux: number): number {
   return lightFactor(lux, WALK_LUX, 0) >= 1 ? 1 : 0;
 }
 
-/** Whether the cell at (x, y), this far from the vantage in metres, closes the ray behind it. */
-function canopyBlocks(world: World, x: number, y: number, distM: number): boolean {
-  const t = terrainOf(world, x, y);
-  if (t === "spruce") return true;
-  return (t === "pine" || t === "birch") && distM > FOREST_VISIBILITY_M;
+/** Height in metres of the surface that can hide ground behind this cell. */
+function obstacleHeightM(world: World, x: number, y: number, distM: number): number {
+  const ground = fieldsAt(world.seed, x, y).e * FELL_SPINE_M;
+  const terrain = terrainOf(world, x, y);
+  const canopy = terrain === "spruce" || distM > FOREST_VISIBILITY_M ? CANOPY_HEIGHT_M[terrain] ?? 0 : 0;
+  return ground + canopy;
 }
 
-/** Marches from (cx, cy) toward the cell (cx + dx, cy + dy), marking every cell it crosses until the world's edge or a closed canopy. */
-function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, seen: Set<number>): void {
+/**
+ * Whether one ground-level subject can be seen from another cell. Unlike the
+ * terrain viewshed this is not limited by ambient light: callers provide a
+ * realistic range for a luminous or otherwise detectable subject.
+ */
+export function hasLineOfSight(world: World, observerCell: number, targetCell: number, targetHeightM = EYE_HEIGHT_M): boolean {
+  if (observerCell === targetCell) return true;
+  const cx = observerCell % world.w;
+  const cy = Math.floor(observerCell / world.w);
+  const tx = targetCell % world.w;
+  const ty = Math.floor(targetCell / world.w);
+  const dx = tx - cx;
+  const dy = ty - cy;
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  const totalCells = Math.hypot(dx, dy);
+  const totalM = totalCells * CELL_KM * 1000;
+  const observerM = fieldsAt(world.seed, cx, cy).e * FELL_SPINE_M + EYE_HEIGHT_M;
+  const targetM = fieldsAt(world.seed, tx, ty).e * FELL_SPINE_M + targetHeightM - (totalM * totalM) / (2 * EARTH_RADIUS_M);
+  let previous = observerCell;
+  for (let i = 1; i < steps; i++) {
+    const x = cx + Math.round((dx * i) / steps);
+    const y = cy + Math.round((dy * i) / steps);
+    const cell = y * world.w + x;
+    if (cell === previous) continue;
+    previous = cell;
+    const distanceCells = Math.hypot(x - cx, y - cy);
+    const distM = distanceCells * CELL_KM * 1000;
+    const curvatureDropM = (distM * distM) / (2 * EARTH_RADIUS_M);
+    const rayM = observerM + (targetM - observerM) * (distanceCells / totalCells);
+    if (obstacleHeightM(world, x, y, distM) - curvatureDropM >= rayM) return false;
+  }
+  return true;
+}
+
+/** Marches one sightline, retaining the highest apparent surface angle met so ridges and canopies hide lower ground beyond them. */
+function marchRay(world: World, cx: number, cy: number, dx: number, dy: number, range: number, seen: Set<number>): void {
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  const observerM = fieldsAt(world.seed, cx, cy).e * FELL_SPINE_M + EYE_HEIGHT_M;
+  let horizonSlope = -Infinity;
+  let previous = -1;
   for (let i = 1; i <= steps; i++) {
     const x = cx + Math.round((dx * i) / steps);
     const y = cy + Math.round((dy * i) / steps);
     if (x < 0 || y < 0 || x >= world.w || y >= world.h) return;
-    const distM = Math.hypot(x - cx, y - cy) * CELL_KM * 1000;
-    const blocked = canopyBlocks(world, x, y, distM);
-    seen.add(y * world.w + x);
-    if (blocked) return;
+    const cell = y * world.w + x;
+    if (cell === previous) continue;
+    previous = cell;
+    const distance = Math.hypot(x - cx, y - cy);
+    if (distance > range) return;
+    const distM = distance * CELL_KM * 1000;
+    const curvatureDropM = (distM * distM) / (2 * EARTH_RADIUS_M);
+    const slope = (obstacleHeightM(world, x, y, distM) - curvatureDropM - observerM) / distM;
+    if (slope >= horizonSlope - 1e-9) seen.add(cell);
+    horizonSlope = Math.max(horizonSlope, slope);
   }
 }
 
@@ -156,22 +234,24 @@ export function seeFrom(state: GameState, world: World, cal: Calendar, cell: num
 }
 
 /** Ground in sight now, unlike mapped knowledge which survives after the eye moves on. */
-export function visibleCells(state: GameState, world: World, cal: Calendar, cell: number): Set<number> {
-  const seen = new Set<number>([cell]);
+export function visibleCells(state: GameState, world: World, cal: Calendar, cell: number): ReadonlySet<number> {
   const r = sightRangeCells(state, world, cal, cell);
-  if (r <= 0) return seen;
+  const key = `${world.seed}:${world.w}:${world.h}:${cell}:${r}`;
+  const cached = cachedViewshed(key);
+  if (cached) return cached;
+  const seen = new Set<number>([cell]);
+  if (r <= 0) return retainViewshed(key, seen);
   const cx = cell % world.w;
   const cy = Math.floor(cell / world.w);
-  // The rays are the range's own square edge, walked as an edge: a ray to
-  // every cell of the box's interior would be the same rays over again, since
-  // each already marks every cell it crosses on the way out.
+  // Cast to the enclosing square for dense angular coverage, but stop each
+  // ray at the Euclidean radius. Range is a real distance, not a square.
   for (let d = -r; d <= r; d++) {
-    marchRay(world, cx, cy, d, -r, seen);
-    marchRay(world, cx, cy, d, r, seen);
+    marchRay(world, cx, cy, d, -r, r, seen);
+    marchRay(world, cx, cy, d, r, r, seen);
   }
   for (let d = -r + 1; d <= r - 1; d++) {
-    marchRay(world, cx, cy, -r, d, seen);
-    marchRay(world, cx, cy, r, d, seen);
+    marchRay(world, cx, cy, -r, d, r, seen);
+    marchRay(world, cx, cy, r, d, r, seen);
   }
-  return seen;
+  return retainViewshed(key, seen);
 }
