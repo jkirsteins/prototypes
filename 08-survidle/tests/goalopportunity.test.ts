@@ -3,14 +3,16 @@ import { Rng } from "../src/rng";
 import { advance } from "../src/sim/advance";
 import { calendar } from "../src/sim/calendar";
 import { stepGoalOpportunity } from "../src/sim/goalopportunity";
+import { goalDeed } from "../src/sim/goals";
 import { beginAgain, land } from "../src/sim/landing";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { cellOf } from "../src/sim/position";
+import { cellOf, placeAt, straightKm } from "../src/sim/position";
+import { siteFor } from "../src/sim/regionstate";
 import { deserialize, serialize } from "../src/sim/save";
 import type { GameState, GoalId } from "../src/sim/types";
 import { stepWeather } from "../src/sim/weather";
-import { regionAt } from "../src/world/gen";
+import { cellAt, regionAt } from "../src/world/gen";
 import { siteCamp } from "./siting-helpers";
 
 const THROUGH_SHELTER: GoalId[] = [
@@ -94,6 +96,88 @@ describe("weather teaching opportunity lifecycle", () => {
     expect(state.goals.opportunity).toBeNull();
     expect(state.weather.storm).toEqual({ id: 1, source: "natural", kind: "gale", from: 0, until: 200, warned: true });
     expect(rng.s).toBe(before);
+  });
+});
+
+describe("Chapter 1 shelter storm evidence", () => {
+  function shelterAttempt(state: GameState, world: ReturnType<typeof newGame>["world"], stormId = 7): void {
+    const centre = cellOf(state, world);
+    state.goals.opportunity = {
+      goal: "testShelter", status: "running", createdAt: 0, attempts: 1,
+      stormId, source: "natural", area: { region: state.player.region, centre, radiusKm: 1 },
+      announcedAt: 0, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    };
+  }
+
+  it("completes the shelter test only from sixty matching weatherproof minutes while alive", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    shelterAttempt(state, world);
+
+    expect(goalDeed(state, {
+      kind: "stormEnded", minute: 120, stormId: 7, survivorAlive: true,
+      minutesByProtection: [0, 0, 60, 0], atCampMinutes: 60, awayFromCampMinutes: 0, maxWetness: 12,
+    })).toContain("testShelter");
+  });
+
+  it("does not accept a short, exposed, fatal, remote, or unrelated storm", () => {
+    const cases = [
+      { stormId: 7, survivorAlive: true, minutesByProtection: [0, 0, 59, 0] as [number, number, number, number] },
+      { stormId: 7, survivorAlive: true, minutesByProtection: [0, 60, 0, 0] as [number, number, number, number] },
+      { stormId: 7, survivorAlive: false, minutesByProtection: [0, 0, 60, 0] as [number, number, number, number] },
+      { stormId: 8, survivorAlive: true, minutesByProtection: [0, 0, 60, 0] as [number, number, number, number] },
+    ];
+    for (const evidence of cases) {
+      const { state, world } = newGame(17);
+      activateShelterTest(state);
+      shelterAttempt(state, world);
+      goalDeed(state, {
+        kind: "stormEnded", minute: 120, ...evidence, atCampMinutes: 0, awayFromCampMinutes: 60, maxWetness: 70,
+      });
+      expect(state.goals.done.testShelter).toBeUndefined();
+    }
+  });
+
+  it("counts each storm minute at the survivor's actual location instead of their final cell", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const origin = cellOf(state, world);
+    const nearby = regionAt(world, state.player.region).cells.find((cell) => cell !== origin && cellAt(world, cell).terrain !== "water" && straightKm(world, origin, cell) <= 1)!;
+    const st = state.regions[state.player.region];
+    siteFor(st, origin).cover = 1;
+    siteFor(st, nearby).structures.leanTo = true;
+    shelterAttempt(state, world, 20);
+    state.weather.storm = { id: 20, source: "natural", kind: "rain", from: 0, until: 60, warned: true };
+
+    advance(state, world, 30);
+    placeAt(state, world, nearby);
+    advance(state, world, 30);
+
+    expect(state.goals.opportunity?.minutesByProtection).toEqual([0, 30, 30, 0]);
+    expect((state.goals.opportunity?.atCampMinutes ?? 0) + (state.goals.opportunity?.awayFromCampMinutes ?? 0)).toBe(60);
+    expect(state.goals.opportunity?.maxWetness).toBeGreaterThanOrEqual(state.player.wetness);
+    expect(state.goals.done.testShelter).toBeUndefined();
+  });
+
+  it("does not count weatherproof minutes after the survivor leaves the taught shelter area", () => {
+    const { state, world } = newGame(17);
+    activateShelterTest(state);
+    const origin = cellOf(state, world);
+    const far = regionAt(world, state.player.region).cells.find((cell) => cellAt(world, cell).terrain !== "water" && straightKm(world, origin, cell) > 1);
+    expect(far).toBeDefined();
+    const st = state.regions[state.player.region];
+    siteFor(st, origin).structures.leanTo = true;
+    siteFor(st, far!).structures.leanTo = true;
+    shelterAttempt(state, world, 21);
+    state.weather.storm = { id: 21, source: "natural", kind: "rain", from: 0, until: 60, warned: true };
+
+    advance(state, world, 30);
+    placeAt(state, world, far!);
+    advance(state, world, 30);
+
+    expect(state.goals.opportunity?.minutesByProtection).toEqual([0, 0, 30, 0]);
+    expect(state.goals.done.testShelter).toBeUndefined();
   });
 });
 
@@ -223,9 +307,10 @@ describe("natural-first weather", () => {
       stormId: null, source: null,
       area: { region: state.player.region + 1, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.goals.opportunity.stormId).toBe(1);
+    expect(state.goals.opportunity!.stormId).toBe(1);
   });
 });
 
@@ -236,6 +321,7 @@ describe("misses and retries", () => {
     state.goals.opportunity = {
       goal: "testShelter", status: "resolved", createdAt: 100, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: 200, resolvedAt: 600,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
 
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(76));
@@ -243,6 +329,7 @@ describe("misses and retries", () => {
     expect(state.goals.opportunity).toEqual({
       goal: "readWeather", status: "reserved", createdAt: state.minute, attempts: 1,
       stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     });
   });
 
@@ -252,6 +339,7 @@ describe("misses and retries", () => {
     state.goals.opportunity = {
       goal: "readWeather", status: "resolved", createdAt: 100, attempts: 2,
       stormId: 2, source: "synthetic", area: null, announcedAt: 200, resolvedAt: 700,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
 
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), new Rng(77));
@@ -266,6 +354,7 @@ describe("misses and retries", () => {
     state.goals.opportunity = {
       goal: "readWeather", status: "resolved", createdAt: state.minute - 500, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: state.minute - 400, resolvedAt: state.minute,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     state.weather.stormFreeSince = state.minute;
     state.minute += 1440;
@@ -316,13 +405,14 @@ describe("misses and retries", () => {
     state.goals.opportunity = {
       goal: "testShelter", status: "resolved", createdAt: 0, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: 0, resolvedAt: 420,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     state.weather.nextStormId = 3;
     state.minute = 1000;
     state.weather.storm = { id: 2, source: "natural", kind: "snow", from: 900, until: 1100, warned: true };
     const rng = new Rng(86);
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.goals.opportunity.status).toBe("resolved");
+    expect(state.goals.opportunity!.status).toBe("resolved");
 
     state.minute = 1100;
     stepWeather(state.weather, calendar(state.minute, state.startDoy), rng, 1, state.minute);
@@ -330,7 +420,7 @@ describe("misses and retries", () => {
     expect(state.weather.storm).toBeNull();
     state.minute = 2539;
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
-    expect(state.goals.opportunity.status).toBe("resolved");
+    expect(state.goals.opportunity!.status).toBe("resolved");
     state.minute = 2540;
     stepGoalOpportunity(state, world, calendar(state.minute, state.startDoy), rng);
     expect(state.goals.opportunity).toMatchObject({ status: "reserved", attempts: 2, createdAt: 2540 });
@@ -345,6 +435,7 @@ describe("misses and retries", () => {
     state.goals.opportunity = {
       goal: "testShelter", status: "running", createdAt: 0, attempts: 1,
       stormId: 1, source: "natural", area: null, announcedAt: 0, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     const completedBefore = structuredClone(state.goals.done);
     state.minute = 10;
@@ -367,9 +458,10 @@ describe("misses and retries", () => {
       stormId: 1, source: "natural",
       area: { region: state.player.region, centre: cellOf(state, world), radiusKm: 1 },
       announcedAt: 1840, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     state.goals.introduced = { site: true, testShelter: true };
-    const area = structuredClone(state.goals.opportunity.area);
+    const area = structuredClone(state.goals.opportunity!.area);
     const completed = structuredClone(state.goals.done);
     const introduced = structuredClone(state.goals.introduced);
     die(state, "froze", regionAt(world, state.player.region).name);
@@ -408,6 +500,7 @@ describe("misses and retries", () => {
     state.goals.opportunity = {
       goal: "testShelter", status: "resolved", createdAt: 81000, attempts: 4,
       stormId: 8, source: "natural", area, announcedAt: 81500, resolvedAt: 82000,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     state.weather.stormFreeSince = 82750;
     state.goals.introduced = { site: true, testShelter: true };

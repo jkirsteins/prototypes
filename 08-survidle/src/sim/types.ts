@@ -705,6 +705,13 @@ export interface GoalOpportunity {
   area: { region: number; centre: number; radiusKm: 1 } | null;
   announcedAt: number | null;
   resolvedAt: number | null;
+  /** Matching-storm minutes in the Chapter 1 teaching area, by protection level. */
+  minutesByProtection: [number, number, number, number];
+  /** Matching-storm time at the active camp and away from it. */
+  atCampMinutes: number;
+  awayFromCampMinutes: number;
+  /** The highest body wetness actually reached during the matching storm. */
+  maxWetness: number;
 }
 
 export interface GoalState {

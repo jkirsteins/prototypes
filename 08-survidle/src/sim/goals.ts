@@ -9,9 +9,14 @@
  */
 import { calendar, type Calendar } from "./calendar";
 import { qty } from "./inventory";
+import { straightKm } from "./position";
+import type { World } from "../world/gen";
 import type { GameState, GoalId, GoalState, ItemId, Protection, Season, StructureId, TaskId } from "./types";
 
 export type { GoalId } from "./types";
+
+/** Task 14 replaces this opaque pre-storm plan with the shared option evaluation. */
+export type StormPlanSnapshot = unknown;
 
 /** Something this survivor did. The only thing that moves a goal. */
 export type GoalEvent =
@@ -20,6 +25,10 @@ export type GoalEvent =
   | { kind: "gathered"; item: ItemId; kg: number }
   | { kind: "built"; structure: StructureId }
   | { kind: "sheltered"; protection: Protection }
+  | { kind: "protectionChanged"; minute: number; region: number; cell: number; from: Protection; to: Protection; source: "found" | "improved" | "emergency" | "structure" }
+  /** Reserved for the shared Task 14 storm-plan snapshot. No code emits it yet. */
+  | { kind: "stormStarted"; minute: number; stormId: number; plan: StormPlanSnapshot }
+  | { kind: "stormEnded"; minute: number; stormId: number; survivorAlive: boolean; minutesByProtection: [number, number, number, number]; atCampMinutes: number; awayFromCampMinutes: number; maxWetness: number }
   /** The tinder caught. A light that failed is not a fire lit. */
   | { kind: "lit" }
   /** A fire alive at dusk, lit or embers, is still alive at the dawn roll. */
@@ -69,8 +78,10 @@ export interface GoalDef {
 const task = (...ids: TaskId[]) => (d: Deed) => (d.kind === "task" && ids.includes(d.id) ? 1 : 0);
 const built = (...ids: StructureId[]) => (d: Deed) => (d.kind === "built" && ids.includes(d.structure) ? 1 : 0);
 const season = (s: Season) => (d: Deed) => (d.kind === "season" && d.season === s ? 1 : 0);
-const roof = (d: Deed) => d.kind === "sheltered"
-  ? (d.protection >= 2 ? 1 : 0)
+const roof = (d: Deed) => d.kind === "protectionChanged"
+  ? (d.from < 2 && d.to >= 2 ? 1 : 0)
+  : d.kind === "sheltered"
+    ? (d.protection >= 2 ? 1 : 0)
   : built("leanTo", "turfHut", "snowShelter", "cabin")(d);
 
 /** The kilos of firewood a gather actually produced, wet or dry: the goal is the gathering. */
@@ -110,7 +121,7 @@ export const GOALS: GoalDef[] = [
   { id: "bed", phase: "firstWeek", title: "Get off the cold ground", target: 1, credit: built("boughBed") },
   { id: "roof", phase: "firstWeek", title: "Put a roof over your head", target: 1, credit: roof },
   { id: "cook", phase: "firstWeek", title: "Cook something over the fire", target: 1, credit: (d) => (d.kind === "cooked" && d.kg > 0 ? 1 : 0), after: ["bed", "roof"] },
-  { id: "findUsefulCover", phase: "firstWeek", title: "Find useful cover", target: 1, credit: awaitingContext, after: ["cook"], activeOnly: true },
+  { id: "findUsefulCover", phase: "firstWeek", title: "Find useful cover", target: 1, credit: (d) => (d.kind === "protectionChanged" && d.source === "found" && d.to > d.from && d.to >= 1 ? 1 : 0), after: ["cook"], activeOnly: true },
   { id: "makeUsefulShelter", phase: "firstWeek", title: "Turn the ground into shelter", target: 1, credit: awaitingContext, after: ["findUsefulCover"], activeOnly: true },
   { id: "testShelter", phase: "firstWeek", title: "Put shelter to the test", target: 1, credit: awaitingContext, after: ["makeUsefulShelter"], activeOnly: true },
   { id: "keptNight", phase: "firstWeek", title: "Keep the fire alive overnight", target: 1, credit: (d) => (d.kind === "keptNight" ? 1 : 0), after: ["testShelter"] },
@@ -244,7 +255,23 @@ export function introduceGoals(state: GameState, ids: GoalId[]): void {
  * ladder got round to asking still counts: nobody should be told to build
  * a turf hut twice.
  */
-export function goalDeed(state: GameState, d: GoalEvent): GoalId[] {
+function shelterOpportunity(goal: "makeUsefulShelter" | "testShelter", minute: number, area: { region: number; centre: number; radiusKm: 1 }): GoalState["opportunity"] {
+  return {
+    goal, status: "reserved", createdAt: minute, attempts: 1,
+    stormId: null, source: null, area, announcedAt: null, resolvedAt: null,
+    minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+  };
+}
+
+function finishGoal(state: GameState, id: GoalId, finished: GoalId[]): void {
+  if (state.goals.done[id]) return;
+  state.goals.progress[id] = goalDef(id).target;
+  state.goals.done[id] = true;
+  state.goals.queue.push(id);
+  finished.push(id);
+}
+
+export function goalDeed(state: GameState, d: GoalEvent, world?: World): GoalId[] {
   const finished: GoalId[] = [];
   const active = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
   for (const g of GOALS) {
@@ -258,6 +285,28 @@ export function goalDeed(state: GameState, d: GoalEvent): GoalId[] {
       state.goals.done[g.id] = true;
       state.goals.queue.push(g.id);
       finished.push(g.id);
+    }
+  }
+  if (d.kind === "protectionChanged" && finished.includes("findUsefulCover")) {
+    state.goals.opportunity = shelterOpportunity("makeUsefulShelter", d.minute, { region: d.region, centre: d.cell, radiusKm: 1 });
+  }
+  if (d.kind === "protectionChanged") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    const area = opportunity?.area;
+    if (opportunity?.goal === "makeUsefulShelter" && area && world && activeNow.has("makeUsefulShelter")
+      && d.to > d.from && d.to >= 2 && d.region === area.region && d.cell !== area.centre
+      && straightKm(world, area.centre, d.cell) <= area.radiusKm) {
+      finishGoal(state, "makeUsefulShelter", finished);
+      state.goals.opportunity = shelterOpportunity("testShelter", d.minute, area);
+    }
+  }
+  if (d.kind === "stormEnded") {
+    const opportunity = state.goals.opportunity;
+    const activeNow = new Set(activeGoals(state, calendar(state.minute, state.startDoy)));
+    if (opportunity?.goal === "testShelter" && opportunity.stormId === d.stormId && activeNow.has("testShelter")
+      && d.survivorAlive && d.minutesByProtection[2] + d.minutesByProtection[3] >= 60) {
+      finishGoal(state, "testShelter", finished);
     }
   }
   return finished;

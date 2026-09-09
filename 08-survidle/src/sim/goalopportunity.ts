@@ -5,6 +5,9 @@ import { baseWalkSpeed } from "./player";
 import { activeGoals } from "./goals";
 import { fearsFell } from "./person";
 import { cellOf } from "./position";
+import { atCamp, straightKm } from "./position";
+import { siteAt } from "./regionstate";
+import { protectionOf } from "./shelter";
 import { survivorRoute } from "./routing";
 import type { Calendar } from "./calendar";
 import { calendar } from "./calendar";
@@ -33,6 +36,39 @@ function newOpportunity(goal: GoalId, minute: number, attempts = 1): GoalOpportu
     area: null,
     announcedAt: null,
     resolvedAt: null,
+    minutesByProtection: [0, 0, 0, 0],
+    atCampMinutes: 0,
+    awayFromCampMinutes: 0,
+    maxWetness: 0,
+  };
+}
+
+/** Record a lived storm minute from the survivor's current place, never a later one. */
+export function recordStormMinute(state: GameState, world: World, stormId: number): void {
+  const opportunity = state.goals.opportunity;
+  if (!opportunity || opportunity.stormId !== stormId) return;
+  opportunity.maxWetness = Math.max(opportunity.maxWetness, state.player.wetness);
+  if (atCamp(state, world)) opportunity.atCampMinutes++;
+  else opportunity.awayFromCampMinutes++;
+  const area = opportunity.area;
+  const cell = cellOf(state, world);
+  if (!area || state.player.region !== area.region || straightKm(world, area.centre, cell) > area.radiusKm) return;
+  const site = siteAt(state.regions[state.player.region], cell);
+  const protection = protectionOf(site);
+  opportunity.minutesByProtection[protection]++;
+}
+
+/** Snapshot the matching attempt's accumulated general storm facts for GoalEvent. */
+export function stormMetrics(state: GameState, stormId: number): { minutesByProtection: [number, number, number, number]; atCampMinutes: number; awayFromCampMinutes: number; maxWetness: number } {
+  const opportunity = state.goals.opportunity;
+  if (!opportunity || opportunity.stormId !== stormId) {
+    return { minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0 };
+  }
+  return {
+    minutesByProtection: [...opportunity.minutesByProtection] as [number, number, number, number],
+    atCampMinutes: opportunity.atCampMinutes,
+    awayFromCampMinutes: opportunity.awayFromCampMinutes,
+    maxWetness: opportunity.maxWetness,
   };
 }
 
@@ -189,6 +225,9 @@ export function stepGoalOpportunity(state: GameState, world: World, cal: Calenda
     opportunity.area = area;
     state.goals.opportunity = opportunity;
   }
+  // Chapter 1 uses this slot as local-cover context until the shelter exists.
+  // It must not reserve or synthesize weather before that outcome is earned.
+  if (opportunity.goal === "makeUsefulShelter") return;
   if (opportunity.stormId !== null) {
     stepClaimed(state, world, cal, opportunity);
     return;

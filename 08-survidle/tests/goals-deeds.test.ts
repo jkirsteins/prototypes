@@ -12,7 +12,7 @@ import { beginAgain, land } from "../src/sim/landing";
 import { orderByHand } from "../src/sim/ladder";
 import { newGame } from "../src/sim/newgame";
 import { die } from "../src/sim/player";
-import { placeAt, placeAtSpot } from "../src/sim/position";
+import { cellOf, placeAt, placeAtSpot, straightKm } from "../src/sim/position";
 import { campSite, regionState, siteFor } from "../src/sim/regionstate";
 import { check, DEADWOOD_KG, startTask, stepTask } from "../src/sim/tasks";
 import { regionAt } from "../src/world/gen";
@@ -20,6 +20,12 @@ import { drink } from "../src/sim/water";
 import { siteCamp } from "./siting-helpers";
 
 const cal = calendar(0);
+
+const THROUGH_COOK = ["site", "drink", "firewood", "fire", "bed", "roof", "cook"] as const;
+
+function openShelterChapter(state: ReturnType<typeof newGame>["state"]): void {
+  for (const id of THROUGH_COOK) state.goals.done[id] = true;
+}
 
 describe("deeds reach the ladder", () => {
   it("the first goal is choosing where to live, credited by making camp", () => {
@@ -347,6 +353,99 @@ describe("deeds reach the ladder", () => {
     advance(state, world, o.duration + 1);
     expect(st.rack.kg).toBe(0);
     expect(state.goals.done.store).toBeUndefined();
+  });
+});
+
+describe("Chapter 1 shelter deeds", () => {
+  it("leaves the shelter chapter open when a search finds no protection", () => {
+    const { state } = newGame(3);
+    openShelterChapter(state);
+
+    goalDeed(state, {
+      kind: "protectionChanged", minute: 10, region: state.player.region, cell: 12,
+      from: 0, to: 0, source: "found",
+    });
+
+    expect(state.goals.done.findUsefulCover).toBeUndefined();
+    expect(state.goals.opportunity).toBeNull();
+  });
+
+  it("remembers the found area when natural cover first reaches protection one", () => {
+    const { state, world } = newGame(3);
+    openShelterChapter(state);
+    const cell = cellOf(state, world);
+
+    expect(goalDeed(state, {
+      kind: "protectionChanged", minute: 10, region: state.player.region, cell,
+      from: 0, to: 1, source: "found",
+    })).toContain("findUsefulCover");
+
+    expect(state.goals.opportunity).toMatchObject({
+      goal: "makeUsefulShelter", status: "reserved", createdAt: 10, attempts: 1,
+      area: { region: state.player.region, centre: cell, radiusKm: 1 },
+    });
+  });
+
+  it("requires a different nearby cell in the found region before weatherproof shelter completes", () => {
+    const { state, world } = newGame(3);
+    openShelterChapter(state);
+    const origin = cellOf(state, world);
+    const region = regionAt(world, state.player.region);
+    const nearby = region.cells.find((cell) => cell !== origin && straightKm(world, origin, cell) <= 1);
+    expect(nearby).toBeDefined();
+    goalDeed(state, {
+      kind: "protectionChanged", minute: 10, region: state.player.region, cell: origin,
+      from: 0, to: 1, source: "found",
+    });
+
+    goalDeed(state, {
+      kind: "protectionChanged", minute: 11, region: state.player.region, cell: origin,
+      from: 1, to: 2, source: "improved",
+    }, world);
+    expect(state.goals.done.makeUsefulShelter).toBeUndefined();
+
+    expect(goalDeed(state, {
+      kind: "protectionChanged", minute: 12, region: state.player.region, cell: nearby!,
+      from: 1, to: 2, source: "emergency",
+    }, world)).toContain("makeUsefulShelter");
+    expect(state.goals.opportunity).toMatchObject({
+      goal: "testShelter", status: "reserved", createdAt: 12, attempts: 1,
+      stormId: null, area: { region: state.player.region, centre: origin, radiusKm: 1 },
+    });
+  });
+
+  it("does not accept weatherproof shelter outside the original local area", () => {
+    const { state, world } = newGame(3);
+    openShelterChapter(state);
+    const origin = cellOf(state, world);
+    const region = regionAt(world, state.player.region);
+    const far = region.cells.reduce((best, cell) => straightKm(world, origin, cell) > straightKm(world, origin, best) ? cell : best, origin);
+    expect(straightKm(world, origin, far)).toBeGreaterThan(1);
+    goalDeed(state, {
+      kind: "protectionChanged", minute: 10, region: state.player.region, cell: origin,
+      from: 0, to: 1, source: "found",
+    });
+
+    goalDeed(state, {
+      kind: "protectionChanged", minute: 11, region: state.player.region, cell: far,
+      from: 1, to: 2, source: "structure",
+    }, world);
+    goalDeed(state, {
+      kind: "protectionChanged", minute: 12, region: state.player.region + 1, cell: origin,
+      from: 1, to: 2, source: "structure",
+    }, world);
+
+    expect(state.goals.done.makeUsefulShelter).toBeUndefined();
+  });
+
+  it("credits the roof from every real transition to protection two or higher", () => {
+    for (const source of ["found", "improved", "emergency", "structure"] as const) {
+      const { state } = newGame(3);
+      expect(goalDeed(state, {
+        kind: "protectionChanged", minute: 1, region: state.player.region, cell: 1,
+        from: 1, to: 2, source,
+      })).toContain("roof");
+    }
   });
 });
 

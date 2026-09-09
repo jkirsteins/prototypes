@@ -71,6 +71,12 @@ export function migrate(state: GameState): void {
   state.goals.introduced ??= {};
   state.goals.noticeQueue ??= [];
   state.goals.opportunity ??= null;
+  if (state.goals.opportunity) {
+    state.goals.opportunity.minutesByProtection ??= [0, 0, 0, 0];
+    state.goals.opportunity.atCampMinutes ??= 0;
+    state.goals.opportunity.awayFromCampMinutes ??= 0;
+    state.goals.opportunity.maxWetness ??= 0;
+  }
   const goalIds = new Set(GOALS.map((goal) => goal.id));
   state.goals.queue = (state.goals.queue ?? []).filter((id) => goalIds.has(id));
   if (state.task?.id === "explore" && state.task.originRegion === undefined) {

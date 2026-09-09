@@ -1462,12 +1462,16 @@ export function stepTask(state: GameState, world: World, cal: Calendar, rng: Rng
   if (order) order.minutes += dt;
   t.progress += dt * pace;
   if (t.id === "emergencyShelter" && dt * pace > 0) {
-    const site = siteFor(regionState(state, world, state.player.region), cellOf(state, world));
+    const cell = cellOf(state, world);
+    const site = siteFor(regionState(state, world, state.player.region), cell);
     const before = protectionOf(site);
     site.emergencyMinutes = Math.min(EMERGENCY_MINUTES[3], t.progress / (t.duration / EMERGENCY_MINUTES[3]));
     site.emergencyAge = 0;
     const after = protectionOf(site);
-    if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });
+    if (after !== before) goalDeed(state, {
+      kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
+      from: before, to: after, source: "emergency",
+    }, world);
   }
   if (t.progress < t.duration) return;
   // Existing cover ages before this task step. If it expires in the finishing
@@ -2413,6 +2417,7 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
         st.snares++;
       } else {
         const site = siteFor(st, st.campCell!);
+        const before = protectionOf(site);
         if (sid === "seep") {
           const here = cellOf(state, world);
           state.seeps[here] = { class: seepGround(world, here)!, litres: 0, ice: 0, dug: state.minute };
@@ -2424,6 +2429,11 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
           if (sid === "boughBed") site.boughBedAge = 0;
           if (sid === "leanTo" || sid === "dryingRack" || sid === "turfHut") site.structureAge[sid] = 0;
         }
+        const after = protectionOf(site);
+        if (sid !== "seep" && after !== before) goalDeed(state, {
+          kind: "protectionChanged", minute: state.minute, region: state.player.region, cell: st.campCell!,
+          from: before, to: after, source: "structure",
+        }, world);
       }
       state.stats.structures++;
       // Once per structure per life; the first snare set is the record's snare line.
@@ -2560,15 +2570,22 @@ function completeTask(state: GameState, world: World, cal: Calendar, rng: Rng, i
       site.cover = findCover(world, cell, shelterLevel ?? skillLevel(state, "naturalShelter"));
       site.coverAge = 0;
       const after = protectionOf(site);
-      if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });
+      if (after !== before) goalDeed(state, {
+        kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
+        from: before, to: after, source: "found",
+      }, world);
       log(state, site.cover === 0 ? "There is no shelter here." : `{You} {find} ${PROTECTION_WORDS[site.cover]} cover.`);
       return;
     }
     case "improveCover": {
-      const site = siteFor(st, cellOf(state, world));
+      const cell = cellOf(state, world);
+      const site = siteFor(st, cell);
       const before = protectionOf(site);
       const after = improveCover(site);
-      if (before < 2 && after >= 2) goalDeed(state, { kind: "sheltered", protection: after });
+      if (after !== before) goalDeed(state, {
+        kind: "protectionChanged", minute: state.minute, region: state.player.region, cell,
+        from: before, to: after, source: "improved",
+      }, world);
       log(state, `{You} {work} the cover into something ${PROTECTION_WORDS[after]}.`);
       return;
     }

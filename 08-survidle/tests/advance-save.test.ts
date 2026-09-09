@@ -84,11 +84,30 @@ describe("save", () => {
       goal: "testShelter", status: "reserved", createdAt: 20, attempts: 2,
       stormId: 4, source: "synthetic", area: { region: 7, centre: 99, radiusKm: 1 },
       announcedAt: null, resolvedAt: null,
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
     };
     const back = deserialize(serialize(state))!.state;
     expect(back.weather.storm).toEqual(state.weather.storm);
     expect(back.weather.nextStormId).toBe(5);
     expect(back.goals.opportunity).toEqual(state.goals.opportunity);
+  });
+
+  it("adds zeroed storm metrics to an opportunity from before shelter testing", () => {
+    const { state } = newGame(9);
+    state.goals.opportunity = {
+      goal: "testShelter", status: "reserved", createdAt: 20, attempts: 1,
+      stormId: null, source: null, area: null, announcedAt: null, resolvedAt: null,
+      minutesByProtection: [4, 3, 2, 1], atCampMinutes: 9, awayFromCampMinutes: 1, maxWetness: 70,
+    };
+    const raw = JSON.parse(serialize(state));
+    delete raw.state.goals.opportunity.minutesByProtection;
+    delete raw.state.goals.opportunity.atCampMinutes;
+    delete raw.state.goals.opportunity.awayFromCampMinutes;
+    delete raw.state.goals.opportunity.maxWetness;
+
+    expect(deserialize(JSON.stringify(raw))!.state.goals.opportunity).toMatchObject({
+      minutesByProtection: [0, 0, 0, 0], atCampMinutes: 0, awayFromCampMinutes: 0, maxWetness: 0,
+    });
   });
 
   it("migrates storms and goals from before stable identity and opportunities", () => {

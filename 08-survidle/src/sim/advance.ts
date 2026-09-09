@@ -5,7 +5,7 @@ import { dailyAnimals } from "./animals";
 import { calendar, DAILY_HOUR } from "./calendar";
 import { dailyCamp, stepCamp, stepEmergencyShelter, stepFoundCover } from "./camp";
 import { hourlyEvents } from "./events";
-import { stepGoalOpportunity } from "./goalopportunity";
+import { recordStormMinute, stepGoalOpportunity, stormMetrics } from "./goalopportunity";
 import { checkWinterStores, goalDeed } from "./goals";
 import { hourlyWorld, iceUnderFoot } from "./hazards";
 import { runIntent } from "./intent";
@@ -63,7 +63,8 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
   stepFoundCover(state, dt);
   stepEmergencyShelter(state, world, dt);
 
-  const hadStorm = state.weather.storm !== null;
+  const previousStorm = state.weather.storm;
+  const hadStorm = previousStorm !== null;
   const ev = stepWeather(state.weather, cal, rng, dt, state.minute);
   const ambient = ambientTemperature(cal, state.weather);
   if (!nobody) {
@@ -99,6 +100,11 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
     autoEat(state, world, rng);
     autoDrink(state, world);
     iceUnderFoot(state, world, rng);
+    // This one-minute interval is attributed where the survivor ended it,
+    // after its task or movement has taken effect, never from a later cell.
+    if (previousStorm && state.minute > previousStorm.from && state.minute <= previousStorm.until) {
+      recordStormMinute(state, world, previousStorm.id);
+    }
   }
 
   const hour = Math.floor(state.minute / 60);
@@ -129,6 +135,12 @@ function step(state: GameState, world: World, rng: Rng, dt: number, nobody: bool
 
   if (!nobody && drains && state.player.health <= 0 && !state.dead) {
     die(state, causeFrom(drains), regionAt(world, state.player.region).name);
+  }
+  if (!nobody && previousStorm && state.weather.storm === null) {
+    goalDeed(state, {
+      kind: "stormEnded", minute: state.minute, stormId: previousStorm.id, survivorAlive: !state.dead,
+      ...stormMetrics(state, previousStorm.id),
+    });
   }
   stepGoalOpportunity(state, world, cal, rng);
 }
