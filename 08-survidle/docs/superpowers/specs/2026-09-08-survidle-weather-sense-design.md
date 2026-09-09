@@ -5,7 +5,7 @@ changes that. A survivor learns to read the sky, and a survivor caught out
 looks for cover, improves what they find, and builds only when the ground
 offers nothing.
 
-## What the code does today, surveyed at 87cf39c
+## What the code does today, resurveyed at 252a2ea1
 
 A storm rolls on a daily chance by season (`STORM_CHANCE`: winter 0.08,
 spring and autumn 0.04, summer 0.02), starts 60 to 180 minutes later and
@@ -13,13 +13,20 @@ runs **6 to 19 hours**. While it blows, precipitation is heavy and felt
 temperature drops 6 C. `stormComing` is true for exactly the hour before,
 and that hour is the whole warning.
 
-`stormStep` answers it one way: walk to camp, light the fire, feed it, rest.
-With no camp it returns null and the survivor is told there is no shelter
-within reach. Nothing else is possible: `light` sits behind `needCamp` and
-`fireStep` needs the camp's `firePit`, so a drill in the pack is inert
-anywhere but home; and the only shelter-shaped verb away from camp is
-`makeCamp`, which moves the whole camp rather than raising anything
-temporary.
+The storm is now a body need on the region's one ordered list. When that row
+wins the minute, `stormStep` still answers it one way: walk to camp, clear the
+fire site if needed, light the fire, feed it, rest. With no camp it returns
+null and the body row says there is no shelter within reach. Nothing else is
+possible: `light` still sits behind `needCamp` and `fireStep` still needs the
+camp's fire site, so a drill in the pack is inert anywhere but home; and the
+only shelter-shaped verb away from camp is `makeCamp`, which moves the whole
+camp rather than raising anything temporary.
+
+The ordered list matters. The body no longer owns a hidden priority tier: the
+player may rank work above or below it, and a click lands above it. Weather
+response must therefore remain a service of the body row, not a second
+scheduler that silently overrides the list. A survivor who ranks the body low
+has chosen to work through its warning, subject to the existing collapse floor.
 
 ### The measurements that shape this work
 
@@ -53,6 +60,33 @@ regions: spruce 31.5%, pine 26.9%, meadow 26.7%, rock 9.3%, water 5.6%. So
 roughly two cells in five offer reliable natural cover, one in four offers
 none, and one in four is marginal. Being caught on the wrong ground is a
 real risk without being a common death.
+
+### What moved on main underneath this design
+
+The design still answers the same measured hole, but its integration points
+have changed:
+
+- The Do pane is split by subtab and purpose. Every new row needs a home in
+  `ui/purpose.ts`, search vocabulary in `ui/dopanel.ts`, and the existing
+  coverage tests must prove it is neither homeless nor duplicated.
+- Work, the body and the camp share one ranked order list. Shelter-in-place is
+  a sequence of ordinary task steps owned by the body care row. It does not
+  enqueue private work, jump the list, or create another runner.
+- Goals advance from deeds, not world state. A field fire emits the same
+  successful `lit` deed as a camp fire, and field cooking emits the same
+  completed task deed. A place first reaching protection 2 emits a shelter
+  deed so the outcome goal "Put a roof over your head" accepts natural,
+  emergency, snow and permanent answers alike. Field fires still do not emit
+  any of the hearth-keeping deeds.
+- Tools are active gear and carried load is explicit. A field task uses the
+  normal provisioning and `toolNear` / `takeUp` paths. It must not invent a
+  second notion of a drill or vessel being available.
+- The sky is now the weather widget. Forecast detail belongs in
+  `weatherHtml` and the sky presentation, while cell protection belongs in the
+  map tooltip. The removed region panel is not brought back.
+- A life already records survived storms as `LifeEvent { kind: "storm" }`.
+  Weather sense counts those events instead of adding a second counter that
+  can drift from the record.
 
 ## Decisions taken by the author
 
@@ -98,6 +132,12 @@ Level 2 is the bar that matters. It is what halves the storm's fuel burn
 (the existing `roofed` test), what stops wind driving wetness, and what the
 whole spec is about reaching before the storm lands. Level 3 is what a camp
 already builds and is unchanged.
+
+Level 1 is not a failed level 2. In rain it removes the storm wind's extra
+wetting but does not stop the rain itself; level 2 keeps the rain off. In snow
+a windbreak is the effective weather answer, and in a gale it contributes
+through lee and low profile. The progression is therefore partial rather than
+a binary race to 2, without adding another protection currency.
 
 Reusing one currency means `roofed`, `shelterBonus` and `sheltered` keep
 working: they read the protection at the survivor's cell, whatever produced
@@ -189,13 +229,16 @@ the standard hour's warning **cannot** reach weatherproof from nothing - so
 the plain warning is not enough, and reading the sky is what buys the
 margin. And at 240 minutes the emergency build lands exactly on the
 existing `STRUCTURES.leanTo.minutes`, so the curve joins the structure table
-rather than running beside it: build long enough and what you have *is* a
-lean-to.
+rather than running beside it: at the top it gives the protection a lean-to
+gives for the same labour. It remains temporary rather than changing identity
+into a permanent structure.
 
-The machinery already exists. `Site.build` keeps build progress in minutes
-per structure; today a part-built structure gives nothing until it
-completes. The emergency shelter is the one thing that reads its own
-progress, which is what lets 50 minutes buy a windbreak instead of nothing.
+The machinery already exists. A site already keeps partial permanent builds;
+the emergency shelter follows that pattern but keeps its minutes in a separate
+site field. It is not a `StructureId`, because putting it in that union would
+leak it into permanent build, capability and mending tables. It pays out from
+its own progress, which is what lets 50 minutes buy a windbreak instead of
+nothing.
 
 It rots in days, is not mended, and is not a camp.
 
@@ -227,15 +270,15 @@ equipment gate and become possible anywhere with a fire: `cook` (every
 food), `crack`, `grindBark`, `melt`, `thaw`. These stay with the camp
 because they need something that stands there: `hang` (the drying rack),
 `lightIndoors` (a hut or cabin roof), `mend` (a structure to mend), `build`
-of the permanent structures, and `haul`, `night` and `wait`, which are all
-about home by definition.
+of the permanent structures, and `haul` and `night`, which are about home by
+definition.
 
 The refusal wording changes with it, and improves: a survivor is told they
 need a bark bucket, not that there is no camp here yet.
 
 **What still makes a field fire different from a camp's** is that it is
 nobody's home. It needs no fire pit. It burns only what is fed by hand,
-since `autoFeed` reaches the camp's woodpile and this has only the pack. It
+since the camp care path reaches the camp's woodpile and this has only the pack. It
 dies when the survivor leaves the cell, keeping no embers and no
 `litSince`, so it credits none of the fire-keeping goals, which measure a
 hearth kept. An improvised fire may also cost more time and fuel for the
@@ -253,12 +296,14 @@ genuinely need a home.
 Four routes, stacking:
 
 - **A weather sense skill**, levelling with use.
-- **Storms survived.** A count on the life record - storms that blew while
-  the survivor was alive, not merely rolled. The one route that cannot be
-  ground; it needs weather to happen to you.
+- **Storms survived.** The existing storm events on the life record - storms
+  that blew while the survivor was alive, not merely rolled. The one route
+  that cannot be ground; it needs weather to happen to you.
 - **Reading the sky**, a task costing minutes that buys a forecast now,
-  better the higher the skill, and givable as a standing order so a careful
-  player checks each morning.
+  better the higher the skill, and givable as a daily order on the shared
+  list so a careful player checks each morning. The observation is
+  per-survivor and expires at the next dawn; it is not a permanent change to
+  the weather.
 - **A weather eye**, a sixth quirk beside `coastBorn`, `forestBorn`,
   `sleepsLight`, `bigEater` and `steadyByTheFire`, granting a free step.
 
@@ -274,11 +319,17 @@ The minutes per stage should come from what the fuel and distance tables
 make meaningful - notably that 60 minutes does not cover the 48 to 110
 minute walk from a neighbouring region, so stage 2 or 3 should.
 
+The forecast is shown in the weather wall that already owns the sky and storm
+status. Stage 1 names only the warning, stage 2 adds arrival and kind/severity,
+and stage 3 adds duration. The body uses the same forecast value the wall
+shows, so the interface and the decision cannot disagree.
+
 ### 7. What kind of storm
 
-One storm behaves one way today. Four kinds ask for different answers, and
-carrying all four is what gives weather sense something to be sense *about*:
-knowing a storm is coming matters less than knowing which one.
+One storm behaves one way today. Rain, snow and gale already ask for different
+answers and give weather sense something to be sense *about*: knowing a storm
+is coming matters less than knowing which one. Lightning sharpens that
+distinction further, but is separable as an optional final stage.
 
 - **Rain and cold wind** - the common case. A roof and a fed fire. Cover
   overhead is what counts.
@@ -312,12 +363,12 @@ knowing a storm is coming matters less than knowing which one.
   have, which is a better shape than every season being dangerous the same
   way.
 
-That inversion is the reason lightning earns its place rather than being
-deferred. It is the one storm where a survivor who knows only "a storm is
-coming" does the wrong thing by doing the obvious thing, and where a
-survivor who read the sky properly goes somewhere else entirely. It turns
-the forecast's second stage - what kind, how hard - from a convenience into
-the difference between living and not.
+That inversion is the reason lightning earns a separate optional stage. It is
+the one storm where a survivor who knows only "a storm is coming" does the
+wrong thing by doing the obvious thing, and where a survivor who read the sky
+properly goes somewhere else entirely. It turns the forecast's second stage -
+what kind, how hard - from a convenience into the difference between living
+and not. Stages 1-3 remain complete without an instant-death hazard.
 
 **What each kind reads:**
 
@@ -420,6 +471,10 @@ rule. No new death cause, no storm-specific health drain.
   profile, but trees coming down on a survivor is a hazard model this game
   does not have and should not gain here.
 - Anything that lets a found or emergency shelter drift into being a camp.
+- A second weather scheduler or any weather response that bypasses the ranked
+  body row.
+- A replacement for the current goals ladder. Weather work supplies deeds to
+  the existing outcome goals; it does not add a tutorial chain of its own.
 
 ## Testing
 
@@ -456,25 +511,36 @@ rule. No new death cause, no storm-specific health drain.
   coming goes to the wrong place.
 - A forecast that names the kind lets a survivor pick ground the plain
   warning would not have sent them to.
+- Every new action has exactly one Do-pane purpose, complete search vocabulary,
+  skill/mastery/gerund coverage, and the intended orderability.
+- A body row ranked below work does not pre-empt that work for a forecast; when
+  it wins, all shelter-in-place substeps remain owned by that same care row.
+- A field light and field cook credit the existing fire and cook goals. The
+  first transition to protection 2 credits the roof outcome. No field fire
+  credits overnight, three-day or rain-keeping goals.
 
 ## Gates
 
-`stormStep` walks everyone home today, so giving the runner a real second
-option will move the reference player. Expect movement in `reference` and
-`year`, and read it rather than tuning it: a runner that digs in when it
-should have walked is a policy bug, and one that walks when it should have
-dug in is the same bug mirrored. A gate measures the sim; no constant moves
-to restore a reading.
+`stormStep` walks everyone home today when the body row wins, so giving that
+row a real second option will move the reference player. Expect movement in
+`reference` and `year`, and read it rather than tuning it: a body row that digs
+in when it should have walked is a policy bug, and one that walks when it
+should have dug in is the same bug mirrored. A gate measures the sim; no
+constant moves to restore a reading. The gate setup must state where the body
+row is ranked, because that is now part of the player's policy.
 
 Seed 1 is the case to watch. It regressed from day 29 to day 4 on the
 camp-siting work because the reference player ranges too far on known
 ground. A storm answer that lets it stay out may fix that or make it much
 worse, and it will say so first.
 
-## Open questions for the author
+## Decisions still needed during execution
 
-Taken one at a time, in this order:
+Two values remain deliberately unset: how many days a found cover observation
+lasts, and how many days an emergency shelter lasts. Neither follows from the
+current tables, so the executor asks rather than borrowing a permanent
+structure's lifetime.
 
-1. Answered: design values inside sourced field ranges (section 4).
-2. Whether a survivor caught by lightning on the wrong ground should be
-   able to die of it, or only ever be driven off that ground (section 7).
+The earlier author questions are settled: 30 / 90 / 240 are design values
+inside sourced ranges, and a lightning strike on bad ground may kill. Lightning
+itself remains an optional fourth stage and must not hold stages 1-3 back.
